@@ -5,6 +5,7 @@ import {
   type Injector,
   type OnDestroy,
   type ProviderToken,
+  ApplicationRef,
   ChangeDetectorRef,
   Component,
   ElementRef,
@@ -19,7 +20,6 @@ import {
   type ActivatedRouteSnapshot,
   type CanActivateFn,
   type Data,
-  type OutletContext,
   type Route,
   type RouterStateSnapshot,
   ActivatedRoute,
@@ -35,6 +35,7 @@ import type { StackNavigationInfo } from '../stack/stack-change';
 import { LynxStackPage } from '../stack/stack-page';
 import {
   type InputBinder,
+  ScreenContexts,
   afterRouterPass,
   binderOf,
   onHiddenPage,
@@ -54,11 +55,12 @@ type Tab = {
   /** The view that holds the component's host, which hides the tab. */
   readonly frame: unknown;
   /**
-   * The contexts of the tab's own router outlets while it's hidden. The
-   * router forgets them when it leaves the tab's route, and the outlets,
-   * which live on with the tab, never register again.
+   * The contexts the tab's own router outlets register in, which keep them
+   * while the tab is hidden: the router forgets them when it leaves the
+   * tab's route, and the outlets, which live on with the tab, never register
+   * again (see ScreenContexts).
    */
-  contexts: Map<string, OutletContext>;
+  readonly contexts: ScreenContexts;
   /** What the tab's components inject to know about it. */
   readonly tabPage: LynxTabPage;
   /** The router's URL the last time the tab was shown (see #resume). */
@@ -73,7 +75,7 @@ type Tab = {
 class TabInjector {
   constructor(
     readonly route: ActivatedRoute,
-    readonly childContexts: ChildrenOutletContexts,
+    readonly childContexts: ScreenContexts,
     readonly parent: Injector,
     readonly outletData: unknown,
     readonly tabPage: LynxTabPage,
@@ -204,6 +206,7 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
   readonly #contexts = inject(ChildrenOutletContexts);
   readonly #changes = inject(ChangeDetectorRef);
   readonly #router = inject(Router);
+  readonly #root = inject(ApplicationRef).injector;
   /** The stack page the outlet is on, if it's in a `<lynx-stack-outlet>`. */
   readonly #outerPage = inject(LynxStackPage, { optional: true });
   /** The tab the outlet is in, if it's in another `<lynx-tab-outlet>`. */
@@ -219,7 +222,7 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
    */
   readonly #detached = new WeakMap<
     ComponentRef<unknown>,
-    Pick<Tab, 'live' | 'tabPage'>
+    Pick<Tab, 'live' | 'tabPage' | 'contexts'>
   >();
   /**
    * Set while the router has left the outlet on a page or tab that's hidden
@@ -301,15 +304,16 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
       // again, for the router to come back to them.
       kept.route = route;
       kept.live.follow(route);
-      this.#childContexts.onOutletReAttached(kept.contexts);
+      kept.contexts.show();
       this.#activate(kept);
       return;
     }
     const tabPage = new LynxTabPage();
     const live = liveRoute(route);
+    const contexts = this.#screenContexts();
     const injector = new TabInjector(
       live.route,
-      this.#childContexts,
+      contexts,
       this.#tabs.injector,
       this.routerOutletData,
       tabPage,
@@ -319,7 +323,7 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
       injector,
       environmentInjector,
     });
-    this.#activate(this.#addTab(ref, route, live, tabPage));
+    this.#activate(this.#addTab(ref, route, live, tabPage, contexts));
   }
 
   override deactivate(): void {
@@ -329,7 +333,7 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
     // The router forgets the contexts of the tab's outlets as it leaves the
     // tab's route (it calls this right after). Keep them for when the tab
     // comes back.
-    tab.contexts = this.#childContexts.onOutletDeactivated();
+    tab.contexts.hide();
     this.#active = null;
     setTabActive(tab.tabPage, false);
     if (this.#keeps(tab)) {
@@ -364,7 +368,14 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
     // Only what the component holds already: the tab holds the component,
     // and an entry whose value leads back to its key never goes on Lynx's
     // main thread (see linksOf in stack-page.ts).
-    this.#detached.set(tab.ref, { live: tab.live, tabPage: tab.tabPage });
+    // The router takes the contexts of the tab's outlets as it stores the
+    // component, and gives them back before attach(): they stay with the
+    // router meanwhile, as RouterOutlet's do.
+    this.#detached.set(tab.ref, {
+      live: tab.live,
+      tabPage: tab.tabPage,
+      contexts: tab.contexts,
+    });
     this.#active = null;
     setTabActive(tab.tabPage, false);
     this.detachEvents.emit(tab.ref.instance);
@@ -381,6 +392,7 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
       route,
       live,
       detached?.tabPage ?? new LynxTabPage(),
+      detached?.contexts ?? this.#screenContexts(),
     );
     this.#activate(tab);
     this.attachEvents.emit(ref.instance);
@@ -420,6 +432,7 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
     route: ActivatedRoute,
     live: LiveRoute,
     tabPage: LynxTabPage,
+    contexts: ScreenContexts,
   ): Tab {
     const frame = this.#renderer.createElement('view') as unknown;
     this.#ownView(frame);
@@ -443,7 +456,7 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
       live,
       route,
       frame,
-      contexts: new Map(),
+      contexts,
       tabPage,
       url: this.#router.url,
     };
@@ -535,8 +548,15 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
     return this.#active;
   }
 
-  get #childContexts(): ChildrenOutletContexts {
-    return this.#contexts.getOrCreateContext(this.name).children;
+  /**
+   * The contexts for a new tab's outlets, which stand in for the router's
+   * contexts for this outlet's children.
+   */
+  #screenContexts(): ScreenContexts {
+    return new ScreenContexts(
+      this.#contexts.getOrCreateContext(this.name).children,
+      this.#root,
+    );
   }
 
   get #binder(): InputBinder | null {

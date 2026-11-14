@@ -7,6 +7,7 @@ import {
   type OnDestroy,
   type ProviderToken,
   type WritableSignal,
+  ApplicationRef,
   ChangeDetectorRef,
   Component,
   ElementRef,
@@ -21,7 +22,6 @@ import {
 } from '@angular/core';
 import {
   type Data,
-  type OutletContext,
   ActivatedRoute,
   ChildrenOutletContexts,
   NavigationCancel,
@@ -44,6 +44,7 @@ import {
   rewindHistory,
 } from '../lynx-location-strategy';
 import {
+  ScreenContexts,
   afterRouterPass,
   binderOf,
   onHiddenPage,
@@ -129,11 +130,12 @@ type Page = {
    */
   historyIndex: number;
   /**
-   * The contexts of the page's own router outlets while it isn't on top. The
-   * router forgets them when it leaves the page's route, and the outlets,
-   * which live on with the page, never register again.
+   * The contexts the page's own router outlets register in, which keep them
+   * while the page isn't on top: the router forgets them when it leaves the
+   * page's route, and the outlets, which live on with the page, never
+   * register again (see ScreenContexts).
    */
-  contexts: Map<string, OutletContext>;
+  readonly contexts: ScreenContexts;
   /** What the page's components inject to know about it. */
   readonly stackPage: LynxStackPage;
   /** What it says about the bottom bar (see LynxStackChrome). */
@@ -227,7 +229,7 @@ const SIDEWAYS_ELEMENTS = new Set(['viewpager', 'swiper', 'x-swiper']);
 class PageInjector {
   constructor(
     readonly route: ActivatedRoute,
-    readonly childContexts: ChildrenOutletContexts,
+    readonly childContexts: ScreenContexts,
     readonly parent: Injector,
     readonly outletData: unknown,
     readonly stackPage: LynxStackPage,
@@ -343,6 +345,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
   readonly #contexts = inject(ChildrenOutletContexts);
   readonly #changes = inject(ChangeDetectorRef);
   readonly #router = inject(Router);
+  readonly #root = inject(ApplicationRef).injector;
   readonly #location = inject(Location);
   readonly #strategy = inject(LocationStrategy);
   readonly #settings = inject(LynxAccessibilitySettings);
@@ -369,8 +372,14 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
    * it comes back in the same pass (see #lendBars).
    */
   readonly #lent = new Map<CarriedBar, FrameElement>();
-  /** Each component's page, for a component the reuse strategy hands back. */
-  readonly #liveRoutes = new WeakMap<ComponentRef<unknown>, LiveRoute>();
+  /**
+   * What each component's page gave it, for a component the reuse strategy
+   * hands back: it keeps them.
+   */
+  readonly #given = new WeakMap<
+    ComponentRef<unknown>,
+    Pick<Page, 'live' | 'contexts'>
+  >();
   #transition: Transition | null = null;
   #swipe: Swipe | null = null;
   /** The page a swipe took away, until the navigation back settles. */
@@ -492,7 +501,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
     // The router forgets the contexts of the page's outlets as it leaves
     // the page's route (it calls this right after). Keep them for when the
     // page comes back to the top.
-    page.contexts = this.#childContexts.onOutletDeactivated();
+    page.contexts.hide();
     this.#active = null;
     setActive(page.stackPage, false);
     this.#leaveBar();
@@ -708,7 +717,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
   #follow(page: Page, route: ActivatedRoute): void {
     page.route = route;
     page.live.follow(route);
-    this.#childContexts.onOutletReAttached(page.contexts);
+    page.contexts.show();
   }
 
   /**
@@ -755,9 +764,10 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
   ): Page {
     const live = liveRoute(route);
     const stackPage = new LynxStackPage();
+    const contexts = new ScreenContexts(this.#childContexts, this.#root);
     const injector = new PageInjector(
       live.route,
-      this.#childContexts,
+      contexts,
       this.#pages.injector,
       this.routerOutletData,
       stackPage,
@@ -765,9 +775,11 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
     ) as unknown as Injector;
     const ref = create(injector);
     // A component the reuse strategy hands back has the route of the page it
-    // was on, which now follows this one.
-    const remembered = this.#liveRoutes.get(ref);
-    remembered?.follow(route);
+    // was on, which now follows this one, and that page's contexts, which its
+    // outlets registered in. The router gave their contexts back before
+    // attach(), and the page's are shown, as they were when it was detached.
+    const remembered = this.#given.get(ref);
+    remembered?.live.follow(route);
     const frame = this.#renderer.createElement('view') as FrameElement;
     this.#frames.add(frame);
     this.#ownView(frame);
@@ -789,15 +801,15 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
     const bar = signal<PageBar>('root');
     const page: Page = {
       ref,
-      live: remembered ?? live,
+      live: remembered?.live ?? live,
       route,
       frame,
       historyIndex,
-      contexts: new Map(),
+      contexts: remembered?.contexts ?? contexts,
       stackPage,
       bar,
     };
-    this.#liveRoutes.set(ref, page.live);
+    this.#given.set(ref, { live: page.live, contexts: page.contexts });
     own(stackPage, this.#claim);
     // The page's own answer, or the answer of the page it's in.
     setBottomBarHidden(

@@ -1,9 +1,12 @@
-import type { Injector, Signal } from '@angular/core';
+import type { EnvironmentInjector, Injector, Signal } from '@angular/core';
 import {
   type ActivatedRoute,
   type ActivatedRouteSnapshot,
+  type OutletContext,
   type Router,
   type RouterOutlet,
+  type RouterOutletContract,
+  ChildrenOutletContexts,
   NavigationCancel,
   NavigationEnd,
   NavigationError,
@@ -41,6 +44,114 @@ export const urlOf = (route: ActivatedRoute | ActivatedRouteSnapshot): string =>
  * as {@link urlOf} has it.
  */
 export const pathOf = (url: string): string => url.split(/[?#]/, 1)[0]!;
+
+/**
+ * The contexts that the router outlets in one screen of an outlet that keeps
+ * its screens (a tab, a stack page) register in, in place of the router's
+ * contexts for the outlet's children, which the screens would otherwise share
+ * as RouterOutlet's screen does.
+ *
+ * The router's contexts hold the contexts of the screen shown, and the outlet
+ * swaps them as it hides one screen and shows another. Sharing them is right
+ * for RouterOutlet, which shows one screen and destroys it as it leaves. A
+ * kept screen's outlets live on while it's hidden, though, and one of them
+ * can register then: a screen the router left before change detection first
+ * reached it (two navigations in a row, as a guard's redirect or a shortcut
+ * makes) registers its outlets only once it's checked, hidden by then, and an
+ * `@if` can add an outlet to a hidden screen. An outlet registering in the
+ * shared contexts takes the context of the shown screen's outlet of the same
+ * name, and activates with its route: it builds the shown screen's child in
+ * the hidden screen, and the router's later navigations of that outlet go to
+ * it (issue #413).
+ *
+ * So each screen has its own, and its outlets' calls go to the router's
+ * contexts while the screen is shown, and to the screen's own while it's
+ * hidden. {@link hide} takes the screen's contexts from the router as it
+ * leaves the screen, and {@link show} gives them back as it returns. While
+ * it's hidden, ChildrenOutletContexts' own methods, which call one another
+ * (getOrCreateContext calls getContext) through the ones here, keep to this
+ * object's own contexts.
+ */
+export class ScreenContexts extends ChildrenOutletContexts {
+  /** The router's contexts for the outlet's children. */
+  readonly #router: ChildrenOutletContexts;
+  /** Whether the router's contexts are the screen's (it's shown). */
+  #shown = true;
+
+  /**
+   * A screen's contexts, shown as it's built: the router activates its
+   * outlets right after.
+   */
+  constructor(router: ChildrenOutletContexts, root: EnvironmentInjector) {
+    super(root);
+    this.#router = router;
+  }
+
+  /**
+   * Keeps the screen's contexts, which the router is about to forget as it
+   * leaves the screen's route, in this object's own.
+   */
+  hide(): void {
+    if (!this.#shown) return;
+    super.onOutletReAttached(this.#router.onOutletDeactivated());
+    this.#shown = false;
+  }
+
+  /**
+   * Gives the router the screen's contexts back, for it to activate the
+   * screen's outlets again.
+   */
+  show(): void {
+    if (this.#shown) return;
+    this.#router.onOutletReAttached(super.onOutletDeactivated());
+    this.#shown = true;
+  }
+
+  override onChildOutletCreated(
+    childName: string,
+    outlet: RouterOutletContract,
+  ): void {
+    if (this.#shown) {
+      this.#router.onChildOutletCreated(childName, outlet);
+    } else {
+      super.onChildOutletCreated(childName, outlet);
+    }
+  }
+
+  override onChildOutletDestroyed(childName: string): void {
+    if (this.#shown) {
+      this.#router.onChildOutletDestroyed(childName);
+    } else {
+      super.onChildOutletDestroyed(childName);
+    }
+  }
+
+  override onOutletDeactivated(): Map<string, OutletContext> {
+    return this.#shown
+      ? this.#router.onOutletDeactivated()
+      : super.onOutletDeactivated();
+  }
+
+  override onOutletReAttached(contexts: Map<string, OutletContext>): void {
+    if (this.#shown) {
+      this.#router.onOutletReAttached(contexts);
+    } else {
+      super.onOutletReAttached(contexts);
+    }
+  }
+
+  override getOrCreateContext(childName: string): OutletContext {
+    return this.#shown
+      ? this.#router.getOrCreateContext(childName)
+      : super.getOrCreateContext(childName);
+  }
+
+  override getContext(childName: string): OutletContext | null {
+    return this.#shown
+      ? this.#router.getContext(childName)
+      : super.getContext(childName);
+  }
+}
 
 /** A page or a tab, as far as whether it's shown goes. */
 type Shown = { readonly active: Signal<boolean> } | null;

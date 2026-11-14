@@ -603,6 +603,22 @@ describe('LynxTabOutlet', () => {
       expect(aux.destroyed).toBe(true);
     });
 
+    it('shows the tab it kept after a tab not shown yet and straight back', async () => {
+      const { router, settle, frames, shown, alive } = await setup('/home');
+      const home = at('home');
+      // Two navigations with no change detection between them: the second
+      // tab's stack registers only once its view is checked, after the
+      // first tab is back.
+      await router.navigateByUrl('/two');
+      await router.navigateByUrl('/home');
+      await settle();
+      expect(router.url).toBe('/home');
+      expect(at('home')).toBe(home);
+      expect(alive().filter((path) => path === 'home')).toHaveLength(1);
+      expect(frames()).toHaveLength(2);
+      expect(shown()).toHaveLength(1);
+    });
+
     it('keeps the stack without the Lynx history', async () => {
       const { go, router } = await setup(
         '/home',

@@ -15,7 +15,7 @@ import {
   provideRouter,
 } from '@blotch/angular-lynx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, waitForUpdate } from './index.js';
+import { render, screen, waitForUpdate } from './index.js';
 
 let warnSpy: ReturnType<typeof vi.spyOn>;
 
@@ -34,6 +34,16 @@ afterEach(() => {
   template: `<view class="screen"><text>screen</text></view>`,
 })
 class Screen {}
+
+/**
+ * A tab's first screen, by its text.
+ */
+@Component({
+  selector: 'tab-first-screen',
+  imports: [LYNX_ELEMENTS],
+  template: `<view><text>ON SCREEN</text></view>`,
+})
+class FirstScreen {}
 
 @Component({
   selector: 'stack-tab',
@@ -84,9 +94,34 @@ const routes: Routes = [
   },
 ];
 
+/**
+ * A lazy tab, whose screens are a stack, as an app's tabs often are.
+ */
+const lazyTab = (path: string): Routes[number] => ({
+  path,
+  loadChildren: async () => [
+    {
+      path: '',
+      component: StackTab,
+      children: [{ path: '', component: FirstScreen }],
+    },
+  ],
+});
+
+const lazyRoutes: Routes = [
+  { path: '', pathMatch: 'full', redirectTo: 'home' },
+  {
+    path: '',
+    component: Shell,
+    children: [lazyTab('home'), lazyTab('schedule')],
+  },
+];
+
 describe('<lynx-tab-outlet>', () => {
-  const setup = async () => {
-    const result = await render(Root, { providers: [provideRouter(routes)] });
+  const setup = async (appRoutes = routes) => {
+    const result = await render(Root, {
+      providers: [provideRouter(appRoutes)],
+    });
     const router = result.componentRef.injector.get(Router);
     const go = async (url: string) => {
       await router.navigateByUrl(url);
@@ -123,5 +158,31 @@ describe('<lynx-tab-outlet>', () => {
     expect(router.url).toBe('/library/3');
     expect(screens()).toHaveLength(shown + 1);
     expect(screens()).toContain(album);
+  });
+
+  // Issue #413.
+  it('shows the tab it kept after a tab not shown yet and straight back', async () => {
+    const { router } = await setup(lazyRoutes);
+    const [home] = await screen.findAllByText('ON SCREEN');
+    await waitForUpdate();
+    // Two navigations with no update between them, as a guard's redirect
+    // makes: the Schedule tab's stack registers only once it's checked,
+    // after Home is back.
+    await router.navigateByUrl('/schedule');
+    await router.navigateByUrl('/home');
+    await waitForUpdate();
+    expect(router.url).toBe('/home');
+    // Home as it was, and nothing more: the router left the Schedule tab's
+    // first screen before its stack was there to show it.
+    expect(screen.getAllByText('ON SCREEN')).toEqual([home]);
+    // The Schedule tab's stack shows it once the tab is back.
+    await router.navigateByUrl('/schedule');
+    await waitForUpdate();
+    expect(router.url).toBe('/schedule');
+    expect(screen.getAllByText('ON SCREEN')).toHaveLength(2);
+    await router.navigateByUrl('/home');
+    await waitForUpdate();
+    expect(screen.getAllByText('ON SCREEN')).toHaveLength(2);
+    expect(screen.getAllByText('ON SCREEN')).toContain(home);
   });
 });

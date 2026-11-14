@@ -24,9 +24,11 @@ import { Player } from './player';
     <!-- The screens fill the whole screen, and the dock floats over them at
          the bottom: their content scrolls beneath it. The outlet keeps each
          tab once it's been shown, as a native tab bar does: the Library
-         comes back with the album you left open. -->
+         comes back with the album you left open. It builds Browse and the
+         Library once Home is on screen, so the first tap on each shows it
+         at once. -->
     <view class="h-full flex-col bg-background flex">
-      <lynx-tab-outlet />
+      <lynx-tab-outlet [prebuild]="['browse', 'library']" />
 
       <ui-dock #dock>
         <!-- The accessory: what's playing, above the bar. When the dock

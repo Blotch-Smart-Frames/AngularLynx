@@ -221,18 +221,21 @@ export class PlayerBar {
 @Component({ selector: 'lynx-tab-outlet', exportAs: 'outlet' })
 class LynxTabOutlet extends RouterOutlet {
   readonly keep: InputSignal<readonly string[] | undefined>;
+  readonly prebuild: InputSignal<readonly string[] | undefined>;
 }
 ```
 
 A `RouterOutlet` whose routes are an app's tabs, which it keeps once they've been shown, as `UITabBarController` and Material's navigation bar do. Use it in place of `<router-outlet>` beside a tab bar or a dock: it has the same inputs, outputs and API. See [Keep each tab alive](/guide/routing#keep-each-tab-alive-as-a-tab-bar-does) for what it does.
 
-| Input  | Default     | What it does                                                                                                     |
-| ------ | ----------- | ---------------------------------------------------------------------------------------------------------------- |
-| `keep` | `undefined` | The paths of the routes whose tabs are kept while hidden (`['home', 'library']`). Without it, every tab is kept. |
+| Input      | Default     | What it does                                                                                                                                          |
+| ---------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `keep`     | `undefined` | The paths of the routes whose tabs are kept while hidden (`['home', 'library']`). Without it, every tab is kept.                                      |
+| `prebuild` | `undefined` | The paths of the routes whose tabs are built before they're first shown (`['library', 'profile']`), so the first tap on each is as quick as a return. |
 
 - **Each route is one tab,** whatever its params: `/item/1` and `/item/2` share the tab of `item/:id`, as they share its component.
 - **A hidden tab** is `visibility: hidden` and moved out of the outlet, which clips it, rather than `display: none`, which resizes everything in it to 0×0 on Lynx and loses its scroll positions.
 - **A route's `data: { keepAlive: false }`** destroys its tab when it's hidden, and `keepAlive: true` keeps it whatever `keep` says.
+- **A tab built ahead** (`prebuild`, or a route's `data: { prebuild: true }`, which wins over the list either way) is built once the first tab is drawn, one at a time, each between frames, and hidden: its component and the screens its URL leads to, with their guards and resolvers run (those of the routes above it too), and `LynxTabPage.active()` false. The router's URL, its history and the tab bar's selection don't move, and the router's navigation to it shows it as a tab coming back. Not a tab the outlet doesn't keep, or one whose path has a parameter. Its elements don't get `binduiappear` until it's shown.
 - **A navigation to a hidden tab's own URL** goes to the URL the tab was at when it was hidden, through a guard the outlet adds to the router's copy of each tab's route. Back and Forward, a navigation with a query or a deeper path, and one whose `info` is `{ stack: 'root' }` go where they say.
 - **A `LynxStackOutlet` in a tab** keeps its screens while the tab is hidden, and when it comes back, puts its screens' entries back in the history before the current one, so Back goes through them.
 - **With a `RouteReuseStrategy` that detaches a tab,** the outlet hands it over, as `<router-outlet>` does, and its native views go.

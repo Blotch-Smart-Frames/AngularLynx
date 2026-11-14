@@ -76,15 +76,21 @@ export class ScreenContexts extends ChildrenOutletContexts {
   /** The router's contexts for the outlet's children. */
   readonly #router: ChildrenOutletContexts;
   /** Whether the router's contexts are the screen's (it's shown). */
-  #shown = true;
+  #shown: boolean;
 
   /**
-   * A screen's contexts, shown as it's built: the router activates its
-   * outlets right after.
+   * A screen's contexts, shown as it's built, as the router activates its
+   * outlets right after, or hidden, for a screen built before it's shown
+   * (see LynxTabOutlet's `prebuild`).
    */
-  constructor(router: ChildrenOutletContexts, root: EnvironmentInjector) {
+  constructor(
+    router: ChildrenOutletContexts,
+    root: EnvironmentInjector,
+    shown = true,
+  ) {
     super(root);
     this.#router = router;
+    this.#shown = shown;
   }
 
   /**
@@ -152,6 +158,34 @@ export class ScreenContexts extends ChildrenOutletContexts {
       : super.getContext(childName);
   }
 }
+
+/**
+ * Leaves the routes the outlets in `contexts` show, the innermost first, as
+ * the router leaves a screen's (ActivateRoutes' deactivateRouteAndOutlet):
+ * each outlet deactivates, and its context forgets its route. An outlet
+ * that keeps its screens keeps them, as it does when the router leaves it,
+ * for when the router comes back.
+ *
+ * For a screen built before it's shown (see LynxTabOutlet's `prebuild`): the
+ * router never activated its outlets, and won't leave them, but activates
+ * them again as it shows the screen, as it does those of a screen it left.
+ */
+export const leaveRoutes = (contexts: ChildrenOutletContexts): void => {
+  // The contexts by name, which ChildrenOutletContexts has no other way of
+  // giving.
+  const named = contexts.onOutletDeactivated();
+  contexts.onOutletReAttached(named);
+  for (const context of named.values()) {
+    if (!context.route) continue;
+    leaveRoutes(context.children);
+    if (context.outlet) {
+      context.outlet.deactivate();
+      context.children.onOutletDeactivated();
+    }
+    context.attachRef = null;
+    context.route = null;
+  }
+};
 
 /** A page or a tab, as far as whether it's shown goes. */
 type Shown = { readonly active: Signal<boolean> } | null;

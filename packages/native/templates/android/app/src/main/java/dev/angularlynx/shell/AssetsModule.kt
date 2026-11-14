@@ -43,7 +43,8 @@ class AssetsModule(context: Context, param: Any?) : LynxModule(context, param) {
      * The file on the dev server, in the debug build `ng serve --platform
      * android` runs, which has the current copy. The call is synchronous, so
      * the request is too, but on a thread of its own: Android doesn't allow
-     * network requests on the UI thread, where Lynx may call this.
+     * network requests on the UI thread, where Lynx calls this under its
+     * default thread strategy (MainActivity runs it on Lynx's engine thread).
      */
     private fun readRemote(url: String): JavaOnlyArray? = try {
         val download = FutureTask {

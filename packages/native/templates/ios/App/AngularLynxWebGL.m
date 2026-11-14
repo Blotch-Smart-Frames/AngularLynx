@@ -8,8 +8,8 @@
 
 @implementation AngularLynxCanvasRegistry
 
-// Weak both ways: the view belongs to Lynx, the context to the module.
-static NSMapTable<NSString *, AngularLynxCanvasView *> *views(void) {
+// Weak both ways: the target belongs to its view, the context to the module.
+static NSMapTable<NSString *, AngularLynxCanvasTarget *> *targets(void) {
   static NSMapTable *table;
   static dispatch_once_t once;
   dispatch_once(&once, ^{
@@ -27,23 +27,23 @@ static NSMapTable<NSString *, AngularLynxWebGLContext *> *contexts(void) {
   return table;
 }
 
-+ (void)setView:(AngularLynxCanvasView *)view forCanvasId:(NSString *)canvasId {
-  if (view) {
-    [views() setObject:view forKey:canvasId];
++ (void)setTarget:(AngularLynxCanvasTarget *)target forCanvasId:(NSString *)canvasId {
+  if (target) {
+    [targets() setObject:target forKey:canvasId];
   } else {
-    [views() removeObjectForKey:canvasId];
+    [targets() removeObjectForKey:canvasId];
   }
-  [[contexts() objectForKey:canvasId] attachView:view];
+  [[contexts() objectForKey:canvasId] attachTarget:target];
 }
 
-+ (AngularLynxCanvasView *)viewForCanvasId:(NSString *)canvasId {
-  return [views() objectForKey:canvasId];
++ (AngularLynxCanvasTarget *)targetForCanvasId:(NSString *)canvasId {
+  return [targets() objectForKey:canvasId];
 }
 
 + (void)setContext:(AngularLynxWebGLContext *)context forCanvasId:(NSString *)canvasId {
   if (context) {
     [contexts() setObject:context forKey:canvasId];
-    [context attachView:[views() objectForKey:canvasId]];
+    [context attachTarget:[targets() objectForKey:canvasId]];
   } else {
     [contexts() removeObjectForKey:canvasId];
   }
@@ -289,6 +289,18 @@ static AngularLynxDecodedImage *decodeImage(NSData *bytes, NSDictionary *options
 
 #pragma mark - Canvas
 
+@implementation AngularLynxCanvasTarget
+
+- (instancetype)initWithView:(AngularLynxCanvasView *)view {
+  if ((self = [super init])) {
+    _layer = (CAMetalLayer *)view.layer;
+    _view = view;
+  }
+  return self;
+}
+
+@end
+
 @implementation AngularLynxCanvasView
 
 + (Class)layerClass {
@@ -305,8 +317,17 @@ static AngularLynxDecodedImage *decodeImage(NSData *bytes, NSDictionary *options
     self.contentScaleFactor = UIScreen.mainScreen.scale;
     // Lynx dispatches touches itself, from the LynxView.
     self.userInteractionEnabled = NO;
+    _target = [[AngularLynxCanvasTarget alloc] initWithView:self];
   }
   return self;
+}
+
+/// Runs `block` on Lynx's engine thread, where the module's calls arrive and
+/// every GL call is made: next on it, or at once when this is it (it's the UI
+/// thread under Lynx's default thread strategy). Nothing runs once the
+/// LynxView has gone, nor do its contexts.
+- (void)onEngineThread:(dispatch_block_t)block {
+  [_lynxContext runOnTasmThread:block];
 }
 
 // A frame drawn before Lynx gave the view a size waits for one (see
@@ -315,30 +336,43 @@ static AngularLynxDecodedImage *decodeImage(NSData *bytes, NSDictionary *options
 // again; one drawing every frame never noticed.
 - (void)layoutSubviews {
   [super layoutSubviews];
-  if (_canvasId) {
-    [[AngularLynxCanvasRegistry contextForCanvasId:_canvasId] viewDidLayOut:self];
-  }
+  // ANGLE sizes the layer's next drawable from its bounds and scale, as here.
+  CGSize size = self.bounds.size;
+  CGFloat scale = self.layer.contentsScale;
+  _target.pixelSize = CGSizeMake(floor(size.width * scale), floor(size.height * scale));
+  NSString *canvasId = _canvasId;
+  AngularLynxCanvasTarget *target = _target;
+  if (!canvasId) return;
+  [self onEngineThread:^{
+    [[AngularLynxCanvasRegistry contextForCanvasId:canvasId] targetDidLayOut:target];
+  }];
 }
 
 - (void)setCanvasId:(NSString *)canvasId {
   if ([_canvasId isEqualToString:canvasId]) return;
-  if (_canvasId && [AngularLynxCanvasRegistry viewForCanvasId:_canvasId] == self) {
-    [AngularLynxCanvasRegistry setView:nil forCanvasId:_canvasId];
-  }
+  NSString *old = _canvasId;
   _canvasId = [canvasId copy];
-  if (_canvasId) [AngularLynxCanvasRegistry setView:self forCanvasId:_canvasId];
+  NSString *new = _canvasId;
+  AngularLynxCanvasTarget *target = _target;
+  [self onEngineThread:^{
+    if (old && [AngularLynxCanvasRegistry targetForCanvasId:old] == target) {
+      [AngularLynxCanvasRegistry setTarget:nil forCanvasId:old];
+    }
+    if (new) [AngularLynxCanvasRegistry setTarget:target forCanvasId:new];
+  }];
 }
 
 - (void)dealloc {
-  // The registry holds the view weakly; a context still showing frames in it
-  // stops.
+  // The context holds the target, and its layer, while it shows frames in
+  // it; it lets go here.
   NSString *canvasId = _canvasId;
+  AngularLynxCanvasTarget *target = _target;
   if (canvasId) {
-    dispatch_async(dispatch_get_main_queue(), ^{
-      if (![AngularLynxCanvasRegistry viewForCanvasId:canvasId]) {
-        [[AngularLynxCanvasRegistry contextForCanvasId:canvasId] attachView:nil];
+    [_lynxContext runOnTasmThread:^{
+      if ([AngularLynxCanvasRegistry targetForCanvasId:canvasId] == target) {
+        [AngularLynxCanvasRegistry setTarget:nil forCanvasId:canvasId];
       }
-    });
+    }];
   }
 }
 
@@ -351,6 +385,7 @@ static AngularLynxDecodedImage *decodeImage(NSData *bytes, NSDictionary *options
 }
 
 LYNX_PROP_SETTER("canvas-id", setCanvasId, NSString *) {
+  self.view.lynxContext = self.context.lynxContext;
   self.view.canvasId = requestReset || ![value isKindOfClass:NSString.class] ? nil : value;
 }
 

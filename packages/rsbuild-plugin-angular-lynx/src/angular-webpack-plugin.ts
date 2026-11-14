@@ -373,9 +373,23 @@ class AngularWebpackPlugin {
         // React Lynx enables this via pluginLynxConfig({ enableCSSInlineVariables: true }).
         // This is a Config option (sourceContent.config), NOT a CompilerOptions
         // option — the Lynx engine reads it from the config section at runtime.
+        //
+        // enableElementInvokeUIMethodPendingTask (Lynx 4.1) queues a UI
+        // method (__InvokeUIMethod: focus, scrollIntoView, a field's setValue,
+        // boundingClientRect) on its element, and sends it to the UI with the
+        // element's next flush, after the operations that make and change
+        // its UI. Without it, the call goes straight to the UI thread. That
+        // was safe while the apps ran Lynx's engine on the UI thread (Lynx's
+        // default thread strategy): native had made the UI of every element
+        // flushed so far, and answered a call on one it hadn't yet at once,
+        // so the runtime could call again after the flush. The shells now
+        // run the engine on a thread of its own (see packages/native), where
+        // the flush reaches the UI later and the answer comes later still: a
+        // field focused as it appears would have been dropped.
         encodeData.sourceContent.config = {
           ...encodeData.sourceContent.config,
           enableCSSInlineVariables: true,
+          enableElementInvokeUIMethodPendingTask: true,
         };
 
         if (!encodeData.lepusCode.root) {

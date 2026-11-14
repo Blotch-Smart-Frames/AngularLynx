@@ -185,7 +185,7 @@ static NSUInteger componentsOf(GLenum format) {
 
   // The view's layer, as a window surface each frame is copied into. Made
   // when a frame is first shown in the view, as the surface's framebuffer 0.
-  __weak AngularLynxCanvasView *_view;
+  AngularLynxCanvasTarget *_target;
   EGLSurface _surface;
   /// A frame was finished before there was a view to show it in.
   BOOL _framePending;
@@ -420,41 +420,45 @@ static NSUInteger componentsOf(GLenum format) {
   glBindFramebuffer(GL_DRAW_FRAMEBUFFER, _drawFramebuffer);
 }
 
-- (void)attachView:(AngularLynxCanvasView *)view {
-  // A view that went away has already turned _view (weak) to nil, but its
-  // layer lives on in the surface until the surface is let go of here.
-  if (_view == view && (view || _surface == EGL_NO_SURFACE)) return;
+- (void)attachTarget:(AngularLynxCanvasTarget *)target {
+  if (_target == target) return;
+  // The surface holds the old target's layer until it's let go of here.
   [self releaseSurface];
-  _view = view;
-  if (view) {
-    view.layer.opaque = !_alpha;
-    view.opaque = !_alpha;
+  _target = target;
+  if (target) {
+    // The view's opacity is the UI thread's to set.
+    BOOL opaque = !_alpha;
+    dispatch_async(dispatch_get_main_queue(), ^{
+      AngularLynxCanvasView *view = target.view;
+      view.layer.opaque = opaque;
+      view.opaque = opaque;
+    });
     if (_framePending) [self present];
   }
 }
 
-- (void)viewDidLayOut:(AngularLynxCanvasView *)view {
-  if (view == _view && _framePending) [self present];
+- (void)targetDidLayOut:(AngularLynxCanvasTarget *)target {
+  if (target == _target && _framePending) [self present];
 }
 
 /// Shows the finished frame: copies the default framebuffer (resolving it
 /// when it's multisampled) into the view's layer, scaled to its size, and
 /// presents it. Without a laid-out view, the frame waits for one.
 - (void)present {
-  AngularLynxCanvasView *view = _view;
-  CGSize size = view.bounds.size;
-  // ANGLE sizes the layer's next drawable from its bounds and scale, as
-  // here, when the blit below first draws to it.
-  CGFloat scale = view.layer.contentsScale;
-  GLint layerWidth = (GLint)(size.width * scale);
-  GLint layerHeight = (GLint)(size.height * scale);
-  if (!view || layerWidth < 1 || layerHeight < 1) {
+  AngularLynxCanvasTarget *target = _target;
+  // The layer's size as the view was last laid out: ANGLE sizes the layer's
+  // next drawable from its bounds and scale, as the view measured it, when
+  // the blit below first draws to it.
+  CGSize size = target.pixelSize;
+  GLint layerWidth = (GLint)size.width;
+  GLint layerHeight = (GLint)size.height;
+  if (!target || layerWidth < 1 || layerHeight < 1) {
     _framePending = YES;
     return;
   }
   if (_surface == EGL_NO_SURFACE) {
-    _surface = eglCreateWindowSurface(_display, _config, (__bridge EGLNativeWindowType)view.layer,
-                                      NULL);
+    _surface = eglCreateWindowSurface(_display, _config,
+                                      (__bridge EGLNativeWindowType)target.layer, NULL);
     if (_surface == EGL_NO_SURFACE) {
       NSLog(@"[AngularLynxWebGL] No window surface for the canvas (EGL error 0x%x)", eglGetError());
       _framePending = YES;

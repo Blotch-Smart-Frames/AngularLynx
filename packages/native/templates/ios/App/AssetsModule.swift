@@ -9,7 +9,9 @@ import Lynx
 /// Lynx's own `<image>`.
 ///
 /// Called from the main thread, synchronously (`lynx.module(name)`), like
-/// the WebGL module: the runtime turns the answer into a Response.
+/// the WebGL module: the runtime turns the answer into a Response. Lynx calls
+/// it on its engine thread, which LynxViewController runs off the UI thread,
+/// so a dev server download that waits blocks Angular, not UIKit.
 final class AssetsModule: NSObject, LynxModule {
   static var name: String { "AngularLynxAssets" }
 

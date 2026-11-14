@@ -164,7 +164,7 @@ Properties like `border-radius`, `font-size`, `letter-spacing` **cannot be anima
 
 ## Frame Rate
 
-Lynx doesn't hand animations to Core Animation or a compositor. It works out every frame of `animate()` and of CSS transitions itself, on the main thread, where Angular runs too (on iOS that's the UI thread). A frame the thread spends on something else is dropped, so:
+Lynx doesn't hand animations to Core Animation or a compositor. It works out every frame of `animate()` and of CSS transitions itself, on the main thread, where Angular runs too (in Lynx Explorer that's also the UI thread; the apps `ng build --platform` makes give it a thread of its own). A frame the thread spends on something else is dropped, so:
 
 - **Animate `transform` and `opacity`.** Lynx skips layout for them, with a translate in `px` or `%`. `height`, `width`, colors, `filter`, and a translate in `rem`, `em`, `vw` or `vh` lay the page out again on every frame.
 - **Keep the main thread free while something moves:** build the next screen before its transition starts, not during it.

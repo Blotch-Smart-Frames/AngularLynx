@@ -272,7 +272,10 @@ describe('writeIosSplash', () => {
   });
 });
 
-describe('writeAndroidSplash', () => {
+// Each test encodes five splash canvases, up to 1152 px square, with pngjs,
+// which a CI runner measuring coverage took up to 33 s over. The work is
+// fixed, so the timeout only has to catch a hang, as for the icons'.
+describe('writeAndroidSplash', { timeout: 120_000 }, () => {
   const res = (file: string) => path.join(dir, 'app/src/main/res', file);
   const windowBackground = (folder: string) =>
     /<color name="window_background">([^<]*)</.exec(

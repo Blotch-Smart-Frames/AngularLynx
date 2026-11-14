@@ -342,3 +342,55 @@ describe('LynxElement invoke on an element native has no UI for yet', () => {
     expect(globalThis.__InvokeUIMethod).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('LynxElement invoke with Lynx’s pending invokes', () => {
+  // With enableElementInvokeUIMethodPendingTask, which the build plugin turns
+  // on, native keeps the call on its element and answers only after the
+  // element's next flush: __InvokeUIMethod's stub never calls back.
+
+  it('flushes outside change detection, and calls it once', async () => {
+    const el = field();
+
+    el.invoke('focus');
+    await flushMicrotasks();
+
+    expect(globalThis.__FlushElementTree).toHaveBeenCalledTimes(1);
+    expect(globalThis.__InvokeUIMethod).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves the flush to change detection inside it', async () => {
+    const el = field();
+    setInsideChangeDetection(true);
+
+    el.invoke('scrollIntoView');
+    LynxElement.commitPendingInvokes();
+    await flushMicrotasks();
+
+    expect(globalThis.__FlushElementTree).not.toHaveBeenCalled();
+    expect(globalThis.__InvokeUIMethod).toHaveBeenCalledTimes(1);
+  });
+
+  it('flushes for the box a layout read asks native for', async () => {
+    const el = field('view');
+
+    el.getBoundingClientRect();
+    await flushMicrotasks();
+
+    expect(globalThis.__InvokeUIMethod).toHaveBeenCalledWith(
+      el.element,
+      'boundingClientRect',
+      {},
+      expect.any(Function),
+    );
+    expect(globalThis.__FlushElementTree).toHaveBeenCalledTimes(1);
+  });
+
+  it("flushes a field's text set outside change detection", async () => {
+    const el = field();
+
+    el.setProperty('value', 'Ada');
+    await flushMicrotasks();
+
+    expect(globalThis.__FlushElementTree).toHaveBeenCalledTimes(1);
+  });
+});

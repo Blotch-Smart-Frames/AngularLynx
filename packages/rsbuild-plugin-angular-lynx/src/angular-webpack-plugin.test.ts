@@ -1056,6 +1056,30 @@ describe('AngularWebpackPlugin', () => {
         expect(compilation.updateAsset).not.toHaveBeenCalled();
       });
 
+      it('turns on CSS variables and pending UI method calls in the page config', () => {
+        const { compiler, triggerCompilation } = createMockCompiler();
+        const triggerBeforeEncode = setupBeforeEncodeHook();
+
+        new AngularWebpackPlugin().apply(compiler as never);
+        triggerCompilation(createMockCompilation());
+
+        const args = {
+          encodeData: {
+            lepusCode: { root: { name: 'main-thread.js' } },
+            sourceContent: { appType: 'card', config: { lepusStrict: true } },
+          },
+        };
+        triggerBeforeEncode(args);
+
+        // The shells run Lynx's engine off the UI thread, where a UI method
+        // has to wait for its element's flush (see the plugin's comment).
+        expect(args.encodeData.sourceContent.config).toEqual({
+          lepusStrict: true,
+          enableCSSInlineVariables: true,
+          enableElementInvokeUIMethodPendingTask: true,
+        });
+      });
+
       it('returns args unchanged when appType is "card"', () => {
         const { compiler, triggerCompilation } = createMockCompiler();
         const triggerBeforeEncode = setupBeforeEncodeHook();

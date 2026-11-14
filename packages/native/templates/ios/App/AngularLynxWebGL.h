@@ -9,6 +9,14 @@
 // (`enableMTSModule`). The runtime batches the calls into one `run` per frame;
 // see packages/runtime/src/lib/canvas/webgl-bridge.ts for the protocol.
 //
+// Lynx's main thread is its engine thread, which the shell runs off the UI
+// thread (LynxViewController's thread strategy), and the module's calls
+// arrive there. So every GL call is made there: an EGL context is current on
+// one thread at a time, and the context keeps it current between batches.
+// The canvas's view lives on the UI thread, and hands the context what it
+// draws into (AngularLynxCanvasTarget) through Lynx's runOnTasmThread:, so
+// the registry and the contexts are the engine thread's alone.
+//
 // The OpenGL ES 3.0 is ANGLE's, on Metal (libEGL and libGLESv2, prebuilt
 // with Lynx's frameworks by scripts/build-angle-ios-frameworks.sh), rather
 // than iOS's own OpenGL ES. Apple deprecated that in iOS 12, and the
@@ -18,18 +26,37 @@
 // 3.00, is WebGL2's, so three.js's shaders compile as they are.
 
 #import <Foundation/Foundation.h>
+#import <Lynx/LynxContext.h>
 #import <Lynx/LynxModule.h>
 #import <Lynx/LynxUI.h>
+#import <QuartzCore/QuartzCore.h>
 #import <UIKit/UIKit.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
 @class AngularLynxCanvasView;
 
+/// What a canvas's view gives its context to show frames in: the view's
+/// CAMetalLayer, which the context makes its window surface on, and the
+/// layer's size in pixels. The context reads it on the engine thread, where
+/// a UIView mustn't be touched, nor released for the last time.
+@interface AngularLynxCanvasTarget : NSObject
+@property(nonatomic, readonly) CAMetalLayer *layer;
+/// The layer's size in pixels as the view was last laid out: written on the
+/// UI thread, read on the engine thread.
+@property(atomic) CGSize pixelSize;
+/// The view, for the UI thread alone (the context sets its opacity there).
+@property(nonatomic, weak, readonly, nullable) AngularLynxCanvasView *view;
+@end
+
 /// The drawing surface: a view backed by a CAMetalLayer, which the context
 /// copies each finished frame into (an EGL window surface on the layer).
 @interface AngularLynxCanvasView : UIView
 @property(nonatomic, copy, nullable) NSString *canvasId;
+/// The LynxView's context, whose engine thread the view hands its target to
+/// (runOnTasmThread:). The canvas element sets it before the canvas id.
+@property(nonatomic, weak, nullable) LynxContext *lynxContext;
+@property(nonatomic, readonly) AngularLynxCanvasTarget *target;
 @end
 
 /// The `canvas` element. Its `canvas-id` attribute, which the runtime sets,
@@ -63,24 +90,25 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSDictionary *)encodeImageOfType:(NSString *)type
                             quality:(double)quality
                       premultiplied:(BOOL)premultiplied;
-/// Shows frames in this view, or nowhere while it's nil.
-- (void)attachView:(nullable AngularLynxCanvasView *)view;
+/// Shows frames in this canvas's target, or nowhere while it's nil.
+- (void)attachTarget:(nullable AngularLynxCanvasTarget *)target;
 /// The view was laid out: a frame that waited for it to have a size is shown.
-- (void)viewDidLayOut:(AngularLynxCanvasView *)view;
+- (void)targetDidLayOut:(AngularLynxCanvasTarget *)target;
 - (void)destroy;
 @end
 
 /// Pairs canvases with contexts by canvas id: either can come first, as the
 /// runtime may make the context before Lynx has made the element's view.
+/// Engine thread only, as the contexts are.
 @interface AngularLynxCanvasRegistry : NSObject
-+ (void)setView:(nullable AngularLynxCanvasView *)view forCanvasId:(NSString *)canvasId;
-+ (nullable AngularLynxCanvasView *)viewForCanvasId:(NSString *)canvasId;
++ (void)setTarget:(nullable AngularLynxCanvasTarget *)target forCanvasId:(NSString *)canvasId;
++ (nullable AngularLynxCanvasTarget *)targetForCanvasId:(NSString *)canvasId;
 + (void)setContext:(nullable AngularLynxWebGLContext *)context forCanvasId:(NSString *)canvasId;
 + (nullable AngularLynxWebGLContext *)contextForCanvasId:(NSString *)canvasId;
 @end
 
 /// The `AngularLynxWebGL` module. Registered on the LynxView's config, and
-/// called from the main thread.
+/// called from Lynx's main thread, on its engine thread.
 @interface AngularLynxWebGLModule : NSObject <LynxModule>
 @end
 

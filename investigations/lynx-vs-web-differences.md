@@ -4287,7 +4287,7 @@ Setting a field's `value` property changes the text it shows, at any time, from 
 
 On iOS and Android, XElement's `LynxUIBaseInput` registers **no prop for `value`** (Lynx 4.1: `platform/darwin/ios/lynx_xelement/input/LynxUIBaseInput.m`, `platform/android/lynx_xelement/lynx_xelement_input/.../LynxUIBaseInput.kt`), so `__SetAttribute(element, 'value', …)` never changes the text, before or after the user types. Two things do:
 
-- **The `setValue` UI method**, which reaches only a UI native has made. Native makes an element's UI when the element tree is next flushed, so a field created since the last flush has none: `__InvokeUIMethod` answers code 6 (`kUIMethodNoUiForNode` / `NO_UI_FOR_NODE`), synchronously on both platforms (the main thread runs on the UI thread), and drops the call. That's what left a field that rendered with a value empty on iOS and Android (#339), in any change detection that created it, not only the first screen.
+- **The `setValue` UI method**, which reaches only a UI native has made. Native makes an element's UI when the element tree is next flushed, so a field created since the last flush has none: `__InvokeUIMethod` answered code 6 (`kUIMethodNoUiForNode` / `NO_UI_FOR_NODE`) and dropped the call, synchronously on both platforms while the shells ran the main thread on the UI thread. That's what left a field that rendered with a value empty on iOS and Android (#339), in any change detection that created it, not only the first screen. Since the build plugin turned on Lynx's pending invokes (see the next section), the call waits for the field's flush instead.
 - **The `default-value` attribute**, which Lynx applies as it makes the field's UI, without firing `bindinput`, and ignores from then on (`onNodeReady` marks it consumed). The iOS shadow node reads it too, so a `<textarea>` is laid out with its text, and its placeholder overlay starts hidden.
 
 Lynx for Web is different: its `x-input`/`x-textarea` are DOM elements from the start, take `setValue` at once (code 0), observe a `value` attribute, and ignore `default-value`.
@@ -4302,7 +4302,7 @@ Bind `[value]`, not `[attr.value]`: an attribute binding calls `renderer.setAttr
 
 ---
 
-## A UI method on an element created since the last flush is dropped
+## A UI method on an element created since the last flush is dropped, unless Lynx's pending invokes are on
 
 ### What you'd expect (web)
 
@@ -4310,11 +4310,61 @@ A DOM element's methods work as soon as the element exists: `ngAfterViewInit() {
 
 ### What Lynx does
 
-`__InvokeUIMethod` runs the method on the element's native UI at once (`PaintingContextDarwin::Invoke`, `PaintingContextAndroid::Invoke`), and native makes that UI only when the element tree is flushed. The renderer flushes at the end of change detection, and on the first screen native flushes after `renderPage` returns, after Angular's bootstrap, `ngAfterViewInit()` and `afterNextRender()`. A method called on an element created since the last flush finds no UI, and iOS and Android answer code 6 (`NO_UI_FOR_NODE`) synchronously and drop it. Lynx has its own fix for this, behind the page config `enableElementInvokeUIMethodPendingTask`, but only for a main-thread script's element (`LepusElement::Invoke` queues the call until the element's flush); `__InvokeUIMethod` doesn't use it.
+By default, `__InvokeUIMethod` runs the method on the element's native UI at once (`PaintingContextDarwin::Invoke`, `PaintingContextAndroid::Invoke`), and native makes that UI only when the element tree is flushed. The renderer flushes at the end of change detection, and on the first screen native flushes after `renderPage` returns, after Angular's bootstrap, `ngAfterViewInit()` and `afterNextRender()`. A method called on an element created since the last flush finds no UI, and iOS and Android answer code 6 (`NO_UI_FOR_NODE`) and drop it.
+
+With Lynx's engine on the UI thread (`AllOnUI`, Lynx Explorer's default) the answer comes before `__InvokeUIMethod` returns. On an engine thread of its own (`MostOnTASM`, which the apps `ng build --platform` makes use: see the next section), `PaintingContextDarwin::Invoke` hands the call to the main queue with `dispatch_async`, where it can arrive before the flush's operations, which haven't even left the engine thread when the method is called during change detection, and the answer comes back later still. Measured on the iOS 27 Simulator with a directive that called `invoke('focus')` from `ngAfterViewInit()` on an `<input>` its `@if` had just made: under `AllOnUI` the field took the focus (the runtime called again after the flush); under `MostOnTASM` it showed without the focus, and the runtime never knew.
+
+The page config `enableElementInvokeUIMethodPendingTask` (Lynx 4.1, off by default) fixes it at the source. `TemplateAssembler::LepusInvokeUIMethod`, which `__InvokeUIMethod` calls, keeps the call on its element (`Element::AppendPendingInvokeTask`) when the page is a fiber page and the config is on, and at the element's next flush puts it in the queue of UI operations (`EnqueueInvoke`), after the ones that make and change the element's UI. Checked in Lynx 4.1.0's source (the shells' version) and its iOS and Android binaries. An earlier version of this section said `__InvokeUIMethod` ignores it and only a main-thread script's `LepusElement::Invoke` uses it: both do.
 
 ### The fix in AngularLynx
 
-`LynxElement.invoke()` reads native's answer, and when it's code 6, calls the method again once, after the next flush: after `LynxRendererFactory2.end()`'s, after a settle flush (scheduled for a call outside change detection), or after the first render's (`runAfterFirstRender`). An element with no UI even then isn't on the page, and the call is dropped. `MainThreadElement.invoke()` (a main-thread script's) still rejects with code 6, as React Lynx's worklet `Element.invoke()` does.
+The build plugin turns `enableElementInvokeUIMethodPendingTask` on (`angular-webpack-plugin.ts`, with `enableCSSInlineVariables`). The same directive then focused its field under both strategies. A method called outside change detection waits for a flush that may not come, so `LynxElement.invoke()`, a field's `setValue` and a layout read's `boundingClientRect` schedule the settle flush (`scheduleSettleFlush`, a no-op inside change detection, whose `end()` flushes). `MainThreadElement.invoke()` already scheduled one.
+
+`LynxElement.invoke()` still reads native's answer, for a host whose Lynx predates the config: when it's code 6, it calls the method again once, after the next flush (`LynxRendererFactory2.end()`'s, a settle flush's, or the first render's, `runAfterFirstRender`). With pending invokes the answer never comes inside the call, so it isn't called again. `MainThreadElement.invoke()` (a main-thread script's) still rejects with code 6 for an element that has no UI even after its flush, as React Lynx's worklet `Element.invoke()` does.
+
+---
+
+## Lynx's main thread is the phone's UI thread unless the host says otherwise; the generated apps don't share it
+
+### What you'd expect (web)
+
+A browser runs a page's JavaScript on its main thread, but scrolls on a compositor thread: a long task freezes the page's script and its CSS-driven updates, while a flicked page keeps scrolling.
+
+### What Lynx does
+
+Lynx runs the main thread's JavaScript (where AngularLynx runs the whole app), layout and its animator on its engine thread ("TASM"), and the host picks which thread that is with its **thread strategy** (`core/base/threading/task_runner_manufactor.h`):
+
+| Strategy              | Engine (main-thread JS) | Layout        | iOS                                           | Android                                          |
+| --------------------- | ----------------------- | ------------- | --------------------------------------------- | ------------------------------------------------ |
+| `ALL_ON_UI` (default) | UI thread               | UI thread     | `LynxThreadStrategyForRenderAllOnUI`          | `ThreadStrategyForRendering.ALL_ON_UI`           |
+| `MOST_ON_TASM`        | `Lynx_TASM` thread      | engine thread | `.mostOnTASM` (`setThreadStrategyForRender:`) | `MOST_ON_TASM` (`setThreadStrategyForRendering`) |
+| `PART_ON_LAYOUT`      | UI thread               | `Lynx_Layout` |                                               |                                                  |
+| `MULTI_THREADS`       | `Lynx_TASM` thread      | `Lynx_Layout` |                                               |                                                  |
+
+Under `ALL_ON_UI`, Lynx Explorer's default, everything Angular does runs on the thread UIKit and Android draw and scroll on. A 300 ms busy loop in a timer froze a `<scroll-view>` mid-fling for 300 ms on the iOS Simulator, every time it ran. The background thread is a separate thread in every strategy.
+
+What changes off the UI thread:
+
+- **UIKit and Android keep their frames.** Scrolling, typing into a field, a web view and a drag the native side tracks go on while Angular works. (Measured below.)
+- **The element tree reaches the screen a step later.** A flush lays out on the engine thread and then hands the UI operations to the UI thread. The first frame isn't drawn inside `loadTemplate` either, which the shells' splash screen already covers.
+- **UI methods answer later**, after the flush reaches the UI thread, and by default can reach the UI before the element's UI is made (see the previous section).
+- **`<list>` needs `enable-async-list`**: without it, Lynx's native list reports `E_COMPONENT_LIST_UNSUPPORTED_THREAD_STRATEGY` (220207) and never asks for its items (`LynxUICollection.isNeedRenderComponents`). The runtime sets it on every list (`create-list-element.ts`).
+- **Main-thread modules run on the engine thread**, not the UI thread: a module the main thread calls with `lynx.module(name)` (the shells' `AngularLynxWebGL` and `AngularLynxAssets`) is called on the thread that calls it. Code there that touches UIKit or Android views must hop to the UI thread. An EGL context is current on one thread at a time, so the shells' WebGL keeps every GL call on the engine thread on iOS, and locks the context on Android (see `packages/native/README.md`).
+- **The animator stays with Angular.** Lynx's animator (CSS transitions, `@keyframes`, `element.animate()`) ticks on the engine thread's vsync (`core/shell/lynx_engine.cc`, `core/renderer/dom/element_vsync_proxy.cc`), so a frame Angular spends working is still a frame those animations don't tick.
+- **Background-thread modules don't move.** `NativeModules` runs on the background thread under every strategy, and the shells' modules already hop to the UI thread for UIKit.
+
+`MULTI_THREADS` also moves layout to a thread of its own, so layout overlaps the next JavaScript. The stack navigation, list and canvas examples ran under it on the iOS Simulator, but Angular flushes once per change detection and then mostly waits, so there's little JavaScript for layout to overlap, for another hop between threads on every frame.
+
+### What the generated apps do
+
+The iOS and Android shells set `MOST_ON_TASM` (`LynxViewController.swift`, `MainActivity.kt`). Measured on the iOS 27 Simulator with a page whose timer busy-looped the main thread for 300 ms every 800 ms while a `<scroll-view>` decelerated from a fling (a recording of the screen, tracking the scroll position per frame; three flings each):
+
+| Strategy       | Stalls of the fling over 2.5 frames | Frames missed | Longest | Frames that moved |
+| -------------- | ----------------------------------- | ------------- | ------- | ----------------- |
+| `ALL_ON_UI`    | 3, 5, 2 (each about 317 ms)         | 54, 68, 36    | 343 ms  | 99, 85, 96        |
+| `MOST_ON_TASM` | 3, 0, 0 (41 to 110 ms)              | 10, 0, 0      | 110 ms  | 145, 156, 154     |
+
+The short stalls under `MOST_ON_TASM` were in one run only, and the scroll position after each was where the scroll would have been: the recorder dropping frames, not the scroll stopping. On an API 34 emulator (Pixel 6) the same page, flung with `adb shell input swipe`, missed 54, 65 and 54 frames under `ALL_ON_UI` (stalls of 319 to 368 ms; `dumpsys gfxinfo` 89 to 94 frames rendered, 7.5% to 12.4% janky) and 8, 15 and 0 under `MOST_ON_TASM` (none longer than 70 ms; 146 or 147 frames, 2.0% to 4.8% janky). (One run in each mode, where the injected swipe arrived as a tap or a single jump, is left out.) A slow drag of the bottom sheet's handle, which Angular moves from touch events, moved in 120 frames over 2.2 s under `MOST_ON_TASM` and 86 under `ALL_ON_UI`, at the same speed. The Simulator runs on the Mac's CPU and holds 60 fps, so a phone's numbers will differ; what's measured here is which thread waits.
 
 ---
 
@@ -6562,7 +6612,7 @@ The options (issue #236) were checked on the iOS 27 Simulator and the Android AP
 - The center line followed the card under the middle of the screen.
 - A plain observer created a second after the cards were on screen saw its card come in and leave.
 
-`boundingClientRect` answered before `__InvokeUIMethod` returned, on both platforms, and the microtasks queued before the call ran before it returned too: the callback is a native→JS call, and Lynx runs every pending microtask as one ends (see `lynx-render-lifecycle.ts`). A probe that queued a microtask, then called the method, logged `before answer qm promise after`. The first version of the observer cleared a map of measurements in a microtask, and so found it gone halfway through adding to it.
+Before the build plugin turned on Lynx's pending invokes (see "A UI method on an element created since the last flush is dropped"), `boundingClientRect` answered before `__InvokeUIMethod` returned, on both platforms, and the microtasks queued before the call ran before it returned too: the callback is a native→JS call, and Lynx runs every pending microtask as one ends (see `lynx-render-lifecycle.ts`). A probe that queued a microtask, then called the method, logged `before answer qm promise after`. The first version of the observer cleared a map of measurements in a microtask, and so found it gone halfway through adding to it.
 
 ---
 
@@ -6575,6 +6625,8 @@ A microtask runs once the current task is over: code that queues one and carries
 ### What Lynx does
 
 On iOS and Android, a UI method that answers synchronously, such as the `boundingClientRect` that `LynxElement.getBoundingClientRect()` asks for when it starts tracking an element's layout, runs every pending microtask before it returns (the answer is a native→JS call, and Lynx runs the microtasks as one ends; see the observer section above for the probe). So any component constructor or template that measures an element can run microtasks queued earlier in the same synchronous pass, in the middle of it. The web preview doesn't.
+
+That was with Lynx's default UI methods, on the engine thread the shells then shared with the UI thread. With pending invokes, which the build plugin now turns on, a UI method answers only after its element's flush: inside `__FlushElementTree` under `AllOnUI` (Lynx Explorer), and on a later task of the engine thread under `MostOnTASM` (the apps `ng build --platform` makes). Neither is inside the measuring pass. Keep the rule below anyway: a host running an older Lynx still answers inside the call.
 
 Found on the iOS 27 Simulator with `<lynx-tab-outlet>` (issue #403). Leaving a tab, the outlet queued a microtask to destroy every tab if the router didn't activate it again in the same pass, as `<lynx-stack-outlet>` did for its pages. The next tab's `<lynx-stack-outlet>` measures its host as it's built, inside the router's `activateWith()`, so the microtask ran before the outlet had a tab active, destroyed the tabs, and Angular's `ViewContainerRef` then threw on an index past its end (`ASSERTION ERROR: index`, or `value has no property` in a release build). The router swallows it (`resolveNavigationPromiseOnError`), so the screen just didn't change. A pushed page that measured itself as it was built did the same to a stack's pages.
 

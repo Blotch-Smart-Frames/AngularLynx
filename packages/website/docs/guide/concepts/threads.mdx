@@ -38,6 +38,19 @@ flowchart TB
 
 Constructors, `ngOnInit` and effects run once, like in a browser.
 
+## The phone's UI thread
+
+iOS and Android draw the screen on a thread of their own, the [**UI thread**](/guide/glossary#ui-thread). In the apps `ng build --platform ios|android` makes, the main thread isn't that thread: Lynx runs it, and your app, on a thread of its own.
+
+So while your app is busy, building a big screen or running a long handler, the phone keeps going:
+
+- A `<scroll-view>` you flicked keeps scrolling.
+- Text fields and web views keep taking touches and typing.
+
+What waits for your app is what Lynx draws from your templates: the next screen, a changed style, and Lynx's animations (CSS transitions, `@keyframes` and `element.animate()`), which run on the main thread too. Keep handlers short, and send heavy work to the [background thread](#apis-that-live-on-one-thread).
+
+[Lynx Explorer](/guide/glossary#lynx-explorer) runs the main thread on the UI thread. There, a busy app freezes scrolling too, so check how a heavy screen feels in a build of your own app.
+
 ## Event handlers
 
 **Inside an event handler, do what you'd do on the web.** Change signals, navigate, open overlays and start animations, straight away.

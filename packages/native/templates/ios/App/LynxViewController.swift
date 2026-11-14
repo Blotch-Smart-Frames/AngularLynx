@@ -52,8 +52,19 @@ final class LynxViewController: UIViewController {
     DevServer.shared.register(in: config)
     let lynxView = LynxView { builder in
       builder.config = config
+      // Lynx's engine thread, which runs the main thread's JavaScript (the
+      // whole Angular app), layout and Lynx's animator, gets a thread of its
+      // own. Lynx's default, AllOnUI, runs it on the UI thread, where change
+      // detection, a screen being built or a long event handler took frames
+      // from what UIKit runs itself: a scroll view's momentum, typing, a web
+      // view. Off it, the element tree reaches the screen a step later, once
+      // the flush crosses to the UI thread: the build plugin turns on Lynx's
+      // pending invokes so UI methods follow it, and the runtime sets
+      // enable-async-list on every <list>, which this strategy requires.
+      builder.setThreadStrategyForRender(.mostOnTASM)
       // Lets main-thread code, where Angular runs, call the config's modules
-      // with lynx.module(name): WebGL needs answers synchronously.
+      // with lynx.module(name): WebGL needs answers synchronously. Lynx calls
+      // them on its engine thread, not the UI thread (see AngularLynxWebGL.h).
       builder.enableMTSModule = true
       builder.screenSize = screenSize
       builder.fontScale = 1.0

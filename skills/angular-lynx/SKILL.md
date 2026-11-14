@@ -88,7 +88,7 @@ Read [debugging.md](references/debugging.md)
 
 ## Threading Model
 
-Lynx runs on two threads: main thread (native UI rendering, PrimJS ES2019) and background thread (background-only APIs). The Angular app runs on the main thread only; the background thread loads only the files that define `backgroundFn()`s or `MainThreadRef`s at top level. `__MAIN_THREAD__` global flag for branching. `NativeModules` only available on background thread: use `LynxNativeModule`, which relays, or a `backgroundFn()`.
+Lynx runs on two threads: main thread (native UI rendering, PrimJS ES2019) and background thread (background-only APIs). The Angular app runs on the main thread only; the background thread loads only the files that define `backgroundFn()`s or `MainThreadRef`s at top level. `__MAIN_THREAD__` global flag for branching. `NativeModules` only available on background thread: use `LynxNativeModule`, which relays, or a `backgroundFn()`. In the apps `ng build --platform` makes, the main thread isn't the phone's UI thread, so a busy app doesn't freeze native scrolling; Lynx Explorer runs it on the UI thread.
 
 Read [threading-model.md](references/threading-model.md)
 

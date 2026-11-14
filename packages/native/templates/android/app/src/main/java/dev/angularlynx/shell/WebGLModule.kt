@@ -28,7 +28,8 @@ import kotlin.math.roundToInt
  * only come from a main-thread module: MainActivity turns those on
  * (`setEnableMTSModule`). The runtime batches the calls into one `run` per
  * frame; see packages/runtime/src/lib/canvas/webgl-bridge.ts for the
- * protocol. Lynx calls these methods on the UI thread, where GL runs.
+ * protocol. Lynx calls these methods on its engine thread, where the main
+ * thread's JavaScript runs, which the shell runs off the UI thread.
  */
 class WebGLModule(context: Context, param: Any?) : LynxModule(context, param) {
     private val contexts = HashMap<Int, WebGLContext>()
@@ -232,18 +233,25 @@ internal object DecodedImages {
 /**
  * Pairs canvases with contexts by canvas id: either can come first, as the
  * runtime may make the context before Lynx has made the element's view.
+ *
+ * Views come and go on the UI thread, contexts on Lynx's engine thread, so
+ * it's locked. It takes a context's lock inside its own, and a context never
+ * calls it, so the two can't wait on each other.
  */
 internal object CanvasRegistry {
     private val views = HashMap<String, WeakReference<CanvasUI>>()
     private val contexts = HashMap<String, WeakReference<WebGLContext>>()
 
+    @Synchronized
     fun setView(canvasId: String, view: CanvasUI?) {
         if (view == null) views.remove(canvasId) else views[canvasId] = WeakReference(view)
         contexts[canvasId]?.get()?.attachView(view)
     }
 
+    @Synchronized
     fun view(canvasId: String): CanvasUI? = views[canvasId]?.get()
 
+    @Synchronized
     fun setContext(canvasId: String, context: WebGLContext?) {
         if (context == null) {
             contexts.remove(canvasId)
@@ -253,6 +261,7 @@ internal object CanvasRegistry {
         }
     }
 
+    @Synchronized
     fun context(canvasId: String): WebGLContext? = contexts[canvasId]?.get()
 }
 

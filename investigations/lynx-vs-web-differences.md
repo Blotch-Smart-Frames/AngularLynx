@@ -466,7 +466,7 @@ On the iOS 27 Simulator the stack outlet's push and the bottom sheet's slide and
 
 ---
 
-## `enable-new-animator="false"` hands an element's transitions to Core Animation, which keeps them moving while the UI thread is busy
+## `enable-new-animator="false"` hands an element's transitions to Core Animation, which keeps them moving while the app is busy
 
 ### What you'd expect (web)
 
@@ -476,7 +476,7 @@ A `transform` or `opacity` transition runs in the browser's compositor, and keep
 
 Lynx keeps a switch for each element: the attribute `enable-new-animator`. Set to `false` (a boolean, or the string `"false"`; `Element::CheckNewAnimatorAttr`), the element's CSS transitions and `@keyframes` go to the platform's own animators rather than Lynx's (`FiberElement` pushes `transition` and `animation` to the platform's props instead of its own animator):
 
-- **On iOS, Core Animation.** A `transition` becomes a `CABasicAnimation` (`LynxTransitionAnimationManager`) and `@keyframes` a `CAKeyframeAnimation` (`LynxKeyframeAnimator`). The render server runs them, so once they've reached it they move while the UI thread, and Angular on it, is busy. It transitions `transform`, `opacity`, `background-color`, `visibility` and the frame: `left`, `right`, `top`, `bottom`, `width` and `height` animate the layer's position and bounds. Only the layer's: the element's children are laid out at the end size at once, and its background takes the new size at once too. On the iOS 27 Simulator a bottom sheet whose `height` grew showed its list below its white background, and a glass sheet's glass took the end height at once, leaving the page showing under it.
+- **On iOS, Core Animation.** A `transition` becomes a `CABasicAnimation` (`LynxTransitionAnimationManager`) and `@keyframes` a `CAKeyframeAnimation` (`LynxKeyframeAnimator`). The render server runs them, so once they've reached it they keep moving while the app's threads are busy: the UI thread, and the thread Angular runs on, where Lynx's own animator runs too. It transitions `transform`, `opacity`, `background-color`, `visibility` and the frame: `left`, `right`, `top`, `bottom`, `width` and `height` animate the layer's position and bounds. Only the layer's: the element's children are laid out at the end size at once, and its background takes the new size at once too. On the iOS 27 Simulator a bottom sheet whose `height` grew showed its list below its white background, and a glass sheet's glass took the end height at once, leaving the page showing under it.
 - **On Android, `ValueAnimator`s** on the UI thread (`TransitionAnimationManager`). A `transform` transition needs a view of its own (`flatten="false"`; it skips a flattened one) and moves only translate, rotate and scale.
 - **In Lynx for Web, nothing changes:** it ignores the attribute, and the browser runs the transition.
 
@@ -490,7 +490,7 @@ It comes with conditions:
 - **Taking the `transition` away ends a running one where it was going,** on iOS (its delegate's `forceStop`) and Android (`ValueAnimator.cancel()` runs `onAnimationEnd`, which sets the end values).
 - A script hears `transitionend` only if the element listens for it (iOS checks the element's `eventSet`). A timer is simpler.
 
-In a test on the iOS 27 Simulator that busy-loops the UI thread for 300 ms, 100 ms after a push or a pop starts, `<lynx-stack-outlet>`'s pages froze for 16 to 18 frames on Lynx's animator, then jumped to the end. On Core Animation they skipped none, or one. Dragged away and busy 100 ms after letting go, `ui-bottom-sheet` froze for about 24 frames on Lynx's animator, and slid off the screen without a skipped frame on Core Animation. Found in November 2026.
+In a test in Lynx Explorer on the iOS 27 Simulator that busy-loops Angular's thread, the UI thread there, for 300 ms, 100 ms after a push or a pop starts, `<lynx-stack-outlet>`'s pages froze for 16 to 18 frames on Lynx's animator, then jumped to the end. On Core Animation they skipped none, or one. Dragged away and busy 100 ms after letting go, `ui-bottom-sheet` froze for about 24 frames on Lynx's animator, and slid off the screen without a skipped frame on Core Animation. Found in November 2026.
 
 ### What to do
 

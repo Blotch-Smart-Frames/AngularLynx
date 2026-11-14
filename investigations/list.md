@@ -15,7 +15,22 @@
 - **Under `enable-async-list`**, componentAtIndex and enqueueComponent read only what the last update committed, so a call that arrives between the directive's `ngDoCheck` and the next update, or after the directive is destroyed (bind gives `null`), still answers for the items native was told about.
 - **Lynx for Web** calls componentAtIndex for every inserted position in a microtask after `update-list-info`, and enqueueComponent only for removals, so every item gets a view there.
 
-Measured on the iOS Simulator (Lynx Explorer 4.1, iPhone 18 Pro, 1,000 rows of `examples/element-list`): see the PR for the numbers. The example switches between the two and counts the rows built.
+Measured on the iOS Simulator (Lynx Explorer 4.1, iPhone 18 Pro, iOS 27), 1,000 rows of `examples/element-list` (a row component with two texts and a tap target), a fresh Explorer process for each run. The simulator runs on the Mac's CPU, shared with other simulators, so read the numbers against each other:
+
+|                                                                      | `@for`       | `*lynxListFor` |
+| -------------------------------------------------------------------- | ------------ | -------------- |
+| Rows built at launch                                                 | 1,000        | 14             |
+| Rows built after flinging to the last row                            | 1,000        | 19–28          |
+| App component created → list's first `bindlayoutcomplete` (5–6 runs) | 726–1,164 ms | 39–87 ms       |
+| Explorer's memory footprint with the list shown (`footprint`)        | 307 MB       | 92–93 MB       |
+| The same after flinging to the last row                              | 560–745 MB   | 110–114 MB     |
+| componentAtIndex per call while flinging, average                    | 5.3–9.1 ms   | 3.8–9.5 ms     |
+| … of which the item's `__FlushElementTree` (instrumented runs)       | 9.0 ms       | 4.4–8.4 ms     |
+| … calls over 16 ms, of ~1,000 (instrumented runs)                    | 76           | 37–45          |
+
+The native flush of the item is most of componentAtIndex's cost either way; checking a reused row's view (`detectChanges()`) adds 0.7–1 ms on the simulator. Both modes have the odd call of several hundred ms, all of it inside the native flush. A recording of 12 flings (`simctl io recordVideo`) shows the same frame pacing for both, 56–57 changed frames a second while the list moves, with the recorder's own noise bigger than any difference.
+
+The example switches between the two and counts the rows built.
 
 ## Problem
 

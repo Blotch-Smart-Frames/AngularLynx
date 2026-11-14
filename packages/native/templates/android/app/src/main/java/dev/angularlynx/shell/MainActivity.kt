@@ -23,6 +23,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.graphics.Insets
 import androidx.core.os.ConfigurationCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.lynx.react.bridge.JavaOnlyArray
@@ -60,6 +61,13 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
     private var contrastListener: Any? = null
     private var highContrastTextListener: Any? = null
 
+    // Whether the splash screen stays up: until the runtime says the app's
+    // first screen is drawn (ShellModule.hideSplashScreen), or
+    // SPLASH_TIMEOUT_MS have passed, so a host the runtime can't reach, or a
+    // first screen that never settles, doesn't leave the app behind its logo.
+    private var keepSplashScreen = true
+    private val splashTimeout = Handler(Looper.getMainLooper())
+
     // Disabled until the Angular app enables it (see ShellModule), so by
     // default back leaves the app like any other root screen.
     private val backHandler = object : OnBackPressedCallback(false) {
@@ -95,10 +103,30 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // The splash screen (themes.xml's Theme.AngularLynxShell.Starting),
+        // before anything else: it switches the activity to the app's own
+        // theme. Android takes a splash screen down at the app's first frame,
+        // which would be the empty LynxView: the bundle hasn't run yet, and
+        // the first screen may have work to finish first, such as a lazy
+        // route or a guard. So it stays up until the runtime says the screen
+        // is drawn, and then fades out.
+        val splashScreen = installSplashScreen()
         // Android 15+ always draws apps edge to edge; opting in on older
         // versions too keeps the layout the same everywhere.
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        // Checked before each frame while the splash screen is up. The
+        // development build's message, such as that the dev server can't be
+        // reached, shows at once.
+        splashScreen.setKeepOnScreenCondition { keepSplashScreen && !DevServer.isShowingMessage() }
+        splashScreen.setOnExitAnimationListener { splash ->
+            splash.view.animate()
+                .alpha(0f)
+                .setDuration(SPLASH_FADE_MS)
+                .withEndAction { splash.remove() }
+                .start()
+        }
+        splashTimeout.postDelayed({ hideSplashScreen() }, SPLASH_TIMEOUT_MS)
 
         // A shortcut that started the app waits for the runtime to take it.
         // Android hands a recreated activity the intent it started with
@@ -243,6 +271,14 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
 
     override fun setBackHandlerEnabled(enabled: Boolean) {
         backHandler.isEnabled = enabled
+    }
+
+    // The splash screen goes at the next frame (see onCreate). Once gone,
+    // nothing: the development build loads the app again on every edit, and
+    // each load asks.
+    override fun hideSplashScreen() {
+        keepSplashScreen = false
+        splashTimeout.removeCallbacksAndMessages(null)
     }
 
     override fun startWebAuthSession(url: Uri, callbackScheme: String, done: (WebAuthModule.Result) -> Unit) {
@@ -391,11 +427,17 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
                 getSystemService(AccessibilityManager::class.java).removeHighContrastTextStateChangeListener(it)
             }
         }
+        splashTimeout.removeCallbacksAndMessages(null)
         lynxView.destroy()
         super.onDestroy()
     }
 
     private companion object {
         const val TAG = "AngularLynxShell"
+
+        // The longest the splash screen waits for the app (see onCreate),
+        // and its fade, as long as the iOS shell's.
+        const val SPLASH_TIMEOUT_MS = 5_000L
+        const val SPLASH_FADE_MS = 250L
     }
 }

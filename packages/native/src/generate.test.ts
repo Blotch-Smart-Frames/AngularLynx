@@ -200,6 +200,40 @@ describe('prepareProject', () => {
     },
   );
 
+  it("regenerates the splash when a splash image's content changes", () => {
+    const image = (file: string, width: number) =>
+      writeFileSync(
+        path.join(root, file),
+        encodePng({
+          width,
+          height: width,
+          data: new Uint8Array(width * width * 4),
+        }),
+      );
+    const options = {
+      splash: {
+        image: 'splash.png',
+        imageWidth: 10,
+        dark: { image: 'splash-dark.png' },
+      },
+    };
+    const launchImage = path.join(
+      workDir,
+      'ios/App/Assets.xcassets/LaunchImage.imageset/LaunchImage@3x.png',
+    );
+    image('splash.png', 30);
+    image('splash-dark.png', 30);
+    expect(prepare('ios', options).regenerated).toBe(true);
+    expect(existsSync(launchImage)).toBe(true);
+    expect(prepare('ios', options).regenerated).toBe(false);
+
+    // Same file names, new pictures.
+    image('splash.png', 60);
+    expect(prepare('ios', options).regenerated).toBe(true);
+    image('splash-dark.png', 60);
+    expect(prepare('ios', options).regenerated).toBe(true);
+  });
+
   it('copies a fresh bundle into a reused project', () => {
     prepare('ios');
     writeFileSync(path.join(dist, 'main.lynx.bundle'), 'bundle 2');

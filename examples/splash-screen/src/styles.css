@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * The splash screen's colors (angular.json's splash), so the first screen
+ * starts on the color the splash screen fades out from. The runtime gives the
+ * page the dark class while the app is drawn dark, as the splash is.
+ */
+page {
+  --sand: #f4efe6;
+  --ink: #0e3b4a;
+  --sea: #2f8f9d;
+  --rule: rgba(14, 59, 74, 0.15);
+}
+
+page.dark {
+  --sand: #0b1c24;
+  --ink: #e6f0f1;
+  --sea: #6cc4cf;
+  --rule: rgba(230, 240, 241, 0.15);
+}

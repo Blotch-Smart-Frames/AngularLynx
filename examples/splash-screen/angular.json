@@ -1,0 +1,43 @@
+{
+  "$schema": "./node_modules/@angular/cli/lib/config/schema.json",
+  "version": 1,
+  "projects": {
+    "splash-screen": {
+      "projectType": "application",
+      "root": ".",
+      "sourceRoot": "src",
+      "prefix": "app",
+      "architect": {
+        "build": {
+          "builder": "@blotch/angular-lynx-build:application",
+          "options": {
+            "outputPath": "dist",
+            "index": "src/index.html",
+            "browser": "src/main.ts",
+            "polyfills": [],
+            "tsConfig": "tsconfig.app.json",
+            "styles": ["src/styles.css"],
+            "scripts": [],
+            "appName": "Tidepool",
+            "appId": "dev.angularlynx.examples.tidepool",
+            "splash": {
+              "image": "src/assets/splash.png",
+              "imageWidth": 180,
+              "backgroundColor": "#F4EFE6",
+              "dark": {
+                "image": "src/assets/splash-dark.png",
+                "backgroundColor": "#0B1C24"
+              }
+            }
+          }
+        },
+        "serve": {
+          "builder": "@blotch/angular-lynx-build:dev-server",
+          "options": {
+            "buildTarget": "splash-screen:build"
+          }
+        }
+      }
+    }
+  }
+}

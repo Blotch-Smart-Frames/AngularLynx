@@ -21,10 +21,15 @@ vi.mock('@angular/platform-browser', () => ({
 describe('runtime bootstrapApplication', () => {
   let bootstrapApplication: typeof BootstrapApplicationFn;
   let ɵstartBackgroundThread: typeof StartBackgroundThreadFn;
-  let mockAppRef: { destroy: ReturnType<typeof vi.fn> };
+  let mockAppRef: {
+    destroy: ReturnType<typeof vi.fn>;
+    injector: { get: ReturnType<typeof vi.fn> };
+  };
 
   beforeEach(async () => {
-    mockAppRef = { destroy: vi.fn() };
+    // An injector without the splash screen's services, as a test app's may
+    // have no root scope.
+    mockAppRef = { destroy: vi.fn(), injector: { get: vi.fn(() => null) } };
     mockNgBootstrap.mockReset();
     mockNgBootstrap.mockResolvedValue(mockAppRef);
 
@@ -87,6 +92,39 @@ describe('runtime bootstrapApplication', () => {
     class App {}
     const result = await boot(App);
     expect(result).toBe(mockAppRef);
+  });
+
+  describe('the splash screen', () => {
+    /**
+     * An app whose injector has LynxSplashScreen, and SPLASH_SCREEN_HIDE if given.
+     */
+    const withSplash = async (hide?: string) => {
+      const { LynxSplashScreen, SPLASH_SCREEN_HIDE } =
+        await import('./splash-screen/splash-screen');
+      const splash = { hide: vi.fn() };
+      mockAppRef.injector.get.mockImplementation((token: unknown) =>
+        token === LynxSplashScreen
+          ? splash
+          : token === SPLASH_SCREEN_HIDE
+            ? (hide ?? null)
+            : null,
+      );
+      return splash;
+    };
+
+    it('is hidden once the app is bootstrapped, at the first frame Angular commits', async () => {
+      const splash = await withSplash();
+      class App {}
+      await boot(App);
+      expect(splash.hide).toHaveBeenCalledTimes(1);
+    });
+
+    it('is left to provideSplashScreen() when the app has it', async () => {
+      const splash = await withSplash('manual');
+      class App {}
+      await boot(App);
+      expect(splash.hide).not.toHaveBeenCalled();
+    });
   });
 
   it('stores the ApplicationRef on globalThis.__LYNX_ANGULAR_APP_REF__', async () => {
@@ -154,7 +192,7 @@ describe('runtime bootstrapApplication', () => {
   // entry, which calls bootstrapApplication() again (see ɵhmrAccept).
   describe('hot update re-bootstrap', () => {
     const secondAppRef = () => {
-      const appRef = { destroy: vi.fn() };
+      const appRef = { destroy: vi.fn(), injector: { get: () => null } };
       mockNgBootstrap.mockResolvedValueOnce(appRef);
       return appRef;
     };

@@ -216,6 +216,7 @@ const runDevelopmentApp = async ({
     run: { device },
     devServer: { bundleUrl },
     log: (message) => context.logger.info(message),
+    warn: (message) => context.logger.warn(message),
   });
   context.logger.info(
     `The ${platform} app loads from ${bundleUrl} and reloads on every edit.`,

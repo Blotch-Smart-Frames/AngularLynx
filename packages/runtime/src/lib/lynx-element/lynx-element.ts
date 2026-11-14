@@ -2394,36 +2394,16 @@ export class LynxElement implements BaseLynxElement {
       });
       return made;
     };
-    if (!call()) LynxElement.#afterFlush(call);
+    if (!call()) afterNextFlush(call);
   }
 
   /**
-   * Calls waiting for the flush that makes their element's UI (see invoke).
-   */
-  static #awaitingFlush: Array<() => void> = [];
-
-  /**
-   * Runs `callback` after the element tree's next flush: after the native
-   * flush that ends the first render while it's under way, else after
-   * LynxRendererFactory2.end()'s, or a settle flush's (scheduled here, for a
-   * call outside change detection).
-   */
-  static #afterFlush(callback: () => void): void {
-    if (isFirstRenderPending()) {
-      runAfterFirstRender(callback);
-      return;
-    }
-    LynxElement.#awaitingFlush.push(callback);
-    scheduleSettleFlush();
-  }
-
-  /**
-   * Makes the calls waiting for this flush (see #afterFlush). Called right
+   * Makes the calls waiting for this flush (see afterNextFlush). Called right
    * after the flush, so the UIs it made are there.
    */
   static commitPendingInvokes(): void {
-    if (LynxElement.#awaitingFlush.length === 0) return;
-    for (const callback of LynxElement.#awaitingFlush.splice(0)) callback();
+    if (awaitingFlush.length === 0) return;
+    for (const callback of awaitingFlush.splice(0)) callback();
   }
 
   animate(
@@ -2956,6 +2936,29 @@ export const processPendingTextNormalization = (): void => {
  */
 export const processPendingInvokes = (): void => {
   LynxElement.commitPendingInvokes();
+};
+
+/**
+ * Calls waiting for the element tree's next flush (see afterNextFlush).
+ */
+const awaitingFlush: Array<() => void> = [];
+
+/**
+ * Runs `callback` after the element tree's next flush, once what the app has
+ * changed so far has reached native: after the native flush that ends the
+ * first render while it's under way, else after
+ * LynxRendererFactory2.end()'s, or a settle flush's (scheduled here, for a
+ * call outside change detection). A UI method waits for it to reach the UI
+ * the flush makes (LynxElement.invoke), and the splash screen to go once the
+ * screen under it is drawn (LynxSplashScreen).
+ */
+export const afterNextFlush = (callback: () => void): void => {
+  if (isFirstRenderPending()) {
+    runAfterFirstRender(callback);
+    return;
+  }
+  awaitingFlush.push(callback);
+  scheduleSettleFlush();
 };
 
 let settleFlushScheduled = false;

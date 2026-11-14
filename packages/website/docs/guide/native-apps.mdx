@@ -218,6 +218,7 @@ The app's name, ID and version are options of the `build` target in `angular.jso
 | `version`           | The version users see, up to three numbers (`1.2.0`). Defaults to `package.json`'s version, or `1.0.0` while that's still `ng new`'s `0.0.0`                                                                                                       |
 | `buildNumber`       | A whole number that must increase with every store upload. Defaults to `1`                                                                                                                                                                         |
 | `icon`              | A 1024×1024 PNG without transparency. Both apps' icon is made from it: see [The app icon](#the-app-icon)                                                                                                                                           |
+| `splash`            | What shows from the tap on the app's icon until its first screen is ready: an image on a color. See [The splash screen](#the-splash-screen)                                                                                                        |
 | `orientation`       | `portrait` (default), `landscape` or `all`                                                                                                                                                                                                         |
 | `permissions`       | Any of `camera`, `microphone`, `location`, `photos`, `savePhotos`, `contacts` and `notifications`, each with the reason iOS shows when it asks. Android shows its own message. `savePhotos` is for the share sheet's Save Image, and has a default |
 | `deepLinkSchemes`   | URL schemes that open the app, e.g. `myapp` for `myapp://` links. On Android, include the callback scheme of a [web sign-in](/guide/web-sign-in)                                                                                                   |
@@ -246,6 +247,39 @@ Adaptive icons have two layers that the launcher moves apart as the icon is touc
 - `background` is a color (`#RRGGBB` or `#RGB`) or a 1024×1024 PNG.
 
 Android 7 still shows the flat icon made from `icon`, so set both. The 512×512 icon of your Google Play listing is uploaded in the Play Console, not built.
+
+### The splash screen
+
+The splash screen is what the phone shows from the tap on the app's icon until the app's first screen is ready. Give it your logo with `splash`:
+
+```json title="angular.json"
+"options": {
+  "splash": {
+    "image": "src/assets/splash.png",
+    "imageWidth": 180,
+    "backgroundColor": "#F4EFE6",
+    "dark": {
+      "image": "src/assets/splash-dark.png",
+      "backgroundColor": "#0B1C24"
+    }
+  }
+}
+```
+
+- **`image`** is a PNG with transparency, drawn in the middle of the screen. Without one, iOS shows the color alone, and Android the app's icon.
+- **`imageWidth`** is how wide it's drawn, in points and dp. Its height follows from its shape. Give the PNG at least three times as many pixels across, for the sharpest screens.
+- **`backgroundColor`** fills the screen around it (`#RRGGBB` or `#RGB`), and stays behind the app as well, so no other color shows between the two. It defaults to white, and on Android to black in dark mode.
+- **`dark`** gives the image and the color for dark mode. Without it, dark mode uses the light ones.
+
+On iOS, the build makes the launch screen from these. On Android, it makes Android 12's splash screen, through AndroidX's `core-splashscreen`, which shows the same splash on Android 7 to 11. Android shows a splash image inside a circle 192 dp across. A wide image, such as a logo with the name beside it, whose corners would reach past it is drawn smaller there, and the build warns you, with the widest `imageWidth` that fits.
+
+The splash screen stays up until the app is drawn, and then fades out:
+
+- **By default** it goes at the first frame Angular draws.
+- **With [`provideSplashScreen()`](/api/angular-lynx/splash-screen)**, it waits for the router's first navigation, with its guards, resolvers and lazy routes, or for the app to say it's ready. That covers a first screen that has work to do first, such as restoring a signed-in session.
+- **After five seconds**, it goes anyway, so a first screen that never settles can't leave the app behind its logo.
+
+iOS keeps a copy of an app's launch screen until the app is installed again, or sometimes until the phone restarts. If a change doesn't show on the simulator, delete the app and install it again.
 
 ### Per-environment values
 

@@ -32,7 +32,8 @@
           One activity holding one LynxView; Angular Router does all navigation
           inside it. configChanges keeps the activity (and the running Angular
           app) alive on rotation, resizing and dark-mode switches instead of
-          restarting it; the LynxView re-lays itself out.
+          restarting it; the LynxView re-lays itself out. It starts with the
+          splash screen's theme, which installSplashScreen() replaces.
         -->
         <activity
             android:name=".MainActivity"
@@ -40,6 +41,7 @@
             android:exported="true"
             android:launchMode="singleTask"
             android:screenOrientation="${screenOrientation}"
+            android:theme="@style/Theme.AngularLynxShell.Starting"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

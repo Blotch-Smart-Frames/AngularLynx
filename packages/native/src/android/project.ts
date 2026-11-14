@@ -9,6 +9,7 @@ import {
   shortcutIdentifier,
 } from '../options.ts';
 import { PERMISSION_MAP } from '../permissions.ts';
+import { writeAndroidSplash } from '../splash.ts';
 import { writeAndroidIcon } from './icon.ts';
 import { escapeXml, replaceMarker } from '../xml.ts';
 
@@ -26,7 +27,8 @@ const SCREEN_ORIENTATIONS: Record<Orientation, string> = {
  * angular-lynx.properties (which app/build.gradle.kts reads), and permissions,
  * deep links and the apps canOpenURL can see go between the manifest's
  * `angular-lynx:*` markers, the icon options become the launcher icon's
- * resources, and the shortcuts become the static shortcuts' resources.
+ * resources, the shortcuts become the static shortcuts' resources, and the
+ * splash becomes the splash theme's color and image.
  */
 export const androidGenerator: PlatformGenerator = {
   configure: (dir, app, projectRoot) => {
@@ -56,6 +58,7 @@ export const androidGenerator: PlatformGenerator = {
     }
 
     writeAndroidIcon(dir, app, projectRoot);
+    writeAndroidSplash(dir, app, projectRoot);
   },
   bundleDir: (dir) => path.join(dir, 'app/src/main/assets'),
 };

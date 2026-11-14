@@ -205,6 +205,15 @@ export { LynxShare, ShareError } from './lib/share';
 export type { ShareData, ShareErrorCode, ShareFile } from './lib/share';
 export { LynxShortcuts } from './lib/shortcuts';
 export type { LynxShortcut, LynxShortcutHandler } from './lib/shortcuts';
+export {
+  LynxSplashScreen,
+  provideSplashScreen,
+  hideSplashScreenUnlessProvided as ɵhideSplashScreenUnlessProvided,
+} from './lib/splash-screen';
+export type {
+  SplashScreenHide,
+  SplashScreenOptions,
+} from './lib/splash-screen';
 export { LynxLocalStorage, LynxSecureStorage } from './lib/storage';
 export { LynxSystemInfo } from './lib/system-info';
 export type { PlatformType } from './lib/system-info';

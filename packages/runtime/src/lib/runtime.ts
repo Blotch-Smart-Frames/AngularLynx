@@ -19,6 +19,7 @@ import './lynx-logger/lynx-logger';
 import { installLazyBundleLoader } from './lazy-bundle/chunk-loader';
 import { handOverPageToNextApp } from './lynx-document/page-ref';
 import { carryOverLocation } from './router/lynx-location-strategy';
+import { hideSplashScreenUnlessProvided } from './splash-screen/splash-screen';
 
 /**
  * Starts the background thread. The build calls it from the background
@@ -121,6 +122,14 @@ const bootstrapOnMainThread = async (
   // guard; this call drains it onto a fresh setTimeout macrotask. Placed on the
   // line right after bootstrap resolves (not later) so the flag flips before the
   // first post-bootstrap change-detection cycle's end() hook runs.
+  //
+  // Before that, the shells' launch screen is told to go at the first frame
+  // Angular commits, unless the app said when with provideSplashScreen()
+  // (see splash-screen.ts). Asked while the first render is still pending,
+  // it waits for native's flush after renderPage(), which draws the root
+  // component's first view, and asks the shell from the clean task
+  // markFirstRenderComplete() starts.
+  hideSplashScreenUnlessProvided(appRef);
   markFirstRenderComplete();
   (globalThis as any).__LYNX_ANGULAR_APP_REF__ = appRef;
 

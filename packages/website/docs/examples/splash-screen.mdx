@@ -1,0 +1,18 @@
+# Splash Screen
+
+Tidepool, a tide table whose first screen waits 1.2 seconds for its tides. Its logo shows from the tap on its icon until the tides are on screen, then fades out, in light mode and dark. The preview has no splash screen, so it shows the screen once the tides are in.
+
+<Go example="splash-screen" defaultFile="src/app/app.config.ts" />
+
+## Key concepts
+
+- **`splash` in angular.json**: the logo, 180 points wide, on a sand color, with a white logo on a dark sea color for dark mode. `ng build --platform` makes the launch screen and the Android splash screen from them. See [The splash screen](/guide/native-apps#the-splash-screen).
+- **`provideSplashScreen({ hide: 'afterFirstNavigation' })`**: keeps the splash screen up until the first navigation ends, which waits for the route's resolver. Without it, the splash screen would go at Angular's first frame, and the app would show an empty screen while the tides load.
+- **The first screen starts on the splash screen's color**, in `styles.css`, so the fade shows only the tides coming in.
+
+Run it with `ng serve --platform ios` or `--platform android` to see the splash screen: the preview and Lynx Explorer have none.
+
+## Related
+
+- [`LynxSplashScreen` API](/api/angular-lynx/splash-screen)
+- [Run on iOS and Android](/guide/native-apps)

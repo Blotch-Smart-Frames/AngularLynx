@@ -122,6 +122,10 @@ android {
 dependencies {
     implementation("androidx.activity:activity-ktx:1.10.1")
     implementation("androidx.core:core-ktx:1.16.0")
+    // The splash screen (MainActivity, themes.xml): Android 12's on every
+    // version the app runs on, and kept up until the app's first screen is
+    // ready.
+    implementation("androidx.core:core-splashscreen:1.2.0")
     // Custom Tabs, which WebAuthModule opens sign-in pages in, and
     // LinkingModule the pages of openInApp().
     implementation("androidx.browser:browser:1.8.0")

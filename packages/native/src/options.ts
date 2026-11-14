@@ -52,8 +52,67 @@ export type NativeAppOptions = {
    * {@link AndroidOptions.adaptiveIcon}).
    */
   readonly icon?: string;
+  /**
+   * What the phone shows from the tap on the app's icon until the app's
+   * first screen is drawn (see {@link SplashOptions}).
+   */
+  readonly splash?: SplashOptions;
   readonly ios?: IosOptions;
   readonly android?: AndroidOptions;
+};
+
+/**
+ * The launch screen: an image centered on a color, from the tap on the app's
+ * icon until the app hides it (the runtime's `provideSplashScreen()`), or
+ * until Angular first draws, without that.
+ *
+ * iOS shows it as the launch screen (`UILaunchScreen`), and the shell keeps a
+ * copy of it over the app until then. Android shows it as the splash screen,
+ * through AndroidX's `core-splashscreen`, which gives Android 7 to 11 the
+ * same splash as 12 and later.
+ */
+export type SplashOptions = {
+  /**
+   * A PNG with transparency, relative to the project root, drawn centered.
+   * Without one, iOS shows the color alone, and Android the launcher icon,
+   * as Android 12 does by default.
+   */
+  readonly image?: string;
+  /**
+   * The image's width on screen, in points and dp; its height follows from
+   * its shape. Needed with `image`. Give the PNG at least three times this
+   * many pixels across, for the sharpest iPhones.
+   *
+   * Android shows a splash image inside a circle 192 dp across, so an image
+   * whose corners reach past it is drawn smaller there, with a build warning.
+   */
+  readonly imageWidth?: number;
+  /**
+   * The color behind the image, which the shells also paint behind the app
+   * (`#RRGGBB` or `#RGB`). Defaults to white, and on Android, to black in
+   * dark mode.
+   */
+  readonly backgroundColor?: string;
+  /** The image and the color in dark mode. Each defaults to the light one. */
+  readonly dark?: {
+    readonly image?: string;
+    readonly backgroundColor?: string;
+  };
+};
+
+/** The splash's image and color in one appearance, light or dark. */
+export type SplashAppearance = {
+  readonly image?: string;
+  /** Undefined keeps the shell's own color. */
+  readonly backgroundColor?: string;
+};
+
+/** {@link SplashOptions} checked, with the dark values filled in. */
+export type ResolvedSplash = {
+  /** Set when either appearance has an image. */
+  readonly imageWidth?: number;
+  readonly light: SplashAppearance;
+  readonly dark: SplashAppearance;
 };
 
 export type Orientation = 'portrait' | 'landscape' | 'all';
@@ -205,6 +264,7 @@ export type ResolvedApp = {
   readonly canOpenURLSchemes: readonly string[];
   readonly shortcuts: readonly ResolvedShortcut[];
   readonly icon?: string;
+  readonly splash: ResolvedSplash;
   /** `MyApp`: the iOS product (and so .app/.ipa) name. */
   readonly productName: string;
   /** `my-app`: the base name of Android artifacts. */
@@ -368,6 +428,7 @@ export const resolveAppOptions = (
   }
 
   const shortcuts = resolveShortcuts(options.shortcuts ?? []);
+  const splash = resolveSplash(options.splash ?? {});
 
   const android = options.android ?? {};
   if (android.adaptiveIcon) {
@@ -423,6 +484,7 @@ export const resolveAppOptions = (
     canOpenURLSchemes,
     shortcuts,
     icon: options.icon,
+    splash,
     productName,
     artifactName,
     ios: options.ios ?? {},
@@ -532,6 +594,71 @@ const resolveShortcuts = (
       ...(symbol !== undefined && { symbol }),
     };
   });
+};
+
+/**
+ * Checks the splash options, and gives dark mode the light values it doesn't
+ * set. The images themselves are read when the project is generated.
+ */
+const resolveSplash = (splash: SplashOptions): ResolvedSplash => {
+  const { image, imageWidth, backgroundColor } = splash;
+  const dark = splash.dark ?? {};
+  for (const [option, file] of [
+    ['splash.image', image],
+    ['splash.dark.image', dark.image],
+  ] as const) {
+    if (
+      file !== undefined &&
+      (typeof file !== 'string' || !file.toLowerCase().endsWith('.png'))
+    ) {
+      throw new NativeConfigError(
+        `${option} "${file}" is not a PNG file. Give the path of a PNG with transparency, relative to the project root.`,
+      );
+    }
+  }
+  for (const [option, color] of [
+    ['splash.backgroundColor', backgroundColor],
+    ['splash.dark.backgroundColor', dark.backgroundColor],
+  ] as const) {
+    if (
+      color !== undefined &&
+      (typeof color !== 'string' || !ICON_BACKGROUND_COLOR.test(color))
+    ) {
+      throw new NativeConfigError(
+        `${option} "${color}" is not a color. Use #RRGGBB or #RGB, e.g. "#09090B".`,
+      );
+    }
+  }
+  // The dark image takes its size from imageWidth too, and a light mode
+  // without an image while dark mode has one would be a mistake.
+  if (dark.image !== undefined && image === undefined) {
+    throw new NativeConfigError(
+      'splash.dark.image needs splash.image too: dark mode has an image of its own only where light mode has one.',
+    );
+  }
+  if (image !== undefined) {
+    if (
+      typeof imageWidth !== 'number' ||
+      !Number.isFinite(imageWidth) ||
+      imageWidth <= 0
+    ) {
+      throw new NativeConfigError(
+        `splash.imageWidth ${imageWidth === undefined ? 'is missing' : `${imageWidth} is not valid`}. Give the image's width on screen in points and dp, e.g. 200: a phone's screen is about 400 across.`,
+      );
+    }
+  } else if (imageWidth !== undefined) {
+    throw new NativeConfigError(
+      'splash.imageWidth needs splash.image: it sets how wide the image is drawn.',
+    );
+  }
+  return {
+    ...(image !== undefined && { imageWidth }),
+    light: { image, backgroundColor },
+    dark: {
+      image: dark.image ?? image,
+      backgroundColor: dark.backgroundColor ?? backgroundColor,
+    },
+  };
 };
 
 /**

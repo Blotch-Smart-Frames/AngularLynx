@@ -70,6 +70,11 @@ describe('infoPlistEntries', () => {
   it('lists the orientations', () => {
     expect(infoPlistEntries(app({ orientation: 'landscape' }))).toBe(
       [
+        '<key>UILaunchScreen</key>',
+        '<dict>',
+        '\t<key>UIColorName</key>',
+        '\t<string>LaunchBackground</string>',
+        '</dict>',
         '<key>UISupportedInterfaceOrientations</key>',
         '<array>',
         '\t<string>UIInterfaceOrientationLandscapeLeft</string>',
@@ -87,6 +92,24 @@ describe('infoPlistEntries', () => {
         '\t<string>tel</string>',
         '\t<string>sms</string>',
         '</array>',
+      ].join('\n'),
+    );
+  });
+
+  it("names the splash image in the launch screen when there's one", () => {
+    expect(
+      infoPlistEntries(
+        app({ splash: { image: 'splash.png', imageWidth: 100 } }),
+      ),
+    ).toContain(
+      [
+        '<key>UILaunchScreen</key>',
+        '<dict>',
+        '\t<key>UIColorName</key>',
+        '\t<string>LaunchBackground</string>',
+        '\t<key>UIImageName</key>',
+        '\t<string>LaunchImage</string>',
+        '</dict>',
       ].join('\n'),
     );
   });
@@ -243,6 +266,7 @@ describe('iosGenerator', () => {
     expect(plist).toContain('<key>NSCameraUsageDescription</key>');
     expect(plist).toContain('UIInterfaceOrientationLandscapeLeft');
     expect(plist.match(/UISupportedInterfaceOrientations/g)).toHaveLength(1);
+    expect(plist.match(/UILaunchScreen/g)).toHaveLength(1);
     expect(plist).toContain('<key>LSApplicationQueriesSchemes</key>');
     expect(iosGenerator.bundleDir(dir)).toBe(path.join(dir, 'LynxBundle'));
   });

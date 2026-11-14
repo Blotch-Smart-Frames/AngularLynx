@@ -14,11 +14,18 @@ import UIKit
 /// memory pressure, so this reports a moderate one. The runtime asks once it
 /// has released about a screen's worth of elements and the app has settled
 /// (`collect-garbage.ts` in `packages/runtime`).
+///
+/// `hideSplashScreen` fades out the copy of the launch screen the shell keeps
+/// over the app until its first screen is ready (SplashScreen.swift). The
+/// runtime's LynxSplashScreen calls it.
 final class ShellModule: NSObject, LynxModule {
   static var name: String { "AngularLynxShell" }
 
   static var methodLookup: [String: String] {
-    ["collectGarbage": NSStringFromSelector(#selector(collectGarbage))]
+    [
+      "collectGarbage": NSStringFromSelector(#selector(collectGarbage)),
+      "hideSplashScreen": NSStringFromSelector(#selector(hideSplashScreen)),
+    ]
   }
 
   override init() {
@@ -37,6 +44,12 @@ final class ShellModule: NSObject, LynxModule {
   @objc func collectGarbage() {
     DispatchQueue.main.async {
       LynxEnv.sharedInstance().trimMemory(.moderate)
+    }
+  }
+
+  @objc func hideSplashScreen() {
+    DispatchQueue.main.async {
+      SplashScreen.shared.hide()
     }
   }
 }

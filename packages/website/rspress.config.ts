@@ -316,6 +316,10 @@ export default defineConfig({
             { text: 'LynxLinking', link: '/api/angular-lynx/linking' },
             { text: 'LynxShortcuts', link: '/api/angular-lynx/shortcuts' },
             {
+              text: 'LynxSplashScreen',
+              link: '/api/angular-lynx/splash-screen',
+            },
+            {
               text: 'LynxImagePicker',
               link: '/api/angular-lynx/image-picker',
             },
@@ -490,6 +494,7 @@ export default defineConfig({
         { text: 'Defer Blocks', link: '/examples/defer' },
         { text: 'Linking', link: '/examples/linking' },
         { text: 'Shortcuts', link: '/examples/shortcuts' },
+        { text: 'Splash Screen', link: '/examples/splash-screen' },
         { text: 'Error Boundary', link: '/examples/error-boundary' },
         { text: 'Error Handling', link: '/examples/error-handling' },
         { text: 'Internationalization', link: '/examples/i18n' },

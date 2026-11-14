@@ -32,11 +32,11 @@ export const readPngSize = (
 };
 
 /**
- * pngjs, loaded the first time an icon is resized rather than with this
- * module. Only Android needs it, and CI builds the iOS app from this
- * package's tarball unpacked without its dependencies (packages/e2e's
- * README), which works as long as the iOS path loads nothing but Node's
- * built-ins.
+ * pngjs, loaded the first time an image is resized rather than with this
+ * module. Only Android's icons and a splash image need it, and CI builds the
+ * iOS app, which has no splash image, from this package's tarball unpacked
+ * without its dependencies (packages/e2e's README), which works as long as
+ * that path loads nothing but Node's built-ins.
  */
 const pngjs = (): typeof PngClass =>
   (createRequire(import.meta.url)('pngjs') as { PNG: typeof PngClass }).PNG;
@@ -213,6 +213,28 @@ export const extendEdges = (image: Image, inset: number): Image => {
       const source = (sourceY * image.width + sourceX) * 4;
       data.set(image.data.subarray(source, source + 4), (y * width + x) * 4);
     }
+  }
+  return { width, height, data };
+};
+
+/**
+ * Puts the image in the middle of a transparent `width`×`height` canvas, at
+ * least as big as the image. An odd pixel of margin goes right and below.
+ */
+export const centerOnCanvas = (
+  image: Image,
+  width: number,
+  height: number,
+): Image => {
+  const data = new Uint8Array(width * height * 4);
+  const left = Math.floor((width - image.width) / 2);
+  const top = Math.floor((height - image.height) / 2);
+  for (let y = 0; y < image.height; y++) {
+    const row = y * image.width * 4;
+    data.set(
+      image.data.subarray(row, row + image.width * 4),
+      ((top + y) * width + left) * 4,
+    );
   }
   return { width, height, data };
 };

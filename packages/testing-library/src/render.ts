@@ -34,7 +34,10 @@ import {
   type Queries,
   getQueriesForElement,
 } from '@testing-library/dom';
-import { provideRenderer } from '@blotch/angular-lynx';
+import {
+  provideRenderer,
+  ɵhideSplashScreenUnlessProvided,
+} from '@blotch/angular-lynx';
 import { type BoundLynxQueries, type LynxQueries, queries } from './queries.js';
 
 /**
@@ -284,6 +287,10 @@ export const render = async <Q extends Queries = LynxQueries, C = unknown>(
   // LynxDocument.createRootElement() runs during bootstrap, calling
   // __CreatePage which appends the <page> element to document.body.
   const componentRef = appRef.bootstrap(rootComponent, { bindings });
+  // What bootstrapApplication() does next: the splash screen goes at the
+  // first frame, unless the app's provideSplashScreen() says when. A spec
+  // reads LynxSplashScreen.visible() to see that it went.
+  ɵhideSplashScreenUnlessProvided(appRef);
 
   // Force a synchronous CD cycle so signal-initialized state is reflected in
   // the DOM before we return. bootstrap already triggers one CD, but work it

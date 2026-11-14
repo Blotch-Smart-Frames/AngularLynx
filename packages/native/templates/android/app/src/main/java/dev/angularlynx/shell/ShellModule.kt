@@ -29,6 +29,10 @@ import com.lynx.tasm.LynxEnv
  * pressure, so this reports a moderate one. The runtime asks once it has
  * released about a screen's worth of elements and the app has settled
  * (`collect-garbage.ts` in `packages/runtime`).
+ *
+ * `hideSplashScreen` lets the splash screen go, which MainActivity keeps up
+ * until the app's first screen is ready. The runtime's LynxSplashScreen
+ * calls it.
  */
 class ShellModule(context: Context, param: Any?) : LynxModule(context, param) {
     private val host = param as Host
@@ -36,11 +40,17 @@ class ShellModule(context: Context, param: Any?) : LynxModule(context, param) {
 
     interface Host {
         fun setBackHandlerEnabled(enabled: Boolean)
+        fun hideSplashScreen()
     }
 
     @LynxMethod
     fun setBackHandlerEnabled(enabled: Boolean) {
         main.post { host.setBackHandlerEnabled(enabled) }
+    }
+
+    @LynxMethod
+    fun hideSplashScreen() {
+        main.post { host.hideSplashScreen() }
     }
 
     @LynxMethod

@@ -83,6 +83,7 @@ expect(getByText('Hello, Angular')).toBeTruthy();
 - **`options.inputs`** are set before the first change detection, as a parent template binds them. A required input has its value when the template first reads it, and `ngOnInit` sees them all.
 - Elements render under a `<page>` element, the result's `container`.
 - It rejects a name that isn't one of the component's inputs, and lists the ones it has.
+- Like `bootstrapApplication()`, it hides the [splash screen](/api/angular-lynx/splash-screen) once the component is rendered, unless `options.providers` has `provideSplashScreen()`. A spec reads `LynxSplashScreen.visible()` to check when the app hides it.
 
 ### `cleanup()`
 

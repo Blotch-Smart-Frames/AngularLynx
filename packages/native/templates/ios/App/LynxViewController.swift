@@ -16,6 +16,8 @@ final class LynxViewController: UIViewController {
 
   override func viewDidLoad() {
     super.viewDidLoad()
+    // The launch screen's color (angular.json's splash.backgroundColor),
+    // behind the LynxView, so no other color shows between the two.
     view.backgroundColor = UIColor(named: "LaunchBackground") ?? .systemBackground
 
     let fetcher = BundleResourceFetcher.shared
@@ -73,6 +75,11 @@ final class LynxViewController: UIViewController {
     // server's, which it loads again on every edit.
     let templateURL = DevServer.shared.templateURL
     lynxView.loadTemplate(fromURL: templateURL, initData: nil)
+    // The launch screen, over the LynxView until the app's first screen is
+    // drawn: iOS takes its own down at the first frame, which is the empty
+    // LynxView (SplashScreen.swift). The development build's messages go
+    // over it.
+    SplashScreen.shared.show(over: view)
     DevServer.shared.attach(to: view) { [weak self] in
       self?.lynxView?.loadTemplate(fromURL: templateURL, initData: nil)
     }

@@ -1,6 +1,6 @@
 # Animation
 
-Animate an element from code with `animate()`, or animate content in and out with `<lynx-transition>` and `<lynx-transition-group>`. `import { LynxAnimation, LynxTransition, LynxTransitionGroup, type LynxAnimationOptions, type BaseLynxAnimation } from '@blotch/angular-lynx';`
+Animate an element from code with `animate()`, or animate content in and out with `<lynx-transition>` and `<lynx-transition-group>`. `import { LynxAnimation, LynxTransition, LynxTransitionGroup, afterFrame, type LynxAnimationOptions, type BaseLynxAnimation } from '@blotch/angular-lynx';`
 
 ## Usage
 
@@ -226,6 +226,20 @@ type LynxAnimationOptions = AnimationOptions & {
 | `iterationCount` | `number \| string`                                            |             | CSS-style alias for `iterations`, such as `'infinite'`.                                                        |
 | `fillMode`       | `string`                                                      |             | CSS-style alias for `fill`.                                                                                    |
 | `timingFunction` | `string`                                                      |             | CSS-style alias for `easing`.                                                                                  |
+
+### `afterFrame()`
+
+```typescript
+function afterFrame(callback: () => void): () => void;
+```
+
+Runs `callback` once the screen has drawn what your app has changed so far, and the app has nothing else to do: on the turn after the next frame, or after a later frame if other work came between, four frames at most. It returns a function that cancels it.
+
+Start a transition that Core Animation runs (an element with `enable-new-animator="false"`, see [Keep a transition moving while your app works](/guide/animations/#keep-a-transition-moving-while-your-app-works)) from it, after work such as building a screen. iOS begins such a transition at the time of the last frame the app saw, so one started straight after a busy moment is already partway through when it's first drawn. Without frames (a test without `requestAnimationFrame`), it runs on the next turn.
+
+```typescript
+afterFrame(() => this.open.set(true));
+```
 
 ### `BaseLynxAnimation`
 

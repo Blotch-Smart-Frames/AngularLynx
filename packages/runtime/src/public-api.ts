@@ -10,6 +10,7 @@ export type {
   AccessibilityTrait,
   AccessibilityTraitStates,
 } from './lib/accessibility/accessibility-traits';
+export { afterFrame } from './lib/animation/after-frame';
 export { LynxAnimation } from './lib/animation/animation';
 export { ClipboardError, LynxClipboard } from './lib/clipboard';
 export type { ClipboardErrorCode } from './lib/clipboard';

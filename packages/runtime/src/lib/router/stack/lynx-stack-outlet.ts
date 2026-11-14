@@ -33,6 +33,7 @@ import {
   RouterOutlet,
 } from '@angular/router';
 import { LynxAccessibilitySettings } from '../../accessibility/accessibility-settings';
+import { afterFrame } from '../../animation/after-frame';
 import { isAndroid } from '../../lynx-document/android-blur-capture';
 import { LynxElement } from '../../lynx-element/lynx-element';
 import { pointerIdOf } from '../../lynx-element/pointer-events';
@@ -173,8 +174,9 @@ type BarMove = {
 
 /**
  * When a transition's elements start moving, once their first look is set:
- * `'drawn'`, once the screen has drawn it (see afterFrame), or `'now'`, on
- * the next turn, for elements that are on the screen as they are already.
+ * `'drawn'`, once the screen has drawn it and the thread is idle (see
+ * afterFrame), or `'now'`, on the next turn, for elements that are on the
+ * screen as they are already.
  */
 type TransitionStart = 'drawn' | 'now';
 
@@ -1748,57 +1750,4 @@ const transitionOf = (
 const later = (callback: () => void): (() => void) => {
   const timer = setTimeout(callback, 0);
   return () => clearTimeout(timer);
-};
-
-/**
- * How long after a frame's callback a turn it schedules may start, in ms,
- * for the thread to count as idle: nothing else ran in between.
- */
-const IDLE_TURN = 4;
-
-/**
- * How many frames a transition waits for the thread to be idle (see
- * afterFrame), at most, before it starts anyway.
- */
-const IDLE_FRAMES = 4;
-
-/**
- * Runs `callback` once the screen has drawn what this turn flushes, and the
- * thread has nothing else to do: on the turn after a frame, if it comes
- * straight after the frame, or else after a later frame, up to IDLE_FRAMES
- * of them. Returns what cancels it.
- *
- * On iOS a transition's Core Animation begins at the time of the last frame
- * the thread saw, and reaches the screen once the thread is next idle. A
- * turn that builds a pushed page and lays it out holds both back, so a
- * transition started on the turn after it had begun that long before it
- * was first drawn, and its first frame came a quarter of the way in, or
- * further. After a frame, with nothing else waiting, it begins with that
- * frame and is drawn with the next. The frame's callback itself is too
- * early: the clock Lynx reads may not have seen the frame yet.
- *
- * In the web preview, the frame draws the elements where they start, which
- * a browser needs to transition them. Without `requestAnimationFrame`, it's
- * the next turn.
- */
-const afterFrame = (callback: () => void): (() => void) => {
-  if (typeof requestAnimationFrame !== 'function') return later(callback);
-  let canceled = false;
-  let frames = 0;
-  const frame = (): void => {
-    const drawn = Date.now();
-    frames++;
-    setTimeout(() => {
-      if (canceled) return;
-      if (Date.now() - drawn <= IDLE_TURN || frames >= IDLE_FRAMES) {
-        callback();
-      } else {
-        requestAnimationFrame(frame);
-      }
-    }, 0);
-  };
-  requestAnimationFrame(frame);
-  return () => {
-    canceled = true;
-  };
 };

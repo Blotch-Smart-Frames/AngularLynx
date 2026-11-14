@@ -76,8 +76,9 @@ Lynx works out each frame of an animation itself, on the thread your Angular cod
 ```
 
 - The element's `animate()` method does nothing then: move it with `transition` and `@keyframes`.
-- On iOS, `transform`, `opacity`, `background-color` and the element's position and size animate. Animate `transform` and `opacity` where you can.
-- `<lynx-stack-outlet>` moves its screens this way.
+- On iOS, `transform`, `opacity` and `background-color` animate, and the element's position and size, though its background and children take the new size at once: move it with `transform` and `opacity`.
+- Start the transition with [`afterFrame()`](/api/angular-lynx/animation#afterframe) after work such as building a screen. iOS begins it at the time of the last frame the app saw, so one started straight after a busy moment is partway through when it's first drawn.
+- `<lynx-stack-outlet>` moves its screens this way, and the [Bottom Sheet](/dolan/bottom-sheet) its sheet.
 - The [web preview](/guide/glossary#web-preview) ignores the attribute: the browser runs the transition.
 
 ## CSS @keyframes

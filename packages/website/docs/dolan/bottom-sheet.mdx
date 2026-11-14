@@ -62,6 +62,7 @@ export class SortPicker {
 - The sheet draws in an [`<overlay>`](/api/elements/overlay), so it covers the whole screen wherever it sits in your template.
 - When it opens, a screen reader moves into the panel and stays inside it until the sheet closes.
 - Android's back button closes it.
+- It keeps moving while your app works: Core Animation runs its slides on iOS, as it does a UIKit sheet's.
 
 ### Drag to dismiss
 

@@ -885,6 +885,8 @@ export class LynxElement implements BaseLynxElement {
     // may be what the user typed since (see #recreateSubtree).
     if (!__WEB__) __SetAttribute(element, 'default-value', value);
     __InvokeUIMethod(element, 'setValue', { value }, () => {});
+    // Both reach native with the element's next flush (see invoke()).
+    scheduleSettleFlush();
   }
 
   /**
@@ -2364,16 +2366,24 @@ export class LynxElement implements BaseLynxElement {
    * element does only this way.
    *
    * A UI method reaches only a UI native has made, which it does for an
-   * element when the element tree is next flushed. On an element made since
-   * then, as `ngAfterViewInit()` sees one its change detection created, or
-   * `afterNextRender()` does on the first screen (whose flush comes after
-   * it), iOS and Android answer at once that the element has no UI
-   * (NO_UI_FOR_NODE), and drop the call. A DOM element's method would have
-   * run, so it's called again after the flush that makes the UI. Only once:
-   * an element still without a UI then isn't on the page. The answer comes
-   * at once because the main thread runs on the UI thread, as the shells and
-   * Lynx Explorer run it; on another thread it would come too late to tell,
-   * and the call isn't made again.
+   * element when the element tree is next flushed. The build plugin turns on
+   * Lynx's pending invokes (`enableElementInvokeUIMethodPendingTask`), which
+   * keep the call on its element until the element's next flush, and send it
+   * to the UI after the operations that make and change the UI. So a method
+   * called on an element made since the last flush, as `ngAfterViewInit()`
+   * sees one its change detection created, or `afterNextRender()` does on
+   * the first screen, reaches the UI it's for, as a DOM element's would. It
+   * matters most in the apps `ng build --platform` makes, which run Lynx's
+   * engine off the UI thread: the flush reaches the UI thread later there,
+   * and a call sent at once could get there first. Outside change detection
+   * there may be no flush for a while, so one is scheduled (see
+   * scheduleSettleFlush).
+   *
+   * A host that ignores the setting (a Lynx before 4.1) runs the call at
+   * once. On the UI thread, iOS and Android then answer at once that an
+   * element has no UI (NO_UI_FOR_NODE), and drop the call, so it's called
+   * again after the flush that makes the UI. Only once: an element still
+   * without a UI then isn't on the page.
    *
    * The result callback is otherwise ignored. Callers that need a result
    * (e.g. getValue, boundingClientRect) should use MainThreadElement.invoke(),
@@ -2394,7 +2404,11 @@ export class LynxElement implements BaseLynxElement {
       });
       return made;
     };
-    if (!call()) afterNextFlush(call);
+    if (call()) {
+      scheduleSettleFlush();
+    } else {
+      afterNextFlush(call);
+    }
   }
 
   /**
@@ -2580,7 +2594,11 @@ export class LynxElement implements BaseLynxElement {
   #layoutTracker(): LayoutTracker {
     this.#layout ??= new LayoutTracker({
       listen: (event, listener) => this.addEventListener(event, listener),
-      measure: (callback) => measureLayout(this.element, callback),
+      measure: (callback) => {
+        measureLayout(this.element, callback);
+        // The UI method waits for the element's next flush (see invoke()).
+        scheduleSettleFlush();
+      },
     });
     return this.#layout;
   }

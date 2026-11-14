@@ -2,6 +2,7 @@ package dev.angularlynx.shell
 
 import android.content.Context
 import android.graphics.SurfaceTexture
+import android.os.Looper
 import android.view.TextureView
 import com.lynx.tasm.behavior.Behavior
 import com.lynx.tasm.behavior.LynxContext
@@ -19,7 +20,11 @@ import com.lynx.tasm.behavior.ui.LynxUI
 class CanvasUI(context: LynxContext) : LynxUI<TextureView>(context) {
     private var canvasId: String? = null
 
-    /** The view's surface, while it has one. */
+    /**
+     * The view's surface, while it has one. Set on the UI thread, and read by
+     * the context on Lynx's engine thread too.
+     */
+    @Volatile
     var surface: SurfaceTexture? = null
         private set
 
@@ -49,9 +54,17 @@ class CanvasUI(context: LynxContext) : LynxUI<TextureView>(context) {
 
     private fun contextOrNull(): WebGLContext? = canvasId?.let { CanvasRegistry.context(it) }
 
-    /** Whether the frames can be shown see-through, as the context's `alpha` asks. */
+    /**
+     * Whether the frames can be shown see-through, as the context's `alpha`
+     * asks. The context attaches from Lynx's engine thread when it's made
+     * after the view, and a view is the UI thread's to change.
+     */
     fun setOpaque(opaque: Boolean) {
-        view.isOpaque = opaque
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            view.isOpaque = opaque
+        } else {
+            view.post { view.isOpaque = opaque }
+        }
     }
 
     @LynxProp(name = "canvas-id")

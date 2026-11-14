@@ -13,6 +13,14 @@ Lynx runs on two threads:
 | **`NativeModules`**   | Not available                                   | Available                                                                         |
 | **Angular runs here** | Yes: the whole app                              | No. Only the files that define `backgroundFn()`s or `MainThreadRef`s at top level |
 
+## The Phone's UI Thread
+
+Lynx runs the main thread's JavaScript, its layout and its animator on its engine thread, and the host app picks which thread that is. The apps `ng build --platform ios|android` makes give it a thread of its own (Lynx's `MostOnTASM`), off the UI thread iOS and Android draw and scroll on. Lynx Explorer runs it on the UI thread (Lynx's default, `AllOnUI`).
+
+- **A busy app doesn't freeze what the platform runs itself** in a built app: a flicked `<scroll-view>` keeps scrolling, and text fields and web views keep taking touches, while Angular builds a screen or runs a long handler. In Lynx Explorer they freeze with it, so judge a heavy screen's feel in a build.
+- **What Lynx draws from the element tree still waits for Angular**: the next screen, a changed style, and Lynx's animations (CSS transitions, `@keyframes`, `element.animate()`), which tick on the same thread. Keep handlers short, and move heavy work to a `backgroundFn()`.
+- **Changes reach the screen after the flush crosses to the UI thread**, a step later than in Explorer. UI methods (`invoke()`) go with the flush, after the element's UI is made.
+
 ## `__MAIN_THREAD__` Global
 
 The rsbuild plugin replaces `__MAIN_THREAD__` with each bundle's value when it compiles, and also sets it on `globalThis`:
@@ -90,7 +98,7 @@ The build pipeline transpiles your code to the appropriate target for each bundl
 - A `WeakMap` you write yourself does the same on the main thread: while the map lives (in a module or a root service, for the app's life), PrimJS never lets go of an entry whose value leads back to its key through a native element, so the key, the value and every element they reach stay. Keep per-object state on the object (a property or a `#private` field), or drop what the value holds once the object is destroyed. A `WeakMap` keyed by `LynxStackPage` whose value holds the page's components or elements keeps every page of every stack the app has had
 - `AbortController`/`AbortSignal` are polyfilled by the runtime
 - `queueMicrotask` is polyfilled as `Promise.resolve().then(fn)`
-- On iOS and Android, a UI method that answers synchronously runs every pending promise callback before it returns, `getBoundingClientRect()` (its `boundingClientRect` call) included: a constructor or template that measures an element can run callbacks queued earlier in the same synchronous pass, in the middle of it (the web preview doesn't). Don't decide in a deferred callback something that depends on that pass being over, such as "did the router activate this outlet again", without checking `router.currentNavigation()` and waiting for `NavigationEnd` while it's set
+- A UI method's answer comes back as a native call, and Lynx runs every pending promise callback when one ends. With the build's pending UI method calls, that's after the element's flush (inside the flush in Lynx Explorer); a host on a Lynx older than 4.1 answers inside the call, `getBoundingClientRect()`'s `boundingClientRect` included, so a constructor or template that measures an element can run callbacks queued earlier in the same synchronous pass, in the middle of it (the web preview doesn't). Don't decide in a deferred callback something that depends on that pass being over, such as "did the router activate this outlet again", without checking `router.currentNavigation()` and waiting for `NavigationEnd` while it's set
 
 ## Missing Browser Globals
 

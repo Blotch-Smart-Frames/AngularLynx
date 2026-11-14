@@ -33,8 +33,13 @@ private const val EGL_OPENGL_ES3_BIT = 0x40
  * default framebuffer the size of the canvas's `width` and `height`, which
  * each finished frame is copied from into the canvas's TextureView.
  *
- * The runtime's `run` calls arrive on the UI thread, which makes the context
- * current for each and puts back whatever was current before.
+ * The runtime's `run` calls arrive on Lynx's engine thread, which the shell
+ * runs off the UI thread (MainActivity's thread strategy), while the canvas's
+ * TextureView reports its surface on the UI thread. Each call makes the
+ * context current for itself and puts back whatever was current before, so
+ * either thread can make the next one; the context's lock keeps them from
+ * making two at once. The UI thread waits for a batch only when the surface
+ * comes, goes or resizes.
  */
 class WebGLContext(val canvasId: String, attributes: ReadableMap?) {
     private val display: EGLDisplay = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
@@ -125,6 +130,7 @@ class WebGLContext(val canvasId: String, attributes: ReadableMap?) {
         }
     }
 
+    @Synchronized
     fun destroy() {
         if (destroyed) return
         withCurrent {
@@ -167,6 +173,7 @@ class WebGLContext(val canvasId: String, attributes: ReadableMap?) {
 
     // --- The view ------------------------------------------------------------
 
+    @Synchronized
     fun attachView(canvas: CanvasUI?) {
         if (view === canvas) return
         view = canvas
@@ -175,6 +182,7 @@ class WebGLContext(val canvasId: String, attributes: ReadableMap?) {
     }
 
     /** The view's surface came, went or changed size. */
+    @Synchronized
     fun surfaceChanged() {
         if (destroyed) return
         val texture = view?.surface
@@ -187,8 +195,9 @@ class WebGLContext(val canvasId: String, attributes: ReadableMap?) {
                 } else {
                     windowTexture = texture
                     withCurrent {
-                        // Presenting never waits for the display: it runs on
-                        // the UI thread.
+                        // Presenting never waits for the display: the frame
+                        // is copied once into the TextureView, which the UI
+                        // thread composites at its own pace.
                         EGL14.eglSwapInterval(display, 0)
                     }
                 }
@@ -332,6 +341,7 @@ class WebGLContext(val canvasId: String, attributes: ReadableMap?) {
      * app has drawn since the last frame was shown, or, once a frame has been
      * shown without preserveDrawingBuffer, the cleared buffer.
      */
+    @Synchronized
     fun readDrawingBuffer(): DrawingBufferPixels? {
         if (destroyed) return null
         val pixels = ByteBuffer.allocateDirect(width * height * 4).order(ByteOrder.nativeOrder())
@@ -640,6 +650,7 @@ class WebGLContext(val canvasId: String, attributes: ReadableMap?) {
         fun skip() { index++ }
     }
 
+    @Synchronized
     fun run(commands: ReadableArray): JavaOnlyArray {
         val results = JavaOnlyArray()
         if (destroyed) return results

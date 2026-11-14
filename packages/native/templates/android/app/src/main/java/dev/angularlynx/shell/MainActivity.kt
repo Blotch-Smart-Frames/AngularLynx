@@ -32,6 +32,7 @@ import com.lynx.tasm.LynxError
 import com.lynx.tasm.LynxView
 import com.lynx.tasm.LynxViewBuilder
 import com.lynx.tasm.LynxViewClient
+import com.lynx.tasm.ThreadStrategyForRendering
 import com.lynx.xelement.XElementBehaviors
 
 /**
@@ -142,6 +143,18 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
         // --platform android` runs, the dev server's (DevServer.kt).
         val bundleUrl = DevServer.bundleUrl(this) ?: BundleAssets.MAIN_BUNDLE
         lynxView = LynxViewBuilder().apply {
+            // Lynx's engine thread, which runs the main thread's JavaScript
+            // (the whole Angular app), layout and Lynx's animator, gets a
+            // thread of its own. Lynx's default, ALL_ON_UI, runs it on the UI
+            // thread, where change detection, a screen being built or a long
+            // event handler took frames from what Android runs itself: a
+            // scroll view's fling, typing, a web view. Off it, the element
+            // tree reaches the screen a step later, once the flush crosses to
+            // the UI thread: the build plugin turns on Lynx's pending invokes
+            // so UI methods follow it, and the runtime sets enable-async-list
+            // on every <list>, which this strategy requires. The iOS shell
+            // does the same.
+            setThreadStrategyForRendering(ThreadStrategyForRendering.MOST_ON_TASM)
             setTemplateProvider(AssetTemplateProvider(this@MainActivity))
             setTemplateResourceFetcher(AssetTemplateResourceFetcher(this@MainActivity))
             setMediaResourceFetcher(AssetMediaResourceFetcher())
@@ -167,7 +180,8 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
             registerModule(ShortcutsModule.NAME, ShortcutsModule::class.java, null)
             // <canvas>'s WebGL (WebGLModule.kt), which the runtime calls from
             // the main thread, where Angular runs: main-thread modules let
-            // it get its answers synchronously, with lynx.module(name).
+            // it get its answers synchronously, with lynx.module(name). Lynx
+            // calls them on its engine thread, not the UI thread.
             registerModule(WebGLModule.NAME, WebGLModule::class.java, null)
             // Bundled files for the main thread's fetch and Image (AssetsModule.kt).
             registerModule(AssetsModule.NAME, AssetsModule::class.java, null)

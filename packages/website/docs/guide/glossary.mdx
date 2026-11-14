@@ -34,7 +34,11 @@ An older Lynx name for one bundle shown in one [LynxView](#lynxview). Lynx Explo
 
 ### Main thread
 
-The thread that creates and updates the native UI, and receives touches. AngularLynx runs your templates and event handlers here. See [Threads](/guide/concepts/threads).
+The thread that creates and updates the native UI, and receives touches. AngularLynx runs your templates and event handlers here. In the apps `ng build --platform` makes, it isn't the phone's [UI thread](#ui-thread). See [Threads](/guide/concepts/threads).
+
+### UI thread
+
+The thread iOS and Android draw the screen on and handle touches with: they scroll, animate their own views and run text fields there. In the apps `ng build --platform` makes, your app runs on a thread of its own, so it can't hold the UI thread up. Lynx Explorer runs your app on the UI thread. See [Threads](/guide/concepts/threads#the-phones-ui-thread).
 
 ### Background thread
 

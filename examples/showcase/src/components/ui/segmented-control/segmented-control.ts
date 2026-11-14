@@ -615,7 +615,11 @@ export class UiSegmentedControl {
       );
     }
     return cn(
-      'relative flex flex-1 flex-row items-center justify-center gap-1.5 px-3',
+      // 4px in from each side, as UIKit insets a segment's label (measured
+      // on the iOS 27 Simulator: 84pt of a 92.5pt segment). A label gets
+      // nearly the whole segment, so "Community" fits a quarter of a phone's
+      // width, as it does in UIKit, rather than ending in "…".
+      'relative flex flex-1 flex-row items-center justify-center gap-1.5 px-1',
       // In a multiple selection each segment is its own thumb, inset in its
       // slot, and drawn while selected (see #ownThumb).
       this.#host().multiple() && 'm-[2px]',
@@ -658,6 +662,12 @@ export class UiSegmentedControl {
    * The classes of a segment's label, for a control that draws its own:
    * 13pt as in UIKit, medium when selected on iOS 26 and semibold before;
    * Material's label in its content color.
+   *
+   * The heavier weight is wider (medium "Community" is 71pt, regular 69pt),
+   * so a label within about 3% of its segment's room fits until it's
+   * selected, and then ends in "…". UIKit does the same (measured on the
+   * iOS 27 Simulator). Before labels were one line, Lynx wrapped that
+   * selected label mid-word instead.
    */
   labelClass(value: string): string {
     const on = this.isOn(value);

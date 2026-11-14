@@ -125,6 +125,21 @@ describe('UiTabs', () => {
     ]);
   });
 
+  // Lynx lets a flex item shrink below its text's width, so a long label
+  // broke mid-word onto a second line that spilled out of the tab.
+  it('keeps each label on one line, ending one too long for its tab with "…"', async () => {
+    const { container, getByText } = await renderTabs();
+    for (const label of ['Account', 'Billing']) {
+      expect(getByText(label).getAttribute('text-maxline')).toBe('1');
+      expect(getByText(label).classList).toContain('text-ellipsis');
+    }
+    // The row stays inside its parent on the web, where a one-line label is
+    // as wide as its text, so its triggers shrink rather than run off.
+    expect(
+      container.querySelector('[accessibility-traits="tabbar"]')!.classList,
+    ).toContain('max-w-full');
+  });
+
   it("shows only the selected tab's panel, and highlights its trigger", async () => {
     const { getByText, trigger, displayOf } = await renderTabs();
     expect(displayOf('Account panel')).toBe('flex');
@@ -447,6 +462,17 @@ describe('UiTabsList, segmented', () => {
     expect(getByText('Photos').classList).toContain('font-medium');
     expect(getByText('Albums').classList).not.toContain('font-medium');
     expect(frame()).not.toBeNull();
+  });
+
+  it('keeps each label on one line in a segment, ending a long one with "…"', async () => {
+    const { getByText, trigger } = await renderSegmented();
+    for (const label of ['Photos', 'Albums']) {
+      expect(getByText(label).getAttribute('text-maxline')).toBe('1');
+      expect(getByText(label).classList).toContain('text-ellipsis');
+      expect(getByText(label).classList).toContain('text-[13px]');
+      // 4px in from each side, as UIKit insets a segment's label.
+      expect(trigger(label).classList).toContain('px-1');
+    }
   });
 
   it("switches panels on a tap, without the default tabs' scale animation", async () => {

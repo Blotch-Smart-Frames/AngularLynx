@@ -61,7 +61,8 @@ export class App {
 - A trigger and a panel belong together when their `value` matches.
 - Set a starting `value`. With the default `''`, no tab is active and every panel is hidden.
 - Triggers wrap their content in `<text>`, so pass plain text.
-- The tab bar hugs its triggers instead of filling the width.
+- A label stays on one line, and one too long for its tab ends with "…".
+- The tab bar hugs its triggers instead of filling the width, up to the width it's given.
 
 ### Segmented control
 
@@ -82,7 +83,7 @@ Switch between closely related views with the platform's segmented control:
 
 - **A thumb slides to the tab you tap,** or follows your finger when you drag it, and the panel switches where you let go.
 - **On iOS 26 the thumb lifts into Liquid Glass** while it moves, as UIKit's segmented control does. Before iOS 26 it's the control of iOS 13 to 18, and on Android Material 3 Expressive's connected button group. See [Toggle](/dolan/toggle#segmented-control) for what each platform draws.
-- **It fills the width it's given,** and the tabs share it. `class="flex-[2]"` on a trigger makes it wider.
+- **It fills the width it's given,** and the tabs share it equally. As in UIKit, a label gets nearly its whole tab, and one that still doesn't fit ends with "…". `class="flex-[2]"` on a trigger makes it wider.
 
 Apple's guidelines suggest a segmented control for views that belong together, and a [tab bar](/dolan/tab-bar) for separate sections of an app. Keep it to about five tabs on a phone.
 

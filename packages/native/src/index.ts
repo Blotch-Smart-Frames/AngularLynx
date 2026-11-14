@@ -27,6 +27,7 @@ import { startIosTarget } from './ios/run.ts';
 import { type NativeAppOptions, resolveAppOptions } from './options.ts';
 import { NativeBuildError } from './process.ts';
 import type { DevServerOptions, RunOptions } from './run.ts';
+import { splashWarnings } from './splash.ts';
 
 export type { Platform } from './generate.ts';
 export { EJECT_MARKER, copyBundle, prepareProject } from './generate.ts';
@@ -40,6 +41,7 @@ export type {
   Orientation,
   Permission,
   ResolvedApp,
+  SplashOptions,
 } from './options.ts';
 export { NativeConfigError, resolveAppOptions } from './options.ts';
 export { NativeBuildError } from './process.ts';
@@ -92,6 +94,8 @@ export type BuildNativeAppOptions = {
    */
   readonly devServer?: DevServerOptions;
   readonly log: (message: string) => void;
+  /** Where warnings go, such as an image too wide for Android's splash. */
+  readonly warn?: (message: string) => void;
 };
 
 /**
@@ -181,6 +185,14 @@ export const buildNativeApp = async (
         ? `Generated the ${platform} project`
         : `Reusing the generated ${platform} project (no config changes)`,
   );
+  // On every build, not only when the project is generated, so a warning
+  // isn't lost once the project is reused. An ejected project draws its
+  // splash from its own files.
+  if (!project.ejected) {
+    for (const warning of splashWarnings(app, projectRoot, platform)) {
+      (options.warn ?? log)(warning);
+    }
+  }
 
   // Where the app was built for, which a development build for a simulator
   // or a phone depends on as much as on the project.

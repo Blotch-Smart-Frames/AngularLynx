@@ -10,6 +10,7 @@ import {
   shortcutIdentifier,
 } from '../options.ts';
 import { PERMISSION_MAP } from '../permissions.ts';
+import { IOS_IMAGE_SET, writeIosSplash } from '../splash.ts';
 import { escapeXml, replaceMarker } from '../xml.ts';
 
 const ORIENTATIONS: Record<Orientation, readonly string[]> = {
@@ -28,8 +29,9 @@ const ORIENTATIONS: Record<Orientation, readonly string[]> = {
 /**
  * Writes the app options into the iOS template: build settings go in
  * Config/App.xcconfig (which App.xcodeproj reads), Info.plist entries go
- * between the template's `angular-lynx:info` markers, and the shortcuts
- * become App/AppShortcuts.swift.
+ * between the template's `angular-lynx:info` markers, the shortcuts
+ * become App/AppShortcuts.swift, and the icon and the splash go in the asset
+ * catalog.
  */
 export const iosGenerator: PlatformGenerator = {
   configure: (dir, app, projectRoot, development = false) => {
@@ -67,6 +69,8 @@ export const iosGenerator: PlatformGenerator = {
         path.join(dir, 'App/Assets.xcassets/AppIcon.appiconset/AppIcon.png'),
       );
     }
+
+    writeIosSplash(dir, app, projectRoot);
   },
   bundleDir: (dir) => path.join(dir, 'LynxBundle'),
 };
@@ -115,6 +119,20 @@ export const infoPlistEntries = (
     lines.push('</array>');
   };
 
+  // The launch screen: angular.json's splash, its color (LaunchBackground,
+  // white by default) and its image, if it has one, centered on the whole
+  // screen. LynxViewController draws the same over the app until the app
+  // hides it (SplashScreen.swift).
+  lines.push(
+    '<key>UILaunchScreen</key>',
+    '<dict>',
+    '\t<key>UIColorName</key>',
+    '\t<string>LaunchBackground</string>',
+    ...(app.splash.light.image
+      ? ['\t<key>UIImageName</key>', `\t<string>${IOS_IMAGE_SET}</string>`]
+      : []),
+    '</dict>',
+  );
   array('UISupportedInterfaceOrientations', ORIENTATIONS[app.orientation]);
   // Read by LynxViewController, which lays the LynxView out over the whole
   // screen or inside the safe area.

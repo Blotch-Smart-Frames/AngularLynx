@@ -1,0 +1,81 @@
+# LynxSplashScreen
+
+Keeps the app's splash screen, angular.json's [`splash`](/guide/native-apps#the-splash-screen), up until the app's first screen is ready, then fades it out. `import { LynxSplashScreen, provideSplashScreen, type SplashScreenOptions, type SplashScreenHide } from '@blotch/angular-lynx';`
+
+## Usage
+
+```typescript title="app.config.ts"
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideRouter(routes),
+    // Keeps the splash screen up until the first navigation ends (its
+    // guards and lazy routes resolved, its screen drawn), then fades it out.
+    provideSplashScreen({ hide: 'afterFirstNavigation' }),
+  ],
+};
+```
+
+An app whose first screen waits on something other than the router hides it itself:
+
+```typescript
+provideSplashScreen({ hide: 'manual' });
+
+// Once the app's first screen is ready:
+inject(LynxSplashScreen).hide();
+```
+
+The phone takes a splash screen down as soon as the app draws its first frame. In an AngularLynx app that frame would be empty: the app hasn't run yet, and its first screen may have work to do before it can draw, such as restoring a signed-in session from [`LynxSecureStorage`](/api/angular-lynx/persistent-storage) or running a lazy route's guard. So the apps `ng build --platform` makes keep it up until the app hides it here.
+
+| Host                                                           | What `hide()` does                                                     |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| iOS and Android (`ng build --platform`, `ng serve --platform`) | Fades the splash screen out once what the app has drawn is on screen   |
+| Web preview, Lynx Explorer                                     | Sets `visible()` to `false`: there's no splash screen of the app's own |
+| Unit tests ([testing library](/api/testing-library/))          | Sets `visible()` to `false`, which a spec can check                    |
+
+## API
+
+### `provideSplashScreen()`
+
+```typescript
+function provideSplashScreen(
+  options?: SplashScreenOptions,
+): EnvironmentProviders;
+
+type SplashScreenOptions = {
+  readonly hide?: SplashScreenHide;
+};
+
+type SplashScreenHide = 'afterFirstNavigation' | 'manual';
+```
+
+Says when the splash screen goes. Without it, it goes at the first frame Angular draws.
+
+| `hide`                             | The splash screen goes                                                                                                                                                                                                        |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `'afterFirstNavigation'` (default) | Once the router's first navigation has ended, its guards and resolvers run and its lazy routes loaded, and its screen is drawn. A guard's redirect is followed to the screen it leads to. A navigation that fails ends it too |
+| `'manual'`                         | When the app calls `LynxSplashScreen.hide()`                                                                                                                                                                                  |
+
+`'afterFirstNavigation'` needs the router: it throws without `provideRouter()`.
+
+### `LynxSplashScreen`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxSplashScreen {
+  readonly visible: Signal<boolean>;
+  hide(): void;
+}
+```
+
+| Member    | Description                                                                                                    |
+| --------- | -------------------------------------------------------------------------------------------------------------- |
+| `visible` | Whether the splash screen is still up: `true` until `hide()` is called, by the app or the runtime              |
+| `hide()`  | Fades the splash screen out, once the changes the app has made so far are drawn. Calling it again does nothing |
+
+The apps also take the splash screen down five seconds after they start, whether or not the app has hidden it, so a first screen that never settles can't leave the app behind its logo.
+
+## Related
+
+- [The splash screen](/guide/native-apps#the-splash-screen): the `splash` option
+- [Splash screen example](/examples/splash-screen)
+- [Know when the first screen is drawn](/guide/embedding/#know-when-the-first-screen-is-drawn), in an app of your own

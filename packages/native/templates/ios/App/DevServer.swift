@@ -185,6 +185,9 @@ final class DevServer {
       status.text = message
       statusScreen.isHidden = false
       statusScreen.superview?.bringSubviewToFront(statusScreen)
+      // The launch screen's copy makes way for the message, rather than
+      // hide it until it times out (SplashScreen.swift).
+      SplashScreen.shared.hide()
     }
   #endif
 }

@@ -141,6 +141,7 @@ export const runApplication = async function* (
         app: options,
         run: options.run ? { device: options.device } : undefined,
         log: (message) => context.logger.info(message),
+        warn: (message) => context.logger.warn(message),
       });
       for (const artifact of artifacts) {
         context.logger.info(

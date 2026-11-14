@@ -177,6 +177,41 @@
       "type": "string",
       "description": "The app icon: a 1024×1024 PNG without transparency, relative to the project root. iOS uses it as it is; Android gets it at each screen density, round, and as an adaptive icon."
     },
+    "splash": {
+      "type": "object",
+      "description": "The launch screen, from the tap on the app's icon until the app's first screen is ready: an image centered on a color. The runtime's provideSplashScreen() says when it hides.",
+      "additionalProperties": false,
+      "properties": {
+        "image": {
+          "type": "string",
+          "description": "A PNG with transparency, relative to the project root, drawn centered. Without one, iOS shows the color alone and Android the launcher icon."
+        },
+        "imageWidth": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "The image's width on screen in points and dp, needed with image. Give the PNG at least three times as many pixels. Android shows the image inside a circle 192 dp across, and draws one whose corners reach past it smaller."
+        },
+        "backgroundColor": {
+          "type": "string",
+          "description": "The color behind the image, also painted behind the app (#RRGGBB or #RGB). Defaults to white, and on Android, to black in dark mode."
+        },
+        "dark": {
+          "type": "object",
+          "description": "The image and the color in dark mode. Each defaults to the light one.",
+          "additionalProperties": false,
+          "properties": {
+            "image": {
+              "type": "string",
+              "description": "A PNG with transparency, drawn at the same imageWidth."
+            },
+            "backgroundColor": {
+              "type": "string",
+              "description": "#RRGGBB or #RGB."
+            }
+          }
+        }
+      }
+    },
     "permissions": {
       "type": "object",
       "description": "Each permission the app uses, with the reason shown to the user.",

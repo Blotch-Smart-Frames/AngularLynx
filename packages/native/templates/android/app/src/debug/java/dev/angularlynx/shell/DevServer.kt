@@ -150,6 +150,12 @@ object DevServer {
         }
     }
 
+    /**
+     * Whether a message is on screen, such as that the dev server can't be
+     * reached: the splash screen makes way for it (MainActivity).
+     */
+    fun isShowingMessage(): Boolean = status?.visibility == View.VISIBLE
+
     private fun show(message: String) {
         val status = status ?: return
         status.text = message

@@ -21,4 +21,6 @@ object DevServer {
     fun remoteUrl(url: String): String? = null
 
     fun loaded(url: String, error: Throwable?) = Unit
+
+    fun isShowingMessage(): Boolean = false
 }

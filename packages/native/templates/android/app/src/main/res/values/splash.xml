@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      The splash screen's image (themes.xml): the launcher icon, as Android 12
+      shows by default. With angular.json's splash.image, the generator
+      deletes this file and writes drawable-*/splash_icon.png instead.
+    -->
+    <drawable name="splash_icon">@mipmap/ic_launcher</drawable>
+</resources>

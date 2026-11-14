@@ -18,6 +18,7 @@ describe('resolveAppOptions', () => {
       canOpenURLSchemes: ['http', 'https', 'mailto', 'tel', 'sms'],
       shortcuts: [],
       icon: undefined,
+      splash: { light: {}, dark: {} },
       productName: 'myapp',
       artifactName: 'my-app',
       ios: {},
@@ -334,6 +335,76 @@ describe('resolveAppOptions', () => {
         'android.adaptiveIcon needs icon too: Android 7 shows the flat icon made from it.',
       ),
     );
+  });
+
+  describe('splash', () => {
+    const splash = (options: object) =>
+      resolveAppOptions({ splash: options }, defaults).splash;
+
+    it('gives dark mode the light image and color it leaves out', () => {
+      expect(
+        splash({
+          image: 'splash.png',
+          imageWidth: 200,
+          backgroundColor: '#FFFFFF',
+        }),
+      ).toEqual({
+        imageWidth: 200,
+        light: { image: 'splash.png', backgroundColor: '#FFFFFF' },
+        dark: { image: 'splash.png', backgroundColor: '#FFFFFF' },
+      });
+      expect(
+        splash({
+          image: 'splash.png',
+          imageWidth: 200,
+          backgroundColor: '#fff',
+          dark: { image: 'splash-dark.png', backgroundColor: '#09090B' },
+        }),
+      ).toEqual({
+        imageWidth: 200,
+        light: { image: 'splash.png', backgroundColor: '#fff' },
+        dark: { image: 'splash-dark.png', backgroundColor: '#09090B' },
+      });
+    });
+
+    it('takes a color alone, for either mode', () => {
+      expect(splash({ dark: { backgroundColor: '#000' } })).toEqual({
+        light: { image: undefined, backgroundColor: undefined },
+        dark: { image: undefined, backgroundColor: '#000' },
+      });
+    });
+
+    it.each([
+      [
+        { image: 'splash.jpg', imageWidth: 100 },
+        'splash.image "splash.jpg" is not a PNG file',
+      ],
+      [
+        { image: 'a.png', imageWidth: 100, dark: { image: 'a.svg' } },
+        'splash.dark.image "a.svg" is not a PNG file',
+      ],
+      [
+        { backgroundColor: 'white' },
+        'splash.backgroundColor "white" is not a color',
+      ],
+      [
+        { dark: { backgroundColor: '#12345' } },
+        'splash.dark.backgroundColor "#12345" is not a color',
+      ],
+      [
+        { dark: { image: 'dark.png' } },
+        'splash.dark.image needs splash.image too',
+      ],
+      [{ image: 'a.png' }, 'splash.imageWidth is missing'],
+      [{ image: 'a.png', imageWidth: 0 }, 'splash.imageWidth 0 is not valid'],
+      [
+        { image: 'a.png', imageWidth: '200' },
+        'splash.imageWidth 200 is not valid',
+      ],
+      [{ imageWidth: 200 }, 'splash.imageWidth needs splash.image'],
+    ])('rejects %j', (options, message) => {
+      expect(() => splash(options)).toThrow(message);
+    });
   });
 
   it('accepts the two .ipa export methods and rejects any other', () => {

@@ -100,7 +100,7 @@ Read [http-requests.md](references/http-requests.md)
 
 ## Build Configuration
 
-`ng build` / `ng serve` / `ng test` run the `@blotch/angular-lynx-build` builders, configured in `angular.json`; `optimization` picks a production or development build, and `budgets` are enforced. `lynx.config.ts` is optional (import `defineConfig` from `@blotch/angular-lynx-build`). `pluginAngularLynx()` handles Angular compilation, entry splitting (main + background bundles), and CSS scoping. Dev server with QR code for Lynx Explorer; `ng serve --platform ios|android` opens the app's own development build loading from it.
+`ng build` / `ng serve` / `ng test` run the `@blotch/angular-lynx-build` builders, configured in `angular.json`; `optimization` picks a production or development build, and `budgets` are enforced. `lynx.config.ts` is optional (import `defineConfig` from `@blotch/angular-lynx-build`). `pluginAngularLynx()` handles Angular compilation, entry splitting (main + background bundles), and CSS scoping. Dev server with QR code for Lynx Explorer; `ng serve --platform ios|android` opens the app's own development build loading from it. Native options (`appId`, `icon`, `splash`, ...) live in the build target; `provideSplashScreen()` keeps the splash up until the first screen is ready.
 
 Read [build-configuration.md](references/build-configuration.md)
 

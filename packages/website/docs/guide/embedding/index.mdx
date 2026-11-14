@@ -231,6 +231,12 @@ The apps `ng build --platform` makes have one you can copy: `LinkingModule.swift
 
 The apps `ng build --platform` makes have one you can copy: `ShortcutsModule.swift`, whose `ShortcutCenter` the generated App Intents hand their shortcut to, and `ShortcutsModule.kt`, which `MainActivity` hands a shortcut's intent to. Both are in AngularLynx's `packages/native/templates`. Without the module, no shortcut ever reaches the page.
 
+## Know when the first screen is drawn
+
+[`LynxSplashScreen`](/api/angular-lynx/splash-screen) calls `hideSplashScreen()` on a native module named `AngularLynxShell`, with no arguments, once the page's first screen is drawn: at the first frame Angular commits, or when the page's [`provideSplashScreen()`](/api/angular-lynx/splash-screen#providesplashscreen) says. It's called at most once per load. To keep your own loading view over the LynxView until then, register the module with that method and take the view down when it's called, with a timeout of your own in case it never is.
+
+The apps `ng build --platform` makes have one you can copy: `ShellModule.swift`, with `SplashScreen.swift`, which keeps a copy of the launch screen over the LynxView, and `ShellModule.kt`, whose `MainActivity` keeps AndroidX's splash screen up. Both are in AngularLynx's `packages/native/templates`. Without the module, nothing is called.
+
 ## Let someone pick a photo
 
 [`LynxImagePicker`](/guide/image-picker) calls a native module named `AngularLynxImagePicker`. To use it in your own app, register one with a `pick(options, callback)` method:

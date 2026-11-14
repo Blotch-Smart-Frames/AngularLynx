@@ -1155,6 +1155,7 @@ describe('unit-test builder', () => {
       'orientation',
       'edgeToEdge',
       'icon',
+      'splash',
       'permissions',
       'deepLinkSchemes',
       'canOpenURLSchemes',

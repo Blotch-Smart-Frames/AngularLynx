@@ -64,7 +64,7 @@ export type PreparedProject = {
  * `<workDir>/<platform>`, or the user's ejected folder.
  *
  * Generation is skipped when a hash of every input (this package's version,
- * the template files, the app options and the icon images) matches the last run, so
+ * the template files, the app options and the icon and splash images) matches the last run, so
  * Xcode and Gradle keep their incremental state between builds. The bundle is
  * copied in on every build, because it changes on every build.
  *
@@ -199,7 +199,13 @@ const inputHash = ({
   // A missing file is hashed as such: generation then fails and says so.
   const { foreground, background } =
     (platform === 'android' && app.android.adaptiveIcon) || {};
-  for (const file of [app.icon, foreground, background]) {
+  for (const file of [
+    app.icon,
+    foreground,
+    background,
+    app.splash.light.image,
+    app.splash.dark.image,
+  ]) {
     if (file && !ICON_BACKGROUND_COLOR.test(file)) {
       const absolute = path.resolve(projectRoot, file);
       hash.update(existsSync(absolute) ? readFileSync(absolute) : 'missing');

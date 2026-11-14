@@ -2,6 +2,13 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- Lets the app draw at up to 120 fps on a ProMotion iPhone. Without it
+	     iOS holds an app's CADisplayLink and Core Animation to 60 fps there,
+	     while the system's own UI runs at 120, and Lynx animates through a
+	     CADisplayLink: every transition and drag ran at half the phone's
+	     rate. Lynx asks for 120 itself (the build's `preferredFps`). -->
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>

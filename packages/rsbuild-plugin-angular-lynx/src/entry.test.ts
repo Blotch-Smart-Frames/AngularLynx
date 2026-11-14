@@ -51,6 +51,7 @@ const entryOptions = {
   removeDescendantSelectorScope: false,
   targetSdkVersion: '3.0',
   enableSSR: false,
+  preferredFps: 'auto',
 } as any;
 
 /**
@@ -264,6 +265,12 @@ describe('applyEntry', () => {
     // The native main thread can't load a `0n`, so its scripts are rewritten.
     expect(pluginUses.some((u) => u.Plugin === ZeroBigIntLiteralsPlugin)).toBe(
       true,
+    );
+    // The frame rate the app chose goes to the plugin that writes it into
+    // the page config.
+    const angularUse = pluginUses.find((u) => u.name === 'lynx:angular')!;
+    expect(angularUse.args[0]).toEqual(
+      expect.objectContaining({ preferredFps: 'auto' }),
     );
   });
 

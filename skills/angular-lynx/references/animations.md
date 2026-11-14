@@ -161,3 +161,91 @@ Properties like `border-radius`, `font-size`, `letter-spacing` **cannot be anima
 - **Lynx-specific `frames(n)` easing** is available (like `steps()` with different semantics)
 - **Performance tip:** Set `overflow: hidden` on animated elements to reduce redraw region
 - **Respect Reduce Motion:** read `inject(LynxAccessibilitySettings).reduceMotion()` and swap slides and bounces for a fade or an instant change
+
+## Frame Rate
+
+Lynx doesn't hand animations to Core Animation or a compositor. It works out every frame of `animate()` and of CSS transitions itself, on the main thread, where Angular runs too (on iOS that's the UI thread). A frame the thread spends on something else is dropped, so:
+
+- **Animate `transform` and `opacity`.** Lynx skips layout for them, with a translate in `px` or `%`. `height`, `width`, colors, `filter`, and a translate in `rem`, `em`, `vw` or `vh` lay the page out again on every frame.
+- **Keep the main thread free while something moves:** build the next screen before its transition starts, not during it.
+- **Judge it on a phone.** The iOS Simulator and the Android emulator run on the Mac's CPU and hold 60 fps where a phone drops frames.
+
+On a ProMotion iPhone, apps that `ng build --platform ios` builds animate at up to 120 fps: the app's Info.plist has `CADisableMinimumFrameDurationOnPhone`, and the build asks Lynx for 120 (`preferredFps`, `'high'` by default). `pluginAngularLynx({ preferredFps: 'auto' })` in `lynx.config.ts` leaves it to the system, which holds an iPhone to 60. A host app that embeds a LynxView needs the Info.plist key itself. Android draws at the screen's rate either way.
+
+### Drags
+
+A drag sends a move for every frame the finger moves. A template listener has Angular run change detection after each one, and so does a signal the template reads. Listen for the moves in code, move the element from the handler, and set signals once the finger lets go:
+
+```typescript
+import {
+  Component,
+  ElementRef,
+  Renderer2,
+  effect,
+  inject,
+  output,
+  viewChild,
+} from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+type Touch = { touches: { clientY: number }[] };
+
+@Component({
+  selector: 'app-drawer',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view
+      #panel
+      (catchtouchstart)="start($event)"
+      (catchtouchend)="end()"
+      (catchtouchcancel)="end()"
+    >
+      <ng-content />
+    </view>
+  `,
+})
+export class Drawer {
+  readonly panel = viewChild.required<ElementRef>('panel');
+  readonly dismissed = output<void>();
+  readonly #renderer = inject(Renderer2);
+  #startY: number | null = null;
+  #offset = 0;
+
+  // In code, not `(catchtouchmove)`: Angular doesn't check the component after each move.
+  protected readonly listen = effect((onCleanup) => {
+    onCleanup(
+      this.#renderer.listen(
+        this.panel().nativeElement,
+        'catchtouchmove',
+        (event: Touch) => {
+          if (this.#startY === null) return;
+          this.#offset = Math.max(0, event.touches[0].clientY - this.#startY);
+          this.#moveTo(this.#offset);
+        },
+      ),
+    );
+  });
+
+  protected start(event: Touch): void {
+    this.#startY = event.touches[0].clientY;
+  }
+
+  protected end(): void {
+    this.#startY = null;
+    if (this.#offset > 100) this.dismissed.emit();
+    else this.#moveTo(0);
+    this.#offset = 0;
+  }
+
+  // The one place that sets the transform.
+  #moveTo(offset: number): void {
+    this.#renderer.setStyle(
+      this.panel().nativeElement,
+      'transform',
+      `translateY(${offset}px)`,
+    );
+  }
+}
+```
+
+Don't also bind a property the drag sets (`[style.transform]`): Angular only knows the values its own binding set, so a release that puts the bound value back where it was before the drag (a snap back) looks like no change to it, and the element stays where the finger last had it. `ui-bottom-sheet` sets its whole frame from code for this reason.

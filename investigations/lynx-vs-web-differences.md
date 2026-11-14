@@ -439,6 +439,32 @@ Give the element its starting look as an inline style in the turn that creates i
 
 ---
 
+## Animations run on the UI thread, beside Angular, at 60 fps on an iPhone unless the app asks for more
+
+### What you'd expect (web)
+
+A browser hands a `transform` or `opacity` animation to its compositor, which keeps it moving while the page's script is busy, at the screen's own rate (120 Hz on a ProMotion iPhone in Safari).
+
+### What Lynx does
+
+Lynx 4.1 doesn't hand `element.animate()` or a CSS `transition` to Core Animation. Its own animator, on by default (`enableNewAnimator`, `enable_new_animator_fiber`), works out each frame in C++ and writes the values to the native views itself. It runs on a `CADisplayLink` on the thread that runs main-thread scripts, which on iOS is the UI thread: `AllOnUI` is the only thread strategy iOS supports (`LynxViewEnum.h`), and Android's default is the same. AngularLynx runs Angular on that thread too. The display link pauses after each frame and restarts on the next request (`vsync_monitor_darwin.mm`), so a frame the thread spends on something else is a dropped frame, and a busy stretch drops every other one, 30 fps.
+
+Each frame of a `transform` (in px or %) or `opacity` skips layout. A `height`, `width`, color, `filter` or a translate in `rem`, `em`, `vw`, `vh` or `rpx` resolves styles and lays the page out again on every frame (`CSSStyleUtils::IsLayoutRelatedTransform`).
+
+On a ProMotion iPhone, iOS holds an app's `CADisplayLink` and Core Animation to 60 fps unless its Info.plist sets `CADisableMinimumFrameDurationOnPhone`, while the system's own UI runs at 120. Lynx only asks its display link for more than 60 with the page config `preferredFps: "high"` (`CAFrameRateRangeMake(30, 120, 120)`); its default, `"auto"`, asks for nothing.
+
+A touch move reaches a main-thread handler inside UIKit's `touchesMoved`, synchronously. A template listener has Angular check the component after every event, so a drag that sets signals runs a change detection pass, and a flush, for every frame the finger moves.
+
+On the iOS 27 Simulator the stack outlet's push and the bottom sheet's slide and drag hold 60 fps: the Mac's CPU has time to spare, so the Simulator can't show the difference. Judge smoothness on a phone. Found in November 2026, when a push and a sheet's drag looked like 30 fps on an iPhone 14 Pro.
+
+### What to do
+
+- `ng build --platform ios` apps set `CADisableMinimumFrameDurationOnPhone`, and the build writes `preferredFps: "high"` (`pluginAngularLynx({ preferredFps })` to choose another). A host app that embeds a LynxView needs the Info.plist key itself.
+- Animate `transform` (px or %) and `opacity`. Keep other work off the UI thread while a transition runs: build the next screen before it starts.
+- Drive a drag from code: listen for its moves with `Renderer2.listen()`, set the styles with `Renderer2.setStyle()`, and set the signals once the finger lets go. Own those styles in one place: Angular only knows the values its own `[style]` binding set, so with a binding on the same property, a drag that ended where it began left the element where the finger last had it. `ui-bottom-sheet` does this.
+
+---
+
 ## Lynx Explorer takes swipes from the left edge for its own Back
 
 ### What you'd expect (web)

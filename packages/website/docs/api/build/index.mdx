@@ -168,14 +168,15 @@ The builders use the plugin you list instead of adding their own. Import from `@
 
 **Build**
 
-| Option                      | Type                  | Default | Description                                                                                                                                                           |
-| --------------------------- | --------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pages`                     | `string[]` \| `'all'` | —       | Build these `angular.json` projects as separate pages, each with its own bundle. `'all'` builds every `application` project. See [Multi-page apps](/guide/multi-page) |
-| `intl`                      | `string[]`            | —       | The same as the [`intl` build option](#build-options), for an app whose `angular.json` build target isn't AngularLynx's. Replaces it when set                         |
-| `enableSSR`                 | `boolean`             | `false` | Support Lynx's snapshot SSR, which renders the first screen ahead of time. See the [SSR example](/examples/ssr)                                                       |
-| `targetSdkVersion`          | `string`              | `'3.2'` | The oldest Lynx engine version the bundle runs on                                                                                                                     |
-| `experimental_isLazyBundle` | `boolean`             | `false` | Experimental. Emit each lazy route and `@defer` block as its own lazy bundle, loaded at runtime. By default, they're built into the main bundle                       |
-| `debugInfoOutside`          | `boolean`             | `true`  | Write debug info to a separate file instead of into the bundle, which keeps the bundle smaller                                                                        |
+| Option                      | Type                            | Default  | Description                                                                                                                                                                                                                                      |
+| --------------------------- | ------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pages`                     | `string[]` \| `'all'`           | —        | Build these `angular.json` projects as separate pages, each with its own bundle. `'all'` builds every `application` project. See [Multi-page apps](/guide/multi-page)                                                                            |
+| `intl`                      | `string[]`                      | —        | The same as the [`intl` build option](#build-options), for an app whose `angular.json` build target isn't AngularLynx's. Replaces it when set                                                                                                    |
+| `enableSSR`                 | `boolean`                       | `false`  | Support Lynx's snapshot SSR, which renders the first screen ahead of time. See the [SSR example](/examples/ssr)                                                                                                                                  |
+| `targetSdkVersion`          | `string`                        | `'3.2'`  | The oldest Lynx engine version the bundle runs on                                                                                                                                                                                                |
+| `experimental_isLazyBundle` | `boolean`                       | `false`  | Experimental. Emit each lazy route and `@defer` block as its own lazy bundle, loaded at runtime. By default, they're built into the main bundle                                                                                                  |
+| `debugInfoOutside`          | `boolean`                       | `true`   | Write debug info to a separate file instead of into the bundle, which keeps the bundle smaller                                                                                                                                                   |
+| `preferredFps`              | `'high'` \| `'auto'` \| `'low'` | `'high'` | The frame rate Lynx asks for while it animates. `'high'` lets a ProMotion iPhone animate at 120 fps. `'auto'`, Lynx's own default, leaves an iPhone at 60 fps, and `'low'` animates at 30 at most. Android draws at the screen's rate either way |
 
 **CSS**
 
@@ -212,6 +213,7 @@ To run RSpeedy yourself, install `@blotch/rsbuild-plugin-angular-lynx` and impor
 | ---------------------------------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `pluginAngularLynx`                            | Function       | Creates the AngularLynx plugin. Takes the [plugin options](#plugin-options)                                      |
 | `PluginAngularLynxOptions`                     | Type           | The plugin options                                                                                               |
+| `PreferredFps`                                 | Type           | The values of the `preferredFps` option                                                                          |
 | `defineConfig`                                 | Function       | RSpeedy's config helper, for `lynx.config.ts`                                                                    |
 | `Config`                                       | Type           | RSpeedy's config type                                                                                            |
 | `pluginAngularCliContext`, `AngularCliContext` | Function, type | How the builders pass `angular.json`'s options to the plugin. Apps don't need them                               |

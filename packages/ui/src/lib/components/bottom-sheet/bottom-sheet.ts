@@ -4,6 +4,7 @@ import {
   Component,
   Directive,
   ElementRef,
+  Renderer2,
   ViewEncapsulation,
   computed,
   effect,
@@ -282,14 +283,14 @@ const layoutWidth = (event: unknown): number =>
       (bindrequestclose)="open.set(false)"
     >
       <!--
-        The mouse drag's move/up listeners sit on the full-screen backdrop,
-        not the handle: a touch keeps targeting the element it started on, but
+        The mouse drag's move/up listeners sit on the full-screen backdrop
+        (the move listener in code, see #listen), not the handle: a touch keeps targeting the element it started on, but
         a mouse event targets whatever is under the cursor, so a cursor that
         outruns the thin handle strip (or drags up off the panel) would stop
         driving the drag. Mouse events bubble here from anywhere in the sheet,
         including the handle and the panel. There's no mouseleave: like a
         touch, the drag carries on until release, and Chrome doesn't deliver
-        mouseleave to Lynx web anyway (see onMouseDragMove for a release
+        mouseleave to Lynx web anyway (see #onMouseDragMove for a release
         outside the view).
       -->
       <view
@@ -298,7 +299,6 @@ const layoutWidth = (event: unknown): number =>
         [style]="backdropStyle()"
         (bindtap)="onBackdropTap()"
         (bindmousedown)="onBackdropMouseDown()"
-        (bindmousemove)="onMouseDragMove($event)"
         (bindmouseup)="onDragEnd()"
         (bindlayoutchange)="onScreenLayout($event)"
       >
@@ -314,7 +314,6 @@ const layoutWidth = (event: unknown): number =>
           [style]="panelStyle()"
           [accessibility-exclusive-focus]="overlayVisible()"
           (catchtap)="onPanelTap()"
-          (bindlayoutchange)="onPanelLayout($event)"
         >
           @if (look() === 'glass') {
             <!-- Behind the handle and the content: Lynx paints in source
@@ -329,18 +328,23 @@ const layoutWidth = (event: unknown): number =>
               class="h-full w-full absolute left-0 top-0"
               [style.visibility]="glassVisibility()"
             ></blur-view>
-            <view class="bg-background absolute" [style]="opaqueStyle()"></view>
+            <view
+              #opaque
+              class="bg-background absolute"
+              [style]="opaqueStyle()"
+            ></view>
           }
           <!-- The handle and the content, which fade in as the sheet grows
                out of the control that presents it. -->
           <view class="grow flex-col flex" [style]="contentStyle()">
+            <!-- Its touchmove is listened for in code (see #listen). -->
             <view
+              #handle
               [class]="handleClass()"
               [accessibility-element]="resizable()"
               [attr.accessibility-traits]="resizable() ? 'button' : null"
               [attr.accessibility-label]="resizable() ? 'Sheet grabber' : null"
               (catchtouchstart)="onHandleTouchStart($event)"
-              (catchtouchmove)="onHandleTouchMove($event)"
               (catchtouchend)="onDragEnd()"
               (catchtouchcancel)="onDragEnd()"
               (catchmousedown)="onHandleMouseDown($event)"
@@ -409,6 +413,10 @@ export class UiBottomSheet implements OnDestroy {
   // removed), and nothing reads them before the first render.
   readonly backdropRef = viewChild.required<ElementRef>('backdrop');
   readonly panelRef = viewChild.required<ElementRef>('panel');
+  readonly handleRef = viewChild.required<ElementRef>('handle');
+  // Only a glass sheet has the opaque layer.
+  readonly opaqueRef = viewChild<ElementRef>('opaque');
+  readonly #renderer = inject(Renderer2);
   #backdropAnim?: AnimationHandle;
   #panelAnim?: AnimationHandle;
   #hasBeenOpen = false;
@@ -455,10 +463,16 @@ export class UiBottomSheet implements OnDestroy {
   #settleRun = 0;
 
   // --- Drag-to-dismiss state ---
-  // Live downward drag distance (px) past the smallest detent, applied to the
-  // panel as a translateY via `panelStyle()` so the sheet tracks the finger
-  // in real time.
+  // Downward drag distance (px) past the smallest detent, applied to the
+  // panel as a translateY (see #panelFrame).
   protected readonly dragOffset = signal(0);
+  // The height and drag offset while the finger moves, which the sheet draws
+  // itself on every move (see #moveDrag), and which #height and dragOffset
+  // take once it lets go. Null outside a drag.
+  #live: { readonly height: number | null; readonly offset: number } | null =
+    null;
+  // The styles #paint last wrote on each element, which it alone writes.
+  readonly #painted = new WeakMap<object, Map<string, string>>();
   // Screen Y where the current drag began; the delta from here drives the
   // drag.
   #dragStartY = 0;
@@ -540,24 +554,34 @@ export class UiBottomSheet implements OnDestroy {
    * from the tallest detent below the large one to the large one. It sets
    * the glass sheet's inset and how opaque it is, so both follow a drag.
    */
-  protected readonly progress = computed(() => {
+  protected readonly progress = computed(() =>
+    this.#progressAt(this.#height()),
+  );
+
+  /**
+   * The progress (see `progress`) at a height, null for the content's: a
+   * drag's as well as the sheet's at rest.
+   */
+  #progressAt(height: number | null): number {
     const large = this.#largeHeight();
     if (large <= 0) return 0;
-    const height = this.#currentHeight();
-    if (height >= large) return 1;
+    const current = height ?? this.#detentHeight('fit');
+    if (current >= large) return 1;
     const partial = Math.max(
       0,
       ...this.#detentList()
         .filter((detent) => detent !== 'large')
         .map((detent) => this.#detentHeight(detent)),
     );
-    return Math.max(0, (height - partial) / (large - partial));
-  });
+    return Math.max(0, (current - partial) / (large - partial));
+  }
 
-  /** A glass sheet's inset from the screen's sides and bottom. */
-  readonly #inset = computed(() =>
-    this.look() === 'glass' ? GLASS_INSET * (1 - this.progress()) : 0,
-  );
+  /**
+   * A glass sheet's inset from the screen's sides and bottom, at a progress.
+   */
+  #insetAt(progress: number): number {
+    return this.look() === 'glass' ? GLASS_INSET * (1 - progress) : 0;
+  }
 
   readonly #reduceMotion = computed(() => this.#settings.reduceMotion());
 
@@ -627,30 +651,12 @@ export class UiBottomSheet implements OnDestroy {
     cn('rounded-full', GRABBER_CLASS[this.look()]),
   );
 
-  // Docked at the bottom, full width (a glass sheet inset from both); its
-  // height, when it's at a detent other than its content's or being
-  // dragged; and `translateY(dragOffset)` layers the live dismiss drag on top
-  // so the sheet follows the finger. The open/close slide animations run via
-  // element.animate() and override this transform while they play (see
-  // #animateIn/#animateOut), then hand back to it once canceled. Settling at
-  // a detent transitions the frame, which iOS's glass follows.
+  // The panel's styles other than its frame, which the sheet sets itself
+  // (see #panelFrame). Settling at a detent transitions the frame, which
+  // iOS's glass follows.
   protected readonly panelStyle = computed(() => {
-    const inset = this.#inset();
-    const height = this.#height();
-    const offset = this.#presented() ? `${this.dragOffset()}px` : '110%';
-    // Growing out of the control that presents it, or shrinking back into
-    // it, the sheet starts from the control's frame, or ends at it.
     const source = this.#sourceFrame();
-    const styles = source
-      ? [
-          `position: absolute; bottom: ${source.bottom}px; left: ${source.left}px; right: ${source.right}px;`,
-          `transform: translateY(0px); height: ${source.height}px;`,
-        ]
-      : [
-          `position: absolute; bottom: ${inset}px; left: ${inset}px; right: ${inset}px;`,
-          `transform: translateY(${offset});`,
-        ];
-    if (!source && height !== null) styles.push(`height: ${height - inset}px;`);
+    const styles = ['position: absolute;'];
     if (this.look() === 'material') {
       styles.push(`box-shadow: ${MATERIAL_ELEVATION};`);
     }
@@ -679,10 +685,11 @@ export class UiBottomSheet implements OnDestroy {
 
   /**
    * The opaque layer a glass sheet turns into as it reaches full height: it
-   * fades in over the glass with the sheet's progress. Its bottom corners
-   * square off once the sheet rests at full height, where it meets the
-   * screen's bottom edge: Lynx can't animate a radius, and on an iPhone the
-   * display's rounder corners hide the change.
+   * fades in over the glass with the sheet's progress (its opacity, which the
+   * sheet sets itself, see #paintFrame). Its bottom corners square off once
+   * the sheet rests at full height, where it meets the screen's bottom edge:
+   * Lynx can't animate a radius, and on an iPhone the display's rounder
+   * corners hide the change.
    */
   protected readonly opaqueStyle = computed(() => {
     const progress = this.progress();
@@ -694,39 +701,157 @@ export class UiBottomSheet implements OnDestroy {
         : 'none';
     return [
       'left: -1px; right: -1px; top: -1px; bottom: -1px;',
-      `opacity: ${progress};`,
       `border-top-left-radius: ${radius}px; border-top-right-radius: ${radius}px;`,
       `border-bottom-left-radius: ${bottom}px; border-bottom-right-radius: ${bottom}px;`,
       `transition: ${transition};`,
     ].join(' ');
   });
 
-  // Backdrop scrim dimmed in tandem with the sheet's reveal: full dim while
-  // docked (dragOffset 0), lightening as the handle is dragged down so the
-  // content behind shows through progressively. Driven through the same live
-  // `[style]` path as panelStyle — dragOffset updates on the drag's
-  // background thread, and inline styles reflect there (unlike element.animate()
-  // opacity tweens, which the open/close fade uses on the main thread instead).
-  // The alpha lives in the background-color rather than the element's opacity so
-  // it composes cleanly with the fadeIn/fadeOut opacity animations without the
-  // two mechanisms fighting over the same property. Clear until the sheet is
-  // presented.
-  //
   // A sheet growing out of its control, or shrinking back into it, dims
-  // the backdrop through this color, with a transition, rather than fading
-  // the backdrop itself in and out: the panel is in the backdrop, and on
-  // screen meanwhile, and glass under a fading parent would vanish with it,
-  // or draw washed out.
+  // the backdrop through its color (see #backdropColor), with a transition,
+  // rather than fading the backdrop itself in and out: the panel is in the
+  // backdrop, and on screen meanwhile, and glass under a fading parent would
+  // vanish with it, or draw washed out.
   protected readonly backdropStyle = computed(() => {
     const motion = this.#motion();
-    const revealed =
-      this.#presented() && motion !== 'shrink'
-        ? Math.max(0, 1 - this.dragOffset() / BACKDROP_CLEAR_DISTANCE)
-        : 0;
-    const color = `background-color: rgba(0, 0, 0, ${BACKDROP_DIM[this.look()] * revealed});`;
     return this.#sourceFrame() || motion === 'grow' || motion === 'shrink'
-      ? `${color} transition: background-color ${DURATION.normal}ms ${EASING.standard};`
-      : color;
+      ? `transition: background-color ${DURATION.normal}ms ${EASING.standard};`
+      : '';
+  });
+
+  /**
+   * Draws the sheet's frame where its height and drag offset put it: the
+   * panel's place and size, the backdrop's dim, and a glass sheet's opaque
+   * layer. The sheet sets these styles itself, not through `[style]`, so
+   * that a drag can set them on every move without Angular checking the
+   * sheet each time (see #moveDrag). Angular only knows the values it set
+   * itself, so with a binding on them too, a drag ending where it began
+   * would have left the panel wherever the finger last was.
+   *
+   * It reads both signals first, so it runs again when they change, and
+   * draws the drag's values while a drag has them.
+   */
+  protected readonly paintFrame = effect(() => {
+    const height = this.#height();
+    const offset = this.dragOffset();
+    const live = this.#live;
+    this.#paintFrame(live ? live.height : height, live ? live.offset : offset);
+  });
+
+  #paintFrame(height: number | null, offset: number): void {
+    this.#paint(
+      this.panelRef().nativeElement,
+      this.#panelFrame(height, offset),
+    );
+    this.#paint(this.backdropRef().nativeElement, {
+      'background-color': this.#backdropColor(offset),
+    });
+    const opaque = this.opaqueRef()?.nativeElement;
+    if (opaque) {
+      this.#paint(opaque, { opacity: String(this.#progressAt(height)) });
+    }
+  }
+
+  /**
+   * Docked at the bottom, full width (a glass sheet inset from both); its
+   * height, when it's at a detent other than its content's or being
+   * dragged; and `translateY(offset)` layers the dismiss drag on top so the
+   * sheet follows the finger. The open/close slide animations run via
+   * element.animate() and override this transform while they play (see
+   * #animateIn/#animateOut), then hand back to it once canceled. Growing out
+   * of the control that presents it, or shrinking back into it, the sheet
+   * starts from the control's frame, or ends at it.
+   */
+  #panelFrame(
+    height: number | null,
+    offset: number,
+  ): Record<string, string | null> {
+    const source = this.#sourceFrame();
+    if (source) {
+      return {
+        bottom: `${source.bottom}px`,
+        left: `${source.left}px`,
+        right: `${source.right}px`,
+        transform: 'translateY(0px)',
+        height: `${source.height}px`,
+      };
+    }
+    const inset = this.#insetAt(this.#progressAt(height));
+    return {
+      bottom: `${inset}px`,
+      left: `${inset}px`,
+      right: `${inset}px`,
+      transform: `translateY(${this.#presented() ? `${offset}px` : '110%'})`,
+      height: height === null ? null : `${height - inset}px`,
+    };
+  }
+
+  /**
+   * The backdrop's dim, in tandem with the sheet's reveal: full while docked
+   * (offset 0), lightening as the handle is dragged down so the content
+   * behind shows through progressively. The alpha lives in the
+   * background-color rather than the element's opacity so it composes
+   * cleanly with the fadeIn/fadeOut opacity animations without the two
+   * fighting over the same property. Clear until the sheet is presented.
+   */
+  #backdropColor(offset: number): string {
+    const revealed =
+      this.#presented() && this.#motion() !== 'shrink'
+        ? Math.max(0, 1 - offset / BACKDROP_CLEAR_DISTANCE)
+        : 0;
+    return `rgba(0, 0, 0, ${BACKDROP_DIM[this.look()] * revealed})`;
+  }
+
+  /**
+   * Sets the styles of `element` that changed since it last set them, and
+   * removes those that are now null.
+   */
+  #paint(element: object, styles: Record<string, string | null>): void {
+    let painted = this.#painted.get(element);
+    if (!painted) {
+      painted = new Map();
+      this.#painted.set(element, painted);
+    }
+    for (const [name, value] of Object.entries(styles)) {
+      if (value === null) {
+        if (painted.delete(name)) this.#renderer.removeStyle(element, name);
+      } else if (painted.get(name) !== value) {
+        painted.set(name, value);
+        this.#renderer.setStyle(element, name, value);
+      }
+    }
+  }
+
+  /**
+   * Listens for a drag's moves, and the panel's layout, in code rather than
+   * in the template. Angular checks a component after every event a template
+   * listens for, and a drag sends one for every frame the finger moves (and
+   * the panel a layout change, as its height follows the finger). The sheet
+   * draws a move itself (see #moveDrag), and Angular hears of the drag once
+   * the finger lets go.
+   */
+  protected readonly listen = effect((onCleanup) => {
+    const removers = [
+      this.#renderer.listen(
+        this.handleRef().nativeElement,
+        'catchtouchmove',
+        (event: { touches?: ReadonlyArray<{ clientY: number }> }) =>
+          this.#onHandleTouchMove(event),
+      ),
+      this.#renderer.listen(
+        this.backdropRef().nativeElement,
+        'bindmousemove',
+        (event: { y: number; buttons: number }) => this.#onMouseDragMove(event),
+      ),
+      this.#renderer.listen(
+        this.panelRef().nativeElement,
+        'bindlayoutchange',
+        (event: unknown) => this.#onPanelLayout(event),
+      ),
+    ];
+    onCleanup(() => {
+      for (const remove of removers) remove();
+    });
   });
 
   protected onScreenLayout(event: unknown): void {
@@ -742,8 +867,9 @@ export class UiBottomSheet implements OnDestroy {
    * The panel's height at its content's height, the fit detent. Ignored
    * while the panel has a height of its own.
    */
-  protected onPanelLayout(event: unknown): void {
-    if (this.#height() === null && this.#sourceFrame() === null) {
+  #onPanelLayout(event: unknown): void {
+    const height = this.#live ? this.#live.height : this.#height();
+    if (height === null && this.#sourceFrame() === null) {
       this.#fitHeight.set(layoutHeight(event));
     }
   }
@@ -813,7 +939,7 @@ export class UiBottomSheet implements OnDestroy {
     this.#startDrag(y);
   }
 
-  protected onHandleTouchMove(e: {
+  #onHandleTouchMove(e: {
     touches?: ReadonlyArray<{ clientY: number }>;
   }): void {
     if (!this.#isDragging) return;
@@ -837,10 +963,10 @@ export class UiBottomSheet implements OnDestroy {
   }
 
   /**
-   * Bound on the backdrop (see the template), so it also sees every move the
+   * Listened for on the backdrop (see #listen), so it also sees every move the
    * cursor makes over an open sheet. Only those during a drag count.
    */
-  protected onMouseDragMove(e: { y: number; buttons: number }): void {
+  #onMouseDragMove(e: { y: number; buttons: number }): void {
     if (!this.#isDragging) return;
     // No button held means the mouseup happened where the sheet couldn't see
     // it: a release outside the Lynx view (past the edge of a docs preview, or
@@ -867,6 +993,7 @@ export class UiBottomSheet implements OnDestroy {
   protected onDragEnd(): void {
     if (!this.#isDragging) return;
     this.#isDragging = false;
+    this.#commitDrag();
     this.#ignoreNextTap = this.#mouseDragMoved;
     const offset = this.dragOffset();
     if (offset > DISMISS_THRESHOLD) {
@@ -881,10 +1008,12 @@ export class UiBottomSheet implements OnDestroy {
 
   /**
    * The open slideIn holds the panel at translateY(0%) via fill:'forwards',
-   * which would override our inline transform — cancel it so `dragOffset`
-   * (applied through panelStyle) actually moves the panel from here on.
+   * which would override our inline transform — cancel it so the drag
+   * (applied through #panelFrame) actually moves the panel from here on.
    */
   #startDrag(y: number): void {
+    // A drag whose release never came hands its place on first.
+    this.#commitDrag();
     this.#panelAnim?.cancel();
     this.#isDragging = true;
     this.#mouseDragMoved = false;
@@ -904,13 +1033,29 @@ export class UiBottomSheet implements OnDestroy {
     const shortest = this.#detentHeight(ordered[0]);
     const tallest = this.#detentHeight(ordered[ordered.length - 1]);
     const target = this.#dragFrom - (y - this.#dragStartY);
-    if (target > shortest && tallest > shortest) {
-      this.#height.set(Math.min(target, tallest));
-      this.dragOffset.set(0);
-    } else {
-      this.#height.set(this.#restingHeight(ordered[0]));
-      this.dragOffset.set(Math.max(0, shortest - target));
-    }
+    this.#live =
+      target > shortest && tallest > shortest
+        ? { height: Math.min(target, tallest), offset: 0 }
+        : {
+            height: this.#restingHeight(ordered[0]),
+            offset: Math.max(0, shortest - target),
+          };
+    // Drawn now, in this move's frame, rather than through #height and
+    // dragOffset: Angular would check the sheet for every move, a task later.
+    this.#paintFrame(this.#live.height, this.#live.offset);
+  }
+
+  /**
+   * Hands the drag's height and offset to #height and dragOffset, which
+   * everything else reads, as the finger lets go. The sheet already shows
+   * them, so this draws nothing new.
+   */
+  #commitDrag(): void {
+    const live = this.#live;
+    if (!live) return;
+    this.#live = null;
+    this.#height.set(live.height);
+    this.dragOffset.set(live.offset);
   }
 
   /**
@@ -1171,6 +1316,9 @@ export class UiBottomSheet implements OnDestroy {
    * before the fade finishes.
    */
   #doClose(): void {
+    // Closed mid-drag (by Android's back button, say): from where the finger
+    // has it.
+    this.#commitDrag();
     const sequence = ++this.#sequence;
     this.#later(() => {
       // A sheet dragged down goes on down, from the finger.
@@ -1333,7 +1481,7 @@ export class UiBottomSheet implements OnDestroy {
           { duration: DURATION.fast, easing: EASING.spring, fill: 'forwards' },
         );
     // Match the inline transform to the animation's resting state so the two
-    // agree once fill:'forwards' hands control back to the style binding.
+    // agree once fill:'forwards' hands control back to it (see paintFrame).
     this.dragOffset.set(0);
   }
 }

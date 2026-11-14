@@ -4,7 +4,11 @@ Angular renderer for [Lynx](https://lynxjs.org/) — a cross-platform native UI 
 
 ## Architecture
 
-Lynx uses a dual-thread model: **main thread** (native UI rendering) and **background thread** (JS execution/layout). Elements are manipulated via global `__*` functions (`__CreateElement`, `__AppendElement`, `__SetAttribute`, `__AddInlineStyle`, `__AddEvent`, `__RemoveElement`, etc.) instead of browser DOM. Native elements: `view`, `text`, `image`, `scroll-view`, `list`, `block`, `if`, `for`.
+Lynx runs JavaScript on two threads. The **main thread** owns the element tree: it creates and changes elements with global `__*` functions (`__CreateElement`, `__AppendElement`, `__SetAttribute`, `__AddInlineStyle`, `__AddEvent`, `__RemoveElement`, etc.) instead of a browser DOM. The **background thread** has the APIs the main thread lacks (`NativeModules`, `fetch`), and is where React Lynx runs React. Native elements: `view`, `text`, `image`, `scroll-view`, `list`, `block`, `if`, `for`.
+
+**AngularLynx runs the whole Angular app on the main thread:** components, change detection, event handlers and the element calls. The background thread runs only module-level code and the bridges to its APIs (`callOnBackground()`, `backgroundFn()`). It used to boot a second copy of the app that nothing read, which ran every constructor and `effect()` twice, so issue #81 removed it. See `packages/runtime/CLAUDE.md` and the `lynx-architecture` skill.
+
+The main thread's JavaScript runs on Lynx's engine thread, along with layout and Lynx's animator (`element.animate()` and CSS transitions). In the thread mode the app shells use, Lynx's default (`AllOnUI`), that's also the platform's UI thread. So a frame Angular spends working is a frame nothing animates, and an animation can't run on while Angular builds a screen.
 
 ## Monorepo Structure
 

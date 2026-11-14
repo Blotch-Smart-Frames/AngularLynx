@@ -103,7 +103,9 @@ const FRAME = 16;
 const CLOSED = STEPS + 2 * FRAME + DURATION.normal + 20;
 
 /**
- * A timing function as the DOM writes it back: `0.0` as `0`.
+ * A timing function with `0.0` written as `0`. jsdom 31 writes a `transition`
+ * back that way and jsdom 30, which `ng new` installs, keeps it as it was set,
+ * so the tests put both what they expect and what they read in this form.
  */
 const css = (easing: string) => easing.replace(/\b0\.0\b/g, '0');
 
@@ -164,10 +166,11 @@ const transformOf = (panel: Element) =>
   (panel as HTMLElement).style.getPropertyValue('transform');
 
 /**
- * One of an element's inline styles.
+ * One of an element's inline styles, with its timing functions as `css()`
+ * writes them.
  */
 const style = (element: Element, property: string) =>
-  (element as HTMLElement).style.getPropertyValue(property);
+  css((element as HTMLElement).style.getPropertyValue(property));
 
 /**
  * The touch fields a handle's touch event carries.

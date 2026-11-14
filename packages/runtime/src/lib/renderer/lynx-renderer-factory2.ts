@@ -17,6 +17,7 @@ import {
   processPendingTextNormalization,
 } from '../lynx-element';
 import {
+  isBindingListItem,
   isFirstRenderPending,
   setInsideChangeDetection,
 } from '../lynx-render-lifecycle';
@@ -119,6 +120,13 @@ export class LynxRendererFactory2 implements RendererFactory2 {
    * In development builds, the cycle's duration, timed from begin(), is
    * recorded on every return path, the flush included: it's how long the
    * cycle kept the main thread busy.
+   *
+   * The cycle of a `*lynxListFor` item that a list's componentAtIndex is
+   * building (see bindListItem) commits its queued work too, and updates any
+   * list inside the item, but leaves the flush to componentAtIndex: its flush
+   * of the item, tagged with native's operation id, is the one native waits
+   * for, and a full flush here would re-enter native's layout pass. The UI
+   * method calls wait for the flush after it (see settleAfterListItems).
    */
   end?(): void {
     try {
@@ -167,6 +175,10 @@ export class LynxRendererFactory2 implements RendererFactory2 {
       // post-renderPage flush — same rationale as processPendingRemovals
       // above.
       processPendingTextNormalization();
+      if (isBindingListItem()) {
+        processPendingListUpdates();
+        return;
+      }
       if (!isFirstRenderPending()) {
         __FlushElementTree();
       }

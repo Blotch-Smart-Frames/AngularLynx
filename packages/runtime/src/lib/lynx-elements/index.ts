@@ -66,6 +66,7 @@ export { LynxViewPager, LynxViewPagerItem } from './viewpager';
 export { LynxWebView } from './webview';
 export { LynxRouterLinkActive } from '../router/lynx-router-link-active';
 export { LynxAccessibilityTraits } from '../accessibility/accessibility-traits';
+export { LynxListFor } from '../list-for/list-for';
 
 import { LynxInputValueAccessor, LynxTextareaValueAccessor } from '../forms';
 import { LynxBlurView } from './blur-view';
@@ -94,6 +95,7 @@ import { LynxViewPager, LynxViewPagerItem } from './viewpager';
 import { LynxWebView } from './webview';
 import { LynxRouterLinkActive } from '../router/lynx-router-link-active';
 import { LynxAccessibilityTraits } from '../accessibility/accessibility-traits';
+import { LynxListFor } from '../list-for/list-for';
 
 /**
  * All Lynx native element directives as a single importable array.
@@ -144,4 +146,7 @@ export const LYNX_ELEMENTS = [
   // Adds accessibility traits, such as `selected`, from a binding, on any
   // element that binds `lynxAccessibilityTraits`.
   LynxAccessibilityTraits,
+  // `*lynxListFor`: a <list>'s items built when the list asks for them, and
+  // their views reused, as `@for` beside it builds them all.
+  LynxListFor,
 ] as const;

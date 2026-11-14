@@ -18,6 +18,7 @@ import {
 import { getPageId } from '../lynx-document/page-ref';
 import { globalEvents, type LynxGlobalDocument } from '../global-events';
 import {
+  isBindingListItem,
   isFirstRenderPending,
   isInsideChangeDetection,
   runAfterFirstRender,
@@ -409,6 +410,16 @@ export class LynxElement implements BaseLynxElement {
   _virtualParent: LynxElement | null = null;
   _virtualPrev: LynxElement | null = null;
   _virtualNext: LynxElement | null = null;
+
+  /**
+   * @internal Set on the `<list-item>` of a `*lynxListFor` item. Its list
+   * learns about it from the directive, which builds it when native asks for
+   * it, so the list keeps it out of its children (see
+   * LynxListElement.appendChild). A plain field rather than a set of
+   * elements: the list checks it while componentAtIndex runs, where keying a
+   * Set on an element is what crashed (see create-list-element.ts).
+   */
+  _ownedByListSource = false;
 
   // Tracks animations started on this element via animate().
   // Canceled when the element is destroyed (see #doRemove) to clear stale
@@ -2944,6 +2955,20 @@ export const processPendingInvokes = (): void => {
 const awaitingFlush: Array<() => void> = [];
 
 /**
+ * After a list's componentAtIndex has built and flushed `*lynxListFor`
+ * items (see bindListItem): flushes again on a task of its own if a call is
+ * waiting for a flush, such as a UI method on an element the item just made
+ * (see LynxElement.invoke). The settle flush it would have asked for was
+ * skipped while the item was built, and only a macrotask runs after native's
+ * layout pass has returned: a microtask would still run inside it. Nothing
+ * else needs it: the item's own flush committed the item.
+ */
+export const settleAfterListItems = (): void => {
+  if (awaitingFlush.length === 0) return;
+  setTimeout(scheduleSettleFlush, 0);
+};
+
+/**
  * Runs `callback` after the element tree's next flush, once what the app has
  * changed so far has reached native: after the native flush that ends the
  * first render while it's under way, else after
@@ -2990,7 +3015,11 @@ let settleFlushScheduled = false;
  * no-op while:
  *  - inside a CD cycle — end() will flush;
  *  - the first render is pending — native flushes after renderPage, and any
- *    `<list>` defers its own first flush (see isFirstRenderPending()).
+ *    `<list>` defers its own first flush (see isFirstRenderPending());
+ *  - a list's componentAtIndex is building a `*lynxListFor` item, which it
+ *    flushes itself (see bindListItem). What else is left for a flush then
+ *    waits for the next one; calls waiting for it are seen to by
+ *    settleAfterListItems().
  * The near-no-op cost when nothing is layout-dirty (the core's `need_layout_`
  * gate) keeps the steady-state overhead negligible.
  */
@@ -2998,7 +3027,8 @@ export const scheduleSettleFlush = (): void => {
   if (
     settleFlushScheduled ||
     isInsideChangeDetection() ||
-    isFirstRenderPending()
+    isFirstRenderPending() ||
+    isBindingListItem()
   ) {
     return;
   }

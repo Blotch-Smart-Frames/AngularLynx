@@ -550,10 +550,86 @@ describe('LynxListElement', () => {
     });
   });
 
-  describe('getCommittedUIChildren', () => {
-    it('exposes the committed UI children array for componentAtIndex', () => {
+  describe('moves', () => {
+    it('removes a reordered child from where it was and inserts it where it is', () => {
+      const list = makeList();
+      const [a, b, c] = [makeChild(), makeChild(), makeChild()];
+      list.appendChild(a);
+      list.appendChild(b);
+      list.appendChild(c);
+      list._processUpdate();
+      list.markAppendedToNativeList(c.element);
+      vi.mocked(globalThis.__SetAttribute).mockClear();
+
+      // Angular moves a view by taking it out and putting it back.
+      c.remove();
+      list.insertBefore(c, a);
+      list._processUpdate();
+
+      const [, , payload] = vi
+        .mocked(globalThis.__SetAttribute)
+        .mock.calls.find(([, name]) => name === 'update-list-info')!;
+      const info = payload as {
+        insertAction: Array<{ position: number }>;
+        removeAction: number[];
+      };
+      // a and b keep their order: only c moves.
+      expect(info.removeAction).toEqual([2]);
+      expect(info.insertAction.map((action) => action.position)).toEqual([0]);
+      // Still appended: native asks for it again, by the same element.
+      expect(list.isAppendedToNativeList(c.element)).toBe(true);
+    });
+  });
+
+  describe('item sources', () => {
+    it('lets go of an element of no source as before', () => {
+      const list = makeList();
+      expect(() => list.enqueue(123)).not.toThrow();
+    });
+
+    it('asks each source in turn whose an element native let go of is', () => {
+      const list = makeList();
+      const anchor = makeChild();
+      anchor.tagName = 'comment';
+      list.appendChild(anchor);
+      const first = {
+        id: 1,
+        commit: () => ({ keys: [], types: [], attributes: [] }),
+        bind: () => null,
+        enqueue: vi.fn(() => false),
+      };
+      const second = { ...first, id: 2, enqueue: vi.fn(() => true) };
+      list.attachItemSource(anchor, first);
+      list.attachItemSource(anchor, second);
+
+      list.enqueue(7);
+      expect(first.enqueue).toHaveBeenCalledWith(7);
+      expect(second.enqueue).toHaveBeenCalledWith(7);
+
+      list.detachItemSource(second);
+      second.enqueue.mockClear();
+      list.enqueue(8);
+      expect(second.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('keeps a source’s item element out of its children', () => {
+      const list = makeList();
+      const item = makeChild();
+      item._ownedByListSource = true;
+
+      list.insertBefore(item, makeChild());
+
+      expect(list.virtualChildren()).toEqual([]);
+      expect(item.parentNode()).toBe(list);
+      item.remove();
+      expect(item._virtualParent).toBeNull();
+    });
+  });
+
+  describe('committedSlot', () => {
+    it('exposes the committed items by native index for componentAtIndex', () => {
       // componentAtIndex reads from this method (never getUIChildren, which
-      // hashes element refs into a WeakSet and crashes the Lepus context).
+      // walks the children inside native's layout pass).
       const list = makeList();
       const a = makeChild();
       const b = makeChild();
@@ -561,10 +637,9 @@ describe('LynxListElement', () => {
       list.appendChild(b);
       list._processUpdate();
 
-      const committed = list.getCommittedUIChildren();
-      expect(committed).toHaveLength(2);
-      expect(committed).toContain(a.element);
-      expect(committed).toContain(b.element);
+      expect(list.committedSlot(0)?.ref).toBe(a.element);
+      expect(list.committedSlot(1)?.ref).toBe(b.element);
+      expect(list.committedSlot(2)).toBeUndefined();
     });
   });
 });

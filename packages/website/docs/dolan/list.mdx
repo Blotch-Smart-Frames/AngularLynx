@@ -1,6 +1,6 @@
 # List
 
-Scroll through long lists smoothly: [Lynx](/guide/glossary#lynx) creates rows as they scroll into view and reuses them, so thousands of items stay fast.
+Scroll through long lists smoothly: [Lynx](/guide/glossary#lynx) draws only the rows near the screen, and with [`*lynxListFor`](/api/elements/list#lynxlistfor) Angular builds a row only as it scrolls into view and reuses the rows scrolled away, so thousands of items stay fast.
 
 `<ui-list>` wraps Lynx's [`<list>`](/api/elements/list) element with typed inputs, named outputs and a height you can set in one place.
 
@@ -47,6 +47,7 @@ export class Contacts {
 ```
 
 - Wrap each row in a `<list-item>` with a unique `item-key`. Lynx uses the key to track and reuse rows, so never reuse a key for a different item.
+- `@for` builds every row up front. For hundreds of rows or more, put [`*lynxListFor`](/api/elements/list#lynxlistfor) on the `<list-item>` instead, with a `trackBy` that gives the key: `<list-item *lynxListFor="let contact of contacts(); trackBy: byId">`. It works in `<ui-list>`'s content.
 - Give the list a fixed height, with `height` or a height class such as `h-96`. A list without one doesn't scroll.
 - The list fills its parent's width.
 

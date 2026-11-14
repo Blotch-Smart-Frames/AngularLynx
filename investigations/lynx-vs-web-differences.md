@@ -484,7 +484,7 @@ It comes with conditions:
 
 - **`element.animate()` does nothing on the element.** `__ElementAnimate` calls `Element::AnimateV2`, which returns at once without Lynx's animator. The page config `enableNewAnimator: false` flips the switch for every element, so every `animate()` in an app stops: use the attribute on the elements that need it.
 - **Set it as the element is made**, before it has a transition: it decides which animator gets the transition when it's set.
-- **iOS starts an animation at the time of the last frame the UI thread saw.** Lynx sets each one's `beginTime` from a clock a `CADisplayLink` on the UI thread updates (`getSyncedTimestamp()`), and Core Animation receives it once the thread is next idle. A transition started on the turn after a busy one, such as the turn that builds and lays out a pushed page, had begun before it was first drawn: on the iOS 27 Simulator a push's first frame came between a quarter and nearly all of the way in. Started on a turn that follows a frame with nothing waiting in between, its first frame comes about a frame in. Lynx's own animator starts at its first frame instead.
+- **iOS starts an animation at the time of the last frame the UI thread saw.** Lynx sets each one's `beginTime` from a clock a `CADisplayLink` on the UI thread updates (`getSyncedTimestamp()`), and Core Animation receives it once the thread is next idle. A transition started on the turn after a busy one, such as the turn that builds and lays out a pushed page, had begun before it was first drawn: on a loaded iOS 27 Simulator a push's first frame came anywhere from 4% to 88% of the way in (29% typically). Started on the turn after a frame, once a frame comes with nothing else waiting after it, the first frame came 6% to 30% of the way in (15% typically), about a frame. Lynx's own animator starts at its first frame instead (11% typically). In the frame's callback itself it's too early: Lynx's clock may not have seen that frame yet.
 - **A changed `transform` jumps on iOS.** Opacity and the frame start from where the presentation layer has them, so a change mid-transition carries on from there, but a new `transform` first ends the running transition at its end (`applyTransform` stops it), then runs from that end. Android starts from the view's current translation and scale.
 - **Taking the `transition` away ends a running one where it was going,** on iOS (its delegate's `forceStop`) and Android (`ValueAnimator.cancel()` runs `onAnimationEnd`, which sets the end values).
 - A script hears `transitionend` only if the element listens for it (iOS checks the element's `eventSet`). A timer is simpler.
@@ -494,6 +494,7 @@ In a test on the iOS 27 Simulator that busy-loops the UI thread for 300 ms, 100 
 ### What to do
 
 - Put `enable-new-animator="false"` (and `flatten="false"`, for Android) on an element that moves by CSS transitions, as it's made, and move it with `transform` and `opacity`. Don't call `animate()` on it.
+- Start a transition on the turn after a frame, once the thread has nothing else waiting: `<lynx-stack-outlet>` waits for such a frame, up to four, before a push or a pop slides (`afterFrame`).
 - End one early by taking its `transition` away.
 
 ---

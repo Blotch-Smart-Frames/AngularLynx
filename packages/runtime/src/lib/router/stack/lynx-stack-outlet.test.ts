@@ -251,7 +251,9 @@ const transitionOf = (ms: number, easing = IOS_EASING) =>
   `transform ${ms}ms ${easing}, opacity ${ms}ms ${easing}`;
 
 /**
- * Past the turn after a navigation's, when its slide starts.
+ * Past the next frame, after which a navigation's slide starts (see
+ * afterFrame): the fake clock draws one every 16ms from its start, so one is
+ * at most that far away.
  */
 const nextFrame = () => vi.advanceTimersByTimeAsync(20);
 
@@ -413,11 +415,12 @@ describe('LynxStackOutlet', () => {
       layOut(host);
       await go('/notes/1');
       expect(frames()).toHaveLength(2);
-      // The new page starts off to the right, then slides in on the next
-      // turn.
+      // The new page starts off to the right, then slides in once the
+      // screen has drawn it there.
       expect(frames()[1]!.style.transform).toBe('translateX(400px)');
-      expect(started).toEqual([]);
       await vi.advanceTimersByTimeAsync(0);
+      expect(started).toEqual([]);
+      await nextFrame();
       expect(moves()).toContainEqual({
         transition: transitionOf(350),
         transform: 'translateX(0px)',
@@ -883,6 +886,32 @@ describe('LynxStackOutlet', () => {
       expect(moving[1]!.style.transition).not.toBe('');
       fixture.destroy();
       for (const page of moving) expect(page.style.transition).toBe('');
+    });
+
+    it('starts on the next turn where there are no frames to wait for', async () => {
+      vi.stubGlobal('requestAnimationFrame', undefined);
+      const { go, frames } = await setup();
+      await go('/notes/1');
+      await vi.advanceTimersByTimeAsync(0);
+      expect(frames()[1]!.style.transform).toBe('translateX(0%)');
+    });
+
+    it('waits for a frame with nothing else after it, a few at most', async () => {
+      const { go, frames } = await setup();
+      await go('/notes/1');
+      // Each turn starts well after the last: the thread is never idle.
+      const now = Date.now.bind(Date);
+      let late = 0;
+      const clock = vi.spyOn(Date, 'now').mockImplementation(() => {
+        late += 10;
+        return now() + late;
+      });
+      await nextFrame();
+      expect(frames()[1]!.style.transition).toBe('');
+      // It starts anyway after the fourth.
+      await vi.advanceTimersByTimeAsync(16 * 4);
+      expect(frames()[1]!.style.transition).toBe(transitionOf(350));
+      clock.mockRestore();
     });
 
     it('jumps a transition to its end when another navigation comes', async () => {

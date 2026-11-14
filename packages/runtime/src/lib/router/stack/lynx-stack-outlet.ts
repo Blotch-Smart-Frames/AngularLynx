@@ -172,6 +172,13 @@ type BarMove = {
 };
 
 /**
+ * When a transition's elements start moving, once their first look is set:
+ * `'drawn'`, once the screen has drawn it (see afterFrame), or `'now'`, on
+ * the next turn, for elements that are on the screen as they are already.
+ */
+type TransitionStart = 'drawn' | 'now';
+
+/**
  * A transition running: `finish()` jumps it to its end, as a navigation
  * that comes in mid-transition does, and `stop()` abandons it, as the
  * outlet's destruction does (its pages go with it).
@@ -1110,6 +1117,9 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
       direction === 'in'
         ? { from: under, to: moving, at: 1, carriers: [moving, under] }
         : { from: moving, to: under, at: 1, carriers: [under] },
+      // A navigation's turn builds pages and runs the router, which can take
+      // a while: the slide starts once the screen has drawn that.
+      'drawn',
       done,
     );
   }
@@ -1131,6 +1141,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
     duration: number,
     easing: string,
     bar: BarMove,
+    start: TransitionStart,
     done: () => void,
   ): void {
     const width = this.#width;
@@ -1183,10 +1194,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
       // says.
       timer = setTimeout(finish, duration);
     };
-    // They start on the next turn, once this update has been flushed: a
-    // transition needs a value to move from, and a page pushed this turn
-    // isn't there yet.
-    const cancelStart = later(begin);
+    const cancelStart = start === 'drawn' ? afterFrame(begin) : later(begin);
     /**
      * Only the outlet ends a transition, through #transition, which holds the
      * one running: a new one starts once it's over.
@@ -1574,6 +1582,8 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
       duration,
       IOS_MOTION.easing,
       { from: top, to: under, at: completes ? 1 : 0, carriers: [under] },
+      // The pages are where the finger left them, drawn: they go on at once.
+      'now',
       () => {
         if (completes) {
           // Hidden where it went, off the screen, not put back in place: a
@@ -1738,4 +1748,57 @@ const transitionOf = (
 const later = (callback: () => void): (() => void) => {
   const timer = setTimeout(callback, 0);
   return () => clearTimeout(timer);
+};
+
+/**
+ * How long after a frame's callback a turn it schedules may start, in ms,
+ * for the thread to count as idle: nothing else ran in between.
+ */
+const IDLE_TURN = 4;
+
+/**
+ * How many frames a transition waits for the thread to be idle (see
+ * afterFrame), at most, before it starts anyway.
+ */
+const IDLE_FRAMES = 4;
+
+/**
+ * Runs `callback` once the screen has drawn what this turn flushes, and the
+ * thread has nothing else to do: on the turn after a frame, if it comes
+ * straight after the frame, or else after a later frame, up to IDLE_FRAMES
+ * of them. Returns what cancels it.
+ *
+ * On iOS a transition's Core Animation begins at the time of the last frame
+ * the thread saw, and reaches the screen once the thread is next idle. A
+ * turn that builds a pushed page and lays it out holds both back, so a
+ * transition started on the turn after it had begun that long before it
+ * was first drawn, and its first frame came a quarter of the way in, or
+ * further. After a frame, with nothing else waiting, it begins with that
+ * frame and is drawn with the next. The frame's callback itself is too
+ * early: the clock Lynx reads may not have seen the frame yet.
+ *
+ * In the web preview, the frame draws the elements where they start, which
+ * a browser needs to transition them. Without `requestAnimationFrame`, it's
+ * the next turn.
+ */
+const afterFrame = (callback: () => void): (() => void) => {
+  if (typeof requestAnimationFrame !== 'function') return later(callback);
+  let canceled = false;
+  let frames = 0;
+  const frame = (): void => {
+    const drawn = Date.now();
+    frames++;
+    setTimeout(() => {
+      if (canceled) return;
+      if (Date.now() - drawn <= IDLE_TURN || frames >= IDLE_FRAMES) {
+        callback();
+      } else {
+        requestAnimationFrame(frame);
+      }
+    }, 0);
+  };
+  requestAnimationFrame(frame);
+  return () => {
+    canceled = true;
+  };
 };

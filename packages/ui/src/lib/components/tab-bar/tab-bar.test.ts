@@ -1,4 +1,4 @@
-import { Component, signal, viewChildren } from '@angular/core';
+import { Component, ErrorHandler, signal, viewChildren } from '@angular/core';
 import { Router, RouterOutlet, type Routes } from '@angular/router';
 import {
   fireEvent,
@@ -13,6 +13,7 @@ import {
 } from '@blotch/angular-lynx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
+import { type IconName } from '../icon/icons';
 import { UiTabBar, UiTabBarItem } from './tab-bar';
 
 @Component({
@@ -85,6 +86,55 @@ class TabBarHost {
   `,
 })
 class StaticClassHost {}
+
+/** A one-color mark, written as an app would: no namespace. */
+const MARK =
+  '<svg viewBox="0 0 16 16"><path fill="currentColor" d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0Z"/></svg>';
+
+/** A multi-color mark, which already has the namespace. */
+const TWO_COLOR_MARK =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2 1"><path fill="#4285f4" d="M0 0h1v1H0z"/><path fill="#34a853" d="M1 0h1v1H1z"/></svg>';
+
+/**
+ * A bar whose tabs draw the app's own marks, as an app puts its logo on the
+ * Home tab.
+ */
+@Component({
+  imports: [RouterOutlet, UiTabBar, UiTabBarItem],
+  template: `
+    <router-outlet />
+    <ui-tab-bar>
+      <ui-tab-bar-item
+        route="/"
+        [svg]="mark"
+        label="Home"
+        [routerLinkActiveOptions]="{ exact: true }"
+      />
+      <ui-tab-bar-item route="/inbox" [svg]="mark" label="Inbox" />
+      <ui-tab-bar-item route="/profile" [svg]="twoColorMark" label="Profile" />
+    </ui-tab-bar>
+  `,
+})
+class SvgHost {
+  readonly mark = MARK;
+  readonly twoColorMark = TWO_COLOR_MARK;
+}
+
+/**
+ * A tab whose icon and svg a test sets, to get them wrong.
+ */
+@Component({
+  imports: [UiTabBar, UiTabBarItem],
+  template: `
+    <ui-tab-bar>
+      <ui-tab-bar-item route="/" [icon]="icon()" [svg]="svg()" label="Home" />
+    </ui-tab-bar>
+  `,
+})
+class IconOrSvgHost {
+  readonly icon = signal<IconName | undefined>('home');
+  readonly svg = signal<string | undefined>(undefined);
+}
 
 /** The theme's light colors, as icon-theme.ts resolves them for an SVG. */
 const PRIMARY = 'rgba(24, 24, 27, 1)';
@@ -392,5 +442,93 @@ describe('UiTabBar in a stack', () => {
     expect(bar.classList).toContain('absolute');
     await moveTo(1, { animation: 'fade', duration: 250 });
     expect(style(bar, 'transition')).toBe('');
+  });
+});
+
+describe("UiTabBarItem with an app's own svg", () => {
+  beforeEach(() => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  const renderSvg = async () => {
+    const { container } = await render(SvgHost, {
+      providers: [provideRouter(routes)],
+    });
+    const tab = (label: string) =>
+      container.querySelector(`[accessibility-label="${label}"]`)!;
+    const isActive = (label: string) =>
+      tab(label).getAttribute('accessibility-traits') === 'button,selected';
+    await until(() => isActive('Home'));
+    return {
+      tab,
+      isActive,
+      iconOf: (label: string) =>
+        tab(label).querySelector('svg')!.getAttribute('content') ?? '',
+    };
+  };
+
+  it("draws the mark in the tab's color for its state, as the set's icons are drawn", async () => {
+    const { tab, isActive, iconOf } = await renderSvg();
+    expect(iconOf('Home')).toContain('d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0Z"');
+    expect(iconOf('Home')).toContain(`fill="${PRIMARY}"`);
+    expect(iconOf('Home')).not.toContain('currentColor');
+    expect(iconOf('Inbox')).toContain(`fill="${MUTED_FOREGROUND}"`);
+
+    // The selection moves the color with it.
+    fireEvent.tap(tab('Inbox'));
+    await until(() => isActive('Inbox'));
+    expect(iconOf('Inbox')).toContain(`fill="${PRIMARY}"`);
+    expect(iconOf('Home')).toContain(`fill="${MUTED_FOREGROUND}"`);
+  });
+
+  // The web preview draws the markup as an image, which a browser leaves
+  // blank without the namespace.
+  it('adds the SVG namespace when the markup has none, and keeps colors written out', async () => {
+    const { iconOf } = await renderSvg();
+    expect(iconOf('Home')).toMatch(
+      /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg" viewBox="0 0 16 16">/,
+    );
+    expect(iconOf('Profile')).toBe(TWO_COLOR_MARK);
+  });
+});
+
+describe('UiTabBarItem without exactly one of icon and svg', () => {
+  const NEITHER_OR_BOTH = new Error(
+    '<ui-tab-bar-item> needs an icon or an svg, not both.',
+  );
+
+  /**
+   * Renders the host, keeping the errors Angular reports: an error in change
+   * detection goes to the app's ErrorHandler rather than out of render().
+   */
+  const renderIconOrSvg = async () => {
+    const handleError = vi.fn();
+    const result = await render(IconOrSvgHost, {
+      providers: [
+        provideRouter(routes),
+        { provide: ErrorHandler, useValue: { handleError } },
+      ],
+    });
+    return {
+      host: result.componentRef.instance as IconOrSvgHost,
+      handleError,
+    };
+  };
+
+  it('reports an error with both', async () => {
+    const { host, handleError } = await renderIconOrSvg();
+    expect(handleError).not.toHaveBeenCalled();
+
+    host.svg.set(MARK);
+    await waitForUpdate();
+    expect(handleError).toHaveBeenCalledWith(NEITHER_OR_BOTH);
+  });
+
+  it('reports an error with neither', async () => {
+    const { host, handleError } = await renderIconOrSvg();
+    host.icon.set(undefined);
+    await waitForUpdate();
+    expect(handleError).toHaveBeenCalledWith(NEITHER_OR_BOTH);
   });
 });

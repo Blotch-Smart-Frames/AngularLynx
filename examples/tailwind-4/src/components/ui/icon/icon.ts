@@ -9,7 +9,7 @@ import { registerHostElement } from '@blotch/angular-lynx';
 
 import { cn } from '@blotch/dolan/utils/cn';
 import { type IconSize, UI_ICON_SIZE, injectIconColor } from './icon-theme';
-import { type IconName, ICONS } from './icons';
+import { type IconName, iconMarkup, paintIcon } from './icons';
 
 const SIZE_MAP: Readonly<Record<IconSize, number>> = {
   xs: 16,
@@ -17,19 +17,6 @@ const SIZE_MAP: Readonly<Record<IconSize, number>> = {
   md: 24,
   lg: 32,
 };
-
-/**
- * Gives the markup's root `<svg>` the SVG namespace when it has none. The web
- * preview draws `content` as an image of the markup, and a browser draws
- * nothing for an SVG image without the namespace. An app's own SVG often
- * leaves it out, since an `<svg>` written in an HTML page doesn't need it.
- */
-const withSvgNamespace = (markup: string): string =>
-  markup.replace(/<svg\b([^>]*)>/, (tag, attributes: string) =>
-    /\sxmlns\s*=/.test(attributes)
-      ? tag
-      : `<svg xmlns="http://www.w3.org/2000/svg"${attributes}>`,
-  );
 
 /**
  * The icon is its host, an `<svg>` (registerHostElement, below). Angular gives
@@ -83,39 +70,20 @@ export class UiIcon {
   readonly #resolveColor = injectIconColor();
   readonly #inheritedSize = inject(UI_ICON_SIZE, { optional: true });
 
-  protected svgContent(): string {
-    // Lynx SVG elements don't propagate the CSS `color` property into SVG
-    // stroke attributes, so we substitute the literal `currentColor` in the
-    // markup string rather than relying on `currentColor` CSS propagation.
-    // The color is resolved first: the SVG parser can't read `var(--x)` either
-    // (see icon-theme.ts).
-    //
-    // Uses split().join() instead of String.prototype.replaceAll(). replaceAll
-    // is ES2021, but Lynx's main thread runs on PrimJS at an ES2019 target;
-    // because it's a runtime method (not syntax) the build's down-leveling does
-    // not polyfill it, so it simply doesn't exist there. Calling it throws
-    // "main-thread.js exception: not a function" from inside Angular change
-    // detection, which aborts the whole tick before Lynx flushes the element
-    // tree — so NO icon paints (not just a colored one), and the error count
-    // climbs on every render/interaction as each tick re-runs and re-throws.
-    // split/join is ES2019-safe and is preferred over `replace(/.../g)` here
-    // because the search term is a plain literal and needs no regex escaping.
-    return this.#markup()
-      .split('currentColor')
-      .join(this.#resolveColor(this.color()));
-  }
-
   /**
-   * The markup to draw. Neither input, or both, is a mistake in the template
-   * that the compiler can't catch, since neither input can be required, so
-   * it fails loudly rather than drawing an empty box or picking one.
+   * The markup, in its color. `currentColor` in it is written over with the
+   * color, resolved first: Lynx's SVG engines don't take `color` from the
+   * element, and can't read `var(--x)` either (see icon-theme.ts).
    */
-  #markup(): string {
-    const name = this.name();
-    const svg = this.svg();
-    if (svg !== undefined && name === undefined) return withSvgNamespace(svg);
-    if (name !== undefined && svg === undefined) return ICONS[name];
-    throw new Error('<ui-icon> needs a name or an svg, not both.');
+  protected svgContent(): string {
+    return paintIcon(
+      iconMarkup(
+        this.name(),
+        this.svg(),
+        '<ui-icon> needs a name or an svg, not both.',
+      ),
+      this.#resolveColor(this.color()),
+    );
   }
 
   protected readonly sizePx = computed(

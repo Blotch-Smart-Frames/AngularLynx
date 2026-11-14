@@ -47,7 +47,7 @@ export class App {}
 - **A tab stays selected on the routes under it.** The Inbox tab at `/inbox` is still selected at `/inbox/42`.
 - **Going back to a tab finds it as you left it,** with `<lynx-tab-outlet>`: its scroll positions, the screens pushed in it, and its native views. A tap on the selected tab pops its stack to its first screen. With `<router-outlet>`, each tab is built again every time.
 - **The tabs share the bar's width equally,** and the bar pads itself by the bottom [safe area](/guide/safe-area), so the tabs sit above the iPhone's home indicator.
-- **The icon is any [Icon](/dolan/icon) name.**
+- **The icon is any [Icon](/dolan/icon) name,** or [your own mark](#your-own-mark).
 
 Give each routed screen's host `flex-1` so it fills the space above the bar, or its `<scroll-view>` grows to fit its content instead of scrolling:
 
@@ -89,6 +89,30 @@ A route keeps the bar with `data: { bottomBar: 'visible' }`. See [`LynxStackChro
 ```
 
 A count of `0`, an empty string, `null` or `undefined` shows no badge, so bind the count as it is.
+
+### Your own mark
+
+For a mark the icon set doesn't have, such as your app's logo on the Home tab, pass its markup to `svg` instead of `icon`:
+
+```typescript
+@Component({
+  imports: [UiTabBar, UiTabBarItem],
+  template: `
+    <ui-tab-bar>
+      <ui-tab-bar-item route="/home" [svg]="logo" label="Home" />
+      <ui-tab-bar-item route="/search" icon="search" label="Search" />
+    </ui-tab-bar>
+  `,
+})
+export class App {
+  // The app's logo (its path shortened here), filled with currentColor.
+  readonly logo = `<svg viewBox="0 0 24 24"><path fill="currentColor" d="…"/></svg>`;
+}
+```
+
+- **`currentColor` takes the tab's color,** as the set's icons do: `primary` while it's selected and `muted-foreground` otherwise. A one-color mark written in `currentColor` follows the selection and your theme.
+- **Colors written out stay,** so a multi-color mark keeps them.
+- **`xmlns` is optional,** and lines must be `<path>`s, as for [an icon's own SVG](/dolan/icon#your-own-svg).
 
 ### A tab for the root route
 
@@ -150,7 +174,8 @@ The icons draw with the light theme's colors until you say otherwise, as every i
 | Input                     | Type                                                          | Default     | Description                                                                                                                              |
 | ------------------------- | ------------------------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `route`                   | `string \| any[] \| UrlTree \| null`                          | —           | Where a tap navigates. `RouterLink`'s `routerLink`.                                                                                      |
-| `icon`                    | `IconName`                                                    | —           | Required. The [Icon](/dolan/icon) drawn above the label.                                                                                 |
+| `icon`                    | `IconName \| undefined`                                       | `undefined` | The [Icon](/dolan/icon) drawn above the label. Give this or `svg`.                                                                       |
+| `svg`                     | `string \| undefined`                                         | `undefined` | SVG markup to draw instead, such as your logo, with `currentColor` in the tab's color. Give this or `icon`.                              |
 | `label`                   | `string`                                                      | —           | Required. The tab's name, shown and read by screen readers.                                                                              |
 | `badge`                   | `string \| number \| null \| undefined`                       | `undefined` | A count or short text over the icon. Hidden for `0`, `''`, `null` and `undefined`.                                                       |
 | `routerLinkActiveOptions` | `{ exact: boolean } \| IsActiveMatchOptions`                  | subset      | How the current route is matched. `RouterLinkActive`'s input.                                                                            |
@@ -175,4 +200,4 @@ The icons draw with the light theme's colors until you say otherwise, as every i
 - [Dock](/dolan/dock): the same navigation as a floating Liquid Glass bar
 - [Tabs](/dolan/tabs): switch panels within one screen instead of routed screens
 - [Nav Drawer](/dolan/nav-drawer): a side menu, for more destinations than a tab bar fits
-- [Icon](/dolan/icon): the icons a tab can show
+- [Icon](/dolan/icon): the icons a tab can show, and how to write your own mark

@@ -40,7 +40,7 @@ import { cn } from '../../utils/cn';
 import { type GlassShape, UiGlass, UiGlassGroup } from '../glass/glass';
 import { type GlassDesign, injectGlassDesign } from '../glass/glass-design';
 import { injectIconColor, UI_ICON_COLOR } from '../icon/icon-theme';
-import { type IconName, ICONS } from '../icon/icons';
+import { type IconName, ICONS, iconMarkup, paintIcon } from '../icon/icons';
 import {
   KEYBOARD_GAP,
   keyboardLift,
@@ -233,13 +233,6 @@ const round = (value: number): number => Math.round(value * 100) / 100;
  */
 const abovePx = (value: number): string =>
   `calc(${value}px + env(safe-area-inset-bottom))`;
-
-/**
- * An icon's markup, drawn in `color`.
- */
-const iconSvg = (icon: IconName, color: string): string =>
-  // split/join, not replaceAll(), which PrimJS's ES2019 runtime lacks.
-  ICONS[icon].split('currentColor').join(color);
 
 /**
  * `UiDockItem`, `UiDockAction` and `UiDockAccessory`, for the dock's content
@@ -980,7 +973,7 @@ export class UiDock implements SearchFieldContainer {
   });
 
   protected readonly cancelIcon = computed(() =>
-    iconSvg('x', this.#resolveColor('var(--glass-foreground)')),
+    paintIcon(ICONS.x, this.#resolveColor('var(--glass-foreground)')),
   );
 
   protected readonly cancelIconStyle = computed(() => ({
@@ -1067,7 +1060,7 @@ export class UiDock implements SearchFieldContainer {
   protected readonly minimizedIcon = computed(() => {
     const item = this.restoreItem() ?? this.items()[0];
     return item
-      ? iconSvg(item.icon(), this.#resolveColor('var(--primary)'))
+      ? paintIcon(item.markup(), this.#resolveColor('var(--primary)'))
       : '';
   });
 
@@ -1177,7 +1170,8 @@ export class UiDock implements SearchFieldContainer {
 
 /**
  * One of the dock's screens: an icon over a label that navigates to its
- * `route` on a tap.
+ * `route` on a tap. The icon is one from the set (`icon`) or the app's own
+ * mark (`svg`), such as its logo on the Home item.
  *
  * The host itself is the link. Angular's own `RouterLink` and
  * `RouterLinkActive` sit on it as host directives, so every `RouterLink`
@@ -1264,7 +1258,16 @@ export class UiDock implements SearchFieldContainer {
   `,
 })
 export class UiDockItem {
-  readonly icon = input.required<IconName>();
+  /** An icon from the set (see `ICONS`). Give this or `svg`. */
+  readonly icon = input<IconName | undefined>(undefined);
+  /**
+   * SVG markup to draw instead of an icon from the set, such as the app's
+   * logo. `currentColor` in it takes the item's color for its state, as the
+   * set's icons do (the primary color while selected, the bar's foreground
+   * otherwise), so a one-color mark follows selection and the theme; colors
+   * written out stay. Give this or `icon`.
+   */
+  readonly svg = input<string | undefined>(undefined);
   readonly label = input.required<string>();
   /**
    * A count or short text over the icon's corner, such as unread messages.
@@ -1328,13 +1331,25 @@ export class UiDockItem {
     }
   });
 
+  /**
+   * The icon's markup, before it's colored: the glass dock's minimized bar
+   * draws the selected item's icon too, in the primary color.
+   */
+  readonly markup = computed(() =>
+    iconMarkup(
+      this.icon(),
+      this.svg(),
+      '<ui-dock-item> needs an icon or an svg, not both.',
+    ),
+  );
+
   // The icon is drawn here, as the tab bar draws its own, rather than by a
   // nested <ui-icon>: an SVG can't read the label's text class (Lynx doesn't
   // pass `color` down, and the markup is parsed apart from the page's CSS),
   // so the token is resolved to its value and written into the markup (see
   // icon-theme.ts).
   protected readonly iconSvg = computed(() =>
-    iconSvg(this.icon(), this.#resolveColor(this.#colors().icon)),
+    paintIcon(this.markup(), this.#resolveColor(this.#colors().icon)),
   );
 
   protected readonly labelClass = computed(() =>
@@ -1388,6 +1403,9 @@ export class UiDockItem {
  * <ui-dock-action icon="plus" label="New message" (pressed)="compose()" />
  * ```
  *
+ * Its icon is one from the set (`icon`) or the app's own mark (`svg`), as an
+ * item's is.
+ *
  * With a `<ui-search-field>` in the dock, it opens the search (see UiDock).
  */
 @Component({
@@ -1437,7 +1455,14 @@ export class UiDockItem {
   />`,
 })
 export class UiDockAction {
-  readonly icon = input.required<IconName>();
+  /** An icon from the set (see `ICONS`). Give this or `svg`. */
+  readonly icon = input<IconName | undefined>(undefined);
+  /**
+   * SVG markup to draw instead of an icon from the set. `currentColor` in it
+   * takes the button's icon color, as the set's icons do; colors written out
+   * stay. Give this or `icon`.
+   */
+  readonly svg = input<string | undefined>(undefined);
   /** What the button does, for screen readers: it shows only its icon. */
   readonly label = input.required<string>();
 
@@ -1469,7 +1494,14 @@ export class UiDockAction {
         : design === 'glass' && !this.active()
           ? 'var(--glass-foreground)'
           : 'var(--primary)';
-    return iconSvg(this.icon(), this.#resolveColor(color));
+    return paintIcon(
+      iconMarkup(
+        this.icon(),
+        this.svg(),
+        '<ui-dock-action> needs an icon or an svg, not both.',
+      ),
+      this.#resolveColor(color),
+    );
   });
 
   protected readonly fade = computed(() => {

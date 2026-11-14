@@ -179,6 +179,31 @@ Mark content with `ui-dock-accessory` and the dock puts it in a glass bar above 
 
 When the glass dock minimizes, the accessory moves into the row beside the bar, at the bar's height. Read the dock's `minimized()` to show less there. Color its text `text-glass-foreground`; `<ui-icon>`s in it get the same color.
 
+### Your own mark
+
+For a mark the icon set doesn't have, such as your app's logo on the Home item, pass its markup to `svg` instead of `icon`. The action takes one too:
+
+```typescript
+@Component({
+  imports: [UiDock, UiDockAction, UiDockItem],
+  template: `
+    <ui-dock>
+      <ui-dock-item route="/home" [svg]="logo" label="Home" />
+      <ui-dock-item route="/library" icon="music" label="Library" />
+      <ui-dock-action route="/search" icon="search" label="Search" />
+    </ui-dock>
+  `,
+})
+export class App {
+  // The app's logo (its path shortened here), filled with currentColor.
+  readonly logo = `<svg viewBox="0 0 24 24"><path fill="currentColor" d="…"/></svg>`;
+}
+```
+
+- **`currentColor` takes the item's color,** as the set's icons do: `primary` while it's selected, and the bar's foreground otherwise (`glass-foreground` on glass, `muted-foreground` on Material and before iOS 26). A one-color mark written in `currentColor` follows the selection and your theme, and the minimized bar draws it in `primary`.
+- **Colors written out stay,** so a multi-color mark keeps them.
+- **`xmlns` is optional,** and lines must be `<path>`s, as for [an icon's own SVG](/dolan/icon#your-own-svg).
+
 ### Badges and router options
 
 Items take a `badge` and `RouterLink`'s inputs, as [tab bar items](/dolan/tab-bar#badges) do:
@@ -228,7 +253,8 @@ The icons draw with the light theme's colors until you say otherwise, and the gl
 | Input                     | Type                                                          | Default     | Description                                                                                                                              |
 | ------------------------- | ------------------------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `route`                   | `string \| any[] \| UrlTree \| null`                          | —           | Where a tap navigates. `RouterLink`'s `routerLink`.                                                                                      |
-| `icon`                    | `IconName`                                                    | —           | Required. The [Icon](/dolan/icon) drawn above the label.                                                                                 |
+| `icon`                    | `IconName \| undefined`                                       | `undefined` | The [Icon](/dolan/icon) drawn above the label. Give this or `svg`.                                                                       |
+| `svg`                     | `string \| undefined`                                         | `undefined` | SVG markup to draw instead, such as your logo, with `currentColor` in the item's color. Give this or `icon`.                             |
 | `label`                   | `string`                                                      | —           | Required. The item's name, shown and read by screen readers.                                                                             |
 | `badge`                   | `string \| number \| null \| undefined`                       | `undefined` | A count or short text over the icon. Hidden for `0`, `''`, `null` and `undefined`.                                                       |
 | `routerLinkActiveOptions` | `{ exact: boolean } \| IsActiveMatchOptions`                  | subset      | How the current route is matched. `RouterLinkActive`'s input.                                                                            |
@@ -241,11 +267,12 @@ The icons draw with the light theme's colors until you say otherwise, and the gl
 
 ### UiDockAction
 
-| Input      | Type       | Default | Description                                                       |
-| ---------- | ---------- | ------- | ----------------------------------------------------------------- |
-| `icon`     | `IconName` | —       | Required. The button's [Icon](/dolan/icon).                       |
-| `label`    | `string`   | —       | Required. What the button does, for screen readers.               |
-| `route`, … | —          | —       | `RouterLink`'s inputs and `routerLinkActiveOptions`, as on items. |
+| Input      | Type                    | Default     | Description                                                                                      |
+| ---------- | ----------------------- | ----------- | ------------------------------------------------------------------------------------------------ |
+| `icon`     | `IconName \| undefined` | `undefined` | The button's [Icon](/dolan/icon). Give this or `svg`.                                            |
+| `svg`      | `string \| undefined`   | `undefined` | SVG markup to draw instead, with `currentColor` in the button's icon color. Give this or `icon`. |
+| `label`    | `string`                | —           | Required. What the button does, for screen readers.                                              |
+| `route`, … | —                       | —           | `RouterLink`'s inputs and `routerLinkActiveOptions`, as on items.                                |
 
 | Output    | Type   | Description         |
 | --------- | ------ | ------------------- |

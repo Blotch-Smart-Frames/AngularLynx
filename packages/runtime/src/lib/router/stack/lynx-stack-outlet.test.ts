@@ -716,6 +716,26 @@ describe('LynxStackOutlet', () => {
       expect(made).toHaveLength(3);
     });
 
+    it('brings back the outlets of a page covered before they were checked', async () => {
+      const { go, router, frames, settle } = await setup();
+      // Two navigations with no change detection between them: the page's
+      // stack registers only once its view is checked, under the page
+      // pushed over it.
+      await router.navigateByUrl('/notes/1/nest');
+      await router.navigateByUrl('/notes/1/nest/a/info');
+      await settle();
+      expect(nests).toHaveLength(1);
+      // Nothing of the covered page's shows on the top one.
+      expect(frames().at(-1)!.textContent).toBe('page');
+      expect(made.filter((page) => !page.destroyed)).toHaveLength(2);
+      await go('/notes/1/nest');
+      await settle();
+      // Back to the page, whose stack shows its first page.
+      expect(router.url).toBe('/notes/1/nest');
+      expect(frames()).toHaveLength(2);
+      expect(frames()[1]!.textContent).toBe('page');
+    });
+
     it('draws pages on its classes instead of the theme background', async () => {
       const { fixture, frames } = await setup();
       const outlet = outletOf(fixture);

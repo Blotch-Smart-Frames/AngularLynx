@@ -1,5 +1,6 @@
-import { LynxListElement } from '../../lynx-element';
-import type { ListElementRef } from '../../types/lynx';
+import { LynxListElement, settleAfterListItems } from '../../lynx-element';
+import type { ListSlot } from '../../lynx-element/lynx-list-element';
+import type { ElementRef, ListElementRef } from '../../types/lynx';
 
 /**
  * Factory for the list native element.
@@ -11,10 +12,59 @@ import type { ListElementRef } from '../../types/lynx';
  * append the pre-built element and ack it with { asyncFlush: true } (see
  * componentAtIndex's own doc comment for why, and for the hard constraint
  * that nothing reachable from these callbacks may call a WeakSet/Map method).
+ *
+ * A `*lynxListFor` item isn't built until native asks for it: componentAtIndex
+ * has its directive build it, or rebind a view whose element native let go of
+ * through enqueueComponent, then appends and flushes it the same way. That's
+ * React Lynx's protocol (snapshot/list/list.ts): an element native enqueued is
+ * still in the list, and goes back to native under its own unique id, showing
+ * another item. With `enable-async-list`, native may call componentAtIndex
+ * and enqueueComponent from a task of their own rather than from inside a
+ * flush of ours: they read only what the last update committed, so either way
+ * they see the items native was told about.
  */
 export const createListElement = (pageId: number): LynxListElement => {
   // Forward-declared so callbacks can close over the fully-initialized instance.
   let listEl: LynxListElement;
+
+  /**
+   * The element of the item in `slot`, appended to the native list if it
+   * isn't yet: an element child as it is, a `*lynxListFor` item built or
+   * rebound by its run (see LynxListElement.bindItem). Null when a run can't
+   * give one (its directive is gone).
+   */
+  const itemElement = (
+    listRef: ListElementRef,
+    slot: ListSlot,
+  ): { element: ElementRef; reused: boolean } | null => {
+    const item = slot.source
+      ? listEl.bindItem(slot)
+      : { element: slot.ref!, reused: false };
+    if (!item) return null;
+    if (!listEl.isAppendedToNativeList(item.element)) {
+      __AppendElement(listRef, item.element);
+      listEl.markAppendedToNativeList(item.element);
+    }
+    return item;
+  };
+
+  /**
+   * The flush option that tells native an element now shows another item,
+   * when native asked to hear about it (componentAtIndex's
+   * `enableReuseNotification`), as React Lynx passes it. Native passes it on
+   * to the item's elements, which reset what they held for the item before.
+   */
+  const reuseNotification = (
+    listRef: ListElementRef,
+    slot: ListSlot,
+    item: { reused: boolean },
+    enableReuseNotification: boolean | undefined,
+  ) =>
+    item.reused && enableReuseNotification
+      ? {
+          listReuseNotification: { listElement: listRef, itemKey: slot.key },
+        }
+      : {};
 
   /**
    *   * componentAtIndex is called by the native engine synchronously, from
@@ -22,6 +72,9 @@ export const createListElement = (pageId: number): LynxListElement => {
    *   * LayoutChunk -> BindItemHolder -> ComponentAtIndex -> into JS). We append
    *   * the pre-built element (its own inner subtree was already committed by
    *   * the normal, non-list __AppendElement calls during rendering) and ack it.
+   *   * A `*lynxListFor` item is built (or rebound) and checked first, inside
+   *   * bindListItem's scope, which keeps any other flush out of the layout
+   *   * pass (see lynx-render-lifecycle.ts); the ack below is its only flush.
    *   *
    *   * The ack MUST be a synchronous flush tagged with the operationID native
    *   * passed us: { triggerLayout: true, operationID, elementID: sign, listID }.
@@ -49,47 +102,54 @@ export const createListElement = (pageId: number): LynxListElement => {
    *   * ALSO fires from LynxListElement._processUpdate() during an ordinary
    *   * change-detection cycle (it crashed to the home screen on every list
    *   * add/remove until getUIChildren() stopped keying a WeakSet on element refs).
-   *   * The helpers below sidestep it structurally: getCommittedUIChildren()
+   *   * The helpers below sidestep it structurally: committedSlot()
    *   * indexes a pre-computed array, isAppendedToNativeList() reads a plain
-   *   * property tag, _processUpdate() diffs Sets of numeric unique-IDs, and
-   *   * getUIChildren() filters on the wrapper's tagName — all ordinary field
-   *   * access / primitive hashing, never an element-ref Map/Set lookup.
-   * v8 ignore start -- callback invoked synchronously by the native list layout pass (LinearLayoutManager::Fill → BindItemHolder → ComponentAtIndex → into JS). It is not reachable from unit tests without recreating the native call frame; the behavior is covered by the on-device integration checks documented in investigations/list.md.
+   *   * property tag, _processUpdate() diffs Maps of string ids, a
+   *   * `*lynxListFor` run keys its views by item key and unique id (strings
+   *   * and numbers), and getUIChildren() filters on the wrapper's tagName —
+   *   * all ordinary field access / primitive hashing, never an element-ref
+   *   * Map/Set lookup.
+   *
+   * list-for.test.ts plays native's part to call it, against a fake native
+   * list; what native does around it is checked on device (see
+   * investigations/list.md).
    */
   const componentAtIndex = (
     listRef: ListElementRef,
     listId: number,
     cellIndex: number,
     opId: number,
+    enableReuseNotification?: boolean,
   ): number | undefined => {
-    const uiChildren = listEl.getCommittedUIChildren();
-    if (cellIndex >= uiChildren.length) return undefined;
-    const child = uiChildren[cellIndex]!;
-    if (!listEl.isAppendedToNativeList(child)) {
-      __AppendElement(listRef, child);
-      listEl.markAppendedToNativeList(child);
-    }
-    const sign = __GetElementUniqueID(child);
-    __FlushElementTree(child, {
+    const slot = listEl.committedSlot(cellIndex);
+    if (!slot) return undefined;
+    const item = itemElement(listRef, slot);
+    if (!item) return undefined;
+    const sign = __GetElementUniqueID(item.element);
+    __FlushElementTree(item.element, {
       triggerLayout: true,
       operationID: opId,
       elementID: sign,
       listID: listId,
+      ...reuseNotification(listRef, slot, item, enableReuseNotification),
     });
+    if (slot.source) settleAfterListItems();
     return sign;
   };
-  /**
-   * v8 ignore stop
-   */
 
+  /**
+   * enqueueComponent signals that native let go of an item's element: it
+   * scrolled away (past `preload-buffer-count`), or native removed or moved
+   * its item. A `*lynxListFor` run keeps the element's view for an item
+   * native asks for next (see LynxListFor). An element child stays in the
+   * native list tree, ready for native to ask for it again, as it always has.
+   */
   const enqueueComponent = (
     _listRef: ListElementRef,
     _listId: number,
-    _eleId: number,
+    eleId: number,
   ) => {
-    // enqueueComponent signals that an item scrolled offscreen and can be
-    // recycled. We don't implement a recycle pool — items stay in the native
-    // list tree permanently.
+    listEl.enqueue(eleId);
   };
 
   /**
@@ -98,30 +158,36 @@ export const createListElement = (pageId: number): LynxListElement => {
    *   * If the engine passes asyncFlush: true, we use it since that path delegates
    *   * scheduling to native (no re-entrancy). The !asyncFlush batch path collects
    *   * all elementIDs and does a single non-re-entrant flush at the end.
-   * v8 ignore start -- batch callback invoked by the native list layout pass; same rationale as componentAtIndex above — not reachable from unit tests without simulating the native call frame.
    */
   const componentAtIndexes = (
     listRef: ListElementRef,
     listId: number,
     cellIndexes: number[],
     opIds: number[],
-    _enableReuseNotification: boolean,
+    enableReuseNotification: boolean,
     asyncFlush: boolean,
   ) => {
-    const uiChildren = listEl.getCommittedUIChildren();
     const elementIDs: number[] = [];
+    let built = false;
     for (let i = 0; i < cellIndexes.length; i++) {
-      const child = uiChildren[cellIndexes[i]!];
-      if (!child) continue;
-      if (!listEl.isAppendedToNativeList(child)) {
-        __AppendElement(listRef, child);
-        listEl.markAppendedToNativeList(child);
+      const slot = listEl.committedSlot(cellIndexes[i]!);
+      const item = slot && itemElement(listRef, slot);
+      // An index native has no item for any more still takes its place in
+      // elementIDs, which native pairs with operationIDs by position: -1,
+      // as React Lynx sends for an item that isn't ready.
+      if (!slot || !item) {
+        elementIDs.push(-1);
+        continue;
       }
-      const elementID = __GetElementUniqueID(child);
+      if (slot.source) built = true;
+      const elementID = __GetElementUniqueID(item.element);
       elementIDs.push(elementID);
       if (asyncFlush) {
         // Native engine owns the async schedule — safe, no re-entrancy.
-        __FlushElementTree(child, { asyncFlush: true });
+        __FlushElementTree(item.element, {
+          asyncFlush: true,
+          ...reuseNotification(listRef, slot, item, enableReuseNotification),
+        });
       }
     }
     if (!asyncFlush) {
@@ -132,8 +198,8 @@ export const createListElement = (pageId: number): LynxListElement => {
         listID: listId,
       });
     }
+    if (built) settleAfterListItems();
   };
-  /* v8 ignore stop */
 
   const nativeList = __CreateList(
     pageId,

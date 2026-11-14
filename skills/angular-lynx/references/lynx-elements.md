@@ -112,6 +112,8 @@ A template written for the browser renders: the runtime creates the Lynx element
 </list>
 ```
 
+For hundreds of items or more, put `*lynxListFor="let item of items(); trackBy: byId"` on the `<list-item>` instead of `@for`: it builds an item only when the list asks for it and reuses the views scrolled away (see [list-virtualization.md](list-virtualization.md)).
+
 ### Overlay Modal
 
 ```html

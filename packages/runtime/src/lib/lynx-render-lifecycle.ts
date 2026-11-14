@@ -102,3 +102,39 @@ export const setInsideChangeDetection = (value: boolean): void => {
 };
 
 export const isInsideChangeDetection = (): boolean => insideChangeDetection;
+
+// How many list items are being built or rebound right now, by a list's
+// componentAtIndex (see bindListItem). More than one when an item holds a
+// list of its own, whose items the item's flush asks for.
+let listItemBindings = 0;
+
+/**
+ * True while a `<list>`'s componentAtIndex is building or rebinding one of
+ * its items for `*lynxListFor` (see bindListItem).
+ */
+export const isBindingListItem = (): boolean => listItemBindings > 0;
+
+/**
+ * Runs `bind`, which builds or rebinds a `*lynxListFor` item for a list's
+ * componentAtIndex, and returns what it returns.
+ *
+ * The item is built and checked (`detectChanges()`) inside the list's own
+ * layout pass, when native calls componentAtIndex synchronously, or as a task
+ * of its own with `enable-async-list`. Either way, componentAtIndex flushes
+ * the item itself, tagged with the operation id native is waiting for, and
+ * nothing else may flush meanwhile: a full `__FlushElementTree()` from inside
+ * the layout pass re-enters it, which React Lynx never does either. So while
+ * this runs, `LynxRendererFactory2.end()` (which the item's `detectChanges()`
+ * calls) and the lists it updates leave the flush to componentAtIndex, and
+ * `scheduleSettleFlush()` schedules nothing: Lynx's main thread runs the
+ * microtasks a call queued before it returns to native, so a settle flush
+ * would land in the layout pass too.
+ */
+export const bindListItem = <R>(bind: () => R): R => {
+  listItemBindings++;
+  try {
+    return bind();
+  } finally {
+    listItemBindings--;
+  }
+};

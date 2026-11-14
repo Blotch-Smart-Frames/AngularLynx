@@ -1,8 +1,10 @@
 # `<list>`
 
-A virtualized scrolling list for long or growing data. Only items near the screen are drawn, and their views are reused as you scroll.
+A virtualized scrolling list for long or growing data. Only items near the screen are drawn. With [`*lynxListFor`](#lynxlistfor), Angular also builds an item only when the list asks for it, and reuses the items scrolled away.
 
 <Go example="element-list" defaultFile="src/app/app.ts" />
+
+The example switches between `*lynxListFor` and `@for` over 1,000 rows and counts the rows each builds: 14 against 1,000 on an iPhone. In this web preview both build every row, because Lynx for Web's list asks for them all.
 
 ## Usage
 
@@ -33,6 +35,74 @@ Import `LYNX_ELEMENTS` in your component (see [Elements](/api/angular-lynx/eleme
 :::danger
 Every `<list-item>` needs a unique `item-key`, or the app crashes. Use the same value as your `@for` `track` expression.
 :::
+
+`@for` builds every item's view up front, and keeps them all: fine for a few dozen items. For hundreds or thousands, use `*lynxListFor`.
+
+## `*lynxListFor`
+
+Repeats a `<list-item>` for each item, as `@for` does, but builds an item's view only when the list asks for it, as it scrolls into view, and gives the views of items scrolled away to the items scrolled to. A list of 1,000 rows builds about as many views as fit on the screen. It's what FlashList does in React Native and React Lynx's `<list>` does, in the shape of the Angular CDK's `*cdkVirtualFor`. `LYNX_ELEMENTS` includes it.
+
+```typescript title="src/app/contacts.ts"
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+type Contact = { id: string; name: string };
+
+@Component({
+  selector: 'app-contacts',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <list list-type="single" style="height: 100vh;">
+      <list-item
+        *lynxListFor="let contact of contacts(); trackBy: byId; let i = index"
+      >
+        <text>{{ i + 1 }}. {{ contact.name }}</text>
+      </list-item>
+    </list>
+  `,
+})
+export class Contacts {
+  readonly contacts = signal<Contact[]>([{ id: '1', name: 'Ada Lovelace' }]);
+  readonly byId = (_: number, contact: Contact) => contact.id;
+}
+```
+
+The list needs each item's `item-key` and layout before the item exists, so they come from the data rather than the `<list-item>`'s attributes:
+
+| Input            | Type                                                 | Description                                                                                                                                                                                                                                                    |
+| ---------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `of`             | `readonly T[] \| Iterable<T> \| null \| undefined`   | The items. An array changed in place shows too.                                                                                                                                                                                                                |
+| `trackBy`        | `(index: number, item: T) => unknown`                | Each item's key, which becomes its `item-key` (as a string): unique and stable, such as its id. Without it, an item is keyed by identity, so new objects for the same data are new items. A repeated key is made unique, with a warning.                       |
+| `itemAttributes` | `(item: T, index: number) => LynxListItemAttributes` | Each item's `estimated-main-axis-size-px`, `full-span`, `sticky-top`, `sticky-bottom`, `recyclable` and `reuse-identifier`, the [`<list-item>` attributes](#list-item) of those names. Written on the `<list-item>` itself, they aren't read until it's built. |
+
+`let item` is the item, and `index`, `count`, `first`, `last`, `even` and `odd` are there as in `@for` (`LynxListForContext`).
+
+Give items that look different different `reuse-identifier`s, such as a section header and a row: an item only reuses the view of an item with the same one. An estimated size close to the real one keeps the scroll bar steady before the items are drawn:
+
+```html
+<list-item
+  *lynxListFor="let row of rows(); trackBy: byId; itemAttributes: layout"
+>
+  …
+</list-item>
+```
+
+```typescript
+readonly layout = (row: Row): LynxListItemAttributes => ({
+  'reuse-identifier': row.header ? 'header' : 'row',
+  'estimated-main-axis-size-px': row.header ? 32 : 64,
+  'sticky-top': row.header,
+});
+```
+
+:::warning
+A reused view keeps everything that isn't bound to its item: a component's own signals, a field's text and focus, a nested scroll position, an animation. Derive what an item shows from the item (an `input()`, `computed()` or a `linkedSignal()` of it), and keep what the user changes in the parent, by key. An item whose view must never show another, such as one with a field the user is typing in, can say so with `recyclable: false` in `itemAttributes`: it gets its own view back each time it scrolls into view, as it left it.
+:::
+
+- It goes on the `<list-item>` itself, directly in the `<list>`, or in content a component projects into its list, as [`<ui-list>`](/dolan/list) does. Static `<list-item>`s and `@for` items can sit beside it.
+- An item's view is checked when the list asks for it, and with the rest of the page after that. A view waiting to be reused keeps its last item, and is checked with its parent: there are only a handful.
+- A list inside an item works, and is updated with its item.
+- In the web preview, Lynx for Web's `<list>` asks for every item at once and never lets one go, so every item gets a view there.
 
 ## Attributes
 

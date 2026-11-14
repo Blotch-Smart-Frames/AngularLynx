@@ -2,7 +2,7 @@
 
 ## Overview
 
-`<list>` is Lynx's native virtualized list. It manages element creation, recycling, and visibility internally. Use it for any list with more than a handful of items.
+`<list>` is Lynx's native virtualized list: it draws only the items near the screen. Use it for any list with more than a handful of items, with `@for` for a few dozen, and `*lynxListFor` for hundreds or more, which builds an item's Angular view only when the list asks for it and reuses the views of items scrolled away.
 
 ## Basic Usage
 
@@ -36,13 +36,51 @@
 
 ## How It Works
 
-The native list engine manages element creation and recycling:
+1. The renderer tells the native list which items exist (their `item-key`s, in order) with `update-list-info`, at the end of each change detection
+2. When an item scrolls into view, the list asks for it by index (`componentAtIndex`)
+3. When an item scrolls away, past `preload-buffer-count`, the list lets go of its element (`enqueueComponent`)
 
-1. When an item scrolls into view, the engine calls `componentAtIndex(index)` to create it
-2. When an item scrolls out of view, the engine calls `enqueueComponent(element)` to recycle it
-3. Recycled elements are reused for new items, preserving the finite element pool
+With `@for`, Angular builds every item's view (and its elements) up front, the list only draws the ones near the screen, and every view stays. With `*lynxListFor`, step 2 builds the item's view, or gives it the view of an item from step 3: a list of 1,000 rows builds about as many views as fit on the screen (measured: 14 instead of 1,000, and a third of the memory).
 
-The AngularLynx renderer handles this transparently — you use `@for` as normal, and the renderer's `LynxListElement` intercepts `appendChild`/`insertBefore` calls to communicate with the native engine via batched `update-list-info` attribute updates.
+## `*lynxListFor` for Long Lists
+
+Put it on the `<list-item>`, directly in the `<list>` (or in content a component such as `ui-list` projects into one). It's in `LYNX_ELEMENTS`.
+
+```typescript
+@Component({
+  selector: 'app-contacts',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <list list-type="single" class="h-full">
+      <list-item
+        *lynxListFor="
+          let contact of contacts();
+          trackBy: byId;
+          itemAttributes: layout;
+          let i = index
+        "
+      >
+        <app-contact-row [contact]="contact" [position]="i" />
+      </list-item>
+    </list>
+  `,
+})
+export class Contacts {
+  readonly contacts = signal<Contact[]>([]);
+  readonly byId = (_: number, contact: Contact) => contact.id;
+  readonly layout = (contact: Contact): LynxListItemAttributes => ({
+    'estimated-main-axis-size-px': 64,
+    'reuse-identifier': contact.pinned ? 'pinned' : 'row',
+  });
+}
+```
+
+- **The key and layout come from the data, not the `<list-item>`**: the list needs them before the item has a view. `trackBy` gives the `item-key` (as a string; without it items are keyed by identity, and a repeated key is made unique with a warning). `itemAttributes` gives `estimated-main-axis-size-px`, `full-span`, `sticky-top`, `sticky-bottom`, `recyclable` and `reuse-identifier`; written on the `<list-item>` itself they aren't read until it's built.
+- **The context is `@for`'s**: `let item`, `index`, `count`, `first`, `last`, `even`, `odd` (`LynxListForContext`).
+- **A reused view keeps what isn't bound to its item**: a child component's own signals, a field's text and focus, a nested scroll position. Derive what a row shows from its item (`input()`, `computed()`, `linkedSignal()`), keep what the user changes in the parent by key, and give an item whose view must stay its own `recyclable: false` (it gets its own view back each time).
+- **Different layouts, different `reuse-identifier`s**: an item only reuses the view of an item with the same one, such as a header and a row.
+- **Data changes work as with `@for`**: inserts, removals and moves update the native list, and the views on screen show new values. An array changed in place (`push()`) shows too.
+- **Tests and the web preview**: native asks for a list's items, `@for`'s or `*lynxListFor`'s, and nothing plays native's part in `ng test`, so a test doesn't see them: test the item's component on its own. Lynx for Web's `<list>` asks for every item at once and never lets one go, so every item gets a view there.
 
 ## Styling
 
@@ -104,8 +142,8 @@ A chat opens on its newest message and loads older ones as the person scrolls up
 
 ## Important Rules
 
-1. **Never use `<view>` for long lists** — it creates all elements upfront, exhausting the element pool
-2. **`item-key` is mandatory** — without it, the native engine crashes
+1. **Never use `<view>` for long lists** — it creates all elements upfront, exhausting the element pool. `@for` in a `<list>` does too, on the Angular side: use `*lynxListFor` for hundreds of items or more
+2. **`item-key` is mandatory** — without it, the native engine crashes. `*lynxListFor` sets it from `trackBy`
 3. **`<list-item>` must be a direct child of `<list>`** — wrapping it in other elements breaks recycling
 4. **Don't set `z-index` on `<list-item>`** — it interferes with the recycling mechanism. Set z-index on content inside the list item instead
 5. **Explicit height required** — same as `<scroll-view>`, the list needs a bounded height to scroll
@@ -113,9 +151,9 @@ A chat opens on its newest message and loads older ones as the person scrolls up
 
 ## List vs Scroll-View
 
-|                     | `<list>`                       | `<scroll-view>`                    |
-| ------------------- | ------------------------------ | ---------------------------------- |
-| Virtualization      | Yes — only visible items exist | No — all items created upfront     |
-| Element pool impact | Minimal — recycles elements    | High — one element per item        |
-| Use for             | 10+ items, dynamic content     | Small fixed content, mixed layouts |
-| Recycling           | Automatic via native engine    | None                               |
+|                     | `<list>`                         | `<scroll-view>`                    |
+| ------------------- | -------------------------------- | ---------------------------------- |
+| Virtualization      | Yes — only visible items exist   | No — all items created upfront     |
+| Element pool impact | Minimal — recycles elements      | High — one element per item        |
+| Use for             | 10+ items, dynamic content       | Small fixed content, mixed layouts |
+| Recycling           | Views reused with `*lynxListFor` | None                               |

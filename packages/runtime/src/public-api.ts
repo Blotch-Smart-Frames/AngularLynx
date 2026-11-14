@@ -95,6 +95,7 @@ export {
   LynxInput,
   LynxInputValueAccessor,
   LynxList,
+  LynxListFor,
   LynxListItem,
   LynxOverlay,
   LynxRefresh,
@@ -117,6 +118,8 @@ export {
   LynxViewPagerItem,
   LynxWebView,
 } from './lib/lynx-elements';
+export { LynxListForContext } from './lib/list-for';
+export type { LynxListForOf, LynxListItemAttributes } from './lib/list-for';
 export type { BaseLynxElement } from './lib/lynx-element/types';
 // <canvas> and its WebGL2 context, for typing a canvas's ElementRef.
 export type { LynxCanvasElement } from './lib/canvas/canvas-element';

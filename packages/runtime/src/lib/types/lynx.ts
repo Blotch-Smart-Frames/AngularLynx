@@ -320,6 +320,14 @@ declare global {
        * Delegate async scheduling to the native engine (used in componentAtIndexes batch path).
        */
       asyncFlush?: boolean;
+      /**
+       * Tells native a list item's element now shows another item (the one
+       * with `itemKey`), when componentAtIndex was asked to say so.
+       */
+      listReuseNotification?: {
+        listElement: ElementRef;
+        itemKey: string;
+      };
     },
   ): void;
 

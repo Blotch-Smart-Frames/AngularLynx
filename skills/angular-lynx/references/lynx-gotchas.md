@@ -6,7 +6,7 @@ Curated list of Lynx-vs-web differences that cause bugs. Organized by severity.
 
 ### Missing `item-key` on `<list-item>`
 
-The native list engine requires a unique `item-key` attribute on every `<list-item>`. Without it, the engine crashes. **Fix:** Always set `item-key="{{ uniqueId }}"`.
+The native list engine requires a unique `item-key` attribute on every `<list-item>`. Without it, the engine crashes. **Fix:** Always set `item-key="{{ uniqueId }}"`. With `*lynxListFor`, `trackBy` gives it.
 
 ### Zone.js incompatibility
 

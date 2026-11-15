@@ -45,6 +45,7 @@ export class App {}
 - **A tap navigates** to the tab's `route`, with Angular's own [`RouterLink`](/guide/routing#navigate-between-screens). Set up the router with `provideRouter()` from `@blotch/angular-lynx`.
 - **The tab of the current route is selected:** its icon and label take the theme's `primary` color, and the others its `muted-foreground`.
 - **A tab stays selected on the routes under it.** The Inbox tab at `/inbox` is still selected at `/inbox/42`.
+- **A tab shows selected as soon as it's tapped,** before the screen it shows has been built, so a tab that takes a moment to build doesn't look like a missed tap. If the navigation ends somewhere else (a guard says no or redirects, or it fails), the tab of the route the app is on is selected again.
 - **Going back to a tab finds it as you left it,** with `<lynx-tab-outlet>`: its scroll positions, the screens pushed in it, and its native views. A tap on the selected tab pops its stack to its first screen. With `<router-outlet>`, each tab is built again every time.
 - **The tabs share the bar's width equally,** and the bar pads itself by the bottom [safe area](/guide/safe-area), so the tabs sit above the iPhone's home indicator.
 - **The icon is any [Icon](/dolan/icon) name,** or [your own mark](#your-own-mark).
@@ -189,7 +190,7 @@ The icons draw with the light theme's colors until you say otherwise, as every i
 ## Accessibility
 
 - **Each tab is one button,** named by its `label` and then its badge: "Inbox, 3".
-- **The selected tab has the `selected` trait,** so iOS VoiceOver announces it as selected. Android has no selected trait, so TalkBack doesn't say which tab is selected.
+- **The selected tab has the `selected` trait,** from the tap, as it shows, so iOS VoiceOver announces it as selected. Android has no selected trait, so TalkBack doesn't say which tab is selected.
 - **On iOS, the bar has the `tabbar` trait,** as a native tab bar does, which tells VoiceOver that its buttons are tabs.
 - **Away on a pushed screen,** the bar is hidden from screen readers and takes no taps.
 

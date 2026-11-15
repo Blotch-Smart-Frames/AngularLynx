@@ -330,6 +330,11 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
   /** The tab the router has active, or null between routes. */
   #active: Tab | null = null;
   /**
+   * A kept tab the router has left, on screen until the tab it leaves for
+   * is in place (see deactivate).
+   */
+  #leaving: Tab | null = null;
+  /**
    * Each detached component's tab, for a component the reuse strategy hands
    * back. It dies with the outlet.
    */
@@ -474,7 +479,13 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
     this.#active = null;
     setTabActive(tab.tabPage, false);
     if (this.#keeps(tab)) {
-      this.#hide(tab);
+      // It stays on screen while the router builds the next tab, in this
+      // same pass, and hides once that tab is in place (see #putAway).
+      // Hidden first, the screen showed neither tab, with nothing but the
+      // background, whenever the UI thread drew the page while a slow tab
+      // was being built: on iOS a Core Animation transition ending, such as
+      // the dock's capsule sliding to the tab tapped, did.
+      this.#leaving = tab;
     } else {
       this.#remove(tab);
     }
@@ -484,6 +495,7 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
     // page or tab the outlet is on went out of view: then they stay for when
     // it comes back.
     afterRouterPass(this.#router, () => {
+      this.#putAway();
       if (this.#active || this.#destroyed) return;
       if (onHiddenPage(this.#outerPage, this.#outerTab)) {
         this.#parked = true;
@@ -856,6 +868,7 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
   #activate(tab: Tab): void {
     this.#active = tab;
     this.#reveal(tab);
+    this.#putAway();
     setTabActive(tab.tabPage, true);
     this.#changes.markForCheck();
     this.#binder?.bindActivatedRouteToOutletComponent(
@@ -882,6 +895,17 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
     if (typeof said === 'boolean') return said;
     const keep = this.keep();
     return keep === undefined || keep.includes(path ?? '');
+  }
+
+  /**
+   * Hides the tab the router left (see deactivate), now that the next one
+   * is in place, or the router's pass ended without one. The router may
+   * have come back to it.
+   */
+  #putAway(): void {
+    const tab = this.#leaving;
+    this.#leaving = null;
+    if (tab && tab !== this.#active) this.#hide(tab);
   }
 
   /**

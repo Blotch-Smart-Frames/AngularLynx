@@ -1,20 +1,34 @@
 import {
+  ApplicationRef,
   Component,
   ElementRef,
   Renderer2,
   ViewEncapsulation,
   computed,
+  effect,
   inject,
   input,
   output,
+  signal,
 } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
-import { RouterLink, RouterLinkActive } from '@angular/router';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import {
+  type Event as RouterEvent,
+  NavigationCancel,
+  NavigationCancellationCode,
+  NavigationEnd,
+  NavigationError,
+  NavigationSkipped,
+  Router,
+  RouterLink,
+  RouterLinkActive,
+} from '@angular/router';
+import {
+  type BaseLynxElement,
   LYNX_ELEMENTS,
-  LynxRouterLinkActive,
   LynxStackBottomBar,
 } from '@blotch/angular-lynx';
+import { filter } from 'rxjs';
 
 import {
   type AnimationHandle,
@@ -40,6 +54,9 @@ import { type IconName, iconMarkup, paintIcon } from '../icon/icons';
  * page covers it, rounded corner, shadow and all. Where they move as
  * Android's do, it slides down off the screen. It follows a finger dragging
  * a page back, and it leaves screen readers and taps alone while it's away.
+ *
+ * A tapped item shows selected at once, before the screen it shows is built
+ * (see `markTapped`).
  */
 @Component({
   selector: 'ui-tab-bar',
@@ -84,6 +101,26 @@ export class UiTabBar {
   readonly userClass = input<string>('', { alias: 'class' });
 
   readonly #bar = inject(LynxStackBottomBar);
+  readonly #router = inject(Router);
+  readonly #appRef = inject(ApplicationRef);
+
+  /**
+   * The item tapped last, while the navigation its tap started is under
+   * way: it shows selected from the tap, rather than once RouterLinkActive
+   * says its route is active (see UiTabBarItem.active). RouterLinkActive
+   * says so when the navigation ends, and so after the outlet has built the
+   * screen the item shows: on a tab not built yet, the bar sat still as if
+   * the tap had missed, then the mark and the screen came together.
+   */
+  readonly #tapped = signal<UiTabBarItem | null>(null);
+  readonly tappedItem = this.#tapped.asReadonly();
+
+  // The tapped item gives way to RouterLinkActive once the navigation is
+  // over, however it ended: after a guard's redirect, a failure or a
+  // cancel, the item of the route the router shows is selected again.
+  protected readonly settleTapped = this.#router.events
+    .pipe(filter(navigationOver), takeUntilDestroyed())
+    .subscribe(() => this.#tapped.set(null));
 
   /**
    * Whether a page of the stack that's showing has taken the bar away (see
@@ -140,7 +177,39 @@ export class UiTabBar {
     'flatten',
     'false',
   );
+
+  /**
+   * Shows `item` selected now, for a tap on it that started a navigation.
+   * After a tap that started none, because the router shows the item's
+   * route already, the router's own item shows.
+   */
+  markTapped(item: UiTabBarItem): void {
+    // The item's RouterLink navigates from the same tap, before this: its
+    // host listener comes first. A navigation to the URL the router shows is
+    // skipped then and there, which leaves none under way, and cancels one
+    // another tap started.
+    this.#tapped.set(this.#router.currentNavigation() ? item : null);
+    // Draws the mark now, before the router builds the screen: it goes on
+    // after this turn's listeners (it waits a microtask after
+    // NavigationStart), and the change detection after it would bring the
+    // mark and the built screen together. The apps' shells send a flush to
+    // the UI thread at once, which draws the mark while the screen is built.
+    this.#appRef.tick();
+  }
 }
+
+/**
+ * Whether a router event ends a navigation, as Angular's own
+ * `afterNextNavigation` counts it: a cancel for a guard's redirect, or for a
+ * newer navigation (another tap), comes before that navigation's own end.
+ */
+const navigationOver = (event: RouterEvent): boolean =>
+  event instanceof NavigationEnd ||
+  event instanceof NavigationSkipped ||
+  event instanceof NavigationError ||
+  (event instanceof NavigationCancel &&
+    event.code !== NavigationCancellationCode.Redirect &&
+    event.code !== NavigationCancellationCode.SupersededByNewNavigation);
 
 /**
  * A number to two places, for a style that changes with a finger.
@@ -157,8 +226,8 @@ const round = (value: number): number => Math.round(value * 100) / 100;
  * option (`queryParams`, `replaceUrl`, `state`, …) and
  * `routerLinkActiveOptions` work as they do on the web, and the item knows
  * whether its route is active without the app wiring `routerLinkActive` up.
- * Host directives don't match selectors, so `LynxRouterLinkActive`, which
- * marks the active item `selected` for screen readers, is listed too.
+ * It shows selected from the tap, though, while the screen is built (see
+ * `UiTabBar.markTapped`), and screen readers hear it `selected` as it shows.
  */
 @Component({
   selector: 'ui-tab-bar-item',
@@ -184,7 +253,6 @@ const round = (value: number): number => Math.round(value * 100) / 100;
       ],
     },
     { directive: RouterLinkActive, inputs: ['routerLinkActiveOptions'] },
-    LynxRouterLinkActive,
   ],
   host: {
     // The host is the tap target and fills an equal share of the bar's row.
@@ -194,10 +262,10 @@ const round = (value: number): number => Math.round(value * 100) / 100;
     '[class]': 'contentClass()',
     // One accessibility element per tab, named by its label, so a screen
     // reader reads "Inbox, 3, button" instead of an unlabeled SVG and a word.
-    // LynxRouterLinkActive adds `selected` to `button` while the route is
-    // active. The label is an attribute binding: a property binding on a
-    // component's host is checked against the DOM schema, which has no
-    // `accessibility-label`.
+    // `selected` is added to `button` while the tab shows selected (see
+    // markingSelected). The label is an attribute binding: a property
+    // binding on a component's host is checked against the DOM schema, which
+    // has no `accessibility-label`.
     'accessibility-element': 'true',
     'accessibility-traits': 'button',
     '[attr.accessibility-label]': 'accessibilityLabel()',
@@ -211,9 +279,10 @@ const round = (value: number): number => Math.round(value * 100) / 100;
     '(bindtouchcancel)': 'onPressEnd()',
     '(bindmouseup)': 'onPressEnd()',
     '(bindmouseleave)': 'onPressEnd()',
-    // RouterLink navigates on the same tap through its own listener: Lynx
-    // keeps one handler per event, and the runtime runs both from it.
-    '(bindtap)': 'pressed.emit()',
+    // RouterLink navigates on the same tap through its own listener, which
+    // runs first: Lynx keeps one handler per event, and the runtime runs
+    // them all from it, in the order they were added.
+    '(bindtap)': 'onTap()',
   },
   template: `
     <view class="relative">
@@ -261,15 +330,36 @@ export class UiTabBarItem {
    * Whether the item's route is active, from the RouterLinkActive on the host.
    * RouterLinkActive reports only changes, and starts from not active.
    */
-  protected readonly active = toSignal(
-    inject(RouterLinkActive).isActiveChange,
-    { initialValue: false },
-  );
+  readonly #routeActive = toSignal(inject(RouterLinkActive).isActiveChange, {
+    initialValue: false,
+  });
+
+  readonly #tabBar = inject(UiTabBar);
+  readonly #link = inject(RouterLink);
+
+  /**
+   * Whether the tab shows selected: the tab tapped last while the navigation
+   * its tap started is under way, and otherwise the tab whose route is
+   * active.
+   */
+  protected readonly active = computed(() => {
+    const tapped = this.#tabBar.tappedItem();
+    return tapped ? tapped === this : this.#routeActive();
+  });
 
   // The host, not an inner view, shrinks on a press: it's the whole tap
   // target, and injecting it needs no view query.
-  readonly #host = inject(ElementRef);
+  readonly #host = inject<ElementRef<BaseLynxElement>>(ElementRef);
   #pressAnim?: AnimationHandle;
+
+  /**
+   * The selected tab is `selected` to a screen reader as it shows, from the
+   * tap. The trait is added to the host's own `button`: on iOS it reads
+   * `button,selected`, and Android, which reads one trait, keeps `button`.
+   */
+  protected readonly markingSelected = effect(() => {
+    this.#host.nativeElement.setAccessibilityTrait('selected', this.active());
+  });
 
   protected readonly badgeText = computed(() => {
     const text = String(this.badge() ?? '');
@@ -319,6 +409,17 @@ export class UiTabBarItem {
       this.userClass(),
     ),
   );
+
+  /**
+   * A tap on a tab that isn't selected shows it selected at once (see
+   * UiTabBar.markTapped). One on the selected tab changes nothing here.
+   */
+  protected onTap(): void {
+    this.pressed.emit();
+    if (this.#link.urlTree !== null && !this.active()) {
+      this.#tabBar.markTapped(this);
+    }
+  }
 
   protected onPressStart(): void {
     this.#pressAnim?.cancel();

@@ -3,9 +3,15 @@ import {
   ErrorHandler,
   type Provider,
   signal,
+  viewChild,
   viewChildren,
 } from '@angular/core';
-import { Router, RouterOutlet, type Routes } from '@angular/router';
+import {
+  Router,
+  RouterOutlet,
+  type Routes,
+  type UrlTree,
+} from '@angular/router';
 import {
   fireEvent,
   render,
@@ -70,6 +76,29 @@ const routes: Routes = [
   { path: 'search', component: SearchPage },
 ];
 
+/**
+ * Settles the navigation the inbox's guard holds, as the test says: a phone
+ * holds a tab's navigation while it builds the tab's screen.
+ */
+let gate: { open: (result: boolean | UrlTree) => void } | null = null;
+
+/**
+ * The routes with the inbox's navigation held until the test settles it.
+ */
+const gatedRoutes: Routes = routes.map((route) =>
+  route.path === 'inbox'
+    ? {
+        ...route,
+        canActivate: [
+          () =>
+            new Promise<boolean | UrlTree>((open) => {
+              gate = { open };
+            }),
+        ],
+      }
+    : route,
+);
+
 @Component({
   imports: [
     LYNX_ELEMENTS,
@@ -122,6 +151,7 @@ class DockHost {
   readonly badge = signal<string | number | null | undefined>(undefined);
   readonly inboxClass = signal('');
   readonly items = viewChildren(UiDockItem);
+  readonly dock = viewChild.required(UiDock);
 }
 
 @Component({
@@ -248,6 +278,15 @@ const until = async (done: () => boolean): Promise<void> => {
 };
 
 /**
+ * The inbox's guard, once the router has run it: a navigation reaches its
+ * guards a few microtasks after the tap.
+ */
+const heldInbox = async () => {
+  await until(() => gate !== null);
+  return gate!;
+};
+
+/**
  * The platform, as `SystemInfo` reports it. Provided rather than stubbed as
  * a global: the router's setup switches the testing library's threads, which
  * puts back its own SystemInfo before the dock reads it.
@@ -260,10 +299,11 @@ const onPlatform = (platform: { platform: string; osVersion: string }) => ({
 const renderDock = async (
   platform: { platform: string; osVersion: string },
   providers: Provider[] = [],
+  withRoutes: Routes = routes,
 ) => {
   const result = await render(DockHost, {
     providers: [
-      provideRouter(routes),
+      provideRouter(withRoutes),
       onPlatform(platform),
       { provide: LynxAccessibilitySettings, useValue: settings },
       ...providers,
@@ -370,6 +410,7 @@ const style = (element: HTMLElement, name: string) =>
 // back to a <view> for each and warns.
 beforeEach(() => {
   vi.spyOn(console, 'warn').mockImplementation(() => {});
+  gate = null;
 });
 
 afterEach(() => {
@@ -443,6 +484,11 @@ describe('UiDock on iOS 26 and later', () => {
     // A shade of the glass's foreground, not of the primary color.
     expect(capsule().classList).toContain('bg-glass-foreground');
     expect(style(capsule(), 'transition')).toContain('transform');
+    // Core Animation and Android's animators move it, so it slides while
+    // Angular builds the screen tapped; Android moves a transform only on a
+    // view of its own.
+    expect(capsule().getAttribute('enable-new-animator')).toBe('false');
+    expect(capsule().getAttribute('flatten')).toBe('false');
     expect(labelOf('Home').classList).toContain('text-primary');
     expect(iconOf(item('Home'))).toContain(PRIMARY);
     expect(labelOf('Inbox').classList).toContain('text-glass-foreground');
@@ -822,8 +868,74 @@ describe('UiDockItem', () => {
   it("navigates with the item's RouterLink options", async () => {
     const { router, item, isSelected } = await renderDock(IOS_26);
     fireEvent.tap(item('Profile'));
-    await until(() => isSelected('Profile'));
-    expect(router.url).toBe('/profile?tab=posts');
+    await until(() => router.url === '/profile?tab=posts');
+    expect(isSelected('Profile')).toBe(true);
+  });
+
+  it('shows selected from the tap, and sets the capsule off, before its screen is built', async () => {
+    const { item, capsule, isSelected, labelOf, page } = await renderDock(
+      IOS_26,
+      [],
+      gatedRoutes,
+    );
+
+    fireEvent.tap(item('Inbox'));
+    // Drawn by the tap itself, before the router goes on to build the
+    // screen: no change detection has run since.
+    expect(isSelected('Inbox')).toBe(true);
+    expect(labelOf('Inbox').classList).toContain('text-primary');
+    expect(style(capsule(), 'transform')).toBe('translateX(100%)');
+    expect(isSelected('Home')).toBe(false);
+
+    await waitForUpdate();
+    expect(page()).toBe('Home page');
+
+    (await heldInbox()).open(true);
+    await until(() => page() === 'Inbox page');
+    expect(isSelected('Inbox')).toBe(true);
+    expect(style(capsule(), 'transform')).toBe('translateX(100%)');
+  });
+
+  it('goes back to the item the router shows for a tap on it', async () => {
+    const { item, capsule, isSelected } = await renderDock(
+      IOS_26,
+      [],
+      gatedRoutes,
+    );
+    fireEvent.tap(item('Inbox'));
+    await heldInbox();
+    // The router still shows Home, so it skips the tap's navigation, and
+    // cancels the inbox's for it. Nothing is built: the next update shows
+    // Home.
+    fireEvent.tap(item('Home'));
+    await waitForUpdate();
+    expect(isSelected('Home')).toBe(true);
+    expect(isSelected('Inbox')).toBe(false);
+    expect(style(capsule(), 'transform')).toBe('translateX(0%)');
+  });
+
+  it('shows the item the router shows when markTapped finds no navigation under way', async () => {
+    const { host, isSelected } = await renderDock(IOS_26, [], gatedRoutes);
+    const inbox = host.items().find((item) => item.label() === 'Inbox')!;
+    host.dock().markTapped(inbox);
+    expect(isSelected('Inbox')).toBe(false);
+    expect(isSelected('Home')).toBe(true);
+  });
+
+  it('takes the mark and the capsule back when a guard turns the navigation down', async () => {
+    const { item, capsule, isSelected, page } = await renderDock(
+      IOS_26,
+      [],
+      gatedRoutes,
+    );
+    fireEvent.tap(item('Inbox'));
+    expect(style(capsule(), 'transform')).toBe('translateX(100%)');
+
+    (await heldInbox()).open(false);
+    await until(() => isSelected('Home'));
+    expect(isSelected('Inbox')).toBe(false);
+    expect(style(capsule(), 'transform')).toBe('translateX(0%)');
+    expect(page()).toBe('Home page');
   });
 
   it('emits pressed for every tap, the selected item too', async () => {

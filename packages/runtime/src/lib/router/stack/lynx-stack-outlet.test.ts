@@ -46,6 +46,10 @@ import {
 import { LynxAccessibilitySettings } from '../../accessibility/accessibility-settings';
 import { LynxElement } from '../../lynx-element/lynx-element';
 import { provideRouter } from '../lynx-router';
+import {
+  type StartedTransition,
+  spyOnTransitions,
+} from '../../testing/transition-spy';
 import { LynxStackOutlet } from './lynx-stack-outlet';
 import { LynxStackBottomBar } from './stack-bottom-bar';
 import { LynxStackChrome, STILL } from './stack-chrome';
@@ -237,10 +241,36 @@ const ROUTES: Routes = [
   },
 ];
 
-type Animate = ReturnType<typeof vi.fn>;
+/** iOS's push and pop's timing function. */
+const IOS_EASING = 'cubic-bezier(0.32, 0.68, 0.12, 1)';
+
+/**
+ * A push or a pop's `transition` of transform and opacity.
+ */
+const transitionOf = (ms: number, easing = IOS_EASING) =>
+  `transform ${ms}ms ${easing}, opacity ${ms}ms ${easing}`;
+
+/**
+ * Past the next frame, after which a navigation's slide starts (see
+ * afterFrame): the fake clock draws one every 16ms from its start, so one is
+ * at most that far away.
+ */
+const nextFrame = () => vi.advanceTimersByTimeAsync(20);
 
 describe('LynxStackOutlet', () => {
-  let animate: Animate;
+  /** The transitions started since the test began, or since cleared. */
+  let started: StartedTransition[];
+  let restoreTransitions: () => void;
+  /**
+   * Each element given a transition, and where it's going: the values its
+   * style has now.
+   */
+  const moves = () =>
+    started.map(({ style, transition }) => ({
+      transition,
+      transform: style.transform,
+      opacity: style.opacity,
+    }));
 
   beforeAll(() => {
     TestBed.initTestEnvironment(BrowserTestingModule, platformBrowserTesting());
@@ -251,15 +281,21 @@ describe('LynxStackOutlet', () => {
     nests.length = 0;
     bars.length = 0;
     canLeave = true;
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
-    animate = vi.fn(() => ({ cancel: vi.fn() }));
-    // jsdom has no Web Animations.
-    (Element.prototype as unknown as { animate: Animate }).animate = animate;
+    vi.useFakeTimers({
+      toFake: [
+        'setTimeout',
+        'clearTimeout',
+        'Date',
+        'requestAnimationFrame',
+        'cancelAnimationFrame',
+      ],
+    });
+    ({ started, restore: restoreTransitions } = spyOnTransitions());
   });
 
   afterEach(() => {
     TestBed.resetTestingModule();
-    delete (Element.prototype as unknown as { animate?: Animate }).animate;
+    restoreTransitions();
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
@@ -325,7 +361,7 @@ describe('LynxStackOutlet', () => {
     layOut(harness.host);
     await harness.go('/notes/1');
     await harness.settle();
-    animate.mockClear();
+    started.length = 0;
     return harness;
   };
 
@@ -365,7 +401,7 @@ describe('LynxStackOutlet', () => {
       expect(frame.style.position).toBe('absolute');
       expect(frame.style.backgroundColor).toBe('var(--background, #ffffff)');
       expect(frame.textContent).toBe('page');
-      expect(animate).not.toHaveBeenCalled();
+      expect(started).toEqual([]);
       const outlet = outletOf(fixture);
       expect(outlet.isActivated).toBe(true);
       expect(outlet.component).toBe(made[0]);
@@ -379,17 +415,17 @@ describe('LynxStackOutlet', () => {
       layOut(host);
       await go('/notes/1');
       expect(frames()).toHaveLength(2);
-      // The new page starts off to the right, then slides in on the next turn.
+      // The new page starts off to the right, then slides in once the
+      // screen has drawn it there.
       expect(frames()[1]!.style.transform).toBe('translateX(400px)');
-      expect(animate).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(0);
-      expect(animate).toHaveBeenCalledWith(
-        [
-          { transform: 'translateX(400px)', opacity: '1' },
-          { transform: 'translateX(0px)', opacity: '1' },
-        ],
-        expect.objectContaining({ duration: 350, fill: 'forwards' }),
-      );
+      expect(started).toEqual([]);
+      await nextFrame();
+      expect(moves()).toContainEqual({
+        transition: transitionOf(350),
+        transform: 'translateX(0px)',
+        opacity: '1',
+      });
       // Rounded and shadowed while it moves.
       expect(frames()[1]!.style.borderRadius).toBe('62px');
       await settle();
@@ -402,24 +438,30 @@ describe('LynxStackOutlet', () => {
       const { go, location, frames, shown, settle } = await setup();
       await go('/notes/1');
       await settle();
+      started.length = 0;
       location.back();
       // Angular follows the history a turn later, then the slide starts.
-      await vi.advanceTimersByTimeAsync(20);
+      await vi.advanceTimersByTimeAsync(0);
       // The page under slides back in from a third of the way left.
-      expect(animate).toHaveBeenCalledWith(
-        [
-          { transform: 'translateX(0%)', opacity: '1' },
-          { transform: 'translateX(100%)', opacity: '1' },
-        ],
-        expect.anything(),
-      );
-      expect(animate).toHaveBeenCalledWith(
-        [
-          { transform: 'translateX(-30%)', opacity: '1' },
-          { transform: 'translateX(0%)', opacity: '1' },
-        ],
-        expect.anything(),
-      );
+      expect(frames()[0]!.style.transform).toBe('translateX(-30%)');
+      await nextFrame();
+      expect(moves()).toEqual([
+        {
+          transition: transitionOf(350),
+          transform: 'translateX(100%)',
+          opacity: '1',
+        },
+        {
+          transition: transitionOf(350),
+          transform: 'translateX(0%)',
+          opacity: '1',
+        },
+        {
+          transition: `opacity 350ms ${IOS_EASING}`,
+          transform: '',
+          opacity: '0',
+        },
+      ]);
       await settle();
       expect(frames()).toHaveLength(1);
       expect(shown()).toEqual(frames());
@@ -481,12 +523,12 @@ describe('LynxStackOutlet', () => {
       const { go, frames, settle } = await setup();
       await go('/notes/1');
       await settle();
-      animate.mockClear();
+      started.length = 0;
       await go('/settings');
       expect(frames()).toHaveLength(1);
       expect(made.map((page) => page.destroyed)).toEqual([true, true, false]);
       await settle();
-      expect(animate).not.toHaveBeenCalled();
+      expect(started).toEqual([]);
     });
 
     it('slides in a page that the top one is under from behind', async () => {
@@ -495,8 +537,8 @@ describe('LynxStackOutlet', () => {
       // The new page goes under the old one, which slides away.
       expect(frames()).toHaveLength(2);
       expect(frames()[0]!.textContent).toBe('page');
-      await vi.advanceTimersByTimeAsync(0);
-      expect(animate).toHaveBeenCalled();
+      await nextFrame();
+      expect(started).not.toEqual([]);
       await settle();
       expect(frames()).toHaveLength(1);
       expect(made.map((page) => page.destroyed)).toEqual([true, false]);
@@ -582,13 +624,13 @@ describe('LynxStackOutlet', () => {
       const { go, frames, settle } = await setup();
       await go('/notes/1');
       await settle();
-      animate.mockClear();
+      started.length = 0;
       await go('/settings', { replaceUrl: true });
       await settle();
       // The page under the replaced one stays.
       expect(frames()).toHaveLength(2);
       expect(made.map((page) => page.destroyed)).toEqual([false, true, false]);
-      expect(animate).not.toHaveBeenCalled();
+      expect(started).toEqual([]);
       await go('/notes/1/edit', { info: { stack: 'root' } });
       expect(frames()).toHaveLength(1);
     });
@@ -753,35 +795,34 @@ describe('LynxStackOutlet', () => {
 
   describe('motion', () => {
     it('cross-fades while Reduce Motion is on', async () => {
-      const { go } = await setup([
+      const { go, frames } = await setup([
         {
           provide: LynxAccessibilitySettings,
           useValue: { reduceMotion: () => true },
         },
       ]);
       await go('/notes/1');
-      await vi.advanceTimersByTimeAsync(0);
-      expect(animate).toHaveBeenCalledWith(
-        [
-          { transform: 'translateX(0%)', opacity: '0' },
-          { transform: 'translateX(0%)', opacity: '1' },
-        ],
-        expect.objectContaining({ duration: 250 }),
-      );
+      expect(frames()[1]!.style.opacity).toBe('0');
+      await nextFrame();
+      expect(moves()).toContainEqual({
+        transition: transitionOf(250, 'ease-in-out'),
+        transform: 'translateX(0%)',
+        opacity: '1',
+      });
     });
 
     it('slides and fades as Android does on Android', async () => {
       vi.stubGlobal('SystemInfo', { platform: 'Android' });
-      const { go } = await setup();
+      const { go, frames } = await setup();
       await go('/notes/1');
-      await vi.advanceTimersByTimeAsync(0);
-      expect(animate).toHaveBeenCalledWith(
-        [
-          { transform: 'translateX(10%)', opacity: '0' },
-          { transform: 'translateX(0%)', opacity: '1' },
-        ],
-        expect.objectContaining({ duration: 450 }),
-      );
+      expect(frames()[1]!.style.transform).toBe('translateX(10%)');
+      expect(frames()[1]!.style.opacity).toBe('0');
+      await nextFrame();
+      expect(moves()).toContainEqual({
+        transition: transitionOf(450, 'cubic-bezier(0.2, 0, 0, 1)'),
+        transform: 'translateX(0%)',
+        opacity: '1',
+      });
     });
 
     it("moves nothing with animation 'none'", async () => {
@@ -791,7 +832,7 @@ describe('LynxStackOutlet', () => {
       await settle();
       location.back();
       await settle();
-      expect(animate).not.toHaveBeenCalled();
+      expect(started).toEqual([]);
       expect(frames()).toHaveLength(1);
     });
 
@@ -829,25 +870,71 @@ describe('LynxStackOutlet', () => {
     });
 
     it('measures the outlet in px once it has been laid out', async () => {
-      const { go, host } = await setup();
+      const { go, host, frames } = await setup();
       layOut(host);
       await go('/notes/1');
-      await vi.advanceTimersByTimeAsync(0);
-      expect(animate.mock.calls[0]![0]).toEqual([
-        { transform: 'translateX(400px)', opacity: '1' },
-        { transform: 'translateX(0px)', opacity: '1' },
-      ]);
+      expect(frames()[0]!.style.transform).toBe('translateX(0px)');
+      await nextFrame();
+      expect(frames()[0]!.style.transform).toBe('translateX(-120px)');
     });
 
     it('abandons a transition when it is destroyed', async () => {
-      const { go, fixture } = await setup();
+      const { go, fixture, frames } = await setup();
+      await go('/notes/1');
+      await nextFrame();
+      const moving = frames();
+      expect(moving[1]!.style.transition).not.toBe('');
+      fixture.destroy();
+      for (const page of moving) expect(page.style.transition).toBe('');
+    });
+
+    it('starts on the next turn where there are no frames to wait for', async () => {
+      vi.stubGlobal('requestAnimationFrame', undefined);
+      const { go, frames } = await setup();
       await go('/notes/1');
       await vi.advanceTimersByTimeAsync(0);
-      const animation = animate.mock.results[0]!.value as {
-        cancel: Animate;
-      };
-      fixture.destroy();
-      expect(animation.cancel).toHaveBeenCalled();
+      expect(frames()[1]!.style.transform).toBe('translateX(0%)');
+    });
+
+    it('waits for a frame with nothing else after it, a few at most', async () => {
+      const { go, frames } = await setup();
+      await go('/notes/1');
+      // Each turn starts well after the last: the thread is never idle.
+      const now = Date.now.bind(Date);
+      let late = 0;
+      const clock = vi.spyOn(Date, 'now').mockImplementation(() => {
+        late += 10;
+        return now() + late;
+      });
+      await nextFrame();
+      expect(frames()[1]!.style.transition).toBe('');
+      // It starts anyway after the fourth.
+      await vi.advanceTimersByTimeAsync(16 * 4);
+      expect(frames()[1]!.style.transition).toBe(transitionOf(350));
+      clock.mockRestore();
+    });
+
+    it('jumps a transition to its end when another navigation comes', async () => {
+      const { go, frames, settle } = await setup();
+      await go('/notes/1');
+      await nextFrame();
+      const pushed = frames()[1]!;
+      await go('/notes/1/edit');
+      // The first push ends where it was going, at once.
+      expect(pushed.style.transition).toBe('');
+      expect(pushed.style.transform).toBe('translateX(0%)');
+      // The second ends before it starts: only the pop moves the page, off
+      // to the right.
+      const edit = frames()[2]!;
+      started.length = 0;
+      await go('/notes/1');
+      await nextFrame();
+      expect(started.filter(({ style }) => style === edit.style)).toHaveLength(
+        1,
+      );
+      expect(edit.style.transform).toBe('translateX(100%)');
+      await settle();
+      expect(frames()).toHaveLength(2);
     });
   });
 
@@ -916,7 +1003,7 @@ describe('LynxStackOutlet', () => {
       touch(top.firstElementChild!, 'touchend', 100);
       await settle();
       expect(top.style.transform).toBe('translateX(0px)');
-      expect(animate).not.toHaveBeenCalled();
+      expect(started).toEqual([]);
     });
 
     it('leaves a touch that never moved far enough to the page', async () => {
@@ -926,7 +1013,7 @@ describe('LynxStackOutlet', () => {
       touch(top.firstElementChild!, 'touchmove', 105);
       touch(top.firstElementChild!, 'touchend', 105);
       await settle();
-      expect(animate).not.toHaveBeenCalled();
+      expect(started).toEqual([]);
     });
 
     it('follows only the finger that started it', async () => {
@@ -993,7 +1080,8 @@ describe('LynxStackOutlet', () => {
       await go('/notes/1/edit');
       const newTop = frames()[2]!;
       await drag(newTop.firstElementChild!, 10, 210);
-      expect(newTop.style.transform).toBe('translateX(400px)');
+      // Where its slide takes it, not where the finger is.
+      expect(newTop.style.transform).toBe('translateX(0px)');
       touch(newTop.firstElementChild!, 'touchend', 210);
     });
 

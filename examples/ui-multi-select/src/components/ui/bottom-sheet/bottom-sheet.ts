@@ -1,4 +1,3 @@
-// cspell:words WAAPI tweens
 import {
   type OnDestroy,
   Component,
@@ -20,17 +19,10 @@ import {
   LYNX_ELEMENTS,
   LynxAccessibilitySettings,
   MainThreadElement,
+  afterFrame,
 } from '@blotch/angular-lynx';
 
-import {
-  type AnimationHandle,
-  DURATION,
-  EASING,
-  fadeIn,
-  fadeOut,
-  slideIn,
-  slideOut,
-} from '@blotch/dolan/utils/animate';
+import { DURATION, EASING } from '@blotch/dolan/utils/animate';
 import { cn } from '@blotch/dolan/utils/cn';
 import { concentricRadius } from '../glass/concentric-radius';
 import { UiGlass } from '../glass/glass';
@@ -57,10 +49,22 @@ export type SheetDetent = 'fit' | 'medium' | 'large';
 type SheetLook = 'default' | GlassDesign;
 
 /**
- * Where the sheet is going: nowhere, after the finger, to a detent, out of
- * the control that presents it, or back into it (see UiSheetSource).
+ * Where the sheet is going: nowhere, after the finger, up as it opens, down
+ * as it closes, back up after a short drag, to a detent (`'prepare'` draws
+ * it where it was, laid out at a taller detent, for `'settle'` to move it
+ * there), out of the control that presents it, or back into it (see
+ * UiSheetSource).
  */
-type SheetMotion = 'rest' | 'drag' | 'settle' | 'grow' | 'shrink';
+type SheetMotion =
+  | 'rest'
+  | 'drag'
+  | 'open'
+  | 'close'
+  | 'snap'
+  | 'prepare'
+  | 'settle'
+  | 'grow'
+  | 'shrink';
 
 /**
  * AngularLynx's element, which an `ElementRef` to a Lynx element holds: the
@@ -116,9 +120,8 @@ const measure = async (element: SourceElement) => {
 const DISMISS_THRESHOLD = 100;
 // Off-screen translateY target (px) for the dismiss slide. Deliberately larger
 // than any realistic sheet height so the panel fully clears the viewport. Kept
-// in px — not % — so the exit interpolates continuously from the px-based drag
-// offset; WAAPI won't tween between px and % transforms. Once the screen's
-// height is known, a taller screen uses that instead.
+// in px, like the drag's offset it carries on from. Once the screen's height
+// is known, a taller screen uses that instead.
 const DISMISS_TRANSLATE = 600;
 
 // Backdrop dim tuning. The scrim sits at the look's dim (see BACKDROP_DIM)
@@ -264,6 +267,15 @@ const layoutWidth = (event: unknown): number =>
  * Mark the control that presents it with `uiSheetSource`, and the Liquid
  * Glass sheet grows out of that control rather than sliding up, and shrinks
  * back into it as it closes, as iOS 26 grows a sheet out of its button.
+ *
+ * It moves by CSS transitions the platform runs (`enable-new-animator`
+ * false): Core Animation on iOS, so it keeps moving while Angular works, as
+ * a UIKit sheet does, and Android's animators. Core Animation can't change a
+ * Lynx element's size along the way (its background and the glass in it
+ * take the new size at once), so the sheet moves between detents by a
+ * `transform`: laid out at the taller of the two, and moved up or down. Only
+ * growing out of a control changes its size frame by frame, which Lynx's
+ * own animator does for that sheet.
  */
 @Component({
   selector: 'ui-bottom-sheet',
@@ -295,6 +307,8 @@ const layoutWidth = (event: unknown): number =>
       -->
       <view
         #backdrop
+        enable-new-animator="false"
+        flatten="false"
         class="h-full w-full"
         [style]="backdropStyle()"
         (bindtap)="onBackdropTap()"
@@ -310,6 +324,8 @@ const layoutWidth = (event: unknown): number =>
         ></view>
         <view
           #panel
+          flatten="false"
+          [attr.enable-new-animator]="panelAnimator()"
           [class]="panelClass()"
           [style]="panelStyle()"
           [accessibility-exclusive-focus]="overlayVisible()"
@@ -330,13 +346,20 @@ const layoutWidth = (event: unknown): number =>
             ></blur-view>
             <view
               #opaque
+              enable-new-animator="false"
+              flatten="false"
               class="bg-background absolute"
               [style]="opaqueStyle()"
             ></view>
           }
           <!-- The handle and the content, which fade in as the sheet grows
                out of the control that presents it. -->
-          <view class="grow flex-col flex" [style]="contentStyle()">
+          <view
+            enable-new-animator="false"
+            flatten="false"
+            class="grow flex-col flex"
+            [style]="contentStyle()"
+          >
             <!-- Its touchmove is listened for in code (see #listen). -->
             <view
               #handle
@@ -417,12 +440,11 @@ export class UiBottomSheet implements OnDestroy {
   // Only a glass sheet has the opaque layer.
   readonly opaqueRef = viewChild<ElementRef>('opaque');
   readonly #renderer = inject(Renderer2);
-  #backdropAnim?: AnimationHandle;
-  #panelAnim?: AnimationHandle;
   #hasBeenOpen = false;
-  // The open and close sequences' pending timers, so ngOnDestroy can stop
-  // them.
+  // The open and close sequences' pending timers, and what cancels each
+  // wait for a frame, so ngOnDestroy can stop them.
   readonly #timers = new Set<ReturnType<typeof setTimeout>>();
+  readonly #frames = new Set<() => void>();
 
   // --- Layout, from `layoutchange` ---
   // The screen's height, the large detent's (the screen below the status
@@ -437,7 +459,19 @@ export class UiBottomSheet implements OnDestroy {
   // null to fit its content. A glass sheet's inset comes off it (see
   // panelStyle), so a detent puts the top in the same place in every look.
   readonly #height = signal<number | null>(null);
+  // While the sheet moves to a detent, the height it's drawn at (see
+  // #transformAt), which #height, its layout's, is the taller of; null
+  // otherwise.
+  readonly #visibleHeight = signal<number | null>(null);
   readonly #motion = signal<SheetMotion>('rest');
+  // Set from the moment the sheet starts to close until it's gone: it slides
+  // away, and the backdrop fades.
+  readonly #leaving = signal(false);
+  // Which way the backdrop is fading, while it does.
+  readonly #fade = signal<'in' | 'out' | null>(null);
+  // Whether the panel's transitions run on the platform's animators, which
+  // keep them moving while Angular works, or Lynx's own (see panelAnimator).
+  readonly #onPlatform = signal(true);
   // Whether the open sequence has started showing the sheet. Until then it's
   // laid out below the screen over a clear backdrop, so it doesn't flash at
   // its resting place while the screen is measured. Not `visibility: hidden`:
@@ -651,36 +685,70 @@ export class UiBottomSheet implements OnDestroy {
     cn('rounded-full', GRABBER_CLASS[this.look()]),
   );
 
+  /**
+   * The panel's `enable-new-animator`: false hands its transitions to the
+   * platform, which keeps them moving while Angular works. Core Animation
+   * can't grow a Lynx element out of a control (the glass and the panel's
+   * background take the new size at once), so a sheet that grows out of
+   * one moves on Lynx's own animator. Lynx reads it as the transitions are
+   * set, so it changes only as the sheet opens, with none running.
+   */
+  protected readonly panelAnimator = computed(() =>
+    this.#onPlatform() ? 'false' : 'true',
+  );
+
   // The panel's styles other than its frame, which the sheet sets itself
-  // (see #panelFrame). Settling at a detent transitions the frame, which
-  // iOS's glass follows.
+  // (see #panelFrame), and the transition that moves it there.
   protected readonly panelStyle = computed(() => {
     const source = this.#sourceFrame();
     const styles = ['position: absolute;'];
     if (this.look() === 'material') {
       styles.push(`box-shadow: ${MATERIAL_ELEVATION};`);
     }
-    const motion = this.#motion();
-    if (motion === 'settle' || motion === 'grow' || motion === 'shrink') {
-      // Out of the control on the sheet's curve, a little longer for the
-      // way it travels (a spring that starts as quickly as the menus' covers
-      // most of it in the first frame), and back into it quicker.
-      const timing =
-        motion === 'settle'
-          ? `${DURATION.slow}ms ${EASING.sheet}`
-          : motion === 'grow'
-            ? `${DURATION.slow + 100}ms ${EASING.sheet}`
-            : `${DURATION.normal}ms ${EASING.standard}`;
-      styles.push(
-        `transition: height ${timing}, left ${timing}, right ${timing}, bottom ${timing};`,
-      );
-    }
+    const transition = this.#panelTransition();
+    if (transition) styles.push(`transition: ${transition};`);
     // The content, laid out at the sheet's size, stays inside the glass
     // while it's smaller.
+    const motion = this.#motion();
     if (motion === 'grow' || motion === 'shrink' || source) {
       styles.push('overflow: hidden;');
     }
     return styles.join(' ');
+  });
+
+  /**
+   * How the panel moves to the frame #panelFrame gives it, or null for at
+   * once. It slides up on the sheet's curve and down quicker, fading a
+   * little unless it's glass (iOS draws glass under a fading parent as a
+   * washed-out patch), springs back after a short drag, and moves to a
+   * detent by its transform. Out of the control that presents it, it
+   * changes its frame, a little slower for the way it travels (a spring
+   * that starts as quickly as the menus' covers most of it in the first
+   * frame), and back into it quicker.
+   */
+  readonly #panelTransition = computed((): string | null => {
+    const slide = (timing: string): string =>
+      this.look() === 'glass'
+        ? `transform ${timing}`
+        : `transform ${timing}, opacity ${timing}`;
+    const frame = (timing: string): string =>
+      `height ${timing}, left ${timing}, right ${timing}, bottom ${timing}`;
+    switch (this.#motion()) {
+      case 'open':
+        return slide(`${DURATION.slow}ms ${EASING.sheet}`);
+      case 'close':
+        return slide(`${DURATION.normal}ms ${EASING.accelerate}`);
+      case 'snap':
+        return `transform ${DURATION.fast}ms ${EASING.spring}`;
+      case 'settle':
+        return `transform ${DURATION.slow}ms ${EASING.sheet}`;
+      case 'grow':
+        return frame(`${DURATION.slow + 100}ms ${EASING.sheet}`);
+      case 'shrink':
+        return frame(`${DURATION.normal}ms ${EASING.standard}`);
+      default:
+        return null;
+    }
   });
 
   /**
@@ -707,26 +775,42 @@ export class UiBottomSheet implements OnDestroy {
     ].join(' ');
   });
 
-  // A sheet growing out of its control, or shrinking back into it, dims
-  // the backdrop through its color (see #backdropColor), with a transition,
-  // rather than fading the backdrop itself in and out: the panel is in the
-  // backdrop, and on screen meanwhile, and glass under a fading parent would
-  // vanish with it, or draw washed out.
+  // The backdrop fades in as the sheet opens and out as it closes, panel and
+  // all. A glass sheet's dims through its color (see #backdropColor) rather
+  // than fading the backdrop itself in and out, and so does one growing out
+  // of its control, or shrinking back into it: the panel is in the backdrop,
+  // and glass under a fading parent would vanish with it, or draw washed
+  // out, and glass set up under a parent that's clear draws nothing at all.
   protected readonly backdropStyle = computed(() => {
     const motion = this.#motion();
-    return this.#sourceFrame() || motion === 'grow' || motion === 'shrink'
-      ? `transition: background-color ${DURATION.normal}ms ${EASING.standard};`
-      : '';
+    if (this.#sourceFrame() || motion === 'grow' || motion === 'shrink') {
+      return `transition: background-color ${DURATION.normal}ms ${EASING.standard};`;
+    }
+    const fade = this.#fade();
+    if (fade === null) return '';
+    const easing = fade === 'in' ? EASING.decelerate : EASING.accelerate;
+    const property = this.#dimsByColor() ? 'background-color' : 'opacity';
+    return `transition: ${property} ${DURATION.normal}ms ${easing};`;
   });
 
   /**
+   * Whether the backdrop dims and clears through its color alone, never
+   * fading its opacity: a glass sheet's (see backdropStyle).
+   */
+  readonly #dimsByColor = computed(
+    () => this.look() === 'glass' || this.#grows(),
+  );
+
+  /**
    * Draws the sheet's frame where its height and drag offset put it: the
-   * panel's place and size, the backdrop's dim, and a glass sheet's opaque
-   * layer. The sheet sets these styles itself, not through `[style]`, so
-   * that a drag can set them on every move without Angular checking the
-   * sheet each time (see #moveDrag). Angular only knows the values it set
-   * itself, so with a binding on them too, a drag ending where it began
-   * would have left the panel wherever the finger last was.
+   * panel's place, size and transform, the backdrop's dim and fade, and a
+   * glass sheet's opaque layer. The sheet sets these styles itself, not
+   * through `[style]`, so that a drag can set them on every move without
+   * Angular checking the sheet each time (see #moveDrag). Angular only
+   * knows the values it set itself, so with a binding on them too, a drag
+   * ending where it began would have left the panel wherever the finger
+   * last was. The transitions that move them are in the `[style]` bindings,
+   * which change in the same update.
    *
    * It reads both signals first, so it runs again when they change, and
    * draws the drag's values while a drag has them.
@@ -745,22 +829,21 @@ export class UiBottomSheet implements OnDestroy {
     );
     this.#paint(this.backdropRef().nativeElement, {
       'background-color': this.#backdropColor(offset),
+      opacity: this.#backdropOpacity(),
     });
     const opaque = this.opaqueRef()?.nativeElement;
     if (opaque) {
-      this.#paint(opaque, { opacity: String(this.#progressAt(height)) });
+      const shown = this.#visibleHeight() ?? height;
+      this.#paint(opaque, { opacity: String(this.#progressAt(shown)) });
     }
   }
 
   /**
    * Docked at the bottom, full width (a glass sheet inset from both); its
    * height, when it's at a detent other than its content's or being
-   * dragged; and `translateY(offset)` layers the dismiss drag on top so the
-   * sheet follows the finger. The open/close slide animations run via
-   * element.animate() and override this transform while they play (see
-   * #animateIn/#animateOut), then hand back to it once canceled. Growing out
-   * of the control that presents it, or shrinking back into it, the sheet
-   * starts from the control's frame, or ends at it.
+   * dragged; and its transform (see #transformAt). Growing out of the
+   * control that presents it, or shrinking back into it, the sheet starts
+   * from the control's frame, or ends at it.
    */
   #panelFrame(
     height: number | null,
@@ -774,6 +857,7 @@ export class UiBottomSheet implements OnDestroy {
         right: `${source.right}px`,
         transform: 'translateY(0px)',
         height: `${source.height}px`,
+        opacity: '1',
       };
     }
     const inset = this.#insetAt(this.#progressAt(height));
@@ -781,9 +865,53 @@ export class UiBottomSheet implements OnDestroy {
       bottom: `${inset}px`,
       left: `${inset}px`,
       right: `${inset}px`,
-      transform: `translateY(${this.#presented() ? `${offset}px` : '110%'})`,
+      transform: this.#transformAt(height, offset),
       height: height === null ? null : `${height - inset}px`,
+      opacity: this.#panelOpacity(),
     };
+  }
+
+  /**
+   * The panel's transform: below the screen until it's presented and once
+   * it's leaving (on from the finger, if a drag took it down), or
+   * `translateY(offset)`, which layers the dismiss drag on top so the sheet
+   * follows the finger.
+   *
+   * On its way to a detent, laid out at `height` (the taller of the two),
+   * it's drawn at #visibleHeight instead: moved down by the difference, and
+   * a glass sheet narrowed to that height's inset. Core Animation moves a
+   * transform without laying anything out, where changing the height would
+   * size the panel's background and its glass at once, and the content
+   * stays laid out to the bottom of the screen as it goes.
+   */
+  #transformAt(height: number | null, offset: number): string {
+    if (!this.#presented()) return 'translateY(110%)';
+    if (this.#leaving() && !this.#calm()) {
+      return offset > 0
+        ? `translateY(${Math.max(DISMISS_TRANSLATE, this.#screenHeight())}px)`
+        : 'translateY(110%)';
+    }
+    const visible = this.#visibleHeight();
+    if (visible === null || height === null) return `translateY(${offset}px)`;
+    const moved = `translateY(${height - visible + offset}px)`;
+    const width = this.#screenWidth();
+    const layoutInset = this.#insetAt(this.#progressAt(height));
+    const visibleInset = this.#insetAt(this.#progressAt(visible));
+    if (!(width > 0) || layoutInset === visibleInset) return moved;
+    const scale = (width - 2 * visibleInset) / (width - 2 * layoutInset);
+    return `${moved} scaleX(${Math.round(scale * 10000) / 10000})`;
+  }
+
+  /**
+   * The panel's opacity: a sheet that isn't glass fades a little as it
+   * slides in and out, unless Reduce Motion keeps it from sliding.
+   */
+  #panelOpacity(): string {
+    const sliding =
+      this.look() !== 'glass' &&
+      !this.#calm() &&
+      (!this.#presented() || this.#leaving());
+    return sliding ? '0.8' : '1';
   }
 
   /**
@@ -791,15 +919,28 @@ export class UiBottomSheet implements OnDestroy {
    * (offset 0), lightening as the handle is dragged down so the content
    * behind shows through progressively. The alpha lives in the
    * background-color rather than the element's opacity so it composes
-   * cleanly with the fadeIn/fadeOut opacity animations without the two
-   * fighting over the same property. Clear until the sheet is presented.
+   * cleanly with the fade (see #backdropOpacity) without the two fighting
+   * over the same property. Clear until the sheet is presented.
    */
   #backdropColor(offset: number): string {
+    const clearing =
+      this.#motion() === 'shrink' || (this.#dimsByColor() && this.#leaving());
     const revealed =
-      this.#presented() && this.#motion() !== 'shrink'
+      this.#presented() && !clearing
         ? Math.max(0, 1 - offset / BACKDROP_CLEAR_DISTANCE)
         : 0;
     return `rgba(0, 0, 0, ${BACKDROP_DIM[this.look()] * revealed})`;
+  }
+
+  /**
+   * The backdrop's opacity, which fades it, and the panel with it, in as
+   * the sheet opens and out as it leaves. A glass sheet's dims through its
+   * color instead (see backdropStyle).
+   */
+  #backdropOpacity(): string {
+    const hidden =
+      !this.#dimsByColor() && (this.#leaving() || !this.#presented());
+    return hidden ? '0' : '1';
   }
 
   /**
@@ -999,26 +1140,31 @@ export class UiBottomSheet implements OnDestroy {
     if (offset > DISMISS_THRESHOLD) {
       this.open.set(false);
     } else if (offset > 0) {
-      this.#snapBack(offset);
       this.#settle(this.#ordered()[0]);
+      this.#snapBack();
     } else {
       this.#settle(this.#detentAfterDrag());
     }
   }
 
   /**
-   * The open slideIn holds the panel at translateY(0%) via fill:'forwards',
-   * which would override our inline transform — cancel it so the drag
-   * (applied through #panelFrame) actually moves the panel from here on.
+   * Takes the sheet from wherever it was going, from where it's drawn. The
+   * drag has no transition, so one under way (the open slide, or a move to
+   * a detent) ends where it was going, and the drag moves the panel from
+   * there: one moving to a detent is laid out at that detent's height.
    */
   #startDrag(y: number): void {
     // A drag whose release never came hands its place on first.
     this.#commitDrag();
-    this.#panelAnim?.cancel();
     this.#isDragging = true;
     this.#mouseDragMoved = false;
     this.#dragStartY = y;
     this.#dragFrom = this.#currentHeight();
+    const visible = this.#visibleHeight();
+    if (visible !== null) {
+      this.#height.set(visible);
+      this.#visibleHeight.set(null);
+    }
     this.#settleRun++;
     this.#motion.set('drag');
   }
@@ -1111,17 +1257,19 @@ export class UiBottomSheet implements OnDestroy {
   }
 
   /**
-   * The sheet's height now.
+   * The sheet's height now, as it's drawn.
    */
   #currentHeight(): number {
-    return this.#height() ?? this.#detentHeight('fit');
+    return this.#visibleHeight() ?? this.#height() ?? this.#detentHeight('fit');
   }
 
   /**
-   * Comes to rest at a detent, transitioning the sheet's frame there: its
-   * height and, for glass, its inset, with the opaque layer's fade. A sheet
-   * fitting its content takes its content's height once the transition has
-   * reached it. Under Reduce Motion it moves at once.
+   * Comes to rest at a detent, moving the sheet there by its transform (see
+   * #transformAt), and a glass sheet's opaque layer's fade. It's laid out at
+   * the taller of the two heights, drawn where it is, and moves once that's
+   * drawn (see #afterFrame); at a shorter detent, it's laid out at its
+   * height once there. A sheet fitting its content takes its content's
+   * height at rest. Under Reduce Motion it moves at once.
    */
   #settle(detent: SheetDetent): void {
     this.#restingAt = detent;
@@ -1130,29 +1278,32 @@ export class UiBottomSheet implements OnDestroy {
     const run = ++this.#settleRun;
     if (this.#reduceMotion() || this.#height() === target) {
       this.#height.set(target);
+      this.#visibleHeight.set(null);
       this.#motion.set('rest');
       return;
     }
-    if (this.#height() === null) {
-      // A transition can't start from a height that fits the content (a CSS
-      // transition from `auto` jumps), so pin the content's height for a
-      // frame first.
-      this.#height.set(this.#detentHeight('fit'));
-      this.#later(() => {
-        if (run === this.#settleRun) this.#transitionTo(detent, target, run);
-      }, FRAME);
-      return;
-    }
-    this.#transitionTo(detent, target, run);
+    const from = this.#currentHeight();
+    const to = this.#detentHeight(detent);
+    this.#height.set(Math.max(from, to));
+    this.#visibleHeight.set(from);
+    this.#motion.set('prepare');
+    this.#afterFrame(() => {
+      if (run === this.#settleRun) this.#moveTo(to, target, run);
+    });
   }
 
-  #transitionTo(detent: SheetDetent, target: number | null, run: number): void {
+  /**
+   * Moves the sheet, laid out where #settle left it, to be drawn at
+   * `visible`, then lays it out at `target` there.
+   */
+  #moveTo(visible: number, target: number | null, run: number): void {
     this.#motion.set('settle');
-    this.#height.set(this.#detentHeight(detent));
+    this.#visibleHeight.set(visible);
     // +20ms: Lynx's timers can fire a little early (see #doClose).
     this.#later(() => {
       if (run !== this.#settleRun) return;
       this.#height.set(target);
+      this.#visibleHeight.set(null);
       this.#motion.set('rest');
     }, DURATION.slow + 20);
   }
@@ -1166,6 +1317,7 @@ export class UiBottomSheet implements OnDestroy {
    */
   ngOnDestroy(): void {
     for (const timer of this.#timers) clearTimeout(timer);
+    for (const cancel of this.#frames) cancel();
   }
 
   /**
@@ -1180,15 +1332,34 @@ export class UiBottomSheet implements OnDestroy {
   }
 
   /**
-   * Two-phase open: make the overlay visible first so native elements exist
-   * in the tree, then animate on the next frame. Without this, animate()
-   * targets elements that haven't been flushed to native yet and silently fails.
+   * `afterFrame`, tracked so that ngOnDestroy can cancel it. The sheet
+   * starts each move that follows work (laying the sheet out, the app's
+   * own after a tap) from it: on iOS, Core Animation begins a transition at
+   * the time of the last frame the thread saw, so one started straight
+   * after a busy turn is partway through by the time it's drawn.
+   */
+  #afterFrame(callback: () => void): void {
+    const cancel = afterFrame(() => {
+      this.#frames.delete(cancel);
+      callback();
+    });
+    this.#frames.add(cancel);
+  }
+
+  /**
+   * Two-phase open: make the overlay visible first, with the panel below the
+   * screen, then move it up once that's drawn (see #afterFrame). A
+   * transition needs a value to move from, and the panel has none until
+   * it's been drawn there.
    */
   #doOpen(): void {
     const sequence = ++this.#sequence;
     this.#later(() => {
       this.overlayVisible.set(true);
-      this.#later(() => this.#present(LAYOUT_TRIES, sequence), 0);
+      // Nothing moves the panel now: it can change animators (see
+      // panelAnimator).
+      this.#onPlatform.set(!this.#grows());
+      this.#afterFrame(() => this.#present(LAYOUT_TRIES, sequence));
     }, 0);
   }
 
@@ -1244,9 +1415,8 @@ export class UiBottomSheet implements OnDestroy {
         this.#animateIn();
         return;
       }
-      // The backdrop dims through its color (see backdropStyle).
-      this.#backdropAnim?.cancel();
-      // See #animateIn.
+      // The backdrop dims through its color (see backdropStyle). See
+      // #animateIn.
       this.panelRef().nativeElement.invoke?.('requestAccessibilityFocus');
       // A frame at the control's place, so the native side draws it there,
       // then on to the detent, with a height to transition to (one that
@@ -1320,19 +1490,22 @@ export class UiBottomSheet implements OnDestroy {
     // has it.
     this.#commitDrag();
     const sequence = ++this.#sequence;
-    this.#later(() => {
-      // A sheet dragged down goes on down, from the finger.
-      const source =
-        this.#grows() && this.#presented() && this.dragOffset() === 0
-          ? this.#source()
-          : null;
-      if (source) {
-        void this.#shrinkOut(source, sequence);
-        return;
-      }
-      this.#animateOut();
-      this.#later(() => this.#finishClose(), DURATION.normal + 20);
-    }, 0);
+    // After the app's own work for what closed it (a choice made in it).
+    this.#afterFrame(() =>
+      this.#inSequence(sequence, () => {
+        // A sheet dragged down goes on down, from the finger.
+        const source =
+          this.#grows() && this.#presented() && this.dragOffset() === 0
+            ? this.#source()
+            : null;
+        if (source) {
+          void this.#shrinkOut(source, sequence);
+          return;
+        }
+        this.#animateOut();
+        this.#later(() => this.#finishClose(), DURATION.normal + 20);
+      }),
+    );
   }
 
   /**
@@ -1347,11 +1520,12 @@ export class UiBottomSheet implements OnDestroy {
         this.#later(() => this.#finishClose(), DURATION.normal + 20);
         return;
       }
-      // The backdrop clears through its color (see backdropStyle).
-      this.#backdropAnim?.cancel();
-      // A height to transition from (see #growIn) for a frame, then into
-      // the control.
+      // The backdrop clears through its color (see backdropStyle). A height
+      // to transition from (see #growIn) for a frame, then into the
+      // control.
+      this.#settleRun++;
       this.#height.set(this.#currentHeight());
+      this.#visibleHeight.set(null);
       this.#motion.set('shrink');
       this.#later(
         () =>
@@ -1373,6 +1547,9 @@ export class UiBottomSheet implements OnDestroy {
     this.#presented.set(false);
     this.#sourceFrame.set(null);
     this.#motion.set('rest');
+    this.#leaving.set(false);
+    this.#fade.set(null);
+    this.#visibleHeight.set(null);
     this.closed.emit();
     // Reset for the next open: the sheet returns to its docked position
     // while hidden, so a fresh open animates cleanly from off-screen,
@@ -1382,107 +1559,61 @@ export class UiBottomSheet implements OnDestroy {
     this.detent.set(undefined);
   }
 
+  /**
+   * Slides the panel up from below the screen, and fades the backdrop in.
+   * Glass slides without fading on its own: iOS draws glass under a fading
+   * parent as a washed-out patch, so it only fades with the backdrop it sits
+   * on, which the slide outruns. Under Reduce Motion the glass variant
+   * doesn't slide: it fades in with the backdrop where it rests.
+   */
   #animateIn(): void {
-    const backdrop = this.backdropRef().nativeElement;
-    const panel = this.panelRef().nativeElement;
-
-    this.#backdropAnim?.cancel();
-    this.#panelAnim?.cancel();
-
-    this.#backdropAnim = fadeIn(backdrop, { duration: DURATION.normal });
     // Move a screen reader into the panel. It would otherwise stay on whatever
     // opened it, which is now behind the overlay. With the panel's
     // accessibility-exclusive-focus (see the template), it then can't leave
     // the panel until it closes.
-    panel.invoke?.('requestAccessibilityFocus');
-    this.#panelAnim = this.#slideIn(panel);
-  }
-
-  /**
-   * Slides the panel up from below the screen. Glass slides without fading
-   * on its own: iOS draws glass under a fading parent as a washed-out patch,
-   * so it only fades with the backdrop it sits on, which the slide outruns.
-   * Under Reduce Motion the glass variant doesn't slide: it fades in with the
-   * backdrop where it rests.
-   */
-  #slideIn(panel: Element): AnimationHandle | undefined {
-    const options = { duration: DURATION.slow, easing: EASING.sheet };
-    if (this.#calm()) return undefined;
-    if (this.look() !== 'glass') return slideIn(panel, 'up', options);
-    // 110%: the inset glass sheet sits 8px above the screen's bottom edge,
-    // which 100% would leave showing.
-    return panel.animate(
-      [{ transform: 'translateY(110%)' }, { transform: 'translateY(0%)' }],
-      { ...options, fill: 'forwards' },
+    this.panelRef().nativeElement.invoke?.('requestAccessibilityFocus');
+    this.#fade.set('in');
+    this.#motion.set(this.#calm() ? 'rest' : 'open');
+    const sequence = this.#sequence;
+    // +20ms: Lynx's timers can fire a little early (see #doClose).
+    this.#later(
+      () =>
+        this.#inSequence(sequence, () => {
+          this.#fade.set(null);
+          // A drag that began meanwhile has the sheet now.
+          if (this.#motion() === 'open') this.#motion.set('rest');
+        }),
+      DURATION.slow + 20,
     );
   }
 
+  /**
+   * The reverse of #animateIn, quicker. A sheet dragged down goes on from
+   * the finger (see #transformAt). Under Reduce Motion the glass variant
+   * fades out with the backdrop where it rests.
+   */
   #animateOut(): void {
-    const backdrop = this.backdropRef().nativeElement;
-    const panel = this.panelRef().nativeElement;
-
-    this.#backdropAnim?.cancel();
-    this.#panelAnim?.cancel();
-
-    this.#backdropAnim = fadeOut(backdrop, { duration: DURATION.normal });
-    this.#panelAnim = this.#slideOut(panel);
+    // A move to a detent under way stops where it's drawn.
+    this.#settleRun++;
+    this.#leaving.set(true);
+    this.#fade.set('out');
+    this.#motion.set(this.#calm() ? 'rest' : 'close');
   }
 
   /**
-   * The reverse of #slideIn. Under Reduce Motion the glass variant fades out
-   * with the backdrop where it rests.
+   * Release below the dismiss threshold: spring the sheet back to fully
+   * open, continuing smoothly from wherever the finger let go. Under Reduce
+   * Motion the glass variant goes straight back.
    */
-  #slideOut(panel: Element): AnimationHandle | undefined {
-    const options = {
-      duration: DURATION.normal,
-      easing: EASING.accelerate,
-      fill: 'forwards' as const,
-    };
-    if (this.#calm()) return undefined;
-    const glass = this.look() === 'glass';
-    // If the sheet was dragged, continue from the finger's offset off-screen
-    // (px → px) rather than slideOut's 0% → 100%, which would snap it up first.
-    const offset = this.dragOffset();
-    if (offset > 0) {
-      const to = `translateY(${Math.max(DISMISS_TRANSLATE, this.#screenHeight())}px)`;
-      const from = `translateY(${offset}px)`;
-      return panel.animate(
-        glass
-          ? [{ transform: from }, { transform: to }]
-          : [
-              { transform: from, opacity: 1 },
-              { transform: to, opacity: 0.8 },
-            ],
-        options,
-      );
-    }
-    return glass
-      ? panel.animate(
-          [{ transform: 'translateY(0%)' }, { transform: 'translateY(110%)' }],
-          options,
-        )
-      : slideOut(panel, 'down', options);
-  }
-
-  /**
-   * Release below the dismiss threshold: spring the sheet back to fully open,
-   * continuing smoothly from wherever the finger let go (px → 0px). Under
-   * Reduce Motion the glass variant goes straight back.
-   */
-  #snapBack(fromOffset: number): void {
-    this.#panelAnim?.cancel();
-    this.#panelAnim = this.#calm()
-      ? undefined
-      : this.panelRef().nativeElement.animate(
-          [
-            { transform: `translateY(${fromOffset}px)` },
-            { transform: 'translateY(0px)' },
-          ],
-          { duration: DURATION.fast, easing: EASING.spring, fill: 'forwards' },
-        );
-    // Match the inline transform to the animation's resting state so the two
-    // agree once fill:'forwards' hands control back to it (see paintFrame).
+  #snapBack(): void {
     this.dragOffset.set(0);
+    if (this.#calm()) return;
+    this.#motion.set('snap');
+    const run = this.#settleRun;
+    // A drag, a settle or a close that came meanwhile has the sheet now.
+    this.#later(() => {
+      if (run === this.#settleRun) this.#motion.set('rest');
+    }, DURATION.fast + 20);
   }
 }
 

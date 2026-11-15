@@ -48,6 +48,10 @@ import type { LynxLocationStrategy } from '../lynx-location-strategy';
 import { provideRouter } from '../lynx-router';
 import { LynxStackOutlet } from '../stack/lynx-stack-outlet';
 import { LynxStackPage } from '../stack/stack-page';
+import {
+  type StartedTransition,
+  spyOnTransitions,
+} from '../../testing/transition-spy';
 import { LynxTabOutlet } from './lynx-tab-outlet';
 import { LynxTabPage } from './tab-page';
 
@@ -281,7 +285,9 @@ const ROUTES: Routes = [
 ];
 
 describe('LynxTabOutlet', () => {
-  let animate: ReturnType<typeof vi.fn>;
+  /** The transitions started since the test began, or since cleared. */
+  let started: StartedTransition[];
+  let restoreTransitions: () => void;
 
   beforeAll(() => {
     TestBed.initTestEnvironment(BrowserTestingModule, platformBrowserTesting());
@@ -289,17 +295,22 @@ describe('LynxTabOutlet', () => {
 
   beforeEach(() => {
     made.length = 0;
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
-    animate = vi.fn(() => ({ cancel: vi.fn() }));
-    // jsdom has no Web Animations.
-    (Element.prototype as unknown as { animate: typeof animate }).animate =
-      animate;
+    vi.useFakeTimers({
+      toFake: [
+        'setTimeout',
+        'clearTimeout',
+        'Date',
+        'requestAnimationFrame',
+        'cancelAnimationFrame',
+      ],
+    });
+    ({ started, restore: restoreTransitions } = spyOnTransitions());
   });
 
   afterEach(() => {
     held = null;
     TestBed.resetTestingModule();
-    delete (Element.prototype as unknown as { animate?: unknown }).animate;
+    restoreTransitions();
     vi.useRealTimers();
   });
 
@@ -525,7 +536,7 @@ describe('LynxTabOutlet', () => {
       // Covered by the other tab, the stack's top page isn't on top.
       expect(note.stackPage!.active()).toBe(false);
       expect(note.tab!.active()).toBe(false);
-      animate.mockClear();
+      started.length = 0;
 
       // The tab's own URL, as its tab bar item has it, goes where the tab
       // was left, without building or moving anything.
@@ -534,7 +545,7 @@ describe('LynxTabOutlet', () => {
       expect(at('home/notes/1')).toBe(note);
       expect(at('home')).toBe(home);
       expect(note.stackPage!.active()).toBe(true);
-      expect(animate).not.toHaveBeenCalled();
+      expect(started).toEqual([]);
     });
 
     it('pops the stack from the tab itself, as tapping the selected tab does', async () => {

@@ -123,10 +123,13 @@ afterEach(() => {
 
 /**
  * Waits out the sheet's open sequence: the overlay shows on one tick, and the
- * panel slides in on the next.
+ * panel slides in once that's drawn, after the next frame (the fake clock
+ * draws one every 16ms).
  */
 const waitForOpen = async () => {
   for (let i = 0; i < 3; i++) await waitForUpdate();
+  await vi.advanceTimersByTimeAsync(20);
+  await waitForUpdate();
 };
 
 /**

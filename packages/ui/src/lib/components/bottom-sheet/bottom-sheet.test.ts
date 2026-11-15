@@ -5,21 +5,9 @@ import {
   waitForUpdate as nextUpdate,
 } from '@blotch/angular-lynx-testing-library';
 import { LYNX_ELEMENTS, LynxAccessibilitySettings } from '@blotch/angular-lynx';
-import {
-  type MockInstance,
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from 'vitest';
-import { DURATION } from '../../utils/animate';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { DURATION, EASING } from '../../utils/animate';
 import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
-import {
-  type LynxMainThread,
-  lynxMainThread,
-} from '../../../test-utils/lynx-main-thread';
 import { UiGlass } from '../glass/glass';
 import {
   type BottomSheetVariant,
@@ -54,11 +42,6 @@ type InvokeUIMethod = {
     callback: (result: { code: number }) => void,
   ) => void;
 };
-
-/** `__ElementAnimate`'s first argument for starting an animation. */
-const START = 0;
-/** `__ElementAnimate`'s first argument for canceling an animation. */
-const CANCEL = 3;
 
 const renderSheet = async () => {
   const result = await render(BottomSheetHost);
@@ -107,13 +90,43 @@ const after = async (ms: number) => {
  * fake clock runs a millisecond apart.
  */
 const STEPS = 5;
-/** The frame the sheet waits between some of its steps. */
+/**
+ * A frame, which the sheet waits for between some of its steps, and before
+ * it moves (see afterFrame). The fake clock draws one every 16ms from its
+ * start, so the next is at most that far away.
+ */
 const FRAME = 16;
 /**
- * How long the sheet takes to close: its steps, then its slide out, or a
- * frame and its shrink into its control, and 20ms more.
+ * How long the sheet takes to close: its steps and a frame, then its slide
+ * out, or a frame and its shrink into its control, and 20ms more.
  */
-const CLOSED = STEPS + FRAME + DURATION.normal + 20;
+const CLOSED = STEPS + 2 * FRAME + DURATION.normal + 20;
+
+/**
+ * A timing function with `0.0` written as `0`. jsdom 31 writes a `transition`
+ * back that way and jsdom 30, which `ng new` installs, keeps it as it was set,
+ * so the tests put both what they expect and what they read in this form.
+ */
+const css = (easing: string) => easing.replace(/\b0\.0\b/g, '0');
+
+/**
+ * The panel's slide in and out, as a `transition`, glass or not.
+ */
+const slideIn = (glass = false) => {
+  const timing = `${DURATION.slow}ms ${EASING.sheet}`;
+  return glass
+    ? `transform ${timing}`
+    : `transform ${timing}, opacity ${timing}`;
+};
+const slideOut = (glass = false) => {
+  const timing = `${DURATION.normal}ms ${css(EASING.accelerate)}`;
+  return glass
+    ? `transform ${timing}`
+    : `transform ${timing}, opacity ${timing}`;
+};
+/** The backdrop's fade in and out, as a `transition`. */
+const FADE_IN = `opacity ${DURATION.normal}ms ${css(EASING.decelerate)}`;
+const FADE_OUT = `opacity ${DURATION.normal}ms ${css(EASING.accelerate)}`;
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -124,12 +137,18 @@ afterEach(() => {
 
 /**
  * Opens the sheet and waits out its open sequence: the overlay shows on one
- * tick, and the panel slides in on the next.
+ * tick, and the panel slides in once that's drawn.
  */
 const openSheet = async (host: BottomSheetHost) => {
   host.open.set(true);
   for (let i = 0; i < 3; i++) await waitForUpdate();
+  await after(FRAME + 4);
 };
+
+/**
+ * Waits for the frame after which the sheet starts to move, and draws it.
+ */
+const nextFrame = () => after(FRAME + 4);
 
 /**
  * Waits for the close sequence to finish: the panel slides out, then the
@@ -147,6 +166,13 @@ const transformOf = (panel: Element) =>
   (panel as HTMLElement).style.getPropertyValue('transform');
 
 /**
+ * One of an element's inline styles, with its timing functions as `css()`
+ * writes them.
+ */
+const style = (element: Element, property: string) =>
+  css((element as HTMLElement).style.getPropertyValue(property));
+
+/**
  * The touch fields a handle's touch event carries.
  */
 const touchAt = (clientY: number) => ({
@@ -155,13 +181,6 @@ const touchAt = (clientY: number) => ({
 });
 
 describe('UiBottomSheet', () => {
-  // Watched per test: the testing library resets the main thread after each.
-  let animate: MockInstance<LynxMainThread['__ElementAnimate']>;
-  beforeEach(() => {
-    animate = vi.spyOn(lynxMainThread(), '__ElementAnimate');
-  });
-  afterEach(() => animate.mockRestore());
-
   it('stays hidden until opened, then shows the panel and its content', async () => {
     const { host, overlay, getByText } = await renderSheet();
     expect(overlay.getAttribute('style')).toContain('display: none');
@@ -207,22 +226,35 @@ describe('UiBottomSheet', () => {
 
   it('fades the backdrop in and slides the panel up when opened', async () => {
     const { host, backdrop, panel } = await renderSheet();
-    await openSheet(host);
-    expect(animate).toHaveBeenCalledWith(backdrop, [
-      START,
-      expect.any(String),
-      [{ opacity: 0 }, { opacity: 1 }],
-      expect.objectContaining({ duration: DURATION.normal }),
-    ]);
-    expect(animate).toHaveBeenCalledWith(panel, [
-      START,
-      expect.any(String),
-      [
-        { transform: 'translateY(100%)', opacity: 0.8 },
-        { transform: 'translateY(0%)', opacity: 1 },
-      ],
-      expect.objectContaining({ duration: DURATION.slow }),
-    ]);
+    // Below the screen, a little faded, over a clear backdrop.
+    expect(style(panel, 'transform')).toBe('translateY(110%)');
+    expect(style(panel, 'opacity')).toBe('0.8');
+    expect(style(backdrop, 'opacity')).toBe('0');
+
+    // The overlay shows, then once that's drawn, they move.
+    host.open.set(true);
+    for (let i = 0; i < 3; i++) await waitForUpdate();
+    expect(style(panel, 'transition')).toBe('');
+    await nextFrame();
+    expect(style(backdrop, 'transition')).toBe(FADE_IN);
+    expect(style(backdrop, 'opacity')).toBe('1');
+    expect(style(panel, 'transition')).toBe(slideIn());
+    expect(style(panel, 'transform')).toBe('translateY(0px)');
+    expect(style(panel, 'opacity')).toBe('1');
+    // Once they're there, nothing moves them.
+    await after(DURATION.slow + 20);
+    expect(style(panel, 'transition')).toBe('');
+    expect(style(backdrop, 'transition')).toBe('');
+  });
+
+  // Core Animation runs them, on iOS, so they keep moving while Angular
+  // works.
+  it("moves the panel and backdrop on the platform's animators", async () => {
+    const { panel, backdrop } = await renderSheet();
+    expect(panel.getAttribute('enable-new-animator')).toBe('false');
+    expect(backdrop.getAttribute('enable-new-animator')).toBe('false');
+    // Android animates a transform only on a view of its own.
+    expect(panel.getAttribute('flatten')).toBe('false');
   });
 
   it('moves a screen reader into the panel and keeps it there while open', async () => {
@@ -250,22 +282,14 @@ describe('UiBottomSheet', () => {
 
     fireEvent.tap(backdrop);
     expect(host.open()).toBe(false);
+    await waitForUpdate();
+    await nextFrame();
+    expect(style(backdrop, 'transition')).toBe(FADE_OUT);
+    expect(style(backdrop, 'opacity')).toBe('0');
+    expect(style(panel, 'transition')).toBe(slideOut());
+    expect(style(panel, 'transform')).toBe('translateY(110%)');
+    expect(style(panel, 'opacity')).toBe('0.8');
     await waitForClose(host);
-    expect(animate).toHaveBeenCalledWith(backdrop, [
-      START,
-      expect.any(String),
-      [{ opacity: 1 }, { opacity: 0 }],
-      expect.objectContaining({ duration: DURATION.normal }),
-    ]);
-    expect(animate).toHaveBeenCalledWith(panel, [
-      START,
-      expect.any(String),
-      [
-        { transform: 'translateY(0%)', opacity: 1 },
-        { transform: 'translateY(100%)', opacity: 0.8 },
-      ],
-      expect.objectContaining({ duration: DURATION.normal }),
-    ]);
     // Once the slide is over, the overlay hides and `closed` fires, only for
     // this close: a sheet that starts closed hasn't closed before.
     expect(overlay.getAttribute('style')).toContain('display: none');
@@ -313,14 +337,13 @@ describe('UiBottomSheet', () => {
     it('follows the finger down, lightening the backdrop as it goes', async () => {
       const { host, backdrop, panel, handle } = await renderSheet();
       await openSheet(host);
-      animate.mockClear();
 
       fireEvent.touchstart(handle, touchAt(100));
-      // The open slide holds the panel in place until it's canceled.
-      expect(animate).toHaveBeenCalledWith(panel, [CANCEL, expect.any(String)]);
       fireEvent.touchmove(handle, touchAt(200));
       await waitForUpdate();
       expect(transformOf(panel)).toBe('translateY(100px)');
+      // At once: the drag ends the open slide, whose transition goes.
+      expect(style(panel, 'transition')).toBe('');
       // 100px of the 500px over which the backdrop clears: 4/5 of its dim.
       expect(backdrop.getAttribute('style')).toContain('rgba(0, 0, 0, 0.4)');
     });
@@ -333,16 +356,13 @@ describe('UiBottomSheet', () => {
       fireEvent.touchmove(handle, touchAt(300));
       fireEvent.touchend(handle, { eventType: 'catchEvent' });
       expect(host.open()).toBe(false);
+      expect(transformOf(panel)).toBe('translateY(200px)');
+      await waitForUpdate();
+      await nextFrame();
+      // On down from where the finger let go, past any sheet's height.
+      expect(style(panel, 'transition')).toBe(slideOut());
+      expect(transformOf(panel)).toBe('translateY(600px)');
       await waitForClose(host);
-      expect(animate).toHaveBeenCalledWith(panel, [
-        START,
-        expect.any(String),
-        [
-          { transform: 'translateY(200px)', opacity: 1 },
-          { transform: 'translateY(600px)', opacity: 0.8 },
-        ],
-        expect.objectContaining({ duration: DURATION.normal }),
-      ]);
       expect(host.closed).toHaveBeenCalledOnce();
       // Hidden, it waits below the screen, and opens again back in place.
       expect(transformOf(panel)).toBe('translateY(110%)');
@@ -356,24 +376,28 @@ describe('UiBottomSheet', () => {
 
       fireEvent.touchstart(handle, touchAt(100));
       fireEvent.touchmove(handle, touchAt(130));
+      expect(transformOf(panel)).toBe('translateY(30px)');
       fireEvent.touchend(handle, { eventType: 'catchEvent' });
       await waitForUpdate();
       expect(host.open()).toBe(true);
-      expect(animate).toHaveBeenCalledWith(panel, [
-        START,
-        expect.any(String),
-        [{ transform: 'translateY(30px)' }, { transform: 'translateY(0px)' }],
-        expect.objectContaining({ duration: DURATION.fast }),
-      ]);
+      // Back from where the finger let go, on a spring.
+      expect(style(panel, 'transition')).toBe(
+        `transform ${DURATION.fast}ms ${EASING.spring}`,
+      );
       expect(transformOf(panel)).toBe('translateY(0px)');
 
-      // A scroll that takes the touch over cancels it the same way.
+      // A scroll that takes the touch over cancels it the same way. Taken
+      // as it springs back, it moves from there with the finger.
       fireEvent.touchstart(handle, touchAt(100));
+      await after(DURATION.fast + 20);
+      expect(style(panel, 'transition')).toBe('');
       fireEvent.touchmove(handle, touchAt(150));
       fireEvent.touchcancel(handle, { eventType: 'catchEvent' });
       await waitForUpdate();
       expect(host.open()).toBe(true);
       expect(transformOf(panel)).toBe('translateY(0px)');
+      await after(DURATION.fast + 20);
+      expect(style(panel, 'transition')).toBe('');
     });
 
     it('draws each move as the finger makes it, and keeps it through an update', async () => {
@@ -396,21 +420,16 @@ describe('UiBottomSheet', () => {
     it("closed mid-drag, as by Android's back button, slides on from the finger", async () => {
       const { host, panel, handle } = await renderSheet();
       await openSheet(host);
-      animate.mockClear();
 
       fireEvent.touchstart(handle, touchAt(100));
       fireEvent.touchmove(handle, touchAt(180));
       host.open.set(false);
+      await waitForUpdate();
+      expect(transformOf(panel)).toBe('translateY(80px)');
+      await nextFrame();
+      expect(style(panel, 'transition')).toBe(slideOut());
+      expect(transformOf(panel)).toBe('translateY(600px)');
       await waitForClose(host);
-      expect(animate).toHaveBeenCalledWith(panel, [
-        START,
-        expect.any(String),
-        [
-          { transform: 'translateY(80px)', opacity: 1 },
-          { transform: 'translateY(600px)', opacity: 0.8 },
-        ],
-        expect.objectContaining({ duration: DURATION.normal }),
-      ]);
     });
 
     it("doesn't move up past where it's docked", async () => {
@@ -590,6 +609,8 @@ const LARGE = 812;
 const MEDIUM = SCREEN / 2;
 /** The panel's height when it fits its content. */
 const FIT = 300;
+/** The phone's width, beside SCREEN. */
+const WIDTH = 402;
 
 /**
  * Renders the host on a platform, as `SystemInfo` reports it, with the
@@ -631,14 +652,13 @@ type Rendered = Awaited<ReturnType<typeof renderDetents>>;
  * the part below the status bar, and the panel at its content's height.
  */
 const layOut = async (sheet: Rendered, panel = FIT) => {
-  fireEvent.layoutchange(sheet.backdrop, { detail: { height: SCREEN } });
+  fireEvent.layoutchange(sheet.backdrop, {
+    detail: { height: SCREEN, width: WIDTH },
+  });
   fireEvent.layoutchange(sheet.large, { detail: { height: LARGE } });
   fireEvent.layoutchange(sheet.panel, { detail: { height: panel } });
   await waitForUpdate();
 };
-
-const style = (element: Element, property: string) =>
-  (element as HTMLElement).style.getPropertyValue(property);
 
 /**
  * Waits for a settle at a detent to finish.
@@ -665,12 +685,7 @@ const tapGrabber = async (sheet: Rendered) => {
 };
 
 describe('UiBottomSheet detents and glass variant', () => {
-  let animate: MockInstance<LynxMainThread['__ElementAnimate']>;
-  beforeEach(() => {
-    animate = vi.spyOn(lynxMainThread(), '__ElementAnimate');
-  });
   afterEach(() => {
-    animate.mockRestore();
     vi.unstubAllGlobals();
     settings.reduceMotion.set(false);
   });
@@ -703,13 +718,14 @@ describe('UiBottomSheet detents and glass variant', () => {
         'rgba(0, 0, 0, 0.2)',
       );
       expect(sheet.grabber.classList).toContain('w-[60px]');
-      // Glass slides up without fading.
-      expect(animate).toHaveBeenCalledWith(sheet.panel, [
-        START,
-        expect.any(String),
-        [{ transform: 'translateY(110%)' }, { transform: 'translateY(0%)' }],
-        expect.objectContaining({ duration: DURATION.slow }),
-      ]);
+      // Glass slides up without fading, and the backdrop dims through its
+      // color: glass under a fading parent draws washed out, or not at all.
+      expect(style(sheet.panel, 'transition')).toBe(slideIn(true));
+      expect(style(sheet.panel, 'opacity')).toBe('1');
+      expect(style(sheet.backdrop, 'opacity')).toBe('1');
+      expect(style(sheet.backdrop, 'transition')).toBe(
+        `background-color ${DURATION.normal}ms ${css(EASING.decelerate)}`,
+      );
     });
 
     it('turns opaque and meets the edges at full height', async () => {
@@ -719,11 +735,22 @@ describe('UiBottomSheet detents and glass variant', () => {
 
       sheet.host.detent.set('large');
       await waitForUpdate();
-      // The frame transitions there, and the opaque layer fades in.
-      expect(style(sheet.panel, 'transition')).toContain('height');
+      // Laid out at the new height at once, and drawn where it was: moved
+      // down by the difference, and narrowed to the inset it had.
+      expect(style(sheet.panel, 'transition')).toBe('');
       expect(style(sheet.panel, 'height')).toBe(`${LARGE}px`);
       expect(style(sheet.panel, 'left')).toBe('0px');
       expect(style(sheet.panel, 'bottom')).toBe('0px');
+      expect(style(sheet.panel, 'transform')).toBe(
+        `translateY(${LARGE - MEDIUM}px) scaleX(${Math.round(((WIDTH - 16) / WIDTH) * 10000) / 10000})`,
+      );
+      expect(style(sheet.opaque(), 'opacity')).toBe('0');
+      // Then up, by the transform alone, and the opaque layer fades in.
+      await nextFrame();
+      expect(style(sheet.panel, 'transition')).toBe(
+        `transform ${DURATION.slow}ms ${EASING.sheet}`,
+      );
+      expect(style(sheet.panel, 'transform')).toBe('translateY(0px)');
       expect(style(sheet.opaque(), 'opacity')).toBe('1');
       expect(style(sheet.opaque(), 'transition')).toContain('opacity');
       expect(style(sheet.opaque(), 'border-bottom-left-radius')).toBe('55px');
@@ -769,8 +796,15 @@ describe('UiBottomSheet detents and glass variant', () => {
 
       await drag(sheet, MEDIUM, MEDIUM - 30);
       expect(sheet.host.detent()).toBe('medium');
-      expect(style(sheet.panel, 'transition')).toContain('height');
+      // Laid out where the finger left it until it's back down.
+      await nextFrame();
+      expect(style(sheet.panel, 'transition')).toBe(
+        `transform ${DURATION.slow}ms ${EASING.sheet}`,
+      );
+      expect(style(sheet.panel, 'transform')).toMatch(/^translateY\(30px\)/);
+      await settled();
       expect(style(sheet.panel, 'height')).toBe(`${MEDIUM - 8}px`);
+      expect(style(sheet.panel, 'transform')).toBe('translateY(0px)');
     });
 
     it('opens at the detent the app sets, and drags down to the next', async () => {
@@ -794,17 +828,13 @@ describe('UiBottomSheet detents and glass variant', () => {
 
       await drag(sheet, MEDIUM, MEDIUM + 150);
       expect(sheet.host.open()).toBe(false);
-      await waitForClose(sheet.host);
+      expect(style(sheet.panel, 'transform')).toBe('translateY(150px)');
+      await nextFrame();
       // Past the screen's height, and without fading the glass.
-      expect(animate).toHaveBeenCalledWith(sheet.panel, [
-        START,
-        expect.any(String),
-        [
-          { transform: 'translateY(150px)' },
-          { transform: `translateY(${SCREEN}px)` },
-        ],
-        expect.objectContaining({ duration: DURATION.normal }),
-      ]);
+      expect(style(sheet.panel, 'transition')).toBe(slideOut(true));
+      expect(style(sheet.panel, 'transform')).toBe(`translateY(${SCREEN}px)`);
+      expect(style(sheet.panel, 'opacity')).toBe('1');
+      await waitForClose(sheet.host);
       // Closed, it has no detent, and opens again at its first.
       await waitForUpdate();
       expect(sheet.host.detent()).toBeUndefined();
@@ -816,16 +846,13 @@ describe('UiBottomSheet detents and glass variant', () => {
       const sheet = await renderDetents();
       await layOut(sheet);
       await openSheet(sheet.host);
-      animate.mockClear();
 
       await drag(sheet, MEDIUM, MEDIUM + 40);
       expect(sheet.host.open()).toBe(true);
-      expect(animate).toHaveBeenCalledWith(sheet.panel, [
-        START,
-        expect.any(String),
-        [{ transform: 'translateY(40px)' }, { transform: 'translateY(0px)' }],
-        expect.objectContaining({ duration: DURATION.fast }),
-      ]);
+      expect(style(sheet.panel, 'transition')).toBe(
+        `transform ${DURATION.fast}ms ${EASING.spring}`,
+      );
+      expect(style(sheet.panel, 'transform')).toBe('translateY(0px)');
       expect(sheet.host.detent()).toBe('medium');
     });
 
@@ -835,13 +862,17 @@ describe('UiBottomSheet detents and glass variant', () => {
       await openSheet(sheet.host);
 
       fireEvent.tap(sheet.backdrop);
+      await waitForUpdate();
+      await nextFrame();
+      expect(style(sheet.panel, 'transition')).toBe(slideOut(true));
+      expect(style(sheet.panel, 'transform')).toBe('translateY(110%)');
+      expect(style(sheet.panel, 'opacity')).toBe('1');
+      // The dim clears through the backdrop's color.
+      expect(sheet.backdrop.getAttribute('style')).toContain(
+        'rgba(0, 0, 0, 0)',
+      );
+      expect(style(sheet.backdrop, 'opacity')).toBe('1');
       await waitForClose(sheet.host);
-      expect(animate).toHaveBeenCalledWith(sheet.panel, [
-        START,
-        expect.any(String),
-        [{ transform: 'translateY(0%)' }, { transform: 'translateY(110%)' }],
-        expect.objectContaining({ duration: DURATION.normal }),
-      ]);
     });
 
     it('moves to the next detent when the grabber is tapped, and back from the last', async () => {
@@ -896,7 +927,9 @@ describe('UiBottomSheet detents and glass variant', () => {
       await layOut(sheet);
       await openSheet(sheet.host);
 
+      // A drag takes the sheet as it moves up, from its end.
       await tapGrabber(sheet);
+      await nextFrame();
       fireEvent.touchstart(sheet.handle, touchAt(100));
       await settled();
       // Still following the finger, halfway back down to medium: no
@@ -917,20 +950,30 @@ describe('UiBottomSheet detents and glass variant', () => {
       expect(sheet.host.detent()).toBe('fit');
       expect(style(sheet.panel, 'height')).toBe('');
 
-      // A transition can't start from the content's height, so the sheet
-      // pins it for a frame first.
+      // Laid out at the large detent at once, drawn at the content's height
+      // (and its inset) until it moves up.
       await tapGrabber(sheet);
-      expect(style(sheet.panel, 'height')).toBe(`${FIT}px`);
-      await after(FRAME);
       expect(style(sheet.panel, 'height')).toBe(`${LARGE}px`);
+      expect(style(sheet.panel, 'transform')).toMatch(
+        new RegExp(`^translateY\\(${LARGE - FIT - 8}px\\) scaleX`),
+      );
+      await nextFrame();
+      expect(style(sheet.panel, 'transform')).toBe('translateY(0px)');
       await settled();
       // A layout at the large detent's height isn't its content's.
       fireEvent.layoutchange(sheet.panel, { detail: { height: LARGE } });
 
+      // Back down to the content's height, still laid out at the large
+      // detent's until it's there.
       await tapGrabber(sheet);
-      expect(style(sheet.panel, 'height')).toBe(`${FIT}px`);
+      await nextFrame();
+      expect(style(sheet.panel, 'height')).toBe(`${LARGE}px`);
+      expect(style(sheet.panel, 'transform')).toMatch(
+        new RegExp(`^translateY\\(${LARGE - FIT - 8}px\\)`),
+      );
       await settled();
       expect(style(sheet.panel, 'height')).toBe('');
+      expect(style(sheet.panel, 'transform')).toBe('translateY(0px)');
     });
 
     it("doesn't take the panel's layout during a drag for its content's height", async () => {
@@ -953,7 +996,9 @@ describe('UiBottomSheet detents and glass variant', () => {
       // The content's height is still its own: the move to the large detent
       // starts from it.
       await tapGrabber(sheet);
-      expect(style(sheet.panel, 'height')).toBe(`${FIT}px`);
+      expect(style(sheet.panel, 'transform')).toMatch(
+        new RegExp(`^translateY\\(${LARGE - FIT - 8}px\\)`),
+      );
     });
 
     it('settles at the nearest detent a long drag passes, past the ones between', async () => {
@@ -975,7 +1020,8 @@ describe('UiBottomSheet detents and glass variant', () => {
       await layOut(sheet);
       await openSheet(sheet.host);
 
-      await tapGrabber(sheet);
+      // A drag before the move starts: from where the sheet is drawn.
+      fireEvent.tap(sheet.handle, { eventType: 'catchEvent' });
       fireEvent.touchstart(sheet.handle, touchAt(500));
       await vi.advanceTimersByTimeAsync(40);
       await waitForUpdate();
@@ -999,8 +1045,8 @@ describe('UiBottomSheet detents and glass variant', () => {
     it('opens at its content height if the screen is never laid out', async () => {
       const sheet = await renderDetents();
       sheet.host.open.set(true);
-      // Ten tries, a frame apart.
-      await after(STEPS + 10 * FRAME);
+      // Ten tries, a frame apart, after the frame it waits for to show.
+      await after(STEPS + 11 * FRAME + 4);
       expect(style(sheet.panel, 'transform')).toBe('translateY(0px)');
       expect(style(sheet.panel, 'height')).toBe('');
       // Partial until it knows the screen.
@@ -1031,12 +1077,9 @@ describe('UiBottomSheet detents and glass variant', () => {
       const sheet = await renderDetents();
       await layOut(sheet);
       await openSheet(sheet.host);
-      const animated = () =>
-        animate.mock.calls.filter(
-          ([element, [kind]]) => element === sheet.panel && kind === START,
-        );
-      // It fades in with the backdrop, and doesn't slide.
-      expect(animated()).toEqual([]);
+      // It doesn't slide: the backdrop's dim fades in.
+      expect(style(sheet.panel, 'transition')).toBe('');
+      expect(style(sheet.panel, 'transform')).toBe('translateY(0px)');
 
       await tapGrabber(sheet);
       expect(style(sheet.panel, 'transition')).toBe('');
@@ -1047,8 +1090,11 @@ describe('UiBottomSheet detents and glass variant', () => {
       await drag(sheet, MEDIUM, MEDIUM + 40);
       expect(style(sheet.panel, 'transform')).toBe('translateY(0px)');
       fireEvent.tap(sheet.backdrop);
+      await waitForUpdate();
+      await nextFrame();
+      expect(style(sheet.panel, 'transition')).toBe('');
+      expect(style(sheet.panel, 'transform')).toBe('translateY(0px)');
       await waitForClose(sheet.host);
-      expect(animated()).toEqual([]);
     });
   });
 
@@ -1068,15 +1114,8 @@ describe('UiBottomSheet detents and glass variant', () => {
         'rgba(0, 0, 0, 0.2)',
       );
       // An opaque sheet slides up as the default does.
-      expect(animate).toHaveBeenCalledWith(sheet.panel, [
-        START,
-        expect.any(String),
-        [
-          { transform: 'translateY(100%)', opacity: 0.8 },
-          { transform: 'translateY(0%)', opacity: 1 },
-        ],
-        expect.objectContaining({ duration: DURATION.slow }),
-      ]);
+      expect(style(sheet.panel, 'transition')).toBe(slideIn());
+      expect(style(sheet.backdrop, 'transition')).toBe(FADE_IN);
     });
 
     it('fades in and out with the backdrop under Reduce Motion', async () => {
@@ -1084,19 +1123,17 @@ describe('UiBottomSheet detents and glass variant', () => {
       const sheet = await renderDetents(IOS_18);
       await layOut(sheet);
       await openSheet(sheet.host);
+      expect(style(sheet.panel, 'transition')).toBe('');
+      expect(style(sheet.panel, 'opacity')).toBe('1');
+      expect(style(sheet.backdrop, 'transition')).toBe(FADE_IN);
       fireEvent.tap(sheet.backdrop);
+      await waitForUpdate();
+      await nextFrame();
+      expect(style(sheet.panel, 'transition')).toBe('');
+      expect(style(sheet.panel, 'transform')).toBe('translateY(0px)');
+      expect(style(sheet.backdrop, 'transition')).toBe(FADE_OUT);
+      expect(style(sheet.backdrop, 'opacity')).toBe('0');
       await waitForClose(sheet.host);
-
-      const panelStarts = animate.mock.calls.filter(
-        ([element, [kind]]) => element === sheet.panel && kind === START,
-      );
-      expect(panelStarts).toEqual([]);
-      expect(animate).toHaveBeenCalledWith(sheet.backdrop, [
-        START,
-        expect.any(String),
-        [{ opacity: 1 }, { opacity: 0 }],
-        expect.objectContaining({ duration: DURATION.normal }),
-      ]);
     });
   });
 
@@ -1123,16 +1160,11 @@ describe('UiBottomSheet detents and glass variant', () => {
       await openSheet(sheet.host);
 
       await drag(sheet, MEDIUM, MEDIUM + 200);
+      await nextFrame();
+      expect(style(sheet.panel, 'transition')).toBe(slideOut());
+      expect(style(sheet.panel, 'transform')).toBe(`translateY(${SCREEN}px)`);
+      expect(style(sheet.panel, 'opacity')).toBe('0.8');
       await waitForClose(sheet.host);
-      expect(animate).toHaveBeenCalledWith(sheet.panel, [
-        START,
-        expect.any(String),
-        [
-          { transform: 'translateY(200px)', opacity: 1 },
-          { transform: `translateY(${SCREEN}px)`, opacity: 0.8 },
-        ],
-        expect.objectContaining({ duration: DURATION.normal }),
-      ]);
     });
   });
 
@@ -1185,8 +1217,6 @@ class SourceHost {
   readonly closed = vi.fn();
 }
 
-/** The phone's width, beside SCREEN. */
-const WIDTH = 402;
 /** Where the control sits: a 44px circle near the top right. */
 const SOURCE = { left: 340, top: 60, width: 44, height: 44 };
 /** Where the sheet starts from and ends at: the control, as its style puts it. */
@@ -1260,8 +1290,8 @@ const renderSource = async (
      */
     measureSource: async () => {
       // A millisecond at a time, so that it answers the first measuring
-      // before the sequence goes on to another.
-      for (let i = 0; i < STEPS && answers.length === 0; i++) {
+      // before the sequence goes on to another, past the frame it waits for.
+      for (let i = 0; i < STEPS + FRAME + 4 && answers.length === 0; i++) {
         await vi.advanceTimersByTimeAsync(1);
       }
       expect(answers.length).toBeGreaterThan(0);
@@ -1310,9 +1340,7 @@ const grown = async () => {
 };
 
 describe('UiBottomSheet grown out of its control', () => {
-  let animate: MockInstance<LynxMainThread['__ElementAnimate']>;
   beforeEach(() => {
-    animate = vi.spyOn(lynxMainThread(), '__ElementAnimate');
     // The renderer warns that the components aren't Lynx elements.
     vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
@@ -1353,9 +1381,11 @@ describe('UiBottomSheet grown out of its control', () => {
       `height ${DURATION.slow + 100}ms cubic-bezier(0.32, 0.72, 0, 1)`,
     );
     expect(style(sheet.content(), 'opacity')).toBe('1');
-    // It grows rather than slides, and nothing fades.
-    expect(animate).not.toHaveBeenCalledWith(sheet.panel, expect.anything());
-    expect(animate).not.toHaveBeenCalledWith(sheet.backdrop, expect.anything());
+    // It grows rather than slides, and nothing fades: on Lynx's own
+    // animator, which changes its frame on every frame.
+    expect(style(sheet.panel, 'transform')).toBe('translateY(0px)');
+    expect(style(sheet.backdrop, 'opacity')).toBe('1');
+    expect(sheet.panel.getAttribute('enable-new-animator')).toBe('true');
 
     await grown();
     expect(style(sheet.panel, 'transition')).toBe('');
@@ -1392,23 +1422,15 @@ describe('UiBottomSheet grown out of its control', () => {
     sheet.host.open.set(true);
     await sheet.measureSource();
     await after(STEPS);
-    expect(animate).toHaveBeenCalledWith(sheet.panel, [
-      START,
-      expect.any(String),
-      [{ transform: 'translateY(110%)' }, { transform: 'translateY(0%)' }],
-      expect.anything(),
-    ]);
+    expect(style(sheet.panel, 'transition')).toBe(slideIn(true));
+    expect(style(sheet.panel, 'transform')).toBe('translateY(0px)');
     expect(style(sheet.panel, 'left')).toBe('8px');
 
     sheet.host.open.set(false);
     await sheet.measureSource();
     await after(STEPS);
-    expect(animate).toHaveBeenCalledWith(sheet.panel, [
-      START,
-      expect.any(String),
-      [{ transform: 'translateY(0%)' }, { transform: 'translateY(110%)' }],
-      expect.anything(),
-    ]);
+    expect(style(sheet.panel, 'transition')).toBe(slideOut(true));
+    expect(style(sheet.panel, 'transform')).toBe('translateY(110%)');
     await waitForClose(sheet.host);
   });
 
@@ -1423,16 +1445,10 @@ describe('UiBottomSheet grown out of its control', () => {
     fireEvent.touchmove(handle, touchAt(MEDIUM + 200));
     await waitForUpdate();
     fireEvent.touchend(handle, { eventType: 'catchEvent' });
+    await waitForUpdate();
+    await nextFrame();
+    expect(style(sheet.panel, 'transform')).toBe(`translateY(${SCREEN}px)`);
     await waitForClose(sheet.host);
-    expect(animate).toHaveBeenCalledWith(sheet.panel, [
-      START,
-      expect.any(String),
-      [
-        { transform: 'translateY(200px)' },
-        { transform: `translateY(${SCREEN}px)` },
-      ],
-      expect.anything(),
-    ]);
     await waitForUpdate();
     expect(style(sheet.source(), 'visibility')).toBe('');
   });
@@ -1468,8 +1484,8 @@ describe('UiBottomSheet grown out of its control', () => {
     await waitForClose(sheet.host);
     expect(style(sheet.source(), 'visibility')).toBe('');
 
-    // Opened again while it measures its control to shrink into it: it
-    // grows again instead.
+    // Opened again before it starts to shrink into its control: it never
+    // does, and grows again instead.
     sheet.host.open.set(true);
     await atSource(sheet);
     await grown();
@@ -1477,9 +1493,6 @@ describe('UiBottomSheet grown out of its control', () => {
     await waitForUpdate();
     sheet.host.open.set(true);
     await waitForUpdate();
-    // It measures its control to shrink into it, then again to grow out of
-    // it.
-    await sheet.measureSource();
     await sheet.measureSource();
     await grown();
     expect(sheet.overlay.getAttribute('visible')).toBe('true');
@@ -1512,11 +1525,9 @@ describe('UiBottomSheet grown out of its control', () => {
     await waitForUpdate();
     await openSheet(sheet.host);
     await after(STEPS);
-    expect(animate).toHaveBeenCalledWith(sheet.panel, [
-      START,
-      expect.any(String),
-      [{ transform: 'translateY(110%)' }, { transform: 'translateY(0%)' }],
-      expect.anything(),
-    ]);
+    expect(style(sheet.panel, 'transition')).toBe(slideIn(true));
+    expect(style(sheet.panel, 'transform')).toBe('translateY(0px)');
+    // On the platform's animators again.
+    expect(sheet.panel.getAttribute('enable-new-animator')).toBe('false');
   });
 });

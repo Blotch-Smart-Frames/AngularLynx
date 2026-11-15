@@ -39,7 +39,6 @@ import {
   LynxRouterLinkActive,
   LynxStackBottomBar,
 } from '@blotch/angular-lynx';
-import { filter } from 'rxjs';
 
 import {
   type AnimationHandle,
@@ -593,10 +592,15 @@ export class UiDock implements SearchFieldContainer {
 
   // The tapped item gives way to RouterLinkActive once the navigation is
   // over, however it ended: after a guard's redirect, a failure or a
-  // cancel, the item of the route the router shows is selected again.
+  // cancel, the item of the route the router shows is selected again. It
+  // checks the event itself rather than with rxjs's `filter`: dolan copies
+  // this file into apps, and an import from rxjs would make rxjs one of the
+  // component's own packages.
   protected readonly settleTapped = this.#router.events
-    .pipe(filter(navigationOver), takeUntilDestroyed())
-    .subscribe(() => this.#tapped.set(null));
+    .pipe(takeUntilDestroyed())
+    .subscribe((event) => {
+      if (navigationOver(event)) this.#tapped.set(null);
+    });
 
   /** The item that shows selected, if any (see UiDockItem.active). */
   readonly selectedItem = computed(() =>

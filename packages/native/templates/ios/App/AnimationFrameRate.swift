@@ -1,3 +1,4 @@
+import Foundation
 import ObjectiveC
 import QuartzCore
 
@@ -40,10 +41,12 @@ enum AnimationFrameRate {
       && animation.repeatDuration.isFinite
   }
 
-  /// Swaps in `CALayer`'s replacement `add(_:forKey:)`. Call it once, before
-  /// the first LynxView exists.
+  /// Swaps in `CALayer`'s replacement `add(_:forKey:)`, and has Lynx's own
+  /// animator's rate asked for from the main thread (see `LynxAnimatorFrameRate`).
+  /// Call it once, before the first LynxView exists.
   static func install() {
     _ = swapped
+    LynxAnimatorFrameRate.install()
   }
 
   /// A static's initializer runs once, however often `install()` is called:
@@ -57,6 +60,137 @@ enum AnimationFrameRate {
     else { return }
     method_exchangeImplementations(original, replacement)
   }()
+}
+
+/// Asks iOS, from the main thread, for the rate Lynx's own animator asks for,
+/// while that animator runs.
+///
+/// Lynx works out each frame of an element's CSS transitions and `animate()`
+/// itself (every element without `enable-new-animator="false"`), from a
+/// `CADisplayLink` in its `LynxVSyncPulse`. The build's `preferredFps: 'high'`
+/// has Lynx ask that link for up to 120 fps. But the link is made on the thread
+/// that first asks it for a frame, and the shell runs Lynx's engine off the
+/// main thread (`MostOnTASM`), so it lives on the engine thread, and iOS doesn't
+/// raise the display's rate for a display link there. On an iPhone 14 Pro a
+/// transition on Lynx's animator drew a frame every 16.7 ms while the same one
+/// in Core Animation drew one every 8.3 ms. With a display link on the main
+/// thread asking for the same range, it drew one every 8.3 ms too: the engine
+/// already ticked that fast, and only the display held it back.
+///
+/// So the shell swaps in its own `requestPulse`, which Lynx calls on the engine
+/// thread for each frame it wants, and while those frames come from a link that
+/// asks for more than 60 fps, a display link on the main thread asks for the
+/// same range. It pauses once Lynx has asked for no frame for a few frames, so
+/// a screen with nothing moving keeps the system's rate. A `preferredFps` of
+/// `'auto'` or `'low'` leaves Lynx's link asking for nothing, so nothing is
+/// asked for here either.
+final class LynxAnimatorFrameRate: NSObject {
+  static let shared = LynxAnimatorFrameRate()
+
+  /// How long the main thread keeps asking after Lynx's last frame request: a
+  /// few frames, so a frame Angular's work delays doesn't drop the rate between
+  /// two of an animation's frames.
+  static let linger: CFTimeInterval = 0.1
+
+  /// The highest rate a display link asks for before the main thread asks too:
+  /// what an app gets without asking.
+  static let defaultMaximum: Float = 60
+
+  /// Guards what both threads read: the engine thread writes the request, the
+  /// main thread reads it on its own frames.
+  private let lock = NSLock()
+  private var lastRequest: CFTimeInterval = 0
+  private var range = CAFrameRateRange.default
+  /// Whether the main thread's link runs, or is about to.
+  private var asking = false
+  /// The main thread's link. Only the main thread touches it.
+  private var link: CADisplayLink?
+
+  /// Swaps `LynxVSyncPulse`'s `requestPulse` for one that also asks from the
+  /// main thread. Does nothing if Lynx no longer has that class or method.
+  static func install() {
+    _ = swapped
+  }
+
+  private static let swapped: Void = {
+    let selector = NSSelectorFromString("requestPulse")
+    let replacementSelector = #selector(NSObject.angularLynx_requestPulse)
+    guard
+      let pulse = NSClassFromString("LynxVSyncPulse"),
+      let original = class_getInstanceMethod(pulse, selector),
+      let replacement = class_getInstanceMethod(NSObject.self, replacementSelector),
+      // Added to LynxVSyncPulse itself, so the swap changes only its methods,
+      // not NSObject's.
+      class_addMethod(
+        pulse, replacementSelector, method_getImplementation(replacement),
+        method_getTypeEncoding(replacement)),
+      let added = class_getInstanceMethod(pulse, replacementSelector)
+    else { return }
+    method_exchangeImplementations(original, added)
+  }()
+
+  /// Whether a link's range asks for more than an app gets by default.
+  static func asksForHighRate(_ range: CAFrameRateRange) -> Bool {
+    max(range.maximum, range.preferred ?? 0) > defaultMaximum
+  }
+
+  /// Called on the engine thread for each frame Lynx asks its link for.
+  func lynxRequestedFrame(_ range: CAFrameRateRange) {
+    lock.lock()
+    lastRequest = CACurrentMediaTime()
+    self.range = range
+    let start = !asking
+    asking = true
+    lock.unlock()
+    if start {
+      DispatchQueue.main.async { self.resume() }
+    }
+  }
+
+  private func resume() {
+    let link: CADisplayLink
+    if let existing = self.link {
+      link = existing
+    } else {
+      link = CADisplayLink(target: self, selector: #selector(tick(_:)))
+      link.add(to: .main, forMode: .common)
+      self.link = link
+    }
+    lock.lock()
+    let range = self.range
+    lock.unlock()
+    link.preferredFrameRateRange = range
+    link.isPaused = false
+  }
+
+  @objc private func tick(_ link: CADisplayLink) {
+    lock.lock()
+    let idle = link.timestamp - lastRequest > Self.linger
+    if idle {
+      // A request after this unlock finds `asking` false and resumes the link
+      // on a later turn of the main thread, after this pause.
+      asking = false
+    }
+    lock.unlock()
+    if idle {
+      link.isPaused = true
+    }
+  }
+}
+
+extension NSObject {
+  /// Takes the place of `LynxVSyncPulse`'s `requestPulse` once
+  /// `LynxAnimatorFrameRate.install()` has run, so `self` is a `LynxVSyncPulse`.
+  @objc fileprivate func angularLynx_requestPulse() {
+    // The implementations are swapped, so this runs Lynx's own requestPulse.
+    angularLynx_requestPulse()
+    let getter = NSSelectorFromString("displayLink")
+    guard responds(to: getter),
+      let link = perform(getter)?.takeUnretainedValue() as? CADisplayLink,
+      LynxAnimatorFrameRate.asksForHighRate(link.preferredFrameRateRange)
+    else { return }
+    LynxAnimatorFrameRate.shared.lynxRequestedFrame(link.preferredFrameRateRange)
+  }
 }
 
 extension CALayer {

@@ -305,6 +305,24 @@ describe('iosGenerator', () => {
     );
   });
 
+  it("asks for Lynx's own animator's rate from the main thread while it runs", () => {
+    iosGenerator.configure(dir, app(), dir);
+    // Lynx's animator asks for 120 fps from a display link on the engine
+    // thread, which iOS doesn't raise the display's rate for, so the shell
+    // asks again from the main thread for each frame Lynx's link is asked for.
+    const swift = readFileSync(
+      path.join(dir, 'App/AnimationFrameRate.swift'),
+      'utf8',
+    );
+    expect(swift).toContain('NSClassFromString("LynxVSyncPulse")');
+    expect(swift).toContain('NSSelectorFromString("requestPulse")');
+    // Installed with the Core Animation hook, before the first LynxView.
+    const install = swift.slice(swift.indexOf('static func install()'));
+    expect(install.slice(0, install.indexOf('}'))).toContain(
+      'LynxAnimatorFrameRate.install()',
+    );
+  });
+
   it("writes the shortcuts' App Intents where Xcode compiles them, and none for an app without shortcuts", () => {
     const file = path.join(dir, 'App/AppShortcuts.swift');
     iosGenerator.configure(dir, app(), dir);

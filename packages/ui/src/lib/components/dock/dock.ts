@@ -1,4 +1,5 @@
 import {
+  ApplicationRef,
   Component,
   Directive,
   ElementRef,
@@ -17,9 +18,20 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
-import { RouterLink, RouterLinkActive } from '@angular/router';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import {
+  type Event as RouterEvent,
+  NavigationCancel,
+  NavigationCancellationCode,
+  NavigationEnd,
+  NavigationError,
+  NavigationSkipped,
+  Router,
+  RouterLink,
+  RouterLinkActive,
+} from '@angular/router';
+import {
+  type BaseLynxElement,
   type LayoutChangeDetail,
   LYNX_ELEMENTS,
   LynxAccessibilitySettings,
@@ -27,6 +39,7 @@ import {
   LynxRouterLinkActive,
   LynxStackBottomBar,
 } from '@blotch/angular-lynx';
+import { filter } from 'rxjs';
 
 import {
   type AnimationHandle,
@@ -338,6 +351,9 @@ export class UiDockAccessory {}
  * they move as Android's do, it slides down off the screen. It follows a
  * finger dragging a page back, and it leaves screen readers and taps alone
  * while it's away.
+ *
+ * A tapped item shows selected at once, and the capsule sets off for it,
+ * before the screen it shows is built (see `markTapped`).
  */
 @Component({
   selector: 'ui-dock',
@@ -415,7 +431,16 @@ export class UiDockAccessory {}
             [style]="rowStyle()"
             [attr.accessibility-elements-hidden]="rowHidden() || null"
           >
-            <view [class]="capsuleClass()" [style]="capsuleStyle()"></view>
+            <!-- Core Animation and Android's animators move the capsule,
+                 so it slides while Angular builds the screen of the item
+                 tapped (see markTapped). Android moves a transform only on
+                 a view of its own. -->
+            <view
+              enable-new-animator="false"
+              flatten="false"
+              [class]="capsuleClass()"
+              [style]="capsuleStyle()"
+            ></view>
             <ng-content />
           </view>
           @if (barCollapsed()) {
@@ -525,6 +550,8 @@ export class UiDock implements SearchFieldContainer {
   readonly #renderer = inject(Renderer2);
   readonly #host = inject(ElementRef);
   readonly #bar = inject(LynxStackBottomBar);
+  readonly #router = inject(Router);
+  readonly #appRef = inject(ApplicationRef);
 
   // A native view of its own on Android, where a flattened view's transition
   // doesn't move it (see stackLook).
@@ -552,7 +579,26 @@ export class UiDock implements SearchFieldContainer {
    */
   protected readonly width = signal(0);
 
-  /** The item whose route is active, if any. */
+  /**
+   * The item tapped last, while the navigation its tap started is under
+   * way: it shows selected from the tap, rather than once RouterLinkActive
+   * says its route is active (see UiDockItem.active). RouterLinkActive says
+   * so when the navigation ends, and so after the outlet has built the
+   * screen the item shows: on a tab not built yet, the dock sat still as if
+   * the tap had missed, then the mark, the capsule and the screen came
+   * together.
+   */
+  readonly #tapped = signal<UiDockItem | null>(null);
+  readonly tappedItem = this.#tapped.asReadonly();
+
+  // The tapped item gives way to RouterLinkActive once the navigation is
+  // over, however it ended: after a guard's redirect, a failure or a
+  // cancel, the item of the route the router shows is selected again.
+  protected readonly settleTapped = this.#router.events
+    .pipe(filter(navigationOver), takeUntilDestroyed())
+    .subscribe(() => this.#tapped.set(null));
+
+  /** The item that shows selected, if any (see UiDockItem.active). */
   readonly selectedItem = computed(() =>
     this.items().find((item) => item.active()),
   );
@@ -1159,6 +1205,26 @@ export class UiDock implements SearchFieldContainer {
     if (!routed) this.openSearch();
   }
 
+  /**
+   * Shows `item` selected now, and sets the capsule off for it, for a tap on
+   * it that started a navigation. After a tap that started none, because the
+   * router shows the item's route already, the router's own item shows.
+   */
+  markTapped(item: UiDockItem): void {
+    // The item's RouterLink navigates from the same tap, before this: its
+    // host listener comes first. A navigation to the URL the router shows is
+    // skipped then and there, which leaves none under way, and cancels one
+    // another tap started.
+    this.#tapped.set(this.#router.currentNavigation() ? item : null);
+    // Draws the mark now, before the router builds the screen: it goes on
+    // after this turn's listeners (it waits a microtask after
+    // NavigationStart), and the change detection after it would bring the
+    // mark and the built screen together. The apps' shells send a flush to
+    // the UI thread at once, which draws the mark, and starts the capsule's
+    // slide, while the screen is built.
+    this.#appRef.tick();
+  }
+
   protected onRestore(): void {
     if (this.searching()) {
       this.closeSearch();
@@ -1167,6 +1233,19 @@ export class UiDock implements SearchFieldContainer {
     }
   }
 }
+
+/**
+ * Whether a router event ends a navigation, as Angular's own
+ * `afterNextNavigation` counts it: a cancel for a guard's redirect, or for a
+ * newer navigation (another tap), comes before that navigation's own end.
+ */
+const navigationOver = (event: RouterEvent): boolean =>
+  event instanceof NavigationEnd ||
+  event instanceof NavigationSkipped ||
+  event instanceof NavigationError ||
+  (event instanceof NavigationCancel &&
+    event.code !== NavigationCancellationCode.Redirect &&
+    event.code !== NavigationCancellationCode.SupersededByNewNavigation);
 
 /**
  * One of the dock's screens: an icon over a label that navigates to its
@@ -1178,8 +1257,8 @@ export class UiDock implements SearchFieldContainer {
  * option (`queryParams`, `replaceUrl`, `state`, …) and
  * `routerLinkActiveOptions` work as they do on the web, and the item knows
  * whether its route is active without the app wiring `routerLinkActive` up.
- * Host directives don't match selectors, so `LynxRouterLinkActive`, which
- * marks the active item `selected` for screen readers, is listed too.
+ * It shows selected from the tap, though, while the screen is built (see
+ * `UiDock.markTapped`), and screen readers hear it `selected` as it shows.
  */
 @Component({
   selector: 'ui-dock-item',
@@ -1205,7 +1284,6 @@ export class UiDock implements SearchFieldContainer {
       ],
     },
     { directive: RouterLinkActive, inputs: ['routerLinkActiveOptions'] },
-    LynxRouterLinkActive,
   ],
   host: {
     // The host is the tap target and takes an equal share of the bar's row,
@@ -1217,10 +1295,10 @@ export class UiDock implements SearchFieldContainer {
     '[class]': 'contentClass()',
     // One accessibility element per item, named by its label, so a screen
     // reader reads "Inbox, 3, button" instead of an unlabeled SVG and a word.
-    // LynxRouterLinkActive adds `selected` to `button` while the route is
-    // active. The label is an attribute binding: a property binding on a
-    // component's host is checked against the DOM schema, which has no
-    // `accessibility-label`.
+    // `selected` is added to `button` while the item shows selected (see
+    // markingSelected). The label is an attribute binding: a property
+    // binding on a component's host is checked against the DOM schema, which
+    // has no `accessibility-label`.
     'accessibility-element': 'true',
     'accessibility-traits': 'button',
     '[attr.accessibility-label]': 'accessibilityLabel()',
@@ -1234,8 +1312,10 @@ export class UiDock implements SearchFieldContainer {
     '(bindtouchcancel)': 'onPressEnd()',
     '(bindmouseup)': 'onPressEnd()',
     '(bindmouseleave)': 'onPressEnd()',
-    // RouterLink navigates on the same tap through its own listener.
-    '(bindtap)': 'pressed.emit()',
+    // RouterLink navigates on the same tap through its own listener, which
+    // runs first: the runtime runs an event's listeners in the order they
+    // were added, and a host directive's come before the component's.
+    '(bindtap)': 'onTap()',
   },
   template: `
     <view class="relative">
@@ -1284,7 +1364,7 @@ export class UiDockItem {
   readonly #resolveColor = injectIconColor();
   // The host, not an inner view, shrinks on a press: it's the whole tap
   // target, and injecting it needs no view query.
-  readonly #host = inject(ElementRef);
+  readonly #host = inject<ElementRef<BaseLynxElement>>(ElementRef);
   readonly #link = inject(RouterLink);
   #pressAnim?: AnimationHandle;
 
@@ -1294,8 +1374,27 @@ export class UiDockItem {
    * Whether the item's route is active, from the RouterLinkActive on the
    * host. RouterLinkActive reports only changes, and starts from not active.
    */
-  readonly active = toSignal(inject(RouterLinkActive).isActiveChange, {
+  readonly #routeActive = toSignal(inject(RouterLinkActive).isActiveChange, {
     initialValue: false,
+  });
+
+  /**
+   * Whether the item shows selected: the item tapped last while the
+   * navigation its tap started is under way, and otherwise the item whose
+   * route is active.
+   */
+  readonly active = computed(() => {
+    const tapped = this.#dock.tappedItem();
+    return tapped ? tapped === this : this.#routeActive();
+  });
+
+  /**
+   * The selected item is `selected` to a screen reader as it shows, from
+   * the tap. The trait is added to the host's own `button`: on iOS it reads
+   * `button,selected`, and Android, which reads one trait, keeps `button`.
+   */
+  protected readonly markingSelected = effect(() => {
+    this.#host.nativeElement.setAccessibilityTrait('selected', this.active());
   });
 
   protected readonly badgeText = computed(() => {
@@ -1375,6 +1474,17 @@ export class UiDockItem {
    */
   navigate(): void {
     this.#link.onClick(0, false, false, false, false);
+  }
+
+  /**
+   * A tap on an item that isn't selected shows it selected at once (see
+   * UiDock.markTapped). One on the selected item changes nothing here.
+   */
+  protected onTap(): void {
+    this.pressed.emit();
+    if (this.#link.urlTree !== null && !this.active()) {
+      this.#dock.markTapped(this);
+    }
   }
 
   protected onPressStart(): void {

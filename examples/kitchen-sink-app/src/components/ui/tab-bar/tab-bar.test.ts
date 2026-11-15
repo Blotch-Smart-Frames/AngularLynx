@@ -1,5 +1,16 @@
-import { Component, ErrorHandler, signal, viewChildren } from '@angular/core';
-import { Router, RouterOutlet, type Routes } from '@angular/router';
+import {
+  Component,
+  ErrorHandler,
+  signal,
+  viewChild,
+  viewChildren,
+} from '@angular/core';
+import {
+  Router,
+  RouterOutlet,
+  type Routes,
+  type UrlTree,
+} from '@angular/router';
 import {
   fireEvent,
   render,
@@ -44,6 +55,33 @@ const routes: Routes = [
   { path: 'profile', component: ProfilePage },
 ];
 
+/**
+ * Settles the navigation the inbox's guard holds, as the test says: a phone
+ * holds a tab's navigation while it builds the tab's screen.
+ */
+let gate: {
+  open: (result: boolean | UrlTree) => void;
+  fail: (error: Error) => void;
+} | null = null;
+
+/**
+ * The routes with the inbox's navigation held until the test settles it.
+ */
+const gatedRoutes: Routes = [
+  { path: '', component: HomePage },
+  {
+    path: 'inbox',
+    component: InboxPage,
+    canActivate: [
+      () =>
+        new Promise<boolean | UrlTree>((open, fail) => {
+          gate = { open, fail };
+        }),
+    ],
+  },
+  { path: 'profile', component: ProfilePage },
+];
+
 @Component({
   imports: [LYNX_ELEMENTS, RouterOutlet, UiTabBar, UiTabBarItem],
   template: `
@@ -75,6 +113,7 @@ class TabBarHost {
   readonly inboxBadge = signal<string | number | null | undefined>(undefined);
   readonly inboxClass = signal('');
   readonly items = viewChildren(UiTabBarItem);
+  readonly bar = viewChild.required(UiTabBar);
 }
 
 @Component({
@@ -151,9 +190,18 @@ const until = async (done: () => boolean): Promise<void> => {
   expect(done()).toBe(true);
 };
 
-const renderTabBar = async () => {
+/**
+ * The inbox's guard, once the router has run it: a navigation reaches its
+ * guards a few microtasks after the tap.
+ */
+const heldInbox = async () => {
+  await until(() => gate !== null);
+  return gate!;
+};
+
+const renderTabBar = async (withRoutes: Routes = routes) => {
   const result = await render(TabBarHost, {
-    providers: [provideRouter(routes)],
+    providers: [provideRouter(withRoutes)],
   });
   const { container } = result;
   const host = result.componentRef.instance as TabBarHost;
@@ -268,8 +316,8 @@ describe('UiTabBar', () => {
   it("navigates with the item's RouterLink options", async () => {
     const { router, tab, isActive } = await renderTabBar();
     fireEvent.tap(tab('Profile'));
-    await until(() => isActive('Profile'));
-    expect(router.url).toBe('/profile?tab=posts');
+    await until(() => router.url === '/profile?tab=posts');
+    expect(isActive('Profile')).toBe(true);
   });
 
   it('emits pressed for a tap on the selected tab too', async () => {
@@ -357,6 +405,117 @@ describe('UiTabBar', () => {
     expect([...container.querySelectorAll('.pt-4')]).toEqual([
       container.querySelector('[accessibility-label="Home"]'),
     ]);
+  });
+});
+
+describe('UiTabBarItem tapped while its screen is built', () => {
+  beforeEach(() => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    gate = null;
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('shows selected from the tap, and stays selected as its screen comes', async () => {
+    const { tab, isActive, labelOf, iconOf, page } =
+      await renderTabBar(gatedRoutes);
+
+    fireEvent.tap(tab('Inbox'));
+    // Drawn by the tap itself, before the router goes on to build the
+    // screen: no change detection has run since.
+    expect(isActive('Inbox')).toBe(true);
+    expect(labelOf('Inbox').classList).toContain('text-primary');
+    expect(iconOf('Inbox')).toContain(PRIMARY);
+    expect(isActive('Home')).toBe(false);
+    expect(labelOf('Home').classList).toContain('text-muted-foreground');
+
+    await waitForUpdate();
+    expect(page()).toBe('Home page');
+    expect(isActive('Inbox')).toBe(true);
+
+    (await heldInbox()).open(true);
+    await until(() => page() === 'Inbox page');
+    expect(isActive('Inbox')).toBe(true);
+    expect(isActive('Home')).toBe(false);
+  });
+
+  it('goes back to the tab the router shows when a guard turns the navigation down', async () => {
+    const { tab, isActive, page } = await renderTabBar(gatedRoutes);
+
+    fireEvent.tap(tab('Inbox'));
+    expect(isActive('Inbox')).toBe(true);
+
+    (await heldInbox()).open(false);
+    await until(() => isActive('Home'));
+    expect(isActive('Inbox')).toBe(false);
+    expect(page()).toBe('Home page');
+  });
+
+  it("follows a guard's redirect to the tab it lands on", async () => {
+    const { tab, isActive, page, router } = await renderTabBar(gatedRoutes);
+    fireEvent.tap(tab('Inbox'));
+
+    (await heldInbox()).open(router.parseUrl('/profile?tab=posts'));
+    await until(() => page() === 'Profile page');
+    await until(() => isActive('Profile'));
+    expect(isActive('Inbox')).toBe(false);
+  });
+
+  it('goes back to the tab the router shows when the navigation fails', async () => {
+    const { tab, isActive, page } = await renderTabBar(gatedRoutes);
+    fireEvent.tap(tab('Inbox'));
+
+    (await heldInbox()).fail(new Error('No inbox'));
+    await until(() => isActive('Home'));
+    expect(isActive('Inbox')).toBe(false);
+    expect(page()).toBe('Home page');
+  });
+
+  it('shows the later of two taps, from its tap to its screen', async () => {
+    const { tab, isActive, page } = await renderTabBar(gatedRoutes);
+    fireEvent.tap(tab('Inbox'));
+    fireEvent.tap(tab('Profile'));
+    expect(isActive('Profile')).toBe(true);
+    expect(isActive('Inbox')).toBe(false);
+
+    // The inbox's navigation, canceled for the profile's, doesn't take the
+    // mark back to Home on the way.
+    for (let i = 0; i < 20 && page() !== 'Profile page'; i++) {
+      await waitForUpdate();
+      expect(isActive('Profile')).toBe(true);
+      expect(isActive('Home')).toBe(false);
+    }
+    await until(() => page() === 'Profile page');
+    expect(isActive('Profile')).toBe(true);
+  });
+
+  it('goes back to the tab the router shows for a tap on it', async () => {
+    const { tab, isActive, page } = await renderTabBar(gatedRoutes);
+    fireEvent.tap(tab('Inbox'));
+    await heldInbox();
+    // The router still shows Home, so it skips the tap's navigation, and
+    // cancels the inbox's for it. Nothing is built: the next update shows
+    // Home.
+    fireEvent.tap(tab('Home'));
+    await waitForUpdate();
+    expect(isActive('Home')).toBe(true);
+    expect(isActive('Inbox')).toBe(false);
+    expect(page()).toBe('Home page');
+  });
+
+  it('shows the tab the router shows when markTapped finds no navigation under way', async () => {
+    const { host, item, isActive } = await renderTabBar(gatedRoutes);
+    host.bar().markTapped(item('Inbox'));
+    expect(isActive('Inbox')).toBe(false);
+    expect(isActive('Home')).toBe(true);
+  });
+
+  it('leaves the mark alone for a tap on the selected tab', async () => {
+    const { tab, isActive, page } = await renderTabBar(gatedRoutes);
+    fireEvent.tap(tab('Home'));
+    expect(isActive('Home')).toBe(true);
+    await waitForUpdate();
+    expect(isActive('Home')).toBe(true);
+    expect(page()).toBe('Home page');
   });
 });
 

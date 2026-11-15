@@ -5,6 +5,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 
 import { run, runAllowFailure, start, step, stop } from '../process.ts';
 import { HTTP_DATA } from '../static-server.ts';
+import { watchAnrDialogs } from './anr-dialogs.ts';
 import { EXPLORER, getExplorer } from './explorer.ts';
 import {
   flowsFor,
@@ -97,6 +98,8 @@ export const runOnAndroidEmulator = async ({
   };
 
   const failures: string[] = [];
+  // Another app hung on the emulator would cover the app with its dialog.
+  const stopWatchingAnrDialogs = watchAnrDialogs({ appId, logFile });
   try {
     const device = (await adb(['get-serialno'])).output.trim();
     const outcomes = await runFlows(flowsFor('android', host), {
@@ -125,6 +128,7 @@ export const runOnAndroidEmulator = async ({
       }
     }
   } finally {
+    await stopWatchingAnrDialogs();
     stop(logcat.child);
     await runAllowFailure('adb', ['reverse', '--remove-all'], {
       cwd: process.cwd(),

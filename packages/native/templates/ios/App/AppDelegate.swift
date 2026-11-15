@@ -14,6 +14,8 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     XElementRegistry.register()
+    // Before any LynxView, so its first transition already asks for 120 fps.
+    AnimationFrameRate.install()
     let config = LynxConfig(provider: BundleResourceFetcher.shared)
     LynxEnv.sharedInstance().prepareConfig(config)
     // LynxService's image service decodes through SDWebImage, which only

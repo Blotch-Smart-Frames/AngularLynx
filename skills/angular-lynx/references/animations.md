@@ -171,7 +171,7 @@ By default Lynx doesn't hand animations to Core Animation or a compositor. It wo
 - **Or hand the element's transitions to the platform** (below), so they keep moving while the thread is busy. `<lynx-stack-outlet>` moves its screens that way, and `ui-bottom-sheet` its sheet.
 - **Judge it on a phone.** The iOS Simulator and the Android emulator run on the Mac's CPU and hold 60 fps where a phone drops frames.
 
-On a ProMotion iPhone, apps that `ng build --platform ios` builds animate at up to 120 fps: the app's Info.plist has `CADisableMinimumFrameDurationOnPhone`, and the build asks Lynx for 120 (`preferredFps`, `'high'` by default). `pluginAngularLynx({ preferredFps: 'auto' })` in `lynx.config.ts` leaves it to the system, which holds an iPhone to 60. A host app that embeds a LynxView needs the Info.plist key itself. Android draws at the screen's rate either way.
+On a ProMotion iPhone, apps that `ng build --platform ios` builds animate at up to 120 fps: the app's Info.plist has `CADisableMinimumFrameDurationOnPhone`, the build asks Lynx's animator for 120 (`preferredFps`, `'high'` by default), and the app asks Core Animation for 80 to 120 on each transition it runs (below). `pluginAngularLynx({ preferredFps: 'auto' })` in `lynx.config.ts` leaves Lynx's animator to the system, which holds an iPhone to 60; it doesn't change Core Animation's. A host app that embeds a LynxView needs the Info.plist key itself. Android draws at the screen's rate either way.
 
 ### Transitions that keep moving while Angular works
 
@@ -191,6 +191,7 @@ On a ProMotion iPhone, apps that `ng build --platform ios` builds animate at up 
 - **On iOS, `transform`, `opacity`, `background-color`, `visibility`, and the frame (`left`, `right`, `top`, `bottom`, `width`, `height`)** transition. But the element's background and its children take a new size at once, so move it by `transform`: `ui-bottom-sheet` moves between detents laid out at the taller one, and translated.
 - **On iOS, start one with `afterFrame(callback)`** (from `@blotch/angular-lynx`), which runs it on the turn after a frame, once nothing else is waiting. Core Animation begins a transition at the time of the last frame the thread saw, so one started straight after a busy turn (building a screen) is partway through by the time it's drawn. `<lynx-stack-outlet>` and `ui-bottom-sheet` start their moves from it.
 - **A new `transform` mid-transition jumps on iOS:** the running one ends at its end first. Opacity and the frame carry on from where they are. Taking the `transition` away ends a running one where it was going, on iOS and Android.
+- **On a ProMotion iPhone they run at up to 120 fps** in apps that `ng build --platform ios` builds: Lynx asks Core Animation for no rate, which iOS runs at 60, so the app asks for 80 to 120 on each animation it adds. One that repeats forever (`infinite`) keeps the system's rate, which saves battery on a spinner. A host app that embeds a LynxView runs them at 60.
 - **Lynx for Web ignores the attribute;** the browser runs the transition.
 
 ### Drags

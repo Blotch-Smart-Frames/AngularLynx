@@ -280,6 +280,31 @@ describe('iosGenerator', () => {
     );
   });
 
+  it("asks for 120 fps on Core Animation's transitions before the first LynxView", () => {
+    iosGenerator.configure(dir, app(), dir);
+    // Lynx's Core Animation transitions ask for no rate, which iOS runs at
+    // 60 fps even with the Info.plist key, so the shell asks on each one as
+    // it's added, leaving loops that never end at the system's rate.
+    const swift = readFileSync(
+      path.join(dir, 'App/AnimationFrameRate.swift'),
+      'utf8',
+    );
+    expect(swift).toContain(
+      'CAFrameRateRange(minimum: 80, maximum: 120, preferred: 120)',
+    );
+    expect(swift).toContain('#selector(CALayer.add(_:forKey:))');
+    const delegate = readFileSync(
+      path.join(dir, 'App/AppDelegate.swift'),
+      'utf8',
+    );
+    expect(delegate.indexOf('AnimationFrameRate.install()')).toBeGreaterThan(
+      -1,
+    );
+    expect(delegate.indexOf('AnimationFrameRate.install()')).toBeLessThan(
+      delegate.indexOf('LynxEnv.sharedInstance().prepareConfig'),
+    );
+  });
+
   it("writes the shortcuts' App Intents where Xcode compiles them, and none for an app without shortcuts", () => {
     const file = path.join(dir, 'App/AppShortcuts.swift');
     iosGenerator.configure(dir, app(), dir);

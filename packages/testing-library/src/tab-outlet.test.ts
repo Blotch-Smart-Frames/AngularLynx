@@ -7,7 +7,7 @@
  */
 
 import { Component, signal } from '@angular/core';
-import { Router, RouterOutlet, type Routes } from '@angular/router';
+import { type Data, Router, RouterOutlet, type Routes } from '@angular/router';
 import {
   LYNX_ELEMENTS,
   LynxStackOutlet,
@@ -95,10 +95,12 @@ const routes: Routes = [
 ];
 
 /**
- * A lazy tab, whose screens are a stack, as an app's tabs often are.
+ * A lazy tab, whose screens are a stack, as an app's tabs often are: its
+ * route only loads its children, the stack on `''`.
  */
-const lazyTab = (path: string): Routes[number] => ({
+const lazyTab = (path: string, data?: Data): Routes[number] => ({
   path,
+  data,
   loadChildren: async () => [
     {
       path: '',
@@ -114,6 +116,18 @@ const lazyRoutes: Routes = [
     path: '',
     component: Shell,
     children: [lazyTab('home'), lazyTab('schedule')],
+  },
+];
+
+/**
+ * The lazy tabs, the Schedule tab built before it's first shown.
+ */
+const aheadRoutes: Routes = [
+  { path: '', pathMatch: 'full', redirectTo: 'home' },
+  {
+    path: '',
+    component: Shell,
+    children: [lazyTab('home'), lazyTab('schedule', { prebuild: true })],
   },
 ];
 
@@ -184,5 +198,23 @@ describe('<lynx-tab-outlet>', () => {
     await waitForUpdate();
     expect(screen.getAllByText('ON SCREEN')).toHaveLength(2);
     expect(screen.getAllByText('ON SCREEN')).toContain(home);
+  });
+
+  // Issue #426.
+  it('builds a lazy tab ahead, and shows it as it was built', async () => {
+    const { go, router } = await setup(aheadRoutes);
+    const [home] = await screen.findAllByText('ON SCREEN');
+    // The Schedule tab's first screen, there before the tab is shown.
+    await vi.waitFor(() => {
+      expect(screen.getAllByText('ON SCREEN')).toHaveLength(2);
+    });
+    const built = screen.getAllByText('ON SCREEN');
+    expect(router.url).toBe('/home');
+    await go('/schedule');
+    // The same elements, nothing made again.
+    expect(screen.getAllByText('ON SCREEN')).toEqual(built);
+    await go('/home');
+    expect(screen.getAllByText('ON SCREEN')).toEqual(built);
+    expect(built).toContain(home);
   });
 });

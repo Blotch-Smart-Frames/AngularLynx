@@ -16,6 +16,7 @@ import {
   effect,
   inject,
   input,
+  isDevMode,
   untracked,
 } from '@angular/core';
 import {
@@ -51,7 +52,10 @@ import { LynxTabPage, setTabActive } from './tab-page';
 
 /** A tab: its routed component, and the frame it's shown or hidden in. */
 type Tab = {
-  /** The route the tab is for: each route of the outlet is one tab. */
+  /**
+   * The route the tab is for, which gives the tab its URL (see tabOf): each
+   * route of the outlet is one tab.
+   */
   readonly config: Route;
   readonly ref: ComponentRef<unknown>;
   /** What the component injects as its ActivatedRoute (see live-route.ts). */
@@ -132,6 +136,56 @@ const outletOf = (
   return contexts.getContext(route.outlet)?.outlet ?? null;
 };
 
+/** A route in the router's tree, or in a snapshot of it. */
+type RouteNode<T> = {
+  readonly routeConfig: Route | null;
+  readonly parent: T | null;
+  readonly outlet: string;
+};
+
+/**
+ * Whether a route has a component of its own, which the router shows in an
+ * outlet: one without shares its parent's outlets.
+ */
+const hasComponent = (config: Route | null): boolean =>
+  config?.component !== undefined || config?.loadComponent !== undefined;
+
+/**
+ * The route of the tab a route the outlet shows is for: the route itself, or,
+ * for one on `''`, the route above it without a component that gives it its
+ * URL, through routes on `''` without one. That's the tab of a route that
+ * only loads its children, whose first route has the tab's component:
+ *
+ * ```ts
+ * { path: 'pages', loadChildren: () => import('./pages/routes') },
+ * // pages/routes.ts
+ * export default [{ path: '', component: PagesStack, children: [...] }];
+ * ```
+ *
+ * The tab there is `pages`, as its tab bar item and the app's `keep` and
+ * `prebuild` name it, rather than the `''` route the router shows. A route on
+ * `''` under routes on `''` without a component, as a guard groups the tabs
+ * with, is its own tab: the routes above it are the other tabs' too.
+ */
+const tabOf = <T extends RouteNode<T>>(route: T): T => {
+  let at = route;
+  while (at.routeConfig?.path === '') {
+    const parent = at.parent;
+    // Not the route whose component has the outlet, nor the root, nor a
+    // route of another outlet.
+    if (
+      !parent?.routeConfig ||
+      hasComponent(parent.routeConfig) ||
+      parent.outlet !== at.outlet
+    ) {
+      break;
+    }
+    if (parent.routeConfig.path !== '') return parent;
+    at = parent;
+  }
+  return route;
+};
+
 /**
  * The guard a tab's route gets from its outlet, which takes a tab bar back to
  * where the tab was left (see #resume). It's the same function for every
@@ -161,6 +215,18 @@ const resumeTab: CanActivateFn = (route, state) => {
  *   <ui-dock-item route="/pages" icon="file" label="Pages" />
  * </ui-dock>
  * ```
+ *
+ * A route that only lazy-loads its children is a tab too, under its own
+ * path, when the routes it loads start with the tab's component on `''`:
+ *
+ * ```ts
+ * { path: 'pages', loadChildren: () => import('./pages/routes') },
+ * // pages/routes.ts
+ * export default [{ path: '', component: PagesStack, children: [...] }];
+ * ```
+ *
+ * `keep`, `prebuild` and the data that says to keep or build the tab ahead
+ * go by that route (`pages`), as its tab bar item does.
  *
  * The first navigation into a tab builds it. Navigating to another tab hides
  * it (out of view, of screen readers and of taps) and keeps it, with the
@@ -215,7 +281,8 @@ const resumeTab: CanActivateFn = (route, state) => {
 export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
   /**
    * The paths of the routes whose tabs are kept while hidden (`['home',
-   * 'pages']`), for an app that can't afford to keep every tab. Without it,
+   * 'pages']`), for an app that can't afford to keep every tab: for a tab
+   * whose route only loads its children, that route's path. Without it,
    * every tab is kept. A route's `data: { keepAlive: true | false }` says
    * for its own tab whatever the list says.
    */
@@ -225,9 +292,14 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
    * The paths of the routes whose tabs are built before they're first shown
    * (`['pages', 'schedule']`), so the first tap on each is as quick as a
    * return to it. A route's `data: { prebuild: true | false }` says for its
-   * own tab whatever the list says. A tab the outlet doesn't keep (see
-   * `keep`) isn't built ahead, and nor is one whose path has a parameter
-   * (`item/:id`), which has no URL of its own.
+   * own tab whatever the list says.
+   *
+   * It builds the tabs of the routes beside the shown tab's that have a path
+   * of their own without a parameter, and a component (`component` or
+   * `loadComponent`) or children (`children` or `loadChildren`) that start
+   * with the tab's component on `''`. Not `item/:id`, which has no URL of its
+   * own, nor a tab the outlet doesn't keep (see `keep`). In development, the
+   * outlet warns of a tab it's asked for and can't build.
    *
    * The building starts once the first tab is drawn, and builds one tab at a
    * time, each in a task of its own after the screen is drawn, so that a tap
@@ -279,6 +351,8 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
   readonly #triedAhead = new Set<Route>();
   /** Whether a tab is being built ahead, or waiting its turn. */
   #buildingAhead = false;
+  /** The warnings given of tabs it can't build ahead, each given once. */
+  readonly #warned = new Set<string>();
 
   /**
    * Keeps the URL of the tab shown, for where to go back to (see #resume),
@@ -361,7 +435,7 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
     const component = route.snapshot.component;
     if (!component) throw new Error('The route has no component to show');
     this.#parked = false;
-    const kept = this.#kept.get(route.routeConfig!);
+    const kept = this.#kept.get(tabOf(route).routeConfig!);
     if (kept) {
       // Back to a tab it kept: it shows as it was, and its outlets register
       // again, for the router to come back to them.
@@ -475,7 +549,7 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
     route: ActivatedRouteSnapshot,
     state: RouterStateSnapshot,
   ): true | RedirectCommand {
-    const tab = this.#kept.get(route.routeConfig!);
+    const tab = this.#kept.get(tabOf(route).routeConfig!);
     if (!tab || tab === this.#active || tab.url === state.url) return true;
     const own = urlOf(route);
     if (state.url !== own || urlOf(tab.route) !== own) return true;
@@ -514,7 +588,7 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
     this.#renderer.appendChild(frame, ref.location.nativeElement);
     const tab: Tab = {
       // Every route an outlet shows has one: only the root's doesn't.
-      config: route.routeConfig!,
+      config: tabOf(route).routeConfig!,
       ref,
       live,
       route,
@@ -524,7 +598,10 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
       url: this.#router.url,
     };
     this.#kept.set(tab.config, tab);
-    this.#guard(tab.config);
+    // On the route shown rather than the tab's: the router runs it each time
+    // it comes into the tab, which it doesn't for the tab's route when it
+    // comes from another tab under it (`pages/detail` to `pages`).
+    this.#guard(route.routeConfig!);
     return tab;
   }
 
@@ -571,36 +648,84 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
   /**
    * The route of the next tab to build ahead: those `prebuild` names, in its
    * order, then those whose data says to, in the routes' order. Not one the
-   * outlet has, or has tried, or wouldn't keep, or that has no URL or no
-   * component of its own.
+   * outlet has, or has tried, or whose data says not to, nor one it can't
+   * build (see #notAhead), which it warns of.
    */
   #nextAhead(shown: Tab): Route | null {
     const routes = this.#tabRoutes(shown);
-    const named = (this.prebuild() ?? []).flatMap((path) =>
-      routes.filter((route) => route.path === path),
-    );
+    const named = (this.prebuild() ?? []).flatMap((path) => {
+      const found = routes.filter((route) => route.path === path);
+      if (found.length === 0) {
+        this.#warn(
+          `prebuild names "${path}", but no route beside the tab shown has that path, so no tab is built ahead for it.`,
+        );
+      }
+      return found;
+    });
     const flagged = routes.filter((route) => route.data?.['prebuild'] === true);
-    return (
-      [...named, ...flagged].find(
-        (route) =>
-          route.data?.['prebuild'] !== false &&
-          // A path of its own, without a parameter: a URL to build it at.
-          /^[^:*]+$/.test(route.path ?? '') &&
-          (route.component ?? route.loadComponent) !== undefined &&
-          !this.#kept.has(route) &&
-          !this.#triedAhead.has(route) &&
-          this.#keepsAlive(route.data, route.path),
-      ) ?? null
-    );
+    for (const route of [...named, ...flagged]) {
+      if (
+        route.data?.['prebuild'] === false ||
+        this.#kept.has(route) ||
+        this.#triedAhead.has(route)
+      ) {
+        continue;
+      }
+      const why = this.#notAhead(route);
+      if (why === null) return route;
+      this.#warnAhead(route, why);
+    }
+    return null;
   }
 
   /**
-   * The routes of this outlet's tabs: the routes beside the shown tab's,
-   * which the router has from the app's (its copies, which the tabs are
-   * kept under), or loaded for a route's `loadChildren`.
+   * Why the outlet can't build a route's tab ahead, or null if it can: it
+   * needs a URL of its own, and a component, or children whose first route
+   * has one on `''` (see tabOf), which it can only tell once they're loaded,
+   * and the outlet must keep it, as its route's data says (`data`, the
+   * route's own, or the inherited data of the route its URL shows).
+   */
+  #notAhead(config: Route, data = config.data): string | null {
+    // A path of its own, without a parameter: a URL to build it at.
+    if (!/^[^:*]+$/.test(config.path ?? '')) {
+      return 'it has no URL of its own (its path is empty or has a parameter)';
+    }
+    if (!hasComponent(config) && !config.children && !config.loadChildren) {
+      return 'its route has no component, children or loadChildren';
+    }
+    if (!this.#keepsAlive(data, config.path)) {
+      return "the outlet doesn't keep it (see keep, and the route's data.keepAlive)";
+    }
+    return null;
+  }
+
+  /**
+   * Warns of a tab `prebuild` or a route's data asks for that the outlet
+   * can't build ahead.
+   */
+  #warnAhead(config: Route, why: string): void {
+    const tab =
+      config.path === undefined ? 'with a matcher' : `at "${config.path}"`;
+    this.#warn(`the tab ${tab} isn't built ahead: ${why}.`);
+  }
+
+  /**
+   * Warns in development, once: nothing else would say why the first tap on
+   * a tab the app asked to build ahead waits.
+   */
+  #warn(message: string): void {
+    if (!isDevMode() || this.#warned.has(message)) return;
+    this.#warned.add(message);
+    console.warn(`<lynx-tab-outlet>: ${message}`);
+  }
+
+  /**
+   * The routes of this outlet's tabs: the routes beside the shown tab's (see
+   * tabOf), which the router has from the app's (its copies, which the tabs
+   * are kept under), or loaded for a route's `loadChildren`.
    */
   #tabRoutes(shown: Tab): readonly Route[] {
-    const parent = shown.route.parent?.routeConfig;
+    const parent = tabOf(shown.route).parent?.routeConfig;
     const routes = parent
       ? // Where the router keeps the routes `loadChildren` loaded, for a
         // route without `children`: one of them has the shown tab.
@@ -627,7 +752,17 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
         );
       }
       if (routed && this.#active && !this.#kept.has(config)) {
-        this.#addAhead(routed, this.#router.serializeUrl(url));
+        // A route without a component of its own shows one under it, which
+        // has to be the tab's, and the route shown can say not to keep it.
+        const why =
+          tabOf(routed.route).routeConfig === config
+            ? this.#notAhead(config, routed.route.snapshot.data)
+            : "its route has no component, and the route its URL leads to isn't a child of it on '' with one";
+        if (why === null) {
+          this.#addAhead(routed, this.#router.serializeUrl(url));
+        } else {
+          this.#warnAhead(config, why);
+        }
       }
     } finally {
       this.#buildingAhead = false;
@@ -637,7 +772,7 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
 
   /**
    * The URL of a tab's own route, as its tab bar item has it: the route
-   * above the shown tab's, then the tab's path.
+   * above the shown tab's (see tabOf), then the tab's path.
    */
   #urlAhead(shown: Tab, config: Route): UrlTree {
     const path = [config.path!];
@@ -645,7 +780,7 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
       this.name === PRIMARY_OUTLET
         ? path
         : [{ outlets: { [this.name]: path } }],
-      { relativeTo: shown.route.parent },
+      { relativeTo: tabOf(shown.route).parent },
     );
   }
 

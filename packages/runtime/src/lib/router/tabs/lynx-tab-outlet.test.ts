@@ -207,6 +207,21 @@ const MATCHED: Route = {
   component: Page,
 };
 
+/**
+ * The routes a lazy tab's `loadChildren` loads: its stack, on `''`, and the
+ * stack's screens, as an app's lazy tabs often are.
+ */
+const stackRoutes = (): Routes => [
+  {
+    path: '',
+    component: StackTab,
+    children: [
+      { path: '', component: Page },
+      { path: 'notes/:id', component: Page },
+    ],
+  },
+];
+
 const ROUTES: Routes = [
   { path: '', pathMatch: 'full', redirectTo: 'home' },
   { path: 'login', component: Page },
@@ -278,6 +293,14 @@ const ROUTES: Routes = [
           { path: '', component: Page },
           { path: 'aux', component: Page, outlet: 'side' },
         ],
+      },
+      // Tabs whose routes only load their children, the tab's component on
+      // '' (issue #426).
+      { path: 'loaded', loadChildren: async () => stackRoutes() },
+      {
+        path: 'dropped',
+        data: { keepAlive: false },
+        loadChildren: async () => stackRoutes(),
       },
       MATCHED,
     ],
@@ -477,6 +500,31 @@ describe('LynxTabOutlet', () => {
       fixture.detectChanges();
       expect(pages.destroyed).toBe(true);
       expect(at('kept').destroyed).toBe(false);
+    });
+
+    // Issue #426.
+    it("keeps a tab whose route only loads its children, under the route's path", async () => {
+      const { go, outlet, fixture, router } = await setup('/loaded');
+      setInput(outlet(), 'keep', ['loaded']);
+      fixture.detectChanges();
+      const loaded = at('loaded');
+      await go('/loaded/notes/1');
+      await go('/pages');
+      const pages = at('pages');
+      await go('/loaded');
+      // Kept, as `keep` names it, and back where it was left, as a tab bar
+      // item takes it.
+      expect(pages.destroyed).toBe(true);
+      expect(at('loaded')).toBe(loaded);
+      expect(router.url).toBe('/loaded/notes/1');
+      // The data of the route that loads it says for it too.
+      setInput(outlet(), 'keep', undefined);
+      fixture.detectChanges();
+      await go('/dropped');
+      const dropped = at('dropped');
+      await go('/loaded');
+      expect(dropped.destroyed).toBe(true);
+      expect(loaded.destroyed).toBe(false);
     });
 
     it('destroys every tab when the router leaves the outlet', async () => {
@@ -857,10 +905,21 @@ describe('LynxTabOutlet', () => {
      * Holds the Home screen's resolver until released, while a test says.
      */
     let gate: Promise<void> | null;
+    /**
+     * The outlet's warnings of the tabs it can't build ahead, which the
+     * routes below ask for.
+     */
+    let warn: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {
       resolved = 0;
       gate = null;
+      warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      warn.mockRestore();
+      vi.unstubAllGlobals();
     });
 
     /** Holds the Slow tab's guard until released, while a test says. */
@@ -934,6 +993,19 @@ describe('LynxTabOutlet', () => {
               { path: 'aux', component: Page, outlet: 'side' },
             ],
           },
+          // Routes without a component, whose first child on '' has the
+          // tab's (issue #426).
+          { path: 'loaded', loadChildren: async () => stackRoutes() },
+          { path: 'grouped', children: [{ path: '', component: Page }] },
+          // Routes without a component that lead to no tab of their own.
+          {
+            path: 'redirected',
+            children: [
+              { path: '', pathMatch: 'full', redirectTo: 'list' },
+              { path: 'list', component: Page },
+            ],
+          },
+          { path: 'nothing', redirectTo: 'pages' },
           // Not kept, with no URL or component of its own, or turned away:
           // never built ahead.
           {
@@ -942,11 +1014,6 @@ describe('LynxTabOutlet', () => {
             data: { prebuild: true, keepAlive: false },
           },
           { path: 'item/:id', component: Page, data: { prebuild: true } },
-          {
-            path: 'grouped',
-            data: { prebuild: true },
-            children: [{ path: '', component: Page }],
-          },
           {
             path: 'closed',
             component: Page,
@@ -1129,6 +1196,147 @@ describe('LynxTabOutlet', () => {
       const { settle } = await setupAhead('/later/a');
       await settle();
       expect(at('later/b').tab!.active()).toBe(false);
+    });
+
+    // Issue #426.
+    it('builds a tab whose route only loads its children, as `prebuild` names it', async () => {
+      const { outlet, fixture, go, settle, router, alive } = await setupAhead();
+      setInput(outlet(), 'prebuild', ['loaded', 'grouped']);
+      fixture.detectChanges();
+      await settle();
+      await settle();
+      const loaded = at('loaded');
+      expect(loaded.tab!.active()).toBe(false);
+      expect(loaded.stackPage!.active()).toBe(false);
+      expect(at('grouped').tab!.active()).toBe(false);
+      expect(router.url).toBe('/pages');
+      // Shown as a tab coming back, its stack and all.
+      await go('/loaded');
+      expect(at('loaded')).toBe(loaded);
+      expect(loaded.tab!.active()).toBe(true);
+      expect(loaded.stackPage!.active()).toBe(true);
+      await go('/loaded/notes/1');
+      expect(alive()).toEqual([
+        'pages',
+        'home',
+        'loaded',
+        'grouped',
+        'loaded/notes/1',
+      ]);
+    });
+
+    it('builds a tab whose route only loads its children, as its data says', async () => {
+      const routes: Routes = [
+        {
+          path: '',
+          component: Shell,
+          children: [
+            { path: 'pages', component: Page },
+            {
+              path: 'later',
+              data: { prebuild: true },
+              loadChildren: async () => stackRoutes(),
+            },
+          ],
+        },
+      ];
+      const { settle } = await setupAhead('/pages', [], provideRouter(routes));
+      await settle();
+      expect(at('later').tab!.active()).toBe(false);
+    });
+
+    it("builds the tabs beside one on '' in a group without a component", async () => {
+      const routes: Routes = [
+        {
+          path: '',
+          component: Shell,
+          children: [
+            {
+              path: '',
+              canActivate: [() => true],
+              children: [
+                { path: '', component: Page },
+                { path: 'b', component: Page, data: { prebuild: true } },
+              ],
+            },
+          ],
+        },
+      ];
+      const { settle } = await setupAhead('/', [], provideRouter(routes));
+      await settle();
+      expect(at('b').tab!.active()).toBe(false);
+    });
+
+    it("warns in development of the tabs it's asked for and can't build ahead", async () => {
+      const { outlet, fixture, settle } = await setupAhead();
+      setInput(outlet(), 'prebuild', [
+        'nowhere',
+        'nothing',
+        'redirected',
+        'profile',
+      ]);
+      fixture.detectChanges();
+      await settle();
+      await settle();
+      const warned = (why: string) => `<lynx-tab-outlet>: ${why}`;
+      const noUrl =
+        "isn't built ahead: it has no URL of its own (its path is empty or has a parameter).";
+      const expected = [
+        warned(
+          'prebuild names "nowhere", but no route beside the tab shown has that path, so no tab is built ahead for it.',
+        ),
+        warned(
+          'the tab at "nothing" isn\'t built ahead: its route has no component, children or loadChildren.',
+        ),
+        warned(
+          "the tab at \"redirected\" isn't built ahead: its route has no component, and the route its URL leads to isn't a child of it on '' with one.",
+        ),
+        warned(
+          "the tab at \"profile\" isn't built ahead: the outlet doesn't keep it (see keep, and the route's data.keepAlive).",
+        ),
+        warned(`the tab at "item/:id" ${noUrl}`),
+        warned(`the tab with a matcher ${noUrl}`),
+        warned(`the tab at "**" ${noUrl}`),
+      ];
+      const warnings = warn.mock.calls.map(([message]) => message as string);
+      // Each once, however often the outlet looks.
+      expect(warnings).toHaveLength(expected.length);
+      expect(warnings).toEqual(expect.arrayContaining(expected));
+      expect(made.map((page) => page.path)).toEqual(['pages', 'home']);
+    });
+
+    it('warns of nothing in production', async () => {
+      vi.stubGlobal('ngDevMode', false);
+      const { outlet, fixture, settle } = await setupAhead();
+      setInput(outlet(), 'prebuild', ['nowhere']);
+      fixture.detectChanges();
+      await settle();
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it("doesn't build a tab the route its URL shows says not to keep", async () => {
+      const routes: Routes = [
+        {
+          path: '',
+          component: Shell,
+          children: [
+            { path: 'pages', component: Page },
+            {
+              path: 'later',
+              data: { prebuild: true },
+              loadChildren: async () => [
+                { path: '', component: Page, data: { keepAlive: false } },
+              ],
+            },
+          ],
+        },
+      ];
+      const { settle } = await setupAhead('/pages', [], provideRouter(routes));
+      await settle();
+      expect(made.map((page) => page.path)).toEqual(['pages']);
+      expect(warn).toHaveBeenCalledWith(
+        "<lynx-tab-outlet>: the tab at \"later\" isn't built ahead: the outlet doesn't keep it (see keep, and the route's data.keepAlive).",
+      );
     });
 
     it('waits for a navigation under way to end before it builds a tab', async () => {

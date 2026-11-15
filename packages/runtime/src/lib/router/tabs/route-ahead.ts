@@ -18,7 +18,11 @@ import {
  * What a route leads to, worked out ahead (see {@link routeAhead}).
  */
 export type RoutedAhead = {
-  /** The route, with its params, data and resolved data. */
+  /**
+   * The route its outlet shows, with its params, data and resolved data: the
+   * route asked for, or for one without a component of its own, the route
+   * under it that has one.
+   */
   readonly route: ActivatedRoute;
   /**
    * The contexts of its outlets: each has the route its outlet shows, and the
@@ -79,9 +83,11 @@ type TransitionsInternals = {
 /**
  * Works out what a navigation to `url` would show for `config`, one of the
  * app's routes, without navigating: the route's params and data, its
- * guards and resolvers run, and the routes under it the URL leads to. Null
- * if the navigation doesn't get there: a guard says no or redirects, a
- * resolver fails, or the URL leads to another route.
+ * guards and resolvers run, and the routes under it the URL leads to. For a
+ * route without a component, which shares its parent's outlet, it's the
+ * route under it that the outlet would show (`''` in the routes its
+ * `loadChildren` loads). Null if the navigation doesn't get there: a guard
+ * says no or redirects, a resolver fails, or the URL leads to another route.
  *
  * The app's router can't do it: a navigation changes its URL, its history
  * and its state, which links follow, and runs the guards that say whether
@@ -150,7 +156,7 @@ export const routeAhead = async (
 
     const done = await ahead.navigateByUrl(url, { skipLocationChange: true });
     if (!done) return null;
-    const route = find(ahead.routerState.root, config);
+    const route = shownFor(find(ahead.routerState.root, config));
     if (!route) return null;
     // Out from the root through the outlets of its ancestors that have a
     // component (one without shares its parent's outlets), as the router
@@ -173,13 +179,31 @@ export const routeAhead = async (
 };
 
 /**
+ * The route an outlet shows for `route`: the route, if it has a component of
+ * its own, or else the one under it in the same outlet that has, if any.
+ */
+const shownFor = (
+  route: ActivatedRoute | undefined,
+): ActivatedRoute | undefined => {
+  let at = route;
+  while (at && !at.snapshot.component) {
+    const outlet = at.outlet;
+    at = at.children.find((child) => child.outlet === outlet);
+  }
+  return at;
+};
+
+/**
  * The route for `config` in the tree from `route`, if it's there.
  */
-const find = (route: ActivatedRoute, config: Route): ActivatedRoute | null => {
+const find = (
+  route: ActivatedRoute,
+  config: Route,
+): ActivatedRoute | undefined => {
   if (route.routeConfig === config) return route;
   for (const child of route.children) {
     const found = find(child, config);
     if (found) return found;
   }
-  return null;
+  return undefined;
 };

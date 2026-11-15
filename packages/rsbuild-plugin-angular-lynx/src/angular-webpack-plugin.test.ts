@@ -1034,10 +1034,36 @@ describe('AngularWebpackPlugin', () => {
           enableCSSInlineVariables: true,
           preferredFps: 'high',
           enableElementInvokeUIMethodPendingTask: true,
+          enableDisexposureWhenBackground: false,
         });
         expect(
           configOf(new AngularWebpackPlugin({ preferredFps: 'auto' })),
         ).toEqual(expect.objectContaining({ preferredFps: 'auto' }));
+      });
+
+      it('keeps elements on the screen while an iOS app is visible but not active', () => {
+        const { compiler, triggerCompilation } = createMockCompiler();
+        const triggerBeforeEncode = setupBeforeEncodeHook();
+        new AngularWebpackPlugin().apply(compiler as never);
+        triggerCompilation(createMockCompilation());
+        const args = {
+          encodeData: {
+            lepusCode: { root: null },
+            sourceContent: {
+              appType: 'card',
+              config: { enableDisexposureWhenBackground: true },
+            },
+          },
+        };
+
+        triggerBeforeEncode(args);
+
+        // Lynx's default would take every element off the screen while
+        // Control Center is open, as a browser's IntersectionObserver never
+        // does.
+        expect(args.encodeData.sourceContent.config).toEqual(
+          expect.objectContaining({ enableDisexposureWhenBackground: false }),
+        );
       });
 
       it('wraps lepus root asset with module.exports IIFE', () => {
@@ -1106,6 +1132,7 @@ describe('AngularWebpackPlugin', () => {
           enableCSSInlineVariables: true,
           preferredFps: 'high',
           enableElementInvokeUIMethodPendingTask: true,
+          enableDisexposureWhenBackground: false,
         });
       });
 

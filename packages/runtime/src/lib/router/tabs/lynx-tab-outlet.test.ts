@@ -57,6 +57,8 @@ import { LynxTabPage } from './tab-page';
 
 /** Every screen made, so a test can find one and its fate. */
 const made: Page[] = [];
+/** Runs as each screen is made, for a test to look around meanwhile. */
+let onMade: (() => void) | null = null;
 
 @Component({ selector: 'test-page', template: 'page' })
 class Page implements OnDestroy {
@@ -69,6 +71,7 @@ class Page implements OnDestroy {
 
   constructor() {
     made.push(this);
+    onMade?.();
     this.route.params.subscribe((params) => this.params.push(params));
   }
 
@@ -318,6 +321,7 @@ describe('LynxTabOutlet', () => {
 
   beforeEach(() => {
     made.length = 0;
+    onMade = null;
     vi.useFakeTimers({
       toFake: [
         'setTimeout',
@@ -433,6 +437,17 @@ describe('LynxTabOutlet', () => {
       expect(frames()[0]!.style.transform).toBe('');
       expect(made.filter((page) => page.path === 'pages')).toHaveLength(1);
       expect(alive()).toEqual(['pages']);
+    });
+
+    it('shows the tab it leaves until the next tab is built', async () => {
+      const { go, frames, shown } = await setup('/pages');
+      const shownWhileBuilt: HTMLElement[][] = [];
+      onMade = () => shownWhileBuilt.push(shown());
+      await go('/profile');
+      // While the profile was being built, the pages tab was still on
+      // screen, so a frame drawn meanwhile shows it rather than nothing.
+      expect(shownWhileBuilt).toEqual([[frames()[0]]]);
+      expect(shown()).toEqual([frames()[1]]);
     });
 
     it("tells each tab's components whether it's shown", async () => {

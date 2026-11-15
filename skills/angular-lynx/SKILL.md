@@ -70,7 +70,7 @@ Read [signals-and-state.md](references/signals-and-state.md)
 
 ## Animations
 
-Three approaches: CSS `transition`, CSS `@keyframes`, and JS `element.animate()`. The animate API is main-thread only. Supported easing functions and the property whitelist. Animation events: `bindanimationend`, `bindtransitionend`. Frame rate: Lynx works out every frame on the main thread, beside Angular, so animate `transform` and `opacity`, drive drags from code rather than signals, and judge smoothness on a phone; iPhone apps animate at up to 120 fps (`preferredFps`). `enable-new-animator="false"` hands an element's transitions to Core Animation (and Android's animators), which keeps them moving while Angular works, as `<lynx-stack-outlet>` and `ui-bottom-sheet` do; `animate()` then does nothing on it, and `afterFrame()` starts one after a busy turn without losing its first frames.
+Three approaches: CSS `transition`, CSS `@keyframes`, and JS `element.animate()`. The animate API is main-thread only. Supported easing functions and the property whitelist. Animation events: `bindanimationend`, `bindtransitionend`. Frame rate: Lynx works out every frame on the main thread, beside Angular, so animate `transform` and `opacity`, drive drags from code rather than signals, and judge smoothness on a phone; iPhone apps animate at up to 120 fps (`preferredFps`), Core Animation's transitions too. `enable-new-animator="false"` hands an element's transitions to Core Animation (and Android's animators), which keeps them moving while Angular works, as `<lynx-stack-outlet>` and `ui-bottom-sheet` do; `animate()` then does nothing on it, and `afterFrame()` starts one after a busy turn without losing its first frames.
 
 Read [animations.md](references/animations.md)
 

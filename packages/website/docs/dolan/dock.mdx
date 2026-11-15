@@ -53,7 +53,7 @@ export class App {}
 
 - **The dock floats over your screens** at the bottom of its parent, and their content scrolls beneath it. It clears the iPhone's home indicator by the bottom [safe area](/guide/safe-area).
 - **A tap navigates** to the item's `route` with Angular's own [`RouterLink`](/guide/routing#navigate-between-screens). Set up the router with `provideRouter()` from `@blotch/angular-lynx`.
-- **A capsule marks the selected item,** and slides to the next one you tap. An item stays selected on the routes under it: Library at `/library/42` too.
+- **A capsule marks the selected item,** and slides to the next one you tap as you tap it, while the screen it shows is still being built. An item stays selected on the routes under it: Library at `/library/42` too. If the navigation ends somewhere else (a guard says no or redirects, or it fails), the item of the route the app is on is selected again.
 - **Going back to a tab finds it as you left it,** with `<lynx-tab-outlet>`: its scroll positions, the screens pushed in it, and its native views. A tap on the selected item pops its stack to its first screen. With `<router-outlet>`, each tab is built again every time.
 - **The action is a separate button,** for what people reach for from every screen, such as search or compose (below).
 

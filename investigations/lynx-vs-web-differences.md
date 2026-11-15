@@ -503,6 +503,25 @@ In a test in Lynx Explorer on the iOS 27 Simulator that busy-loops Angular's thr
 
 ---
 
+## A change flushed before slow work shows while it runs, and a Core Animation transition that ends meanwhile draws the page half-changed
+
+### What you'd expect (web)
+
+A browser paints between tasks. What a script changes during a long task, such as building a screen, shows together once the task ends, and a compositor animation that finishes meanwhile doesn't show the page halfway through.
+
+### What Lynx does
+
+In the apps `ng build --platform` makes, Angular runs on Lynx's engine thread, not the UI thread (`MostOnTASM`; see "Lynx's main thread is the phone's UI thread unless the host says otherwise"). Each flush there hands its UI operations to the UI thread at once (`LynxUIOperationAsyncQueue::FlushOnTASMThread` posts them), so a change flushed before a long task is drawn while the task runs. `ApplicationRef.tick()` runs change detection and the runtime's flush on the spot. A `RouterLink` tap's navigation starts in the tap's listener and goes on a microtask later (Angular's router waits a `Promise.resolve()` after `NavigationStart`), so a tick in a listener after it draws before the router builds the next screen.
+
+On iOS, a Core Animation transition (`enable-new-animator="false"`) that ended while the engine thread was busy drew the page as Angular had changed it so far, unflushed changes included. On the iOS 27 Simulator, `ui-dock`'s capsule slid to a tab (350 ms) whose screen took 800 ms to build. `<lynx-tab-outlet>` had hidden the tab left before building the next one, so as the slide ended, the screen showed neither tab, only its background, for the rest of the build. With the slide stretched to 1.5 s, past the build, the tab left stayed until the next one replaced it. Which call draws the page at the transition's end isn't pinned down; the transition's `didStop` sends its events and tells Lynx's global observer, which runs the exposure checks. Found in November 2026, for issue #417.
+
+### What to do
+
+- To answer a tap before slow work, change the screen and call `ApplicationRef.tick()` in the listener, before the work: `<ui-tab-bar>` and `<ui-dock>` mark the item tapped that way before the router builds its tab.
+- Hide or remove what's being replaced last, once what replaces it is in place, so a frame drawn partway shows the old screen rather than nothing: `<lynx-tab-outlet>` hides the tab left once the next one is active.
+
+---
+
 ## Lynx Explorer takes swipes from the left edge for its own Back
 
 ### What you'd expect (web)

@@ -196,6 +196,29 @@ export const ShowCase: React.FC = () => {
   const demo = demos[selected]!;
 
   /**
+   * Shows an app, and brings its pill to the middle of the row. On a phone
+   * the pills are one row that scrolls sideways, so a pill tapped at the
+   * edge would otherwise stay half out of view, with nothing showing what
+   * comes after it. The desktop list doesn't scroll, so there this only
+   * selects.
+   */
+  const select = (index: number, tab: HTMLElement | undefined) => {
+    setSelected(index);
+    const row = tab?.parentElement;
+    if (!tab || !row) return;
+    const left =
+      tab.getBoundingClientRect().left -
+      row.getBoundingClientRect().left +
+      row.scrollLeft;
+    row.scrollTo({
+      left: left - (row.clientWidth - tab.offsetWidth) / 2,
+      behavior: matchMedia('(prefers-reduced-motion: reduce)').matches
+        ? 'auto'
+        : 'smooth',
+    });
+  };
+
+  /**
    * The arrow keys move between the apps, as in a native tab list, and
    * focus follows the selection. Up and down for the stacked list on a
    * desktop, left and right for the row of pills on a phone.
@@ -210,12 +233,13 @@ export const ShowCase: React.FC = () => {
     if (!step) return;
     event.preventDefault();
     const next = (selected + step + demos.length) % demos.length;
-    setSelected(next);
     const tab =
       event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')[
         next
       ];
-    tab?.focus();
+    // `select()` scrolls the row smoothly; focus's own jump would cut it off.
+    tab?.focus({ preventScroll: true });
+    select(next, tab);
   };
 
   return (
@@ -244,7 +268,7 @@ export const ShowCase: React.FC = () => {
                 aria-controls={`${baseId}-panel`}
                 tabIndex={index === selected ? 0 : -1}
                 className={styles['app']}
-                onClick={() => setSelected(index)}
+                onClick={(event) => select(index, event.currentTarget)}
               >
                 <span className={styles['app-label']}>{item.label}</span>
                 <span className={styles['app-tagline']}>{item.tagline}</span>

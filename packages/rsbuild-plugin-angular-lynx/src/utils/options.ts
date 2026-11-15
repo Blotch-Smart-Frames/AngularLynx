@@ -1,5 +1,8 @@
 import type { IntlApi } from '../intl/apis.js';
 
+/** The frame rates Lynx's `preferredFps` page config takes. */
+export type PreferredFps = 'high' | 'auto' | 'low';
+
 export type PluginAngularLynxOptions = {
   customCSSInheritanceList?: string[] | undefined;
   debugInfoOutside?: boolean;
@@ -55,6 +58,14 @@ export type PluginAngularLynxOptions = {
    * a future release.
    */
   pipelineSchedulerConfig?: number;
+  /**
+   * The frame rate Lynx asks for while it animates (Lynx's `preferredFps`
+   * page config). `'high'`, the default, asks a ProMotion iPhone for
+   * 120 fps. `'auto'`, Lynx's own default, asks for nothing, which leaves an
+   * iPhone at 60. `'low'` animates at 30 fps at most. Android draws at the
+   * screen's rate whichever you choose.
+   */
+  preferredFps?: PreferredFps;
   removeDescendantSelectorScope?: boolean;
   targetSdkVersion?: string;
   // Enables true lazy loading for Angular Router's loadComponent() routes.
@@ -131,6 +142,10 @@ export const normalizeOptions = (
     intl: undefined,
     //@ts-expect-error
     pages: undefined,
+    // Lynx's default, 'auto', leaves an iPhone's animations at 60 fps while
+    // the rest of a ProMotion iPhone runs at 120, so they looked half as
+    // smooth as the system's.
+    preferredFps: 'high',
     targetSdkVersion: '3.2',
     // Lynx's own default (lynx_config.yml), and what web developers expect.
     defaultOverflowVisible: true,

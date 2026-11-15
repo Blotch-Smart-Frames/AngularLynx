@@ -271,6 +271,15 @@ describe('iosGenerator', () => {
     expect(iosGenerator.bundleDir(dir)).toBe(path.join(dir, 'LynxBundle'));
   });
 
+  it('lets the app draw at 120 fps on a ProMotion iPhone', () => {
+    iosGenerator.configure(dir, app(), dir);
+    // Without it iOS holds the app's CADisplayLink, which Lynx animates
+    // through, to 60 fps on an iPhone.
+    expect(readFileSync(path.join(dir, 'App/Info.plist'), 'utf8')).toContain(
+      '<key>CADisableMinimumFrameDurationOnPhone</key>\n\t<true/>',
+    );
+  });
+
   it("writes the shortcuts' App Intents where Xcode compiles them, and none for an app without shortcuts", () => {
     const file = path.join(dir, 'App/AppShortcuts.swift');
     iosGenerator.configure(dir, app(), dir);

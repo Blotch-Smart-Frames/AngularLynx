@@ -244,6 +244,7 @@ describe('AngularWebpackPlugin', () => {
         mainThreadChunks: [],
         extractStr: false,
         experimental_isLazyBundle: false,
+        preferredFps: 'high',
       });
     });
 
@@ -1012,6 +1013,33 @@ describe('AngularWebpackPlugin', () => {
     });
 
     describe('beforeEncode hook', () => {
+      it('asks Lynx for 120 fps unless the app chose another rate', () => {
+        const configOf = (plugin: AngularWebpackPlugin) => {
+          const { compiler, triggerCompilation } = createMockCompiler();
+          const triggerBeforeEncode = setupBeforeEncodeHook();
+          plugin.apply(compiler as never);
+          triggerCompilation(createMockCompilation());
+          const args = {
+            encodeData: {
+              lepusCode: { root: null },
+              sourceContent: { appType: 'card', config: { lepusStrict: true } },
+            },
+          };
+          triggerBeforeEncode(args);
+          return args.encodeData.sourceContent.config;
+        };
+
+        expect(configOf(new AngularWebpackPlugin())).toEqual({
+          lepusStrict: true,
+          enableCSSInlineVariables: true,
+          preferredFps: 'high',
+          enableElementInvokeUIMethodPendingTask: true,
+        });
+        expect(
+          configOf(new AngularWebpackPlugin({ preferredFps: 'auto' })),
+        ).toEqual(expect.objectContaining({ preferredFps: 'auto' }));
+      });
+
       it('wraps lepus root asset with module.exports IIFE', () => {
         const { compiler, triggerCompilation } = createMockCompiler();
         const triggerBeforeEncode = setupBeforeEncodeHook();
@@ -1076,6 +1104,7 @@ describe('AngularWebpackPlugin', () => {
         expect(args.encodeData.sourceContent.config).toEqual({
           lepusStrict: true,
           enableCSSInlineVariables: true,
+          preferredFps: 'high',
           enableElementInvokeUIMethodPendingTask: true,
         });
       });

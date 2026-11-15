@@ -12,6 +12,7 @@ import invariant from 'tiny-invariant';
 import { LAYERS } from './layers.js';
 import { styleIndexOf, styleIndexStatement } from './style-index.js';
 import { createLynxProcessEvalResultRuntimeModule } from './lynx-process-eval-result-runtime-module.js';
+import type { PreferredFps } from './utils/options.js';
 
 // const require = createRequire(import.meta.url);
 
@@ -83,6 +84,14 @@ type AngularWebpackPluginOptions = {
    * @alpha
    */
   experimental_isLazyBundle?: boolean;
+
+  /**
+   * The frame rate Lynx asks for while it animates, written into the page
+   * config (see PluginAngularLynxOptions' `preferredFps`).
+   *
+   * @defaultValue 'high'
+   */
+  preferredFps?: PreferredFps;
 };
 
 /**
@@ -154,6 +163,7 @@ class AngularWebpackPlugin {
       mainThreadChunks: [],
       extractStr: false,
       experimental_isLazyBundle: false,
+      preferredFps: 'high',
     });
 
   /**
@@ -389,6 +399,13 @@ class AngularWebpackPlugin {
         encodeData.sourceContent.config = {
           ...encodeData.sourceContent.config,
           enableCSSInlineVariables: true,
+          // Lynx runs every animation and transition from a CADisplayLink on
+          // iOS, and only asks it for more than 60 fps with 'high'. The app's
+          // Info.plist has to allow it too (CADisableMinimumFrameDurationOnPhone
+          // in packages/native's template). Android ignores it.
+          preferredFps:
+            this.options?.preferredFps ??
+            AngularWebpackPlugin.defaultOptions.preferredFps,
           enableElementInvokeUIMethodPendingTask: true,
         };
 

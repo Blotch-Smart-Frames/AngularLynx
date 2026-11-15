@@ -376,6 +376,43 @@ describe('UiBottomSheet', () => {
       expect(transformOf(panel)).toBe('translateY(0px)');
     });
 
+    it('draws each move as the finger makes it, and keeps it through an update', async () => {
+      const { host, backdrop, panel, handle } = await renderSheet();
+      await openSheet(host);
+
+      // The move draws the sheet itself: nothing waits for Angular to check
+      // the sheet between the move and the look.
+      fireEvent.touchstart(handle, touchAt(100));
+      fireEvent.touchmove(handle, touchAt(150));
+      expect(transformOf(panel)).toBe('translateY(50px)');
+      // 50px of the 500px over which the backdrop clears.
+      expect(backdrop.getAttribute('style')).toContain('rgba(0, 0, 0, 0.45)');
+      // The update the drag's start asked for draws where the finger is, not
+      // where the drag began.
+      await waitForUpdate();
+      expect(transformOf(panel)).toBe('translateY(50px)');
+    });
+
+    it("closed mid-drag, as by Android's back button, slides on from the finger", async () => {
+      const { host, panel, handle } = await renderSheet();
+      await openSheet(host);
+      animate.mockClear();
+
+      fireEvent.touchstart(handle, touchAt(100));
+      fireEvent.touchmove(handle, touchAt(180));
+      host.open.set(false);
+      await waitForClose(host);
+      expect(animate).toHaveBeenCalledWith(panel, [
+        START,
+        expect.any(String),
+        [
+          { transform: 'translateY(80px)', opacity: 1 },
+          { transform: 'translateY(600px)', opacity: 0.8 },
+        ],
+        expect.objectContaining({ duration: DURATION.normal }),
+      ]);
+    });
+
     it("doesn't move up past where it's docked", async () => {
       const { host, panel, handle } = await renderSheet();
       await openSheet(host);
@@ -894,6 +931,29 @@ describe('UiBottomSheet detents and glass variant', () => {
       expect(style(sheet.panel, 'height')).toBe(`${FIT}px`);
       await settled();
       expect(style(sheet.panel, 'height')).toBe('');
+    });
+
+    it("doesn't take the panel's layout during a drag for its content's height", async () => {
+      const sheet = await renderDetents(IOS_26, (host) =>
+        host.detents.set(['fit', 'large']),
+      );
+      await layOut(sheet);
+      await openSheet(sheet.host);
+
+      // A short drag up from the content's height, which the panel's layout
+      // follows, and back there.
+      fireEvent.touchstart(sheet.handle, touchAt(500));
+      fireEvent.touchmove(sheet.handle, touchAt(480));
+      fireEvent.layoutchange(sheet.panel, { detail: { height: FIT + 20 } });
+      fireEvent.touchend(sheet.handle, { eventType: 'catchEvent' });
+      await waitForUpdate();
+      await settled();
+      expect(sheet.host.detent()).toBe('fit');
+
+      // The content's height is still its own: the move to the large detent
+      // starts from it.
+      await tapGrabber(sheet);
+      expect(style(sheet.panel, 'height')).toBe(`${FIT}px`);
     });
 
     it('settles at the nearest detent a long drag passes, past the ones between', async () => {

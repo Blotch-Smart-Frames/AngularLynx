@@ -358,6 +358,7 @@ export const applyEntry = (
           mainThreadChunks,
           enableSSR: options.enableSSR,
           isWeb,
+          preferredFps: options.preferredFps,
         },
       ]);
   });

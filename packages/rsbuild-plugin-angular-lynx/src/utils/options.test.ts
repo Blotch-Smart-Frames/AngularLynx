@@ -18,6 +18,7 @@ describe('normalizeOptions', () => {
     expect(result.defaultOverflowVisible).toBe(true);
     expect(result.removeDescendantSelectorScope).toBe(false);
     expect(result.experimental_isLazyBundle).toBe(false);
+    expect(result.preferredFps).toBe('high');
   });
 
   it('customCSSInheritanceList defaults to undefined', () => {

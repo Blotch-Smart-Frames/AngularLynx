@@ -450,6 +450,33 @@ describe('LynxTabOutlet', () => {
       expect(shown()).toEqual([frames()[1]]);
     });
 
+    it('shows a tab it builds once change detection has drawn it, the tab left staying until then', async () => {
+      const { router, frames, shown, settle } = await setup('/pages');
+      await router.navigateByUrl('/kept');
+      // The router is done, and the app hasn't checked the new tab since:
+      // its bindings, `@if` and `@for` aren't drawn yet.
+      expect(frames()).toHaveLength(2);
+      expect(shown()).toEqual([frames()[0]]);
+      expect(frames()[1]!.style.visibility).toBe('hidden');
+      await settle();
+      expect(shown()).toEqual([frames()[1]]);
+      expect(frames()[0]!.style.visibility).toBe('hidden');
+    });
+
+    it('keeps the tab on screen through one left before it was drawn', async () => {
+      const { router, go, frames, shown, settle } = await setup('/pages');
+      await go('/kept');
+      await go('/pages');
+      await router.navigateByUrl('/measured');
+      expect(shown()).toEqual([frames()[0]]);
+      // On to a tab drawn before, while the measured one waits to be drawn.
+      await router.navigateByUrl('/kept');
+      expect(shown()).toEqual([frames()[1]]);
+      await settle();
+      expect(frames()).toHaveLength(3);
+      expect(shown()).toEqual([frames()[1]]);
+    });
+
     it("tells each tab's components whether it's shown", async () => {
       const { go } = await setup('/pages');
       const tab = at('pages').tab!;

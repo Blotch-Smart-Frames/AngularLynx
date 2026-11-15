@@ -247,23 +247,59 @@
   color: #ff6b6b;
 }
 
+// How far in the phone row of apps fades at each end. Registered, so the
+// scroll-driven animation below can move them between lengths.
+@property --apps-fade-start {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+
+@property --apps-fade-end {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+
+// At the start only the end fades; once scrolled a little the start does
+// too, and at the end only the start.
+@keyframes apps-edges {
+  0% {
+    --apps-fade-start: 0px;
+    --apps-fade-end: 32px;
+  }
+
+  10% {
+    --apps-fade-start: 32px;
+  }
+
+  90% {
+    --apps-fade-end: 32px;
+  }
+
+  100% {
+    --apps-fade-start: 32px;
+    --apps-fade-end: 0px;
+  }
+}
+
 @media (max-width: 1015px) {
+  // Centered like the sections above it, so the heading sits over the pills
+  // and the phone rather than off to one side of them.
   .show-case-frame {
     width: 100%;
-    align-items: flex-start;
     overflow: hidden;
 
     .title {
-      margin-left: 40px;
+      margin: 0 20px 12px;
       font-size: 36px;
     }
 
     .desc {
-      margin: 0 40px;
-      text-align: left;
+      max-width: 520px;
+      margin: 0 20px 40px;
       font-size: 16px;
       line-height: normal;
-      margin-bottom: 40px;
     }
 
     // One column: the apps as a row of pills, the phone, then the notes.
@@ -274,27 +310,68 @@
       margin: 0 auto;
     }
 
+    // One row, centered while it fits. The seven apps are wider than a
+    // phone, so there the row scrolls sideways, as a phone's own rows of
+    // chips do: before, it kept the desktop list's 440px cap, and the pills
+    // ran out past it and past the screen's edges, where nobody could tap
+    // the last ones.
     .apps {
       grid-column: 1;
       grid-row: 1;
       flex-direction: row;
       justify-self: center;
       align-self: center;
+      box-sizing: border-box;
+      max-width: 100%;
       gap: 6px;
       padding: 4px;
       border-radius: 999px;
       background: rgba(127, 127, 127, 0.1);
+      overflow-x: auto;
+      overscroll-behavior-x: contain;
+      scroll-padding-inline: 4px;
+      scroll-snap-type: x proximity;
+      // The faded edge below shows there's more; a scrollbar would only
+      // cover the pills.
+      scrollbar-width: none;
+
+      &::-webkit-scrollbar {
+        display: none;
+      }
+
+      // Fade the edge that has more pills past it. A row can end on a whole
+      // pill (Par Avion, on a 390px phone), and then nothing else says three
+      // more apps are there. The row's own scrolling drives it: a row that
+      // fits has no scroll timeline, so it never fades, and a browser
+      // without scroll-driven animations shows the row as it is.
+      @supports (animation-timeline: scroll()) {
+        mask-image: linear-gradient(
+          to right,
+          transparent,
+          #000 var(--apps-fade-start),
+          #000 calc(100% - var(--apps-fade-end)),
+          transparent
+        );
+        animation: apps-edges linear both;
+        animation-timeline: scroll(self inline);
+      }
     }
 
+    // 16px a side, so the seven fit one row on a tablet.
     .app {
-      padding: 8px 18px;
+      flex-shrink: 0;
+      padding: 8px 16px;
       border-radius: 999px;
+      scroll-snap-align: start;
     }
 
+    // One line each: a name broken over two lines stretched its pill into an
+    // oval and threw the row out of line.
     .app-label {
       font-size: 14px;
       font-weight: 500;
       line-height: 20px;
+      white-space: nowrap;
     }
 
     .app-tagline {
@@ -337,8 +414,11 @@
 
 @media (max-width: 500px) {
   .show-case-frame {
+    // The desktop's 40px line height spread a heading that wraps here, such
+    // as the commands section's, into two lines far apart.
     .title {
       font-size: 8vw;
+      line-height: 1.15;
     }
 
     .desc {

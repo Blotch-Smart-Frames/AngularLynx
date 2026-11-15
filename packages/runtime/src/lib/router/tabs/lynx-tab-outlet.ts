@@ -75,6 +75,12 @@ type Tab = {
   readonly tabPage: LynxTabPage;
   /** The router's URL the last time the tab was shown (see #resume). */
   url: string;
+  /**
+   * Whether change detection has drawn the tab since it was built. A tab
+   * the router builds isn't, until the app's next check: it shows then (see
+   * #activate).
+   */
+  drawn: boolean;
 };
 
 /**
@@ -465,7 +471,16 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
       injector,
       environmentInjector,
     });
-    this.#activate(this.#addTab(ref, route, live, tabPage, contexts));
+    const tab = this.#addTab(ref, route, live, tabPage, contexts);
+    // Its elements are made, but its bindings, `@if` and `@for` are only
+    // drawn by the app's next check: a flush before then (the runtime's
+    // settle flush, a microtask after the elements are made) drew the tab
+    // empty over the page's background, and the screen flashed white
+    // between the tab left and this one. Hidden until it's drawn, it
+    // replaces the tab left in one frame (see #activate).
+    tab.drawn = false;
+    this.#hide(tab);
+    this.#activate(tab);
   }
 
   override deactivate(): void {
@@ -485,7 +500,9 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
       // background, whenever the UI thread drew the page while a slow tab
       // was being built: on iOS a Core Animation transition ending, such as
       // the dock's capsule sliding to the tab tapped, did.
-      this.#leaving = tab;
+      // A tab left before it was drawn was never on screen, and the tab
+      // before it still is: that one stays until a tab replaces it.
+      this.#leaving ??= tab;
     } else {
       this.#remove(tab);
     }
@@ -495,7 +512,9 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
     // page or tab the outlet is on went out of view: then they stay for when
     // it comes back.
     afterRouterPass(this.#router, () => {
-      this.#putAway();
+      // The tab the router went to hides the tab left as it shows (see
+      // #activate), which may be after this, once it's drawn.
+      if (!this.#active) this.#putAway();
       if (this.#active || this.#destroyed) return;
       if (onHiddenPage(this.#outerPage, this.#outerTab)) {
         this.#parked = true;
@@ -608,6 +627,7 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
       contexts,
       tabPage,
       url: this.#router.url,
+      drawn: true,
     };
     this.#kept.set(tab.config, tab);
     // On the route shown rather than the tab's: the router runs it each time
@@ -867,8 +887,18 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
    */
   #activate(tab: Tab): void {
     this.#active = tab;
-    this.#reveal(tab);
-    this.#putAway();
+    if (tab.drawn) {
+      this.#show(tab);
+    } else {
+      // The check markForCheck asks for draws it.
+      afterNextRender(
+        () => {
+          tab.drawn = true;
+          if (this.#active === tab && !this.#destroyed) this.#show(tab);
+        },
+        { injector: this.#injector },
+      );
+    }
     setTabActive(tab.tabPage, true);
     this.#changes.markForCheck();
     this.#binder?.bindActivatedRouteToOutletComponent(
@@ -895,6 +925,14 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
     if (typeof said === 'boolean') return said;
     const keep = this.keep();
     return keep === undefined || keep.includes(path ?? '');
+  }
+
+  /**
+   * Shows the tab the router has active, in place of the tab it left.
+   */
+  #show(tab: Tab): void {
+    this.#reveal(tab);
+    this.#putAway();
   }
 
   /**

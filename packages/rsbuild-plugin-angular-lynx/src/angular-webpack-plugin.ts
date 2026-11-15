@@ -407,6 +407,18 @@ class AngularWebpackPlugin {
             this.options?.preferredFps ??
             AngularWebpackPlugin.defaultOptions.preferredFps,
           enableElementInvokeUIMethodPendingTask: true,
+          // iOS exposure measures elements against the active scene's key
+          // window, and with this on (Lynx's default) an app that isn't
+          // active has none: Control Center, Notification Center or the app
+          // switcher over the app, or the app in the background, takes every
+          // element off the screen. A browser's IntersectionObserver reports
+          // nothing then, and code written for it stops work it takes to be
+          // out of sight, such as angular-three's drawing, which then misses
+          // the light or dark switch made in Control Center. Off, iOS checks
+          // against the key window of a scene in the foreground, active or
+          // not. Android reads its own option for this,
+          // enableDisexposureWhenLynxHidden, which this leaves on.
+          enableDisexposureWhenBackground: false,
         };
 
         if (!encodeData.lepusCode.root) {

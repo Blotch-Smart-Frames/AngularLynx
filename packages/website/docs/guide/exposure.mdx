@@ -10,6 +10,8 @@ Find out when an element scrolls onto or off the screen. Use it to render heavy 
 | Record impressions across the whole page, for example for analytics | The [`LynxGlobalExposure` service](#track-impressions-across-the-page): batched events for tagged elements |
 | Watch elements from code, or use a library written for the browser  | [`IntersectionObserver`](#use-intersectionobserver), as on the web                                         |
 
+All three follow the element as it scrolls and moves, not whether the app is in front. On iOS, an element stays on screen with Control Center, Notification Center or the app switcher over the app, and while the app is in the background, as it does in a browser whose window is covered.
+
 ## Watch one element
 
 Add `lynxExposure` to an element and read its `visible()` signal:

@@ -6699,6 +6699,28 @@ Before the build plugin turned on Lynx's pending invokes (see "A UI method on an
 
 ---
 
+## On iOS, exposure takes every element off the screen while the app isn't active
+
+### What you'd expect (web)
+
+An `IntersectionObserver` is about geometry. Covering the browser with another window, or hiding its tab, doesn't report its elements as leaving the viewport: a hidden page just stops running rendering steps, and nothing is reported until something moves.
+
+### What Lynx does
+
+`LynxUIExposure` (`LynxUIExposure.m`) checks each element against the screen's box, which it takes from a key window. With the page option `enableDisexposureWhenBackground` on, as Lynx has it by default, that's the key window of a scene that's `UISceneActivationStateForegroundActive` (`LynxUIKitAPIAdapter getKeyWindow`). An app that's visible but inactive has none: with Control Center or Notification Center pulled over it, or the app switcher open. Every element then counts as off the screen and gets `uidisappear`, and `uiappear` again once the app is active. The same goes for the app in the background.
+
+So `[lynxExposure]`, `LynxGlobalExposure` and AngularLynx's `IntersectionObserver`, all built on exposure, reported everything as gone while Control Center was open. A 3D scene drawn with angular-three, which draws only while its canvas is in view, stopped there. Switching between light and dark in Control Center restyled the rest of the page, but the scene showed the old appearance until Control Center closed, and then jumped to the new one.
+
+Found on an iPhone 14 Pro (iOS 27), with logs from the shell and the runtime: `willResignActive`, then the canvas's observer reporting it out of view within 20 ms, the trait change arriving with the scene unable to draw, and the scene drawn once `didBecomeActive` brought the canvas back. Switching with `xcrun simctl ui <device> appearance` doesn't show it on the Simulator: the app stays active there.
+
+With the option off, exposure uses `LynxUIKitAPIAdapter getForegroundKeyWindow` instead, which takes a scene that's in the foreground, active or not, and falls back to the app's key window. Android has no such option: it has `enableDisexposureWhenLynxHidden`, which `UIExposure` checks against the LynxView being shown (`View.isShown()`), and which pulling the notification shade over the app doesn't change.
+
+### The fix
+
+The build plugin turns `enableDisexposureWhenBackground` off in every bundle's config (`angular-webpack-plugin.ts`). On the same iPhone, the canvas then stayed in view with Control Center open, and the scene was drawn in the new appearance within milliseconds of the switch. In the background, nothing was drawn: Lynx holds the main thread's animation frames there (`LynxVSyncPulse` skips its display link while `_isInBackground`), and the frame asked for while the app was away was drawn as it came back, in the appearance it came back in. Android's option stays as Lynx has it.
+
+---
+
 ## A synchronous UI method runs the pending microtasks inside the call
 
 ### What you'd expect (web)

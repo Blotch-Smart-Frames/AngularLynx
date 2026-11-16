@@ -18,8 +18,8 @@ import { UiProgress } from './progress';
 /**
  * The parts of an element's inline `animation`, sorted, with `0.0` written as
  * `0`. jsdom 31 writes the shorthand back in an order of its own, with `0.0`
- * as `0`, and fills in the longhands; jsdom 30, which `ng new` installs,
- * keeps it as it was set and leaves the longhands empty.
+ * as `0`, and fills in `animation-name` and the rest; jsdom 30, which
+ * `ng new` installs, keeps it as it was set and leaves those empty.
  */
 const animationOf = (element: Element) =>
   (element as HTMLElement).style

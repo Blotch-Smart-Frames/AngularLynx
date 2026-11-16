@@ -244,6 +244,30 @@ describe('androidGenerator', () => {
     );
   });
 
+  it("leaves Lynx's INFO lines out of a release build's Android log", () => {
+    androidGenerator.configure(dir, app(), dir);
+    const application = readFileSync(
+      path.join(
+        dir,
+        'app/src/main/java/dev/angularlynx/shell/ShellApplication.kt',
+      ),
+      'utf8',
+    );
+    // Lynx's release libraries log every touch, flush, layout and module
+    // call at INFO, each a JNI call into android.util.Log on the engine
+    // thread. Only a build that isn't debuggable leaves them out: the debug
+    // build `ng serve --platform android` installs keeps them.
+    expect(application).toMatch(
+      /if \(\(applicationInfo\.flags and ApplicationInfo\.FLAG_DEBUGGABLE\) == 0\) \{\s+LLog\.setMinimumLoggingLevel\(LLog\.WARN\)\s+\}/,
+    );
+    // After init, which loads Lynx's native library: before it, the call
+    // does nothing.
+    expect(application.indexOf('LynxEnv.inst().init(')).toBeGreaterThan(-1);
+    expect(
+      application.indexOf('LLog.setMinimumLoggingLevel(LLog.WARN)'),
+    ).toBeGreaterThan(application.indexOf('LynxEnv.inst().init('));
+  });
+
   it("keeps Android's focus highlight off the page", () => {
     androidGenerator.configure(dir, app(), dir);
     const activity = readFileSync(

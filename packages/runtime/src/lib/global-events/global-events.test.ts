@@ -116,6 +116,17 @@ describe('GlobalEvents', () => {
       expect(log.slice(2)).toEqual(['document', 'window']);
     });
 
+    it('waits for nothing when none of its events has a listener', () => {
+      // A touchmove with only a pointerdown listener: nothing to capture,
+      // and no second half to finish later.
+      const { events } = hub();
+      const timers = vi.getTimerCount();
+      events.early('ping', []);
+      expect(vi.getTimerCount()).toBe(timers);
+      expect(() => events.late('ping')).not.toThrow();
+      expect(() => events.finishPending()).not.toThrow();
+    });
+
     it('bubbles the ones still pending before the next begins', () => {
       const { events } = hub();
       const order: string[] = [];

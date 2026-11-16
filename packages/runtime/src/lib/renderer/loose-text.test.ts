@@ -31,7 +31,10 @@ import {
 } from 'vitest';
 import { LynxDocument } from '../lynx-document';
 import { setPageElementRef } from '../lynx-document/page-ref';
-import { resetStyleIndex } from '../lynx-element/text-flow';
+import {
+  NOT_BLOCK_CONTAINERS,
+  resetStyleIndex,
+} from '../lynx-element/text-flow';
 import {
   LynxElement,
   processPendingFlow,
@@ -484,6 +487,31 @@ describe('loose text', () => {
     fixture.componentInstance.label.set(' ');
     fixture.detectChanges();
     expect(shape(byClass('box'))).toEqual(['" "']);
+  });
+
+  it('regroups loose text only when its text turns blank or back', () => {
+    const fixture = TestBed.createComponent(BlankHost);
+    fixture.detectChanges();
+    // A regroup asks this first, once (see #laysOutLines).
+    const regroups = vi.spyOn(NOT_BLOCK_CONTAINERS as Set<string>, 'has');
+
+    fixture.componentInstance.label.set('Ada');
+    fixture.detectChanges();
+    expect(regroups).toHaveBeenCalledOnce();
+
+    // A counter's tick, say: what a regroup does can't change.
+    regroups.mockClear();
+    fixture.componentInstance.label.set('Bob');
+    fixture.detectChanges();
+    expect(regroups).not.toHaveBeenCalled();
+    expect(shape(byClass('box'))).toEqual(['"Bob"']);
+
+    regroups.mockClear();
+    fixture.componentInstance.label.set(' ');
+    fixture.detectChanges();
+    expect(regroups).toHaveBeenCalledOnce();
+    expect(byClass('box').children.map(hidden)).toEqual([true]);
+    regroups.mockRestore();
   });
 
   it('runs text and inline tags in a block on as one line', () => {

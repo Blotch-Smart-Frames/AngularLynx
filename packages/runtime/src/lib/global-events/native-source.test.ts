@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { LynxPointerEvent } from '../lynx-element/pointer-events';
+import {
+  LynxPointerEvent,
+  pointerEventFor,
+} from '../lynx-element/pointer-events';
+import type * as PointerEvents from '../lynx-element/pointer-events';
 import { GlobalEvents } from './global-events';
 import { NativeScreenSource } from './native-source';
 
@@ -29,6 +33,12 @@ const fakePage = () => {
     },
   };
 };
+
+// The pointer events made, counted: the real ones, through a spy.
+vi.mock('../lynx-element/pointer-events', async (load) => {
+  const actual = await load<typeof PointerEvents>();
+  return { ...actual, pointerEventFor: vi.fn(actual.pointerEventFor) };
+});
 
 const touch = (identifier: number, at = 10) => ({
   identifier,
@@ -79,6 +89,85 @@ describe('NativeScreenSource', () => {
 
     events.document.removeEventListener('pointermove', move);
     expect([...listeners.keys()]).toEqual(['bindresize']);
+  });
+
+  it('listens for touchmove only for a move listener, and follows the fingers all the same', () => {
+    // A click-outside `pointerdown` is the usual document listener: every
+    // touchmove anywhere would run the page's two listeners for nothing.
+    const { events, listeners, fire } = setup();
+    const downs: LynxPointerEvent[] = [];
+    events.document.addEventListener('pointerdown', (event) =>
+      downs.push(event),
+    );
+    expect([...listeners.keys()].sort()).toEqual(
+      [
+        'bindresize',
+        'bindtouchcancel',
+        'bindtouchend',
+        'bindtouchstart',
+        'global-bindtouchcancel',
+        'global-bindtouchend',
+        'global-bindtouchstart',
+      ].sort(),
+    );
+
+    // Each touch ends, so each next one is the primary pointer.
+    fire('touchstart', { changedTouches: [touch(1)] });
+    fire('touchend', { changedTouches: [touch(1)] });
+    fire('touchstart', { changedTouches: [touch(2)] });
+    fire('touchcancel', { changedTouches: [touch(2)] });
+    fire('touchstart', { changedTouches: [touch(3)] });
+    expect(downs.map((d) => [d.pointerId, d.isPrimary])).toEqual([
+      [1, true],
+      [2, true],
+      [3, true],
+    ]);
+
+    // A move listener added with a finger down hears it move.
+    const moves: LynxPointerEvent[] = [];
+    const move = (event: LynxPointerEvent) => moves.push(event);
+    events.document.addEventListener('pointermove', move);
+    expect(listeners.has('global-bindtouchmove')).toBe(true);
+    expect(listeners.has('bindtouchmove')).toBe(true);
+    fire('touchmove', { changedTouches: [touch(3, 40)] });
+    expect(moves.map((m) => [m.pointerId, m.isPrimary])).toEqual([[3, true]]);
+
+    // Gone again with it, and the finger is still followed.
+    events.document.removeEventListener('pointermove', move);
+    expect(listeners.has('global-bindtouchmove')).toBe(false);
+    expect(listeners.has('bindtouchmove')).toBe(false);
+    fire('touchstart', { changedTouches: [touch(4)] });
+    expect(downs.at(-1)).toMatchObject({ pointerId: 4, isPrimary: false });
+
+    // A touchmove listener listens for moves too.
+    events.document.addEventListener('touchmove', () => {});
+    expect(listeners.has('global-bindtouchmove')).toBe(true);
+  });
+
+  it("makes only the pointer events something listens for, and waits for nothing when it's none", () => {
+    const { events, fire } = setup();
+    const made = vi.mocked(pointerEventFor);
+    made.mockClear();
+    const starts = vi.fn();
+    events.document.addEventListener('touchstart', starts);
+    const timers = vi.getTimerCount();
+
+    // Nothing listens for a touchend, or for the pointer events of either.
+    fire('touchstart', { changedTouches: [touch(1)] }, { caught: true });
+    fire('touchend', { changedTouches: [touch(1)] }, { caught: true });
+    expect(starts).toHaveBeenCalledOnce();
+    expect(made).not.toHaveBeenCalled();
+    // The touchstart, caught on its way, waits for a timer to bubble; the
+    // touchend has nothing to wait for.
+    expect(vi.getTimerCount()).toBe(timers + 1);
+
+    // The pointerup of a touchend, and not its pointerout.
+    const ups = vi.fn();
+    events.document.addEventListener('pointerup', ups);
+    fire('touchstart', { changedTouches: [touch(2)] });
+    fire('touchend', { changedTouches: [touch(2)] });
+    expect(made.mock.calls.map(([type]) => type)).toEqual(['pointerup']);
+    expect(ups).toHaveBeenCalledOnce();
   });
 
   it('turns a touch into the pointer events a browser fires, then the touch event', () => {

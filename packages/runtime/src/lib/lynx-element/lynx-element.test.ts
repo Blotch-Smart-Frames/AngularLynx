@@ -733,6 +733,21 @@ describe('LynxElement', () => {
       expect(traits()).toEqual(['button', 'button,selected', 'button']);
     });
 
+    it('adds a second trait after the first, and takes either away', () => {
+      element = new LynxElement(fakeRef);
+      element.setAttribute('accessibility-traits', 'button');
+      element.setAccessibilityTrait('selected', true);
+      element.setAccessibilityTrait('header', true);
+      element.setAccessibilityTrait('selected', false);
+
+      expect(traits()).toEqual([
+        'button',
+        'button,selected',
+        'button,selected,header',
+        'button,header',
+      ]);
+    });
+
     it('resets the attribute when neither the app nor the runtime sets one', () => {
       element = new LynxElement(fakeRef);
       element.setAccessibilityTrait('selected', true);

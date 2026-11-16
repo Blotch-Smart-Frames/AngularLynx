@@ -65,6 +65,12 @@ const installFakes = () => {
     '__GetParent',
     vi.fn(() => null),
   );
+  // No element tree here, so every element has a child as far as the cycle
+  // check asks, which keeps it on its full walk (see wouldFormCycle).
+  vi.stubGlobal(
+    '__FirstElement',
+    vi.fn(() => ({})),
+  );
   vi.stubGlobal(
     '__QuerySelector',
     vi.fn(() => null),

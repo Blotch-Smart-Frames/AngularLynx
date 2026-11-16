@@ -50,6 +50,7 @@ import {
   LayoutTracker,
   type LynxDOMRect,
   measureLayout,
+  setMeasureFlush,
   toDOMRect,
 } from './layout';
 import { POINTER_EVENT_NAMES, PointerEventSource } from './pointer-events';
@@ -210,8 +211,11 @@ const NO_UI_FOR_NODE = 6;
  * own `button`; and it has no selected trait to add. So on Android the app's
  * traits are left as they are.
  */
-const withAddedTraits = (own: unknown, added: readonly string[]): unknown => {
-  if (added.length === 0 || isAndroid()) return own;
+const withAddedTraits = (
+  own: unknown,
+  added: readonly string[] | null,
+): unknown => {
+  if (!added || added.length === 0 || isAndroid()) return own;
   const traits =
     own == null
       ? []
@@ -231,6 +235,17 @@ const withAddedTraits = (own: unknown, added: readonly string[]): unknown => {
  * property and drops it.
  */
 const isCustomProperty = (name: string): boolean => name.startsWith('--');
+
+const WHITESPACE = /\s/;
+
+/**
+ * Whether a class name comes back as itself when its element's class string
+ * is split on whitespace: not empty, and without whitespace of its own. An
+ * element keeps a set of such names beside its class string (see
+ * LynxElement's #classNames).
+ */
+const isPlainClassName = (name: string): boolean =>
+  name !== '' && !WHITESPACE.test(name);
 
 /**
  * True if attaching `candidate` under `parent` would form a cycle — i.e.
@@ -253,9 +268,21 @@ const isCustomProperty = (name: string): boolean => name.startsWith('--');
  *
  * This is the same ancestor check a browser performs in `insertBefore` (it
  * throws HierarchyRequestError); we return the answer so callers can skip the
- * attach instead of throwing. The walk is bounded by the depth of `parent`, and
- * each step is two cheap native reads — comparable to the tree bookkeeping the
- * attach itself does.
+ * attach instead of throwing.
+ *
+ * The full check walks `parent`'s ancestors up to the root of its tree, two
+ * native reads a step, and `__GetParent` hands back a new handle each time.
+ * Angular appends nearly every element right after creating it, before its
+ * children, so two exact shortcuts answer most attaches in a few reads:
+ *
+ * - A `candidate` with no native child can't be anyone's ancestor, so only
+ *   `parent` being `candidate` itself can form a cycle.
+ * - A `candidate` already among `parent`'s children (an `@for` reorder of
+ *   rows with children) can't also be one of its ancestors.
+ *
+ * Both read the native tree, not the wrappers' `#children`: a list's items,
+ * anonymous texts and hydrated elements can have native children no wrapper
+ * lists.
  *
  * Compares by unique ID rather than ref identity: native refs must not be used
  * as map/Set keys (hashing one crashes the Lepus engine — see
@@ -264,7 +291,12 @@ const isCustomProperty = (name: string): boolean => name.startsWith('--');
  */
 const wouldFormCycle = (parent: ElementRef, candidate: ElementRef): boolean => {
   const candidateId = __GetElementUniqueID(candidate);
-  for (let cur: ElementRef | null = parent; cur; cur = __GetParent(cur)) {
+  const parentId = __GetElementUniqueID(parent);
+  if (parentId === candidateId) return true;
+  if (!__FirstElement(candidate)) return false;
+  const current = __GetParent(candidate);
+  if (current && __GetElementUniqueID(current) === parentId) return false;
+  for (let cur = __GetParent(parent); cur; cur = __GetParent(cur)) {
     if (__GetElementUniqueID(cur) === candidateId) return true;
   }
   return false;
@@ -340,6 +372,11 @@ const isIOS = (): boolean => {
  * one once it has measured its element, which is laid out by then. The
  * handler does nothing; the listeners added later share it (see
  * #syncNativeHandler), and Android, which reads the set afresh, needs none.
+ *
+ * iOS sends `scroll` on every frame of a scroll, so while the placeholder is
+ * the only listener, #dispatch drops the event before doing anything else,
+ * flush included: it changes nothing, and a flush costs the engine thread a
+ * patch pass and the UI thread an operation on each frame.
  */
 export const listenForScrollsFromTheStart = (element: LynxElement): void => {
   if (__WEB__ || !isIOS()) return;
@@ -347,6 +384,13 @@ export const listenForScrollsFromTheStart = (element: LynxElement): void => {
 };
 
 const ignoreScroll = (): void => {};
+
+/**
+ * The stopPropagation()/preventDefault()/stopImmediatePropagation() an event
+ * without them gets (see #dispatch). One function for every event, rather
+ * than three new ones per event: touchmove and scroll come on every frame.
+ */
+const noop = (): void => {};
 
 /**
  * Whether inserting `child` into `parent` before a sibling would leave it
@@ -426,7 +470,7 @@ export class LynxElement implements BaseLynxElement {
   // animation state from Lynx's native element pool — without this, pooled
   // elements retain animation values (e.g. opacity: 0) that poison
   // newly-created elements reusing the slot.
-  #activeAnimations: LynxAnimation[] = [];
+  #activeAnimations: LynxAnimation[] | null = null;
 
   // --- Recreation cache -------------------------------------------------------
   // Lynx destroys an element's native painting node when it is removed in one
@@ -440,22 +484,39 @@ export class LynxElement implements BaseLynxElement {
   // #recreateSubtree() to replay. Caching is eager (every element, every write)
   // because by the time a removal happens the setter calls are long gone — and
   // event listeners in particular cannot be read back from the native side.
-  #attrs = new Map<string, unknown>();
+  //
+  // The caches below that are collections, like the element's other
+  // collections, are null until their first write. Every view, text,
+  // raw-text and anchor is a LynxElement, and most use two or three of them,
+  // if any: a dozen empty Maps, Sets and arrays made with each element would
+  // live as long as its screen, as work for PrimJS's collector. #children is
+  // the exception, made with the element: nearly every path walks it.
+  #attrs: Map<string, unknown> | null = null;
   #id: string | null = null;
-  #dataset: Record<string, unknown> = {};
+  #dataset: Record<string, unknown> | null = null;
   /** Full space-separated class string, mirroring __SetClasses semantics. */
   #classes = '';
+  /**
+   * The names in #classes, in order, while #classes is exactly their join
+   * and each is a plain class name (see isPlainClassName). addClass then adds
+   * a name by appending it, rather than splitting and joining the whole
+   * string again: Angular adds a `[class]` binding's classes one at a time,
+   * often ten or more on a component's host. Null until the first class, and
+   * after a removal, which takes the classes from native (see removeClass);
+   * the next addClass builds it from #classes, as it always did.
+   */
+  #classNames: Set<string> | null = null;
   /**
    * ViewEncapsulation.Emulated's scope classes (see EmulatedLynxRenderer).
    * Angular writes static and bound classes as one whole class string through
    * setAttribute('class'), which would drop them, so they're added back each
    * time.
    */
-  #scopeClasses: string[] = [];
+  #scopeClasses: string[] | null = null;
   /** Whole-string inline style set via setInlineStyles (style="..."). */
   #inlineStyleWhole: string | null = null;
   /** Per-key inline styles set via setStyle ([style.x] bindings). */
-  #inlineStyleKeys = new Map<string, unknown>();
+  #inlineStyleKeys: Map<string, unknown> | null = null;
   /**
    * Inline declarations the runtime adds ahead of the app's own style="...":
    * the CSS variables of a blur-view's material on Android (see
@@ -475,7 +536,7 @@ export class LynxElement implements BaseLynxElement {
    * style string after the app's style="...", for the same reason as
    * #runtimeStyle.
    */
-  #customProperties = new Map<string, string>();
+  #customProperties: Map<string, string> | null = null;
   /**
    * Set once any of the inline styles above reads a safe-area inset. They're
    * kept as written, with their env(safe-area-inset-*), and each write fills
@@ -490,11 +551,11 @@ export class LynxElement implements BaseLynxElement {
    * restores the app's.
    */
   #ownTraits: unknown = null;
-  #addedTraits: string[] = [];
+  #addedTraits: string[] | null = null;
   /** Every listener Angular added, in the order it added them. */
-  #listeners: Listener[] = [];
+  #listeners: Listener[] | null = null;
   /** How many main-thread directive handlers hold each event (see holdNativeEvent). */
-  readonly #heldEvents = new Map<string, number>();
+  #heldEvents: Map<string, number> | null = null;
   /** Recognizes long presses on Lynx for Web (see #listenForWebLongPress). */
   #webLongPress: WebLongPress | null = null;
   /** Turns touches into pointer events, once a pointer listener is added. */
@@ -516,14 +577,14 @@ export class LynxElement implements BaseLynxElement {
    * The handler registered natively for each event (see nativeEventKey). It
    * runs every listener for that event, since native Lynx keeps only one.
    */
-  #nativeHandlers = new Map<
+  #nativeHandlers: Map<
     string,
     {
       eventType: LynxEventType;
       eventName: string;
       dispatch: (event: any) => unknown;
     }
-  >();
+  > | null = null;
   /**
    * DISPLAYED text of a raw-text element — the positionally edge-trimmed value
    * that is actually painted, and what #recreateSubtree bakes into a rebuilt
@@ -663,7 +724,7 @@ export class LynxElement implements BaseLynxElement {
    * first render, for one, kept no `glass-effect-id`. So a removal waits here
    * for the flush, and a value set meanwhile takes it back.
    */
-  readonly #removedAttributes = new Set<string>();
+  #removedAttributes: Set<string> | null = null;
 
   /**
    * Native-ref → canonical wrapper registry, keyed by the native unique ID.
@@ -879,7 +940,7 @@ export class LynxElement implements BaseLynxElement {
    * doesn't hear it, and sets the text whatever it was.
    */
   #setFieldText(text: string): void {
-    if (text === this.#fieldText && !this.#heldEvents.has('input')) return;
+    if (text === this.#fieldText && !this.#heldEvents?.has('input')) return;
     if (this.#fieldText === null) {
       this.addEventListener('bindinput', () => {});
     }
@@ -922,9 +983,12 @@ export class LynxElement implements BaseLynxElement {
     if (this.#text === displayed) return;
     __SetAttribute(this.element, 'text', displayed);
     this.#text = displayed;
-    this.#attrs.set('text', displayed);
+    (this.#attrs ??= new Map()).set('text', displayed);
   }
   setAttribute(name: string, value: any): void {
+    // A class, id, data-* or `hidden` asks for no flush itself (see
+    // nativeWriteEpoch).
+    nativeWriteEpoch++;
     // HTML's `hidden`, as `[hidden]="!open()"` or a bare `hidden` sets it.
     // Like any boolean attribute, it hides whenever it's there, whatever its
     // value; a `false` property binding or a removal takes it away.
@@ -945,16 +1009,25 @@ export class LynxElement implements BaseLynxElement {
       // the literal class 'foo bar baz' rather than three separate classes,
       // so no CSS rule would ever match. __SetClasses correctly parses the
       // space-separated list. This matches how React Lynx handles className.
-      const classes = [
-        ...new Set([
-          ...String(value ?? '')
-            .split(/\s+/)
-            .filter(Boolean),
-          ...this.#scopeClasses,
-        ]),
-      ].join(' ');
+      const names = new Set(
+        String(value ?? '')
+          .split(/\s+/)
+          .filter(Boolean),
+      );
+      // The split's names are plain, and the scope classes Angular and the
+      // runtime name are too; an odd one an app gave setRuntimeClass leaves
+      // the set to the next addClass.
+      let plain = true;
+      if (this.#scopeClasses) {
+        for (const scope of this.#scopeClasses) {
+          names.add(scope);
+          if (!isPlainClassName(scope)) plain = false;
+        }
+      }
+      const classes = [...names].join(' ');
       __SetClasses(this.element, classes);
       this.#classes = classes;
+      this.#classNames = plain ? names : null;
       this.#rulesChanged();
     } else if (name === 'style') {
       this.setInlineStyles(value);
@@ -967,7 +1040,7 @@ export class LynxElement implements BaseLynxElement {
       const key = name.slice(5);
       data[key] = value;
       __SetDataset(this.element, data);
-      this.#dataset[key] = value;
+      (this.#dataset ??= {})[key] = value;
     } else {
       // A stroke-dasharray the engine can't parse hangs Lynx's native SVG engine and
       // blanks every <svg> in the app (see svg-content.ts), so it's rewritten
@@ -997,11 +1070,11 @@ export class LynxElement implements BaseLynxElement {
       }
       if (value == null) {
         // At the flush, unless it's set again first: see #removedAttributes.
-        this.#removedAttributes.add(name);
+        (this.#removedAttributes ??= new Set()).add(name);
         LynxElement.#pendingAttributeRemovals.add(this);
         scheduleSettleFlush();
       } else {
-        this.#removedAttributes.delete(name);
+        this.#removedAttributes?.delete(name);
         __SetAttribute(this.element, name, value);
         // Set outside change detection (from a timer, a promise, a gesture),
         // it reaches native only with a flush (see scheduleSettleFlush).
@@ -1012,9 +1085,9 @@ export class LynxElement implements BaseLynxElement {
       // carries its text via the 'text' attribute (renderer.setValue) — keep
       // #text in sync so a rebuilt raw-text bakes the current text in.
       if (value == null) {
-        this.#attrs.delete(name);
+        this.#attrs?.delete(name);
       } else {
-        this.#attrs.set(name, value);
+        (this.#attrs ??= new Map()).set(name, value);
       }
       if (this.tagName === 'raw-text' && name === 'text') {
         // The renderer feeds this the COLLAPSED-but-untrimmed value (see
@@ -1022,12 +1095,16 @@ export class LynxElement implements BaseLynxElement {
         // queue the enclosing text for the positional edge-trim pass; #text is
         // the provisional display until that pass corrects it (#setDisplayedText).
         const text = value == null ? undefined : String(value);
+        const blankChanged = isBlankText(this.#rawText) !== isBlankText(text);
         this.#text = text;
         this.#rawText = text;
         LynxElement.#enqueueTextNormalization(this);
-        // Its anonymous <text> hides while all it holds is blank.
+        // Its anonymous <text> hides while all it holds is blank, which only
+        // a change between blank and not can change: a regroup reads the text
+        // for nothing else (see #regroup), so a counter's every tick needn't
+        // regroup its parent's children.
         const parent = this.#jsParent;
-        if (parent && parent.#anonymous && parent.#jsParent) {
+        if (blankChanged && parent && parent.#anonymous && parent.#jsParent) {
           LynxElement.#pendingFlow.add(parent.#jsParent);
         }
       }
@@ -1044,7 +1121,7 @@ export class LynxElement implements BaseLynxElement {
    */
   updateBlurMaterial(): void {
     if (usesAndroidBlurMaterials()) {
-      this.#setRuntimeStyle(androidBlurMaterialStyle(this.#attrs));
+      this.#setRuntimeStyle(androidBlurMaterialStyle(this.#attrs ?? new Map()));
     }
   }
 
@@ -1081,10 +1158,14 @@ export class LynxElement implements BaseLynxElement {
    * (see withAddedTraits), so neither undoes the other.
    */
   setAccessibilityTrait(trait: string, on: boolean): void {
-    if (this.#addedTraits.includes(trait) === on) return;
+    const traits = this.#addedTraits;
+    if ((traits?.includes(trait) ?? false) === on) return;
+    // Taking one away, the element has it, so has traits.
     this.#addedTraits = on
-      ? [...this.#addedTraits, trait]
-      : this.#addedTraits.filter((added) => added !== trait);
+      ? traits
+        ? [...traits, trait]
+        : [trait]
+      : traits!.filter((added) => added !== trait);
     this.setAttribute('accessibility-traits', this.#ownTraits);
   }
 
@@ -1104,8 +1185,8 @@ export class LynxElement implements BaseLynxElement {
         return;
       }
       const text = String(value);
-      if (this.#customProperties.get(key) === text) return;
-      this.#customProperties.set(key, text);
+      if (this.#customProperties?.get(key) === text) return;
+      (this.#customProperties ??= new Map()).set(key, text);
       if (readsSafeAreaInsets(text)) this.#readsSafeArea = true;
       this.#rewriteInlineStyle();
       return;
@@ -1118,7 +1199,7 @@ export class LynxElement implements BaseLynxElement {
     // as written to get the next one.
     if (readsSafeAreaInsets(value)) this.#readsSafeArea = true;
     __AddInlineStyle(this.element, key, forNative(value));
-    this.#inlineStyleKeys.set(key, value);
+    (this.#inlineStyleKeys ??= new Map()).set(key, value);
     if (LAYOUT_STYLES.has(key)) this.#layoutChanged();
     // A style set outside change detection, as a transition's last frame is
     // from a timer, reaches native only with a flush (see scheduleSettleFlush).
@@ -1126,11 +1207,11 @@ export class LynxElement implements BaseLynxElement {
   }
   removeStyle(key: string): void {
     if (isCustomProperty(key)) {
-      if (this.#customProperties.delete(key)) this.#rewriteInlineStyle();
+      if (this.#customProperties?.delete(key)) this.#rewriteInlineStyle();
       return;
     }
     __AddInlineStyle(this.element, key, null);
-    this.#inlineStyleKeys.delete(key);
+    this.#inlineStyleKeys?.delete(key);
     if (LAYOUT_STYLES.has(key)) this.#layoutChanged();
     scheduleSettleFlush();
   }
@@ -1172,7 +1253,9 @@ export class LynxElement implements BaseLynxElement {
    * (see styleFlagsFor): its classes, its id and its tag.
    */
   #styleTokens(): Set<string> {
-    const tokens = new Set(this.#classes.split(/\s+/).filter(Boolean));
+    const tokens = new Set(
+      this.#classNames ?? this.#classes.split(/\s+/).filter(Boolean),
+    );
     if (this.#id) tokens.add(`#${this.#id}`);
     tokens.add(`<${this.tagName}>`);
     return tokens;
@@ -1186,7 +1269,7 @@ export class LynxElement implements BaseLynxElement {
   #laysOutLines(): boolean {
     if (NOT_BLOCK_CONTAINERS.has(this.tagName)) return false;
     const inline = (property: string): unknown =>
-      this.#inlineStyleKeys.get(property) ??
+      this.#inlineStyleKeys?.get(property) ??
       inlineDeclaration(this.#inlineStyleWhole, property);
     if (!isBlockDisplay(inline('display'))) return false;
     if (
@@ -1251,17 +1334,20 @@ export class LynxElement implements BaseLynxElement {
    * declarations or variables it's the app's value as is.
    */
   #withRuntimeStyle(inlineStyle: string | null): string | null {
+    const customProperties = this.#customProperties;
     if (
       !this.#hidden &&
       !this.#inheritStyle &&
       !this.#runtimeStyle &&
-      this.#customProperties.size === 0
+      !customProperties?.size
     ) {
       return inlineStyle;
     }
-    const variables = [...this.#customProperties]
-      .map(([name, value]) => `${name}: ${value}`)
-      .join('; ');
+    const variables = customProperties
+      ? [...customProperties]
+          .map(([name, value]) => `${name}: ${value}`)
+          .join('; ')
+      : '';
     return [
       this.#hidden ? HIDDEN_STYLE : '',
       this.#inheritStyle,
@@ -1297,18 +1383,26 @@ export class LynxElement implements BaseLynxElement {
    * Gives the native element its whole inline style again.
    */
   #rewriteInlineStyle(): void {
+    // Custom properties, `hidden` and the runtime's own styles (materials,
+    // insets, inheritance) ask for no flush themselves (see
+    // nativeWriteEpoch).
+    nativeWriteEpoch++;
     __SetInlineStyles(
       this.element,
       this.#inlineStyleFor(this.#inlineStyleWhole),
     );
     // __SetInlineStyles replaces every inline style, including the [style.x]
     // ones __AddInlineStyle set, which the app didn't ask to drop.
-    for (const [key, value] of this.#inlineStyleKeys) {
-      __AddInlineStyle(this.element, key, forNative(value));
+    if (this.#inlineStyleKeys) {
+      for (const [key, value] of this.#inlineStyleKeys) {
+        __AddInlineStyle(this.element, key, forNative(value));
+      }
     }
   }
 
   insertBefore(newChild: LynxElement, refChild: LynxElement | null): void {
+    // Inserts and moves ask for no flush themselves (see nativeWriteEpoch).
+    nativeWriteEpoch++;
     if (newChild.isRootPageElement) return;
     if (this.#holdsFlow()) {
       this.#flowInsert(newChild, refChild);
@@ -1337,7 +1431,8 @@ export class LynxElement implements BaseLynxElement {
     newChild.#recreateIfDead();
     newChild.#anchorFor(this);
     if (refChild == null) {
-      this.#append(newChild);
+      // The checks above are #append's own, done once (see #appendPrepared).
+      this.#appendPrepared(newChild);
     } else {
       // Never insert an element into its own subtree — Lynx would build a cyclic
       // native tree and hang the layout pass (see wouldFormCycle). Skipping is
@@ -1380,6 +1475,7 @@ export class LynxElement implements BaseLynxElement {
   }
 
   appendChild(newChild: LynxElement): void {
+    nativeWriteEpoch++;
     if (newChild.isRootPageElement) return;
     if (this.#holdsFlow()) {
       this.#flowInsert(newChild, null);
@@ -1396,6 +1492,16 @@ export class LynxElement implements BaseLynxElement {
     newChild.#removeIfMoveWouldBeLost(this);
     newChild.#recreateIfDead();
     newChild.#anchorFor(this);
+    this.#appendPrepared(newChild);
+  }
+
+  /**
+   * #append once its checks on `newChild` have run, which #attach runs
+   * itself. Running them twice did nothing more the second time, but read
+   * the child's native parent again, and for a move to another parent walked
+   * both ancestries again (see #removeIfMoveWouldBeLost).
+   */
+  #appendPrepared(newChild: LynxElement): void {
     // Guard against a cycle-forming attach (see wouldFormCycle) — the same hang
     // insertBefore protects against.
     if (wouldFormCycle(this.element, newChild.element)) return;
@@ -1436,7 +1542,10 @@ export class LynxElement implements BaseLynxElement {
     }
     newChild.#jsParent = this;
     if (refChild) {
-      const idx = this.#children.indexOf(refChild);
+      // From the end: `@for` puts each new item before its anchor, which
+      // follows them all, so searching from the front cost a step per item
+      // already there. A child is in #children once, so both find the same.
+      const idx = this.#children.lastIndexOf(refChild);
       // Defensive: refChild always sits in #children when it's used as an
       // anchor for insertBefore. If a caller passes a foreign refChild, fall
       // back to appending at the tail rather than throwing.
@@ -1669,16 +1778,28 @@ export class LynxElement implements BaseLynxElement {
     __AddClass(this.element, name);
     // Keep the cached class string in sync (deduped) so recreation replays the
     // full class list in one __SetClasses.
-    const set = new Set(this.#classes.split(/\s+/).filter(Boolean));
-    set.add(name);
-    this.#classes = [...set].join(' ');
+    const plain = isPlainClassName(name);
+    const names = this.#classNames;
+    if (names && plain) {
+      // #classes is their join, so a new name goes on its end: the same
+      // string the rebuild below makes.
+      if (!names.has(name)) {
+        names.add(name);
+        this.#classes = this.#classes ? `${this.#classes} ${name}` : name;
+      }
+    } else {
+      const rebuilt = new Set(this.#classes.split(/\s+/).filter(Boolean));
+      rebuilt.add(name);
+      this.#classes = [...rebuilt].join(' ');
+      this.#classNames = plain ? rebuilt : null;
+    }
     this.#rulesChanged();
     scheduleSettleFlush();
   }
 
   addScopeClass(name: string): void {
-    if (this.#scopeClasses.includes(name)) return;
-    this.#scopeClasses.push(name);
+    if (this.#scopeClasses?.includes(name)) return;
+    (this.#scopeClasses ??= []).push(name);
     this.addClass(name);
   }
 
@@ -1691,13 +1812,14 @@ export class LynxElement implements BaseLynxElement {
    * @returns Whether the class changed, so a caller can skip a flush.
    */
   setRuntimeClass(name: string, on: boolean): boolean {
-    const index = this.#scopeClasses.indexOf(name);
+    const index = this.#scopeClasses?.indexOf(name) ?? -1;
     if (on === (index !== -1)) return false;
     if (on) {
-      this.#scopeClasses.push(name);
+      (this.#scopeClasses ??= []).push(name);
       this.addClass(name);
     } else {
-      this.#scopeClasses.splice(index, 1);
+      // Found above, so there are scope classes.
+      this.#scopeClasses!.splice(index, 1);
       this.removeClass(name);
     }
     return true;
@@ -1713,6 +1835,9 @@ export class LynxElement implements BaseLynxElement {
     const joined = classes.join(' ');
     __SetClasses(this.element, joined);
     this.#classes = joined;
+    // Native's list is the truth here, and may hold what the set can't (a
+    // name twice), so the next addClass builds the set from #classes.
+    this.#classNames = null;
     this.#rulesChanged();
     scheduleSettleFlush();
   }
@@ -1730,6 +1855,10 @@ export class LynxElement implements BaseLynxElement {
    *    #doRemove() detaches from the native tree.
    */
   remove() {
+    // A removal waits for the next flush, and asks for none itself, so that
+    // a re-insert in the meantime is a move (see #pendingRemovals and
+    // nativeWriteEpoch).
+    nativeWriteEpoch++;
     if (this.isRootPageElement) return;
     // Count the removal request on the synchronous path. `__PROFILE__` is a
     // build-time `define` — read it here rather than from the deferred drain (in
@@ -1759,10 +1888,12 @@ export class LynxElement implements BaseLynxElement {
     const elements = [...LynxElement.#pendingAttributeRemovals];
     LynxElement.#pendingAttributeRemovals.clear();
     for (const el of elements) {
-      for (const name of el.#removedAttributes) {
+      // Queued only by a removal, which made the set.
+      const removed = el.#removedAttributes!;
+      for (const name of removed) {
         __SetAttribute(el.element, name, null);
       }
-      el.#removedAttributes.clear();
+      removed.clear();
     }
   }
 
@@ -2087,10 +2218,11 @@ export class LynxElement implements BaseLynxElement {
     // Each animation cancels itself, because only it knows the key it was
     // started under (its id, or a name it was given; see LynxAnimation).
     // Canceling a completed animation is harmless — a no-op at the native level.
-    for (const anim of this.#activeAnimations) {
-      anim.cancel();
-    }
-    if (this.#activeAnimations.length > 0) {
+    const animations = this.#activeAnimations;
+    if (animations && animations.length > 0) {
+      for (const anim of animations) {
+        anim.cancel();
+      }
       // Cancel clears the animation's active effect, but Lynx may leave
       // residual computed values on the element (observed: opacity stays at
       // the initial keyframe value 0 after cancel). Nulling the inline styles
@@ -2102,7 +2234,7 @@ export class LynxElement implements BaseLynxElement {
       // clear it (see the build plugin's vacated-slots.js). A pooled element
       // outlives its view, and its animations' callbacks reach the view's
       // component.
-      this.#activeAnimations.splice(0);
+      animations.splice(0);
     }
     // Remove the whole subtree in one shot — no "parking" of children elsewhere.
     // This runs ONLY for a genuine destroy: a move (remove-then-reinsert in the
@@ -2178,8 +2310,10 @@ export class LynxElement implements BaseLynxElement {
     this.#paintingDead = true;
     noteReleased();
     this.deregisterNative();
-    for (const { eventType, eventName } of this.#nativeHandlers.values()) {
-      removeNativeHandler(this.element, eventType, eventName);
+    if (this.#nativeHandlers) {
+      for (const { eventType, eventName } of this.#nativeHandlers.values()) {
+        removeNativeHandler(this.element, eventType, eventName);
+      }
     }
     for (const child of this.#children) child.#release();
     for (const child of this.virtualChildren()) child.#release();
@@ -2265,11 +2399,13 @@ export class LynxElement implements BaseLynxElement {
 
     if (this.#id != null) __SetID(fresh, this.#id);
     // Apply the dataset in one call so recreation is order- and merge-agnostic.
-    if (Object.keys(this.#dataset).length > 0) {
+    if (this.#dataset && Object.keys(this.#dataset).length > 0) {
       __SetDataset(fresh, this.#dataset);
     }
-    for (const [name, value] of this.#attrs) {
-      __SetAttribute(fresh, name, value);
+    if (this.#attrs) {
+      for (const [name, value] of this.#attrs) {
+        __SetAttribute(fresh, name, value);
+      }
     }
     // A field's text, which the destroyed UI took with it.
     if (this.#fieldText !== null) this.#sendFieldText(fresh);
@@ -2280,18 +2416,22 @@ export class LynxElement implements BaseLynxElement {
     if (inlineStyle != null) {
       __SetInlineStyles(fresh, inlineStyle);
     }
-    for (const [key, value] of this.#inlineStyleKeys) {
-      __AddInlineStyle(fresh, key, forNative(value));
+    if (this.#inlineStyleKeys) {
+      for (const [key, value] of this.#inlineStyleKeys) {
+        __AddInlineStyle(fresh, key, forNative(value));
+      }
     }
-    for (const {
-      eventType,
-      eventName,
-      dispatch,
-    } of this.#nativeHandlers.values()) {
-      __AddEvent(fresh, eventType, eventName, {
-        type: 'worklet',
-        value: dispatch,
-      });
+    if (this.#nativeHandlers) {
+      for (const {
+        eventType,
+        eventName,
+        dispatch,
+      } of this.#nativeHandlers.values()) {
+        __AddEvent(fresh, eventType, eventName, {
+          type: 'worklet',
+          value: dispatch,
+        });
+      }
     }
     for (const child of this.#children) {
       child.#recreateSubtree();
@@ -2441,7 +2581,7 @@ export class LynxElement implements BaseLynxElement {
     // Track the animation so remove() can cancel it before the element
     // returns to the native pool. Without this, the pool slot retains
     // stale animation state (e.g. opacity stuck at the FROM keyframe).
-    this.#activeAnimations.push(anim);
+    (this.#activeAnimations ??= []).push(anim);
     // Starting, pausing, playing and canceling an animation all reach native
     // with the next flush, like a style: one started or canceled from a
     // timer, outside change detection, needs a flush of its own (see
@@ -2509,7 +2649,7 @@ export class LynxElement implements BaseLynxElement {
     // native ref: native events don't survive a painting-node teardown and
     // can't be read back from the native side, so template `(bind…)` handlers
     // on projected content would go dead after a remount without this.
-    this.#listeners.push(entry);
+    (this.#listeners ??= []).push(entry);
     this.#syncNativeHandler(entry);
     return () => this.#removeListener(entry);
   }
@@ -2533,7 +2673,7 @@ export class LynxElement implements BaseLynxElement {
     }
     const parsed = parseEventName(name);
     if (!parsed) return;
-    const entry = this.#listeners.find(
+    const entry = this.#listeners?.find(
       (other) =>
         other.listener === cb &&
         other.eventType === parsed.eventType &&
@@ -2605,11 +2745,9 @@ export class LynxElement implements BaseLynxElement {
   #layoutTracker(): LayoutTracker {
     this.#layout ??= new LayoutTracker({
       listen: (event, listener) => this.addEventListener(event, listener),
-      measure: (callback) => {
-        measureLayout(this.element, callback);
-        // The UI method waits for the element's next flush (see invoke()).
-        scheduleSettleFlush();
-      },
+      // The UI method waits for the element's next flush (see invoke()),
+      // which measureLayout asks for (see setMeasureFlush below).
+      measure: (callback) => measureLayout(this.element, callback),
     });
     return this.#layout;
   }
@@ -2676,7 +2814,8 @@ export class LynxElement implements BaseLynxElement {
   #listenForWebLongPress(): void {
     if (this.#webLongPress) return;
     const press = new WebLongPress((detail) => {
-      const entry = this.#listeners.find(
+      // Its own listeners, added below, made the list.
+      const entry = this.#listeners!.find(
         (listener) => listener.eventName === 'longpress',
       );
       if (entry) this.#dispatch(entry, { type: 'longpress', detail });
@@ -2692,10 +2831,12 @@ export class LynxElement implements BaseLynxElement {
   }
 
   #removeListener(entry: Listener): void {
-    const i = this.#listeners.indexOf(entry);
+    // `entry` was added (see #add), which made the list.
+    const listeners = this.#listeners!;
+    const i = listeners.indexOf(entry);
     // Removing a listener a second time does nothing, as on the DOM.
     if (i < 0) return;
-    this.#listeners.splice(i, 1);
+    listeners.splice(i, 1);
     this.#syncNativeHandler(entry);
   }
 
@@ -2705,13 +2846,35 @@ export class LynxElement implements BaseLynxElement {
    */
   #listenersLike(entry: Listener): Listener[] {
     const key = nativeEventKey(entry.eventType, entry.eventName);
-    const like = this.#listeners.filter(
+    // `entry` was added (see #add), which made the list.
+    const like = this.#listeners!.filter(
       (other) => nativeEventKey(other.eventType, other.eventName) === key,
     );
     return [
       ...like.filter((other) => !other.trailing),
       ...like.filter((other) => other.trailing),
     ];
+  }
+
+  /**
+   * Whether iOS's scroll placeholder (see listenForScrollsFromTheStart) is
+   * all that listens for `entry`'s native event. A loop rather than
+   * #listenersLike, which builds four arrays: this runs on every scroll
+   * frame. Any other listener on the same handler, the app's or an
+   * IntersectionObserver's, hears the event as before.
+   */
+  #hearsOnlyScrollPlaceholder(entry: Listener): boolean {
+    const key = nativeEventKey(entry.eventType, entry.eventName);
+    // A handler is registered only for a listener (see #add).
+    for (const other of this.#listeners!) {
+      if (
+        other.listener !== ignoreScroll &&
+        nativeEventKey(other.eventType, other.eventName) === key
+      ) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /**
@@ -2722,9 +2885,9 @@ export class LynxElement implements BaseLynxElement {
   #syncNativeHandler(entry: Listener): void {
     const key = nativeEventKey(entry.eventType, entry.eventName);
     // A main-thread directive has the event's one handler (see holdNativeEvent).
-    if (this.#heldEvents.has(key)) return;
+    if (this.#heldEvents?.has(key)) return;
     const listeners = this.#listenersLike(entry);
-    const current = this.#nativeHandlers.get(key);
+    const current = this.#nativeHandlers?.get(key);
     const eventType = listeners.length ? combinedEventType(listeners) : null;
     if (current?.eventType === eventType) return;
     // A handler reaches native with the next flush, and one added outside
@@ -2736,7 +2899,8 @@ export class LynxElement implements BaseLynxElement {
     this.#sendHandlersWithNextFlush();
     if (current) {
       removeNativeHandler(this.element, current.eventType, entry.eventName);
-      this.#nativeHandlers.delete(key);
+      // It was found there.
+      this.#nativeHandlers!.delete(key);
     }
     if (!eventType) return;
     const handler = {
@@ -2747,7 +2911,7 @@ export class LynxElement implements BaseLynxElement {
       dispatch:
         current?.dispatch ?? ((event: any) => this.#dispatch(entry, event)),
     };
-    this.#nativeHandlers.set(key, handler);
+    (this.#nativeHandlers ??= new Map()).set(key, handler);
     // type: 'worklet' routes the callback through Lynx's worklet system
     // (runWorklet), which is the only way to receive events in the JS thread.
     // Direct function callbacks also work here (not just worklet handles) —
@@ -2771,9 +2935,10 @@ export class LynxElement implements BaseLynxElement {
    * `mainThreadCatchscroll` share one.
    */
   holdNativeEvent(eventName: string): void {
-    this.#heldEvents.set(eventName, (this.#heldEvents.get(eventName) ?? 0) + 1);
+    const heldEvents = (this.#heldEvents ??= new Map());
+    heldEvents.set(eventName, (heldEvents.get(eventName) ?? 0) + 1);
     // The directive's handler replaces the element's natively.
-    this.#nativeHandlers.delete(eventName);
+    this.#nativeHandlers?.delete(eventName);
   }
 
   /**
@@ -2781,15 +2946,17 @@ export class LynxElement implements BaseLynxElement {
    * registers the element's own for the listeners it has for it.
    */
   releaseNativeEvent(eventName: string): void {
-    const held = this.#heldEvents.get(eventName);
+    const heldEvents = this.#heldEvents;
+    const held = heldEvents?.get(eventName);
     // Not held: the element's handler is registered already.
     if (held === undefined) return;
+    // Held, so heldEvents has it.
     if (held > 1) {
-      this.#heldEvents.set(eventName, held - 1);
+      heldEvents!.set(eventName, held - 1);
       return;
     }
-    this.#heldEvents.delete(eventName);
-    const entry = this.#listeners.find(
+    heldEvents!.delete(eventName);
+    const entry = this.#listeners?.find(
       (listener) =>
         listener.eventName === eventName &&
         listener.eventType !== 'global-bindEvent',
@@ -2836,15 +3003,30 @@ export class LynxElement implements BaseLynxElement {
    * addEventMethodsIfNeeded.
    */
   #dispatch(entry: Listener, event: any): unknown {
+    // iOS sends a scroll-view's `scroll` on every frame, to the placeholder
+    // every scroll-view and list has there (see listenForScrollsFromTheStart).
+    // While it's the only listener, nothing runs that could change anything,
+    // so the event goes no further: no shims, no listener walk, no flush.
+    // ignoreScroll returns undefined, as this does.
+    if (
+      !__WEB__ &&
+      entry.eventName === 'scroll' &&
+      this.#hearsOnlyScrollPlaceholder(entry)
+    ) {
+      // What a list item's build left for a later flush still gets one from
+      // the next event, this one included (see settleSkippedForListItem).
+      if (settleSkippedForListItem) scheduleSettleFlush();
+      return undefined;
+    }
     if (event && typeof event === 'object') {
       if (typeof event.stopPropagation !== 'function') {
-        event.stopPropagation = () => {};
+        event.stopPropagation = noop;
       }
       if (typeof event.preventDefault !== 'function') {
-        event.preventDefault = () => {};
+        event.preventDefault = noop;
       }
       if (typeof event.stopImmediatePropagation !== 'function') {
-        event.stopImmediatePropagation = () => {};
+        event.stopImmediatePropagation = noop;
       }
       fillTargetValue(event);
     }
@@ -2891,12 +3073,13 @@ export class LynxElement implements BaseLynxElement {
       this.#fieldText = event.detail.value;
     }
     let result: unknown;
+    const epoch = nativeWriteEpoch;
     // As a DOM event does: the listeners are those registered when the event
     // fires, so one that removes itself doesn't make the next one skip, and a
     // listener an earlier one removed (an @if hiding part of the element, say)
     // doesn't run.
     for (const other of this.#listenersLike(entry)) {
-      if (this.#listeners.includes(other)) result = other.listener(event);
+      if (this.#listeners!.includes(other)) result = other.listener(event);
     }
     // Native events are delivered straight to this callback by the Lynx SDK —
     // OUTSIDE Angular's begin()/end() change-detection cycle. So a handler that
@@ -2905,12 +3088,28 @@ export class LynxElement implements BaseLynxElement {
     // .end() therefore never flushes those mutations. On native the effect is a
     // delayed paint; on web (@lynx-js/web-core's offscreen document) the mutation
     // never reaches the real DOM at all, so imperative animations silently do
-    // nothing (verified in a headless browser). Schedule the same coalesced
-    // safety-net flush used for content built outside a cycle so these mutations
-    // commit. It's a near-no-op when nothing is layout-dirty, and if the handler
-    // DID change a signal the resulting CD flush runs and this stays a guarded
-    // no-op — so there's no double-flush cost.
-    scheduleSettleFlush();
+    // nothing (verified in a headless browser). Most writes schedule the same
+    // coalesced safety-net flush used for content built outside a cycle
+    // themselves; the ones that leave it to their caller (see
+    // nativeWriteEpoch) get it here.
+    //
+    // Only when a listener did make one, or a list item's build left a flush
+    // for later (see settleSkippedForListItem). A flush with nothing to
+    // commit isn't free: Lynx still runs its patch pass on the engine thread
+    // and queues an operation for the UI thread. Scroll listeners that change
+    // nothing on most frames (ui-bar-scroll's) paid it on every frame, and a
+    // template listener that only sets signals paid it as well as its change
+    // detection's flush, which comes a task later.
+    if (nativeWriteEpoch !== epoch || settleSkippedForListItem) {
+      scheduleSettleFlush();
+    } else {
+      // A listener's code that runs in a microtask it queued (an async
+      // listener after an `await`) writes after this returns, and before
+      // the flush scheduled here would have run: it got that flush, so it
+      // still does.
+      dispatchesToCheck.push(epoch);
+      queueMicrotask(checkDispatchWrites);
+    }
     return result;
   }
 }
@@ -3007,6 +3206,46 @@ export const afterNextFlush = (callback: () => void): void => {
 let settleFlushScheduled = false;
 
 /**
+ * Whether a settle flush was asked for, and skipped, while a list item was
+ * being built (see scheduleSettleFlush), with no settle flush since. The
+ * item's own flush covers the item only, so a change it made elsewhere waits
+ * for the next flush. The next native event brings it, even one whose
+ * listeners change nothing (see #dispatch), as every event did when each one
+ * flushed.
+ */
+let settleSkippedForListItem = false;
+
+/**
+ * Counts the writes to native made through LynxElement that leave their
+ * flush to whoever made them, so #dispatch can tell whether an event's
+ * listeners changed anything it should flush: setAttribute (a class, id,
+ * data-* or `hidden`), #rewriteInlineStyle (custom properties, `hidden` and
+ * the runtime's own styles), appendChild, insertBefore and remove. The other
+ * writes (a style, a class added, a UI method, an animation, a handler, a
+ * new element) call scheduleSettleFlush themselves, and get their flush
+ * whatever the dispatch does. A counter, not a flag: dispatches nest (the
+ * document's listeners run inside the page's, see global-events), and an
+ * inner one mustn't hide an outer one's writes.
+ */
+let nativeWriteEpoch = 0;
+
+/**
+ * The epochs of the dispatches whose listeners wrote nothing while they ran,
+ * oldest first, each checked again in a microtask (see #dispatch). Numbers in
+ * a queue rather than a closure per event: they come on every frame.
+ */
+const dispatchesToCheck: number[] = [];
+
+/**
+ * Flushes for the oldest dispatch in dispatchesToCheck if anything was
+ * written since it began.
+ */
+const checkDispatchWrites = (): void => {
+  const epoch = dispatchesToCheck.shift();
+  if (nativeWriteEpoch !== epoch) scheduleSettleFlush();
+};
+
+/**
  * Safety-net flush for native mutations made OUTSIDE a begin()/end() change-
  * detection cycle. `LynxRendererFactory2.end()` calls `__FlushElementTree()`
  * once per CD tick, which is what commits (lays out + paints) the cycle's
@@ -3036,8 +3275,8 @@ let settleFlushScheduled = false;
  *    `<list>` defers its own first flush (see isFirstRenderPending());
  *  - a list's componentAtIndex is building a `*lynxListFor` item, which it
  *    flushes itself (see bindListItem). What else is left for a flush then
- *    waits for the next one; calls waiting for it are seen to by
- *    settleAfterListItems().
+ *    waits for the next one (see settleSkippedForListItem); calls waiting for
+ *    it are seen to by settleAfterListItems().
  * The near-no-op cost when nothing is layout-dirty (the core's `need_layout_`
  * gate) keeps the steady-state overhead negligible.
  */
@@ -3045,9 +3284,12 @@ export const scheduleSettleFlush = (): void => {
   if (
     settleFlushScheduled ||
     isInsideChangeDetection() ||
-    isFirstRenderPending() ||
-    isBindingListItem()
+    isFirstRenderPending()
   ) {
+    return;
+  }
+  if (isBindingListItem()) {
+    settleSkippedForListItem = true;
     return;
   }
   settleFlushScheduled = true;
@@ -3056,6 +3298,9 @@ export const scheduleSettleFlush = (): void => {
     // A CD cycle began in the meantime — its end() will flush; don't double up
     // (and avoid a re-entrant flush).
     if (isInsideChangeDetection()) return;
+    // Cleared before the flush: a list item built inside it (its layout pass
+    // calls componentAtIndex) leaves the next flush its own leftovers.
+    settleSkippedForListItem = false;
     // Mirror end()'s ordering: commit any queued removals, then re-derive text
     // whitespace, so both land in the same flush as the new content (see
     // #pendingRemovals / #pendingTextNormalization). List children are driven by
@@ -3068,3 +3313,9 @@ export const scheduleSettleFlush = (): void => {
     LynxElement.commitPendingInvokes();
   });
 };
+
+// Every layout read asks for the flush its UI method waits for: an
+// element's (getBoundingClientRect, ResizeObserver) and an
+// IntersectionObserver's, which measures from timers and other events'
+// listeners and imports layout.ts alone.
+setMeasureFlush(scheduleSettleFlush);

@@ -938,6 +938,9 @@ export class LynxElement implements BaseLynxElement {
     this.#attrs.set('text', displayed);
   }
   setAttribute(name: string, value: any): void {
+    // A class, id, data-* or `hidden` asks for no flush itself (see
+    // nativeWriteEpoch).
+    nativeWriteEpoch++;
     // HTML's `hidden`, as `[hidden]="!open()"` or a bare `hidden` sets it.
     // Like any boolean attribute, it hides whenever it's there, whatever its
     // value; a `false` property binding or a removal takes it away.
@@ -1310,6 +1313,10 @@ export class LynxElement implements BaseLynxElement {
    * Gives the native element its whole inline style again.
    */
   #rewriteInlineStyle(): void {
+    // Custom properties, `hidden` and the runtime's own styles (materials,
+    // insets, inheritance) ask for no flush themselves (see
+    // nativeWriteEpoch).
+    nativeWriteEpoch++;
     __SetInlineStyles(
       this.element,
       this.#inlineStyleFor(this.#inlineStyleWhole),
@@ -1322,6 +1329,8 @@ export class LynxElement implements BaseLynxElement {
   }
 
   insertBefore(newChild: LynxElement, refChild: LynxElement | null): void {
+    // Inserts and moves ask for no flush themselves (see nativeWriteEpoch).
+    nativeWriteEpoch++;
     if (newChild.isRootPageElement) return;
     if (this.#holdsFlow()) {
       this.#flowInsert(newChild, refChild);
@@ -1393,6 +1402,7 @@ export class LynxElement implements BaseLynxElement {
   }
 
   appendChild(newChild: LynxElement): void {
+    nativeWriteEpoch++;
     if (newChild.isRootPageElement) return;
     if (this.#holdsFlow()) {
       this.#flowInsert(newChild, null);
@@ -1743,6 +1753,10 @@ export class LynxElement implements BaseLynxElement {
    *    #doRemove() detaches from the native tree.
    */
   remove() {
+    // A removal waits for the next flush, and asks for none itself, so that
+    // a re-insert in the meantime is a move (see #pendingRemovals and
+    // nativeWriteEpoch).
+    nativeWriteEpoch++;
     if (this.isRootPageElement) return;
     // Count the removal request on the synchronous path. `__PROFILE__` is a
     // build-time `define` — read it here rather than from the deferred drain (in
@@ -2877,9 +2891,8 @@ export class LynxElement implements BaseLynxElement {
       entry.eventName === 'scroll' &&
       this.#hearsOnlyScrollPlaceholder(entry)
     ) {
-      // What a list item's build left for a later flush (see
-      // scheduleSettleFlush) got one from the next scroll event, as it gets
-      // one from any other event: it still does.
+      // What a list item's build left for a later flush still gets one from
+      // the next event, this one included (see settleSkippedForListItem).
       if (settleSkippedForListItem) scheduleSettleFlush();
       return undefined;
     }
@@ -2938,6 +2951,7 @@ export class LynxElement implements BaseLynxElement {
       this.#fieldText = event.detail.value;
     }
     let result: unknown;
+    const epoch = nativeWriteEpoch;
     // As a DOM event does: the listeners are those registered when the event
     // fires, so one that removes itself doesn't make the next one skip, and a
     // listener an earlier one removed (an @if hiding part of the element, say)
@@ -2952,12 +2966,28 @@ export class LynxElement implements BaseLynxElement {
     // .end() therefore never flushes those mutations. On native the effect is a
     // delayed paint; on web (@lynx-js/web-core's offscreen document) the mutation
     // never reaches the real DOM at all, so imperative animations silently do
-    // nothing (verified in a headless browser). Schedule the same coalesced
-    // safety-net flush used for content built outside a cycle so these mutations
-    // commit. It's a near-no-op when nothing is layout-dirty, and if the handler
-    // DID change a signal the resulting CD flush runs and this stays a guarded
-    // no-op — so there's no double-flush cost.
-    scheduleSettleFlush();
+    // nothing (verified in a headless browser). Most writes schedule the same
+    // coalesced safety-net flush used for content built outside a cycle
+    // themselves; the ones that leave it to their caller (see
+    // nativeWriteEpoch) get it here.
+    //
+    // Only when a listener did make one, or a list item's build left a flush
+    // for later (see settleSkippedForListItem). A flush with nothing to
+    // commit isn't free: Lynx still runs its patch pass on the engine thread
+    // and queues an operation for the UI thread. Scroll listeners that change
+    // nothing on most frames (ui-bar-scroll's) paid it on every frame, and a
+    // template listener that only sets signals paid it as well as its change
+    // detection's flush, which comes a task later.
+    if (nativeWriteEpoch !== epoch || settleSkippedForListItem) {
+      scheduleSettleFlush();
+    } else {
+      // A listener's code that runs in a microtask it queued (an async
+      // listener after an `await`) writes after this returns, and before
+      // the flush scheduled here would have run: it got that flush, so it
+      // still does.
+      dispatchesToCheck.push(epoch);
+      queueMicrotask(checkDispatchWrites);
+    }
     return result;
   }
 }
@@ -3057,11 +3087,41 @@ let settleFlushScheduled = false;
  * Whether a settle flush was asked for, and skipped, while a list item was
  * being built (see scheduleSettleFlush), with no settle flush since. The
  * item's own flush covers the item only, so a change it made elsewhere waits
- * for the next flush. The next native event brings it, even one only the
- * iOS scroll placeholder hears (see #dispatch), as every event did when each
- * one flushed.
+ * for the next flush. The next native event brings it, even one whose
+ * listeners change nothing (see #dispatch), as every event did when each one
+ * flushed.
  */
 let settleSkippedForListItem = false;
+
+/**
+ * Counts the writes to native made through LynxElement that leave their
+ * flush to whoever made them, so #dispatch can tell whether an event's
+ * listeners changed anything it should flush: setAttribute (a class, id,
+ * data-* or `hidden`), #rewriteInlineStyle (custom properties, `hidden` and
+ * the runtime's own styles), appendChild, insertBefore and remove. The other
+ * writes (a style, a class added, a UI method, an animation, a handler, a
+ * new element) call scheduleSettleFlush themselves, and get their flush
+ * whatever the dispatch does. A counter, not a flag: dispatches nest (the
+ * document's listeners run inside the page's, see global-events), and an
+ * inner one mustn't hide an outer one's writes.
+ */
+let nativeWriteEpoch = 0;
+
+/**
+ * The epochs of the dispatches whose listeners wrote nothing while they ran,
+ * oldest first, each checked again in a microtask (see #dispatch). Numbers in
+ * a queue rather than a closure per event: they come on every frame.
+ */
+const dispatchesToCheck: number[] = [];
+
+/**
+ * Flushes for the oldest dispatch in dispatchesToCheck if anything was
+ * written since it began.
+ */
+const checkDispatchWrites = (): void => {
+  const epoch = dispatchesToCheck.shift();
+  if (nativeWriteEpoch !== epoch) scheduleSettleFlush();
+};
 
 /**
  * Safety-net flush for native mutations made OUTSIDE a begin()/end() change-

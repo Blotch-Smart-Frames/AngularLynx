@@ -438,6 +438,8 @@ Native Lynx drops the animation: the element is in the fiber tree but not yet in
 
 Give the element its starting look as an inline style in the turn that creates it, and start the animation on a later turn (a `setTimeout(…, 0)`), after the flush: `<lynx-stack-outlet>` does this for every transition, and `ui-bottom-sheet` waits a turn before it slides its panel in for the same reason.
 
+An element that was only hidden doesn't have the problem: one shown again with `display` back from `none` plays an `animate()` started in the same turn. On the iOS 27 Simulator, `ui-progress`'s value fill, hidden while the bar is indeterminate, grew from 60% to 90% over its 350 ms when the bar came back at a new value. So keep an element that animates as it comes back in the template, hidden, rather than making it again.
+
 ---
 
 ## Animations run on the thread Angular runs on, at 60 fps on an iPhone unless the app asks for more
@@ -507,7 +509,7 @@ The loading loops showed the same. In an app `ng build --platform ios` made, on 
 - Start a transition with `afterFrame()`, which runs on the turn after a frame, once the thread has nothing else waiting (four frames at most): `<lynx-stack-outlet>` starts a push or a pop from it, and `ui-bottom-sheet` its moves.
 - Move by `transform` rather than a size: `ui-bottom-sheet` moves between detents laid out at the taller one, and translated, and lays itself out at a shorter one once it's there.
 - End one early by taking its `transition` away.
-- Run a loading loop (a spinner, a skeleton's pulse, an indeterminate bar) as `@keyframes` on such an element, as `ui-spinner`, `ui-skeleton` and `ui-progress` do: it shows while Angular builds a screen, which is exactly when Lynx's animator stops. On a ProMotion iPhone it runs at 60 fps, as loops keep the system's rate (see above). An element whose width also animates by `animate()` can't move on both: `ui-progress` makes a fill of its own for each mode.
+- Run a loading loop (a spinner, a skeleton's pulse, an indeterminate bar) as `@keyframes` on such an element, as `ui-spinner`, `ui-skeleton` and `ui-progress` do: it shows while Angular builds a screen, which is exactly when Lynx's animator stops. On a ProMotion iPhone it runs at 60 fps, as loops keep the system's rate (see above). Keep the loop off an element that something else moves with `animate()`, which does nothing there: `ui-spinner` turns a view inside its host, which an app may fade, and `ui-progress` hides its value's fill (whose width `animate()` changes) and slides another in its place. `ui-skeleton` keeps the loop on its host, which the app's classes style, so an app animates a view around it.
 
 ---
 

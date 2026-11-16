@@ -18,6 +18,11 @@ import { cn } from '../../utils/cn';
  * attribute is static, there from the moment the host is made. Android
  * animates only a view of its own (`flatten` false). The web preview ignores
  * the attribute, and the browser runs the animation.
+ *
+ * So `animate()` on the skeleton itself does nothing on iOS or Android: an
+ * app that fades or moves one wraps it in a view and animates that. The pulse
+ * stays on the host rather than a view inside it, which would take the app's
+ * classes (its size and corners) away from the element they style.
  */
 @Component({
   selector: 'ui-skeleton',

@@ -28,34 +28,36 @@ import { cn } from '@blotch/dolan/utils/cn';
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
   host: { '[class]': 'trackClass()' },
-  // While indeterminate, the fill slides by a CSS animation the platform
-  // runs, not `animate()`: Lynx's own animator ticks on the thread Angular
-  // runs on, so the bar stood still for as long as Angular was busy, which is
-  // when it's shown. `enable-new-animator` false hands an element's
-  // `@keyframes` to Core Animation on iOS, which runs them in the render
-  // server, and to Android's animators on the UI thread, and Android moves
-  // only a view of its own (`flatten` false). But `animate()` does nothing on
-  // such an element, and the value's width change needs it (Core Animation
-  // can't change a Lynx element's width: its background takes the new size
-  // at once), and Lynx picks the animator as an animation is set. So each mode
-  // has a fill of its own, made with its animator: the bar still holds one
-  // fill, and `fillRef` is the one shown. The web preview ignores the
-  // attribute, and the browser runs the animation.
+  // While indeterminate, a fill of its own slides across the track, by a CSS
+  // animation the platform runs, not `animate()`: Lynx's own animator ticks
+  // on the thread Angular runs on, so the bar stood still for as long as
+  // Angular was busy, which is when it's shown. `enable-new-animator` false
+  // hands an element's `@keyframes` to Core Animation on iOS, which runs them
+  // in the render server, and to Android's animators on the UI thread, and
+  // Android moves only a view of its own (`flatten` false). Lynx picks the
+  // animator as an animation is set, so the attributes are static, there from
+  // the moment the fill is made. The web preview ignores the attribute, and
+  // the browser runs the animation.
+  //
+  // The value's fill (`fillRef`) stays the same element throughout, hidden
+  // while indeterminate: `animate()`, which grows and shrinks it as the value
+  // changes, does nothing on an element the platform animates (and Core
+  // Animation can't change a Lynx element's width: its background takes the
+  // new size at once). It comes first, so the sliding fill takes its place
+  // in the track while it's hidden.
   template: `
+    <view #fill [class]="fillClass()" [style]="fillStyle()" />
     @if (indeterminate()) {
       <view
-        #fill
         enable-new-animator="false"
         flatten="false"
         [class]="fillClass()"
-        [style]="fillStyle()"
+        [style]="slideStyle"
       />
-    } @else {
-      <view #fill [class]="fillClass()" [style]="fillStyle()" />
     }
   `,
   // In the component, not the theme, so an app that copies the bar gets them
-  // with it. The fill is 40% of the track's width, and a `translateX`
+  // with it. The sliding fill is 40% of the track's width, and a `translateX`
   // percentage is of the fill's own width, so -100% starts it just off the
   // track's left edge and 250% ends it just past the right.
   styles: `
@@ -83,38 +85,35 @@ export class UiProgress {
   #previousPercent: number | null = null;
 
   /**
-   * Animates the fill's width as the value changes. A field rather than a
+   * Animates the value's fill as the value changes. A field rather than a
    * constructor: Angular's test build keeps a function for a constructor that
    * nothing calls, which an app's coverage report would show as uncovered.
    */
   protected readonly fillAnimation = effect(() => {
-    // The indeterminate fill slides by CSS (see the template and fillStyle).
-    // A width animation running as the bar went indeterminate ran on the
-    // fill it left, which has gone with it. The fill that comes back is made
-    // at the value's width: native Lynx drops an animation on an element it
-    // hasn't drawn yet, and `fillRef` still holds the fill that left until
-    // change detection is through (effects run before the queries update),
-    // so the next run records the value, as on the first.
+    const el = this.fillRef().nativeElement;
+
+    // While indeterminate, the value's fill is hidden, and a fill of its own
+    // slides (see the template).
     if (this.indeterminate()) {
-      this.#fillAnim = undefined;
-      this.#previousPercent = null;
+      this.#fillAnim?.cancel();
       return;
     }
 
     // Determinate mode — animate width changes smoothly.
     // `#previousPercent === null` skips the very first effect run so
-    // the bar doesn't animate from 0% → initial value on mount, nor as it
-    // comes back from indeterminate. After that, it only runs again when the
-    // percent changes or the bar goes indeterminate: `percent` is a computed,
-    // so a value and max that give the same percent don't run it.
+    // the bar doesn't animate from 0% → initial value on mount.
+    // The equality guard skips the animation when the effect re-runs without
+    // a percent change: leaving indeterminate mode at the same value. Left at
+    // another value, the fill grows or shrinks from the last value it showed.
     const percent = this.percent();
     if (this.#previousPercent === null) {
       this.#previousPercent = percent;
       return;
     }
+    if (percent === this.#previousPercent) return;
 
     this.#fillAnim?.cancel();
-    this.#fillAnim = this.fillRef().nativeElement.animate(
+    this.#fillAnim = el.animate(
       [{ width: `${this.#previousPercent}%` }, { width: `${percent}%` }],
       { duration: DURATION.slow, easing: EASING.standard, fill: 'forwards' },
     );
@@ -141,15 +140,18 @@ export class UiProgress {
     cn('h-full rounded-full bg-primary'),
   );
 
+  // `display: none` while indeterminate, rather than leaving the template:
+  // the same element comes back, which animates from the last value it
+  // showed.
+  protected readonly fillStyle = computed(
+    () =>
+      `width: ${this.percent()}%;${this.indeterminate() ? ' display: none;' : ''}`,
+  );
+
   // The 40% width is an inline style, not a keyframe: an animator that has a
   // layout property such as `width` among an animation's keyframes, even one
   // that never changes, resolves styles and lays the page out again on every
   // frame for as long as the loop runs. A `translateX` in % alone skips both
-  // (see investigations/lynx-vs-web-differences.md). The slide is inline too,
-  // so the fill's classes are the same in both modes.
-  protected readonly fillStyle = computed(() =>
-    this.indeterminate()
-      ? `width: 40%; animation: ui-progress-slide 1200ms ${EASING.standard} infinite;`
-      : `width: ${this.percent()}%;`,
-  );
+  // (see investigations/lynx-vs-web-differences.md).
+  protected readonly slideStyle = `width: 40%; animation: ui-progress-slide 1200ms ${EASING.standard} infinite;`;
 }

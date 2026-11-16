@@ -44,7 +44,10 @@ const renderProgress = async () => {
     ...result,
     host: result.componentRef.instance as ProgressHost,
     track: () => result.container.querySelector('.bg-muted')!,
+    // The value's fill, the track's first child.
     fill: () => result.container.querySelector('.bg-primary')!,
+    // The fill that slides while indeterminate, after it.
+    slider: () => result.container.querySelectorAll('.bg-primary')[1],
   };
 };
 
@@ -107,31 +110,32 @@ describe('UiProgress', () => {
   // while Angular builds a screen, which is when the bar shows. Lynx's own
   // animator ticks on Angular's thread, and stood still meanwhile.
   it("slides a 40% fill across the track on the platform's animator while indeterminate", async () => {
-    const { host, container, fill } = await renderProgress();
+    const { host, fill, slider } = await renderProgress();
     host.value.set(60);
     await waitForUpdate();
     animate.mockClear();
 
     host.indeterminate.set(true);
     await waitForUpdate();
-    // Still one fill, with the same classes.
-    expect(container.querySelectorAll('.bg-primary')).toHaveLength(1);
-    expect([...fill().classList].sort()).toEqual([
+    expect([...slider().classList].sort()).toEqual([
       'bg-primary',
       'h-full',
       'rounded-full',
     ]);
-    expect(fill().getAttribute('enable-new-animator')).toBe('false');
+    expect(slider().getAttribute('enable-new-animator')).toBe('false');
     // Android moves only a view of its own.
-    expect(fill().getAttribute('flatten')).toBe('false');
-    const { style } = fill() as HTMLElement;
+    expect(slider().getAttribute('flatten')).toBe('false');
+    const { style } = slider() as HTMLElement;
     expect(style.width).toBe('40%');
     expect(style.animationName).toBe('ui-progress-slide');
     expect(style.animationDuration).toBe('1200ms');
     expect(style.animationTimingFunction).toBe('cubic-bezier(0.4, 0, 0.2, 1)');
     expect(style.animationIterationCount).toBe('infinite');
-    // animate() does nothing on an element the platform animates. (The
-    // value's width animation is canceled with the fill that left.)
+    // The value's fill hides, in place: it's the one that comes back.
+    expect((fill() as HTMLElement).style.display).toBe('none');
+    expect(fill().hasAttribute('enable-new-animator')).toBe(false);
+    // Nothing starts on Lynx's animator: animate() does nothing on an
+    // element the platform animates.
     expect(
       animate.mock.calls.map(([, [operation]]) => operation),
     ).not.toContain(START);
@@ -147,24 +151,28 @@ describe('UiProgress', () => {
   });
 
   it("returns to the value without animating when it hasn't changed", async () => {
-    const { host, fill } = await renderProgress();
+    const { host, fill, slider } = await renderProgress();
+    const shown = fill();
     host.indeterminate.set(true);
     await waitForUpdate();
     animate.mockClear();
 
     host.indeterminate.set(false);
     await waitForUpdate();
+    // The same fill, shown again, and the sliding one gone.
+    expect(fill()).toBe(shown);
+    expect(slider()).toBeUndefined();
     expect(fill().getAttribute('style')).toBe('width: 40%;');
-    // Back on Lynx's animator, which animates its width as the value changes.
-    expect(fill().hasAttribute('enable-new-animator')).toBe(false);
-    expect(animate).not.toHaveBeenCalled();
+    expect(
+      animate.mock.calls.map(([, [operation]]) => operation),
+    ).not.toContain(START);
   });
 
-  // A fill of its own for each mode: the one that comes back is made at the
-  // value's width, and native Lynx drops an animation on an element it
-  // hasn't drawn yet.
-  it('comes back at a value set while indeterminate, then animates each change', async () => {
+  it('animates from the last value it showed to one set while indeterminate', async () => {
     const { host, fill } = await renderProgress();
+    host.value.set(60);
+    await waitForUpdate();
+    const shown = fill();
     host.indeterminate.set(true);
     await waitForUpdate();
     host.value.set(80);
@@ -173,15 +181,12 @@ describe('UiProgress', () => {
 
     host.indeterminate.set(false);
     await waitForUpdate();
+    expect(fill()).toBe(shown);
     expect(fill().getAttribute('style')).toBe('width: 80%;');
-    expect(animate).not.toHaveBeenCalled();
-
-    host.value.set(90);
-    await waitForUpdate();
     expect(animate).toHaveBeenCalledWith(fill(), [
       START,
       expect.any(String),
-      [{ width: '80%' }, { width: '90%' }],
+      [{ width: '60%' }, { width: '80%' }],
       expect.objectContaining({ fill: 'forwards' }),
     ]);
   });

@@ -288,10 +288,13 @@ describe('UiButton', () => {
     const { host, spinner, update } = await renderButton();
     await update(() => host.loading.set(true));
     /**
-     * The spinner's size: its own view carries it, and the svg fills it.
+     * The spinner's size: its host carries it, and the view that turns the
+     * svg fills it.
      */
     const spinnerSize = () =>
-      (spinner()!.parentElement as HTMLElement).style.getPropertyValue('width');
+      (
+        spinner()!.closest('._ngtag-ui-spinner') as HTMLElement
+      ).style.getPropertyValue('width');
     expect(spinnerSize()).toBe('20px');
 
     await update(() => host.size.set('sm'));

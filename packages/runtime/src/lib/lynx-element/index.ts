@@ -3,6 +3,7 @@ export {
   LynxElement,
   markTreeFlushed,
   processPendingAttributeRemovals,
+  processPendingClasses,
   processPendingFlow,
   processPendingInvokes,
   processPendingRemovals,

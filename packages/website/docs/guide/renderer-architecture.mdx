@@ -71,7 +71,7 @@ The plugin finds those files in Angular's compiled output, and in installed pack
 | `removeChild()`                 | Queues the removal. `__RemoveElement` runs at the end of the cycle                                                                                                     |
 | `setAttribute()`                | `__SetClasses` for `class`, `__SetInlineStyles` for `style`, `__SetID` for `id`, `__SetDataset` for `data-*`, otherwise `__SetAttribute`                               |
 | `setStyle()`, `removeStyle()`   | `__AddInlineStyle` (a `null` value removes)                                                                                                                            |
-| `addClass()`, `removeClass()`   | `__AddClass`; `__GetClasses` then `__SetClasses`                                                                                                                       |
+| `addClass()`, `removeClass()`   | During change detection, one `__SetClasses` per element at the end of the cycle. Outside it, `__AddClass`; `__SetClasses`                                              |
 | `setValue()` on a text node     | `__SetAttribute(el, 'text', value)`                                                                                                                                    |
 | `listen()`                      | `__AddEvent(el, eventType, name, { type: 'worklet', value: listener })`, with `eventType` from the `bind`, `catch`, `capture-` or `global-` prefix                     |
 | `parentNode()`, `nextSibling()` | `__GetParent`, `__NextElement`                                                                                                                                         |
@@ -83,6 +83,7 @@ A few choices behind the table:
 - **`<list>` is special.** It returns a `LynxListElement`, whose children the engine requests through a `componentAtIndex` callback instead of `__AppendElement`.
 - **Native references can't be hashed.** Using one as a `Map`, `Set` or `WeakSet` key crashes the main-thread engine. Wrappers are keyed by `__GetElementUniqueID()` instead.
 - **`listen()` adds no-op `stopPropagation()` and `preventDefault()`** to event objects that lack them, so Angular's own listener wrapper doesn't throw.
+- **Class changes wait for the end of the cycle.** Angular applies a `[class]` binding one class at a time, and the engine resolves styles only when the tree is flushed, so `end()` writes each changed element's class string in one call. An element whose native class list the runtime can't know exactly, such as one from a server render's snapshot, or one given a class it has already, gets a call for each change, as before.
 
 ## Emulated and None renderers
 
@@ -98,14 +99,15 @@ The browser's emulated renderer adds `_ngcontent-*` and `_nghost-*` attributes, 
 
 Element functions change the engine's element tree right away, but nothing is laid out or drawn until **`__FlushElementTree()`** runs. Angular calls `begin()` and `end()` on the renderer factory around every change-detection cycle. `end()` runs, in this order:
 
-1. **`processPendingRemovals()`** commits queued removals with `__RemoveElement`.
-2. **`processPendingTextNormalization()`** trims edge spaces from text runs that changed.
-3. **`processPendingListUpdates()`** tells each `<list>` that gained, lost or moved items which ones, with its `update-list-info`.
-4. **`__FlushElementTree()`** commits everything to the screen, the lists' updates included, in one flush however many lists changed. The engine asks each list for its items while it lays them out, and each item is flushed on its own as it's added. React Lynx sends the lists of a commit before its one flush the same way.
+1. **`processPendingClasses()`** writes the classes the cycle changed, with one `__SetClasses` per element.
+2. **`processPendingRemovals()`** commits queued removals with `__RemoveElement`.
+3. **`processPendingTextNormalization()`** trims edge spaces from text runs that changed.
+4. **`processPendingListUpdates()`** tells each `<list>` that gained, lost or moved items which ones, with its `update-list-info`.
+5. **`__FlushElementTree()`** commits everything to the screen, the lists' updates included, in one flush however many lists changed. The engine asks each list for its items while it lays them out, and each item is flushed on its own as it's added. React Lynx sends the lists of a commit before its one flush the same way.
 
 A flush must never run while a list is building one of its items, inside the engine's layout: it would re-enter it and crash. A `*lynxListFor` item's change detection runs there, so its `end()` updates the lists in the item and leaves the flush to the item.
 
-**The first render isn't flushed by `end()`.** Bootstrap's change detection still runs inside the engine's `renderPage()` call. A promise continuation doesn't escape it, because the engine drains microtasks before the call returns. So `end()` skips steps 3 and 4 until `markFirstRenderComplete()`, and the engine flushes once `renderPage()` returns. Work that must not run inside that call waits for a `setTimeout`, such as the lists' first updates, which then share one flush. `@lynx-js/web-core` has no flush after `renderPage()`, so on the web the runtime schedules one.
+**The first render isn't flushed by `end()`.** Bootstrap's change detection still runs inside the engine's `renderPage()` call. A promise continuation doesn't escape it, because the engine drains microtasks before the call returns. So `end()` skips steps 4 and 5 until `markFirstRenderComplete()`, and the engine flushes once `renderPage()` returns. Work that must not run inside that call waits for a `setTimeout`, such as the lists' first updates, which then share one flush. `@lynx-js/web-core` has no flush after `renderPage()`, so on the web the runtime schedules one.
 
 **Changes outside a cycle get a settle flush.** `scheduleSettleFlush()` queues one microtask that commits removals, text, any lists that changed, and a flush. It runs when:
 

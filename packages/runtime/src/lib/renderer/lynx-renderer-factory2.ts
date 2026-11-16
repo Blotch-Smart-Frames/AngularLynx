@@ -12,6 +12,7 @@ import {
   flushTreeWithListUpdates,
   markTreeFlushed,
   processPendingAttributeRemovals,
+  processPendingClasses,
   processPendingFlow,
   processPendingInvokes,
   processPendingListUpdates,
@@ -90,6 +91,8 @@ export class LynxRendererFactory2 implements RendererFactory2 {
   /**
    * Called by Angular after every change detection cycle completes.
    * The order is critical:
+   *   0. processPendingClasses() — writes the classes changed during the
+   *      cycle, one __SetClasses per element, on every return path.
    *   1. processPendingRemovals() — commits genuine element removals queued
    *      during this cycle. MUST run before the flush so the __RemoveElement
    *      calls land in the SAME flush as the cycle's other mutations; draining
@@ -147,6 +150,13 @@ export class LynxRendererFactory2 implements RendererFactory2 {
       // as outside-a-cycle (see begin() / scheduleSettleFlush). The flush
       // below is unconditional, so clearing the flag now does not affect it.
       setInsideChangeDetection(false);
+      // The classes changed during the cycle, one __SetClasses per element
+      // (see LynxElement's #pendingClasses). First, so that every path
+      // below has them: the flush, the first render's (which native makes
+      // after renderPage), a list item's (which componentAtIndex makes),
+      // and a server render's hydration, which flushes nothing here but had
+      // each class written as it changed.
+      processPendingClasses();
       // During SSR hydration the native tree already exists from the snapshot
       // — flushing would be redundant and could cause visual glitches.
       // `__ENABLE_SSR__` is a build-time `define` (false in the Vitest config)

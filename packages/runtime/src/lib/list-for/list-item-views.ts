@@ -4,9 +4,10 @@ import type {
   ViewContainerRef,
 } from '@angular/core';
 import type { LynxElement } from '../lynx-element';
-import type {
-  ListItemRun,
-  LynxListItemSource,
+import {
+  attributesDiffer,
+  type ListItemRun,
+  type LynxListItemSource,
 } from '../lynx-element/lynx-list-element';
 import type { ElementRef } from '../types/lynx';
 import { LynxListForContext } from './list-for-context';
@@ -40,6 +41,24 @@ type ItemView<T> = {
 };
 
 const EMPTY_RUN: ListItemRun = { keys: [], types: [], attributes: [] };
+
+/**
+ * Whether two runs tell native the same: the same keys and types in the same
+ * order, with the same layout attributes.
+ */
+const sameRun = (a: ListItemRun, b: ListItemRun): boolean => {
+  if (a.keys.length !== b.keys.length) return false;
+  for (let i = 0; i < a.keys.length; i++) {
+    if (
+      a.keys[i] !== b.keys[i] ||
+      a.types[i] !== b.types[i] ||
+      attributesDiffer(a.attributes[i], b.attributes[i])
+    ) {
+      return false;
+    }
+  }
+  return true;
+};
 
 let nextRunId = 1;
 
@@ -78,7 +97,10 @@ export class ListItemViews<T> implements LynxListItemSource {
   /** The items and their run, as the directive last set them. */
   #items: readonly T[] = [];
   #run: ListItemRun = EMPTY_RUN;
-  /** The same, as the list last told native about them (see commit). */
+  /**
+   * The same, as the list last told native about them (see commit), or as
+   * setItems() took them when they held nothing new for native.
+   */
   #committedItems: readonly T[] = [];
   #committedRun: ListItemRun = EMPTY_RUN;
   /**
@@ -108,21 +130,43 @@ export class ListItemViews<T> implements LynxListItemSource {
    * given its item's new value and index, for the change detection running
    * now to show; a view whose item is gone, or changed type, is let go of,
    * and keeps showing it until native lets go of its element.
+   *
+   * Returns whether the list has news for native. It has none when every
+   * item kept its key, type and layout attributes, and native was told
+   * about the run before this: an edit to what the items show, such as a
+   * signal's `update()` that replaces one row with a copy, or a refetch of
+   * the same rows. Its views show it now, and the items count as committed
+   * at once, as the list update would have committed them, so the list
+   * doesn't collect and diff every item to find nothing to send.
    */
-  setItems(items: readonly T[], run: ListItemRun): void {
+  setItems(items: readonly T[], run: ListItemRun): boolean {
+    // Asked before #run moves: a run the list hasn't committed yet (while
+    // the first render defers list updates) still has to reach native.
+    const told =
+      this.#run === this.#committedRun && sameRun(run, this.#committedRun);
     this.#items = items;
     this.#run = run;
-    const indexOfKey = new Map<string, number>();
-    for (let i = 0; i < run.keys.length; i++) indexOfKey.set(run.keys[i]!, i);
-    this.#indexOfKey = indexOfKey;
+    // The same keys at the same indices keep the same map.
+    if (!told) {
+      const indexOfKey = new Map<string, number>();
+      for (let i = 0; i < run.keys.length; i++) {
+        indexOfKey.set(run.keys[i]!, i);
+      }
+      this.#indexOfKey = indexOfKey;
+    }
     for (const [key, view] of this.#byKey) {
-      const index = indexOfKey.get(key);
+      const index = this.#indexOfKey.get(key);
       if (index === undefined || run.types[index] !== view.type) {
         this.#unclaim(key, view);
         continue;
       }
       this.#show(view, index, items);
     }
+    if (!told) return true;
+    // What commit() does: bind() shows native's items from these.
+    this.#committedItems = items;
+    this.#committedRun = run;
+    return false;
   }
 
   commit(): ListItemRun {

@@ -233,6 +233,17 @@ const withAddedTraits = (own: unknown, added: readonly string[]): unknown => {
  */
 const isCustomProperty = (name: string): boolean => name.startsWith('--');
 
+const WHITESPACE = /\s/;
+
+/**
+ * Whether a class name comes back as itself when its element's class string
+ * is split on whitespace: not empty, and without whitespace of its own. An
+ * element keeps a set of such names beside its class string (see
+ * LynxElement's #classNames).
+ */
+const isPlainClassName = (name: string): boolean =>
+  name !== '' && !WHITESPACE.test(name);
+
 /**
  * True if attaching `candidate` under `parent` would form a cycle — i.e.
  * `candidate` is `parent` itself or an ancestor of `parent` in the native tree.
@@ -475,6 +486,16 @@ export class LynxElement implements BaseLynxElement {
   #dataset: Record<string, unknown> = {};
   /** Full space-separated class string, mirroring __SetClasses semantics. */
   #classes = '';
+  /**
+   * The names in #classes, in order, while #classes is exactly their join
+   * and each is a plain class name (see isPlainClassName). addClass then adds
+   * a name by appending it, rather than splitting and joining the whole
+   * string again: Angular adds a `[class]` binding's classes one at a time,
+   * often ten or more on a component's host. Null until the first class, and
+   * after a removal, which takes the classes from native (see removeClass);
+   * the next addClass builds it from #classes, as it always did.
+   */
+  #classNames: Set<string> | null = null;
   /**
    * ViewEncapsulation.Emulated's scope classes (see EmulatedLynxRenderer).
    * Angular writes static and bound classes as one whole class string through
@@ -978,16 +999,21 @@ export class LynxElement implements BaseLynxElement {
       // the literal class 'foo bar baz' rather than three separate classes,
       // so no CSS rule would ever match. __SetClasses correctly parses the
       // space-separated list. This matches how React Lynx handles className.
-      const classes = [
-        ...new Set([
-          ...String(value ?? '')
-            .split(/\s+/)
-            .filter(Boolean),
-          ...this.#scopeClasses,
-        ]),
-      ].join(' ');
+      const names = new Set([
+        ...String(value ?? '')
+          .split(/\s+/)
+          .filter(Boolean),
+        ...this.#scopeClasses,
+      ]);
+      const classes = [...names].join(' ');
       __SetClasses(this.element, classes);
       this.#classes = classes;
+      // The split's names are plain, and the scope classes Angular and the
+      // runtime name are too; an odd one an app gave setRuntimeClass leaves
+      // the set to the next addClass.
+      this.#classNames = this.#scopeClasses.every(isPlainClassName)
+        ? names
+        : null;
       this.#rulesChanged();
     } else if (name === 'style') {
       this.setInlineStyles(value);
@@ -1209,7 +1235,9 @@ export class LynxElement implements BaseLynxElement {
    * (see styleFlagsFor): its classes, its id and its tag.
    */
   #styleTokens(): Set<string> {
-    const tokens = new Set(this.#classes.split(/\s+/).filter(Boolean));
+    const tokens = new Set(
+      this.#classNames ?? this.#classes.split(/\s+/).filter(Boolean),
+    );
     if (this.#id) tokens.add(`#${this.#id}`);
     tokens.add(`<${this.tagName}>`);
     return tokens;
@@ -1727,9 +1755,21 @@ export class LynxElement implements BaseLynxElement {
     __AddClass(this.element, name);
     // Keep the cached class string in sync (deduped) so recreation replays the
     // full class list in one __SetClasses.
-    const set = new Set(this.#classes.split(/\s+/).filter(Boolean));
-    set.add(name);
-    this.#classes = [...set].join(' ');
+    const plain = isPlainClassName(name);
+    const names = this.#classNames;
+    if (names && plain) {
+      // #classes is their join, so a new name goes on its end: the same
+      // string the rebuild below makes.
+      if (!names.has(name)) {
+        names.add(name);
+        this.#classes = this.#classes ? `${this.#classes} ${name}` : name;
+      }
+    } else {
+      const rebuilt = new Set(this.#classes.split(/\s+/).filter(Boolean));
+      rebuilt.add(name);
+      this.#classes = [...rebuilt].join(' ');
+      this.#classNames = plain ? rebuilt : null;
+    }
     this.#rulesChanged();
     scheduleSettleFlush();
   }
@@ -1771,6 +1811,9 @@ export class LynxElement implements BaseLynxElement {
     const joined = classes.join(' ');
     __SetClasses(this.element, joined);
     this.#classes = joined;
+    // Native's list is the truth here, and may hold what the set can't (a
+    // name twice), so the next addClass builds the set from #classes.
+    this.#classNames = null;
     this.#rulesChanged();
     scheduleSettleFlush();
   }

@@ -97,11 +97,19 @@ export const renamePackagePrivateMethods = (
  * stand-in for PrimJS, which has no JIT to take that cost away.
  *
  * `#m(…) {…}` becomes `__m_<key><n>(…) {…}`, where `<key>` comes from the
- * file and `<n>` counts the module's classes, so a subclass's `#m` never
- * overrides its base's, even in another module. Every `x.#m` and `x?.#m`
+ * file and `<n>` counts the module's classes, so a subclass's `#m` doesn't
+ * override its base's, even in another module. Every `x.#m` and `x?.#m`
  * that names it becomes `x.__m_<key><n>` (or `x?.…`). A private name belongs
  * to the innermost class that declares it, so a nested class's own `#m` is
  * renamed apart from the outer one's.
+ *
+ * The names are per class in the source, not per class made, which is the
+ * same thing for a class the module makes once: one at the top level, or in
+ * a function called at once, such as the pure `(() => {…})()` Angular
+ * wraps a decorated class in. A class expression that can run more
+ * than once (a mixin or a class factory) makes a class each time, all with
+ * the same names on their prototypes, so one of them made from another, as
+ * `Mixin(Mixin(Base))` is, would override its base's `#m` with its own.
  *
  * Left as they are:
  *
@@ -109,6 +117,10 @@ export const renamePackagePrivateMethods = (
  *   (issue #237, layers.ts), and static private methods, which are defined
  *   once anyway.
  * - Any class that uses `#name in object`: a public name can't answer it.
+ * - A class with `extends` that can be made more than once: one inside a
+ *   function that isn't called at once, inside a loop, or in an instance
+ *   field's initializer. One without `extends` can't be made from another,
+ *   and is renamed.
  *
  * As class methods, the renamed ones are non-enumerable and live on the
  * prototype: `Object.keys()` of an instance doesn't change, and
@@ -150,25 +162,34 @@ export const renamePrivateMethods = (
   let classCount = 0;
 
   /**
-   * A class's private names, before its body is visited.
+   * A class's private names, before its body is visited. `repeated` is
+   * whether the class can be made more than once (see visit).
    */
-  const declareClass = (node: ts.ClassLikeDeclaration): ClassScope => {
+  const declareClass = (
+    node: ts.ClassLikeDeclaration,
+    repeated: boolean,
+  ): ClassScope => {
     const index = classCount++;
     const names = new Map<string, string | undefined>();
     for (const member of node.members) {
       if (!member.name || !ts.isPrivateIdentifier(member.name)) continue;
-      const isStatic = ts
-        .getModifiers(member as ts.HasModifiers)
-        ?.some((modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword);
       const isMethod = ts.isMethodDeclaration(member) || ts.isAccessor(member);
       const name = member.name.text;
       // A getter and setter share one name, and so one new name.
       names.set(
         name,
-        isMethod && !isStatic ? `__${name.slice(1)}_${key}${index}` : undefined,
+        isMethod && !isStatic(member)
+          ? `__${name.slice(1)}_${key}${index}`
+          : undefined,
       );
     }
-    return { names, kept: false };
+    // Every class it makes would share these names, and one made from
+    // another would override its base's methods (see renamePrivateMethods).
+    const extendsAnother =
+      node.heritageClauses?.some(
+        (clause) => clause.token === ts.SyntaxKind.ExtendsKeyword,
+      ) ?? false;
+    return { names, kept: repeated && extendsAnother };
   };
 
   const references: Array<{ node: ts.PrivateIdentifier; scope: ClassScope }> =
@@ -183,15 +204,27 @@ export const renamePrivateMethods = (
     return undefined;
   };
 
-  const visit = (node: ts.Node, scopes: ClassScope[]): void => {
+  /**
+   * Visits `node`. `repeated` is whether the code it's in can run more than
+   * once while the module is evaluated once: in a function that isn't
+   * called at once, a loop, or an instance field's initializer.
+   */
+  const visit = (
+    node: ts.Node,
+    scopes: ClassScope[],
+    repeated: boolean,
+  ): void => {
     if (ts.isClassLike(node)) {
-      const inner = [...scopes, declareClass(node)];
+      const inner = [...scopes, declareClass(node, repeated)];
       // `extends` and the class's decorators are evaluated outside its body,
       // where its private names don't exist yet.
       ts.forEachChild(node, (child) =>
         visit(
           child,
           ts.isHeritageClause(child) || ts.isDecorator(child) ? scopes : inner,
+          repeated ||
+            // An instance field's initializer runs for each instance.
+            (ts.isPropertyDeclaration(child) && !isStatic(child)),
         ),
       );
       return;
@@ -215,9 +248,13 @@ export const renamePrivateMethods = (
         scope.kept = true;
       }
     }
-    ts.forEachChild(node, (child) => visit(child, scopes));
+    const repeats =
+      repeated ||
+      (ts.isFunctionLike(node) && !isCalledAtOnce(node)) ||
+      ts.isIterationStatement(node, false);
+    ts.forEachChild(node, (child) => visit(child, scopes, repeats));
   };
-  visit(sourceFile, []);
+  visit(sourceFile, [], false);
 
   const edits: Edit[] = references
     .filter(({ scope }) => !scope.kept)
@@ -240,6 +277,31 @@ export const renamePrivateMethods = (
   }
   result += code.slice(last);
   return shiftInlineSourceMap(result, edits, sourceFile);
+};
+
+/**
+ * Whether a class member is static.
+ */
+const isStatic = (member: ts.ClassElement): boolean =>
+  ts
+    .getModifiers(member as ts.HasModifiers)
+    ?.some((modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword) ??
+  false;
+
+/**
+ * Whether a function is called where it's written, and so runs once each
+ * time the code around it does: `(() => {…})()`, as Angular wraps a
+ * decorated class, or `(function () {…}())`. Parentheses around it don't
+ * count.
+ */
+const isCalledAtOnce = (node: ts.Node): boolean => {
+  let callee = node;
+  while (ts.isParenthesizedExpression(callee.parent)) {
+    callee = callee.parent;
+  }
+  return (
+    ts.isCallExpression(callee.parent) && callee.parent.expression === callee
+  );
 };
 
 /**

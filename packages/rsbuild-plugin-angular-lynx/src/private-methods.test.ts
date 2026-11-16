@@ -136,6 +136,32 @@ const FIXTURES: Record<string, string> = {
     class Outer {
       #m() { return 'outer'; }
       #only() { return 'only outer'; }
+      // Made once, as Outer is, so its own names are renamed too.
+      // \`extends\` sees Outer's names, the body Inner's.
+      static Inner = class Inner extends (log.push(new Outer().#m()), Object) {
+        #m() { return 'inner'; }
+        [\`key \${new Outer().#only()}\`]() { return 'computed'; }
+        run(outer) { return [this.#m(), outer.#only()]; }
+      };
+      shadowedKey() {
+        const outer = this;
+        try {
+          // A computed key is evaluated with the class's own names.
+          void class { #m() {} [outer.#m()]() {} };
+        } catch (error) {
+          return error instanceof TypeError;
+        }
+      }
+    }
+    const outer = new Outer();
+    const inner = new Outer.Inner();
+    [log, inner.run(outer), inner['key only outer'](), outer.shadowedKey()];
+  `,
+  'a subclass a method makes, which shadows a private name': `
+    const log = [];
+    class Outer {
+      #m() { return 'outer'; }
+      #only() { return 'only outer'; }
       make() {
         const outer = this;
         // \`extends\` sees Outer's names, the body Inner's.
@@ -231,14 +257,66 @@ const FIXTURES: Record<string, string> = {
     const shape = new Shape();
     [Object.getOwnPropertyNames(shape), Object.keys(shape), JSON.stringify(shape), shape.area()];
   `,
+  'a subclass in a pure IIFE, as Angular wraps one': `
+    let Base = /*#__PURE__*/ (() => {
+      class Base { #m() { return 'base'; } base() { return this.#m(); } }
+      return Base;
+    })();
+    let Derived = /*#__PURE__*/ (() => {
+      class Derived extends Base {
+        #m() { return 'derived'; }
+        derived() { return this.#m(); }
+      }
+      return Derived;
+    })();
+    const derived = new Derived();
+    [derived.base(), derived.derived()];
+  `,
+  'a class factory made from its own class': `
+    const make = (Base, label) => class extends Base {
+      #who() { return label; }
+      who() { return this.#who(); }
+    };
+    class Root {}
+    const One = make(Root, 'one');
+    const Two = make(One, 'two');
+    [One.prototype.who.call(new Two()), new Two().who(), new One().who()];
+  `,
+  'a mixin applied twice, whose constructor calls its own private method': `
+    const log = [];
+    const Mixin = (Base, label) => class extends Base {
+      constructor(...args) { super(...args); log.push(this.#init()); }
+      #init() { return label; }
+    };
+    class Root {}
+    class App extends Mixin(Mixin(Root, 'inner'), 'outer') {}
+    new App();
+    log;
+  `,
+  'classes a factory makes without extends': `
+    const make = (label) => class { #who() { return label; } who() { return this.#who(); } };
+    const A = make('a');
+    const B = make('b');
+    [new A().who(), new B().who()];
+  `,
 };
+
+/**
+ * The fixtures whose classes keep native private methods (see
+ * renamePrivateMethods), which SWC then defines on each instance.
+ */
+const KEPT_NATIVE = new Set([
+  'a subclass a method makes, which shadows a private name',
+  'a class factory made from its own class',
+  'a mixin applied twice, whose constructor calls its own private method',
+]);
 
 describe('renamePrivateMethods over ES2022 fixtures', () => {
   for (const [name, fixture] of Object.entries(FIXTURES)) {
     it(`matches native private methods: ${name}`, async () => {
       const expected = await runInNewContext(fixture);
       const main = compile(rename(fixture), LAYERS.MAIN_THREAD);
-      expect(main).not.toMatch(PER_INSTANCE_METHOD);
+      expect(PER_INSTANCE_METHOD.test(main)).toBe(KEPT_NATIVE.has(name));
       expect(await runInNewContext(main)).toEqual(expected);
     });
   }
@@ -347,6 +425,50 @@ describe('renamePrivateMethods', () => {
     expect(renamed(result, 'm')).toHaveLength(1);
     expect(renamed(result, 'o')).toEqual([]);
   });
+
+  it.each([
+    ['a function', 'function make(B) { return CLASS; }'],
+    ['an arrow function', 'const make = (B) => CLASS;'],
+    ['a method', 'const o = { make(B) { return CLASS; } };'],
+    ['a function called later', 'const later = (() => () => CLASS)();'],
+    ['a loop', 'for (const B of bases) list.push(CLASS);'],
+    ['an instance field', 'class Holder { made = CLASS; }'],
+  ])(
+    'keeps native private methods in a class with extends made more than once, in %s',
+    (_, around) => {
+      // Every class it makes would share one name, and one made from
+      // another would override its base's method.
+      const subclass =
+        'class extends B { #m() { return 1; } run() { return this.#m(); } }';
+      const kept = around.replace('CLASS', subclass);
+      expect(rename(kept)).toBe(kept);
+      // Without extends, it can't be made from another: renamed.
+      const plain = around.replace(
+        'CLASS',
+        'class { #m() { return 1; } run() { return this.#m(); } }',
+      );
+      expect(renamed(rename(plain), 'm')).toHaveLength(1);
+    },
+  );
+
+  it.each([
+    ['the top level', 'const C = CLASS;'],
+    ['a function called at once', 'const C = /*#__PURE__*/ (() => CLASS)();'],
+    [
+      'a function called at once, inside its parentheses',
+      'const C = (function () { return CLASS; }());',
+    ],
+    ['a static field', 'class Holder { static made = CLASS; }'],
+  ])(
+    'renames the private methods of a class with extends made once, in %s',
+    (_, around) => {
+      const code = around.replace(
+        'CLASS',
+        'class extends Base { #m() { return 1; } run() { return this.#m(); } }',
+      );
+      expect(renamed(rename(code), 'm')).toHaveLength(1);
+    },
+  );
 
   // A syntax error, which SWC reports; the pass only mustn't trip on it.
   it('leaves a private name that no class declares', () => {

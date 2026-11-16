@@ -1,6 +1,8 @@
 import {
   Component,
+  DestroyRef,
   ElementRef,
+  Renderer2,
   ViewEncapsulation,
   booleanAttribute,
   computed,
@@ -278,13 +280,12 @@ export class UiToggleGroup implements SegmentedHost {
     '[attr.accessibility-traits]': "accessibilityLabel() ? 'button' : null",
     '[attr.accessibility-label]': 'accessibilityLabel() || null',
     // The segmented control places its indicator from each item's width.
+    // The moves are listened for in code (see `moveListeners`).
     '(bindlayoutchange)': 'measure($event)',
     '(bindtouchstart)': 'onPressStart($event)',
-    '(bindtouchmove)': 'onPressMove($event)',
     '(bindtouchend)': 'onPressEnd()',
     '(bindtouchcancel)': 'onPressCancel()',
     '(bindmousedown)': 'onPressStart($event)',
-    '(bindmousemove)': 'onPressMove($event)',
     '(bindmouseup)': 'onPressEnd()',
     '(bindmouseleave)': 'onPointerLeave()',
     '(bindtap)': 'onTap()',
@@ -312,7 +313,34 @@ export class UiToggleGroupItem {
   readonly userClass = input<string>('', { alias: 'class' });
 
   readonly #host: BaseLynxElement = inject(ElementRef).nativeElement;
+  readonly #renderer = inject(Renderer2);
   #pressAnim?: AnimationHandle;
+
+  /**
+   * Listens for a press's moves in code rather than in the host metadata.
+   * Angular checks a host listener's component and every component around
+   * it after each event, and a finger sends one for every frame it moves, as
+   * does the mouse on the web, held or not, over every item. Listened for
+   * here, a move that drags a segmented control's indicator has Angular
+   * check only what the drag changes, and one that changes nothing (any move over
+   * items that aren't segments) runs no check at all. Added as the item is
+   * made, like a host listener, so they still run before an app's own
+   * listeners for the moves on `<ui-toggle-group-item>`.
+   */
+  protected readonly moveListeners = [
+    this.#renderer.listen(this.#host, 'bindtouchmove', (event: unknown) =>
+      this.onPressMove(event),
+    ),
+    this.#renderer.listen(this.#host, 'bindmousemove', (event: unknown) =>
+      this.onPressMove(event),
+    ),
+  ];
+
+  protected readonly removingMoveListeners = inject(DestroyRef).onDestroy(
+    () => {
+      for (const remove of this.moveListeners) remove();
+    },
+  );
 
   protected readonly isSelected = computed(() =>
     this.#group.isSelected(this.itemValue()),

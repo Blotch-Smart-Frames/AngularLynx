@@ -41,6 +41,9 @@ import type {
 
 const TOUCH_EVENTS = ['touchstart', 'touchmove', 'touchend', 'touchcancel'];
 
+/** The prefix of the page listeners that hear an event on any element. */
+const GLOBAL_BIND = 'global-bind';
+
 /** The pointer events a document hears: those that bubble. */
 const POINTER_EVENTS = new Set([
   'pointerover',
@@ -73,7 +76,10 @@ const sizeOf = (event: { detail?: unknown }): ViewportSize | null => {
 export class NativeScreenSource implements ScreenSource {
   readonly #events: GlobalEvents;
   #page: GlobalEventsPage | null = null;
-  /** The page listeners, by the event they're for. */
+  /**
+   * The page listeners, by the name the page took each under
+   * (`global-bindtouchstart`, `bindtouchstart`, `bindresize`, …).
+   */
   readonly #listening = new Map<string, () => void>();
   /** The fingers that are down, by pointerId (see pointerIdOf). */
   readonly #down = new Set<number>();
@@ -89,14 +95,33 @@ export class NativeScreenSource implements ScreenSource {
       this.#page = page;
     }
     if (!page) return;
-    const wanted = new Set<string>(['resize']);
+    const wanted = new Set<string>(['bindresize']);
     const typeList = [...types];
     if (
       typeList.some((t) => POINTER_EVENTS.has(t) || TOUCH_EVENTS.includes(t))
     ) {
-      for (const name of TOUCH_EVENTS) wanted.add(name);
+      for (const name of TOUCH_EVENTS) {
+        // The global-bind listener begins each dispatch (see #begin). The
+        // touchmove's is wanted even when nothing listens for a move (a
+        // click-outside `pointerdown` is the usual document listener): its
+        // first job is finishing the last event's dispatch, so a caught
+        // touchstart's pointerdown still reaches the document before the
+        // next move's listeners run. #begin does nothing more for a move
+        // nobody hears.
+        wanted.add(`global-bind${name}`);
+        // The page's own bubbling listener for each: it shares the page's
+        // native handler with an app's listener for the event on the page,
+        // so a capture one there (`capture-bindtouchmove` on the root
+        // component's host) stays registered bubbling, after its
+        // descendants' (see combinedEventType). With nothing pending, it
+        // does nothing.
+        wanted.add(`bind${name}`);
+      }
     }
-    if (types.has('click')) wanted.add('tap');
+    if (types.has('click')) {
+      wanted.add('global-bindtap');
+      wanted.add('bindtap');
+    }
     this.#stop([...this.#listening.keys()].filter((n) => !wanted.has(n)));
     for (const name of wanted) {
       if (!this.#listening.has(name)) {
@@ -105,32 +130,38 @@ export class NativeScreenSource implements ScreenSource {
     }
   }
 
-  #listen(page: GlobalEventsPage, name: string): () => void {
-    if (name === 'resize') {
+  /**
+   * Adds the page listener `listener` names: a `global-bind` one, which
+   * begins each dispatch (see #begin), a `bind` one, which runs after the
+   * page's own listeners and finishes it (see GlobalEvents.late), or
+   * `bindresize`.
+   */
+  #listen(page: GlobalEventsPage, listener: string): () => void {
+    if (listener === 'bindresize') {
       return page.addEventListener('bindresize', (event) => {
         const size = sizeOf(event);
         if (size) this.#events.resized(size);
       });
     }
-    const stopEarly = page.addEventListener(`global-bind${name}`, (event) =>
-      this.#begin(name, event),
-    );
-    const stopLate = page.addTrailingEventListener(`bind${name}`, () =>
+    if (listener.startsWith(GLOBAL_BIND)) {
+      const name = listener.slice(GLOBAL_BIND.length);
+      return page.addEventListener(listener, (event) =>
+        this.#begin(name, event),
+      );
+    }
+    const name = listener.slice('bind'.length);
+    return page.addTrailingEventListener(listener, () =>
       this.#events.late(name),
     );
-    return () => {
-      stopEarly();
-      stopLate();
-    };
   }
 
-  #stop(names: string[]): void {
-    for (const name of names) {
-      this.#listening.get(name)?.();
-      this.#listening.delete(name);
+  #stop(listeners: string[]): void {
+    for (const listener of listeners) {
+      this.#listening.get(listener)?.();
+      this.#listening.delete(listener);
       // Fingers that went down while touches were heard can't be followed
       // any more.
-      if (name === 'touchstart') {
+      if (listener === `${GLOBAL_BIND}touchstart`) {
         this.#down.clear();
         this.#primary = null;
       }
@@ -141,6 +172,17 @@ export class NativeScreenSource implements ScreenSource {
     // The last event's listeners all ran before this one began, so one
     // still pending was stopped before it reached the page.
     this.#events.finishPending();
+    // A move that no pointermove or touchmove listener hears has nothing
+    // to deliver, and following the fingers takes only touches' starts and
+    // ends (see #pointers). Returning here spares every touchmove anywhere
+    // on the screen, all through a scroll, a dispatch built for nothing.
+    if (
+      name === 'touchmove' &&
+      !this.#events.hasListeners('pointermove') &&
+      !this.#events.hasListeners('touchmove')
+    ) {
+      return;
+    }
     const target = this.#events.targetFor(event.target?.uid);
     const deliveries: Delivery[] =
       name === 'tap'
@@ -170,6 +212,10 @@ export class NativeScreenSource implements ScreenSource {
         continue;
       }
       for (const type of POINTERS_FOR[name]) {
+        // Only the pointer events something listens for are made: each is
+        // a LynxPointerEvent of some 35 fields, and #begin would drop the
+        // others unheard.
+        if (!this.#events.hasListeners(type)) continue;
         deliveries.push({
           type,
           event: this.#pointerEvent(type, touch, event, target),

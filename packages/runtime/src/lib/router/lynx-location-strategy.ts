@@ -15,21 +15,28 @@ let carriedOver: HistorySnapshot | undefined;
 type HistorySnapshot = { history: HistoryEntry[]; index: number };
 
 /**
- * Reads a strategy's history. Assigned in the class's static block, the only
- * place outside its methods that can reach its private fields, which keeps the
- * snapshot out of the class's public API.
+ * Reads a strategy's history. Assigned by the class's first constructor, inside
+ * the class where its private fields can be reached, which keeps the snapshot
+ * out of the class's public API.
+ *
+ * Not in a static block: one that assigns module variables makes defining the
+ * class a side effect, so bundlers kept the class, and the Router and Location
+ * code it needs, in every bundle that imports the runtime, even the background
+ * thread's and those of apps without the router. src/side-effects.test.ts
+ * fails on one. Every accessor takes a strategy, so a constructor has always
+ * run before one is called.
  */
 let snapshotOf: (strategy: LynxLocationStrategy) => HistorySnapshot;
 
 /**
  * Moves a strategy's current entry back to `index` (see {@link rewindHistory}).
- * Assigned in the class's static block, as {@link snapshotOf} is.
+ * Assigned as {@link snapshotOf} is.
  */
 let rewind: (strategy: LynxLocationStrategy, index: number) => void;
 
 /**
  * Reads one entry of a strategy's history (see {@link historyEntryAt}).
- * Assigned in the class's static block, as {@link snapshotOf} is.
+ * Assigned as {@link snapshotOf} is.
  */
 let entryAt: (
   strategy: LynxLocationStrategy,
@@ -38,12 +45,15 @@ let entryAt: (
 
 /**
  * Puts entries before a strategy's current one (see {@link restoreHistory}).
- * Assigned in the class's static block, as {@link snapshotOf} is.
+ * Assigned as {@link snapshotOf} is.
  */
 let insertBefore: (
   strategy: LynxLocationStrategy,
   entries: readonly HistoryEntry[],
 ) => void;
+
+/** Whether a strategy's constructor has assigned the accessors above. */
+let accessorsSet = false;
 
 /**
  * The entry at `index` in the history, or undefined outside it.
@@ -135,6 +145,19 @@ export class LynxLocationStrategy extends LocationStrategy {
 
   constructor() {
     super();
+    if (!accessorsSet) {
+      accessorsSet = true;
+      snapshotOf = (strategy) => ({
+        history: strategy.#history.map((entry) => ({ ...entry })),
+        index: strategy.#historyIndex,
+      });
+      rewind = (strategy, index) => strategy.#rewind(index);
+      entryAt = (strategy, index) => {
+        const entry = strategy.#history[index];
+        return entry && { ...entry };
+      };
+      insertBefore = (strategy, entries) => strategy.#insertBefore(entries);
+    }
     if (carriedOver) {
       this.#history = carriedOver.history;
       this.#historyIndex = carriedOver.index;
@@ -142,19 +165,6 @@ export class LynxLocationStrategy extends LocationStrategy {
       this.#canGoBack.set(this.#historyIndex > 0);
       carriedOver = undefined;
     }
-  }
-
-  static {
-    snapshotOf = (strategy) => ({
-      history: strategy.#history.map((entry) => ({ ...entry })),
-      index: strategy.#historyIndex,
-    });
-    rewind = (strategy, index) => strategy.#rewind(index);
-    entryAt = (strategy, index) => {
-      const entry = strategy.#history[index];
-      return entry && { ...entry };
-    };
-    insertBefore = (strategy, entries) => strategy.#insertBefore(entries);
   }
 
   #insertBefore(entries: readonly HistoryEntry[]): void {

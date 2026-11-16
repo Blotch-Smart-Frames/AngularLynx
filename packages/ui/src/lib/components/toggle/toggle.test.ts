@@ -340,6 +340,7 @@ describe('UiToggleGroup', () => {
 @Component({
   imports: [UiToggleGroup, UiToggleGroupItem, UiIcon, LYNX_ELEMENTS],
   template: `
+    <text>{{ check() }}</text>
     <ui-toggle-group
       [variant]="variant()"
       [type]="type()"
@@ -369,6 +370,15 @@ class SegmentedGroupHost {
   readonly range = signal<string[]>(['Week']);
   readonly options = signal(['Day', 'Week', 'Month']);
   readonly disabled = signal(false);
+  checks = 0;
+
+  /**
+   * Counts how often Angular checks the screen: the template calls it.
+   */
+  check(): string {
+    this.checks++;
+    return 'Range';
+  }
 }
 
 @Component({
@@ -543,6 +553,39 @@ describe('UiToggleGroup, segmented', () => {
     fireEvent.mouseup(item('Day'));
     await waitForUpdate();
     expect(host.range()).toEqual(['Day']);
+  });
+
+  // A finger sends a move for every frame it moves, and the mouse on the
+  // web one for every pixel it passes over an item. Each one had Angular
+  // check the screen around the group too, as it does for a host listener.
+  it('drags the indicator without Angular checking the screen around it', async () => {
+    const { host, item, frame, measure } = await renderSegmented();
+    await measure();
+    fireEvent.touchstart(item('Week'), { touches: [{ pageX: 120 }] });
+    await waitForUpdate();
+    const pressed = host.checks;
+
+    for (const pageX of [125, 130, 135, 140]) {
+      fireEvent.touchmove(item('Week'), { touches: [{ pageX }] });
+      await waitForUpdate();
+    }
+    // The indicator still follows the finger.
+    expect(frame()!.style.left).toBe('100px');
+    expect(host.checks).toBe(pressed);
+  });
+
+  it('runs no check for moves over items that are not segments', async () => {
+    const { host, item } = await renderSegmented();
+    host.variant.set('default');
+    await waitForUpdate();
+    const before = host.checks;
+
+    for (const pageX of [10, 20, 30]) {
+      fireEvent.touchmove(item('Day'), { touches: [{ pageX }] });
+      fireEvent.mousemove(item('Month'), { pageX, buttons: 0 });
+      await waitForUpdate();
+    }
+    expect(host.checks).toBe(before);
   });
 
   it("ignores touches while it's disabled", async () => {

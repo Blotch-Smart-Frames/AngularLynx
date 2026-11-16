@@ -9,6 +9,7 @@ import {
 import { devStats, endCdTiming, startCdTiming } from '../devtools/stats';
 import type { LynxDocumentBase } from '../lynx-document';
 import {
+  markTreeFlushed,
   processPendingAttributeRemovals,
   processPendingFlow,
   processPendingInvokes,
@@ -180,6 +181,10 @@ export class LynxRendererFactory2 implements RendererFactory2 {
         return;
       }
       if (!isFirstRenderPending()) {
+        // Everything written so far goes with this flush, the commit passes'
+        // writes included: the next native event has nothing to flush for
+        // them (see markTreeFlushed).
+        markTreeFlushed();
         __FlushElementTree();
       }
       processPendingListUpdates();

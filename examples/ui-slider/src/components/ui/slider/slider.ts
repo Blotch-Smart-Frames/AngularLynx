@@ -2,9 +2,11 @@ import {
   type ElementRef,
   Component,
   Injector,
+  Renderer2,
   ViewEncapsulation,
   booleanAttribute,
   computed,
+  effect,
   inject,
   input,
   model,
@@ -324,7 +326,8 @@ type Press = {
   // Mouse events are bound beside the touch events because a desktop
   // browser never sends touches for a mouse (see the bottom sheet). There's
   // no mouseleave: Chrome doesn't deliver it to Lynx for Web, so a move with
-  // no button held ends the drag instead.
+  // no button held ends the drag instead. The moves are listened for in code
+  // (see `listen`), not here.
   //
   // The lens (iOS 26's glass) sits under the solid thumb, the same size,
   // so it's hidden until the thumb is picked up: then the thumb fades as
@@ -346,11 +349,9 @@ type Press = {
       (bindaccessibilityaction)="onAccessibilityAction($event)"
       (bindlayoutchange)="onLayout($event)"
       (bindtouchstart)="onPressStart($event)"
-      (bindtouchmove)="onPressMove($event)"
       (bindtouchend)="onPressEnd()"
       (bindtouchcancel)="onPressCancel()"
       (bindmousedown)="onPressStart($event)"
-      (bindmousemove)="onMouseMove($event)"
       (bindmouseup)="onPressEnd()"
       (bindtap)="onTap()"
     >
@@ -427,6 +428,7 @@ export class UiSlider implements FormValueControl<number> {
 
   readonly rootRef = viewChild.required<ElementRef>('root');
 
+  readonly #renderer = inject(Renderer2);
   readonly #settings = inject(LynxAccessibilitySettings);
   readonly #design = injectGlassDesign();
   readonly #scheme = injectColorScheme();
@@ -662,6 +664,33 @@ export class UiSlider implements FormValueControl<number> {
         transition: thumbTransition,
       },
     };
+  });
+
+  /**
+   * Listens for the moves of a press in code rather than in the template.
+   * Angular checks a template listener's component and every component
+   * around it after each event, and a finger sends one for every frame it
+   * moves, as does the mouse on the web, held or not. Listened for here, a
+   * move that changes the value has Angular check only the slider (and
+   * whatever reads `value`), and one that changes nothing, such as a move
+   * within a step or a mouse passing over it, runs no check at all (see the
+   * bottom sheet's `listen`).
+   */
+  protected readonly listen = effect((onCleanup) => {
+    const root = this.rootRef().nativeElement;
+    const removers = [
+      this.#renderer.listen(root, 'bindtouchmove', (event: PointerEvent) =>
+        this.onPressMove(event),
+      ),
+      this.#renderer.listen(
+        root,
+        'bindmousemove',
+        (event: PointerEvent & { buttons?: number }) => this.onMouseMove(event),
+      ),
+    ];
+    onCleanup(() => {
+      for (const remove of removers) remove();
+    });
   });
 
   protected onLayout(event: unknown): void {

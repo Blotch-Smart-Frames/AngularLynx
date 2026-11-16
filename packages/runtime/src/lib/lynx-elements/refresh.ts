@@ -12,7 +12,7 @@ export class LynxRefresh extends LynxElementBase {
   /**
    * Whether dragging down or calling autoStartRefresh can trigger the startrefresh event. @default true
    */
-  'enable-refresh'?: boolean;
+  declare 'enable-refresh'?: boolean;
 }
 
 /**

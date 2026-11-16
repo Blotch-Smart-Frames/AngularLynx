@@ -1,3 +1,5 @@
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import {
   fireEvent,
   render,
@@ -77,6 +79,28 @@ const renderToaster = async () => {
     },
   };
 };
+
+/**
+ * A screen with a toaster, which counts how often Angular checks it: its
+ * template calls `check()` each time.
+ */
+@Component({
+  imports: [LYNX_ELEMENTS, UiToaster],
+  template: `
+    <view>
+      <text>{{ check() }}</text>
+      <ui-toaster />
+    </view>
+  `,
+})
+class CountingHost {
+  checks = 0;
+
+  check(): string {
+    this.checks++;
+    return 'Inbox';
+  }
+}
 
 /** `__ElementAnimate`'s first argument for starting an animation. */
 const START = 0;
@@ -423,6 +447,30 @@ describe('UiToaster', () => {
       await waitForUpdate();
       expect(keyframesOn(card('Saved')).at(-1)).toEqual(snapBack(50));
       expect(styleOf('Saved', 'transform')).toBe(FRONT);
+    });
+
+    // A finger sends a move for every frame it moves. Each one had Angular
+    // check the whole screen around the toaster too, as it does for a host
+    // listener.
+    it('follows the finger without Angular checking the screen around it', async () => {
+      const result = await render(CountingHost);
+      const host = result.componentRef.instance as CountingHost;
+      toast({ title: 'Saved' });
+      await waitForUpdate();
+      await waitForUpdate();
+      const card = result.getByText('Saved').parentElement!.parentElement!;
+      touch('touchstart', card, 100);
+      await waitForUpdate();
+      const pressed = host.checks;
+
+      for (const clientY of [110, 120, 130]) {
+        touch('touchmove', card, clientY);
+        await waitForUpdate();
+      }
+      expect((card as HTMLElement).style.getPropertyValue('transform')).toBe(
+        'translateY(30px) scale(1)',
+      );
+      expect(host.checks).toBe(pressed);
     });
 
     it('springs back when the touch is canceled', async () => {

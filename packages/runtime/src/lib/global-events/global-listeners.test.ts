@@ -39,10 +39,17 @@ type FakeEl = { id: number; parent: FakeEl | null; children: FakeEl[] };
 let nextId = 1;
 /** Each element's handlers, by `<id>|<type>|<name>`. */
 const handlers = new Map<string, (event: object) => unknown>();
+/**
+ * The type each element's handler for an event was last added with, by
+ * `<id>|<name>`: Lynx keeps one handler per name (global ones aside), so
+ * that's the one it runs.
+ */
+const nativeTypes = new Map<string, string>();
 
 const installNativeFakes = () => {
   nextId = 1;
   handlers.clear();
+  nativeTypes.clear();
   const make = (): FakeEl => ({ id: nextId++, parent: null, children: [] });
   const g = globalThis as any;
   const page = make();
@@ -66,6 +73,7 @@ const installNativeFakes = () => {
   };
   g.__GetParent = (n: FakeEl) => n.parent;
   g.__GetChildren = (n: FakeEl) => n.children.slice();
+  g.__FirstElement = (n: FakeEl) => n.children[0] ?? null;
   g.__NextElement = (n: FakeEl) =>
     n.parent?.children[n.parent.children.indexOf(n) + 1] ?? null;
   for (const name of [
@@ -90,6 +98,7 @@ const installNativeFakes = () => {
     const key = `${el.id}|${type}|${name}`;
     if (handler) handlers.set(key, handler.value);
     else handlers.delete(key);
+    if (type !== 'global-bindEvent') nativeTypes.set(`${el.id}|${name}`, type);
   };
   return page;
 };
@@ -143,6 +152,24 @@ const caught = () => card().children[0];
 class GlobalListenerHost {
   readonly log: string[] = [];
   readonly moved: any[] = [];
+}
+
+/**
+ * An app's capture-phase touchmove listener on the page (the root
+ * component's host is the page), beside a click-outside document listener.
+ */
+@Component({
+  selector: 'page-capture-host',
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: `<view></view>`,
+  host: {
+    '(capture-bindtouchmove)': 'moves.push("page")',
+    '(document:pointerdown)': 'downs.push($event)',
+  },
+})
+class PageCaptureHost {
+  readonly moves: string[] = [];
+  readonly downs: unknown[] = [];
 }
 
 describe('document:, window: and body: listeners', () => {
@@ -232,6 +259,23 @@ describe('document:, window: and body: listeners', () => {
 
     expect(log).toEqual(['resize']);
     expect(globalEvents().viewport).toEqual({ width: 402, height: 874 });
+  });
+
+  it("leave an app's capture touchmove listener on the page bubbling, beside a press listener", () => {
+    // The page's own trailing touchmove listener shares its native handler,
+    // so the handler is registered bubbling, as it always was, whatever the
+    // document listens for: the page's listener hears a move after the
+    // elements under it, and doesn't take it from them.
+    const fixture = TestBed.createComponent(PageCaptureHost);
+    fixture.detectChanges();
+
+    expect(nativeTypes.get(`${page.id}|touchmove`)).toBe('bindEvent');
+
+    const touch = { identifier: 1, x: 5, y: 6, pageX: 15, pageY: 16 };
+    send(card(), 'touchstart', { changedTouches: [touch] });
+    send(card(), 'touchmove', { changedTouches: [touch] });
+    expect(fixture.componentInstance.downs).toHaveLength(1);
+    expect(fixture.componentInstance.moves).toEqual(['page']);
   });
 
   it('stop listening when the component is destroyed', () => {

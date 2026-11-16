@@ -25,7 +25,9 @@ import {
   filterAngularDiagnostics,
   toAngularDiagnosticError,
 } from './angular-diagnostics.js';
+import { renamePackagePrivateMethods } from './private-methods.js';
 import { wrapPureClasses } from './pure-classes.js';
+import { markHostElementsPure } from './pure-host-elements.js';
 import { seedCompilationSourceFiles } from './seed-compilation-source-files.js';
 import { addEntryHotAccept, hotUpdatesEnabled } from './hot-updates.js';
 import {
@@ -588,8 +590,26 @@ export const applyAngularRules = async (
         context.resourcePath,
         { root: api.context.rootPath },
       );
-      if (!background) return { code };
-      const wrapped = wrapPureClasses(code, context.resourcePath);
+      if (!background) {
+        // AngularLynx's own classes get their private methods defined once,
+        // on the prototype, instead of on every instance (see
+        // private-methods.ts). After the cross-thread transform, whose IDs
+        // come from the code as written. Only here: the background thread
+        // never builds the element wrappers this is for, and there it cost
+        // tree shaking. With no private method left to lower inside a class's
+        // pure IIFE, SWC's minifier inlines the IIFE, and then can't drop the
+        // class when nothing uses it (kitchen-sink's background bundle kept
+        // the IntersectionObserver and XMLHttpRequest classes, 8.6 kB).
+        return {
+          code: renamePackagePrivateMethods(code, context.resourcePath, {
+            root: api.context.rootPath,
+          }),
+        };
+      }
+      const wrapped = wrapPureClasses(
+        markHostElementsPure(code, context.resourcePath),
+        context.resourcePath,
+      );
       // The generated background entry takes every hot update the
       // background thread's modules pass on to it: running it again runs the
       // updated modules again, which registers their background functions
@@ -647,19 +667,23 @@ export const applyAngularRules = async (
     // background bundle without the component. It runs after
     // buildTransformedCode, so the cross-thread IDs come from the same code
     // as the main thread's. Top-level calls in the app's files, such as
-    // backgroundFn() itself, aren't marked pure.
+    // backgroundFn() itself, aren't marked pure, except registerHostElement()
+    // (see markHostElementsPure).
     return {
       code: wrapPureClasses(
-        Buffer.from(
-          await javascriptTransformer.transformData(
-            context.resourcePath,
-            code,
-            {
-              skipLinker: true,
-              sideEffects: () => Promise.resolve(false),
-            },
-          ),
-        ).toString(),
+        markHostElementsPure(
+          Buffer.from(
+            await javascriptTransformer.transformData(
+              context.resourcePath,
+              code,
+              {
+                skipLinker: true,
+                sideEffects: () => Promise.resolve(false),
+              },
+            ),
+          ).toString(),
+          context.resourcePath,
+        ),
         context.resourcePath,
       ),
     };

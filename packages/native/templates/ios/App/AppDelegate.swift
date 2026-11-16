@@ -13,6 +13,18 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    // Lynx's frameworks are built for release, where Lynx logs at INFO: a
+    // line for every touch move, hit test, flush, layout, event listener and
+    // main-thread module call, each written with a synchronous NSLog on the
+    // thread that logged it. Mostly that's the engine thread, where Angular,
+    // layout and Lynx's animator share each frame, and during a touch the
+    // UI thread. A release app keeps Lynx's warnings and errors, which carry
+    // the app's JavaScript errors; the Debug configuration that
+    // `ng serve --platform ios` builds keeps every line for debugging.
+    // First, so the lines Lynx logs while it starts are left out too.
+    #if !DEBUG
+      SetMinimumLoggingLevel(.warning)
+    #endif
     XElementRegistry.register()
     // Before any LynxView, so its first transition already asks for 120 fps.
     AnimationFrameRate.install()

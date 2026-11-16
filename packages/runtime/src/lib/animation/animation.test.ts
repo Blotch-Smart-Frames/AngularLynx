@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ElementRef } from '../types/lynx';
-import { LynxAnimation } from './animation';
+import { LynxAnimation, setAfterAnimate } from './animation';
 
 describe('LynxAnimation', () => {
   let fakeRef: ElementRef;
@@ -251,5 +251,32 @@ describe('LynxAnimation', () => {
 
       expect(getAnimations).not.toHaveBeenCalled();
     });
+  });
+
+  it('calls the hook after each operation reaches __ElementAnimate', () => {
+    // lynx-element.ts counts each as a write the next event flushes.
+    const order: string[] = [];
+    vi.mocked(globalThis.__ElementAnimate).mockImplementation((_, [op]) => {
+      order.push(`op ${op}`);
+    });
+    setAfterAnimate(() => order.push('hook'));
+    try {
+      const anim = new LynxAnimation(fakeRef, [], {});
+      anim.pause();
+      anim.play();
+      anim.cancel();
+    } finally {
+      setAfterAnimate(() => {});
+    }
+    expect(order).toEqual([
+      'op 0',
+      'hook',
+      'op 2',
+      'hook',
+      'op 1',
+      'hook',
+      'op 3',
+      'hook',
+    ]);
   });
 });

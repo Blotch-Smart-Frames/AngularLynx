@@ -104,6 +104,7 @@ const installNativeFakes = (): void => {
   g['__GetTag'] = (n: FakeEl) => n.tag;
   g['__GetParent'] = (n: FakeEl) => n.parent;
   g['__GetChildren'] = (n: FakeEl) => n.children.slice();
+  g['__FirstElement'] = (n: FakeEl) => n.children[0] ?? null;
   g['__CreateView'] = () => makeEl('view');
   g['__AppendElement'] = (parent: FakeEl, child: FakeEl) =>
     attach(parent, child, parent.children.length);
@@ -173,6 +174,19 @@ describe('LynxElement moves to another parent', () => {
     // A native move: the same element, under the slot only.
     expect(card.element).toBe(before);
     expect(rendered().get('card')).toEqual([fake(slot)]);
+  });
+
+  it('asks which parent the flush reaches first once per move', () => {
+    const { slot, card } = lifted();
+    const children = vi.fn((n: FakeEl) => n.children.slice());
+    vi.stubGlobal('__GetChildren', children);
+
+    slot.appendChild(card);
+
+    // flushesBefore reads the children of the two parents' common ancestor,
+    // the page. #attach and #append each used to ask, for the same answer.
+    expect(children).toHaveBeenCalledOnce();
+    expect(children).toHaveBeenCalledWith(page);
   });
 
   it('rebuilds an element it moves back to a parent the flush reaches first', () => {
@@ -286,5 +300,34 @@ describe('LynxElement moves to another parent', () => {
     home.appendChild(card);
 
     expect(card.element).toBe(inSlot);
+  });
+
+  it('rebuilds items put before a trailing anchor in their order', () => {
+    // An @for puts each new item before its anchor, which follows them all
+    // (see #adoptChild); a rebuild appends the children in their order.
+    const list = view('list', root);
+    const anchor = view('anchor', list);
+    const items = Array.from({ length: 1000 }, (_, i) => {
+      const item = view(`item-${i}`);
+      list.insertBefore(item, anchor);
+      return item;
+    });
+    list.insertBefore(view('middle'), items[500]!);
+    flush();
+    const before = fake(list);
+
+    list.remove();
+    LynxElement.commitPendingRemovals();
+    flush();
+    root.appendChild(list);
+    flush();
+
+    expect(fake(list)).not.toBe(before);
+    expect(fake(list).children.map((child) => child.classes)).toEqual([
+      ...items.slice(0, 500).map((_, i) => `item-${i}`),
+      'middle',
+      ...items.slice(500).map((_, i) => `item-${500 + i}`),
+      'anchor',
+    ]);
   });
 });

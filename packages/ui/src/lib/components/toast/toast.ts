@@ -3,6 +3,7 @@ import {
   type OnInit,
   Component,
   ElementRef,
+  Renderer2,
   ViewEncapsulation,
   computed,
   effect,
@@ -65,13 +66,13 @@ const stackTransform = (depth: number): string =>
   // custom tag falls back to one — see the separator component). Making the host
   // the card avoids an extra wrapper and lets absolute positioning + the stack
   // transform apply to the actual element. Only the front toast reacts to
-  // taps/touches; behind toasts gate their handlers on isFront().
+  // taps/touches; behind toasts gate their handlers on isFront(). The
+  // touchmove is listened for in code (see `#removeMoveListener`).
   host: {
     '[class]': 'cardClass()',
     '[style]': 'hostStyle()',
     '(bindtap)': 'onTap()',
     '(catchtouchstart)': 'onTouchStart($event)',
-    '(catchtouchmove)': 'onTouchMove($event)',
     '(catchtouchend)': 'onTouchEnd()',
     '(catchtouchcancel)': 'onTouchEnd()',
   },
@@ -103,6 +104,7 @@ export class UiToastItem implements OnInit, OnDestroy {
 
   // The host element itself — the card we position and animate.
   readonly #host = inject(ElementRef);
+  readonly #renderer = inject(Renderer2);
   #anim?: AnimationHandle;
   #dismissTimer: ReturnType<typeof setTimeout> | null = null;
   // The one that emits `dismissed` once the exit animation has played.
@@ -122,6 +124,23 @@ export class UiToastItem implements OnInit, OnDestroy {
 
   // The depth the restack effect last saw, so it knows where to animate from.
   #stackedDepth: number | null = null;
+
+  /**
+   * Listens for a drag's moves in code rather than in the host metadata.
+   * Angular checks a host listener's component and every component around
+   * it, up to the app's root, after each event, and a finger sends one for
+   * every frame it moves. Listened for here, a move has Angular check only
+   * the toaster, which draws the card where the finger has it, and a move
+   * on a toast that isn't being dragged runs no check at all. `catch`, as
+   * the other touches are, so a drag on a toast doesn't also move what's
+   * under it. Removed in ngOnDestroy.
+   */
+  readonly #removeMoveListener = this.#renderer.listen(
+    this.#host.nativeElement,
+    'catchtouchmove',
+    (event: { touches?: ReadonlyArray<{ clientY: number }> }) =>
+      this.onTouchMove(event),
+  );
 
   /**
    * Restack: when a toast in front is dismissed (or a new one is pushed) this
@@ -325,6 +344,7 @@ export class UiToastItem implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     if (this.#dismissTimer) clearTimeout(this.#dismissTimer);
     if (this.#exitTimer) clearTimeout(this.#exitTimer);
+    this.#removeMoveListener();
   }
 
   #animateIn(): void {

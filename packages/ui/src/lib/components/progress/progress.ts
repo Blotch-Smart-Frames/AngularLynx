@@ -55,14 +55,19 @@ export class UiProgress {
     //   translateX(-100%) = left edge at -40% of track = starts off-screen left
     //   translateX(250%)  = left edge at +100% of track = exits off-screen right
     // 250% is the minimum that pushes the 40%-wide fill fully past the right edge.
+    //
+    // The 40% width is fillStyle's inline style, not a keyframe. Lynx's
+    // animator resolves styles and lays the page out again on every frame of
+    // an animation that has a layout property such as `width` among its
+    // keyframes, even one that never changes, for as long as the loop runs.
+    // A `translateX` in % alone skips both (see
+    // investigations/lynx-vs-web-differences.md), and on the web the browser
+    // can run it off the main thread.
     if (this.indeterminate()) {
       this.#fillAnim?.cancel();
       this.#indeterminateAnim?.cancel();
       this.#indeterminateAnim = el.animate(
-        [
-          { transform: 'translateX(-100%)', width: '40%' },
-          { transform: 'translateX(250%)', width: '40%' },
-        ],
+        [{ transform: 'translateX(-100%)' }, { transform: 'translateX(250%)' }],
         {
           duration: 1200,
           easing: EASING.standard,

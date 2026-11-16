@@ -23,43 +23,43 @@ export class LynxScrollCoordinator extends LynxElementBase {
   /**
    * Whether the coordinator can scroll vertically. @default true
    */
-  'enable-scroll'?: boolean;
+  declare 'enable-scroll'?: boolean;
   /**
    * Enable bounce effect when scrolling past boundary (iOS/Harmony). @default true
    */
-  bounces?: boolean;
+  declare bounces?: boolean;
   /**
    * Event response granularity for bindoffset. @default 0.01
    */
-  granularity?: number;
+  declare granularity?: number;
   /**
    * Whether header appears over slot when overflowing. @default false
    */
-  'header-over-slot'?: boolean;
+  declare 'header-over-slot'?: boolean;
   /**
    * Refresh mode: 'none', 'page', or 'fold' (iOS). @default 'none'
    */
-  'refresh-mode'?: 'none' | 'page' | 'fold';
+  declare 'refresh-mode'?: 'none' | 'page' | 'fold';
   /**
    * Show scrollbar during scrolling (iOS/Harmony). @default false
    */
-  'enable-scroll-bar'?: boolean;
+  declare 'enable-scroll-bar'?: boolean;
   /**
    * Enable nested scroll as child in other scrolling widgets (Android). @default false
    */
-  'android-nested-scroll-as-child'?: boolean;
+  declare 'android-nested-scroll-as-child'?: boolean;
   /**
    * Force nested-vertical-scroll-behavior invalid (iOS). @default false
    */
-  'ios-force-scroll-detach'?: boolean;
+  declare 'ios-force-scroll-detach'?: boolean;
   /**
    * Scroll to top when tapping status bar (iOS). @default false
    */
-  'ios-scrolls-to-top'?: boolean;
+  declare 'ios-scrolls-to-top'?: boolean;
   /**
    * Adjust the offset when the active slot is empty or too short to scroll (Android). @default false
    */
-  'android-adapt-to-empty-slot'?: boolean;
+  declare 'android-adapt-to-empty-slot'?: boolean;
 }
 
 /**
@@ -98,5 +98,5 @@ export class LynxScrollCoordinatorSlotDrag extends LynxElementBase {
   /**
    * Whether vertical drag gestures fold/unfold the header. @default true
    */
-  'enable-drag'?: boolean;
+  declare 'enable-drag'?: boolean;
 }

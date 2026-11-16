@@ -1,6 +1,7 @@
 export {
   listenForScrollsFromTheStart,
   LynxElement,
+  markTreeFlushed,
   processPendingAttributeRemovals,
   processPendingFlow,
   processPendingInvokes,

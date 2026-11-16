@@ -112,6 +112,30 @@ class StaticClassHost {
 }
 
 /**
+ * A screen with a chart, which counts how often Angular checks it: its
+ * template calls `check()` each time.
+ */
+@Component({
+  imports: [UiChart, LYNX_ELEMENTS],
+  template: `
+    <view>
+      <text>{{ check() }}</text>
+      <ui-chart [definition]="definition" [width]="300" />
+    </view>
+  `,
+})
+class CountingHost {
+  readonly definition = barChart();
+  readonly chart = viewChild.required(UiChart);
+  checks = 0;
+
+  check(): string {
+    this.checks++;
+    return 'Revenue';
+  }
+}
+
+/**
  * Renders the host 300px wide, after `configure` sets its inputs. Without a
  * width the chart waits for its layout (see "measures its layout").
  */
@@ -517,6 +541,33 @@ describe('UiChart', () => {
         'Jan',
         'Mar',
       ]);
+    });
+
+    // A finger sends a move for every frame it moves. Each one had Angular
+    // check the screen around the chart too, as it does for a template
+    // listener.
+    it('scrubs without Angular checking the screen around it', async () => {
+      const result = await render(CountingHost);
+      const host = result.componentRef.instance as CountingHost;
+      const root = chartRoot(result.container);
+      const near = (index: number, by: number) => {
+        const point = host.chart().scene()!.points[index]!;
+        return { x: point.x + by, y: point.y + 1 };
+      };
+      touchAt('touchstart', root, near(0, 1));
+      await waitForUpdate();
+      const touched = host.checks;
+
+      for (const at of [near(0, 3), near(1, 1), near(1, 3), near(2, 1)]) {
+        touchAt('touchmove', root, at);
+        await waitForUpdate();
+      }
+      // The chart still focuses the point under the finger.
+      expect(root.getAttribute('accessibility-value')).toContain('Mar');
+      expect(
+        within(tooltipBox(result.container)!).getByText('80'),
+      ).toBeTruthy();
+      expect(host.checks).toBe(touched);
     });
 
     it('ends a scrub without selecting, clearing its focus', async () => {

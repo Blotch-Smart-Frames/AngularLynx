@@ -46,6 +46,29 @@ class SwitchHost {
   readonly changes: boolean[] = [];
 }
 
+/**
+ * A screen with a switch, which counts how often Angular checks it: its
+ * template calls `check()` each time.
+ */
+@Component({
+  imports: [LYNX_ELEMENTS, UiSwitch],
+  template: `
+    <view>
+      <text>{{ check() }}</text>
+      <ui-switch [(checked)]="checked" accessibility-label="Wi-Fi" />
+    </view>
+  `,
+})
+class CountingHost {
+  readonly checked = signal(false);
+  checks = 0;
+
+  check(): string {
+    this.checks++;
+    return 'Settings';
+  }
+}
+
 /** Accessibility settings a test can change, as the host app would. */
 const settings = {
   reduceMotion: signal(false),
@@ -334,6 +357,51 @@ describe('UiSwitch', () => {
     expect(animate).not.toHaveBeenCalled();
     expect(style(thumb(), 'transition')).toBe('none');
     expect(style(fill(), 'transition')).toBe('none');
+  });
+
+  // A finger sends a move for every frame it moves, and the mouse on the web
+  // one for every pixel it passes over the switch. Each one had Angular check
+  // the screen around the switch too, as it does for a template listener.
+  it('moves without Angular checking the screen around it', async () => {
+    vi.stubGlobal('SystemInfo', undefined);
+    const result = await render(CountingHost, {
+      providers: [{ provide: LynxAccessibilitySettings, useValue: settings }],
+    });
+    const host = result.componentRef.instance as CountingHost;
+    const track = result.getByRole('button', { name: 'Wi-Fi' });
+    const moveBy = async (send: (x: number) => void, xs: number[]) => {
+      for (const x of xs) {
+        send(x);
+        await waitForUpdate();
+      }
+    };
+
+    // The mouse passing over it, its button up, changes nothing.
+    const before = host.checks;
+    await moveBy(
+      (x) => fireEvent.mousemove(track, { x, y: 10, buttons: 0 }),
+      [10, 20, 30, 40, 50],
+    );
+    expect(host.checks).toBe(before);
+
+    fireEvent.touchstart(track, { touches: [{ x: 12, y: 10 }] });
+    await waitForUpdate();
+    const pressed = host.checks;
+    await moveBy(
+      (x) => fireEvent.touchmove(track, { touches: [{ x, y: 10 }] }),
+      [16, 20, 24, 28, 32],
+    );
+    // The switch still draws its thumb under the finger.
+    expect(style(track.lastElementChild!, 'transform')).toBe(
+      'translateX(32px)',
+    );
+    expect(track.getAttribute('accessibility-value')).toBe('On');
+    expect(host.checks).toBe(pressed);
+
+    // Let go, the switch turns on, which the screen shows.
+    fireEvent.touchend(track);
+    await waitForUpdate();
+    expect(host.checked()).toBe(true);
   });
 
   describe('glass', () => {

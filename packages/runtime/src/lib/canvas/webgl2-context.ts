@@ -302,6 +302,9 @@ const alignUp = (value: number, alignment: number): number =>
 const isTypedArray = (value: unknown): value is TypedArray =>
   ArrayBuffer.isView(value) && !(value instanceof DataView);
 
+/** Whether a context's constructor has put the constants on the class. */
+let constantsAssigned = false;
+
 /**
  * `<canvas>`'s `getContext('webgl2')` on Lynx: the WebGL2RenderingContext API
  * three.js and other WebGL libraries draw with, run on the shell's OpenGL ES
@@ -338,9 +341,9 @@ const isTypedArray = (value: unknown): value is TypedArray =>
  * source, and object answers from `getVertexAttrib` and `getIndexedParameter`
  * (they return null).
  */
-// The interface below adds the constants, which Object.assign puts on the
-// prototype: they're there at runtime, which is what the rule worries about.
-// oxlint-disable-next-line typescript/no-unsafe-declaration-merging -- the merged constants are assigned to the prototype below
+// The interface below adds the constants, which the first constructor puts on
+// the prototype: they're there at runtime, which is what the rule worries about.
+// oxlint-disable-next-line typescript/no-unsafe-declaration-merging -- the merged constants are assigned to the prototype in the constructor
 export class LynxWebGL2RenderingContext {
   readonly canvas: WebGLCanvasHost;
   /** three.js sets these from `outputColorSpace`; the shell draws in sRGB. */
@@ -405,6 +408,17 @@ export class LynxWebGL2RenderingContext {
     canvas: WebGLCanvasHost,
     attributes: LynxWebGLContextAttributes,
   ) {
+    // The constants are on the prototype and the constructor, as on
+    // WebGL2RenderingContext. They're put there by the first context rather
+    // than when the module loads: a statement beside the class would be a
+    // side effect of the module, which kept the class, and the 3,000 lines
+    // of it, in the background thread's bundle of every app. The class
+    // isn't exported as a value, so nothing reaches it but through a context.
+    if (!constantsAssigned) {
+      constantsAssigned = true;
+      Object.assign(LynxWebGL2RenderingContext.prototype, GL);
+      Object.assign(LynxWebGL2RenderingContext, GL);
+    }
     this.#bridge = bridge;
     this.#id = contextId;
     this.canvas = canvas;
@@ -3259,11 +3273,6 @@ export class LynxWebGL2RenderingContext {
     return this.#query(OP.getIndexedParameter, target, index);
   }
 }
-
-// The constants are on the prototype and the constructor, as on
-// WebGL2RenderingContext.
-Object.assign(LynxWebGL2RenderingContext.prototype, GL);
-Object.assign(LynxWebGL2RenderingContext, GL);
 
 // Declaration merging gives the class the constants' types, which only an
 // interface can do.

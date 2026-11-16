@@ -12,13 +12,13 @@ export class LynxSvg extends LynxElementBase {
   /**
    * URL pointing to an SVG resource.
    */
-  src?: string;
+  declare src?: string;
   /**
    * Inline SVG XML string.
    */
-  content?: string;
+  declare content?: string;
   /**
    * Color used for `currentColor` in the SVG. Doesn't override explicit `fill`/`stroke`.
    */
-  'current-color'?: string;
+  declare 'current-color'?: string;
 }

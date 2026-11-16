@@ -49,9 +49,31 @@ export const toDOMRect = (rect: LayoutRect | null): LynxDOMRect => {
 };
 
 /**
+ * What measureLayout calls once it has asked native: lynx-element.ts makes it
+ * scheduleSettleFlush. A hook rather than an import, so this module, which the
+ * IntersectionObserver polyfill loads early, doesn't pull in the element
+ * module.
+ */
+let afterMeasure: () => void = () => {};
+
+/**
+ * Sets what measureLayout calls after each request (see afterMeasure).
+ */
+export const setMeasureFlush = (flush: () => void): void => {
+  afterMeasure = flush;
+};
+
+/**
  * Asks native for a native element's box now, relative to the LynxView: the
  * `boundingClientRect` UI method. It answers later, with null if the element
  * has no UI to measure (it was never flushed, or it's gone).
+ *
+ * The build plugin turns on Lynx's pending invokes, which keep the request
+ * on its element until the element's next flush (see LynxElement.invoke).
+ * Outside change detection there may be none for a while, and an
+ * IntersectionObserver measuring from a timer or after a scroll event would
+ * wait for whatever flushed next, the user's next touch maybe. So a flush is
+ * asked for after each request, as for any UI method.
  */
 export const measureLayout = (
   element: unknown,
@@ -62,6 +84,7 @@ export const measureLayout = (
       result?.code === 0 && result.data ? (result.data as LayoutRect) : null,
     ),
   );
+  afterMeasure();
 };
 
 /** What the tracker needs from its element. */

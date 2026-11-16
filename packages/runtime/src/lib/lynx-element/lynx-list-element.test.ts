@@ -2,10 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ElementRef } from '../types/lynx';
 import { LynxElement } from './lynx-element';
 import {
+  type ListItemAttributes,
+  type ListSlot,
   LynxListElement,
+  type LynxListItemSource,
   processPendingListUpdates,
 } from './lynx-list-element';
 import { markFirstRenderComplete } from '../lynx-render-lifecycle';
+import { seededBelow, untrimmedListDiff } from '../testing/untrimmed-list-diff';
 
 /**
  * Fake ElementRef — the Lynx PAPI handles have no runtime structure. Each carries
@@ -40,6 +44,27 @@ const setupGlobals = () => {
   globalThis.__SetID = vi.fn();
   globalThis.__SetDataset = vi.fn();
 };
+
+/**
+ * The items the list last told native about, by native index.
+ */
+const committedSlots = (list: LynxListElement): ListSlot[] => {
+  const slots: ListSlot[] = [];
+  for (let slot = list.committedSlot(0); slot;) {
+    slots.push(slot);
+    slot = list.committedSlot(slots.length);
+  }
+  return slots;
+};
+
+/**
+ * The update-list-info payloads the list sent since the mock was cleared.
+ */
+const sentInfo = (): unknown[] =>
+  vi
+    .mocked(globalThis.__SetAttribute)
+    .mock.calls.filter(([, name]) => name === 'update-list-info')
+    .map(([, , info]) => info);
 
 describe('LynxListElement', () => {
   beforeEach(setupGlobals);
@@ -578,6 +603,269 @@ describe('LynxListElement', () => {
       expect(info.insertAction.map((action) => action.position)).toEqual([0]);
       // Still appended: native asks for it again, by the same element.
       expect(list.isAppendedToNativeList(c.element)).toBe(true);
+    });
+  });
+
+  describe('the unchanged ends', () => {
+    /** A run of items the test edits, as `*lynxListFor` would. */
+    type TestRun = {
+      readonly id: number;
+      readonly anchor: LynxElement;
+      keys: string[];
+      types: string[];
+      attributes: Array<ListItemAttributes | undefined>;
+    };
+
+    it('sends what the diff over every item sent, over random edits', () => {
+      const below = seededBelow(20261116);
+      // Some elements have an item-key of their own.
+      globalThis.__GetAttributeByName = vi.fn(
+        (ref: ElementRef) => (ref as { itemKey?: string }).itemKey ?? null,
+      );
+      const list = makeList();
+      /** The list's children in order: elements, and the runs' anchors. */
+      const children: LynxElement[] = [];
+      const runs: TestRun[] = [1, 2].map((id) => {
+        const anchor = makeChild();
+        anchor.tagName = 'comment';
+        list.appendChild(anchor);
+        children.push(anchor);
+        const run: TestRun = {
+          id,
+          anchor,
+          keys: [],
+          types: [],
+          attributes: [],
+        };
+        const source: LynxListItemSource = {
+          id,
+          // A new run each time, as `*lynxListFor` makes.
+          commit: () => ({
+            keys: [...run.keys],
+            types: [...run.types],
+            attributes: [...run.attributes],
+          }),
+          bind: () => null,
+          enqueue: () => false,
+        };
+        list.attachItemSource(anchor, source);
+        return run;
+      });
+      let nextKey = 1;
+
+      const elements = () =>
+        children.filter((child) => child.tagName !== 'comment');
+      const place = (child: LynxElement) => {
+        const index = below(children.length + 1);
+        list.insertBefore(child, children[index] ?? null);
+        children.splice(index, 0, child);
+      };
+      const takeOut = (child: LynxElement) => {
+        list.removeVirtualChild(child);
+        children.splice(children.indexOf(child), 1);
+      };
+      const someRun = () => runs[below(runs.length)]!;
+      const someAttributes = (): ListItemAttributes | undefined =>
+        [
+          undefined,
+          { 'estimated-main-axis-size-px': 40 },
+          { 'estimated-main-axis-size-px': 80 },
+          { 'full-span': true, 'sticky-top': true },
+        ][below(4)];
+      const putItem = (run: TestRun, at: number, item: [string, string]) => {
+        run.keys.splice(at, 0, item[0]);
+        run.types.splice(at, 0, item[1]);
+        run.attributes.splice(at, 0, someAttributes());
+      };
+      const takeItem = (run: TestRun, at: number): [string, string] => {
+        const [key] = run.keys.splice(at, 1);
+        const [type] = run.types.splice(at, 1);
+        run.attributes.splice(at, 1);
+        return [key!, type!];
+      };
+      const edits: Array<() => void> = [
+        // An element comes, at the end or anywhere.
+        () => {
+          if (elements().length >= 12) return;
+          const child = makeChild();
+          if (below(3) === 0) {
+            (child.element as { itemKey?: string }).itemKey = `e${nextKey++}`;
+          }
+          list.appendChild(child);
+          children.push(child);
+        },
+        () => {
+          if (elements().length < 12) place(makeChild());
+        },
+        // One goes.
+        () => {
+          const all = elements();
+          if (all.length > 0) takeOut(all[below(all.length)]!);
+        },
+        // One moves, as Angular moves a view: out, then in again.
+        () => {
+          const all = elements();
+          if (all.length === 0) return;
+          const child = all[below(all.length)]!;
+          takeOut(child);
+          place(child);
+        },
+        // A run moves with its anchor.
+        () => {
+          const { anchor } = someRun();
+          takeOut(anchor);
+          place(anchor);
+        },
+        // A run's item comes, goes or moves.
+        () => {
+          const run = someRun();
+          if (run.keys.length >= 10) return;
+          const type = below(4) === 0 ? 'header' : 'list-item';
+          putItem(run, below(run.keys.length + 1), [`k${nextKey++}`, type]);
+        },
+        () => {
+          const run = someRun();
+          if (run.keys.length > 0) takeItem(run, below(run.keys.length));
+        },
+        () => {
+          const run = someRun();
+          if (run.keys.length === 0) return;
+          const item = takeItem(run, below(run.keys.length));
+          putItem(run, below(run.keys.length + 1), item);
+        },
+        // A run's item gets other layout attributes, at either end or
+        // between, or another type, which makes it a new item to native.
+        () => {
+          const run = someRun();
+          if (run.keys.length === 0) return;
+          run.attributes[below(run.keys.length)] = someAttributes();
+        },
+        () => {
+          const run = someRun();
+          if (run.keys.length === 0) return;
+          const at = below(run.keys.length);
+          run.types[at] = run.types[at] === 'header' ? 'list-item' : 'header';
+        },
+      ];
+
+      /**
+       * The ids the list should have committed, from the test's model.
+       */
+      const modelIds = () =>
+        children.flatMap((child) => {
+          const run = runs.find((r) => r.anchor === child);
+          if (!run) return [`#${__GetElementUniqueID(child.element)}`];
+          return run.keys.map((key, i) => `${run.id}|${run.types[i]}|${key}`);
+        });
+      // Where the updates landed, against the items before the first change
+      // and after the last: the cases trimming the ends has to keep.
+      const updatesAt = { before: 0, between: 0, after: 0 };
+
+      for (let step = 0; step < 3000; step++) {
+        const count = 1 + below(3);
+        for (let e = 0; e < count; e++) edits[below(edits.length)]!();
+        const before = committedSlots(list);
+        for (const slot of before) {
+          if (slot.ref) list.markAppendedToNativeList(slot.ref);
+        }
+        vi.mocked(globalThis.__SetAttribute).mockClear();
+
+        list._processUpdate();
+
+        const after = committedSlots(list);
+        expect(after.map((slot) => slot.id)).toEqual(modelIds());
+        const expected = untrimmedListDiff(before, after);
+        expect(sentInfo()).toStrictEqual(expected ? [expected.info] : []);
+        for (const slot of before) {
+          if (!slot.ref) continue;
+          expect(list.isAppendedToNativeList(slot.ref)).toBe(
+            !expected?.noLongerAppended.includes(slot.ref),
+          );
+        }
+
+        let start = 0;
+        while (
+          start < Math.min(before.length, after.length) &&
+          before[start]!.id === after[start]!.id
+        ) {
+          start++;
+        }
+        let end = 0;
+        while (
+          end < Math.min(before.length, after.length) - start &&
+          before[before.length - 1 - end]!.id ===
+            after[after.length - 1 - end]!.id
+        ) {
+          end++;
+        }
+        for (const action of expected?.info.updateAction ?? []) {
+          const position = action['position'] as number;
+          if (position < start) updatesAt.before++;
+          else if (position >= after.length - end) updatesAt.after++;
+          else updatesAt.between++;
+        }
+      }
+
+      expect(updatesAt.before).toBeGreaterThan(50);
+      expect(updatesAt.between).toBeGreaterThan(50);
+      expect(updatesAt.after).toBeGreaterThan(50);
+    });
+
+    it('asks native for an element’s unique id once, not on every update', () => {
+      const list = makeList();
+      for (let i = 0; i < 1000; i++) list.appendChild(makeChild());
+      list._processUpdate();
+      vi.mocked(globalThis.__GetElementUniqueID).mockClear();
+      vi.mocked(globalThis.__SetAttribute).mockClear();
+
+      // Its LynxElement asks once, as it's made, and the list once, as it
+      // first sees it: none for the 1,000 the list knows already.
+      const child = makeChild();
+      list.appendChild(child);
+      list._processUpdate();
+
+      expect(globalThis.__GetElementUniqueID).toHaveBeenCalledTimes(2);
+      expect(sentInfo()).toEqual([
+        {
+          insertAction: [
+            {
+              position: 1000,
+              type: 'list-item',
+              'item-key': String(__GetElementUniqueID(child.element)),
+            },
+          ],
+          removeAction: [],
+          updateAction: [],
+        },
+      ]);
+    });
+
+    it('diffs an element made again by the unique id of its new native element', () => {
+      const list = makeList();
+      const child = makeChild();
+      list.appendChild(child);
+      list._processUpdate();
+      vi.mocked(globalThis.__SetAttribute).mockClear();
+
+      // LynxElement swaps in a new native element when it makes one again
+      // (#recreateSubtree), whose unique id is its own.
+      const fresh = makeRef();
+      Object.defineProperty(child, 'element', { get: () => fresh });
+      list._processUpdate();
+
+      expect(sentInfo()).toEqual([
+        {
+          insertAction: [
+            {
+              position: 0,
+              type: 'list-item',
+              'item-key': String(__GetElementUniqueID(fresh)),
+            },
+          ],
+          removeAction: [0],
+          updateAction: [],
+        },
+      ]);
     });
   });
 

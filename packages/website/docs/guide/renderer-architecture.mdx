@@ -110,7 +110,7 @@ Reversing steps 3 and 4 leaves list items empty, or re-enters the flush and cras
 **Changes outside a cycle get a settle flush.** `scheduleSettleFlush()` queues one microtask that commits removals, text and a flush. It runs when:
 
 - an element is created outside a cycle, such as a lazy route's component that `RouterOutlet` builds during navigation
-- an event handler returns, in case it changed elements directly without changing a signal
+- an event handler returns, if something has been written since the last flush: an element changed directly without changing a signal, or a change made from a timer or a promise. An event with nothing waiting doesn't flush, so a scroll or a drag doesn't flush on every frame
 - a removed element is rebuilt
 
 It's skipped inside a cycle, because `end()` will flush, and during the first render. Main-thread scripts batch their own changes into one flush on a microtask.
@@ -122,7 +122,7 @@ Change detection is zoneless (see [Signals and change detection](/guide/concepts
 1. The engine calls the global `runWorklet()` on the main thread with the listener that `listen()` registered.
 2. The listener runs your handler synchronously, inside the native event.
 3. Your handler sets a signal. Angular marks the view dirty, and its zoneless scheduler queues a tick, racing `setTimeout` against `requestAnimationFrame`. Lynx puts its timers on `lynx`, so the runtime copies them onto `globalThis` at startup.
-4. When the handler returns, `scheduleSettleFlush()` queues a microtask for any direct element changes.
+4. When the handler returns, `scheduleSettleFlush()` queues a microtask if the handler changed elements directly. A handler that only sets signals leaves the flush to the tick.
 5. The tick runs change detection. The renderer calls element functions, and `end()` flushes.
 
 Changing the tree in step 2 is safe, though the engine is still delivering the event: a handler can create and remove elements, and even flush them with `ApplicationRef.tick()`. A navigation changes it later anyway, since the router builds the next screen after the handler returns.

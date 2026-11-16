@@ -2,6 +2,7 @@ package dev.angularlynx.shell
 
 import android.app.Application
 import android.content.ComponentCallbacks2
+import android.content.pm.ApplicationInfo
 import com.facebook.drawee.backends.pipeline.Fresco
 import com.facebook.imagepipeline.core.ImagePipelineConfig
 import com.facebook.imagepipeline.memory.PoolConfig
@@ -10,6 +11,7 @@ import com.lynx.service.http.LynxHttpService
 import com.lynx.service.image.LynxImageService
 import com.lynx.service.log.LynxLogService
 import com.lynx.tasm.LynxEnv
+import com.lynx.tasm.base.LLog
 import com.lynx.tasm.service.LynxServiceCenter
 
 /**
@@ -36,6 +38,19 @@ class ShellApplication : Application() {
         // No global template provider or custom elements: MainActivity passes
         // its loaders to the LynxView it builds.
         LynxEnv.inst().init(this, null, null, null)
+
+        // Lynx's libraries are built for release, where Lynx logs at INFO: a
+        // line for every touch, flush, layout, event listener and main-thread
+        // module call, each a call from native code back into Java and an
+        // android.util.Log write on the thread that logged it, mostly the
+        // engine thread Angular runs on. A release app keeps Lynx's warnings
+        // and errors, which carry the app's JavaScript errors; the debuggable
+        // build `ng serve --platform android` installs keeps every line for
+        // debugging. After init, which loads Lynx's native library: before
+        // it, the call does nothing.
+        if ((applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) == 0) {
+            LLog.setMinimumLoggingLevel(LLog.WARN)
+        }
     }
 
     // Lynx leaves it to the host app to report memory pressure. Either level

@@ -60,6 +60,7 @@ const installNativeFakes = (): void => {
   g.__GetTag = (n: FakeEl) => n.tag;
   g.__GetParent = (n: FakeEl) => n.parent ?? null;
   g.__GetChildren = (n: FakeEl) => n.children.slice();
+  g.__FirstElement = (n: FakeEl) => n.children[0] ?? null;
 
   // Deliberately NO cycle guard — mirrors the real engine, which happily builds
   // a self-referential tree. detach-then-attach mirrors Lynx auto-reparenting.
@@ -184,6 +185,122 @@ describe('LynxElement reparent cycle safety', () => {
 
     expect(childFake.parent).toBe(bFake);
     expect(aFake.children).not.toContain(childFake);
+    expect(() => assertAcyclic()).not.toThrow();
+  });
+
+  it('refuses appendChild of an element without children into itself', () => {
+    const leafFake = makeEl('view');
+    const leaf = wrap(leafFake, 'view');
+
+    leaf.appendChild(leaf);
+
+    expect(leafFake.children).toEqual([]);
+    expect(leafFake.parent).toBeNull();
+  });
+
+  it('still inserts an element with children that is in no tree yet', () => {
+    // An embedded view's root, built with its children before Angular
+    // inserts it: the walk runs, and finds no cycle.
+    const page = wrap(pageRoot, 'page');
+    const container = wrap(makeEl('view'), 'view');
+    page.appendChild(container);
+    const rootFake = makeEl('view');
+    const root = wrap(rootFake, 'view');
+    root.appendChild(wrap(makeEl('view'), 'view'));
+
+    container.appendChild(root);
+
+    expect(rootFake.parent).toBe(container.element);
+    expect(() => assertAcyclic()).not.toThrow();
+  });
+});
+
+// Angular appends each element right after creating it, before its children,
+// and an @for reorder moves rows within their parent: neither can form a
+// cycle, which wouldFormCycle answers without walking the new parent's
+// ancestors (two native reads a level, each __GetParent a new handle).
+describe('LynxElement cycle check cost', () => {
+  const counts = { parent: 0, uid: 0, first: 0 };
+
+  beforeEach(() => {
+    vi.stubGlobal('__PROFILE__', false);
+    installNativeFakes();
+    const g = globalThis as unknown as FakeNativeGlobal<FakeEl>;
+    const { __GetParent, __GetElementUniqueID, __FirstElement } = g;
+    g.__GetParent = (n) => (counts.parent++, __GetParent(n));
+    g.__GetElementUniqueID = (n) => (counts.uid++, __GetElementUniqueID(n));
+    g.__FirstElement = (n) => (counts.first++, __FirstElement(n));
+  });
+
+  /**
+   * A chain of `depth` views under the page; returns the deepest.
+   */
+  const chain = (depth: number): LynxElement => {
+    let bottom = wrap(pageRoot, 'page');
+    for (let i = 0; i < depth; i++) {
+      const next = wrap(makeEl('view'), 'view');
+      bottom.appendChild(next);
+      bottom = next;
+    }
+    return bottom;
+  };
+
+  const resetCounts = (): void => {
+    counts.parent = 0;
+    counts.uid = 0;
+    counts.first = 0;
+  };
+
+  it('appends new elements 20 levels down with a few native reads each', () => {
+    const bottom = chain(20);
+    const text = wrap(makeEl('text'), 'text');
+    bottom.appendChild(text);
+    const views = Array.from({ length: 100 }, () =>
+      wrap(makeEl('view'), 'view'),
+    );
+    const runs = Array.from({ length: 100 }, () =>
+      wrap(makeEl('raw-text'), 'raw-text'),
+    );
+    resetCounts();
+
+    // A view's children go through #flowInsert and #attach, a <text>'s
+    // through #append.
+    for (const view of views) bottom.appendChild(view);
+    for (const run of runs) text.appendChild(run);
+
+    // One __GetParent each, for #removeIfMoveWouldBeLost: the ancestors are
+    // never walked, and the child's checks run once, not twice. It was 23
+    // each.
+    expect(counts.parent).toBe(200);
+    expect(counts.first).toBe(200);
+    expect(counts.uid).toBe(400);
+    expect((bottom.element as unknown as FakeEl).children.length).toBe(101);
+    expect((text.element as unknown as FakeEl).children.length).toBe(100);
+    expect(() => assertAcyclic()).not.toThrow();
+  });
+
+  it('reorders elements with children within their parent without walking its ancestors', () => {
+    const bottom = chain(20);
+    const rows = Array.from({ length: 3 }, () => {
+      const row = wrap(makeEl('view'), 'view');
+      bottom.appendChild(row);
+      row.appendChild(wrap(makeEl('view'), 'view'));
+      return row;
+    });
+    const [a, b, c] = rows as [LynxElement, LynxElement, LynxElement];
+    resetCounts();
+
+    bottom.insertBefore(c, a);
+    bottom.appendChild(a);
+
+    // Per move, one for #removeIfMoveWouldBeLost and one for the cycle
+    // check's look at the row's parent. The walk cost 21 more.
+    expect(counts.parent).toBe(4);
+    expect((bottom.element as unknown as FakeEl).children).toEqual([
+      c.element,
+      b.element,
+      a.element,
+    ]);
     expect(() => assertAcyclic()).not.toThrow();
   });
 });

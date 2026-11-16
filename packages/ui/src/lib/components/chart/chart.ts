@@ -1,7 +1,9 @@
 import { NgTemplateOutlet } from '@angular/common';
 import {
+  type ElementRef,
   Component,
   Directive,
+  Renderer2,
   TemplateRef,
   ViewEncapsulation,
   booleanAttribute,
@@ -13,6 +15,7 @@ import {
   output,
   signal,
   untracked,
+  viewChild,
 } from '@angular/core';
 import {
   LYNX_ELEMENTS,
@@ -218,13 +221,15 @@ type TouchPoint = {
   // view as well, a margin or padding applied twice. The root stays a view of
   // its own for the pan gesture and the accessibility element, which bind to
   // it. `flex-1`, not `h-full`: a percentage height doesn't reliably resolve
-  // on a flex item in Lynx.
+  // on a flex item in Lynx. Its touchmove is listened for in code (see
+  // `listen`).
   host: {
     '[class]': 'rootClass()',
     '[style]': 'rootStyle()',
   },
   template: `
     <view
+      #root
       class="flex-1 relative"
       [lynxGesture]="zoomable() ? panGesture : noGesture"
       [accessibility-element]="true"
@@ -234,7 +239,6 @@ type TouchPoint = {
       (bindaccessibilityaction)="onAccessibilityAction($event)"
       (bindlayoutchange)="onLayout($event)"
       (bindtouchstart)="onTouchStart($event)"
-      (bindtouchmove)="onTouchMove($event)"
       (bindtouchend)="onTouchEnd($event)"
       (bindtouchcancel)="onTouchCancel()"
     >
@@ -373,7 +377,10 @@ export class UiChart {
   readonly pointSelect = output<ChartPoint | null>();
 
   protected readonly tooltipTemplate = contentChild(tooltipDirectiveType());
+  /** The view that takes the chart's touches, always in the template. */
+  readonly rootRef = viewChild.required<ElementRef>('root');
 
+  readonly #renderer = inject(Renderer2);
   readonly #theme = inject(UI_CHART_THEME);
   readonly #appearance = inject(LynxTheme);
   readonly #replacedColors = inject(UI_THEME_COLORS, { optional: true });
@@ -686,6 +693,24 @@ export class UiChart {
     if (!touch || this.#pinned() || this.zoomable()) return;
     this.#focusAt(touch);
   }
+
+  /**
+   * Listens for a scrub's moves in code rather than in the template. Angular
+   * checks a template listener's component and every component around it
+   * after each event, and a finger sends one for every frame it moves.
+   * Listened for here, a move has Angular check only the chart, which draws
+   * the focus and the tooltip (and the app's view only when `focusChange`
+   * says the focus moved), and a move a pinned tooltip or a pan ignores
+   * runs no check at all (see the bottom sheet's `listen`).
+   */
+  protected readonly listen = effect((onCleanup) => {
+    const remove = this.#renderer.listen(
+      this.rootRef().nativeElement,
+      'bindtouchmove',
+      (event: unknown) => this.onTouchMove(event),
+    );
+    onCleanup(remove);
+  });
 
   protected onTouchMove(event: unknown): void {
     const touch = touchPoint(event);

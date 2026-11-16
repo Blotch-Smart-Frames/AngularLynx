@@ -305,6 +305,35 @@ describe('iosGenerator', () => {
     );
   });
 
+  it("leaves Lynx's INFO lines out of a release build's log, before Lynx starts", () => {
+    iosGenerator.configure(dir, app(), dir);
+    // Lynx's release frameworks log every touch move, flush, layout and
+    // module call at INFO, each with a synchronous NSLog on the engine or UI
+    // thread. The Debug configuration `ng serve --platform ios` builds
+    // defines DEBUG, so it keeps them.
+    const delegate = readFileSync(
+      path.join(dir, 'App/AppDelegate.swift'),
+      'utf8',
+    );
+    const gate =
+      /#if !DEBUG\s+SetMinimumLoggingLevel\(\.warning\)\s+#endif/.exec(
+        delegate,
+      );
+    expect(gate).not.toBeNull();
+    // The launch's first statement, so Lynx's own start is left out too:
+    // only comments come before it.
+    const launch = delegate.indexOf('-> Bool {') + '-> Bool {'.length;
+    const before = delegate
+      .slice(launch, gate!.index)
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith('//'));
+    expect(before).toEqual([]);
+    expect(gate!.index).toBeLessThan(
+      delegate.indexOf('XElementRegistry.register()'),
+    );
+  });
+
   it("asks for Lynx's own animator's rate from the main thread while it runs", () => {
     iosGenerator.configure(dir, app(), dir);
     // Lynx's animator asks for 120 fps from a display link on the engine

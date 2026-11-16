@@ -237,6 +237,10 @@ export class GlobalEvents {
    * objects per listener, and the DOM event on the web.
    */
   early(key: unknown, deliveries: Delivery[]): void {
+    // Nothing listens for any of them (a touchmove with only a pointerdown
+    // listener): nothing to capture or bubble, so no timer for the second
+    // half either. late() then finds nothing to finish.
+    if (deliveries.length === 0) return;
     const dispatches = deliveries.map(
       ({ type, event, target }) =>
         new PathDispatch(event, target, [this.document, this.window], type),

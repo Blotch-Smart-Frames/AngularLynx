@@ -12,9 +12,12 @@
  * thread, where GL runs.
  *
  * A call costs a few microseconds on Android and about 80 on iOS, where Lynx
- * logs every module call. So the context doesn't make one per GL call: it
- * records the calls into an array of commands and sends them in one `run`,
- * once a frame or when a call needs an answer (see LynxWebGL2RenderingContext).
+ * logs every module call at INFO (about 2 in the shells' release builds,
+ * which log only Lynx's warnings and errors; `ng serve --platform`'s
+ * development build keeps INFO). So the context doesn't make one per GL
+ * call: it records the calls into an array of commands and sends them in one
+ * `run`, once a frame or when a call needs an answer (see
+ * LynxWebGL2RenderingContext).
  *
  * What crosses the bridge, as measured on Lynx 4.1: numbers, strings, arrays
  * and plain objects. An `ArrayBuffer` or typed array arrives as an empty map,

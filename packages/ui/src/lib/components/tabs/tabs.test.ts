@@ -349,9 +349,14 @@ describe('UiTabs', () => {
   });
 });
 
+/**
+ * A screen with segmented tabs, which counts how often Angular checks it:
+ * its template calls `check()` each time.
+ */
 @Component({
   imports: [UiTabs, UiTabsList, UiTabsTrigger, UiTabsContent, LYNX_ELEMENTS],
   template: `
+    <text>{{ check() }}</text>
     <ui-tabs
       [value]="value()"
       (valueChange)="value.set($event)"
@@ -379,6 +384,12 @@ class SegmentedTabsHost {
   readonly value = signal('Photos');
   readonly variant = signal<TabsListVariant>('segmented');
   readonly changes: string[] = [];
+  checks = 0;
+
+  check(): string {
+    this.checks++;
+    return 'Library';
+  }
 }
 
 /**
@@ -528,6 +539,39 @@ describe('UiTabsList, segmented', () => {
     fireEvent.mouseup(trigger('Albums'));
     await waitForUpdate();
     expect(host.value()).toBe('Albums');
+  });
+
+  // A finger sends a move for every frame it moves, and the mouse on the
+  // web one for every pixel it passes over a tab. Each one had Angular check
+  // the screen around the tabs too, as it does for a host listener.
+  it('drags the indicator without Angular checking the screen around it', async () => {
+    const { host, trigger, frame, measure } = await renderSegmented();
+    await measure();
+    fireEvent.touchstart(trigger('Photos'), { touches: [{ pageX: 45 }] });
+    await waitForUpdate();
+    const pressed = host.checks;
+
+    for (const pageX of [50, 55, 60, 65]) {
+      fireEvent.touchmove(trigger('Photos'), { touches: [{ pageX }] });
+      await waitForUpdate();
+    }
+    // The indicator still follows the finger.
+    expect(frame()!.style.left).toBe('20px');
+    expect(host.checks).toBe(pressed);
+  });
+
+  it('runs no check for moves over the default tabs', async () => {
+    const { host, trigger } = await renderSegmented();
+    host.variant.set('default');
+    await waitForUpdate();
+    const before = host.checks;
+
+    for (const pageX of [10, 20, 30]) {
+      fireEvent.touchmove(trigger('Albums'), { touches: [{ pageX }] });
+      fireEvent.mousemove(trigger('People'), { pageX, buttons: 0 });
+      await waitForUpdate();
+    }
+    expect(host.checks).toBe(before);
   });
 
   it("is Material's connected button group on Android", async () => {

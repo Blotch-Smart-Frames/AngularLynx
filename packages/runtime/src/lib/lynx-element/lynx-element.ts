@@ -1055,12 +1055,16 @@ export class LynxElement implements BaseLynxElement {
         // queue the enclosing text for the positional edge-trim pass; #text is
         // the provisional display until that pass corrects it (#setDisplayedText).
         const text = value == null ? undefined : String(value);
+        const blankChanged = isBlankText(this.#rawText) !== isBlankText(text);
         this.#text = text;
         this.#rawText = text;
         LynxElement.#enqueueTextNormalization(this);
-        // Its anonymous <text> hides while all it holds is blank.
+        // Its anonymous <text> hides while all it holds is blank, which only
+        // a change between blank and not can change: a regroup reads the text
+        // for nothing else (see #regroup), so a counter's every tick needn't
+        // regroup its parent's children.
         const parent = this.#jsParent;
-        if (parent && parent.#anonymous && parent.#jsParent) {
+        if (blankChanged && parent && parent.#anonymous && parent.#jsParent) {
           LynxElement.#pendingFlow.add(parent.#jsParent);
         }
       }

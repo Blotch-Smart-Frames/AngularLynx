@@ -93,6 +93,23 @@ import { UiText } from '../components/ui/typography';
             </ui-text>
           </view>
         </view>
+
+        <!-- Line Limit -->
+        <view class="flex-col gap-3 flex">
+          <text class="text-lg font-semibold text-foreground">Line Limit</text>
+          <text class="text-xs text-muted-foreground">
+            maxLines stops the text after that many lines and ends the last one
+            with an ellipsis.
+          </text>
+          <ui-text variant="p" [maxLines]="2">
+            The quick brown fox jumps over the lazy dog, then circles back to
+            jump over it again, and again, until the dog finally gets up and
+            wanders off to find a quieter place to sleep.
+          </ui-text>
+          <ui-text variant="small" [maxLines]="1">
+            A single line that is far too long to fit beside anything else
+          </ui-text>
+        </view>
       </view>
     </scroll-view>
   `,

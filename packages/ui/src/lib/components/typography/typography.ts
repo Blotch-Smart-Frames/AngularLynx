@@ -40,15 +40,33 @@ export type TypographyVariant = NonNullable<
 @Component({
   selector: 'ui-text',
   encapsulation: ViewEncapsulation.None,
-  host: { '[class]': 'textClass()' },
+  host: {
+    '[class]': 'textClass()',
+    // `[attr.]`, so an unset maxLines leaves no attribute: the text keeps
+    // every line.
+    '[attr.text-maxline]': 'maxLines()',
+  },
   template: '<ng-content />',
 })
 export class UiText {
   readonly variant = input<TypographyVariant>('p');
   readonly userClass = input<string>('', { alias: 'class' });
+  /**
+   * The most lines the text takes, ending the last with "…". Lynx's
+   * `text-maxline` only sizes the box: without `text-overflow: ellipsis` too,
+   * Android draws the lines past the cap over whatever follows, and iOS cuts
+   * them off with no "…". This input sets both, so a capped text can't be
+   * written without its ellipsis (issue #437).
+   */
+  readonly maxLines = input<number>();
 
   protected readonly textClass = computed(() =>
-    cn(typographyVariants({ variant: this.variant() }), this.userClass()),
+    cn(
+      typographyVariants({ variant: this.variant() }),
+      // Before the app's classes, so `class="text-clip"` can still replace it.
+      this.maxLines() != null && 'text-ellipsis',
+      this.userClass(),
+    ),
   );
 }
 

@@ -192,7 +192,7 @@ const parallax = (event: ScrollWorkletEvent) => {
                   <!-- Long names (Padparadscha, Alexandrite) set smaller, so
                      the name stays one line beside the chip. -->
                   <text
-                    class="font-wide text-paper"
+                    class="font-wide text-ellipsis text-paper"
                     [text-maxline]="1"
                     [style.font-size.px]="nameSize(gem.name)"
                     [style.line-height.px]="nameSize(gem.name) + 4"

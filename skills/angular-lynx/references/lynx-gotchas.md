@@ -129,6 +129,12 @@ Must handle uppercase/lowercase in JavaScript.
 
 `text-maxline` only sizes the box: iOS cuts the rest off without "…", and Android draws the extra lines over what follows. Pair it with `text-overflow: ellipsis` (Tailwind's `text-ellipsis`) on every platform.
 
+```html
+<text class="text-sm text-ellipsis" [text-maxline]="2">{{ title }}</text>
+```
+
+The build warns about each element with `text-maxline` and no ellipsis (`[Lynx] Capped text without an ellipsis`). It accepts `text-ellipsis` or `truncate`, an inline `text-overflow: ellipsis`, `[class.text-ellipsis]` or `[style.text-overflow]`, or a class that the component's styles or a global stylesheet end with an ellipsis. It can't read a `[class]` expression, so it trusts one when the component mentions an ellipsis anywhere. `npx @blotch/dolan add typography` adds `<ui-text [maxLines]="2">`, which sets both.
+
 ### An `<input>`'s `placeholder-color` attribute does nothing on iOS
 
 iOS keeps the system's pale gray: its setter takes a color a string attribute never becomes. Set the CSS property in the style too, and keep the attribute for the web preview: `placeholder-color="#54607c" style="-x-placeholder-color: #54607c"`, or bound, `[attr.placeholder-color]="color()" [style.-x-placeholder-color]="color()"`.

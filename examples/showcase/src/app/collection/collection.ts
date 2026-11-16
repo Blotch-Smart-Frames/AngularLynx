@@ -49,7 +49,7 @@ const TILE_MAPS: Record<Cut, string> = Object.fromEntries(
         style="min-height: 92px"
       >
         <text
-          class="shrink-0 font-wide text-[26px] leading-[30px] text-foreground"
+          class="shrink-0 font-wide text-[26px] leading-[30px] text-ellipsis text-foreground"
           [text-maxline]="1"
           >COLLECTION</text
         >

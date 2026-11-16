@@ -109,12 +109,23 @@ const collectElementTags = (code: string): Set<string> => {
   return tags;
 };
 
-export type LynxDiagnosticCategory = 'html-element' | 'structural' | 'css';
+export type LynxDiagnosticCategory =
+  | 'html-element'
+  | 'structural'
+  | 'css'
+  // A text capped with text-maxline without an ellipsis (capped-text.ts).
+  | 'text';
 
 export type LynxDiagnostic = {
   file: string;
   message: string;
   category: LynxDiagnosticCategory;
+  /**
+   * Whether a stylesheet in the bundle makes the diagnostic moot. The app's
+   * global stylesheets aren't known until rspack has built the module graph,
+   * so the report checks them (createLynxDiagnosticsReporter).
+   */
+  excusedByStylesheet?: (css: string) => boolean;
 };
 
 /**
@@ -308,6 +319,9 @@ export const scanSourcesForUnsupportedCss = (
   return diagnostics;
 };
 
+/** A stylesheet's file, as the bundle names it. */
+const STYLESHEET = /\.(?:css|scss|sass|less)$/;
+
 /**
  * A module of the bundle, as rspack's `finishModules` hook passes it. Only its
  * file is needed: `nameForCondition()` is the resource path without the query.
@@ -345,9 +359,26 @@ export const createLynxDiagnosticsReporter = () => {
         const file = module.nameForCondition();
         if (file) bundledFiles.add(path.normalize(file));
       }
+      // Read only if a diagnostic asks, and then once.
+      let stylesheets: string[] | undefined;
+      const bundledStylesheets = (): string[] =>
+        (stylesheets ??= [...bundledFiles]
+          .filter((file) => STYLESHEET.test(file))
+          .flatMap((file) => {
+            try {
+              return [fs.readFileSync(file, 'utf-8')];
+            } catch {
+              return [];
+            }
+          }));
       reportLynxDiagnostics(
-        pending.filter((diagnostic) =>
-          bundledFiles.has(path.normalize(diagnostic.file)),
+        pending.filter(
+          (diagnostic) =>
+            bundledFiles.has(path.normalize(diagnostic.file)) &&
+            !(
+              diagnostic.excusedByStylesheet &&
+              bundledStylesheets().some(diagnostic.excusedByStylesheet)
+            ),
         ),
       );
       pending = undefined;
@@ -366,6 +397,7 @@ export const reportLynxDiagnostics = (diagnostics: LynxDiagnostic[]): void => {
     (d) => d.category === 'structural',
   );
   const cssWarnings = diagnostics.filter((d) => d.category === 'css');
+  const textWarnings = diagnostics.filter((d) => d.category === 'text');
 
   if (htmlWarnings.length > 0) {
     console.warn('[Lynx] HTML elements detected in templates:');
@@ -384,6 +416,15 @@ export const reportLynxDiagnostics = (diagnostics: LynxDiagnostic[]): void => {
   if (cssWarnings.length > 0) {
     console.warn('[Lynx] Unsupported CSS properties:');
     for (const w of cssWarnings) {
+      console.warn(`  ${w.message}`);
+    }
+  }
+
+  if (textWarnings.length > 0) {
+    console.warn(
+      '[Lynx] Capped text without an ellipsis (text-maxline only sizes the box: Android draws the lines past it over what follows, and iOS cuts them off with no "…"):',
+    );
+    for (const w of textWarnings) {
       console.warn(`  ${w.message}`);
     }
   }

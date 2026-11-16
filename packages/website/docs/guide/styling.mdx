@@ -79,7 +79,7 @@ page {
 - **`white-space` is `normal` or `nowrap`.** There's no `pre`, so spaces and line breaks always collapse.
 - **There's no `text-transform`**, so Tailwind's `uppercase` does nothing. Change the case in TypeScript.
 - **There's no `text-align: justify`.**
-- **Clamp lines with the `text-maxline` attribute**, as above, instead of `-webkit-line-clamp`. Pair it with `text-overflow: ellipsis`: without it, Android draws the extra lines past the box.
+- **Clamp lines with the `text-maxline` attribute**, as above, instead of `-webkit-line-clamp`. Pair it with `text-overflow: ellipsis`: without it, Android draws the extra lines past the box. The build warns about a `text-maxline` without one, and [`<ui-text [maxLines]>`](/dolan/typography#line-limit) sets both.
 
 ## Inheritance
 

@@ -56,6 +56,7 @@ import { maxWorkers, useTypeChecking } from './utils/angular/env.js';
 import { getAngularWorkspace } from './utils/angular/read-workspace.js';
 import { resolvePrimaryBuild } from './utils/angular/resolve-primary-build.js';
 import { resolvePages } from './utils/angular/resolve-pages.js';
+import { scanTemplatesForCappedTextWithoutEllipsis } from './capped-text.js';
 import {
   createLynxDiagnosticsReporter,
   scanCompiledOutputForHtmlElements,
@@ -410,6 +411,11 @@ export const applyAngularRules = async (
       ...scanCompiledOutputForStructuralIssues(typeScriptFileCache),
       ...scanSourcesForUnsupportedPatterns(fileNames),
       ...scanSourcesForUnsupportedCss(fileNames),
+      // Every file Angular compiled: `fileNames` holds only the tsconfig's
+      // root files, which in an `ng new` app is src/main.ts alone.
+      ...(await scanTemplatesForCappedTextWithoutEllipsis([
+        ...typeScriptFileCache.keys(),
+      ])),
     ]);
 
     // Kept rather than printed: the compiler hook below reports them through

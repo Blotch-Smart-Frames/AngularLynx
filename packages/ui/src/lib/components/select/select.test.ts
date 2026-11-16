@@ -206,6 +206,13 @@ describe('UiSelect', () => {
     expect(column.classList).toContain('w-48');
   });
 
+  it('keeps the value to one line, ending with an ellipsis', async () => {
+    // text-maxline alone lets Android draw the lines past it (issue #437).
+    const { triggerText } = await renderSelect();
+    expect(triggerText().getAttribute('text-maxline')).toBe('1');
+    expect(triggerText().classList).toContain('text-ellipsis');
+  });
+
   // Static attributes land on a component's host too (issue #181): the
   // width applies once, to the column, the placeholder is only shown, and
   // the accessibility label is only the trigger's.

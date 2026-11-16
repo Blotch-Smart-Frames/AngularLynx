@@ -106,13 +106,12 @@ describe('UiProgress', () => {
     host.indeterminate.set(true);
     await waitForUpdate();
     expect(fill().getAttribute('style')).toContain('width: 40%');
+    // Only the transform moves: a width among the keyframes, even an
+    // unchanging one, has Lynx lay the page out again on every frame.
     expect(animate).toHaveBeenCalledWith(fill(), [
       START,
       expect.any(String),
-      [
-        { transform: 'translateX(-100%)', width: '40%' },
-        { transform: 'translateX(250%)', width: '40%' },
-      ],
+      [{ transform: 'translateX(-100%)' }, { transform: 'translateX(250%)' }],
       expect.objectContaining({ iterations: Infinity }),
     ]);
   });

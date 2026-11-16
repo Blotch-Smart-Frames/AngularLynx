@@ -4,6 +4,15 @@
   "tasks": {
     "build": {
       "inputs": ["$TURBO_DEFAULT$", "../ui/src/**"]
+    },
+    "test": {
+      "inputs": ["$TURBO_DEFAULT$", "../ui/src/**", "../ui/package.json"]
+    },
+    "test:coverage": {
+      "inputs": ["$TURBO_DEFAULT$", "../ui/src/**", "../ui/package.json"]
+    },
+    "test:ci:coverage": {
+      "inputs": ["$TURBO_DEFAULT$", "../ui/src/**", "../ui/package.json"]
     }
   }
 }

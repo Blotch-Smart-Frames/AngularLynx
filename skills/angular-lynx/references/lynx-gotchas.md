@@ -282,6 +282,10 @@ Simulate with background images if needed.
 
 `thin` = 2px, `medium` = 4px, `thick` = 6px (web: 1/3/5px). Default = 0.
 
+### Change classes through Angular, not `__AddClass`
+
+Bind classes (`class`, `[class]`, `[class.x]`) or use `Renderer2.addClass()`/`removeClass()`. The runtime writes the classes a change detection changed once per element, as a whole class string, at the end of the cycle, so a class added with a raw `__AddClass` or `__SetClasses` on `nativeElement.element` is dropped the next time change detection changes the element's classes. Raw class calls also differ by platform: on iOS and Android `__AddClass` adds a name it has again (`__GetClasses` lists it twice), and Lynx for Web keeps it once.
+
 ### `filter` limited to one function
 
 Supported: `blur`, `grayscale`, `brightness`, `contrast`, `saturate`. No chaining.

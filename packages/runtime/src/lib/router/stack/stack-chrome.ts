@@ -143,9 +143,10 @@ type Registry = {
 };
 
 /**
- * Starts following an outlet, and returns the call that stops. Assigned in
- * LynxStackChrome's static block, as setActive is in LynxStackPage's: only
- * the outlet says what it's doing.
+ * Starts following an outlet, and returns the call that stops. Assigned by
+ * LynxStackChrome's first constructor, as setActive is by LynxStackPage's: only
+ * the outlet says what it's doing. Each accessor takes a chrome, so a
+ * constructor has always run before one is called.
  */
 export let follow: (chrome: LynxStackChrome, claim: ChromeClaim) => () => void;
 
@@ -193,6 +194,9 @@ export let awayWith: (
   claim: ChromeClaim,
   bar: PageBar,
 ) => number | null;
+
+/** Whether a chrome's constructor has assigned the accessors above. */
+let accessorsSet = false;
 
 /**
  * What the stack that's showing does, for chrome outside it that belongs to
@@ -329,48 +333,51 @@ export class LynxStackChrome {
     },
   );
 
-  static {
-    follow = (chrome, claim) => {
-      const { claims } = chrome.#registry;
-      claims.update((list) => [...list, claim]);
-      return () => claims.update((list) => list.filter((c) => c !== claim));
-    };
-    addBar = (chrome, bar) => {
-      const { bars } = chrome.#registry;
-      bars.add(bar);
-      return () => bars.delete(bar);
-    };
-    barsOf = (chrome) => [...chrome.#registry.bars];
-    awayWith = (chrome, claim, bar) => {
-      const shown = chrome.#shown();
-      if (!shown.includes(claim)) return null;
-      /**
-       * Whether an outlet is on a page of the outlet's (its top page, as
-       * it's showing): it says what that page has, not the page `bar`
-       * stands for.
-       */
-      const inside = (other: ChromeClaim): boolean => {
-        // Every page an outlet is on is in an outlet (see own).
-        for (let page = other.page; page; page = ownerOf(page)!.page) {
-          if (ownerOf(page) === claim) return true;
-        }
-        return false;
+  constructor() {
+    if (!accessorsSet) {
+      accessorsSet = true;
+      follow = (chrome, claim) => {
+        const { claims } = chrome.#registry;
+        claims.update((list) => [...list, claim]);
+        return () => claims.update((list) => list.filter((c) => c !== claim));
       };
-      return shown.reduce((away, other) => {
-        if (other === claim) return awayOf(bar, other.hidesPushed(), away);
-        if (inside(other)) return away;
-        return awayOf(other.state().active!, other.hidesPushed(), away);
-      }, 0);
-    };
-    chromeOn = (chrome, page) => {
-      const links = linksOf(page);
-      if (!links.chrome) {
-        const scoped = new LynxStackChrome();
-        scoped.#registry = chrome.#registry;
-        scoped.#scope = page;
-        links.chrome = scoped;
-      }
-      return links.chrome;
-    };
+      addBar = (chrome, bar) => {
+        const { bars } = chrome.#registry;
+        bars.add(bar);
+        return () => bars.delete(bar);
+      };
+      barsOf = (chrome) => [...chrome.#registry.bars];
+      awayWith = (chrome, claim, bar) => {
+        const shown = chrome.#shown();
+        if (!shown.includes(claim)) return null;
+        /**
+         * Whether an outlet is on a page of the outlet's (its top page, as
+         * it's showing): it says what that page has, not the page `bar`
+         * stands for.
+         */
+        const inside = (other: ChromeClaim): boolean => {
+          // Every page an outlet is on is in an outlet (see own).
+          for (let page = other.page; page; page = ownerOf(page)!.page) {
+            if (ownerOf(page) === claim) return true;
+          }
+          return false;
+        };
+        return shown.reduce((away, other) => {
+          if (other === claim) return awayOf(bar, other.hidesPushed(), away);
+          if (inside(other)) return away;
+          return awayOf(other.state().active!, other.hidesPushed(), away);
+        }, 0);
+      };
+      chromeOn = (chrome, page) => {
+        const links = linksOf(page);
+        if (!links.chrome) {
+          const scoped = new LynxStackChrome();
+          scoped.#registry = chrome.#registry;
+          scoped.#scope = page;
+          links.chrome = scoped;
+        }
+        return links.chrome;
+      };
+    }
   }
 }

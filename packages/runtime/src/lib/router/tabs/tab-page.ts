@@ -1,11 +1,19 @@
 import { type Signal, signal } from '@angular/core';
 
 /**
- * Sets a tab's `active`. Assigned in the class's static block, the only place
- * outside its methods that can reach its private fields, which keeps it out
- * of the class's public API: only the outlet says whether a tab is shown.
+ * Sets a tab's `active`. Assigned by the class's first constructor, inside the
+ * class where its private fields can be reached, which keeps it out of the
+ * class's public API: only the outlet says whether a tab is shown.
+ *
+ * Not in a static block, which would make defining the class a side effect
+ * and keep it in bundles that don't use it (see snapshotOf in
+ * lynx-location-strategy.ts). It takes a tab, so a constructor has always run
+ * before it's called.
  */
 export let setTabActive: (tab: LynxTabPage, active: boolean) => void;
+
+/** Whether a tab's constructor has assigned setTabActive. */
+let accessorsSet = false;
 
 /**
  * The tab of a `<lynx-tab-outlet>` that a component is on. Every component
@@ -32,7 +40,10 @@ export class LynxTabPage {
   /** Whether the tab is the one its outlet shows. */
   readonly active: Signal<boolean> = this.#active.asReadonly();
 
-  static {
-    setTabActive = (tab, active) => tab.#active.set(active);
+  constructor() {
+    if (!accessorsSet) {
+      accessorsSet = true;
+      setTabActive = (tab, active) => tab.#active.set(active);
+    }
   }
 }

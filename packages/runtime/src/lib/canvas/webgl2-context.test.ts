@@ -163,6 +163,23 @@ describe('a new context', () => {
     );
   });
 
+  it('puts the constants on its class with the first context, not on load', async () => {
+    // Loading the module does nothing, so a bundle that doesn't use the
+    // context can leave the class out.
+    vi.resetModules();
+    const { LynxWebGL2RenderingContext: Context } =
+      await import('./webgl2-context');
+    expect(Object.hasOwn(Context, 'TRIANGLES')).toBe(false);
+    expect(Object.hasOwn(Context.prototype, 'TRIANGLES')).toBe(false);
+
+    const first = new Context(bridge, 8, canvas, contextAttributesFrom({}));
+    const second = new Context(bridge, 9, canvas, contextAttributesFrom({}));
+
+    expect(first.TRIANGLES).toBe(0x0004);
+    expect(second.UNSIGNED_BYTE).toBe(0x1401);
+    expect((Context as unknown as typeof GL).FLOAT).toBe(0x1406);
+  });
+
   it('fills in WebGL’s default attributes', () => {
     expect(contextAttributesFrom({ alpha: false, antialias: false })).toEqual({
       alpha: false,

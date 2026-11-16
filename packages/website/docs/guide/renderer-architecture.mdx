@@ -71,7 +71,7 @@ The plugin finds those files in Angular's compiled output, and in installed pack
 | `removeChild()`                 | Queues the removal. `__RemoveElement` runs at the end of the cycle                                                                                                     |
 | `setAttribute()`                | `__SetClasses` for `class`, `__SetInlineStyles` for `style`, `__SetID` for `id`, `__SetDataset` for `data-*`, otherwise `__SetAttribute`                               |
 | `setStyle()`, `removeStyle()`   | `__AddInlineStyle` (a `null` value removes)                                                                                                                            |
-| `addClass()`, `removeClass()`   | During change detection, one `__SetClasses` per element at the end of the cycle. Outside it, `__AddClass`; `__SetClasses`                                              |
+| `addClass()`, `removeClass()`   | On iOS and Android during change detection, one `__SetClasses` per element at the end of the cycle. Otherwise `__AddClass`; `__GetClasses` then `__SetClasses`         |
 | `setValue()` on a text node     | `__SetAttribute(el, 'text', value)`                                                                                                                                    |
 | `listen()`                      | `__AddEvent(el, eventType, name, { type: 'worklet', value: listener })`, with `eventType` from the `bind`, `catch`, `capture-` or `global-` prefix                     |
 | `parentNode()`, `nextSibling()` | `__GetParent`, `__NextElement`                                                                                                                                         |
@@ -83,7 +83,7 @@ A few choices behind the table:
 - **`<list>` is special.** It returns a `LynxListElement`, whose children the engine requests through a `componentAtIndex` callback instead of `__AppendElement`.
 - **Native references can't be hashed.** Using one as a `Map`, `Set` or `WeakSet` key crashes the main-thread engine. Wrappers are keyed by `__GetElementUniqueID()` instead.
 - **`listen()` adds no-op `stopPropagation()` and `preventDefault()`** to event objects that lack them, so Angular's own listener wrapper doesn't throw.
-- **Class changes wait for the end of the cycle.** Angular applies a `[class]` binding one class at a time, and the engine resolves styles only when the tree is flushed, so `end()` writes each changed element's class string in one call. An element whose native class list the runtime can't know exactly, such as one from a server render's snapshot, or one given a class it has already, gets a call for each change, as before.
+- **Class changes wait for the end of the cycle on iOS and Android.** Angular applies a `[class]` binding one class at a time, and the engine resolves styles only when the tree is flushed, so `end()` writes each changed element's class string in one call. A selector query, an attribute read or an element animation in the meantime writes them first. An element whose native class list the runtime can't know exactly, such as one from a server render's snapshot, or one given a class it has already, gets a call for each change, as before. So does every change outside change detection, and on Lynx for Web, whose layout and style reads come from the DOM at once.
 
 ## Emulated and None renderers
 

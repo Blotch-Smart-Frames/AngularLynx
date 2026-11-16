@@ -4,6 +4,7 @@ import {
   type LynxAnimationOptions,
 } from '../animation/animation';
 import type { MainThread } from './types';
+import { writePendingClasses } from '../lynx-element/class-writes';
 import { withSafeAreaInsets } from '../lynx-element/safe-area-insets';
 
 /**
@@ -45,10 +46,15 @@ export class MainThreadElement {
   }
 
   getAttribute(name: string): unknown {
+    // Lynx for Web, and the testing library's DOM, read `class` among the
+    // attributes: give native the classes change detection is holding back
+    // (see class-writes.ts).
+    writePendingClasses();
     return __GetAttributeByName(this.#element, name);
   }
 
   getAttributeNames(): string[] {
+    writePendingClasses();
     return __GetAttributeNames(this.#element);
   }
 
@@ -74,11 +80,14 @@ export class MainThreadElement {
   }
 
   querySelector(selector: string): MainThreadElement | null {
+    // A class selector matches the classes native has (see getAttribute).
+    writePendingClasses();
     const ref = __QuerySelector(this.#element, selector, {});
     return ref ? new MainThreadElement(ref) : null;
   }
 
   querySelectorAll(selector: string): MainThreadElement[] {
+    writePendingClasses();
     return __QuerySelectorAll(this.#element, selector, {}).map(
       (el) => new MainThreadElement(el),
     );

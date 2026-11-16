@@ -14,6 +14,8 @@ import {
   it,
   vi,
 } from 'vitest';
+import { LynxAccessibility } from '../accessibility/accessibility';
+import { installCanvasGlobals } from '../canvas/dom-globals';
 import { LynxDocument } from '../lynx-document';
 import {
   handOverPageToNextApp,
@@ -24,6 +26,7 @@ import {
   markFirstRenderComplete,
   setInsideChangeDetection,
 } from '../lynx-render-lifecycle';
+import { MainThreadElement } from '../main-thread/main-thread-element';
 import { LynxRendererFactory2 } from '../renderer/lynx-renderer-factory2';
 import { LYNX_DOCUMENT } from '../renderer/token';
 import { LynxHydrateDocument } from '../ssr/hydrate-document';
@@ -141,6 +144,7 @@ const installNativeFakes = (): void => {
   // Lynx for Web reads `class` from the DOM element.
   g['__GetAttributeByName'] = (n: FakeEl, name: string) =>
     name === 'class' ? n.classes.join(' ') : undefined;
+  g['__GetAttributeNames'] = (n: FakeEl) => (n.classes.length ? ['class'] : []);
   g['__QuerySelector'] = (root: FakeEl, selector: string) =>
     walk(root).find((n) => n.classes.includes(selector.slice(1))) ?? null;
   g['__QuerySelectorAll'] = (root: FakeEl, selector: string) =>
@@ -387,20 +391,76 @@ describe('class changes during change detection', () => {
     expect(log).toEqual([]);
   });
 
-  it('go to native at once outside change detection, without reading it', async () => {
+  it('go to native at once outside change detection, as before', async () => {
     const el = view();
     el.setAttribute('class', 'a b');
     el.addClass('c');
     el.removeClass('a');
-    el.removeClass('z');
 
     expect(callsOn(el)).toEqual([
       ['set', fake(el).id, 'a b'],
       ['add', fake(el).id, 'c'],
+      ['get', fake(el).id],
       ['set', fake(el).id, 'b c'],
     ]);
     await settle();
     expect(log[log.length - 1]).toEqual(['flush']);
+  });
+
+  it('keep a class a raw __AddClass gave outside change detection', () => {
+    const el = view();
+    el.setAttribute('class', 'a b');
+    (globalThis as { __AddClass: (n: unknown, c: string) => void }).__AddClass(
+      el.element,
+      'raw',
+    );
+    el.removeClass('a');
+    expect(fake(el).classes).toEqual(['b', 'raw']);
+
+    // Native's list, read back, is the element's from here: the next cycle
+    // keeps it.
+    log = [];
+    cycle(() => el.addClass('c'));
+    expect(callsOn(el)).toEqual([['set', fake(el).id, 'b raw c']]);
+  });
+
+  it('go to native at once on Lynx for Web, during change detection too', () => {
+    // A web element's layout is read from the DOM at once, from the classes
+    // it has then.
+    vi.stubGlobal('__WEB__', true);
+    const el = view();
+    const dom = fake(el) as FakeEl & { getBoundingClientRect(): DOMRect };
+    dom.getBoundingClientRect = () =>
+      ({ width: dom.classes.includes('w-10') ? 40 : 0 }) as DOMRect;
+    const widths: number[] = [];
+    cycle(() => {
+      el.setAttribute('class', 'a');
+      el.addClass('w-10');
+      widths.push(el.getBoundingClientRect().width);
+      el.removeClass('w-10');
+      widths.push(el.clientWidth);
+    });
+
+    expect(widths).toEqual([40, 0]);
+    expect(callsOn(el)).toEqual([
+      ['set', fake(el).id, 'a'],
+      ['add', fake(el).id, 'w-10'],
+      ['get', fake(el).id],
+      ['set', fake(el).id, 'a'],
+    ]);
+  });
+
+  it('nest: a detectChanges inside a cycle writes what waited', () => {
+    const el = view();
+    cycle(() => {
+      el.addClass('a');
+      cycle(() => el.addClass('b'));
+      // The inner end() ended the cycle: the rest goes at once.
+      el.addClass('c');
+      el.removeClass('a');
+    });
+
+    expect(fake(el).classes).toEqual(['b', 'c']);
   });
 
   it("follow the page's dark class", () => {
@@ -419,7 +479,10 @@ describe('class changes during change detection', () => {
     // The device's, outside it.
     log = [];
     root.setRuntimeClass('dark', false);
-    expect(callsOn(root)).toEqual([['set', page.id, 'app']]);
+    expect(callsOn(root)).toEqual([
+      ['get', page.id],
+      ['set', page.id, 'app'],
+    ]);
   });
 
   it('keep the classes of a page taken over from the app before', () => {
@@ -484,6 +547,113 @@ describe('class changes during change detection', () => {
       el.addClass('read');
       expect(el.getAttribute('class')).toBe('found all read');
     });
+  });
+
+  it("are what a main-thread script's element reads meanwhile", () => {
+    const parent = view();
+    const el = view();
+    cycle(() => parent.appendChild(el));
+    const script = new MainThreadElement(parent.element);
+    const own = new MainThreadElement(el.element);
+
+    cycle(() => {
+      el.addClass('found');
+      expect(script.querySelector('.found')).not.toBeNull();
+      el.addClass('all');
+      expect(script.querySelectorAll('.all')).toHaveLength(1);
+      el.addClass('read');
+      expect(own.getAttribute('class')).toBe('found all read');
+    });
+    const fresh = view();
+    cycle(() => {
+      fresh.addClass('named');
+      expect(new MainThreadElement(fresh.element).getAttributeNames()).toEqual([
+        'class',
+      ]);
+    });
+  });
+
+  it('are where requestFocus looks for its element meanwhile', async () => {
+    vi.stubGlobal('__GetPageElement', () => page);
+    const focused: number[] = [];
+    vi.stubGlobal(
+      '__InvokeUIMethod',
+      (
+        n: FakeEl,
+        _method: string,
+        _params: unknown,
+        done: (r: object) => void,
+      ) => {
+        focused.push(n.id);
+        done({ code: 0, data: null });
+      },
+    );
+    const root = doc.createRootElement();
+    const el = view();
+    cycle(() => root.appendChild(el));
+
+    let focus: Promise<void> | undefined;
+    cycle(() => {
+      el.addClass('first-error');
+      focus = new LynxAccessibility().requestFocus('.first-error');
+    });
+
+    await expect(focus).resolves.toBeUndefined();
+    expect(focused).toEqual([fake(el).id]);
+  });
+
+  it('are on native before an animation has it lay out the tree', () => {
+    // __ElementAnimate resolves and lays out the tree as it is at once.
+    const seen: unknown[][] = [];
+    vi.stubGlobal('__ElementAnimate', (n: FakeEl, args: unknown[]) => {
+      seen.push([args[0], n.classes.join(' ')]);
+    });
+    const el = view();
+    cycle(() => {
+      el.setAttribute('class', 'a');
+      const animation = el.animate([{ opacity: 0 }, { opacity: 1 }], 100);
+      el.addClass('b');
+      animation.pause();
+      el.addClass('c');
+      animation.play();
+      el.addClass('d');
+      animation.cancel();
+      // A main-thread script's animation too.
+      el.addClass('e');
+      new MainThreadElement(el.element).animate([{ opacity: 1 }], 100);
+    });
+
+    expect(seen).toEqual([
+      [0, 'a'],
+      [2, 'a b'],
+      [1, 'a b c'],
+      [3, 'a b c d'],
+      [0, 'a b c d e'],
+    ]);
+  });
+
+  it('are what getComputedStyle reads meanwhile', () => {
+    // The testing library's DOM runs these code paths, and its styles follow
+    // the DOM element's classes.
+    const el = view();
+    const dom = fake(el) as FakeEl & { ownerDocument: object };
+    dom.ownerDocument = {
+      defaultView: {
+        getComputedStyle: (node: FakeEl) => ({
+          display: node.classes.includes('hidden') ? 'none' : 'flex',
+        }),
+      },
+    };
+    const target: Record<string, any> = { getComputedStyle: () => ({}) };
+    installCanvasGlobals(target);
+
+    let display = '';
+    cycle(() => {
+      el.addClass('hidden');
+      display = target['getComputedStyle'](el).display;
+    });
+
+    expect(display).toBe('none');
   });
 
   it('are in a snapshot a server render takes meanwhile', () => {

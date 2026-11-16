@@ -16,6 +16,19 @@ import {
 import { UiProgress } from './progress';
 
 /**
+ * The parts of an element's inline `animation`, sorted, with `0.0` written as
+ * `0`. jsdom 31 writes the shorthand back in an order of its own, with `0.0`
+ * as `0`, and fills in the longhands; jsdom 30, which `ng new` installs,
+ * keeps it as it was set and leaves the longhands empty.
+ */
+const animationOf = (element: Element) =>
+  (element as HTMLElement).style
+    .getPropertyValue('animation')
+    .replace(/\b0\.0\b/g, '0')
+    .split(/ (?![^(]*\))/)
+    .sort();
+
+/**
  * The CSS a component brings, which the build adds to the app's.
  */
 const componentStyles = (component: unknown): string =>
@@ -127,10 +140,14 @@ describe('UiProgress', () => {
     expect(slider().getAttribute('flatten')).toBe('false');
     const { style } = slider() as HTMLElement;
     expect(style.width).toBe('40%');
-    expect(style.animationName).toBe('ui-progress-slide');
-    expect(style.animationDuration).toBe('1200ms');
-    expect(style.animationTimingFunction).toBe('cubic-bezier(0.4, 0, 0.2, 1)');
-    expect(style.animationIterationCount).toBe('infinite');
+    expect(animationOf(slider())).toEqual(
+      [
+        'ui-progress-slide',
+        '1200ms',
+        'cubic-bezier(0.4, 0, 0.2, 1)',
+        'infinite',
+      ].sort(),
+    );
     // The value's fill hides, in place: it's the one that comes back.
     expect((fill() as HTMLElement).style.display).toBe('none');
     expect(fill().hasAttribute('enable-new-animator')).toBe(false);

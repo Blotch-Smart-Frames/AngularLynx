@@ -6,6 +6,19 @@ import { ICON_LIGHT_COLORS } from '../icon/icon-theme';
 import { UiSpinner } from './spinner';
 
 /**
+ * The parts of an element's inline `animation`, sorted, with `0.0` written as
+ * `0`. jsdom 31 writes the shorthand back in an order of its own, with `0.0`
+ * as `0`, and fills in the longhands; jsdom 30, which `ng new` installs,
+ * keeps it as it was set and leaves the longhands empty.
+ */
+const animationOf = (element: Element) =>
+  (element as HTMLElement).style
+    .getPropertyValue('animation')
+    .replace(/\b0\.0\b/g, '0')
+    .split(/ (?![^(]*\))/)
+    .sort();
+
+/**
  * The CSS a component brings, which the build adds to the app's.
  */
 const componentStyles = (component: unknown): string =>
@@ -110,10 +123,9 @@ describe('UiSpinner', () => {
     // Android rotates only a view of its own.
     expect(turner().getAttribute('flatten')).toBe('false');
     const { style } = turner() as HTMLElement;
-    expect(style.animationName).toBe('ui-spinner-turn');
-    expect(style.animationDuration).toBe('1600ms');
-    expect(style.animationTimingFunction).toBe('linear');
-    expect(style.animationIterationCount).toBe('infinite');
+    expect(animationOf(turner())).toEqual(
+      ['ui-spinner-turn', '1600ms', 'linear', 'infinite'].sort(),
+    );
     // It fills the spinner.
     expect(style.width).toBe('100%');
     expect(style.height).toBe('100%');

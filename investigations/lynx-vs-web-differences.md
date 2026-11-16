@@ -636,10 +636,11 @@ Every `LynxElement` is in such a cycle with its parent (`#children` and `#jsPare
 
 The build compiles the app's own code and AngularLynx's packages with SWC's `privateFieldsAsProperties` assumption (`packages/rsbuild-plugin-angular-lynx/src/layers.ts`), on both threads: a `#private` field becomes a non-enumerable property with a generated key, which PrimJS collects. Other packages keep the standard compile. With both fixes, the probe app's counts stopped climbing: 137 `LynxUIView`s after 20, 40 and 60 rounds, where they had grown 1395, 2755, 4115.
 
-Two things change for the code compiled this way:
+Three things change for the code compiled this way:
 
 - **`#field in object` throws.** SWC's properties mode compiles it to a call on the field's key, a string (`_field.has(object)`). Check with `instanceof`, or a public property, instead. (Other packages keep the standard compile so this can't break them.)
-- **A private field is an own property**, non-enumerable, named `__private_<n>_<name>`: `Object.getOwnPropertyNames()` lists it, `Object.keys()`, `JSON.stringify()` and spreading don't.
+- **A private field is an own property**, non-enumerable, named `__private_<n>_<name>`: `Object.getOwnPropertyNames()` lists it, `Object.keys()`, `JSON.stringify()` and spreading don't. So is a private method, getter or setter, except in the case below.
+- **In AngularLynx's packages, a private method is a prototype method.** SWC's properties mode defines each instance `#method`, getter and setter on every instance, in the constructor: 41 `Object.defineProperty` calls for each `LynxElement`, about half the time it took to create one under V8 without its JIT. So the main thread's build first renames them, in AngularLynx's own packages only, to ordinary class methods named `__<name>_<key><n>` (`packages/rsbuild-plugin-angular-lynx/src/private-methods.ts`): non-enumerable, defined once on the prototype, so `Object.getOwnPropertyNames()` of an instance lists only its fields. Private fields and static private methods compile as above, and a class that uses `#name in object` is left alone. The background thread, which never builds the element wrappers, keeps the standard compile.
 
 ---
 

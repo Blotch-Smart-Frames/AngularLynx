@@ -6780,7 +6780,7 @@ iOS's scroll-view (`LynxUIScroller`) and list (`LynxUIListScroll`) make their `L
 
 `LynxDocument.createElement` gives each scroll-view and list a `bindscroll` listener that does nothing, on iOS only (`listenForScrollsFromTheStart`), so the UI is made with a `scroll` handler. Listeners added later share it. An `IntersectionObserver` with options adds its listener once it has measured its element, after the scroll-view's UI has been made.
 
-The cost is a scroll event to the main thread for each `scrollViewDidScroll:` of every scroll-view on iOS, which the do-nothing listener drops.
+The cost is a scroll event to the main thread for each `scrollViewDidScroll:` of every scroll-view on iOS. While the do-nothing listener is the only one, `LynxElement` drops the event as it arrives, before anything else. It used to run the element's whole dispatch and then a settle flush: a `__FlushElementTree()` with nothing to commit still runs Lynx's patch-finish pass on the engine thread and queues a layout-finished operation for the UI thread (`PaintingContextDarwin::FinishLayoutOperation`), on every frame of every scroll. One case still flushes: when a list item's build left changes for the next flush (see `settleSkippedForListItem` in `lynx-element.ts`), the next scroll event brings it, as it did before.
 
 Until #261, that listener also kept every screen with a scroll-view alive after it was left: Angular never removes it, the release of a destroyed view passed `undefined` to take it off, and native Lynx keeps a worklet handler that `undefined` would remove (see "`__AddEvent(element, type, name, undefined)` doesn't remove a main-thread handler on native Lynx").
 

@@ -340,6 +340,11 @@ const isIOS = (): boolean => {
  * one once it has measured its element, which is laid out by then. The
  * handler does nothing; the listeners added later share it (see
  * #syncNativeHandler), and Android, which reads the set afresh, needs none.
+ *
+ * iOS sends `scroll` on every frame of a scroll, so while the placeholder is
+ * the only listener, #dispatch drops the event before doing anything else,
+ * flush included: it changes nothing, and a flush costs the engine thread a
+ * patch pass and the UI thread an operation on each frame.
  */
 export const listenForScrollsFromTheStart = (element: LynxElement): void => {
   if (__WEB__ || !isIOS()) return;
@@ -347,6 +352,13 @@ export const listenForScrollsFromTheStart = (element: LynxElement): void => {
 };
 
 const ignoreScroll = (): void => {};
+
+/**
+ * The stopPropagation()/preventDefault()/stopImmediatePropagation() an event
+ * without them gets (see #dispatch). One function for every event, rather
+ * than three new ones per event: touchmove and scroll come on every frame.
+ */
+const noop = (): void => {};
 
 /**
  * Whether inserting `child` into `parent` before a sibling would leave it
@@ -2715,6 +2727,26 @@ export class LynxElement implements BaseLynxElement {
   }
 
   /**
+   * Whether iOS's scroll placeholder (see listenForScrollsFromTheStart) is
+   * all that listens for `entry`'s native event. A loop rather than
+   * #listenersLike, which builds four arrays: this runs on every scroll
+   * frame. Any other listener on the same handler, the app's or an
+   * IntersectionObserver's, hears the event as before.
+   */
+  #hearsOnlyScrollPlaceholder(entry: Listener): boolean {
+    const key = nativeEventKey(entry.eventType, entry.eventName);
+    for (const other of this.#listeners) {
+      if (
+        other.listener !== ignoreScroll &&
+        nativeEventKey(other.eventType, other.eventName) === key
+      ) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
    * Brings the native handler for `entry`'s event in line with its listeners:
    * registers it for the first one, changes its type when a listener needs
    * another (see combinedEventType), and removes it after the last one.
@@ -2836,15 +2868,31 @@ export class LynxElement implements BaseLynxElement {
    * addEventMethodsIfNeeded.
    */
   #dispatch(entry: Listener, event: any): unknown {
+    // iOS sends a scroll-view's `scroll` on every frame, to the placeholder
+    // every scroll-view and list has there (see listenForScrollsFromTheStart).
+    // While it's the only listener, nothing runs that could change anything,
+    // so the event goes no further: no shims, no listener walk, no flush.
+    // ignoreScroll returns undefined, as this does.
+    if (
+      !__WEB__ &&
+      entry.eventName === 'scroll' &&
+      this.#hearsOnlyScrollPlaceholder(entry)
+    ) {
+      // What a list item's build left for a later flush (see
+      // scheduleSettleFlush) got one from the next scroll event, as it gets
+      // one from any other event: it still does.
+      if (settleSkippedForListItem) scheduleSettleFlush();
+      return undefined;
+    }
     if (event && typeof event === 'object') {
       if (typeof event.stopPropagation !== 'function') {
-        event.stopPropagation = () => {};
+        event.stopPropagation = noop;
       }
       if (typeof event.preventDefault !== 'function') {
-        event.preventDefault = () => {};
+        event.preventDefault = noop;
       }
       if (typeof event.stopImmediatePropagation !== 'function') {
-        event.stopImmediatePropagation = () => {};
+        event.stopImmediatePropagation = noop;
       }
       fillTargetValue(event);
     }
@@ -3007,6 +3055,16 @@ export const afterNextFlush = (callback: () => void): void => {
 let settleFlushScheduled = false;
 
 /**
+ * Whether a settle flush was asked for, and skipped, while a list item was
+ * being built (see scheduleSettleFlush), with no settle flush since. The
+ * item's own flush covers the item only, so a change it made elsewhere waits
+ * for the next flush. The next native event brings it, even one only the
+ * iOS scroll placeholder hears (see #dispatch), as every event did when each
+ * one flushed.
+ */
+let settleSkippedForListItem = false;
+
+/**
  * Safety-net flush for native mutations made OUTSIDE a begin()/end() change-
  * detection cycle. `LynxRendererFactory2.end()` calls `__FlushElementTree()`
  * once per CD tick, which is what commits (lays out + paints) the cycle's
@@ -3036,8 +3094,8 @@ let settleFlushScheduled = false;
  *    `<list>` defers its own first flush (see isFirstRenderPending());
  *  - a list's componentAtIndex is building a `*lynxListFor` item, which it
  *    flushes itself (see bindListItem). What else is left for a flush then
- *    waits for the next one; calls waiting for it are seen to by
- *    settleAfterListItems().
+ *    waits for the next one (see settleSkippedForListItem); calls waiting for
+ *    it are seen to by settleAfterListItems().
  * The near-no-op cost when nothing is layout-dirty (the core's `need_layout_`
  * gate) keeps the steady-state overhead negligible.
  */
@@ -3045,9 +3103,12 @@ export const scheduleSettleFlush = (): void => {
   if (
     settleFlushScheduled ||
     isInsideChangeDetection() ||
-    isFirstRenderPending() ||
-    isBindingListItem()
+    isFirstRenderPending()
   ) {
+    return;
+  }
+  if (isBindingListItem()) {
+    settleSkippedForListItem = true;
     return;
   }
   settleFlushScheduled = true;
@@ -3056,6 +3117,9 @@ export const scheduleSettleFlush = (): void => {
     // A CD cycle began in the meantime — its end() will flush; don't double up
     // (and avoid a re-entrant flush).
     if (isInsideChangeDetection()) return;
+    // Cleared before the flush: a list item built inside it (its layout pass
+    // calls componentAtIndex) leaves the next flush its own leftovers.
+    settleSkippedForListItem = false;
     // Mirror end()'s ordering: commit any queued removals, then re-derive text
     // whitespace, so both land in the same flush as the new content (see
     // #pendingRemovals / #pendingTextNormalization). List children are driven by

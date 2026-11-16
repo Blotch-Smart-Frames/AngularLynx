@@ -25,7 +25,7 @@ import {
   filterAngularDiagnostics,
   toAngularDiagnosticError,
 } from './angular-diagnostics.js';
-import { renamePackagePrivateMethods } from './private-methods.js';
+import { transformPrivateMethods } from './private-methods.js';
 import { wrapPureClasses } from './pure-classes.js';
 import { markHostElementsPure } from './pure-host-elements.js';
 import { seedCompilationSourceFiles } from './seed-compilation-source-files.js';
@@ -591,17 +591,18 @@ export const applyAngularRules = async (
         { root: api.context.rootPath },
       );
       if (!background) {
-        // AngularLynx's own classes get their private methods defined once,
-        // on the prototype, instead of on every instance (see
-        // private-methods.ts). After the cross-thread transform, whose IDs
-        // come from the code as written. Only here: the background thread
-        // never builds the element wrappers this is for, and there it cost
-        // tree shaking. With no private method left to lower inside a class's
-        // pure IIFE, SWC's minifier inlines the IIFE, and then can't drop the
-        // class when nothing uses it (kitchen-sink's background bundle kept
-        // the IntersectionObserver and XMLHttpRequest classes, 8.6 kB).
+        // AngularLynx's classes, and the app's own, get their private
+        // methods defined once instead of on every instance (see
+        // private-methods.ts); other packages' are left as they are. After
+        // the cross-thread transform, whose IDs come from the code as
+        // written. Only here: the background thread never builds the element
+        // wrappers or components this is for, and there it cost tree shaking.
+        // With no private method left to lower inside a class's pure IIFE,
+        // SWC's minifier inlines the IIFE, and then can't drop the class when
+        // nothing uses it (kitchen-sink's background bundle kept the
+        // IntersectionObserver and XMLHttpRequest classes, 8.6 kB).
         return {
-          code: renamePackagePrivateMethods(code, context.resourcePath, {
+          code: transformPrivateMethods(code, context.resourcePath, {
             root: api.context.rootPath,
           }),
         };
@@ -656,7 +657,14 @@ export const applyAngularRules = async (
           : undefined,
     });
     if (!background) {
-      return { code };
+      // The app's private methods, as for a JavaScript module above. After
+      // the transforms buildTransformedCode makes, so the cross-thread IDs
+      // come from the same code as the background thread's.
+      return {
+        code: transformPrivateMethods(code, context.resourcePath, {
+          root: api.context.rootPath,
+        }),
+      };
     }
     // The background thread runs a module like this for its background
     // functions and refs, never for its components, services or pipes.

@@ -21,33 +21,33 @@ export class LynxFrame extends LynxElementBase {
   /**
    * URL of the `.lynx.bundle` file to embed.
    */
-  src?: string;
+  declare src?: string;
   /**
    * Initial data passed into the embedded page.
    */
-  data?: Record<string, unknown>;
+  declare data?: Record<string, unknown>;
   /**
    * Global props forwarded to the embedded page's global scope.
    */
-  'global-props'?: Record<string, unknown>;
+  declare 'global-props'?: Record<string, unknown>;
   /**
    * Size the frame to match its content width.
    */
-  'auto-width'?: boolean;
+  declare 'auto-width'?: boolean;
   /**
    * Size the frame to match its content height.
    */
-  'auto-height'?: boolean;
+  declare 'auto-height'?: boolean;
   /**
    * Width used before the embedded page reports its content size (e.g. `'200px'`).
    */
-  'preset-width'?: string;
+  declare 'preset-width'?: string;
   /**
    * Height used before the embedded page reports its content size (e.g. `'200px'`).
    */
-  'preset-height'?: string;
+  declare 'preset-height'?: string;
   /**
    * Override the host's multi-async-thread setting for the embedded page.
    */
-  'enable-multi-async-thread'?: boolean;
+  declare 'enable-multi-async-thread'?: boolean;
 }

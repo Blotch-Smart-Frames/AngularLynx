@@ -48,58 +48,58 @@ export class LynxInput extends LynxElementBase {
   /**
    * Keyboard type shown when this input gains focus.
    */
-  type?: 'text' | 'number' | 'digit' | 'password' | 'tel' | 'email';
+  declare type?: 'text' | 'number' | 'digit' | 'password' | 'tel' | 'email';
   /**
    * Greyed-out hint text shown when the field is empty.
    */
-  placeholder?: string;
+  declare placeholder?: string;
   /**
    * The text the field shows, from its first render, as the DOM's `value`
    * property. Changing it doesn't move the caret when the field has the
    * text already, such as a model bound back to it.
    */
-  value?: string;
+  declare value?: string;
   /**
    * Maximum character count (-1 = unlimited).
    */
-  maxlength?: number;
+  declare maxlength?: number;
   /**
    * Whether the field is read-only.
    */
-  readonly?: boolean;
+  declare readonly?: boolean;
   /**
    * Whether the field and keyboard are disabled.
    */
-  disabled?: boolean;
+  declare disabled?: boolean;
   /**
    * Label for the soft-keyboard confirm button. @default 'done'
    */
-  'confirm-type'?: 'search' | 'send' | 'go' | 'done' | 'next';
+  declare 'confirm-type'?: 'search' | 'send' | 'go' | 'done' | 'next';
   /**
    * Input character whitelist — a regular expression pattern string.
    */
-  'input-filter'?: string;
+  declare 'input-filter'?: string;
   /**
    * Whether tapping the field shows the soft keyboard. @default true
    */
-  'show-soft-input-on-focus'?: boolean;
+  declare 'show-soft-input-on-focus'?: boolean;
   /**
    * Enable auto-correction on iOS.
    */
-  'ios-auto-correct'?: boolean;
+  declare 'ios-auto-correct'?: boolean;
   /**
    * Enable spell-checking on iOS.
    */
-  'ios-spell-check'?: boolean;
+  declare 'ios-spell-check'?: boolean;
   /**
    * Enter full-screen editing mode on Android.
    */
-  'android-fullscreen-mode'?: boolean;
+  declare 'android-fullscreen-mode'?: boolean;
   /**
    * Initial content. Applied on first render only and doesn't fire `bindinput`.
    * Prefer `value` (or a form control) when the text must stay in sync.
    */
-  'default-value'?: string;
+  declare 'default-value'?: string;
 }
 
 /**
@@ -140,31 +140,31 @@ export class LynxTextarea extends LynxElementBase {
     if (Object.keys(rest).length) super.ngOnChanges(rest);
   }
 
-  type?: 'text' | 'number' | 'digit' | 'tel' | 'email';
-  placeholder?: string;
-  value?: string;
-  maxlength?: number;
+  declare type?: 'text' | 'number' | 'digit' | 'tel' | 'email';
+  declare placeholder?: string;
+  declare value?: string;
+  declare maxlength?: number;
   /**
    * Maximum number of visible lines.
    */
-  maxlines?: number;
+  declare maxlines?: number;
   /**
    * Extra spacing between lines in px.
    */
-  'line-spacing'?: number;
-  readonly?: boolean;
-  disabled?: boolean;
-  'confirm-type'?: 'search' | 'send' | 'go' | 'done' | 'next';
-  'input-filter'?: string;
-  'show-soft-input-on-focus'?: boolean;
-  bounces?: boolean;
-  'enable-scroll-bar'?: boolean;
-  'ios-auto-correct'?: boolean;
-  'ios-spell-check'?: boolean;
-  'android-fullscreen-mode'?: boolean;
+  declare 'line-spacing'?: number;
+  declare readonly?: boolean;
+  declare disabled?: boolean;
+  declare 'confirm-type'?: 'search' | 'send' | 'go' | 'done' | 'next';
+  declare 'input-filter'?: string;
+  declare 'show-soft-input-on-focus'?: boolean;
+  declare bounces?: boolean;
+  declare 'enable-scroll-bar'?: boolean;
+  declare 'ios-auto-correct'?: boolean;
+  declare 'ios-spell-check'?: boolean;
+  declare 'android-fullscreen-mode'?: boolean;
   /**
    * Initial content. Applied on first render only and doesn't fire `bindinput`.
    * Prefer `value` (or a form control) when the text must stay in sync.
    */
-  'default-value'?: string;
+  declare 'default-value'?: string;
 }

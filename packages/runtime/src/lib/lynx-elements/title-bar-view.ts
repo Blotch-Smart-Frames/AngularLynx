@@ -13,5 +13,5 @@ export class LynxTitleBarView extends LynxElementBase {
   /**
    * Whether dragging this region moves the window. @default false
    */
-  moveable?: boolean;
+  declare moveable?: boolean;
 }

@@ -42,60 +42,60 @@ export class LynxList extends LynxElementBase {
    * - `'flow'`      — fixed column count, items fill left-to-right
    * - `'waterfall'` — Pinterest-style varying-height columns
    */
-  'list-type'?: 'single' | 'flow' | 'waterfall';
+  declare 'list-type'?: 'single' | 'flow' | 'waterfall';
   /**
    * Number of columns (flow/waterfall) or rows (horizontal single).
    */
-  'span-count'?: number;
+  declare 'span-count'?: number;
   /**
    * Scroll axis. @default 'vertical'
    */
-  'scroll-orientation'?: 'vertical' | 'horizontal';
-  'enable-scroll'?: boolean;
-  'enable-nested-scroll'?: boolean;
-  bounces?: boolean;
-  sticky?: boolean;
+  declare 'scroll-orientation'?: 'vertical' | 'horizontal';
+  declare 'enable-scroll'?: boolean;
+  declare 'enable-nested-scroll'?: boolean;
+  declare bounces?: boolean;
+  declare sticky?: boolean;
   /**
    * Offset in px for sticky items.
    */
-  'sticky-offset'?: number;
-  'scroll-bar-enable'?: boolean;
+  declare 'sticky-offset'?: number;
+  declare 'scroll-bar-enable'?: boolean;
   /**
    * Scroll to this item index on first render.
    */
-  'initial-scroll-index'?: number;
+  declare 'initial-scroll-index'?: number;
   /**
    * Number of items from the top that triggers bindscrolltoupper.
    */
-  'upper-threshold-item-count'?: number;
+  declare 'upper-threshold-item-count'?: number;
   /**
    * Number of items from the bottom that triggers bindscrolltolower.
    */
-  'lower-threshold-item-count'?: number;
+  declare 'lower-threshold-item-count'?: number;
   /**
    * Minimum interval in ms between scroll events.
    */
-  'scroll-event-throttle'?: number;
+  declare 'scroll-event-throttle'?: number;
   /**
    * Include visible item info in scroll event payloads.
    */
-  'need-visible-item-info'?: boolean;
+  declare 'need-visible-item-info'?: boolean;
   /**
    * Include layout completion info in events.
    */
-  'need-layout-complete-info'?: boolean;
+  declare 'need-layout-complete-info'?: boolean;
   /**
    * Number of items to preload beyond the visible area.
    */
-  'preload-buffer-count'?: number;
+  declare 'preload-buffer-count'?: number;
   /**
    * Snap behavior: `{ factor: 0–1, offset: px }`.
    */
-  'item-snap'?: { factor: number; offset: number };
+  declare 'item-snap'?: { factor: number; offset: number };
   /**
    * Insert/remove animation style.
    */
-  'update-animation'?: 'default' | 'none';
+  declare 'update-animation'?: 'default' | 'none';
   /**
    * Required by Lynx's native list UI whenever the app uses the standard
    * dual-thread engine strategy (always true for AngularLynx) — without it
@@ -105,21 +105,21 @@ export class LynxList extends LynxElementBase {
    * only to opt back into the sync (all-on-UI) engine strategy.
    * @default true
    */
-  'enable-async-list'?: boolean;
+  declare 'enable-async-list'?: boolean;
   /**
    * Insert list-item platform views via the C++ list's operations. Recommended
    * with multi-thread engine strategies. @default false
    */
-  'enable-insert-platform-view-operation'?: boolean;
+  declare 'enable-insert-platform-view-operation'?: boolean;
   /**
    * How the list picks a reference anchor when on-screen items are removed:
    * 0 = none, 1 = toward start, 2 = toward end (experimental). @default 0
    */
-  'experimental-search-ref-anchor-strategy'?: 0 | 1 | 2;
+  declare 'experimental-search-ref-anchor-strategy'?: 0 | 1 | 2;
   /**
    * Allow scrolling when the content is smaller than the list (Harmony). @default false
    */
-  'harmony-scroll-edge-effect'?: boolean;
+  declare 'harmony-scroll-edge-effect'?: boolean;
 }
 
 /**
@@ -142,29 +142,29 @@ export class LynxListItem extends LynxElementBase {
    * Stable unique key for this item — used for diffing and recycling.
    * Must be unique within the list.
    */
-  'item-key'?: string;
+  declare 'item-key'?: string;
   /**
    * Whether this item spans all columns (full-width in flow/waterfall).
    */
-  'full-span'?: boolean;
+  declare 'full-span'?: boolean;
   /**
    * Stick this item to the top of the list while scrolling.
    */
-  'sticky-top'?: boolean;
+  declare 'sticky-top'?: boolean;
   /**
    * Stick this item to the bottom of the list while scrolling.
    */
-  'sticky-bottom'?: boolean;
+  declare 'sticky-bottom'?: boolean;
   /**
    * Whether this item's view can be recycled. @default true
    */
-  recyclable?: boolean;
+  declare recyclable?: boolean;
   /**
    * Reuse pool identifier — items with the same identifier share views.
    */
-  'reuse-identifier'?: string;
+  declare 'reuse-identifier'?: string;
   /**
    * Estimated item size in px for layout pre-calculation.
    */
-  'estimated-main-axis-size-px'?: number;
+  declare 'estimated-main-axis-size-px'?: number;
 }

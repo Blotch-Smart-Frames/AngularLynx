@@ -24,39 +24,39 @@ export class LynxWebView extends LynxElementBase {
   /**
    * URL to load. Changing it reloads the page.
    */
-  src?: string;
+  declare src?: string;
   /**
    * Inline HTML to load. Ignored when `src` is set.
    */
-  html?: string;
+  declare html?: string;
   /**
    * Enable the bounce effect (iOS). @default false
    */
-  bounces?: boolean;
+  declare bounces?: boolean;
   /**
    * Show the scroll bar (iOS). @default false
    */
-  'scroll-bar-enable'?: boolean;
+  declare 'scroll-bar-enable'?: boolean;
   /**
    * Params forwarded to a custom web view implementation (Android/iOS).
    */
-  params?: Record<string, unknown>;
+  declare params?: Record<string, unknown>;
   /**
    * Which web view implementation (injected via LynxService) to use. @default 'default'
    */
-  'webview-type'?: string;
+  declare 'webview-type'?: string;
   /**
    * Allow remote debugging (Chrome DevTools / Safari Web Inspector). @default false
    */
-  'enable-debug'?: boolean;
+  declare 'enable-debug'?: boolean;
   /**
    * JavaScript executed when the document is ready (Clay desktop).
    */
-  initjs?: string;
+  declare initjs?: string;
   /**
    * Cookies preset before loading (Clay).
    */
-  cookies?: {
+  declare cookies?: {
     name: string;
     value: string;
     domain?: string;
@@ -68,5 +68,5 @@ export class LynxWebView extends LynxElementBase {
   /**
    * Render off-screen (Clay). @default false
    */
-  'use-osr'?: boolean;
+  declare 'use-osr'?: boolean;
 }

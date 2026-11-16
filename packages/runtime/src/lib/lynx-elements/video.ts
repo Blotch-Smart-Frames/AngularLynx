@@ -22,33 +22,33 @@ export class LynxVideo extends LynxElementBase {
   /**
    * Video URL. Only online network URLs are supported.
    */
-  src?: string;
+  declare src?: string;
   /**
    * Whether playback loops. @default false
    */
-  loop?: boolean;
+  declare loop?: boolean;
   /**
    * Playback volume from 0 to 1. @default 1
    */
-  volume?: number;
+  declare volume?: number;
   /**
    * Whether audio is muted. @default false
    */
-  muted?: boolean;
+  declare muted?: boolean;
   /**
    * Playback rate from 0.1 to 2.0. @default 1
    */
-  speed?: number;
+  declare speed?: number;
   /**
    * How the video is scaled into the element box. @default 'contain'
    */
-  'object-fit'?: 'contain' | 'cover' | 'fill';
+  declare 'object-fit'?: 'contain' | 'cover' | 'fill';
   /**
    * How queued UI method calls are executed. @default 'queue'
    */
-  mode?: 'queue' | 'direct' | 'latest';
+  declare mode?: 'queue' | 'direct' | 'latest';
   /**
    * Minimum interval between `bindtimeupdate` events, in seconds. @default 0.33
    */
-  'timeupdate-interval'?: number;
+  declare 'timeupdate-interval'?: number;
 }

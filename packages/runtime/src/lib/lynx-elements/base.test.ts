@@ -118,6 +118,16 @@ describe('LynxElementBase static attributes', () => {
       .injector.get(LynxText);
   };
 
+  it('holds the inputs a template sets, and no others', () => {
+    const text = textDirective(
+      '<text [flatten]="false" accessibility-label="Hello">a</text>',
+    );
+
+    // Angular's own keys (`__ngContext__`) aside.
+    const own = Object.keys(text).filter((key) => !key.startsWith('__ng'));
+    expect(own.sort()).toEqual(['accessibility-label', 'flatten']);
+  });
+
   it('reads true/false attributes written as strings as booleans', () => {
     const text = textDirective(
       '<text flatten="false" ignore-focus event-through="true">a</text>',

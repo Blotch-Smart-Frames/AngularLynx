@@ -91,6 +91,17 @@ describe('declaration-only Lynx element directives', () => {
       expect(instance).toBeInstanceOf(Cls);
     },
   );
+
+  it.each(
+    [...DIRECTIVE_CLASSES, LynxInput, LynxTextarea].map(
+      (Cls) => [Cls.name, Cls] as const,
+    ),
+  )('constructs %s without a field for each input', (_name, Cls) => {
+    // The input properties are `declare`d, for their types only: a field
+    // per input would be defined as undefined on every element's directive.
+    const instance = TestBed.runInInjectionContext(() => new Cls());
+    expect(Object.keys(instance)).toEqual([]);
+  });
 });
 
 /**

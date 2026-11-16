@@ -74,17 +74,25 @@ export class UiIcon {
    * The markup, in its color. `currentColor` in it is written over with the
    * color, resolved first: Lynx's SVG engines don't take `color` from the
    * element, and can't read `var(--x)` either (see icon-theme.ts).
+   *
+   * A computed, not a method: a host binding runs each time the view the
+   * icon is in is checked, and a method would build the whole SVG string
+   * again each time, for Angular to compare with the last one character by
+   * character. Everything it reads is a signal (the inputs, the color
+   * scheme, the theme's colors and the container's `UI_ICON_COLOR`), so it
+   * builds the string again only when one of them changes. A mistake
+   * (neither `name` nor `svg`, or both) still throws on each read.
    */
-  protected svgContent(): string {
-    return paintIcon(
+  protected readonly svgContent = computed(() =>
+    paintIcon(
       iconMarkup(
         this.name(),
         this.svg(),
         '<ui-icon> needs a name or an svg, not both.',
       ),
       this.#resolveColor(this.color()),
-    );
-  }
+    ),
+  );
 
   protected readonly sizePx = computed(
     () => SIZE_MAP[this.size() ?? this.#inheritedSize?.() ?? 'md'],

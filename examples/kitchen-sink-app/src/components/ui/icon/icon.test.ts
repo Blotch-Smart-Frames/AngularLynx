@@ -120,6 +120,33 @@ describe('UiIcon', () => {
     );
   });
 
+  // An icon's host bindings run each time the view it's in is checked, which
+  // a screen of icons in rows and buttons is, many times a second while
+  // something on it moves. Built in a method, the markup was painted again
+  // every time.
+  it('paints its markup again only when what it draws changes', async () => {
+    const { host, svg } = await renderIcon();
+    // paintIcon writes the color over each `currentColor` with split/join.
+    const strings: { split(separator: string): string[] } = String.prototype;
+    const split = vi.spyOn(strings, 'split');
+    const paints = () =>
+      split.mock.calls.filter(([separator]) => separator === 'currentColor')
+        .length;
+
+    for (const className of ['mr-1', 'mr-2', 'mr-3']) {
+      host.className.set(className);
+      await waitForUpdate();
+    }
+    expect(svg().getAttribute('class')).toContain('mr-3');
+    expect(paints()).toBe(0);
+
+    host.color.set('rgb(255, 0, 0)');
+    await waitForUpdate();
+    expect(svg().getAttribute('content')).toContain('rgb(255, 0, 0)');
+    expect(paints()).toBe(1);
+    split.mockRestore();
+  });
+
   it('applies the class input to the svg', async () => {
     const { host, svg } = await renderIcon();
     host.className.set('mr-2');

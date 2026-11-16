@@ -91,9 +91,11 @@ describe('NativeScreenSource', () => {
     expect([...listeners.keys()]).toEqual(['bindresize']);
   });
 
-  it('listens for touchmove only for a move listener, and follows the fingers all the same', () => {
+  it('begins a touchmove dispatch only for a move listener, and follows the fingers all the same', () => {
     // A click-outside `pointerdown` is the usual document listener: every
-    // touchmove anywhere would run the page's two listeners for nothing.
+    // touchmove anywhere would make pointer events and start a dispatch for
+    // nothing. The page's trailing touchmove listener stays, as it always
+    // was, so an app's capture listener on the page keeps its phase.
     const { events, listeners, fire } = setup();
     const downs: LynxPointerEvent[] = [];
     events.document.addEventListener('pointerdown', (event) =>
@@ -104,12 +106,17 @@ describe('NativeScreenSource', () => {
         'bindresize',
         'bindtouchcancel',
         'bindtouchend',
+        'bindtouchmove',
         'bindtouchstart',
         'global-bindtouchcancel',
         'global-bindtouchend',
         'global-bindtouchstart',
       ].sort(),
     );
+    // A move does nothing with nothing pending.
+    expect(() =>
+      fire('touchmove', { changedTouches: [touch(1)] }),
+    ).not.toThrow();
 
     // Each touch ends, so each next one is the primary pointer.
     fire('touchstart', { changedTouches: [touch(1)] });
@@ -135,7 +142,7 @@ describe('NativeScreenSource', () => {
     // Gone again with it, and the finger is still followed.
     events.document.removeEventListener('pointermove', move);
     expect(listeners.has('global-bindtouchmove')).toBe(false);
-    expect(listeners.has('bindtouchmove')).toBe(false);
+    expect(listeners.has('bindtouchmove')).toBe(true);
     fire('touchstart', { changedTouches: [touch(4)] });
     expect(downs.at(-1)).toMatchObject({ pointerId: 4, isPrimary: false });
 

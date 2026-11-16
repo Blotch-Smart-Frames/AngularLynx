@@ -41,6 +41,9 @@ import type {
 
 const TOUCH_EVENTS = ['touchstart', 'touchmove', 'touchend', 'touchcancel'];
 
+/** The prefix of the page listeners that hear an event on any element. */
+const GLOBAL_BIND = 'global-bind';
+
 /** The pointer events a document hears: those that bubble. */
 const POINTER_EVENTS = new Set([
   'pointerover',
@@ -73,7 +76,10 @@ const sizeOf = (event: { detail?: unknown }): ViewportSize | null => {
 export class NativeScreenSource implements ScreenSource {
   readonly #events: GlobalEvents;
   #page: GlobalEventsPage | null = null;
-  /** The page listeners, by the event they're for. */
+  /**
+   * The page listeners, by the name the page took each under
+   * (`global-bindtouchstart`, `bindtouchstart`, `bindresize`, …).
+   */
   readonly #listening = new Map<string, () => void>();
   /** The fingers that are down, by pointerId (see pointerIdOf). */
   readonly #down = new Set<number>();
@@ -89,26 +95,33 @@ export class NativeScreenSource implements ScreenSource {
       this.#page = page;
     }
     if (!page) return;
-    const wanted = new Set<string>(['resize']);
+    const wanted = new Set<string>(['bindresize']);
     const typeList = [...types];
     if (
       typeList.some((t) => POINTER_EVENTS.has(t) || TOUCH_EVENTS.includes(t))
     ) {
-      // Following the fingers for pointerId and isPrimary takes the
-      // touches' starts and ends, whichever pointer or touch event is
-      // listened for.
-      for (const name of TOUCH_EVENTS) {
-        if (name !== 'touchmove') wanted.add(name);
-      }
       // A move is only a pointermove or a touchmove. Without one of their
-      // listeners (a click-outside `pointerdown` is the usual one), every
-      // touchmove anywhere on the screen, all through a scroll, would run
-      // the page's two touchmove listeners for nothing.
-      if (types.has('pointermove') || types.has('touchmove')) {
-        wanted.add('touchmove');
+      // listeners (a click-outside `pointerdown` is the usual one), the
+      // global-bind listener, which makes the pointer events and starts the
+      // dispatch, would run on every touchmove anywhere on the screen, all
+      // through a scroll, for nothing. Following the fingers for pointerId
+      // and isPrimary takes only the touches' starts and ends.
+      const moves = types.has('pointermove') || types.has('touchmove');
+      for (const name of TOUCH_EVENTS) {
+        if (name !== 'touchmove' || moves) wanted.add(`global-bind${name}`);
+        // The page's own bubbling listener for each, the touchmove's
+        // included, as before: it shares the page's native handler with an
+        // app's listener for the event on the page, so a capture one there
+        // (`capture-bindtouchmove` on the root component's host) stays
+        // registered bubbling, after its descendants' (see
+        // combinedEventType). With nothing pending, it does nothing.
+        wanted.add(`bind${name}`);
       }
     }
-    if (types.has('click')) wanted.add('tap');
+    if (types.has('click')) {
+      wanted.add('global-bindtap');
+      wanted.add('bindtap');
+    }
     this.#stop([...this.#listening.keys()].filter((n) => !wanted.has(n)));
     for (const name of wanted) {
       if (!this.#listening.has(name)) {
@@ -117,32 +130,38 @@ export class NativeScreenSource implements ScreenSource {
     }
   }
 
-  #listen(page: GlobalEventsPage, name: string): () => void {
-    if (name === 'resize') {
+  /**
+   * Adds the page listener `listener` names: a `global-bind` one, which
+   * begins each dispatch (see #begin), a `bind` one, which runs after the
+   * page's own listeners and finishes it (see GlobalEvents.late), or
+   * `bindresize`.
+   */
+  #listen(page: GlobalEventsPage, listener: string): () => void {
+    if (listener === 'bindresize') {
       return page.addEventListener('bindresize', (event) => {
         const size = sizeOf(event);
         if (size) this.#events.resized(size);
       });
     }
-    const stopEarly = page.addEventListener(`global-bind${name}`, (event) =>
-      this.#begin(name, event),
-    );
-    const stopLate = page.addTrailingEventListener(`bind${name}`, () =>
+    if (listener.startsWith(GLOBAL_BIND)) {
+      const name = listener.slice(GLOBAL_BIND.length);
+      return page.addEventListener(listener, (event) =>
+        this.#begin(name, event),
+      );
+    }
+    const name = listener.slice('bind'.length);
+    return page.addTrailingEventListener(listener, () =>
       this.#events.late(name),
     );
-    return () => {
-      stopEarly();
-      stopLate();
-    };
   }
 
-  #stop(names: string[]): void {
-    for (const name of names) {
-      this.#listening.get(name)?.();
-      this.#listening.delete(name);
+  #stop(listeners: string[]): void {
+    for (const listener of listeners) {
+      this.#listening.get(listener)?.();
+      this.#listening.delete(listener);
       // Fingers that went down while touches were heard can't be followed
       // any more.
-      if (name === 'touchstart') {
+      if (listener === `${GLOBAL_BIND}touchstart`) {
         this.#down.clear();
         this.#primary = null;
       }

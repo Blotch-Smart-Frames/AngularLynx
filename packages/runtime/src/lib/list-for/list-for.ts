@@ -172,8 +172,11 @@ export class LynxListFor<T> implements DoCheck, OnDestroy {
     this.#items = items.slice();
     this.#trackBy = trackBy;
     this.#attributesOf = attributesOf;
-    this.#views.setItems(this.#items, this.#run(this.#items));
-    this.#list?.itemSourceChanged();
+    // Only when native has something to hear: an edit to what the items
+    // show reaches their views here, and changes nothing native knows.
+    if (this.#views.setItems(this.#items, this.#run(this.#items))) {
+      this.#list?.itemSourceChanged();
+    }
   }
 
   ngOnDestroy(): void {

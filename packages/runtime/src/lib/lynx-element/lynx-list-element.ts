@@ -192,9 +192,12 @@ const longestIncreasing = (sequence: readonly number[]): boolean[] => {
 };
 
 /**
- * Whether two items' layout attributes differ (both from `itemAttributes`).
+ * @internal Whether two items' layout attributes differ (both from
+ * `itemAttributes`), as native reads them: `reuse-identifier` is the item's
+ * type, which the slot's id holds. `*lynxListFor` asks it too, to tell an
+ * update with nothing for native (see ListItemViews.setItems).
  */
-const attributesDiffer = (
+export const attributesDiffer = (
   a: ListItemAttributes | undefined,
   b: ListItemAttributes | undefined,
 ): boolean => {

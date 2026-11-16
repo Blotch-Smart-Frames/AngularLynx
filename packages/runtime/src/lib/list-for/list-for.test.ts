@@ -33,12 +33,15 @@ import {
   vi,
 } from 'vitest';
 import { afterNextFlush } from '../lynx-element/lynx-element';
+import {
+  type ListSlot,
+  LynxListElement,
+} from '../lynx-element/lynx-list-element';
 import { LynxDocument } from '../lynx-document';
 import { setPageElementRef } from '../lynx-document/page-ref';
 import { markFirstRenderComplete } from '../lynx-render-lifecycle';
 import { LynxRendererFactory2 } from '../renderer/lynx-renderer-factory2';
 import { LYNX_DOCUMENT } from '../renderer/token';
-import type { ListSlot } from '../lynx-element/lynx-list-element';
 import type { FakeNativeGlobal } from '../testing/fake-native-global';
 import { seededBelow, untrimmedListDiff } from '../testing/untrimmed-list-diff';
 import { LynxListFor, type LynxListItemAttributes } from './list-for';
@@ -557,6 +560,74 @@ describe('*lynxListFor', () => {
     expect(nameIn(sign)).toBe('Row 1!');
     // The same keys: nothing for native to do.
     expect(theList().updates).toHaveLength(sent);
+  });
+
+  it('leaves the list alone when only what the items show changed', async () => {
+    const rows = rowsOf(1000);
+    const { set } = await render({ rows });
+    const signs = [0, 1, 2].map((index) => show(index)!);
+    const changed = vi.spyOn(LynxListElement.prototype, 'itemSourceChanged');
+    const processed = vi.spyOn(LynxListElement.prototype, '_processUpdate');
+    const sent = theList().updates.length;
+    flushes.length = 0;
+
+    // As a signal's update() replaces rows with changed copies: the same
+    // keys, types and layout.
+    const next = [...rows];
+    next[1] = { ...rows[1]!, name: 'Row 2, read' };
+    next[500] = { ...rows[500]!, name: 'Row 501, read' };
+    await set({ rows: next });
+
+    // Not even scheduled: the list would have collected and diffed all
+    // 1,000 items to find nothing to send.
+    expect(changed).not.toHaveBeenCalled();
+    expect(processed).not.toHaveBeenCalled();
+    expect(theList().updates).toHaveLength(sent);
+    expect(
+      flushes.filter(
+        ({ element, options }) => !element && options?.triggerLayout,
+      ),
+    ).toEqual([]);
+    // The rows on screen show it, and so does one native asks for next.
+    expect(nameIn(signs[0]!)).toBe('Row 1');
+    expect(nameIn(signs[1]!)).toBe('Row 2, read');
+    expect(nameIn(show(500)!)).toBe('Row 501, read');
+  });
+
+  it('still tells the list when an item’s layout, type or place changed', async () => {
+    type SizedRow = Row & { size?: number };
+    const rows: SizedRow[] = rowsOf(5);
+    const { set } = await render({
+      rows,
+      attributes: (row: SizedRow) => ({
+        'estimated-main-axis-size-px': row.size,
+        'reuse-identifier': row.kind,
+      }),
+    });
+    const changed = vi.spyOn(LynxListElement.prototype, 'itemSourceChanged');
+
+    const sized = [...rows];
+    sized[2] = { ...rows[2]!, size: 80 };
+    await set({ rows: sized });
+    expect(changed).toHaveBeenCalledTimes(1);
+    expect(theList().updates.at(-1)).toMatchObject({
+      insertAction: [],
+      removeAction: [],
+      updateAction: [{ from: 2, 'estimated-main-axis-size-px': 80 }],
+    });
+
+    const typed = [...sized];
+    typed[3] = { ...sized[3]!, kind: 'big' };
+    await set({ rows: typed });
+    expect(changed).toHaveBeenCalledTimes(2);
+    expect(theList().updates.at(-1)).toMatchObject({
+      insertAction: [{ position: 3, type: 'big', 'item-key': '4' }],
+      removeAction: [3],
+    });
+
+    await set({ rows: [...typed].reverse() });
+    expect(changed).toHaveBeenCalledTimes(3);
+    expect(theList().keys).toEqual(['5', '4', '3', '2', '1']);
   });
 
   it('sees an array changed in place', async () => {

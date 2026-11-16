@@ -103,6 +103,38 @@ export const setInsideChangeDetection = (value: boolean): void => {
 
 export const isInsideChangeDetection = (): boolean => insideChangeDetection;
 
+// How many change-detection cycles are running, one inside another. Angular
+// runs a `detectChanges()` called during a tick (from `ngAfterViewInit()`, an
+// effect, a lifecycle hook) as a begin()/end() pair of its own inside the
+// tick's. Module-level, beside the flag, because the flag is: an app can have
+// more than one renderer factory (tests, a re-bootstrap).
+let changeDetectionDepth = 0;
+
+/**
+ * A change-detection cycle begins (LynxRendererFactory2.begin()): the flag is
+ * set from the outermost cycle's begin() to its end().
+ */
+export const enterChangeDetection = (): void => {
+  changeDetectionDepth++;
+  insideChangeDetection = true;
+};
+
+/**
+ * A change-detection cycle ends (LynxRendererFactory2.end()). Returns whether
+ * it was the outermost, which commits and flushes what all of them changed:
+ * an inner cycle that flushed would send native a half-updated tree in the
+ * middle of the tick, which the UI thread could draw, and leave the rest of
+ * the tick outside change detection, for a settle flush after it. Never below
+ * zero: an end() without its begin() (a test calling end() alone) acts as
+ * the outermost.
+ */
+export const leaveChangeDetection = (): boolean => {
+  if (changeDetectionDepth > 0) changeDetectionDepth--;
+  if (changeDetectionDepth > 0) return false;
+  insideChangeDetection = false;
+  return true;
+};
+
 // How many list items are being built or rebound right now, by a list's
 // componentAtIndex (see bindListItem). More than one when an item holds a
 // list of its own, whose items the item's flush asks for.

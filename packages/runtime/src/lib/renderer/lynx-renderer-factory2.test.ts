@@ -7,7 +7,10 @@ import {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LynxElement } from '../lynx-element';
 import { InMemoryDocument } from '../testing/in-memory-document';
-import { markFirstRenderComplete } from '../lynx-render-lifecycle';
+import {
+  isInsideChangeDetection,
+  markFirstRenderComplete,
+} from '../lynx-render-lifecycle';
 import { EmulatedLynxRenderer } from './emulated-lynx-renderer';
 import { LynxRendererFactory2 } from './lynx-renderer-factory2';
 import { LynxRenderer } from './renderer';
@@ -216,6 +219,36 @@ describe('LynxRendererFactory2', () => {
       factory.end?.();
 
       expect(globalThis.__FlushElementTree).toHaveBeenCalledTimes(1);
+    });
+
+    it('flushes a cycle inside another with the outer one, once', () => {
+      // Angular runs a detectChanges() called during a tick as a
+      // begin()/end() pair inside the tick's.
+      vi.stubGlobal('__FlushElementTree', vi.fn());
+      const commit = vi.spyOn(LynxElement, 'commitPendingRemovals');
+      markFirstRenderComplete();
+      const factory = createFactory();
+
+      factory.begin?.();
+      factory.begin?.();
+      factory.end?.();
+      // Still in the tick: nothing committed or flushed, and what the rest
+      // of it does is still inside change detection.
+      expect(globalThis.__FlushElementTree).not.toHaveBeenCalled();
+      expect(commit).not.toHaveBeenCalled();
+      expect(isInsideChangeDetection()).toBe(true);
+
+      factory.end?.();
+      expect(globalThis.__FlushElementTree).toHaveBeenCalledOnce();
+      expect(commit).toHaveBeenCalledOnce();
+      expect(isInsideChangeDetection()).toBe(false);
+
+      // The next tick starts from the outermost again.
+      factory.begin?.();
+      expect(isInsideChangeDetection()).toBe(true);
+      factory.end?.();
+      expect(globalThis.__FlushElementTree).toHaveBeenCalledTimes(2);
+      commit.mockRestore();
     });
 
     it("sends the cycle's attribute removals before the flush", () => {

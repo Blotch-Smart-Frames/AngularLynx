@@ -1,10 +1,6 @@
-import {
-  bindListItem,
-  isBindingListItem,
-  isFirstRenderPending,
-  runAfterFirstRender,
-} from '../lynx-render-lifecycle';
+import { bindListItem } from '../lynx-render-lifecycle';
 import type { ElementRef, ListElementRef } from '../types/lynx';
+import { cancelListUpdate, scheduleListUpdate } from './list-updates';
 import { LynxElement } from './lynx-element';
 
 /**
@@ -135,29 +131,6 @@ type UpdateAction = InsertAction & {
 };
 
 /**
- * Module-level set of LynxListElements that need their native list updated.
- * Drained by processPendingListUpdates() which is called from
- * LynxRendererFactory2.end() — right before __FlushElementTree().
- */
-const pendingListUpdates = new Set<LynxListElement>();
-
-/**
- * Process all pending list updates. Called from LynxRendererFactory2.end()
- * before __FlushElementTree() so list updates are flushed as part of the
- * normal Angular CD cycle — never from setTimeout (which crashes native).
- */
-export const processPendingListUpdates = (): void => {
-  if (pendingListUpdates.size === 0) return;
-  // Copy & clear before iterating — a processUpdate could theoretically
-  // trigger further mutations, though unlikely.
-  const lists = [...pendingListUpdates];
-  pendingListUpdates.clear();
-  for (const list of lists) {
-    list._processUpdate();
-  }
-};
-
-/**
  * The positions in `sequence` that form a longest increasing run of its
  * values, as a boolean per position. `_processUpdate()` keeps the items whose
  * old indices form it where they are and moves the rest, the fewest moves
@@ -254,7 +227,7 @@ export class LynxListElement extends LynxElement {
 
   override remove(): void {
     this.#destroyed = true;
-    pendingListUpdates.delete(this);
+    cancelListUpdate(this);
     super.remove();
   }
 
@@ -470,30 +443,17 @@ export class LynxListElement extends LynxElement {
   }
 
   /**
-   * Mark this list for update. The actual processing happens in
-   * processPendingListUpdates(), called from LynxRendererFactory2.end()
-   * right before __FlushElementTree(). This ensures list updates are
-   * flushed as part of the normal Angular CD cycle — calling
-   * __FlushElementTree from setTimeout crashes the native engine.
+   * Mark this list for update. Its update-list-info is sent with the next
+   * flush of the element tree, which every list changed since the last one
+   * shares: LynxRendererFactory2.end()'s for a change detection cycle, so
+   * list updates go with the normal Angular CD cycle, never from setTimeout
+   * (which crashes native). Lists changed outside a cycle (a lazy route's
+   * component creating static items, before its first check) go with a
+   * settle flush, or a microtask's (see scheduleListUpdate).
    */
   #scheduleUpdate(): void {
     if (this.#destroyed) return;
-    const wasEmpty = pendingListUpdates.size === 0;
-    pendingListUpdates.add(this);
-    if (wasEmpty) {
-      // Safety net for cases where list items are created outside a begin/end
-      // CD cycle (e.g. lazy-loaded route components on first navigation).
-      // If end() drains the set first, this microtask is a no-op.
-      // IMPORTANT: Only call processPendingListUpdates() here — NOT
-      // __FlushElementTree() directly. _processUpdate() does its own flush
-      // per list once update-list-info/callbacks are set; flushing before
-      // that setup runs processes stale list state.
-      queueMicrotask(() => {
-        if (pendingListUpdates.size > 0) {
-          processPendingListUpdates();
-        }
-      });
-    }
+    scheduleListUpdate(this);
   }
 
   /**
@@ -605,9 +565,11 @@ export class LynxListElement extends LynxElement {
   }
 
   /**
-   * Compute a diff against the last committed items and send update-list-info.
-   * Called from processPendingListUpdates() — NOT directly.
-   * __FlushElementTree() is called afterwards by the renderer factory.
+   * Compute a diff against the last committed items and send update-list-info,
+   * and say whether it was sent. Called from processPendingListUpdates() — NOT
+   * directly — which defers it until the first render has finished. No flush
+   * here: whoever called that flushes once for every list it sent (see
+   * flushTreeWithListUpdates), and native asks for the items in that flush.
    *
    * Positions in insertAction are indices in the NEW item array, ascending.
    * Positions in removeAction are indices in the OLD (committed) array,
@@ -622,28 +584,15 @@ export class LynxListElement extends LynxElement {
    * updateAction (`flush: false`, as React Lynx sends one), so native lays it
    * out anew without asking for it again; its content is Angular's to update.
    */
-  _processUpdate(): void {
-    if (this.#destroyed) return;
-
-    // Defer the ENTIRE update — not just the flush — until the first render
-    // has fully completed. See isFirstRenderPending()'s doc comment: driving
-    // the list's update-list-info + layout flush now would run it while still
-    // nested inside native's initial renderPage() call, re-entering our
-    // componentAtIndex callback from a call frame native hasn't finished
-    // unwinding. Re-running this method from the setTimeout macrotask scheduled
-    // by markFirstRenderComplete() lets it run on a clean top-level task
-    // instead, after renderPage() has returned.
-    if (isFirstRenderPending()) {
-      runAfterFirstRender(() => this._processUpdate());
-      return;
-    }
+  _processUpdate(): boolean {
+    if (this.#destroyed) return false;
 
     const newSlots = this.#collectSlots();
     const oldSlots = this.#committed;
 
-    // Commit NOW, before update-list-info/flush below — not at the end of
-    // this method. componentAtIndex reads via committedSlot(), and it can run
-    // reentrantly from inside the __FlushElementTree() call further down
+    // Commit NOW, before update-list-info below and the flush after it — not
+    // at the end of this method. componentAtIndex reads via committedSlot(),
+    // and it runs reentrantly from inside that __FlushElementTree() call
     // (native invokes it synchronously as part of the list's own layout
     // pass); by then this must already reflect the new list.
     this.#committed = newSlots;
@@ -747,7 +696,7 @@ export class LynxListElement extends LynxElement {
       removeAction.length === 0 &&
       updateAction.length === 0
     ) {
-      return;
+      return false;
     }
 
     // Clean up the appended-to-native-list marker for removed element items
@@ -785,37 +734,25 @@ export class LynxListElement extends LynxElement {
       );
     }
 
-    // A list inside a `*lynxListFor` item that componentAtIndex is building
-    // stops here: the item's own flush, which componentAtIndex makes next,
-    // lays out the item and this list in it, as React Lynx's lists inside a
-    // list's item are (ensureElements → flushWithId, no flush of their own).
-    // A root flush now would re-enter native's layout pass (see
-    // bindListItem).
-    if (isBindingListItem()) return;
-
-    // Flush from the tree ROOT, not the list element. FiberElement's layout
-    // traversal (UpdateLayoutInfoRecursively) walks down from root and
-    // early-returns the instant it hits a non-dirty ancestor — it does NOT
-    // recurse into children past that point. The list's surrounding
-    // <view>/<scroll-view> wrapper was already flushed clean by the earlier
-    // bare flush in end(), so a flush scoped to just the list element (via
-    // an `element` arg + listID) never reaches the list: the traversal
-    // prunes one level above it and the native list's own layout pass
-    // (which calls componentAtIndex) never runs. A root-scoped flush walks
-    // the whole tree, and marking the list dirty (done above via
-    // update-list-info's ResolveAttribute) bubbles dirtiness up through its
-    // ancestors, so the traversal isn't pruned before reaching it.
-    __FlushElementTree(undefined, { triggerLayout: true });
-
-    // Do NOT clear update-list-info to an empty {insertAction:[],...} here.
-    // Native consumes update-list-info once during the flush above (the list
+    // No flush here: the flush that follows lays out this list along with
+    // every other list sent with it, and the rest of the tree (see
+    // flushTreeWithListUpdates). A list inside a `*lynxListFor` item that
+    // componentAtIndex is building gets none of its own: the item's flush,
+    // which componentAtIndex makes next, lays out the item and this list in
+    // it, as React Lynx's lists inside a list's item are (ensureElements →
+    // flushWithId, no flush of their own). A root flush then would re-enter
+    // native's layout pass (see bindListItem).
+    //
+    // Do NOT clear update-list-info to an empty {insertAction:[],...} after
+    // it. Native consumes update-list-info once during the flush (the list
     // element is no longer dirty for that attribute afterward), so a later
-    // bare __FlushElementTree() in end() won't re-apply it. React Lynx never
-    // clears it either — it just sets a fresh diff on the next real update
-    // (see listUpdateInfo.ts, which only ever __SetAttribute's a computed
-    // diff, never an empty one). Sending an empty update-list-info actively
-    // corrupts the native list's state (see this file's earlier note): it
-    // leaves every cell perpetually "binding" and the engine re-runs its
-    // layout pass forever with visibleItem stuck empty.
+    // flush won't re-apply it. React Lynx never clears it either — it just
+    // sets a fresh diff on the next real update (see listUpdateInfo.ts, which
+    // only ever __SetAttribute's a computed diff, never an empty one). Sending
+    // an empty update-list-info actively corrupts the native list's state
+    // (see this file's earlier note): it leaves every cell perpetually
+    // "binding" and the engine re-runs its layout pass forever with
+    // visibleItem stuck empty.
+    return true;
   }
 }

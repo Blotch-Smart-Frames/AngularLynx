@@ -1168,6 +1168,67 @@ describe('*lynxListFor', () => {
     expect(show(0)).toBeUndefined();
   });
 
+  it('tells every list a cycle changed about its items with the cycle’s one flush', async () => {
+    @Component({
+      selector: 'two-lists-host',
+      imports: [LynxListFor],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      encapsulation: ViewEncapsulation.None,
+      template: `
+        <list>
+          <list-item *lynxListFor="let row of rows">
+            <text class="name">{{ row.name }}</text>
+          </list-item>
+        </list>
+        <list>
+          @for (row of more(); track row.id) {
+            <list-item
+              ><text class="name">{{ row.name }}</text></list-item
+            >
+          }
+        </list>
+      `,
+    })
+    class TwoListsHost {
+      readonly rows = [];
+      readonly more = signal<Row[]>([]);
+    }
+    const fixture = TestBed.createComponent(TwoListsHost);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const order: string[] = [];
+    const g = globalThis as unknown as Record<string, any>;
+    const setAttribute = g.__SetAttribute;
+    g.__SetAttribute = (n: FakeEl, name: string, value: unknown) => {
+      if (name === 'update-list-info')
+        order.push(`list ${lists.indexOf(n as FakeList)}`);
+      setAttribute(n, name, value);
+    };
+    const flush = g.__FlushElementTree;
+    g.__FlushElementTree = (element?: FakeEl, options?: any) => {
+      if (!element)
+        order.push(options?.triggerLayout ? 'flush with layout' : 'flush');
+      flush(element, options);
+    };
+
+    setInputs(directives.at(-1)!, { rows: rowsOf(3) });
+    fixture.componentInstance.more.set(rowsOf(2, 11));
+    fixture.componentRef.injector.get(ChangeDetectorRef).markForCheck();
+    fixture.detectChanges();
+
+    // Each list used to flush on its own after the cycle's flush.
+    expect(order).toEqual(['list 0', 'list 1', 'flush with layout']);
+    await fixture.whenStable();
+    // Native asks for each list's items in that flush.
+    expect(lists[0]!.keys).toHaveLength(3);
+    expect(nameIn(show(2)!)).toBe('Row 3');
+    const second = lists[1]!;
+    expect(second.keys).toHaveLength(2);
+    expect(
+      nameIn(second.componentAtIndex(second, second.id, 1, operationId++)!),
+    ).toBe('Row 12');
+  });
+
   it('updates a list inside an item with the item’s own flush', async () => {
     @Component({
       selector: 'nested-host',

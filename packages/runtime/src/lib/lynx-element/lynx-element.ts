@@ -26,6 +26,7 @@ import {
 } from '../lynx-render-lifecycle';
 import type { ElementRef } from '../types/lynx';
 import { toLynxDisplay, withLynxDisplay } from './display';
+import { flushTreeWithListUpdates } from './list-updates';
 import { withFlatCalc } from './nested-calc';
 import {
   readsSafeAreaInsets,
@@ -3280,8 +3281,9 @@ let flushedEpoch = 0;
  * normalization), so every write counted so far reaches native with it. The
  * settle flush and `LynxRendererFactory2.end()` call it right before their
  * `__FlushElementTree()`, after the commit passes, which can write
- * themselves. A list item's flush, which covers the item only, and a list's
- * update flush, which runs none of the commit passes, don't.
+ * themselves. A list item's flush, which covers the item only, and the flush
+ * for lists changed outside a cycle with no settle flush coming (see
+ * scheduleListUpdate), which runs none of the commit passes, don't.
  */
 export const markTreeFlushed = (): void => {
   flushedEpoch = nativeWriteEpoch;
@@ -3378,16 +3380,18 @@ export const scheduleSettleFlush = (): void => {
     settleSkippedForListItem = false;
     // Mirror end()'s ordering: commit any queued removals, then re-derive text
     // whitespace, so both land in the same flush as the new content (see
-    // #pendingRemovals / #pendingTextNormalization). List children are driven by
-    // their own update-list-info path, so no list handling here.
+    // #pendingRemovals / #pendingTextNormalization).
     LynxElement.commitPendingRemovals();
     LynxElement.commitPendingFlow();
     LynxElement.commitPendingAttributeRemovals();
     LynxElement.commitPendingTextNormalization();
     // After the commit passes, which write themselves (a regroup inserts):
-    // everything written so far goes with this flush.
+    // everything written so far goes with this flush. So does the
+    // update-list-info of a list changed outside the cycle too (a lazy
+    // route's static items), rather than with a flush of its own after this
+    // one (see flushTreeWithListUpdates).
     markTreeFlushed();
-    __FlushElementTree();
+    flushTreeWithListUpdates();
     LynxElement.commitPendingInvokes();
   });
 };

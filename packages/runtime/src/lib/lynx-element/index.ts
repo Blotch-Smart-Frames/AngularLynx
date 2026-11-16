@@ -11,9 +11,10 @@ export {
   settleAfterListItems,
 } from './lynx-element';
 export {
-  LynxListElement,
+  flushTreeWithListUpdates,
   processPendingListUpdates,
-} from './lynx-list-element';
+} from './list-updates';
+export { LynxListElement } from './lynx-list-element';
 export type {
   LynxListItemSource,
   ListItemAttributes,

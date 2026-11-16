@@ -9,6 +9,7 @@ import {
 import { devStats, endCdTiming, startCdTiming } from '../devtools/stats';
 import type { LynxDocumentBase } from '../lynx-document';
 import {
+  flushTreeWithListUpdates,
   markTreeFlushed,
   processPendingAttributeRemovals,
   processPendingFlow,
@@ -97,18 +98,26 @@ export class LynxRendererFactory2 implements RendererFactory2 {
    *      leaves a gap"). The cycle's loose text is regrouped next, then its
    *      attribute removals follow, for the same flush (see
    *      processPendingFlow and processPendingAttributeRemovals).
-   *   2. __FlushElementTree() — commits all pending element mutations to native
-   *   3. processPendingListUpdates() — sends update-list-info for lists that
-   *      gained/lost children during this CD cycle, then does a targeted flush
-   *      per list. This MUST run after the bare flush so list children's subtrees
-   *      are already committed when componentAtIndex appends them.
-   *   4. processPendingInvokes() — makes again the UI method calls native
+   *   2. flushTreeWithListUpdates() — sends update-list-info for the lists
+   *      that gained, lost or moved items during this CD cycle, then makes the
+   *      cycle's one __FlushElementTree(), which commits all pending element
+   *      mutations to native and lays out once. Native asks each list for its
+   *      items (componentAtIndex) in that layout, after it has resolved the
+   *      rest of the tree. componentAtIndex appends each item and flushes it
+   *      with native's operation id, which commits the item's subtree: until
+   *      it's appended, an item isn't in the page's tree, so no root flush
+   *      reaches it, before or after. React Lynx sends a commit's lists
+   *      before its one flush the same way; each list used to flush on its
+   *      own after the cycle's, N + 1 flushes for N lists.
+   *   3. processPendingInvokes() — makes again the UI method calls native
    *      dropped this cycle because their element had no UI yet (see
-   *      LynxElement.invoke), now that the flush has made it.
-   * Reversing this order causes list items to appear empty (subtree not committed)
-   * or crashes from re-entrant __FlushElementTree.
+   *      LynxElement.invoke), now that the flush has made it. After the
+   *      lists' update-list-info too: a call on a list (a scroll to an item)
+   *      must reach it once the list has the item.
+   * Flushing inside componentAtIndex's layout pass instead (see below) crashes
+   * from re-entrant __FlushElementTree.
    *
-   * Step 1 is skipped entirely while isFirstRenderPending() — see that
+   * Step 2's flush is skipped entirely while isFirstRenderPending() — see that
    * function's doc comment. Every CD cycle that runs as part of the initial
    * bootstrap is still nested inside the native engine's own renderPage call;
    * we avoid driving a layout-triggering flush (which, for pages with a
@@ -128,6 +137,8 @@ export class LynxRendererFactory2 implements RendererFactory2 {
    * of the item, tagged with native's operation id, is the one native waits
    * for, and a full flush here would re-enter native's layout pass. The UI
    * method calls wait for the flush after it (see settleAfterListItems).
+   * Lists the first render changes wait for it to finish, and then share one
+   * flush (see processPendingListUpdates).
    */
   end?(): void {
     try {
@@ -180,16 +191,21 @@ export class LynxRendererFactory2 implements RendererFactory2 {
         processPendingListUpdates();
         return;
       }
-      if (!isFirstRenderPending()) {
+      if (isFirstRenderPending()) {
+        // Native's own flush after renderPage commits the cycle; the lists
+        // wait for the first render to finish (see processPendingListUpdates).
+        processPendingListUpdates();
+      } else {
         // Everything written so far goes with this flush, the commit passes'
         // writes included: the next native event has nothing to flush for
-        // them (see markTreeFlushed).
+        // them (see markTreeFlushed). So do the lists' update-list-info,
+        // sent right before it.
         markTreeFlushed();
-        __FlushElementTree();
+        flushTreeWithListUpdates();
       }
-      processPendingListUpdates();
       // Then the UI method calls made on elements this cycle created, which
-      // have their UIs now (see LynxElement.invoke).
+      // have their UIs now (see LynxElement.invoke), and on lists, which have
+      // their items.
       processPendingInvokes();
     } finally {
       // In `finally` so a cycle that returns early or throws still ends its

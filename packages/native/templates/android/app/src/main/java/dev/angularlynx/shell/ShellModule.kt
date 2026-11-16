@@ -33,6 +33,14 @@ import com.lynx.tasm.LynxEnv
  * `hideSplashScreen` lets the splash screen go, which MainActivity keeps up
  * until the app's first screen is ready. The runtime's LynxSplashScreen
  * calls it.
+ *
+ * `reportFullyDrawn` calls `Activity.reportFullyDrawn()` when the app's first
+ * screen is complete (the runtime's `reportFullyDrawn()`), which logcat prints
+ * as `Fully drawn` and Android's startup tools (Macrobenchmark,
+ * `am start -W`'s callers) read as time to full display. It's called on the
+ * thread the runtime calls from, Lynx's engine thread: the system takes it
+ * from any thread, and a post to the UI thread would add a wait to the moment
+ * it marks.
  */
 class ShellModule(context: Context, param: Any?) : LynxModule(context, param) {
     private val host = param as Host
@@ -41,6 +49,7 @@ class ShellModule(context: Context, param: Any?) : LynxModule(context, param) {
     interface Host {
         fun setBackHandlerEnabled(enabled: Boolean)
         fun hideSplashScreen()
+        fun markFullyDrawn()
     }
 
     @LynxMethod
@@ -51,6 +60,11 @@ class ShellModule(context: Context, param: Any?) : LynxModule(context, param) {
     @LynxMethod
     fun hideSplashScreen() {
         main.post { host.hideSplashScreen() }
+    }
+
+    @LynxMethod
+    fun reportFullyDrawn() {
+        host.markFullyDrawn()
     }
 
     @LynxMethod

@@ -320,6 +320,10 @@ export default defineConfig({
               link: '/api/angular-lynx/splash-screen',
             },
             {
+              text: 'reportFullyDrawn',
+              link: '/api/angular-lynx/fully-drawn',
+            },
+            {
               text: 'LynxImagePicker',
               link: '/api/angular-lynx/image-picker',
             },

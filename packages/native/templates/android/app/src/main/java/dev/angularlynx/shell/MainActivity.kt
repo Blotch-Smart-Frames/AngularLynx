@@ -295,6 +295,11 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
         splashTimeout.removeCallbacksAndMessages(null)
     }
 
+    // Activity.reportFullyDrawn() counts once per launch itself.
+    override fun markFullyDrawn() {
+        reportFullyDrawn()
+    }
+
     override fun startWebAuthSession(url: Uri, callbackScheme: String, done: (WebAuthModule.Result) -> Unit) {
         if (webAuthSession != null) {
             done(WebAuthModule.Result.Failed("A sign-in is already open."))

@@ -108,6 +108,21 @@ export class DebugOverlay {
 - **`stats()` updates only when you ask.** Call `refresh()` to read the latest counts, or `reset()` to set them back to zero. The counters change on every render, so updating the signal each time would cause renders of its own.
 - **`snapshot()`** returns the counts once, without a signal, e.g. to log them.
 
+## Measure startup on a phone
+
+A trace shows what the app does. To time how long it takes to start, mark the moment its first screen is complete with [`reportFullyDrawn()`](/api/angular-lynx/fully-drawn):
+
+```typescript
+effect(() => {
+  if (this.items.hasValue()) reportFullyDrawn();
+});
+```
+
+- **iOS:** record the release app with Instruments' **App Launch** template plus the **Points of Interest** instrument. The launch phases end at the first frame; the `Fully Drawn` point marks the screen being complete.
+- **Android:** `adb logcat | grep "Fully drawn"` prints the time from the tap, and [Macrobenchmark](https://developer.android.com/topic/performance/benchmarking/macrobenchmark-overview)'s `StartupTimingMetric` reads it as time to full display.
+
+Measure a release build (`ng build --platform`) on a real phone. A development build and the simulator are both slower in ways that have nothing to do with your app.
+
 ## Profiling in production builds
 
 AngularLynx's own profiling code is removed from production builds:
@@ -118,6 +133,7 @@ AngularLynx's own profiling code is removed from production builds:
 ## Related
 
 - [`LynxPerformance` and `LynxDevTools` API](/api/angular-lynx/devtools)
+- [`reportFullyDrawn()`](/api/angular-lynx/fully-drawn)
 - [Debugging](/guide/debugging)
 - [Production and development builds](/guide/building-for-production#production-and-development-builds)
 - [Trace guide](https://lynxjs.org/guide/devtool/trace) on lynxjs.org

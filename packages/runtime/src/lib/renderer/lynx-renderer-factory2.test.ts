@@ -5,7 +5,8 @@ import {
   ViewEncapsulation,
 } from '@angular/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { LynxElement } from '../lynx-element';
+import { LynxElement, LynxListElement } from '../lynx-element';
+import { afterNextFlush } from '../lynx-element/lynx-element';
 import { InMemoryDocument } from '../testing/in-memory-document';
 import { markFirstRenderComplete } from '../lynx-render-lifecycle';
 import { EmulatedLynxRenderer } from './emulated-lynx-renderer';
@@ -237,6 +238,47 @@ describe('LynxRendererFactory2', () => {
 
       expect(order).toEqual(['removals', 'flush']);
       commit.mockRestore();
+    });
+
+    it('sends every list the cycle changed before its one flush, then the calls waiting for it', () => {
+      // Each list used to flush on its own after the cycle's flush: three
+      // flushes of the whole tree for two lists.
+      const order: string[] = [];
+      vi.stubGlobal(
+        '__FlushElementTree',
+        vi.fn((_element?: unknown, options?: { triggerLayout?: boolean }) =>
+          order.push(options?.triggerLayout ? 'flush with layout' : 'flush'),
+        ),
+      );
+      vi.stubGlobal(
+        '__SetAttribute',
+        vi.fn((_ref: unknown, name: string) => {
+          if (name === 'update-list-info') order.push('list');
+        }),
+      );
+      vi.stubGlobal('__GetAttributeByName', () => null);
+      let uid = 0;
+      vi.stubGlobal('__GetElementUniqueID', () => ++uid);
+      markFirstRenderComplete();
+      const factory = createFactory();
+
+      factory.begin?.();
+      for (const list of [
+        new LynxListElement({} as never),
+        new LynxListElement({} as never),
+      ]) {
+        list.appendChild(new LynxElement({} as never));
+      }
+      // A UI method on an element made this cycle (see LynxElement.invoke).
+      afterNextFlush(() => order.push('waiting call'));
+      factory.end?.();
+
+      expect(order).toEqual([
+        'list',
+        'list',
+        'flush with layout',
+        'waiting call',
+      ]);
     });
 
     it('skips the flush while the first render is still pending', async () => {

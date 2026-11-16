@@ -1,12 +1,4 @@
-import {
-  Component,
-  ElementRef,
-  ViewEncapsulation,
-  computed,
-  effect,
-  inject,
-  input,
-} from '@angular/core';
+import { Component, ViewEncapsulation, computed, input } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 import { cn } from '../../utils/cn';
@@ -20,23 +12,57 @@ const SIZE_MAP = { xs: 16, sm: 20, md: 24, lg: 32 } as const;
   selector: 'ui-spinner',
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  // The host is the box that turns, sized and styled through `host`, with the
-  // drawing inside. Angular gives a component's host every static attribute
-  // the app writes on it, so a class on <ui-spinner> lands on the host
-  // whatever the component does: with a styled box inside as well, a margin
-  // applied twice.
+  // The host is the box, sized and styled through `host`, with the drawing
+  // inside. Angular gives a component's host every static attribute the app
+  // writes on it, so a class on <ui-spinner> lands on the host whatever the
+  // component does: with a styled box inside as well, a margin applied twice.
   //
   // SVG markup is passed via [attr.content] rather than as child elements.
   // Lynx's native <svg> element can't contain child nodes in the flat element
   // model — the renderer doesn't support nested SVG elements. Passing the full
   // SVG markup string as the `content` attribute is the Lynx-native way to
   // embed vector graphics.
+  //
+  // The view around the drawing turns, by a CSS animation the platform runs,
+  // not `animate()`: Lynx's own animator ticks on the thread Angular runs on,
+  // so a spinner froze for as long as Angular was busy building a screen,
+  // which is when it's shown. `enable-new-animator` false hands the view's
+  // `@keyframes` to Core Animation on iOS, which runs them in the render
+  // server, and to Android's animators on the UI thread. Lynx picks the
+  // animator as the animation is set, so the attribute is static, there from
+  // the moment the view is made. Android rotates only a view of its own
+  // (`flatten` false). The web preview ignores the attribute, and the browser
+  // runs the animation.
+  //
+  // Not the host: `animate()` does nothing on an element the platform
+  // animates, and an app may animate the spinner it shows (a fade in or out),
+  // so the host stays on Lynx's animator. The view fills the host.
   host: {
     '[class]': 'containerClass()',
     '[style]': 'sizeStyle()',
   },
+  // In the component, not the theme, so an app that copies the spinner gets
+  // them with it. Lynx's iOS animator turns a rotation of half a turn or more
+  // by `transform.rotation.z`, so 0deg to 360deg turns there, as it does on
+  // Android (`View.setRotation`) and the web.
+  styles: `
+    @keyframes ui-spinner-turn {
+      from {
+        transform: rotate(0deg);
+      }
+      to {
+        transform: rotate(360deg);
+      }
+    }
+  `,
   template: `
-    <svg [attr.content]="svgContent()" style="width: 100%; height: 100%;" />
+    <view
+      enable-new-animator="false"
+      flatten="false"
+      style="width: 100%; height: 100%; animation: ui-spinner-turn 1600ms linear infinite;"
+    >
+      <svg [attr.content]="svgContent()" style="width: 100%; height: 100%;" />
+    </view>
   `,
 })
 export class UiSpinner {
@@ -50,24 +76,6 @@ export class UiSpinner {
   readonly userClass = input<string>('', { alias: 'class' });
 
   readonly #resolveColor = injectIconColor();
-
-  readonly #host = inject(ElementRef).nativeElement;
-
-  /**
-   * Turns the spinner for as long as it's shown. A field rather than a
-   * constructor: Angular's test build keeps a function for a constructor that
-   * nothing calls, which an app's coverage report would show as uncovered.
-   */
-  protected readonly rotation = effect(() => {
-    this.#host.animate(
-      [{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }],
-      {
-        duration: 1600,
-        iterations: Infinity,
-        easing: 'linear',
-      },
-    );
-  });
 
   // Lynx SVG elements don't inherit the CSS `color` property into their stroke
   // attributes, so we substitute the literal `currentColor` in the SVG string

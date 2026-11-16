@@ -5,6 +5,7 @@ import {
 } from '../lynx-render-lifecycle';
 import { measureLayout } from './layout';
 import { LynxElement, scheduleSettleFlush } from './lynx-element';
+import { LynxListElement } from './lynx-list-element';
 
 /**
  * scheduleSettleFlush() is the safety-net flush for native content created
@@ -79,6 +80,38 @@ describe('scheduleSettleFlush', () => {
 
     await flushMicrotasks();
     expect((globalThis as any).__FlushElementTree).not.toHaveBeenCalled();
+  });
+
+  it('sends the lists changed outside a CD cycle with its flush, not one each', async () => {
+    // A lazy route's component, created before its first check: its
+    // elements ask for the settle flush, its static items update its lists.
+    const order: string[] = [];
+    (globalThis as any).__FlushElementTree = vi.fn(
+      (_element?: unknown, options?: { triggerLayout?: boolean }) =>
+        order.push(options?.triggerLayout ? 'flush with layout' : 'flush'),
+    );
+    vi.stubGlobal(
+      '__SetAttribute',
+      vi.fn((_ref: unknown, name: string) => {
+        if (name === 'update-list-info') order.push('list');
+      }),
+    );
+    vi.stubGlobal('__GetAttributeByName', () => null);
+    let uid = 0;
+    vi.stubGlobal('__GetElementUniqueID', () => ++uid);
+
+    scheduleSettleFlush();
+    for (const list of [
+      new LynxListElement({} as never),
+      new LynxListElement({} as never),
+    ]) {
+      list.appendChild(new LynxElement({} as never));
+    }
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    expect(order).toEqual(['list', 'list', 'flush with layout']);
+    vi.unstubAllGlobals();
   });
 
   it("flushes after a layout read's request, whoever made it", async () => {

@@ -48,15 +48,15 @@
         "hash": "1cac2b09f8e24c3a"
       },
       "spinner.ts": {
-        "hash": "e115ec442a1e9cb3"
+        "hash": "310566caef35bfa0"
       },
       "spinner.test.ts": {
-        "hash": "04bcd16a40c47b85"
+        "hash": "8356097be0005ea7"
       }
     },
     "button": {
       "button.test.ts": {
-        "hash": "04d701ee411352ad"
+        "hash": "33787bcafd15df00"
       },
       "button.ts": {
         "hash": "0d3d77298b5c4ccd"

@@ -30,6 +30,7 @@ export class LoadingLine {}
 
 - The skeleton has no size of its own. Give it a width and height with classes.
 - It's `rounded-md` by default. Add `rounded-full` for a circle.
+- It pulses for as long as it's on screen, and keeps pulsing while your app is busy: the platform runs the pulse, Core Animation on iOS and Android's animators. So [`animate()`](/guide/animations/programmatic) on the skeleton itself does nothing on iOS or Android: to fade or move one, wrap it in a `<view>` and animate that.
 
 ### Card layout
 

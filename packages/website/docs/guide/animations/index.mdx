@@ -78,7 +78,7 @@ Lynx works out each frame of an animation itself, on the thread your Angular cod
 - The element's `animate()` method does nothing then: move it with `transition` and `@keyframes`.
 - On iOS, `transform`, `opacity` and `background-color` animate, and the element's position and size, though its background and children take the new size at once: move it with `transform` and `opacity`.
 - Start the transition with [`afterFrame()`](/api/angular-lynx/animation#afterframe) after work such as building a screen. iOS begins it at the time of the last frame the app saw, so one started straight after a busy moment is partway through when it's first drawn.
-- `<lynx-stack-outlet>` moves its screens this way, and the [Bottom Sheet](/dolan/bottom-sheet) its sheet.
+- `<lynx-stack-outlet>` moves its screens this way, and the [Bottom Sheet](/dolan/bottom-sheet) its sheet. The [Spinner](/dolan/spinner), [Skeleton](/dolan/skeleton) and indeterminate [Progress](/dolan/progress) run their loops on the platform too, so they keep going while a screen builds, which is when they show.
 - The [web preview](/guide/glossary#web-preview) ignores the attribute: the browser runs the transition.
 
 ## CSS @keyframes
@@ -127,6 +127,7 @@ export class Spin {
 
 - Adding the `spinning` class starts the animation from its first frame, and removing it stops the animation.
 - `infinite` in the `animation` shorthand loops it. Use a number to play it that many times.
+- A loop that shows while the app works, such as a spinner, stops while Angular is busy unless the platform runs it: give its element `enable-new-animator="false"` and `flatten="false"` (see [above](#keep-a-transition-moving-while-your-app-works)). A `rotate()` from `0deg` to `360deg` turns there too.
 
 ## Animate from code
 

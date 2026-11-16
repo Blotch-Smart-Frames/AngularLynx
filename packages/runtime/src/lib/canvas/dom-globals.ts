@@ -1,3 +1,4 @@
+import { writePendingClasses } from '../lynx-element/class-writes';
 import { type LayoutRect, toDOMRect } from '../lynx-element/layout';
 import { createImageBitmap, LynxImageBitmap, LynxImageElement } from './image';
 
@@ -105,6 +106,10 @@ export const installCanvasGlobals = (target: Record<string, any>): void => {
       if (!isLynxElement(element)) {
         return nativeGetComputedStyle.call(target, element, pseudo);
       }
+      // The DOM element's styles follow its classes, which change detection
+      // may be holding back (see class-writes.ts): in the testing library's
+      // DOM, which runs the native code paths.
+      writePendingClasses();
       const node = element.element as unknown as Element;
       const view = node.ownerDocument?.defaultView;
       return view ? view.getComputedStyle(node, pseudo) : emptyComputedStyle();

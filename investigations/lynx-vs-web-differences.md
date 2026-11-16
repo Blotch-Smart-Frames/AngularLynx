@@ -438,6 +438,8 @@ Native Lynx drops the animation: the element is in the fiber tree but not yet in
 
 Give the element its starting look as an inline style in the turn that creates it, and start the animation on a later turn (a `setTimeout(…, 0)`), after the flush: `<lynx-stack-outlet>` does this for every transition, and `ui-bottom-sheet` waits a turn before it slides its panel in for the same reason.
 
+An element that was only hidden doesn't have the problem: one shown again with `display` back from `none` plays an `animate()` started in the same turn. On the iOS 27 Simulator, `ui-progress`'s value fill, hidden while the bar is indeterminate, grew from 60% to 90% over its 350 ms when the bar came back at a new value. So keep an element that animates as it comes back in the template, hidden, rather than making it again.
+
 ---
 
 ## Animations run on the thread Angular runs on, at 60 fps on an iPhone unless the app asks for more
@@ -465,7 +467,7 @@ On the iOS 27 Simulator the stack outlet's push and the bottom sheet's slide and
 - `ng build --platform ios` apps set `CADisableMinimumFrameDurationOnPhone`, and the build writes `preferredFps: "high"` (`pluginAngularLynx({ preferredFps })` to choose another). A host app that embeds a LynxView needs the Info.plist key itself.
 - While Lynx's display link runs asking for more than 60 fps, `ng build --platform ios` apps ask for its range from a display link on the main thread (`LynxAnimatorFrameRate` in the iOS shell's `AnimationFrameRate.swift`, which swaps in its own `-[LynxVSyncPulse requestPulse]`), and pause it once Lynx stops asking. A host app that runs the engine off the UI thread needs a hook of its own.
 - Animate `transform` (px or %) and `opacity`. Keep Angular's thread free while a transition runs: build the next screen before it starts.
-- Move an element with CSS transitions on the platform's animators (see the next section), which keep going while the thread is busy. `<lynx-stack-outlet>` does.
+- Move an element with CSS transitions on the platform's animators (see the next section), which keep going while the thread is busy. `<lynx-stack-outlet>` does, and `ui-spinner`, `ui-skeleton` and an indeterminate `ui-progress` run their loops there.
 - Drive a drag from code: listen for its moves with `Renderer2.listen()`, set the styles with `Renderer2.setStyle()`, and set the signals once the finger lets go. Own those styles in one place: Angular only knows the values its own `[style]` binding set, so with a binding on the same property, a drag that ended where it began left the element where the finger last had it. `ui-bottom-sheet` does this.
 
 ---
@@ -494,8 +496,11 @@ It comes with conditions:
 - **A changed `transform` jumps on iOS.** Opacity and the frame start from where the presentation layer has them, so a change mid-transition carries on from there, but a new `transform` first ends the running transition at its end (`applyTransform` stops it), then runs from that end. Android starts from the view's current translation and scale.
 - **Taking the `transition` away ends a running one where it was going,** on iOS (its delegate's `forceStop`) and Android (`ValueAnimator.cancel()` runs `onAnimationEnd`, which sets the end values).
 - A script hears `transitionend` only if the element listens for it (iOS checks the element's `eventSet`). A timer is simpler.
+- **`@keyframes` go there too, loops included.** On iOS an `animation` becomes a `CAKeyframeAnimation` per animated key path, which the render server repeats (Lynx writes `infinite` as 10⁹ repeats); on Android, an `ObjectAnimator` on the view. A `rotate()` that turns half a turn or more between two keyframes still turns on iOS: `LynxKeyframeAnimator` takes the z rotation out of the matrices it interpolates (two matrices for `0deg` and `360deg` are the same, and would leave the element still) and animates `transform.rotation.z` instead, in steps of under π (`shouldPerformRotateZInMatrix`, `setRotationValues`). Android animates `View.setRotation` in degrees, and the web interpolates the angle. A `translateX` in % resolves against the element's frame once it's laid out (`shouldReInitTransform` builds the keyframes again when the size changes).
 
 In a test in Lynx Explorer on the iOS 27 Simulator that busy-loops Angular's thread, the UI thread there, for 300 ms, 100 ms after a push or a pop starts, `<lynx-stack-outlet>`'s pages froze for 16 to 18 frames on Lynx's animator, then jumped to the end. On Core Animation they skipped none, or one. Dragged away and busy 100 ms after letting go, `ui-bottom-sheet` froze for about 24 frames on Lynx's animator, and slid off the screen without a skipped frame on Core Animation. Found in November 2026.
+
+The loading loops showed the same. In an app `ng build --platform ios` made, on the iOS 27 Simulator, with Angular's thread (its own, `MostOnTASM`) busy-looping for 800 ms every 3 s, `ui-spinner`, `ui-skeleton` and an indeterminate `ui-progress` on Lynx's animator (`animate()`) stood still for 800 to 850 ms each time, in a screen recording (`simctl io recordVideo`, frames compared in each one's region). As `@keyframes` on Core Animation, the spinner and the bar changed on every frame through the loop (18 to 62 ms the longest without a change) and the skeleton kept fading. With the loop stopped and nothing else on screen, the app used 0.56 to 2.15 s of CPU in 20 s with them on Lynx's animator, which ticks the engine thread on every frame, and 0.07 to 0.10 s with them on Core Animation. The same app on the Android emulator (API 34, `screenrecord`) showed the spinner still for 770 to 1,100 ms through each loop on Lynx's animator, and turning through it on Android's animators, 70 to 160 ms the longest without a change at the 17 frames a second the loaded emulator recorded. Found in November 2026.
 
 ### What to do
 
@@ -504,6 +509,7 @@ In a test in Lynx Explorer on the iOS 27 Simulator that busy-loops Angular's thr
 - Start a transition with `afterFrame()`, which runs on the turn after a frame, once the thread has nothing else waiting (four frames at most): `<lynx-stack-outlet>` starts a push or a pop from it, and `ui-bottom-sheet` its moves.
 - Move by `transform` rather than a size: `ui-bottom-sheet` moves between detents laid out at the taller one, and translated, and lays itself out at a shorter one once it's there.
 - End one early by taking its `transition` away.
+- Run a loading loop (a spinner, a skeleton's pulse, an indeterminate bar) as `@keyframes` on such an element, as `ui-spinner`, `ui-skeleton` and `ui-progress` do: it shows while Angular builds a screen, which is exactly when Lynx's animator stops. On a ProMotion iPhone it runs at 60 fps, as loops keep the system's rate (see above). Keep the loop off an element that something else moves with `animate()`, which does nothing there: `ui-spinner` turns a view inside its host, which an app may fade, and `ui-progress` hides its value's fill (whose width `animate()` changes) and slides another in its place. `ui-skeleton` keeps the loop on its host, which the app's classes style, so an app animates a view around it.
 
 ---
 
@@ -640,8 +646,10 @@ The build compiles the app's own code and AngularLynx's packages with SWC's `pri
 Three things change for the code compiled this way:
 
 - **`#field in object` throws.** SWC's properties mode compiles it to a call on the field's key, a string (`_field.has(object)`). Check with `instanceof`, or a public property, instead. (Other packages keep the standard compile so this can't break them.)
-- **A private field is an own property**, non-enumerable, named `__private_<n>_<name>`: `Object.getOwnPropertyNames()` lists it, `Object.keys()`, `JSON.stringify()` and spreading don't. So is a private method, getter or setter, except in the case below.
-- **In AngularLynx's packages, a private method is a prototype method.** SWC's properties mode defines each instance `#method`, getter and setter on every instance, in the constructor: 41 `Object.defineProperty` calls for each `LynxElement`, about half the time it took to create one under V8 without its JIT. So the main thread's build first renames them, in AngularLynx's own packages only, to ordinary class methods named `__<name>_<key><n>` (`packages/rsbuild-plugin-angular-lynx/src/private-methods.ts`): non-enumerable, defined once on the prototype, so `Object.getOwnPropertyNames()` of an instance lists only its fields. Private fields and static private methods compile as above, and a class that uses `#name in object` is left alone, as is a class with `extends` that can be made more than once (in a function that isn't called at once, a loop or an instance field's initializer, as a mixin or a class factory is): the names are per class in the source, so every class it made would share them, and one made from another (`Mixin(Mixin(Base))`) would override its base's private method with its own. The background thread, which never builds the element wrappers, keeps the standard compile.
+- **A private field is an own property**, non-enumerable, named `__private_<n>_<name>`: `Object.getOwnPropertyNames()` lists it, `Object.keys()`, `JSON.stringify()` and spreading don't. So is a private getter or setter, and a private method, except in the cases below.
+- **A private method is defined once, not on every instance.** SWC's properties mode defines each instance `#method`, getter and setter on every instance, in the constructor: 41 `Object.defineProperty` calls for each `LynxElement`, about half the time it took to create one under V8 without its JIT, and 34 for each of the UI kit's bottom sheets. So the main thread's build compiles private methods another way first (`packages/rsbuild-plugin-angular-lynx/src/private-methods.ts`), in one of two ways. The background thread, which never builds the element wrappers or the components, keeps the standard compile.
+  - **In AngularLynx's packages, a private method is a prototype method.** The build renames each instance `#method`, getter and setter to an ordinary class method named `__<name>_<key><n>`: non-enumerable, defined once on the prototype, so `Object.getOwnPropertyNames()` of an instance lists only its fields. Private fields and static private methods compile as above, and a class that uses `#name in object` is left alone, as is a class with `extends` that can be made more than once (in a function that isn't called at once, or is but has a name or uses `arguments`, either of which can call it again; in a loop; or in an instance field's initializer, as a mixin or a class factory is): the names are per class in the source, so every class it made would share them, and one made from another (`Mixin(Mixin(Base))`) would override its base's private method with its own.
+  - **In the app's own code, a private method is a function the module defines once.** The app's code is outside `node_modules`, and includes the UI components dolan copies into it. A prototype method would show there to code that walks a prototype's own names, which the packages' code doesn't do but an app's can: Angular hashes a component's prototype names into its generated ID (`getComponentId`), and auto-binding helpers and MobX's `makeAutoObservable()` bind or wrap each one. So the build turns `#m(…) {…}` into a static block where it was, `static { __m_<key><n> = { m(…) {…} }.m; }`, with `;var __m_<key><n>;` after the module's last statement, on its line, and each `this.#m(…)` into `__m_<key><n>.call(this, …)`. The prototype doesn't change, and an instance has no property for the method. Only a method nothing could tell apart is compiled this way: every use of it is a call on `this`, in an instance member of its class or an arrow function inside one (a call on another object keeps the brand check that throws for one that isn't an instance), its body doesn't use `super`, no static block or static field that could make an instance comes before it (they run in order, and natively every method is there from the start), and its class is made once. Getters and setters keep the compile above. The one difference left needs a misuse that natively throws a TypeError: a method called on an object that doesn't carry the class's private brand, or doesn't yet, runs. That's a method called on the wrong `this` (an unbound callback), or one called before the instance has its private methods, as when a base class's constructor calls an overridden method that uses the subclass's `#m`. Under `node --jitless`, a class shaped like the bottom sheet (69 own properties, 34 private methods) went from 12.7 to 7.5 µs to construct, and a call through a public method to a private one from 102 to 47 ns: SWC's properties mode checks the instance owns the method's key on every call. Every one of kitchen-sink's 66 per-instance private methods became a function, and its main-thread bundle lost 3.1 kB (showcase's 2.3 kB).
 
 ---
 
@@ -4276,6 +4284,32 @@ This is why the Angular renderer's `setAttribute('class', value)` must call `__S
 
 ---
 
+## `__AddClass` keeps a name twice on iOS and Android, and once on the web
+
+### What you'd expect (web)
+
+`classList.add('a')` on an element that has `a` changes nothing: a class list holds each name once.
+
+### What Lynx does
+
+On iOS and Android, `__AddClass` puts the name on the end of the element's list whether it's there or not (`AttributeHolder::AddClass` is a `push_back`), so `__GetClasses` then returns it twice. `__SetClasses` splits its string on spaces alone, keeping a name twice too, and a tab or newline inside a name. Lynx for Web's element functions use the DOM's class list (`classList.add`, the `class` attribute), which keeps each name once, splits on any whitespace and throws for a name with whitespace in it. The testing library's jsdom does the same. Styles don't change either way: a selector matches a class once.
+
+Angular adds a name twice when a static class and a binding name it: `class="a" [class.a]="on"` writes `a` with the class string, then adds it.
+
+### What AngularLynx does
+
+On iOS and Android, class changes made during change detection wait for the end of the cycle: `LynxRendererFactory2.end()` writes each changed element's class string with one `__SetClasses` (`processPendingClasses()`, before its other commit passes and the flush, on every path). Angular applies a `[class]` binding one class at a time, and each call crossed into C++ and marked the element's styles dirty, though native resolves styles only when the tree is flushed: a host switching between two 15-class variants made up to 45 calls (`__AddClass` for each class added, `__GetClasses` and `__SetClasses` for each removed), and makes one.
+
+The element writes its class string whole only while native's list is known to be exactly its names, each once (`LynxElement`'s `#nativeClasses`): an element `LynxDocument` made, which starts with none, or one whose whole class string was written. A name added twice (which iOS, Android and the web keep differently, see above), a name with whitespace in it, and an element from a server render's snapshot, whose classes only native knows, go to native at once, as `__AddClass` or a read of native's list, as every change did before. So native ends up with the list a call for each change gave it, in the same order, on every platform.
+
+Outside change detection, and on Lynx for Web at any time, each change goes to native at once, as before, a removal included reading native's list. The saving is the C++ crossings, which only native Lynx has, and Lynx for Web reads an element's layout and styles from the DOM at once (`getBoundingClientRect()`, `clientWidth`, `getComputedStyle()`).
+
+Anything that reads native's classes, or has native resolve the tree, before the end of the cycle writes the cycle's classes first (`LynxElement.commitPendingClasses()`, through the hook in `lynx-element/class-writes.ts` for the modules that don't import the element): `LynxElement`'s and `MainThreadElement`'s `querySelector()`, `querySelectorAll()` and `getAttribute()`, `MainThreadElement.getAttributeNames()` (so `LynxAccessibility.requestFocus()` finds an element by a class the cycle gave it), the `getComputedStyle()` wrapper, a server render's snapshot (`serializeElementTree`), and every element animation's start, play, pause and cancel. `__ElementAnimate` has native resolve and lay out the tree as it is at once (`Element::AnimateV2` ends in `OnFinishUpdateProps`, then `OnPatchFinish`), so an animation started during a cycle, as a spinner in an `@if` starts one, would otherwise lay out the screen without the cycle's classes. The other element functions the runtime calls during a cycle don't resolve the tree: a UI method waits for the flush (pending invokes), or goes to the UI without touching the tree.
+
+A raw `__AddClass` or `__SetClasses` on an Angular element's `el.element` on iOS or Android is replaced when change detection next changes the element's classes, and, as always, when `setAttribute('class', …)` writes a whole class string. Change its classes through `Renderer2` instead.
+
+---
+
 ## HSL space-separated syntax is not supported
 
 ### What you'd expect (web)
@@ -6903,6 +6937,10 @@ Nothing; it's the build. The main thread is ES2019 (PrimJS), and the Lynx bundle
 `packages/ui`'s chart had the private-field form and threw in every app that didn't provide `UI_THEME_COLORS`. No example copy showed it, because none had been re-synced since dynamic color (#163) added the line; the showcase was the first to take the current chart.
 
 - Write it in two steps: `const fn = this.#field; const value = fn ? fn()[key] : undefined;`.
+
+A private method called through an optional chain on its receiver, `object?.#method()`, comes out wrong the same way: `(null == object ? void 0 : _base(object, _method)[_method])()`, the call outside the conditional and without its receiver. So it throws for a nullish `object`, and for any other it runs the method with `this` undefined. In AngularLynx's packages the build renames private methods first (see "PrimJS never collects objects in a cycle through `#private` fields…" above), and `object?.__method_<key><n>()` compiles correctly; in the app's own code a method called on another object stays private, so the bug stays. Found in November 2026 while checking the build's private-method pass against native semantics.
+
+- Write it as a conditional: `object == null ? undefined : object.#method()`.
 
 ---
 

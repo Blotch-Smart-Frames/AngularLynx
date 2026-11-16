@@ -1,3 +1,4 @@
+import { processPendingClasses } from '../lynx-element';
 import type { ElementRef } from '../types/lynx';
 import type { OpcodeRecorder } from './opcodes';
 
@@ -11,6 +12,10 @@ export const serializeElementTree = (
   root: ElementRef,
   recorder: OpcodeRecorder,
 ): void => {
+  // The snapshot holds the classes native has (see __GetClasses below), and
+  // those changed during change detection reach native at the end of the
+  // cycle: any still waiting are written first.
+  processPendingClasses();
   __MarkTemplateElement(root);
   serializeNode(root, recorder);
 };

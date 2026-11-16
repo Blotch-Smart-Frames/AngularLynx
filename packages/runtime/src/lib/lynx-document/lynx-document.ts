@@ -60,8 +60,12 @@ export class LynxDocument implements LynxDocumentBase {
 
   constructor() {}
   createRootElement(): LynxElement {
-    const pageElement = takeOverPage() ?? __CreatePage('0', 0);
+    const takenOver = takeOverPage();
+    const pageElement = takenOver ?? __CreatePage('0', 0);
     this.page = new LynxElement(pageElement);
+    // A page taken over from the app before keeps that app's classes, which
+    // only native knows.
+    if (!takenOver) this.page.markNew();
     this.page.tagName = 'page';
     // Prevent Angular from reparenting or removing the root page element
     // during normal component lifecycle (appendChild/remove calls).
@@ -101,6 +105,7 @@ export class LynxDocument implements LynxDocumentBase {
     // dispatch (createNativeRefByTag), which the recreation path also uses.
     if (tag === 'list') {
       const list = createListElement(this.#pageId);
+      list.markNew();
       listenForScrollsFromTheStart(list);
       return list;
     }
@@ -115,6 +120,9 @@ export class LynxDocument implements LynxDocumentBase {
       tag === 'canvas'
         ? new LynxCanvasElement(element)
         : new LynxElement(element);
+    // Its native element is new, with no classes: they can wait for the end
+    // of the cycle (see LynxElement's #nativeClasses).
+    el.markNew();
     el.tagName = tag;
     // raw-text bakes its text into the native element at creation, bypassing the
     // cached setter path — seed the recreation cache so a remounted raw-text can

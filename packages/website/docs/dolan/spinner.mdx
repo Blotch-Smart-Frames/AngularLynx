@@ -28,7 +28,7 @@ import { UiSpinner } from '../components/ui/spinner';
 export class Loading {}
 ```
 
-- The spinner turns once every 1.6 seconds, for as long as it's on screen.
+- The spinner turns once every 1.6 seconds, for as long as it's on screen. It keeps turning while your app is busy, building a screen say: the platform turns it, Core Animation on iOS and Android's animators (see [Keep a transition moving while your app works](/guide/animations/#keep-a-transition-moving-while-your-app-works)).
 - Without `color`, it draws in your theme's foreground. `color` takes a theme token such as `var(--primary)` or a literal color such as `#3b82f6`.
 - It's drawn with [Lynx](/guide/glossary#lynx)'s [`<svg>`](/api/elements/svg) element, which can't read your CSS, so theme tokens are looked up the way [Icon](/dolan/icon#colors) does it. For dark mode, see [Icon](/dolan/icon#dark-mode): the same `provideIconTheme()` setting colors the spinner.
 - `class` takes Tailwind classes for the spinner, such as `class="ml-2"`.

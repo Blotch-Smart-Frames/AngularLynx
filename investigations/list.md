@@ -33,6 +33,30 @@ The native flush of the item is most of componentAtIndex's cost either way; chec
 
 The example switches between the two and counts the rows built.
 
+## One flush for every list a cycle changes (2026-11-16)
+
+`LynxRendererFactory2.end()` used to flush the tree, then each list the cycle changed set its `update-list-info` and flushed from the root with `triggerLayout`: N + 1 whole-tree flushes for N lists. Outside a cycle, the settle flush came first and then a flush per list. Each one is a native patch pass (resolve, `FinishTasmOperation`, layout) that also queues UI-thread work.
+
+Now the lists send their `update-list-info` (and their callbacks) right before the one flush (`flushTreeWithListUpdates()`, `lynx-element/list-updates.ts`), as React Lynx does: `updateMainThread.ts` and `renderPage` call `__pendingListUpdates.flush()`, which only sets each list's attribute, then make one `__FlushElementTree(__page, flushOptions)`. The settle flush carries lists changed outside a cycle (a lazy route's static `<list-item>`s); lists changed in one task outside a cycle with no settle flush share one microtask's flush; the lists the first render changes wait for it, as before, and then share one flush.
+
+- **Why one flush does what the N + 1 did.** Native resolves everything dirty from the root first, the lists' `update-list-info` included, then lays out once; each list asks for its items in that layout. componentAtIndex appends an item and flushes it with the operation id, which is what commits the item's subtree: until then the item isn't in the page's tree, and a root flush walks only the tree (`Element::FlushActionsAsRoot`), so the bare flush before never committed it. A flush with no options lays out by default (`trigger_layout_ = true`, `core/public/pipeline_option.h`), but inside a pipeline context it takes that context's options (`renderer_functions.cc`, `FiberFlushElementTree`); the merged flush passes `{ triggerLayout: true }` when lists were sent, as theirs did.
+- **Unchanged:** no flush while a `*lynxListFor` item is being built (`bindListItem`), never an empty `update-list-info`, and the UI method calls waiting for a flush run after it, once lists have their items.
+- **A list that throws** while its update is sent (native refusing its `update-list-info`) doesn't cost the flush: the other lists are sent, the flush is made, the calls waiting for it run, and then the first error is thrown. Before, `end()`'s bare flush had already gone out by then.
+- **A UI method on a list, in the cycle that changes the list, now reaches it after the list's new items.** `invoke()` calls `__InvokeUIMethod` at once, and with pending invokes native keeps the call until the element's next flush, where it runs after the element's props (`FlushPendingInvokeTasks`, `fiber_element.cc`). The bare flush used to be that flush, so a `scrollToPosition` from a view effect (a chat scrolling to its newest row) reached the list while it still had its old items, and the update came with the next flush. Now the call and the `update-list-info` go in the same flush, the call after: React Lynx's order, and what an app means. `list-update-flush.test.ts` pins it.
+- **A list made and filled in one cycle** goes out in the same flush that makes it, as React Lynx's first screen does. The crash `list-item.md` once blamed on that (H1, H2) was the `WeakSet` keyed on element refs, fixed since; the probe below made and filled two lists in one cycle on iOS without a problem.
+
+Measured with a probe app on the iOS Simulator (Lynx Explorer 4.1, iPhone 18 Pro, iOS 27), which wrapped `__FlushElementTree` to count the calls with no element (whole tree) and time them. Screen: a `*lynxListFor` list, an `@for` list, and a `*lynxListFor` list whose items each hold a horizontal `@for` list; a step adds a row to the three lists and a chip to every nested list. The Mac was heavily loaded (load average 30–44), so the times are ranges:
+
+|                                                                        | Before            | After                            |
+| ---------------------------------------------------------------------- | ----------------- | -------------------------------- |
+| Whole-tree flushes, one step (3 lists + 3 nested lists shown)          | 7 (6 with layout) | 1                                |
+| Two lists made and filled in one cycle (`@if`)                         | 3 (2 with layout) | 1                                |
+| Navigating to a lazy route with two lists (static + `@for`)            | 8 (6 with layout) | 2 (the settle flush, the tick's) |
+| A row added to both of its lists                                       | 3 (2 with layout) | 1                                |
+| 30 steps in a row with `ApplicationRef.tick()`, per step (6 runs each) | 12.3–29.2 ms      | 8.1–12.7 ms (one run 32 ms)      |
+
+Rows appeared, scrolled and updated the same before and after, on iOS and in the web preview (where Lynx for Web asks for items in a microtask after `update-list-info`, whatever the flushes). `end()` itself costs the same JS either way: under `node --jitless` against fake native functions, a cycle changing 2–4 lists ran within noise of before, with K + 1 flushes down to 1.
+
 ## Problem
 
 `x-list` in `elements-showcase.component.ts` crashes when the Layout Elements Section loads:

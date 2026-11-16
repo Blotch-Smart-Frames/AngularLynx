@@ -118,8 +118,9 @@ const bootstrapOnMainThread = async (
   // must NOT happen while nested inside native's first renderPage() call —
   // specifically a <list>'s first update-list-info + layout flush, which
   // re-enters componentAtIndex (see lynx-render-lifecycle.ts). Any such update
-  // queued during bootstrap was parked by _processUpdate()'s isFirstRenderPending()
-  // guard; this call drains it onto a fresh setTimeout macrotask. Placed on the
+  // queued during bootstrap was parked by processPendingListUpdates()'s
+  // isFirstRenderPending() guard; this call drains it onto a fresh setTimeout
+  // macrotask, where every list parked shares one flush. Placed on the
   // line right after bootstrap resolves (not later) so the flag flips before the
   // first post-bootstrap change-detection cycle's end() hook runs.
   //

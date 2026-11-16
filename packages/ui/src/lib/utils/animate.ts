@@ -429,6 +429,10 @@ export const overlayClose = (
 /**
  * Creates a continuous pulse animation (for skeleton loading states).
  * Oscillates opacity between 1 and 0.5 indefinitely.
+ *
+ * It runs on Lynx's own animator, which ticks on the thread Angular runs on,
+ * so it stands still while Angular is busy. `ui-skeleton` runs the same pulse
+ * as `@keyframes` on the platform's animator instead (see skeleton.ts).
  */
 export const pulse = (
   el: any,

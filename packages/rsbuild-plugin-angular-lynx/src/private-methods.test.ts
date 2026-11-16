@@ -8,9 +8,11 @@ import * as ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import { LAYERS, applyLayers } from './layers.js';
 import {
+  hidePrivateMethods,
   isAngularLynxPackageModule,
-  renamePackagePrivateMethods,
+  isAppModule,
   renamePrivateMethods,
+  transformPrivateMethods,
 } from './private-methods.js';
 import { JavaScriptTransformer } from './utils/angular/build-internals.js';
 
@@ -299,6 +301,33 @@ const FIXTURES: Record<string, string> = {
     const B = make('b');
     [new A().who(), new B().who()];
   `,
+  'a named function called at once, then again by its name': `
+    let again;
+    const C1 = (function setup(tag) {
+      again = setup;
+      return class { #m() { return tag; } f() { return this.#m(); } };
+    })('first');
+    const C2 = again('second');
+    [new C1().f(), new C2().f()];
+  `,
+  'a named function called at once, which calls itself': `
+    const made = [];
+    (function make(n) {
+      class A { #n = n; #m() { return this.#n; } f() { return this.#m(); } }
+      made.push(A);
+      if (n > 0) make(n - 1);
+    })(2);
+    made.map((A) => new A().f());
+  `,
+  'a class a named function called at once makes again, from its own class': `
+    const made = [];
+    const Last = (function self(Base, depth) {
+      const C = class extends Base { #who() { return depth; } who() { return this.#who(); } };
+      made.push(C);
+      return depth ? self(C, depth - 1) : C;
+    })(class {}, 1);
+    [made[0].prototype.who.call(new Last()), new Last().who()];
+  `,
 };
 
 /**
@@ -309,6 +338,7 @@ const KEPT_NATIVE = new Set([
   'a subclass a method makes, which shadows a private name',
   'a class factory made from its own class',
   'a mixin applied twice, whose constructor calls its own private method',
+  'a class a named function called at once makes again, from its own class',
 ]);
 
 describe('renamePrivateMethods over ES2022 fixtures', () => {
@@ -342,6 +372,482 @@ describe('renamePrivateMethods over ES2022 fixtures', () => {
     );
     // As natively, where private methods aren't properties at all.
     expect(ownNames).toEqual(['name']);
+  });
+});
+
+const APP_FILE = '/app/src/app/sheet.ts';
+const hide = (code: string, file = APP_FILE): string =>
+  hidePrivateMethods(code, file, { root: ROOT });
+
+/**
+ * Where SWC defines a private method (not a getter or setter) on each
+ * instance.
+ */
+const PER_INSTANCE_PRIVATE_METHOD = /defineProperty\(this, [\w$]+, \{\s*value:/;
+
+/**
+ * Fixtures for what app code does that AngularLynx's packages don't, run
+ * natively and after hidePrivateMethods and SWC with the main thread's
+ * options.
+ */
+const APP_FIXTURES: Record<string, string> = {
+  "reflection on the prototype, as auto-binding and Angular's component IDs do": `
+    // As Angular's getComponentId() hashes a component's prototype.
+    const ids = [];
+    const defineComponent = (def) => {
+      ids.push(Object.getOwnPropertyNames(def.type.prototype).join('|'));
+      return def;
+    };
+    const autoBind = (self) => {
+      for (const key of Object.getOwnPropertyNames(Object.getPrototypeOf(self))) {
+        if (key !== 'constructor' && typeof self[key] === 'function') {
+          self[key] = self[key].bind(self);
+        }
+      }
+      return self;
+    };
+    class Panel {
+      #open = false;
+      constructor() { autoBind(this); }
+      #toggle() { this.#open = !this.#open; return this.#open; }
+      #label() { return this.#open ? 'open' : 'closed'; }
+      tap() { this.#toggle(); return this.#label(); }
+      static ɵfac = function Panel_Factory(t) { return new (t || Panel)(); };
+      static ɵcmp = defineComponent({ type: Panel });
+    }
+    const panel = Panel.ɵfac();
+    const inherited = [];
+    for (const key in panel) inherited.push(key);
+    const tap = panel.tap;
+    [
+      ids,
+      Reflect.ownKeys(Panel.prototype),
+      Object.keys(Object.getOwnPropertyDescriptors(Panel.prototype)),
+      Object.keys(panel),
+      inherited,
+      tap(),
+      // The field stays a property (issue #237); a method left on the
+      // instance would show here.
+      Object.getOwnPropertyNames(panel).filter((name) => !name.endsWith('_open')),
+    ];
+  `,
+  'a static initializer before a method, which makes an instance': `
+    const log = [];
+    class Registry {
+      static shared = new Registry('shared');
+      #name;
+      constructor(name) { this.#name = name; log.push(this.#describe()); }
+      #describe() { return 'registry ' + this.#name; }
+    }
+    class Literal {
+      static size = (3);
+      static make = () => new Literal();
+      #count() { return Literal.size; }
+      count() { return this.#count(); }
+    }
+    new Registry('own');
+    [log, Literal.make().count()];
+  `,
+  'a static block after a method, which calls it': `
+    class Config {
+      #parse(text) { return text.split(','); }
+      static defaults;
+      static { Config.defaults = new Config().load('a,b'); }
+      load(text) { return this.#parse(text); }
+    }
+    Config.defaults;
+  `,
+  'a brand check that catches the TypeError': `
+    class Token {
+      #id() { return 1; }
+      static is(value) { try { value.#id(); return true; } catch { return false; } }
+      id() { return this.#id(); }
+    }
+    class Read {
+      #id() { return 1; }
+      static is(value) { try { value.#id; return true; } catch { return false; } }
+      id() { return this.#id(); }
+    }
+    [Token.is(new Token()), Token.is({}), Read.is(new Read()), Read.is({}), new Token().id()];
+  `,
+  'arrow functions, a constructor, field initializers and parameters': `
+    class Feed {
+      #items = [];
+      #seed = this.#make(1);
+      onAdd = (x) => this.#add(x);
+      constructor(first = this.#make(2)) { this.#add(first); }
+      #make(n) { return n * 10; }
+      #add(x) { this.#items.push(x); return this.#items.length; }
+      later() { return [1, 2].map((n) => this.#make(n)); }
+      get size() { return this.#count(); }
+      #count() { return this.#items.length; }
+      #recurse(n) { return n === 0 ? 0 : 1 + this.#recurse(n - 1); }
+      depth() { return this.#recurse(3); }
+      snapshot() { return [this.#seed, ...this.#items, arguments.length]; }
+    }
+    const feed = new Feed();
+    const onAdd = feed.onAdd;
+    onAdd(5);
+    [feed.snapshot(1, 2), feed.later(), feed.size, feed.depth()];
+  `,
+  'methods with the same name in a class and the class in its static field': `
+    class List {
+      #render() { return 'list'; }
+      static Item = class {
+        #render() { return 'item'; }
+        run() { return this.#render(); }
+      };
+      run() { return [this.#render(), new List.Item().run()]; }
+    }
+    new List().run();
+  `,
+  'arguments, new.target and this in a method': `
+    class Probe {
+      #probe(...rest) {
+        return [arguments.length, rest, new.target === undefined, this instanceof Probe];
+      }
+      run() { return this.#probe(1, 2); }
+    }
+    new Probe().run();
+  `,
+};
+
+/**
+ * The fixtures with a method that stays a private method (see
+ * hidePrivateMethods), which SWC then defines on each instance.
+ */
+const HIDE_KEPT_NATIVE = new Set([
+  'other receivers and optional chains',
+  'a method as a value',
+  'a nested class that shadows a private name',
+  'a subclass a method makes, which shadows a private name',
+  'super in a private method',
+  'a receiver that is not an instance',
+  'a class factory made from its own class',
+  'a mixin applied twice, whose constructor calls its own private method',
+  'classes a factory makes without extends',
+  'a static initializer before a method, which makes an instance',
+  'a brand check that catches the TypeError',
+  // `static #items = new Map()` comes before `#own`.
+  'static private methods',
+  'a named function called at once, then again by its name',
+  'a named function called at once, which calls itself',
+  'a class a named function called at once makes again, from its own class',
+]);
+
+/**
+ * Fixtures that SWC's properties mode already compiles wrong, through a
+ * method that stays a private method: `node?.#label()` loses its receiver
+ * (investigations/lynx-vs-web-differences.md). They run as they do without
+ * the pass.
+ */
+const CURRENT_BUILD_ONLY = new Set(['other receivers and optional chains']);
+
+/**
+ * The variables a static block assigns that no `var` at the top level of
+ * the code declares.
+ */
+const undeclared = (code: string): string[] => {
+  const sourceFile = ts.createSourceFile(
+    'a.js',
+    code,
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  const declared = new Set(
+    sourceFile.statements
+      .filter(ts.isVariableStatement)
+      .flatMap((statement) =>
+        statement.declarationList.declarations.map((declaration) =>
+          declaration.name.getText(sourceFile),
+        ),
+      ),
+  );
+  return [...code.matchAll(/static \{ (__\w+) = \{/g)]
+    .map((match) => match[1]!)
+    .filter((name) => !declared.has(name));
+};
+
+/**
+ * What running the code gives, or the error it throws, so a fixture that
+ * throws can be compared too.
+ */
+const settle = async (code: string) => {
+  try {
+    return { value: await runInNewContext(code) };
+  } catch (error) {
+    return { error: String(error) };
+  }
+};
+
+describe('hidePrivateMethods over ES2022 fixtures', () => {
+  const fixtures = { ...FIXTURES, ...APP_FIXTURES };
+  // Its private getter stays an own property, as SWC's lowering makes it;
+  // the reflection fixture above checks methods.
+  delete fixtures['reflection on an instance'];
+  for (const [name, fixture] of Object.entries(fixtures)) {
+    it(`matches native private methods: ${name}`, async () => {
+      const hidden = hide(fixture);
+      expect(undeclared(hidden)).toEqual([]);
+      // Strict, as a module is: assigning a variable nothing declared
+      // throws, where a sloppy script would make it a global.
+      const main = `"use strict";\n${compile(hidden, LAYERS.MAIN_THREAD)}`;
+      expect(PER_INSTANCE_PRIVATE_METHOD.test(main)).toBe(
+        HIDE_KEPT_NATIVE.has(name),
+      );
+      expect(await settle(main)).toEqual(
+        await settle(
+          CURRENT_BUILD_ONLY.has(name)
+            ? `"use strict";\n${compile(fixture, LAYERS.MAIN_THREAD)}`
+            : fixture,
+        ),
+      );
+    });
+  }
+
+  it('leaves the prototype as it was, where renamed methods would show', () => {
+    const fixture =
+      APP_FIXTURES[
+        "reflection on the prototype, as auto-binding and Angular's component IDs do"
+      ]!;
+    const expected = runInNewContext(fixture);
+    const hidden = runInNewContext(compile(hide(fixture), LAYERS.MAIN_THREAD));
+    const renamed = runInNewContext(
+      compile(rename(fixture), LAYERS.MAIN_THREAD),
+    );
+    // The component ID's input, the prototype's keys, and what auto-binding
+    // made own properties.
+    expect(hidden[0]).toEqual(expected[0]);
+    expect(renamed[0]).not.toEqual(expected[0]);
+    expect(Object.keys(renamed[3]).length).toBeGreaterThan(
+      Object.keys(expected[3]).length,
+    );
+  });
+
+  it('runs a method called on the wrong `this`, where natively it throws', () => {
+    // An unbound callback, which TypeScript rejects. Documented on
+    // hidePrivateMethods.
+    const fixture = `
+      class A { #m() { return 'ran'; } f() { return this.#m(); } }
+      let out;
+      try { out = A.prototype.f.call({}); } catch (error) { out = error instanceof TypeError; }
+      out;
+    `;
+    expect(runInNewContext(fixture)).toBe(true);
+    expect(runInNewContext(compile(rename(fixture), LAYERS.MAIN_THREAD))).toBe(
+      true,
+    );
+    expect(runInNewContext(compile(hide(fixture), LAYERS.MAIN_THREAD))).toBe(
+      'ran',
+    );
+  });
+});
+
+describe('hidePrivateMethods', () => {
+  /**
+   * The variable the module gave `#name`, e.g. `__m_3f9a1c0`.
+   */
+  const variable = (code: string, name: string): string =>
+    code.match(new RegExp(`__${name}_[0-9a-f]{6}\\d+`))![0];
+
+  it('turns the method into a function its calls use with `this`', () => {
+    const code =
+      'class A { #m(a) { return a; } f() { return [this.#m(1), this.#m?.(2), this.#m()]; } }';
+    const result = hide(code);
+    const m = variable(result, 'm');
+    expect(result).toBe(
+      `class A { static { ${m} = { m(a) { return a; } }.m; } f() { return [${m}.call(this, 1), ${m}.call(this, 2), ${m}.call(this)]; } };var ${m};`,
+    );
+  });
+
+  it('keeps async and generator markers, types and type parameters', () => {
+    const result = hide(
+      [
+        'class A {',
+        '  async #a(x: number): Promise<number> { return x; }',
+        '  *#g<T>(t: T): Generator<T> { yield t; }',
+        '  async *#ag() {}',
+        "  f(): void { this.#a(1); this.#g<string>('x'); this.#ag(); }",
+        '}',
+      ].join('\n'),
+    );
+    const [a, g, ag] = ['a', 'g', 'ag'].map((name) => variable(result, name));
+    expect(result).toContain(
+      `static { ${a} = { async a(x: number): Promise<number> { return x; } }.a; }`,
+    );
+    expect(result).toContain(
+      `static { ${g} = { *g<T>(t: T): Generator<T> { yield t; } }.g; }`,
+    );
+    expect(result).toContain(`static { ${ag} = { async *ag() {} }.ag; }`);
+    expect(result).toContain(
+      `${a}.call(this, 1); ${g}.call(this, 'x'); ${ag}.call(this);`,
+    );
+  });
+
+  it('decides for each method, and gives each class its own variables', () => {
+    const result = hide(
+      'class A { #a() {} #b() {} f(o) { this.#a(); o.#b(); } static B = class { #a() {} g() { this.#a(); } }; }',
+    );
+    // A's `#a` and B's, each declared and called once, then listed at the end.
+    const [outer, , inner, , ...listed] = result.match(/__a_[0-9a-f]{6}\d+/g)!;
+    expect(outer).toMatch(/0$/);
+    expect(inner).toMatch(/1$/);
+    expect(listed).toEqual([outer, inner]);
+    expect(result).toContain('#b() {}');
+    expect(result).toContain('o.#b()');
+    expect(result).toMatch(/\};var __a_\w+0, __a_\w+1;$/);
+  });
+
+  it('adds no line, declaring the variables after the last statement', () => {
+    const code = [
+      'class A {',
+      '  #m() {',
+      '    return 1;',
+      '  }',
+      '  f() {',
+      '    return this.#m();',
+      '  }',
+      '}',
+    ].join('\n');
+    const result = hide(code);
+    const lines = result.split('\n');
+    expect(lines).toHaveLength(code.split('\n').length);
+    expect(lines[1]).toMatch(/^ {2}static \{ __m_\w+ = \{ m\(\) \{$/);
+    expect(lines[3]).toBe('  } }.m; }');
+    expect(lines[5]).toMatch(/^ {4}return __m_\w+\.call\(this\);$/);
+    expect(lines[7]).toMatch(/^\};var __m_\w+;$/);
+    // A last statement written without its `;` still ends.
+    expect(hide(`${code}\nexport default A`)).toMatch(
+      /\nexport default A;var __m_\w+;$/,
+    );
+  });
+
+  it.each([
+    [
+      'private fields and colors',
+      "const c = '#fff'; class A { #f = 1; g() { return this.#f; } }",
+    ],
+    [
+      'a getter and setter',
+      'class A { get #x() { return 1; } set #x(v) {} f() { this.#x = this.#x; } }',
+    ],
+    [
+      'a static private method',
+      'class A { static #m() {} static f() { return A.#m(); } }',
+    ],
+    ['a method nothing calls', 'class A { #m() {} }'],
+    ['a call on another object', 'class A { #m() {} f(o) { return o.#m(); } }'],
+    [
+      'a read without a call',
+      'class A { #m() {} f() { return this.#m.bind(this); } }',
+    ],
+    ['an optional receiver', 'class A { #m() {} f() { return this?.#m(); } }'],
+    ['a tagged template', 'class A { #m() {} f() { return this.#m`x`; } }'],
+    ['a non-null assertion', 'class A { #m() {} f() { return this.#m!(); } }'],
+    [
+      'a function',
+      'class A { #m() {} f() { return function () { return this.#m(); }; } }',
+    ],
+    [
+      'an object literal method',
+      'class A { #m() {} f() { return { g() { return this.#m(); } }; } }',
+    ],
+    ['a static method', 'class A { #m() {} static f() { return this.#m(); } }'],
+    ['a static field', 'class A { #m() {} static f = () => this.#m(); }'],
+    [
+      'a static block',
+      'class A { #m() {} static { try { this.#m(); } catch {} } }',
+    ],
+    ['a computed key', 'class A { #m() {} [this.#m()]() {} }'],
+    [
+      'a class inside, whose `this` it is',
+      'class A { #m() {} f() { return class { g() { return this.#m(); } }; } }',
+    ],
+    [
+      'a method passed as an argument',
+      'class A { #m() {} f() { return g(this.#m); } }',
+    ],
+    [
+      'a function declaration',
+      'class A { #m() {} f() { function g() { return this.#m(); } return g; } }',
+    ],
+    [
+      "an inner class's decorator",
+      'class A { #m() {} f() { return class { @d(this.#m()) g() {} }; } }',
+    ],
+    [
+      "an inner class's `extends`",
+      'class A { #m() {} f() { return class extends (this.#m(), Object) {}; } }',
+    ],
+    ['a method without a body', 'class A { #m(): void; f() { this.#m(); } }'],
+    [
+      'a call across lines',
+      'class A { #m() {} f() { return this\n  .#m(); } }',
+    ],
+    [
+      'super',
+      'class A extends B { #m() { return super.m(); } f() { return this.#m(); } }',
+    ],
+    [
+      'super in an arrow function',
+      'class A extends B { #m() { return () => super.m(); } f() { return this.#m(); } }',
+    ],
+    [
+      'a static initializer that runs code before it',
+      'class A { static a = make(); #m() {} f() { return this.#m(); } }',
+    ],
+    [
+      'a static block before it',
+      'class A { static {} #m() {} f() { return this.#m(); } }',
+    ],
+    ['a decorator', 'class A { @log #m() {} f() { return this.#m(); } }'],
+    [
+      'an overload',
+      "class A { #m(a: string): void; #m(a: any) {} f() { this.#m('x'); } }",
+    ],
+    ['an optional method', 'class A { #m?() {} f() { this.#m(); } }'],
+    [
+      '`#name in object`',
+      'class A { #m() {} f(o) { this.#m(); return #m in o; } }',
+    ],
+    [
+      'a class made in a function',
+      'const make = () => class { #m() {} f() { return this.#m(); } };',
+    ],
+    [
+      'a class made in a loop',
+      'for (const x of xs) list.push(class { #m() {} f() { return this.#m(); } });',
+    ],
+  ])('leaves %s as it is', (_, code) => {
+    expect(hide(code)).toBe(code);
+  });
+
+  it.each([
+    'static a = 1;',
+    "static a = 'x';",
+    'static a = `x`;',
+    'static a = 1n;',
+    'static a = /x/;',
+    'static a = true;',
+    'static a = false;',
+    'static a = null;',
+    'static a = () => new A();',
+    'static a = function () { return new A(); };',
+    'static a = (1);',
+    'static a = 1 as number;',
+    'static a = 1 satisfies number;',
+    'static a = <number>1;',
+    'static a = null!;',
+    'static a;',
+    'static f() { return new A(); }',
+    'b = new A();',
+  ])('turns a method after `%s` into a function', (member) => {
+    const result = hide(
+      `class A { ${member} #m() {} f() { return this.#m(); } }`,
+    );
+    expect(result).toContain(
+      `static { ${variable(result, 'm')} = { m() {} }.m; }`,
+    );
   });
 });
 
@@ -433,6 +939,16 @@ describe('renamePrivateMethods', () => {
     ['a function called later', 'const later = (() => () => CLASS)();'],
     ['a loop', 'for (const B of bases) list.push(CLASS);'],
     ['an instance field', 'class Holder { made = CLASS; }'],
+    // Called at once, but its name can call it again.
+    [
+      'a named function called at once',
+      'const C = (function make(B) { return CLASS; })(Base);',
+    ],
+    // As `arguments.callee` can, in sloppy code.
+    [
+      'a function called at once that uses `arguments`',
+      'const C = (function () { const B = arguments[0]; return CLASS; })(Base);',
+    ],
   ])(
     'keeps native private methods in a class with extends made more than once, in %s',
     (_, around) => {
@@ -496,7 +1012,7 @@ describe('renamePrivateMethods', () => {
   });
 });
 
-describe('renamePrivateMethods with an inline source map', () => {
+describe('renamePrivateMethods and hidePrivateMethods with an inline source map', () => {
   const PREFIX =
     '//# sourceMappingURL=data:application/json;charset=utf-8;base64,';
   const withMap = (code: string, map: object, prefix = PREFIX): string =>
@@ -698,6 +1214,84 @@ describe('renamePrivateMethods with an inline source map', () => {
       expect(mapOf(renamedCode).mappings).toBe(mappings);
     }
   });
+
+  it('moves columns past the code hidePrivateMethods inserts and replaces', () => {
+    const line = 'class A { #m() { return 1; } f() { return this.#m(); } }';
+    const at = (text: string, from = 0) => line.indexOf(text, from);
+    // `class`, the declaration's name, its `return`, `f`, the call's `this`,
+    // its `#m` (inside the code the call's edit replaces) and its `)`.
+    const columns = [
+      0,
+      at('#m'),
+      at('return'),
+      at('f()'),
+      at('this'),
+      at('#m', at('this')),
+      at(');'),
+    ];
+    const result = hide(
+      withMap(line, mapWith([columns.map((column) => [column, 0, 0, column])])),
+    );
+    const [output, map] = result.split('\n');
+    const out = (text: string, from = 0) => output!.indexOf(text, from);
+    const call = out('__m', out('return __m'));
+    expect(columnsOf(result)).toEqual([
+      [0, out('m() {'), out('return'), out('f()'), call, call, out(');')],
+    ]);
+    // After the class, on its line, and the map on the next.
+    expect(output).toMatch(/\};var __m_\w+;$/);
+    expect(map).toMatch(/^\/\/# sourceMappingURL=/);
+  });
+
+  it('finds the map before the code the plugin appends after it', () => {
+    // As addHotAccept() does in a development build.
+    const hot = 'if (import.meta.webpackHot) {}';
+    const line = 'class A { #m() { return this.#m(); } }';
+    const column = line.indexOf('this');
+    const code = `${withMap(line, mapWith([[[column, 0, 0, column]]]))}${hot}\n`;
+    const result = hide(code);
+    const lines = result.split('\n');
+    expect(lines[1]).toMatch(/^\/\/# sourceMappingURL=/);
+    // After the last statement, the appended code's.
+    expect(lines.slice(2)).toEqual([
+      expect.stringMatching(/^if .*\};var __m_\w+;$/),
+      '',
+    ]);
+    const map = JSON.parse(
+      Buffer.from(
+        lines[1]!.slice(lines[1]!.indexOf(',') + 1),
+        'base64',
+      ).toString(),
+    );
+    // The call's segment moved past the static block's start.
+    expect(map.mappings).not.toBe(mapWith([[[column, 0, 0, column]]]).mappings);
+    expect(
+      lines[0]!.slice(columnsOf(`${lines[0]}\n${lines[1]}`)[0]![0]!),
+    ).toMatch(/^__m_\w+\.call\(this\)/);
+  });
+
+  it("doesn't take a map in a string or a block comment for the module's", () => {
+    // The reviewer's case: no inline map, as in a production build, but a
+    // template literal with a line that reads like one.
+    // Built in pieces, so no line of this file reads as a map comment.
+    const fake = `${'//'}# sourceMappingURL=data:application/json;base64,${Buffer.from(
+      JSON.stringify({ version: 3, mappings: 'AAAA;AAAA;AAAA' }, null, 1),
+    ).toString('base64')}`;
+    const code = [
+      `const snippet = \`x\n${fake}\`;`,
+      `/*\n${fake}\n*/`,
+      'class A { #m() { return snippet; } f() { return this.#m(); } }',
+      'new A().f() === snippet;',
+    ].join('\n');
+    const hidden = hide(code);
+    expect(hidden.split(fake)).toHaveLength(3);
+    expect(hidden).toMatch(/\nnew A\(\)\.f\(\) === snippet;;var __m_\w+;$/);
+    expect(
+      runInNewContext(`"use strict";\n${compile(hidden, LAYERS.MAIN_THREAD)}`),
+    ).toBe(true);
+    // Nor does the rename re-encode it.
+    expect(rename(code).split(fake)).toHaveLength(3);
+  });
 });
 
 describe('isAngularLynxPackageModule', () => {
@@ -744,19 +1338,53 @@ describe('isAngularLynxPackageModule', () => {
   });
 });
 
-describe('renamePackagePrivateMethods', () => {
+describe('isAppModule', () => {
+  it.each([
+    '/app/src/app/app.ts',
+    '/app/src/components/ui/bottom-sheet/bottom-sheet.ts',
+    '/app/src/legacy.mjs',
+    'C:\\app\\src\\app\\app.ts',
+    '/repo/examples/counter/src/app/app.ts',
+    '/repo/packages/ui/src/lib/components/button/button.ts',
+  ])("matches the app's own code: %s", (file) => {
+    expect(isAppModule(file, '/repo/packages')).toBe(true);
+  });
+
+  it.each([
+    '/app/node_modules/rxjs/dist/esm/index.js',
+    '/app/node_modules/.pnpm/rxjs@7.8.2/node_modules/rxjs/dist/esm/index.js',
+    '/app/node_modules/.cache/angular-lynx/entry.js',
+    '/app/node_modules/@blotch/angular-lynx/fesm2022/blotch-angular-lynx.mjs',
+    '/app/node_modules/@blotch/angular-lynx/node_modules/dep/index.js',
+    '/repo/packages/runtime/dist/fesm2022/blotch-angular-lynx.mjs',
+  ])("doesn't match a package: %s", (file) => {
+    expect(isAppModule(file, '/repo/packages')).toBe(false);
+  });
+});
+
+describe('transformPrivateMethods', () => {
   const code = 'class A { #m() {} a() { this.#m(); } }';
+  const transform = (file: string) =>
+    transformPrivateMethods(code, file, { root: ROOT }, '/repo/packages');
 
   it("renames an AngularLynx package's private methods", () => {
-    expect(renamePackagePrivateMethods(code, FILE, { root: ROOT })).not.toBe(
-      code,
+    expect(transform(FILE)).toBe(rename(code));
+    expect(transform('/repo/packages/runtime/dist/fesm2022/x.mjs')).toMatch(
+      /^class A \{ __m_\w+\(\) \{\}/,
     );
   });
 
-  it("leaves the app's own code as it is", () => {
-    expect(
-      renamePackagePrivateMethods(code, '/app/src/app/app.ts', { root: ROOT }),
-    ).toBe(code);
+  it("hides the app's own", () => {
+    expect(transform('/app/src/app/app.ts')).toBe(
+      hide(code, '/app/src/app/app.ts'),
+    );
+    expect(transform('/repo/examples/counter/src/app/app.ts')).toMatch(
+      /^class A \{ static \{ __m_\w+ = \{ m\(\) \{\} \}\.m; \}/,
+    );
+  });
+
+  it("leaves other packages' as they are", () => {
+    expect(transform('/app/node_modules/dep/index.js')).toBe(code);
   });
 });
 
@@ -798,9 +1426,7 @@ describe("over the runtime's build", () => {
       return {
         fesm,
         main: compile(
-          withPass
-            ? renamePackagePrivateMethods(code, fesm, { root: ROOT })
-            : code,
+          withPass ? transformPrivateMethods(code, fesm, { root: ROOT }) : code,
           LAYERS.MAIN_THREAD,
         ),
       };

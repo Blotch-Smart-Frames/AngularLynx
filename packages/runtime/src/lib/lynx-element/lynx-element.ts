@@ -26,6 +26,7 @@ import {
 } from '../lynx-render-lifecycle';
 import type { ElementRef } from '../types/lynx';
 import { toLynxDisplay, withLynxDisplay } from './display';
+import { flushTreeWithListUpdates } from './list-updates';
 import { withFlatCalc } from './nested-calc';
 import {
   readsSafeAreaInsets,
@@ -55,6 +56,7 @@ import {
   toDOMRect,
 } from './layout';
 import { POINTER_EVENT_NAMES, PointerEventSource } from './pointer-events';
+import { setPendingClassWriter } from './class-writes';
 import { noteReleased, scheduleCollection } from './collect-garbage';
 import { removeNativeHandler } from './remove-native-handler';
 import { dropsTap, WebLongPress } from './web-long-press';
@@ -247,6 +249,18 @@ const WHITESPACE = /\s/;
  */
 const isPlainClassName = (name: string): boolean =>
   name !== '' && !WHITESPACE.test(name);
+
+/**
+ * Whether native, given `classes` as a whole class string, has exactly its
+ * names, each once: each name plain, as `__SetClasses` splits the string on
+ * spaces alone, and none twice, which iOS and Android keep twice and Lynx
+ * for Web once.
+ */
+const isWholeClassList = (classes: string): boolean => {
+  if (classes === '') return true;
+  const names = classes.split(' ');
+  return names.every(isPlainClassName) && new Set(names).size === names.length;
+};
 
 /**
  * True if attaching `candidate` under `parent` would form a cycle — i.e.
@@ -509,10 +523,35 @@ export class LynxElement implements BaseLynxElement {
    * a name by appending it, rather than splitting and joining the whole
    * string again: Angular adds a `[class]` binding's classes one at a time,
    * often ten or more on a component's host. Null until the first class, and
-   * after a removal, which takes the classes from native (see removeClass);
+   * after a removal that takes the classes from native (see removeClass);
    * the next addClass builds it from #classes, as it always did.
    */
   #classNames: Set<string> | null = null;
+  /**
+   * What the native element's class list is known to be:
+   *
+   * - `true`: the names in #classes, each once. An element LynxDocument made
+   *   starts so (see markNew), with none, and so does one whose whole class
+   *   string was written with each name plain.
+   * - A string: the same, except that #classes changed during this change
+   *   detection, and native still has this string's names. The change waits
+   *   for the end of the cycle (see #pendingClasses). Never on Lynx for Web.
+   * - `false`: not known. Native may hold what #classes doesn't: an element
+   *   a server render's snapshot made has classes only native knows (see
+   *   LynxHydrateDocument), a name added twice is there twice on iOS and
+   *   Android and once on Lynx for Web, and a class string written whole
+   *   splits a name with a space in it. Each change then goes to native at
+   *   once, as `__AddClass`, or a read of native's list for a removal, as it
+   *   always did, until a whole class string with plain names is written.
+   *
+   * Only change detection on iOS and Android holds changes back. Outside it,
+   * and on Lynx for Web, every change goes to native at once, as before: the
+   * saving is the C++ crossings, which only native Lynx has, and a web
+   * element's layout and styles (getBoundingClientRect, getComputedStyle)
+   * are read from the DOM at once. A removal there reads native's list, as
+   * it always did, so it keeps a class a raw `__AddClass` gave.
+   */
+  #nativeClasses: string | boolean = false;
   /**
    * ViewEncapsulation.Emulated's scope classes (see EmulatedLynxRenderer).
    * Angular writes static and bound classes as one whole class string through
@@ -708,6 +747,22 @@ export class LynxElement implements BaseLynxElement {
   static #pendingAttributeRemovals = new Set<LynxElement>();
 
   /**
+   * Elements whose classes changed during this change detection, which get
+   * their final class string at its end, in one `__SetClasses` each (see
+   * commitPendingClasses), rather than a native call for each change.
+   * Angular applies a `[class]` binding's change one class at a time: a
+   * host switching variants, as ui-button's ten-to-twenty class strings do,
+   * made a call for each class it added, and two (`__GetClasses`, then
+   * `__SetClasses`) for each it removed. Each call crosses into C++ and
+   * marks the element's styles dirty, and native resolves its styles only
+   * when the tree is flushed (or an element animates, see class-writes.ts),
+   * so the calls between flushes drew nothing. Only on iOS and Android (see
+   * #nativeClasses). Keyed by the wrapper, never a native ref (see
+   * #pendingRemovals).
+   */
+  static #pendingClasses = new Set<LynxElement>();
+
+  /**
    * Elements whose loose text and inline tags may need regrouping (see
    * #regroup), at the end of the cycle, when the cycle's inserts, moves and
    * removals are in. Keyed by the wrapper, never a native ref.
@@ -854,6 +909,10 @@ export class LynxElement implements BaseLynxElement {
       hooksInstalled = true;
       setMeasureFlush(scheduleSettleFlush);
       setAfterAnimate(countNativeWrite);
+      // What reads native's classes, or has native resolve the tree, without
+      // the element module writes the cycle's classes first (see
+      // class-writes.ts).
+      setPendingClassWriter(() => LynxElement.commitPendingClasses());
     }
     this.#nativeRef = element;
     // Register as the canonical wrapper for this native ref. #canonicalFor()
@@ -1047,7 +1106,24 @@ export class LynxElement implements BaseLynxElement {
         }
       }
       const classes = [...names].join(' ');
-      __SetClasses(this.element, classes);
+      if (
+        !__WEB__ &&
+        plain &&
+        this.#nativeClasses !== false &&
+        isInsideChangeDetection()
+      ) {
+        // Written at the end of the cycle, with the classes added and
+        // removed after it (see #pendingClasses).
+        this.#deferClasses(this.#classes);
+      } else {
+        // The whole string replaces whatever native has, what waited for the
+        // end of the cycle included.
+        if (typeof this.#nativeClasses === 'string') {
+          LynxElement.#pendingClasses.delete(this);
+        }
+        __SetClasses(this.element, classes);
+        this.#nativeClasses = plain;
+      }
       this.#classes = classes;
       this.#classNames = plain ? names : null;
       this.#rulesChanged();
@@ -1192,6 +1268,10 @@ export class LynxElement implements BaseLynxElement {
   }
 
   getAttribute(name: string) {
+    // The testing library's DOM, which runs the native code paths, reads
+    // `class` from the DOM element, which has the classes this cycle changed
+    // only once they're written (see #pendingClasses).
+    if (name === 'class') this.#writeDeferredClasses();
     return __GetAttributeByName(this.element, name) as string;
   }
 
@@ -1668,6 +1748,7 @@ export class LynxElement implements BaseLynxElement {
    */
   static #anonymousText(): LynxElement {
     const text = new LynxElement(createNativeRefByTag('text', getPageId()));
+    text.markNew();
     text.tagName = 'text';
     text.#anonymous = true;
     text.#webText = true;
@@ -1797,7 +1878,7 @@ export class LynxElement implements BaseLynxElement {
   }
 
   addClass(name: string): void {
-    __AddClass(this.element, name);
+    const before = this.#classes;
     // Keep the cached class string in sync (deduped) so recreation replays the
     // full class list in one __SetClasses.
     const plain = isPlainClassName(name);
@@ -1807,13 +1888,30 @@ export class LynxElement implements BaseLynxElement {
       // string the rebuild below makes.
       if (!names.has(name)) {
         names.add(name);
-        this.#classes = this.#classes ? `${this.#classes} ${name}` : name;
+        this.#classes = before ? `${before} ${name}` : name;
       }
     } else {
-      const rebuilt = new Set(this.#classes.split(/\s+/).filter(Boolean));
+      const rebuilt = new Set(before.split(/\s+/).filter(Boolean));
       rebuilt.add(name);
       this.#classes = [...rebuilt].join(' ');
       this.#classNames = plain ? rebuilt : null;
+    }
+    // While native has the names in #classes and no others (see
+    // #nativeClasses), a plain name the string didn't have is one native
+    // doesn't have: native gets the same list from the whole string as from
+    // __AddClass.
+    const added =
+      plain && this.#classes !== before && this.#nativeClasses !== false;
+    if (added && !__WEB__ && isInsideChangeDetection()) {
+      this.#deferClasses(before);
+    } else {
+      // What waited for the end of the cycle goes first, as it would have.
+      this.#writeDeferredClasses(before);
+      __AddClass(this.element, name);
+      // A name native has already, which iOS and Android then hold twice
+      // and Lynx for Web once, or one a class string would split: native's
+      // list may differ from #classes from here.
+      if (!added) this.#nativeClasses = false;
     }
     this.#rulesChanged();
     scheduleSettleFlush();
@@ -1848,20 +1946,98 @@ export class LynxElement implements BaseLynxElement {
   }
 
   /**
-   * Lynx has no __RemoveClass PAPI — we must get current classes, filter,
-   * and set back. This is O(n) per class removal but class lists on Lynx
-   * elements are typically small (1-5 classes for scope/component styling).
+   * Lynx has no __RemoveClass PAPI — we must filter the current classes and
+   * set them back. During change detection on iOS and Android, while native
+   * has the names in #classes (see #nativeClasses), they're its list, and the
+   * string waits for the end of the cycle. Otherwise native's list is read,
+   * as it always was.
    */
   removeClass(name: string): void {
-    const classes = __GetClasses(this.element).filter((c) => c !== name);
-    const joined = classes.join(' ');
-    __SetClasses(this.element, joined);
-    this.#classes = joined;
-    // Native's list is the truth here, and may hold what the set can't (a
-    // name twice), so the next addClass builds the set from #classes.
-    this.#classNames = null;
+    const before = this.#classes;
+    if (
+      this.#nativeClasses !== false &&
+      !__WEB__ &&
+      isInsideChangeDetection()
+    ) {
+      // Each name is there once, so the set stays the string's.
+      const names = this.#classNames;
+      const joined = names
+        ? names.delete(name)
+          ? [...names].join(' ')
+          : before
+        : before
+            .split(' ')
+            .filter((c) => c !== name)
+            .join(' ');
+      this.#classes = joined;
+      // A class that wasn't there changes nothing, on native either.
+      if (joined !== before) this.#deferClasses(before);
+    } else {
+      // What waited for the end of the cycle goes first, as it would have.
+      this.#writeDeferredClasses(before);
+      const classes = __GetClasses(this.element).filter((c) => c !== name);
+      const joined = classes.join(' ');
+      __SetClasses(this.element, joined);
+      this.#classes = joined;
+      // Native's list is the truth here, and may hold what the set can't (a
+      // name twice), so the next addClass builds the set from #classes.
+      this.#classNames = null;
+      // Native has the string's names now, and if each is plain and there
+      // once, it has what #classes says from here.
+      this.#nativeClasses = isWholeClassList(joined);
+    }
     this.#rulesChanged();
     scheduleSettleFlush();
+  }
+
+  /**
+   * @internal LynxDocument has just made this element's native element,
+   * which has no classes yet: its class changes during change detection can
+   * wait for the end of the cycle (see #nativeClasses).
+   */
+  markNew(): void {
+    this.#nativeClasses = true;
+  }
+
+  /**
+   * Notes that the element's classes change during this change detection,
+   * which writes them at its end (see #pendingClasses). `native` is the
+   * class string native has meanwhile: #classes, before the change.
+   */
+  #deferClasses(native: string): void {
+    if (typeof this.#nativeClasses === 'string') return;
+    this.#nativeClasses = native;
+    LynxElement.#pendingClasses.add(this);
+  }
+
+  /**
+   * Writes the class string that waited for the end of the cycle, unless
+   * native has it already, as when a class added during the cycle was
+   * removed again. `classes` is the string native is to have: #classes, or
+   * #classes before a change that goes to native at once right after.
+   */
+  #writeDeferredClasses(classes = this.#classes): void {
+    const native = this.#nativeClasses;
+    if (typeof native !== 'string') return;
+    LynxElement.#pendingClasses.delete(this);
+    this.#nativeClasses = true;
+    if (native !== classes) __SetClasses(this.element, classes);
+  }
+
+  /**
+   * Writes the classes that changed during the change detection now ending,
+   * one `__SetClasses` for each element (see #pendingClasses). Called by
+   * `LynxRendererFactory2.end()` before its other commit passes and the
+   * flush, on every path: while the first render or a list item's binding
+   * leaves the flush to native or componentAtIndex, and while a server
+   * render hydrates. Each element has the classes it would have had from a
+   * call for each change, in the same order.
+   */
+  static commitPendingClasses(): void {
+    if (LynxElement.#pendingClasses.size === 0) return;
+    const elements = [...LynxElement.#pendingClasses];
+    LynxElement.#pendingClasses.clear();
+    for (const el of elements) el.#writeDeferredClasses();
   }
 
   /**
@@ -2432,6 +2608,11 @@ export class LynxElement implements BaseLynxElement {
     // A field's text, which the destroyed UI took with it.
     if (this.#fieldText !== null) this.#sendFieldText(fresh);
     if (this.#classes) __SetClasses(fresh, this.#classes);
+    // The new native element has the class string as it is now, the changes
+    // waiting for the end of the cycle included (see #pendingClasses).
+    if (typeof this.#nativeClasses === 'string') {
+      this.#nativeClasses = this.#classes;
+    }
     // Whole-string styles first, then per-key overrides — same order as the
     // original setAttribute('style') vs [style.x] application.
     const inlineStyle = this.#inlineStyleFor(this.#inlineStyleWhole);
@@ -2520,6 +2701,9 @@ export class LynxElement implements BaseLynxElement {
   }
 
   querySelector(selector: string): LynxElement | null {
+    // A class selector matches the classes native has, and this cycle's
+    // changes reach it at the cycle's end (see #pendingClasses).
+    LynxElement.commitPendingClasses();
     const element = __QuerySelector(this.element, selector, {});
     if (!element) return null;
     // Canonical wrapper, not a throwaway: a caller that mutates the query result
@@ -2528,7 +2712,8 @@ export class LynxElement implements BaseLynxElement {
     return LynxElement.#canonicalFor(element);
   }
   querySelectorAll(selector: string): LynxElement[] {
-    // Same canonical-wrapper requirement as querySelector, per hit.
+    // Same classes and canonical-wrapper requirement as querySelector.
+    LynxElement.commitPendingClasses();
     return __QuerySelectorAll(this.element, selector, {}).map((e) =>
       LynxElement.#canonicalFor(e),
     );
@@ -3152,6 +3337,18 @@ export const processPendingRemovals = (): void => {
 };
 
 /**
+ * Writes the classes changed during this change detection, one
+ * `__SetClasses` per element (see LynxElement's `#pendingClasses`). A
+ * free-function wrapper over `LynxElement.commitPendingClasses()` for
+ * `LynxRendererFactory2.end()`, before its other commit passes and the
+ * flush, and for whatever reads the classes native has, such as a server
+ * render's snapshot (see serializeElementTree).
+ */
+export const processPendingClasses = (): void => {
+  LynxElement.commitPendingClasses();
+};
+
+/**
  * Commits this cycle's attribute removals (see LynxElement's
  * `#removedAttributes`). A free-function wrapper over
  * `LynxElement.commitPendingAttributeRemovals()` so
@@ -3280,8 +3477,9 @@ let flushedEpoch = 0;
  * normalization), so every write counted so far reaches native with it. The
  * settle flush and `LynxRendererFactory2.end()` call it right before their
  * `__FlushElementTree()`, after the commit passes, which can write
- * themselves. A list item's flush, which covers the item only, and a list's
- * update flush, which runs none of the commit passes, don't.
+ * themselves. A list item's flush, which covers the item only, and the flush
+ * for lists changed outside a cycle with no settle flush coming (see
+ * scheduleListUpdate), which runs none of the commit passes, don't.
  */
 export const markTreeFlushed = (): void => {
   flushedEpoch = nativeWriteEpoch;
@@ -3378,16 +3576,26 @@ export const scheduleSettleFlush = (): void => {
     settleSkippedForListItem = false;
     // Mirror end()'s ordering: commit any queued removals, then re-derive text
     // whitespace, so both land in the same flush as the new content (see
-    // #pendingRemovals / #pendingTextNormalization). List children are driven by
-    // their own update-list-info path, so no list handling here.
+    // #pendingRemovals / #pendingTextNormalization). A class changes during
+    // change detection only, and its end() writes it (see #pendingClasses):
+    // this writes any a cycle left without one.
+    LynxElement.commitPendingClasses();
     LynxElement.commitPendingRemovals();
     LynxElement.commitPendingFlow();
     LynxElement.commitPendingAttributeRemovals();
     LynxElement.commitPendingTextNormalization();
     // After the commit passes, which write themselves (a regroup inserts):
-    // everything written so far goes with this flush.
+    // everything written so far goes with this flush. So does the
+    // update-list-info of a list changed outside the cycle too (a lazy
+    // route's static items), rather than with a flush of its own after this
+    // one (see flushTreeWithListUpdates).
     markTreeFlushed();
-    __FlushElementTree();
-    LynxElement.commitPendingInvokes();
+    try {
+      flushTreeWithListUpdates();
+    } finally {
+      // The flush was made even if a list threw (its error is thrown after
+      // it): the calls waiting for it go now, rather than with the next one.
+      LynxElement.commitPendingInvokes();
+    }
   });
 };

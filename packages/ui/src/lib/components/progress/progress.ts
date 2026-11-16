@@ -24,7 +24,48 @@ import { cn } from '../../utils/cn';
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
   host: { '[class]': 'trackClass()' },
-  template: `<view #fill [class]="fillClass()" [style]="fillStyle()" />`,
+  // While indeterminate, a fill of its own slides across the track, by a CSS
+  // animation the platform runs, not `animate()`: Lynx's own animator ticks
+  // on the thread Angular runs on, so the bar stood still for as long as
+  // Angular was busy, which is when it's shown. `enable-new-animator` false
+  // hands an element's `@keyframes` to Core Animation on iOS, which runs them
+  // in the render server, and to Android's animators on the UI thread, and
+  // Android moves only a view of its own (`flatten` false). Lynx picks the
+  // animator as an animation is set, so the attributes are static, there from
+  // the moment the fill is made. The web preview ignores the attribute, and
+  // the browser runs the animation.
+  //
+  // The value's fill (`fillRef`) stays the same element throughout, hidden
+  // while indeterminate: `animate()`, which grows and shrinks it as the value
+  // changes, does nothing on an element the platform animates (and Core
+  // Animation can't change a Lynx element's width: its background takes the
+  // new size at once). It comes first, so the sliding fill takes its place
+  // in the track while it's hidden.
+  template: `
+    <view #fill [class]="fillClass()" [style]="fillStyle()" />
+    @if (indeterminate()) {
+      <view
+        enable-new-animator="false"
+        flatten="false"
+        [class]="fillClass()"
+        [style]="slideStyle"
+      />
+    }
+  `,
+  // In the component, not the theme, so an app that copies the bar gets them
+  // with it. The sliding fill is 40% of the track's width, and a `translateX`
+  // percentage is of the fill's own width, so -100% starts it just off the
+  // track's left edge and 250% ends it just past the right.
+  styles: `
+    @keyframes ui-progress-slide {
+      from {
+        transform: translateX(-100%);
+      }
+      to {
+        transform: translateX(250%);
+      }
+    }
+  `,
 })
 export class UiProgress {
   readonly value = input(0);
@@ -37,43 +78,20 @@ export class UiProgress {
 
   readonly fillRef = viewChild.required<ElementRef>('fill');
   #fillAnim?: AnimationHandle;
-  #indeterminateAnim?: AnimationHandle;
   #previousPercent: number | null = null;
 
   /**
-   * Slides the fill while indeterminate, and animates its width as the value
-   * changes. A field rather than a constructor: Angular's test build keeps a
-   * function for a constructor that nothing calls, which an app's coverage
-   * report would show as uncovered.
+   * Animates the value's fill as the value changes. A field rather than a
+   * constructor: Angular's test build keeps a function for a constructor that
+   * nothing calls, which an app's coverage report would show as uncovered.
    */
   protected readonly fillAnimation = effect(() => {
     const el = this.fillRef().nativeElement;
 
-    // Handle indeterminate mode with infinite sliding animation.
-    // The fill element is 40% of the track width. `translateX` percentages
-    // are relative to the element's OWN width, so:
-    //   translateX(-100%) = left edge at -40% of track = starts off-screen left
-    //   translateX(250%)  = left edge at +100% of track = exits off-screen right
-    // 250% is the minimum that pushes the 40%-wide fill fully past the right edge.
-    //
-    // The 40% width is fillStyle's inline style, not a keyframe. Lynx's
-    // animator resolves styles and lays the page out again on every frame of
-    // an animation that has a layout property such as `width` among its
-    // keyframes, even one that never changes, for as long as the loop runs.
-    // A `translateX` in % alone skips both (see
-    // investigations/lynx-vs-web-differences.md), and on the web the browser
-    // can run it off the main thread.
+    // While indeterminate, the value's fill is hidden, and a fill of its own
+    // slides (see the template).
     if (this.indeterminate()) {
       this.#fillAnim?.cancel();
-      this.#indeterminateAnim?.cancel();
-      this.#indeterminateAnim = el.animate(
-        [{ transform: 'translateX(-100%)' }, { transform: 'translateX(250%)' }],
-        {
-          duration: 1200,
-          easing: EASING.standard,
-          iterations: Infinity,
-        },
-      );
       return;
     }
 
@@ -81,8 +99,8 @@ export class UiProgress {
     // `#previousPercent === null` skips the very first effect run so
     // the bar doesn't animate from 0% → initial value on mount.
     // The equality guard skips the animation when the effect re-runs without
-    // a percent change: leaving indeterminate mode at the same value.
-    this.#indeterminateAnim?.cancel();
+    // a percent change: leaving indeterminate mode at the same value. Left at
+    // another value, the fill grows or shrinks from the last value it showed.
     const percent = this.percent();
     if (this.#previousPercent === null) {
       this.#previousPercent = percent;
@@ -118,7 +136,18 @@ export class UiProgress {
     cn('h-full rounded-full bg-primary'),
   );
 
-  protected readonly fillStyle = computed(() =>
-    this.indeterminate() ? 'width: 40%;' : `width: ${this.percent()}%;`,
+  // `display: none` while indeterminate, rather than leaving the template:
+  // the same element comes back, which animates from the last value it
+  // showed.
+  protected readonly fillStyle = computed(
+    () =>
+      `width: ${this.percent()}%;${this.indeterminate() ? ' display: none;' : ''}`,
   );
+
+  // The 40% width is an inline style, not a keyframe: an animator that has a
+  // layout property such as `width` among an animation's keyframes, even one
+  // that never changes, resolves styles and lays the page out again on every
+  // frame for as long as the loop runs. A `translateX` in % alone skips both
+  // (see investigations/lynx-vs-web-differences.md).
+  protected readonly slideStyle = `width: 40%; animation: ui-progress-slide 1200ms ${EASING.standard} infinite;`;
 }

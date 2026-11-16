@@ -282,6 +282,10 @@ Simulate with background images if needed.
 
 `thin` = 2px, `medium` = 4px, `thick` = 6px (web: 1/3/5px). Default = 0.
 
+### Change classes through Angular, not `__AddClass`
+
+Bind classes (`class`, `[class]`, `[class.x]`) or use `Renderer2.addClass()`/`removeClass()`. On iOS and Android the runtime writes the classes a change detection changed once per element, as a whole class string, at the end of the cycle, so a class added with a raw `__AddClass` or `__SetClasses` on `nativeElement.element` is dropped the next time change detection changes the element's classes. Raw class calls also differ by platform: on iOS and Android `__AddClass` adds a name it has again (`__GetClasses` lists it twice), and Lynx for Web keeps it once.
+
 ### `filter` limited to one function
 
 Supported: `blur`, `grayscale`, `brightness`, `contrast`, `saturate`. No chaining.
@@ -420,4 +424,4 @@ The CSS pipeline minifies `rgba(92, 94, 102, 1)` to `#5c5e66`, and a later token
 
 ### `this.#field?.()[key]` throws when the field is unset
 
-The Lynx bundle compiles first-party `#private` fields to properties, and that pass puts the `[key]` outside the optional chain's short-circuit, so `this.#onColors?.()[scheme]` throws `Cannot read properties of undefined` instead of giving `undefined`. Split it: `const fn = this.#onColors; const colors = fn ? fn()[scheme] : undefined;`. A local constant in the same shape compiles correctly.
+The Lynx bundle compiles first-party `#private` fields to properties, and that pass puts the `[key]` outside the optional chain's short-circuit, so `this.#onColors?.()[scheme]` throws `Cannot read properties of undefined` instead of giving `undefined`. Split it: `const fn = this.#onColors; const colors = fn ? fn()[scheme] : undefined;`. A local constant in the same shape compiles correctly. The same pass calls `other?.#method()` outside the short-circuit and without its receiver, so it throws for a nullish `other` and runs the method with `this` undefined for any other: write `other == null ? undefined : other.#method()`.

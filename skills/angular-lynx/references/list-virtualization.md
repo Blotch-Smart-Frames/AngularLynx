@@ -128,6 +128,8 @@ this.list().nativeElement.invoke?.('scrollToPosition', {
 });
 ```
 
+On iOS and Android, a call made in the same change detection that changes the list's items goes to the list with the flush that sends them, after them, as in React Lynx.
+
 In the web preview the list scrolls to the item's top plus `offset` and ignores `alignTo` and `itemKey`, and it can't scroll to items Angular has just added until they're in the page, a frame or two later, with no event to say so (`bindlayoutcomplete` isn't sent there): retry each frame for a few frames.
 
 ## Loading Older Items Above (a Chat)

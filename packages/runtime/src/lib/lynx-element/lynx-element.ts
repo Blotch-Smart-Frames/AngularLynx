@@ -3391,7 +3391,12 @@ export const scheduleSettleFlush = (): void => {
     // route's static items), rather than with a flush of its own after this
     // one (see flushTreeWithListUpdates).
     markTreeFlushed();
-    flushTreeWithListUpdates();
-    LynxElement.commitPendingInvokes();
+    try {
+      flushTreeWithListUpdates();
+    } finally {
+      // The flush was made even if a list threw (its error is thrown after
+      // it): the calls waiting for it go now, rather than with the next one.
+      LynxElement.commitPendingInvokes();
+    }
   });
 };

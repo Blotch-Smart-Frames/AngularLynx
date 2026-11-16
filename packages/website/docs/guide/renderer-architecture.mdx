@@ -105,7 +105,7 @@ Element functions change the engine's element tree right away, but nothing is la
 
 A flush must never run while a list is building one of its items, inside the engine's layout: it would re-enter it and crash. A `*lynxListFor` item's change detection runs there, so its `end()` updates the lists in the item and leaves the flush to the item.
 
-**The first render isn't flushed by `end()`.** Bootstrap's change detection still runs inside the engine's `renderPage()` call. A promise continuation doesn't escape it, because the engine drains microtasks before the call returns. So `end()` skips steps 3 and 4 until `markFirstRenderComplete()`, and the engine flushes once `renderPage()` returns. Work that must not run inside that call waits for a `setTimeout`, such as the lists' first updates, which then share one flush. `@lynx-js/web-core` has no flush after `renderPage()`, so on the web the runtime schedules one.
+**The first render isn't flushed by `end()`.** Bootstrap's change detection still runs inside the engine's `renderPage()` call. A promise continuation doesn't escape it, because the engine drains microtasks before the call returns. So until `markFirstRenderComplete()`, `end()` makes no flush, and the engine flushes once `renderPage()` returns. Work that must not run inside that call waits for a `setTimeout`: `end()` parks the changed lists instead of sending their updates, and they're sent then, with one flush. `@lynx-js/web-core` has no flush after `renderPage()`, so on the web the runtime schedules one.
 
 **Changes outside a cycle get a settle flush.** `scheduleSettleFlush()` queues one microtask that commits removals, text, any lists that changed, and a flush. It runs when:
 

@@ -26,29 +26,67 @@ const pendingListUpdates = new Set<ListUpdate>();
 let afterFirstRender: Set<ListUpdate> | null = null;
 
 /**
- * Sends each list's update-list-info, and says whether any was sent: each
- * list, even after one has sent, so they all go with one flush.
+ * What sending lists' update-list-info came to: whether any was sent, and
+ * the first error a list threw, if one did (`threw`, since anything can be
+ * thrown, `undefined` too).
  */
-const sendListUpdates = (lists: Iterable<ListUpdate>): boolean => {
-  let sent = false;
-  for (const list of lists) {
-    if (list._processUpdate()) sent = true;
-  }
-  return sent;
+type Sending = { sent: boolean; threw: boolean; error: unknown };
+
+/**
+ * Nothing pending, or nothing sent yet: never changed, each sending gets its
+ * own.
+ */
+const NOTHING_SENT: Readonly<Sending> = {
+  sent: false,
+  threw: false,
+  error: undefined,
 };
 
 /**
- * The flush that lays out lists whose update-list-info was just sent, and
- * nothing else needed one: from the root, with layout, as React Lynx's
- * flush after its patch and its lists' updates (updateMainThread.ts). Its
- * layout pass is what has native ask for the lists' items (componentAtIndex,
- * synchronously inside it). From the root, not the list: native's layout
- * walks down from the root and stops at the first clean element, so a flush
- * of the list alone, under a clean parent, never reaches it; the list's
- * update-list-info marks its ancestors dirty, so a root flush does.
+ * Sends each list's update-list-info: each list, even after one has sent, so
+ * they all go with one flush, and even after one has thrown (native refusing
+ * its update-list-info, say), so the others aren't lost with it. The caller
+ * flushes, then throws the first error (see rethrow): the flush still comes,
+ * with the cycle's other writes in it.
  */
-const layOutLists = (sent: boolean): void => {
-  if (sent) __FlushElementTree(undefined, { triggerLayout: true });
+const sendListUpdates = (lists: Iterable<ListUpdate>): Sending => {
+  const sending: Sending = { sent: false, threw: false, error: undefined };
+  for (const list of lists) {
+    try {
+      if (list._processUpdate()) sending.sent = true;
+    } catch (error) {
+      // It may have sent its update-list-info before it threw (its callbacks
+      // go after), so the flush lays out as for a list that sent.
+      sending.sent = true;
+      if (!sending.threw) {
+        sending.threw = true;
+        sending.error = error;
+      }
+    }
+  }
+  return sending;
+};
+
+/**
+ * Throws the first error a list threw while its update was sent, once the
+ * flush that follows has been made.
+ */
+const rethrow = (sending: Readonly<Sending>): void => {
+  if (sending.threw) throw sending.error;
+};
+
+/**
+ * The flush that lays out lists whose update-list-info was just sent, when
+ * nothing else needs one: from the root, with layout, as React Lynx's flush
+ * after its patch and its lists' updates (updateMainThread.ts). Its layout
+ * pass is what has native ask for the lists' items (componentAtIndex). A
+ * flush of the list element alone, tried early on, never had native ask for
+ * them (see investigations/list-item.md). Then the first error a list threw,
+ * if one did.
+ */
+const layOutLists = (sending: Readonly<Sending>): void => {
+  if (sending.sent) __FlushElementTree(undefined, { triggerLayout: true });
+  rethrow(sending);
 };
 
 /**
@@ -74,26 +112,38 @@ const deferToFirstRender = (lists: readonly ListUpdate[]): void => {
 };
 
 /**
- * Sends each pending list's update-list-info, and says whether any was sent:
- * whoever calls it flushes once for all of them, if any was. No flush here.
- * LynxRendererFactory2.end() and the settle flush call it right before
- * theirs (see flushTreeWithListUpdates); a `*lynxListFor` item's change
- * detection (see bindListItem), to leave its lists to the item's flush.
- *
- * Until the first render has finished, the lists wait for it instead (see
- * deferToFirstRender), and nothing is sent now.
+ * Sends the pending lists' update-list-info (see sendListUpdates), or hands
+ * them to the end of the first render while it's under way (see
+ * deferToFirstRender). Never throws: what a list threw is in what it returns.
  */
-export const processPendingListUpdates = (): boolean => {
-  if (pendingListUpdates.size === 0) return false;
+const sendPendingListUpdates = (): Readonly<Sending> => {
+  if (pendingListUpdates.size === 0) return NOTHING_SENT;
   // Copied and cleared before sending: a list scheduled while they're sent
   // waits for the next flush.
   const lists = [...pendingListUpdates];
   pendingListUpdates.clear();
   if (isFirstRenderPending()) {
     deferToFirstRender(lists);
-    return false;
+    return NOTHING_SENT;
   }
   return sendListUpdates(lists);
+};
+
+/**
+ * Sends each pending list's update-list-info, and says whether any was sent:
+ * whoever calls it flushes once for all of them, if any was. No flush here.
+ * A `*lynxListFor` item's change detection calls it (see bindListItem), to
+ * leave its lists to the item's flush; LynxRendererFactory2.end() and the
+ * settle flush send them with their own (see flushTreeWithListUpdates).
+ * Throws the first error a list threw, once every list has been sent.
+ *
+ * Until the first render has finished, the lists wait for it instead (see
+ * deferToFirstRender), and nothing is sent now.
+ */
+export const processPendingListUpdates = (): boolean => {
+  const sending = sendPendingListUpdates();
+  rethrow(sending);
+  return sending.sent;
 };
 
 /**
@@ -108,15 +158,23 @@ export const processPendingListUpdates = (): boolean => {
  * pass that also queues work for the UI thread. One flush does what they did:
  * native resolves everything dirty first, the cycle's elements and the
  * lists' update-list-info, then lays out once, which asks each list for its
- * items. Native's default is to lay out (`triggerLayout`); the option is
- * passed when lists were sent, as their own flush passed it.
+ * items. A flush with no options lays out by default (PipelineOptions'
+ * `trigger_layout_`), but takes the option of the pipeline it runs in, if
+ * one is under way; when lists were sent it asks for layout, as their own
+ * flush did.
+ *
+ * The flush is always made, even when a list threw: the cycle's other writes
+ * are in it, and the cycle has already noted them flushed (markTreeFlushed).
+ * The first error is thrown after it.
  */
 export const flushTreeWithListUpdates = (): void => {
-  if (processPendingListUpdates()) {
+  const sending = sendPendingListUpdates();
+  if (sending.sent) {
     __FlushElementTree(undefined, { triggerLayout: true });
   } else {
     __FlushElementTree();
   }
+  rethrow(sending);
 };
 
 /**
@@ -127,7 +185,7 @@ export const flushTreeWithListUpdates = (): void => {
  * flushTreeWithListUpdates), and this finds nothing left.
  */
 const flushPendingListUpdates = (): void => {
-  layOutLists(processPendingListUpdates());
+  layOutLists(sendPendingListUpdates());
 };
 
 /**

@@ -1,6 +1,8 @@
 import {
   Component,
+  DestroyRef,
   ElementRef,
+  Renderer2,
   ViewEncapsulation,
   computed,
   contentChildren,
@@ -219,14 +221,13 @@ export class UiTabsList {
     '[class]': 'triggerClass()',
     '[style]': 'triggerStyle()',
     // The segmented control places its indicator from each tab's width.
+    // The moves are listened for in code (see `moveListeners`).
     '(bindlayoutchange)': 'measure($event)',
     '(bindtap)': 'onTap()',
     '(bindtouchstart)': 'press($event)',
-    '(bindtouchmove)': 'move($event)',
     '(bindtouchend)': 'release()',
     '(bindtouchcancel)': 'cancel()',
     '(bindmousedown)': 'press($event)',
-    '(bindmousemove)': 'move($event)',
     '(bindmouseup)': 'release()',
     '(bindmouseleave)': 'leave()',
   },
@@ -265,8 +266,35 @@ export class UiTabsTrigger {
   readonly userClass = input<string>('', { alias: 'class' });
 
   readonly #host = inject(ElementRef).nativeElement;
+  readonly #renderer = inject(Renderer2);
   #anim?: AnimationHandle;
   #previousActive?: boolean;
+
+  /**
+   * Listens for a press's moves in code rather than in the host metadata.
+   * Angular checks a host listener's component and every component around
+   * it after each event, and a finger sends one for every frame it moves, as
+   * does the mouse on the web, held or not, over every tab. Listened for
+   * here, a move that drags a segmented control's indicator has Angular
+   * check only what the drag changes, and one that changes nothing (any move over
+   * the default tabs) runs no check at all. Added as the trigger is made,
+   * like a host listener, so they still run before an app's own listeners
+   * for the moves on `<ui-tabs-trigger>`.
+   */
+  protected readonly moveListeners = [
+    this.#renderer.listen(this.#host, 'bindtouchmove', (event: unknown) =>
+      this.#move(event),
+    ),
+    this.#renderer.listen(this.#host, 'bindmousemove', (event: unknown) =>
+      this.#move(event),
+    ),
+  ];
+
+  protected readonly removingMoveListeners = inject(DestroyRef).onDestroy(
+    () => {
+      for (const remove of this.moveListeners) remove();
+    },
+  );
 
   protected readonly isActive = computed(
     () => this.#tabs.value() === this.triggerValue(),
@@ -400,7 +428,7 @@ export class UiTabsTrigger {
     this.#segment()?.press(this.triggerValue(), event);
   }
 
-  protected move(event: unknown): void {
+  #move(event: unknown): void {
     this.#segment()?.move(event);
   }
 

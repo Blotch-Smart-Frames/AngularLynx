@@ -301,6 +301,33 @@ const FIXTURES: Record<string, string> = {
     const B = make('b');
     [new A().who(), new B().who()];
   `,
+  'a named function called at once, then again by its name': `
+    let again;
+    const C1 = (function setup(tag) {
+      again = setup;
+      return class { #m() { return tag; } f() { return this.#m(); } };
+    })('first');
+    const C2 = again('second');
+    [new C1().f(), new C2().f()];
+  `,
+  'a named function called at once, which calls itself': `
+    const made = [];
+    (function make(n) {
+      class A { #n = n; #m() { return this.#n; } f() { return this.#m(); } }
+      made.push(A);
+      if (n > 0) make(n - 1);
+    })(2);
+    made.map((A) => new A().f());
+  `,
+  'a class a named function called at once makes again, from its own class': `
+    const made = [];
+    const Last = (function self(Base, depth) {
+      const C = class extends Base { #who() { return depth; } who() { return this.#who(); } };
+      made.push(C);
+      return depth ? self(C, depth - 1) : C;
+    })(class {}, 1);
+    [made[0].prototype.who.call(new Last()), new Last().who()];
+  `,
 };
 
 /**
@@ -311,6 +338,7 @@ const KEPT_NATIVE = new Set([
   'a subclass a method makes, which shadows a private name',
   'a class factory made from its own class',
   'a mixin applied twice, whose constructor calls its own private method',
+  'a class a named function called at once makes again, from its own class',
 ]);
 
 describe('renamePrivateMethods over ES2022 fixtures', () => {
@@ -502,6 +530,9 @@ const HIDE_KEPT_NATIVE = new Set([
   'a brand check that catches the TypeError',
   // `static #items = new Map()` comes before `#own`.
   'static private methods',
+  'a named function called at once, then again by its name',
+  'a named function called at once, which calls itself',
+  'a class a named function called at once makes again, from its own class',
 ]);
 
 /**
@@ -511,6 +542,31 @@ const HIDE_KEPT_NATIVE = new Set([
  * the pass.
  */
 const CURRENT_BUILD_ONLY = new Set(['other receivers and optional chains']);
+
+/**
+ * The variables a static block assigns that no `var` at the top level of
+ * the code declares.
+ */
+const undeclared = (code: string): string[] => {
+  const sourceFile = ts.createSourceFile(
+    'a.js',
+    code,
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  const declared = new Set(
+    sourceFile.statements
+      .filter(ts.isVariableStatement)
+      .flatMap((statement) =>
+        statement.declarationList.declarations.map((declaration) =>
+          declaration.name.getText(sourceFile),
+        ),
+      ),
+  );
+  return [...code.matchAll(/static \{ (__\w+) = \{/g)]
+    .map((match) => match[1]!)
+    .filter((name) => !declared.has(name));
+};
 
 /**
  * What running the code gives, or the error it throws, so a fixture that
@@ -531,14 +587,18 @@ describe('hidePrivateMethods over ES2022 fixtures', () => {
   delete fixtures['reflection on an instance'];
   for (const [name, fixture] of Object.entries(fixtures)) {
     it(`matches native private methods: ${name}`, async () => {
-      const main = compile(hide(fixture), LAYERS.MAIN_THREAD);
+      const hidden = hide(fixture);
+      expect(undeclared(hidden)).toEqual([]);
+      // Strict, as a module is: assigning a variable nothing declared
+      // throws, where a sloppy script would make it a global.
+      const main = `"use strict";\n${compile(hidden, LAYERS.MAIN_THREAD)}`;
       expect(PER_INSTANCE_PRIVATE_METHOD.test(main)).toBe(
         HIDE_KEPT_NATIVE.has(name),
       );
       expect(await settle(main)).toEqual(
         await settle(
           CURRENT_BUILD_ONLY.has(name)
-            ? compile(fixture, LAYERS.MAIN_THREAD)
+            ? `"use strict";\n${compile(fixture, LAYERS.MAIN_THREAD)}`
             : fixture,
         ),
       );
@@ -596,7 +656,7 @@ describe('hidePrivateMethods', () => {
     const result = hide(code);
     const m = variable(result, 'm');
     expect(result).toBe(
-      `class A { static { ${m} = { m(a) { return a; } }.m; } f() { return [${m}.call(this, 1), ${m}.call(this, 2), ${m}.call(this)]; } }\nvar ${m};\n`,
+      `class A { static { ${m} = { m(a) { return a; } }.m; } f() { return [${m}.call(this, 1), ${m}.call(this, 2), ${m}.call(this)]; } };var ${m};`,
     );
   });
 
@@ -635,10 +695,10 @@ describe('hidePrivateMethods', () => {
     expect(listed).toEqual([outer, inner]);
     expect(result).toContain('#b() {}');
     expect(result).toContain('o.#b()');
-    expect(result).toMatch(/\nvar __a_\w+0, __a_\w+1;\n$/);
+    expect(result).toMatch(/\};var __a_\w+0, __a_\w+1;$/);
   });
 
-  it("adds the variables' line at the end, and moves no other line", () => {
+  it('adds no line, declaring the variables after the last statement', () => {
     const code = [
       'class A {',
       '  #m() {',
@@ -651,10 +711,15 @@ describe('hidePrivateMethods', () => {
     ].join('\n');
     const result = hide(code);
     const lines = result.split('\n');
-    expect(lines).toHaveLength(code.split('\n').length + 2);
+    expect(lines).toHaveLength(code.split('\n').length);
     expect(lines[1]).toMatch(/^ {2}static \{ __m_\w+ = \{ m\(\) \{$/);
     expect(lines[3]).toBe('  } }.m; }');
     expect(lines[5]).toMatch(/^ {4}return __m_\w+\.call\(this\);$/);
+    expect(lines[7]).toMatch(/^\};var __m_\w+;$/);
+    // A last statement written without its `;` still ends.
+    expect(hide(`${code}\nexport default A`)).toMatch(
+      /\nexport default A;var __m_\w+;$/,
+    );
   });
 
   it.each([
@@ -874,6 +939,16 @@ describe('renamePrivateMethods', () => {
     ['a function called later', 'const later = (() => () => CLASS)();'],
     ['a loop', 'for (const B of bases) list.push(CLASS);'],
     ['an instance field', 'class Holder { made = CLASS; }'],
+    // Called at once, but its name can call it again.
+    [
+      'a named function called at once',
+      'const C = (function make(B) { return CLASS; })(Base);',
+    ],
+    // As `arguments.callee` can, in sloppy code.
+    [
+      'a function called at once that uses `arguments`',
+      'const C = (function () { const B = arguments[0]; return CLASS; })(Base);',
+    ],
   ])(
     'keeps native private methods in a class with extends made more than once, in %s',
     (_, around) => {
@@ -1157,14 +1232,15 @@ describe('renamePrivateMethods and hidePrivateMethods with an inline source map'
     const result = hide(
       withMap(line, mapWith([columns.map((column) => [column, 0, 0, column])])),
     );
-    const [output, variables] = result.split('\n');
+    const [output, map] = result.split('\n');
     const out = (text: string, from = 0) => output!.indexOf(text, from);
     const call = out('__m', out('return __m'));
     expect(columnsOf(result)).toEqual([
       [0, out('m() {'), out('return'), out('f()'), call, call, out(');')],
     ]);
-    // Before the map, on a line of its own.
-    expect(variables).toMatch(/^var __m_\w+;$/);
+    // After the class, on its line, and the map on the next.
+    expect(output).toMatch(/\};var __m_\w+;$/);
+    expect(map).toMatch(/^\/\/# sourceMappingURL=/);
   });
 
   it('finds the map before the code the plugin appends after it', () => {
@@ -1175,20 +1251,46 @@ describe('renamePrivateMethods and hidePrivateMethods with an inline source map'
     const code = `${withMap(line, mapWith([[[column, 0, 0, column]]]))}${hot}\n`;
     const result = hide(code);
     const lines = result.split('\n');
-    expect(lines[1]).toMatch(/^var __m_\w+;$/);
-    expect(lines[2]).toMatch(/^\/\/# sourceMappingURL=/);
-    expect(lines.slice(3)).toEqual([hot, '']);
+    expect(lines[1]).toMatch(/^\/\/# sourceMappingURL=/);
+    // After the last statement, the appended code's.
+    expect(lines.slice(2)).toEqual([
+      expect.stringMatching(/^if .*\};var __m_\w+;$/),
+      '',
+    ]);
     const map = JSON.parse(
       Buffer.from(
-        lines[2]!.slice(lines[2]!.indexOf(',') + 1),
+        lines[1]!.slice(lines[1]!.indexOf(',') + 1),
         'base64',
       ).toString(),
     );
     // The call's segment moved past the static block's start.
     expect(map.mappings).not.toBe(mapWith([[[column, 0, 0, column]]]).mappings);
     expect(
-      lines[0]!.slice(columnsOf(`${lines[0]}\n${lines[2]}`)[0]![0]!),
+      lines[0]!.slice(columnsOf(`${lines[0]}\n${lines[1]}`)[0]![0]!),
     ).toMatch(/^__m_\w+\.call\(this\)/);
+  });
+
+  it("doesn't take a map in a string or a block comment for the module's", () => {
+    // The reviewer's case: no inline map, as in a production build, but a
+    // template literal with a line that reads like one.
+    // Built in pieces, so no line of this file reads as a map comment.
+    const fake = `${'//'}# sourceMappingURL=data:application/json;base64,${Buffer.from(
+      JSON.stringify({ version: 3, mappings: 'AAAA;AAAA;AAAA' }, null, 1),
+    ).toString('base64')}`;
+    const code = [
+      `const snippet = \`x\n${fake}\`;`,
+      `/*\n${fake}\n*/`,
+      'class A { #m() { return snippet; } f() { return this.#m(); } }',
+      'new A().f() === snippet;',
+    ].join('\n');
+    const hidden = hide(code);
+    expect(hidden.split(fake)).toHaveLength(3);
+    expect(hidden).toMatch(/\nnew A\(\)\.f\(\) === snippet;;var __m_\w+;$/);
+    expect(
+      runInNewContext(`"use strict";\n${compile(hidden, LAYERS.MAIN_THREAD)}`),
+    ).toBe(true);
+    // Nor does the rename re-encode it.
+    expect(rename(code).split(fake)).toHaveLength(3);
   });
 });
 

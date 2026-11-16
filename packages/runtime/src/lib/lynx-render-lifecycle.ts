@@ -46,7 +46,7 @@ const deferredCallbacks: Array<() => void> = [];
 
 /**
  * True until the initial bootstrap render has fully returned. Callers on the
- * re-entrant list path (LynxListElement._processUpdate, LynxRendererFactory2.end)
+ * re-entrant list path (processPendingListUpdates, LynxRendererFactory2.end)
  * check this to decide whether it's safe to drive a layout-triggering flush
  * now, or whether they must defer — see this file's top doc comment.
  */

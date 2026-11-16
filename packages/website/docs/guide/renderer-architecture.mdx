@@ -100,14 +100,14 @@ Element functions change the engine's element tree right away, but nothing is la
 
 1. **`processPendingRemovals()`** commits queued removals with `__RemoveElement`.
 2. **`processPendingTextNormalization()`** trims edge spaces from text runs that changed.
-3. **`__FlushElementTree()`** commits everything to the screen.
-4. **`processPendingListUpdates()`** tells each `<list>` that gained or lost children, then flushes that list.
+3. **`processPendingListUpdates()`** tells each `<list>` that gained, lost or moved items which ones, with its `update-list-info`.
+4. **`__FlushElementTree()`** commits everything to the screen, the lists' updates included, in one flush however many lists changed. The engine asks each list for its items while it lays them out, and each item is flushed on its own as it's added. React Lynx sends the lists of a commit before its one flush the same way.
 
-Reversing steps 3 and 4 leaves list items empty, or re-enters the flush and crashes.
+A flush must never run while a list is building one of its items, inside the engine's layout: it would re-enter it and crash. A `*lynxListFor` item's change detection runs there, so its `end()` updates the lists in the item and leaves the flush to the item.
 
-**The first render isn't flushed by `end()`.** Bootstrap's change detection still runs inside the engine's `renderPage()` call. A promise continuation doesn't escape it, because the engine drains microtasks before the call returns. So `end()` skips step 3 until `markFirstRenderComplete()`, and the engine flushes once `renderPage()` returns. Work that must not run inside that call, such as a list's first layout, waits for a `setTimeout`. `@lynx-js/web-core` has no flush after `renderPage()`, so on the web the runtime schedules one.
+**The first render isn't flushed by `end()`.** Bootstrap's change detection still runs inside the engine's `renderPage()` call. A promise continuation doesn't escape it, because the engine drains microtasks before the call returns. So `end()` skips steps 3 and 4 until `markFirstRenderComplete()`, and the engine flushes once `renderPage()` returns. Work that must not run inside that call waits for a `setTimeout`, such as the lists' first updates, which then share one flush. `@lynx-js/web-core` has no flush after `renderPage()`, so on the web the runtime schedules one.
 
-**Changes outside a cycle get a settle flush.** `scheduleSettleFlush()` queues one microtask that commits removals, text and a flush. It runs when:
+**Changes outside a cycle get a settle flush.** `scheduleSettleFlush()` queues one microtask that commits removals, text, any lists that changed, and a flush. It runs when:
 
 - an element is created outside a cycle, such as a lazy route's component that `RouterOutlet` builds during navigation
 - an event handler returns, if something has been written since the last flush: an element changed directly without changing a signal, or a change made from a timer or a promise. An event with nothing waiting doesn't flush, so a scroll or a drag doesn't flush on every frame

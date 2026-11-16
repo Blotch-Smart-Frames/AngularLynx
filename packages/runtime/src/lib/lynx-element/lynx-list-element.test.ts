@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ElementRef } from '../types/lynx';
 import { LynxElement } from './lynx-element';
+import { processPendingListUpdates } from './list-updates';
 import {
   type ListItemAttributes,
   type ListSlot,
   LynxListElement,
   type LynxListItemSource,
-  processPendingListUpdates,
 } from './lynx-list-element';
 import { markFirstRenderComplete } from '../lynx-render-lifecycle';
 import { seededBelow, untrimmedListDiff } from '../testing/untrimmed-list-diff';
@@ -448,13 +448,16 @@ describe('LynxListElement', () => {
       expect(payload.insertAction[0]['item-key']).toBe('123');
     });
 
-    it('calls __FlushElementTree after sending update-list-info', () => {
+    it('says whether it sent update-list-info, and leaves the flush to its caller', () => {
       const list = makeList();
       list.appendChild(makeChild());
 
-      list._processUpdate();
-
-      expect(globalThis.__FlushElementTree).toHaveBeenCalled();
+      expect(list._processUpdate()).toBe(true);
+      // Nothing changed since: nothing to send.
+      expect(list._processUpdate()).toBe(false);
+      // One flush lays out every list sent with it, and the rest of the tree
+      // (see flushTreeWithListUpdates).
+      expect(globalThis.__FlushElementTree).not.toHaveBeenCalled();
     });
 
     it('does NOT write a trailing empty update-list-info (clearing corrupts native state)', () => {
@@ -497,7 +500,7 @@ describe('LynxListElement', () => {
       list.remove(); // #destroyed = true
       vi.clearAllMocks();
 
-      list._processUpdate();
+      expect(list._processUpdate()).toBe(false);
 
       expect(globalThis.__SetAttribute).not.toHaveBeenCalled();
     });
@@ -536,42 +539,6 @@ describe('LynxListElement', () => {
       list._processUpdate();
 
       expect(globalThis.__UpdateListCallbacks).not.toHaveBeenCalled();
-    });
-
-    it('defers the entire update while the first render is still pending', async () => {
-      // Re-import with a fresh module graph so firstRenderPending starts true
-      // again (the outer beforeEach flips it via markFirstRenderComplete). The
-      // list must park its diff via runAfterFirstRender rather than driving
-      // update-list-info now, which would re-enter native from inside the
-      // in-progress renderPage() call.
-      vi.resetModules();
-      const runtime = await import('./lynx-list-element');
-      const lifecycle = await import('../lynx-render-lifecycle');
-      // Fresh module means the fake globals were reset — restore them.
-      setupGlobals();
-      globalThis.__UpdateListCallbacks = vi.fn();
-
-      const list = new runtime.LynxListElement(makeRef());
-      const child = new (await import('./lynx-element')).LynxElement(makeRef());
-      list.appendChild(child);
-
-      // While first-render is pending nothing is written yet.
-      list._processUpdate();
-      expect(globalThis.__SetAttribute).not.toHaveBeenCalledWith(
-        expect.anything(),
-        'update-list-info',
-        expect.anything(),
-      );
-
-      // Once markFirstRenderComplete runs, the deferred callback fires on a
-      // fresh top-level task (setTimeout(0)).
-      lifecycle.markFirstRenderComplete();
-      await new Promise((r) => setTimeout(r, 0));
-
-      const updateCalls = (
-        globalThis.__SetAttribute as ReturnType<typeof vi.fn>
-      ).mock.calls.filter(([, name]) => name === 'update-list-info');
-      expect(updateCalls.length).toBeGreaterThan(0);
     });
   });
 

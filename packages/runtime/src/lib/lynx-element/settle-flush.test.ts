@@ -3,6 +3,7 @@ import {
   markFirstRenderComplete,
   setInsideChangeDetection,
 } from '../lynx-render-lifecycle';
+import { measureLayout } from './layout';
 import { LynxElement, scheduleSettleFlush } from './lynx-element';
 
 /**
@@ -78,6 +79,24 @@ describe('scheduleSettleFlush', () => {
 
     await flushMicrotasks();
     expect((globalThis as any).__FlushElementTree).not.toHaveBeenCalled();
+  });
+
+  it("flushes after a layout read's request, whoever made it", async () => {
+    // The boundingClientRect request waits for its element's next flush.
+    // An IntersectionObserver, which imports layout.ts alone, measures from
+    // timers and other events' listeners, outside change detection.
+    const invoke = vi.fn();
+    vi.stubGlobal('__InvokeUIMethod', invoke);
+    const flush = (globalThis as any).__FlushElementTree;
+    measureLayout({}, () => {});
+    measureLayout({}, () => {});
+    await flushMicrotasks();
+    expect(invoke).toHaveBeenCalledTimes(2);
+    expect(flush).toHaveBeenCalledOnce();
+    expect(flush.mock.invocationCallOrder[0]).toBeGreaterThan(
+      invoke.mock.invocationCallOrder[1],
+    );
+    vi.unstubAllGlobals();
   });
 
   it('flushes a listener added or removed outside a CD cycle', async () => {

@@ -1,5 +1,11 @@
-import { describe, expect, it, vi } from 'vitest';
-import { type LayoutRect, LayoutTracker, toDOMRect } from './layout';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  type LayoutRect,
+  LayoutTracker,
+  measureLayout,
+  setMeasureFlush,
+  toDOMRect,
+} from './layout';
 
 const host = () => {
   let fire: (event: unknown) => void = () => {};
@@ -95,5 +101,44 @@ describe('LayoutTracker', () => {
     h.layout(undefined);
     h.layout({ width: 'wide' });
     expect(tracker.rect).toBeNull();
+  });
+});
+
+describe('measureLayout', () => {
+  afterEach(() => {
+    setMeasureFlush(() => {});
+    vi.unstubAllGlobals();
+  });
+
+  it('asks for nothing more until the element module sets the flush', () => {
+    vi.stubGlobal('__InvokeUIMethod', vi.fn());
+    expect(() => measureLayout({}, () => {})).not.toThrow();
+  });
+
+  it('asks for the flush its request waits for, once it has made it', () => {
+    // With pending invokes, native sends the request to the UI only with
+    // the element's next flush.
+    const invoke = vi.fn();
+    vi.stubGlobal('__InvokeUIMethod', invoke);
+    const flush = vi.fn();
+    setMeasureFlush(flush);
+    const native = {};
+    const callback = vi.fn();
+    measureLayout(native, callback);
+    expect(invoke).toHaveBeenCalledExactlyOnceWith(
+      native,
+      'boundingClientRect',
+      {},
+      expect.any(Function),
+    );
+    expect(flush).toHaveBeenCalledOnce();
+    expect(flush.mock.invocationCallOrder[0]).toBeGreaterThan(
+      invoke.mock.invocationCallOrder[0]!,
+    );
+
+    // The answer, when it comes, is the box, or null without one.
+    invoke.mock.calls[0]![3]({ code: 0, data: { left: 1 } });
+    invoke.mock.calls[0]![3]({ code: 6 });
+    expect(callback.mock.calls).toEqual([[{ left: 1 }], [null]]);
   });
 });

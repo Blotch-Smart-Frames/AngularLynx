@@ -3,7 +3,7 @@ import {
   installIntersectionObserver,
   LynxIntersectionObserver,
 } from './intersection-observer';
-import type { LayoutRect } from './layout';
+import { type LayoutRect, setMeasureFlush } from './layout';
 
 /** Each native element's box, as the boundingClientRect UI method answers. */
 const boxes = new Map<object, LayoutRect | null>();
@@ -837,6 +837,41 @@ describe('IntersectionObserver on Lynx, given options', () => {
     expect(target.layoutObservers.size).toBe(0);
     // Nothing left to measure while it scrolls.
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('asks for a flush after each measurement, which its request waits for', async () => {
+    // The build plugin turns on Lynx's pending invokes: a boundingClientRect
+    // request reaches the UI only with its element's next flush. The samples
+    // run from a timer, outside change detection, and the last one comes
+    // after the last scroll event, so no other event brings that flush.
+    const invoke = vi.mocked(
+      (globalThis as unknown as { __InvokeUIMethod: () => void })
+        .__InvokeUIMethod,
+    );
+    const flush = vi.fn();
+    setMeasureFlush(flush);
+    try {
+      const { scroller, content } = scrolling();
+      const target = element('view', null, content);
+      new LynxIntersectionObserver(() => {}, { rootMargin: '100px' }).observe(
+        target,
+      );
+      target.layout(rect(0, 500, 400, 100));
+      await settle();
+      expect(flush).toHaveBeenCalledTimes(invoke.mock.calls.length);
+
+      flush.mockClear();
+      invoke.mockClear();
+      scroller.fire('bindscroll');
+      vi.advanceTimersByTime(50);
+      expect(invoke).toHaveBeenCalled();
+      expect(flush).toHaveBeenCalledTimes(invoke.mock.calls.length);
+      expect(flush.mock.invocationCallOrder.at(-1)).toBeGreaterThan(
+        invoke.mock.invocationCallOrder.at(-1)!,
+      );
+    } finally {
+      setMeasureFlush(() => {});
+    }
   });
 
   it('asks once for the boxes of a scroll container its observers share, as they measure together', async () => {

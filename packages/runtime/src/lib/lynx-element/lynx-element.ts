@@ -50,6 +50,7 @@ import {
   LayoutTracker,
   type LynxDOMRect,
   measureLayout,
+  setMeasureFlush,
   toDOMRect,
 } from './layout';
 import { POINTER_EVENT_NAMES, PointerEventSource } from './pointer-events';
@@ -2617,11 +2618,9 @@ export class LynxElement implements BaseLynxElement {
   #layoutTracker(): LayoutTracker {
     this.#layout ??= new LayoutTracker({
       listen: (event, listener) => this.addEventListener(event, listener),
-      measure: (callback) => {
-        measureLayout(this.element, callback);
-        // The UI method waits for the element's next flush (see invoke()).
-        scheduleSettleFlush();
-      },
+      // The UI method waits for the element's next flush (see invoke()),
+      // which measureLayout asks for (see setMeasureFlush below).
+      measure: (callback) => measureLayout(this.element, callback),
     });
     return this.#layout;
   }
@@ -3132,3 +3131,9 @@ export const scheduleSettleFlush = (): void => {
     LynxElement.commitPendingInvokes();
   });
 };
+
+// Every layout read asks for the flush its UI method waits for: an
+// element's (getBoundingClientRect, ResizeObserver) and an
+// IntersectionObserver's, which measures from timers and other events'
+// listeners and imports layout.ts alone.
+setMeasureFlush(scheduleSettleFlush);

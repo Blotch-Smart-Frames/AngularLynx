@@ -174,10 +174,12 @@ type Geometry = {
  * answer shared with a later request is at most a round trip older than its
  * own would have been.
  *
- * On iOS and Android, native answers `boundingClientRect` before the call
- * returns, so nothing is under way for long; and the microtasks queued before
- * the call run before it returns, too, so nothing here is cleared in a
- * microtask (see investigations/lynx-vs-web-differences.md).
+ * On iOS and Android, native answers `boundingClientRect` once the element's
+ * next flush has sent the request to the UI (the build plugin turns on Lynx's
+ * pending invokes), and measureLayout asks for that flush. A Lynx without
+ * them answers before the call returns, and runs the microtasks queued before
+ * the call then too, so nothing here is cleared in a microtask (see
+ * investigations/lynx-vs-web-differences.md).
  */
 const measurements = new Map<unknown, Promise<LayoutRect | null>>();
 
@@ -202,7 +204,8 @@ const measure = (element: ObservedElement): Promise<LayoutRect | null> => {
     }),
   );
   sampleMeasurements?.set(native, rect);
-  // Answered already, as on a device: nothing under way to share.
+  // Answered already, as a Lynx without pending invokes does: nothing under
+  // way to share.
   if (!answered) measurements.set(native, rect);
   return rect;
 };

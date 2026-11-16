@@ -94,7 +94,19 @@ export class NativeScreenSource implements ScreenSource {
     if (
       typeList.some((t) => POINTER_EVENTS.has(t) || TOUCH_EVENTS.includes(t))
     ) {
-      for (const name of TOUCH_EVENTS) wanted.add(name);
+      // Following the fingers for pointerId and isPrimary takes the
+      // touches' starts and ends, whichever pointer or touch event is
+      // listened for.
+      for (const name of TOUCH_EVENTS) {
+        if (name !== 'touchmove') wanted.add(name);
+      }
+      // A move is only a pointermove or a touchmove. Without one of their
+      // listeners (a click-outside `pointerdown` is the usual one), every
+      // touchmove anywhere on the screen, all through a scroll, would run
+      // the page's two touchmove listeners for nothing.
+      if (types.has('pointermove') || types.has('touchmove')) {
+        wanted.add('touchmove');
+      }
     }
     if (types.has('click')) wanted.add('tap');
     this.#stop([...this.#listening.keys()].filter((n) => !wanted.has(n)));
@@ -170,6 +182,10 @@ export class NativeScreenSource implements ScreenSource {
         continue;
       }
       for (const type of POINTERS_FOR[name]) {
+        // Only the pointer events something listens for are made: each is
+        // a LynxPointerEvent of some 35 fields, and #begin would drop the
+        // others unheard.
+        if (!this.#events.hasListeners(type)) continue;
         deliveries.push({
           type,
           event: this.#pointerEvent(type, touch, event, target),

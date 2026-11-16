@@ -63,6 +63,17 @@ describe('LynxStackChrome', () => {
     expect(chrome.bottomBarMotion()).toBe(STILL);
   });
 
+  it('follows its own outlets, whichever chrome was made first', () => {
+    // The first chrome's constructor assigns follow; the chromes after it
+    // use the same.
+    const first = new LynxStackChrome();
+    const second = new LynxStackChrome();
+    follow(second, outlet(null, 'pushed').claim);
+
+    expect(first.bottomBarHidden()).toBe(false);
+    expect(second.bottomBarHidden()).toBe(true);
+  });
+
   it('follows an outlet, until it stops', () => {
     const chrome = new LynxStackChrome();
     const { claim, state } = outlet(null, 'pushed');

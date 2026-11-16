@@ -2,9 +2,14 @@ import { type Signal, computed, signal } from '@angular/core';
 import type { ChromeClaim, LynxStackChrome } from './stack-chrome';
 
 /**
- * Sets a page's `active`. Assigned in the class's static block, the only place
- * outside its methods that can reach its private fields, which keeps it out
- * of the class's public API: only the outlet says whether a page is on top.
+ * Sets a page's `active`. Assigned by the class's first constructor, inside the
+ * class where its private fields can be reached, which keeps it out of the
+ * class's public API: only the outlet says whether a page is on top.
+ *
+ * Not in a static block, which would make defining the class a side effect
+ * and keep it in bundles that don't use it (see snapshotOf in
+ * lynx-location-strategy.ts). Each accessor takes a page, so a constructor has
+ * always run before one is called.
  */
 export let setActive: (page: LynxStackPage, active: boolean) => void;
 
@@ -41,6 +46,9 @@ export type PageLinks = {
  * page itself, they go when the page does.
  */
 export let linksOf: (page: LynxStackPage) => PageLinks;
+
+/** Whether a page's constructor has assigned the accessors above. */
+let accessorsSet = false;
 
 const SHOWN = signal(false).asReadonly();
 
@@ -101,9 +109,12 @@ export class LynxStackPage {
     this.#bottomBarHidden()(),
   );
 
-  static {
-    setActive = (page, active) => page.#active.set(active);
-    setBottomBarHidden = (page, hidden) => page.#bottomBarHidden.set(hidden);
-    linksOf = (page) => page.#links;
+  constructor() {
+    if (!accessorsSet) {
+      accessorsSet = true;
+      setActive = (page, active) => page.#active.set(active);
+      setBottomBarHidden = (page, hidden) => page.#bottomBarHidden.set(hidden);
+      linksOf = (page) => page.#links;
+    }
   }
 }

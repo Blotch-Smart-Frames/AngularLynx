@@ -378,6 +378,18 @@ describe('rewindHistory', () => {
 });
 
 describe('historyEntryAt', () => {
+  it("reads each strategy's own history, whichever was made first", () => {
+    // The first strategy's constructor assigns what reads the history; the
+    // ones after it use the same.
+    const first = new LynxLocationStrategy();
+    const second = new LynxLocationStrategy();
+    first.pushState(null, '', '/first', '');
+    second.pushState(null, '', '/second', '');
+
+    expect(historyEntryAt(first, 1)?.url).toBe('/first');
+    expect(historyEntryAt(second, 1)?.url).toBe('/second');
+  });
+
   it('reads an entry, and nothing outside the history', () => {
     const strategy = new LynxLocationStrategy();
     strategy.pushState({ id: 1 }, '', '/a', 'q=1');

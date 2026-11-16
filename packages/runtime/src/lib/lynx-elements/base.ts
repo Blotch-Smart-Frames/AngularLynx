@@ -139,22 +139,26 @@ export class LynxElementBase implements OnChanges {
       }
     }
   }
+
+  // The inputs' types. `declare`d, so the class defines no field for them,
+  // as in every directive here (see index.ts).
+
   // ---- Identity ----------------------------------------------------------
-  id?: string;
+  declare id?: string;
   /**
    * Named reference accessible via lynx.getElementById / findViewByName.
    */
-  name?: string;
+  declare name?: string;
 
   // ---- Accessibility -----------------------------------------------------
   /**
    * Whether this element is an accessibility node.
    */
-  'accessibility-element'?: boolean;
+  declare 'accessibility-element'?: boolean;
   /**
    * Text read aloud by screen readers.
    */
-  'accessibility-label'?: string;
+  declare 'accessibility-label'?: string;
   /**
    * The kind of element a screen reader announces. Plural, as Lynx reads it:
    * iOS, Android and Harmony ignore `accessibility-trait`. iOS also reads a
@@ -162,134 +166,134 @@ export class LynxElementBase implements OnChanges {
    * is what LynxRouterLinkActive and LynxAccessibilityTraits write; Android
    * and Harmony read a single trait. @default 'none'
    */
-  'accessibility-traits'?:
+  declare 'accessibility-traits'?:
     | AccessibilityTrait
     | `${AccessibilityTrait},${string}`;
   /**
    * Comma-separated `id`s of the child elements a screen reader visits, in
    * order. iOS and Android look each one up as an `id` selector.
    */
-  'accessibility-elements'?: string;
-  'accessibility-elements-hidden'?: boolean;
+  declare 'accessibility-elements'?: string;
+  declare 'accessibility-elements-hidden'?: boolean;
   /**
    * Whether this element exclusively captures accessibility focus.
    */
-  'accessibility-exclusive-focus'?: boolean;
+  declare 'accessibility-exclusive-focus'?: boolean;
   /**
    * Accessibility identifier (separate from name).
    */
-  'a11y-id'?: string;
+  declare 'a11y-id'?: string;
 
   // ---- Interaction -------------------------------------------------------
   /**
    * Whether the element receives touch events (default: true).
    */
-  'user-interaction-enabled'?: boolean;
+  declare 'user-interaction-enabled'?: boolean;
   /**
    * Whether the element receives platform-native gestures.
    */
-  'native-interaction-enabled'?: boolean;
+  declare 'native-interaction-enabled'?: boolean;
   /**
    * Whether touch events pass through to elements below.
    */
-  'event-through'?: boolean;
+  declare 'event-through'?: boolean;
   /**
    * Extends the touch target area. Object or CSS-shorthand string.
    */
-  'hit-slop'?: string | object;
+  declare 'hit-slop'?: string | object;
   /**
    * Whether the element consumes native iOS/Android gestures.
    */
-  'block-native-event'?: boolean;
+  declare 'block-native-event'?: boolean;
   /**
    * Whether focus events are suppressed.
    */
-  'ignore-focus'?: boolean;
+  declare 'ignore-focus'?: boolean;
   /**
    * Allow simultaneous touch recognition (iOS).
    */
-  'ios-enable-simultaneous-touch'?: boolean;
+  declare 'ios-enable-simultaneous-touch'?: boolean;
   /**
    * Lets Lynx draw the element into its parent's native view instead of
    * creating its own (Android). `false` gives it its own view, which sticky
    * positioning, text selection and reliable clipping need. @default true
    */
-  flatten?: boolean;
+  declare flatten?: boolean;
   /**
    * Direction in which the element takes pan gestures from native views
    * outside Lynx: 0 = horizontal, 1 = vertical.
    */
-  'pan-intercept-direction'?: 0 | 1;
+  declare 'pan-intercept-direction'?: 0 | 1;
   /**
    * Which views `pan-intercept-direction` takes pans from: 0 = self,
    * 1 = ancestors, 2 = descendants, 3 = self and ancestors, 4 = self and
    * descendants, 5 = all.
    */
-  'pan-intercept-scope'?: 0 | 1 | 2 | 3 | 4 | 5;
+  declare 'pan-intercept-scope'?: 0 | 1 | 2 | 3 | 4 | 5;
   /**
    * Swipe angle ranges, `[start, end]` in degrees, that the element keeps
    * from platform gestures.
    */
-  'consume-slide-event'?: [number, number][];
+  declare 'consume-slide-event'?: [number, number][];
   /**
    * Whether `:active` also applies to the ancestors on the touch's event path.
    */
-  'enable-touch-pseudo-propagation'?: boolean;
+  declare 'enable-touch-pseudo-propagation'?: boolean;
 
   // ---- Exposure tracking -------------------------------------------------
   /**
    * Unique ID used for impression/exposure analytics.
    */
-  'exposure-id'?: string;
+  declare 'exposure-id'?: string;
   /**
    * Scene identifier grouping exposure events.
    */
-  'exposure-scene'?: string;
+  declare 'exposure-scene'?: string;
   /**
    * How much of the element must be visible to count as exposed, as a
    * percentage string such as `'50%'`. @default '0%'
    */
-  'exposure-area'?: `${number}%`;
+  declare 'exposure-area'?: `${number}%`;
   /**
    * Extends/shrinks the viewport detection zone (top edge).
    */
-  'exposure-screen-margin-top'?: ExposureMargin;
+  declare 'exposure-screen-margin-top'?: ExposureMargin;
   /**
    * Extends/shrinks the viewport detection zone (bottom edge).
    */
-  'exposure-screen-margin-bottom'?: ExposureMargin;
+  declare 'exposure-screen-margin-bottom'?: ExposureMargin;
   /**
    * Extends/shrinks the viewport detection zone (left edge).
    */
-  'exposure-screen-margin-left'?: ExposureMargin;
+  declare 'exposure-screen-margin-left'?: ExposureMargin;
   /**
    * Extends/shrinks the viewport detection zone (right edge).
    */
-  'exposure-screen-margin-right'?: ExposureMargin;
+  declare 'exposure-screen-margin-right'?: ExposureMargin;
   /**
    * Adjusts the element's own bounding rect for exposure detection (top).
    * iOS and Android apply it only with `enable-exposure-ui-margin`.
    */
-  'exposure-ui-margin-top'?: ExposureMargin;
+  declare 'exposure-ui-margin-top'?: ExposureMargin;
   /**
    * Adjusts the element's own bounding rect for exposure detection (bottom).
    * iOS and Android apply it only with `enable-exposure-ui-margin`.
    */
-  'exposure-ui-margin-bottom'?: ExposureMargin;
+  declare 'exposure-ui-margin-bottom'?: ExposureMargin;
   /**
    * Adjusts the element's own bounding rect for exposure detection (left).
    * iOS and Android apply it only with `enable-exposure-ui-margin`.
    */
-  'exposure-ui-margin-left'?: ExposureMargin;
+  declare 'exposure-ui-margin-left'?: ExposureMargin;
   /**
    * Adjusts the element's own bounding rect for exposure detection (right).
    * iOS and Android apply it only with `enable-exposure-ui-margin`.
    */
-  'exposure-ui-margin-right'?: ExposureMargin;
+  declare 'exposure-ui-margin-right'?: ExposureMargin;
   /**
    * Turns on `exposure-ui-margin-*` on iOS and Android (always on for Harmony
    * and the web). It also changes how they apply `exposure-screen-margin-*`.
    * @default false
    */
-  'enable-exposure-ui-margin'?: boolean;
+  declare 'enable-exposure-ui-margin'?: boolean;
 }

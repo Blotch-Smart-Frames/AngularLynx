@@ -113,14 +113,22 @@ class TabInjector {
 
 /**
  * Works out where a navigation into a hidden tab goes (see #resume).
- * Assigned in the class's static block, the only place outside its methods
- * that can reach its private fields.
+ * Assigned by the class's first constructor, inside the class where its
+ * private fields can be reached.
+ *
+ * Not in a static block, which would make defining the class a side effect
+ * and keep it in bundles that don't use it (see snapshotOf in
+ * lynx-location-strategy.ts). It takes an outlet, so a constructor has always
+ * run before it's called.
  */
 let resumeOf: (
   outlet: LynxTabOutlet,
   route: ActivatedRouteSnapshot,
   state: RouterStateSnapshot,
 ) => true | RedirectCommand;
+
+/** Whether an outlet's constructor has assigned resumeOf. */
+let accessorsSet = false;
 
 /**
  * The outlet a route goes in, from the outlets the app has now: out from the
@@ -388,6 +396,10 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
 
   constructor() {
     super();
+    if (!accessorsSet) {
+      accessorsSet = true;
+      resumeOf = (outlet, route, state) => outlet.#resume(route, state);
+    }
     this.#ownView(this.#host);
     // Tabs the app stops keeping go once they're hidden.
     effect(() => {
@@ -1021,9 +1033,5 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
     for (const [name, value] of Object.entries(styles)) {
       this.#renderer.setStyle(element, name, value);
     }
-  }
-
-  static {
-    resumeOf = (outlet, route, state) => outlet.#resume(route, state);
   }
 }

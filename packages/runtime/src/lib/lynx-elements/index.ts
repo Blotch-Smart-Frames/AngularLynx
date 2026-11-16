@@ -29,6 +29,13 @@
  *   Angular intercepts these bindings and sets them on the directive instance.
  *   LynxElementBase.ngOnChanges forwards every input change to the native Lynx
  *   element via BaseLynxElement.setAttribute() → __SetAttribute().
+ * - The properties are `declare`d: they give the inputs their types, for the
+ *   template checker and the .d.ts, without a class field. Angular sets an
+ *   input on the instance only when a template binds it. A field would define
+ *   every property on every directive, as undefined, when it's made: 33 for a
+ *   `<view>`, 47 for an `<image>`, each a helper call once the main thread's
+ *   build lowers the fields to ES2019, for every element of every screen, on
+ *   an engine without a JIT. directives.test.ts checks every directive.
  * - Events (bindtap, catchtap, bindinput, bindscroll, …) are NOT declared as
  *   outputs, which would make DebugElement.triggerEventHandler() run each
  *   handler twice (see base.ts). They reach handlers through renderer.listen(),

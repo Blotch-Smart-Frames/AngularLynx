@@ -25,37 +25,41 @@ export class LynxText extends LynxElementBase {
    * (Tailwind's `text-ellipsis`). Without it, iOS cuts the text off at the
    * last line, and Android draws the remaining lines past the box.
    */
-  'text-maxline'?: number;
+  declare 'text-maxline'?: number;
   /**
    * Vertical alignment for single-line text.
    * @default 'normal'
    */
-  'text-single-line-vertical-align'?: 'normal' | 'top' | 'center' | 'bottom';
+  declare 'text-single-line-vertical-align'?:
+    | 'normal'
+    | 'top'
+    | 'center'
+    | 'bottom';
   /**
    * Whether the user can select the text.
    */
-  'text-selection'?: boolean;
+  declare 'text-selection'?: boolean;
   /**
    * Whether a custom context menu is shown on long-press.
    */
-  'custom-context-menu'?: boolean;
+  declare 'custom-context-menu'?: boolean;
   /**
    * Add extra font padding on Android.
    */
-  'include-font-padding'?: boolean;
-  'tail-color-convert'?: boolean;
+  declare 'include-font-padding'?: boolean;
+  declare 'tail-color-convert'?: boolean;
   /**
    * Synthesize bold when the font has no bold face (Android/iOS). @default false
    */
-  'text-fake-bold'?: boolean;
+  declare 'text-fake-bold'?: boolean;
   /**
    * Hand selection/copy gestures to your own handlers; requires `text-selection`. @default false
    */
-  'custom-text-selection'?: boolean;
+  declare 'custom-text-selection'?: boolean;
   /**
    * Render emoji with the Emoji2 compatibility library (Android; the app must include it). @default false
    */
-  'android-emoji-compat'?: boolean;
+  declare 'android-emoji-compat'?: boolean;
 }
 
 /**

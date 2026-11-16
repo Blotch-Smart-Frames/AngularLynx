@@ -94,8 +94,9 @@ describe('NativeScreenSource', () => {
   it('begins a touchmove dispatch only for a move listener, and follows the fingers all the same', () => {
     // A click-outside `pointerdown` is the usual document listener: every
     // touchmove anywhere would make pointer events and start a dispatch for
-    // nothing. The page's trailing touchmove listener stays, as it always
-    // was, so an app's capture listener on the page keeps its phase.
+    // nothing. The page's touchmove listeners stay, as they always were: the
+    // global one finishes the last dispatch, and the trailing one keeps an
+    // app's capture listener on the page in its phase.
     const { events, listeners, fire } = setup();
     const downs: LynxPointerEvent[] = [];
     events.document.addEventListener('pointerdown', (event) =>
@@ -110,13 +111,17 @@ describe('NativeScreenSource', () => {
         'bindtouchstart',
         'global-bindtouchcancel',
         'global-bindtouchend',
+        'global-bindtouchmove',
         'global-bindtouchstart',
       ].sort(),
     );
-    // A move does nothing with nothing pending.
-    expect(() =>
-      fire('touchmove', { changedTouches: [touch(1)] }),
-    ).not.toThrow();
+    // A move nobody hears makes no pointer event and waits for no timer.
+    const made = vi.mocked(pointerEventFor);
+    made.mockClear();
+    const timers = vi.getTimerCount();
+    fire('touchmove', { changedTouches: [touch(1)] });
+    expect(made).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(timers);
 
     // Each touch ends, so each next one is the primary pointer.
     fire('touchstart', { changedTouches: [touch(1)] });
@@ -139,16 +144,33 @@ describe('NativeScreenSource', () => {
     fire('touchmove', { changedTouches: [touch(3, 40)] });
     expect(moves.map((m) => [m.pointerId, m.isPrimary])).toEqual([[3, true]]);
 
-    // Gone again with it, and the finger is still followed.
+    // Not without it, and the finger is still followed.
     events.document.removeEventListener('pointermove', move);
-    expect(listeners.has('global-bindtouchmove')).toBe(false);
-    expect(listeners.has('bindtouchmove')).toBe(true);
+    fire('touchmove', { changedTouches: [touch(3, 50)] });
+    expect(moves).toHaveLength(1);
     fire('touchstart', { changedTouches: [touch(4)] });
     expect(downs.at(-1)).toMatchObject({ pointerId: 4, isPrimary: false });
 
-    // A touchmove listener listens for moves too.
-    events.document.addEventListener('touchmove', () => {});
-    expect(listeners.has('global-bindtouchmove')).toBe(true);
+    // A touchmove listener hears moves too.
+    const touchMoves = vi.fn();
+    events.document.addEventListener('touchmove', touchMoves);
+    fire('touchmove', { changedTouches: [touch(4, 60)] });
+    expect(touchMoves).toHaveBeenCalledOnce();
+  });
+
+  it("finishes a caught press before a move nobody hears, so the press's document listeners run first", () => {
+    // A toast's (catchtouchstart) stops the touchstart before the page: its
+    // pointerdown waits for a timer to bubble to the document. A move that
+    // comes first still finishes it before the move's own listeners run.
+    const { events, fire } = setup();
+    const log: string[] = [];
+    events.document.addEventListener('pointerdown', () => log.push('down'));
+
+    fire('touchstart', { changedTouches: [touch(1)] }, { caught: true });
+    fire('touchmove', { changedTouches: [touch(1)] });
+    log.push('element move');
+
+    expect(log).toEqual(['down', 'element move']);
   });
 
   it("makes only the pointer events something listens for, and waits for nothing when it's none", () => {

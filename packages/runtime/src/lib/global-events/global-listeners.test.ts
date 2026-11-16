@@ -270,8 +270,6 @@ describe('document:, window: and body: listeners', () => {
     fixture.detectChanges();
 
     expect(nativeTypes.get(`${page.id}|touchmove`)).toBe('bindEvent');
-    // No pointermove or touchmove listener: no dispatch begins on a move.
-    expect(handlers.has(`${page.id}|global-bindEvent|touchmove`)).toBe(false);
 
     const touch = { identifier: 1, x: 5, y: 6, pageX: 15, pageY: 16 };
     send(card(), 'touchstart', { changedTouches: [touch] });

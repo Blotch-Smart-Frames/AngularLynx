@@ -100,21 +100,21 @@ export class NativeScreenSource implements ScreenSource {
     if (
       typeList.some((t) => POINTER_EVENTS.has(t) || TOUCH_EVENTS.includes(t))
     ) {
-      // A move is only a pointermove or a touchmove. Without one of their
-      // listeners (a click-outside `pointerdown` is the usual one), the
-      // global-bind listener, which makes the pointer events and starts the
-      // dispatch, would run on every touchmove anywhere on the screen, all
-      // through a scroll, for nothing. Following the fingers for pointerId
-      // and isPrimary takes only the touches' starts and ends.
-      const moves = types.has('pointermove') || types.has('touchmove');
       for (const name of TOUCH_EVENTS) {
-        if (name !== 'touchmove' || moves) wanted.add(`global-bind${name}`);
-        // The page's own bubbling listener for each, the touchmove's
-        // included, as before: it shares the page's native handler with an
-        // app's listener for the event on the page, so a capture one there
-        // (`capture-bindtouchmove` on the root component's host) stays
-        // registered bubbling, after its descendants' (see
-        // combinedEventType). With nothing pending, it does nothing.
+        // The global-bind listener begins each dispatch (see #begin). The
+        // touchmove's is wanted even when nothing listens for a move (a
+        // click-outside `pointerdown` is the usual document listener): its
+        // first job is finishing the last event's dispatch, so a caught
+        // touchstart's pointerdown still reaches the document before the
+        // next move's listeners run. #begin does nothing more for a move
+        // nobody hears.
+        wanted.add(`global-bind${name}`);
+        // The page's own bubbling listener for each: it shares the page's
+        // native handler with an app's listener for the event on the page,
+        // so a capture one there (`capture-bindtouchmove` on the root
+        // component's host) stays registered bubbling, after its
+        // descendants' (see combinedEventType). With nothing pending, it
+        // does nothing.
         wanted.add(`bind${name}`);
       }
     }
@@ -172,6 +172,17 @@ export class NativeScreenSource implements ScreenSource {
     // The last event's listeners all ran before this one began, so one
     // still pending was stopped before it reached the page.
     this.#events.finishPending();
+    // A move that no pointermove or touchmove listener hears has nothing
+    // to deliver, and following the fingers takes only touches' starts and
+    // ends (see #pointers). Returning here spares every touchmove anywhere
+    // on the screen, all through a scroll, a dispatch built for nothing.
+    if (
+      name === 'touchmove' &&
+      !this.#events.hasListeners('pointermove') &&
+      !this.#events.hasListeners('touchmove')
+    ) {
+      return;
+    }
     const target = this.#events.targetFor(event.target?.uid);
     const deliveries: Delivery[] =
       name === 'tap'

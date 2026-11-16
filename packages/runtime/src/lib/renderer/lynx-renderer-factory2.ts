@@ -17,10 +17,9 @@ import {
   processPendingTextNormalization,
 } from '../lynx-element';
 import {
-  enterChangeDetection,
   isBindingListItem,
   isFirstRenderPending,
-  leaveChangeDetection,
+  setInsideChangeDetection,
 } from '../lynx-render-lifecycle';
 import { EmulatedLynxRenderer } from './emulated-lynx-renderer';
 import { LynxRenderer } from './renderer';
@@ -77,7 +76,7 @@ export class LynxRendererFactory2 implements RendererFactory2 {
    * in lynx-element.ts).
    */
   begin?(): void {
-    enterChangeDetection();
+    setInsideChangeDetection(true);
     // Build-time `define` gate — false in the Vitest config, so this
     // profiling call is dead code from the test bundle's point of view.
     /* v8 ignore start */
@@ -120,9 +119,7 @@ export class LynxRendererFactory2 implements RendererFactory2 {
    *
    * In development builds, the cycle's duration, timed from begin(), is
    * recorded on every return path, the flush included: it's how long the
-   * cycle kept the main thread busy. A cycle inside another (a
-   * detectChanges() during a tick) adds to neither counter: it commits and
-   * flushes with the outer one.
+   * cycle kept the main thread busy.
    *
    * The cycle of a `*lynxListFor` item that a list's componentAtIndex is
    * building (see bindListItem) commits its queued work too, and updates any
@@ -133,19 +130,11 @@ export class LynxRendererFactory2 implements RendererFactory2 {
    */
   end?(): void {
     try {
-      // A detectChanges() called during a tick ends inside the tick's cycle:
-      // the tick's end() commits and flushes what both changed, once, in the
-      // same synchronous tick (see leaveChangeDetection).
-      //
-      // Otherwise this change-detection cycle is finishing: the flag is
-      // cleared first, on EVERY return path, so mutations after this point
-      // are correctly seen as outside-a-cycle (see begin() /
-      // scheduleSettleFlush). The flush below is unconditional, so clearing
-      // the flag now does not affect it. And the depth is down to zero
-      // before the flush: a list's componentAtIndex that the flush calls
-      // builds its item with a cycle of its own, which must see itself as
-      // the outermost (see bindListItem).
-      if (!leaveChangeDetection()) return;
+      // This change-detection cycle is finishing: clear the flag first, on
+      // EVERY return path, so mutations after this point are correctly seen
+      // as outside-a-cycle (see begin() / scheduleSettleFlush). The flush
+      // below is unconditional, so clearing the flag now does not affect it.
+      setInsideChangeDetection(false);
       // During SSR hydration the native tree already exists from the snapshot
       // — flushing would be redundant and could cause visual glitches.
       // `__ENABLE_SSR__` is a build-time `define` (false in the Vitest config)

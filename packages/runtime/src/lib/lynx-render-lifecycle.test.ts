@@ -54,27 +54,6 @@ describe('lynx-render-lifecycle', () => {
     expect(() => m.markFirstRenderComplete()).not.toThrow();
   });
 
-  it('counts the cycles one inside another, and ends at the outermost', async () => {
-    const m = await load();
-    m.enterChangeDetection();
-    // A detectChanges() during the tick.
-    m.enterChangeDetection();
-    expect(m.leaveChangeDetection()).toBe(false);
-    expect(m.isInsideChangeDetection()).toBe(true);
-    expect(m.leaveChangeDetection()).toBe(true);
-    expect(m.isInsideChangeDetection()).toBe(false);
-  });
-
-  it('takes an end without its begin for the outermost, and counts afresh after it', async () => {
-    const m = await load();
-    expect(m.leaveChangeDetection()).toBe(true);
-    expect(m.leaveChangeDetection()).toBe(true);
-    m.enterChangeDetection();
-    expect(m.isInsideChangeDetection()).toBe(true);
-    expect(m.leaveChangeDetection()).toBe(true);
-    expect(m.isInsideChangeDetection()).toBe(false);
-  });
-
   it('tracks the inside-change-detection flag', async () => {
     const m = await load();
     expect(m.isInsideChangeDetection()).toBe(false);

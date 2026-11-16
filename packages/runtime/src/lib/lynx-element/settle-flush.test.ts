@@ -87,6 +87,10 @@ describe('scheduleSettleFlush', () => {
     // timers and other events' listeners, outside change detection.
     const invoke = vi.fn();
     vi.stubGlobal('__InvokeUIMethod', invoke);
+    // The first element installs the hook; nothing is measured before one
+    // exists.
+    vi.stubGlobal('__GetElementUniqueID', () => 1);
+    new LynxElement({} as never);
     const flush = (globalThis as any).__FlushElementTree;
     measureLayout({}, () => {});
     measureLayout({}, () => {});

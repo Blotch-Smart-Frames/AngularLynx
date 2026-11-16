@@ -417,6 +417,12 @@ const insertHidesBlurView = (
 const isTextish = (el: LynxElement): boolean =>
   el.tagName === 'text' || el.tagName === 'raw-text';
 
+/**
+ * Whether the first LynxElement has made layout reads ask for a flush (see
+ * the constructor).
+ */
+let measureFlushInstalled = false;
+
 export class LynxElement implements BaseLynxElement {
   /**
    * The native element ref this wrapper currently drives.
@@ -833,6 +839,18 @@ export class LynxElement implements BaseLynxElement {
   }
 
   constructor(element: ElementRef) {
+    // Every layout read asks for the flush its UI method waits for: an
+    // element's (getBoundingClientRect, ResizeObserver) and an
+    // IntersectionObserver's, which measures from timers and other events'
+    // listeners and imports layout.ts alone. Installed by the first element
+    // rather than when this module loads, because a module-level call is a
+    // side effect that keeps this module in every bundle that imports the
+    // runtime (see side-effects.test.ts); nothing is measured before an
+    // element exists.
+    if (!measureFlushInstalled) {
+      measureFlushInstalled = true;
+      setMeasureFlush(scheduleSettleFlush);
+    }
     this.#nativeRef = element;
     // Register as the canonical wrapper for this native ref. #canonicalFor()
     // checks the map before constructing, so this never overwrites an existing
@@ -2746,7 +2764,7 @@ export class LynxElement implements BaseLynxElement {
     this.#layout ??= new LayoutTracker({
       listen: (event, listener) => this.addEventListener(event, listener),
       // The UI method waits for the element's next flush (see invoke()),
-      // which measureLayout asks for (see setMeasureFlush below).
+      // which measureLayout asks for (see setMeasureFlush in the constructor).
       measure: (callback) => measureLayout(this.element, callback),
     });
     return this.#layout;
@@ -3313,9 +3331,3 @@ export const scheduleSettleFlush = (): void => {
     LynxElement.commitPendingInvokes();
   });
 };
-
-// Every layout read asks for the flush its UI method waits for: an
-// element's (getBoundingClientRect, ResizeObserver) and an
-// IntersectionObserver's, which measures from timers and other events'
-// listeners and imports layout.ts alone.
-setMeasureFlush(scheduleSettleFlush);

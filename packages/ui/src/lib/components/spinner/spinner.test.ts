@@ -5,6 +5,12 @@ import { lynxMainThread } from '../../../test-utils/lynx-main-thread';
 import { ICON_LIGHT_COLORS } from '../icon/icon-theme';
 import { UiSpinner } from './spinner';
 
+/**
+ * The CSS a component brings, which the build adds to the app's.
+ */
+const componentStyles = (component: unknown): string =>
+  (component as { ɵcmp: { styles: string[] } }).ɵcmp.styles.join('\n');
+
 @Component({
   imports: [UiSpinner],
   template: `
@@ -92,10 +98,29 @@ describe('UiSpinner', () => {
     ]);
   });
 
-  it('turns continuously', async () => {
+  // Core Animation and Android's animators turn it, so it keeps turning
+  // while Angular builds a screen, which is when a spinner shows. Lynx's own
+  // animator ticks on Angular's thread, and stood still meanwhile.
+  it("turns on the platform's animator", async () => {
     const animate = vi.spyOn(lynxMainThread(), '__ElementAnimate');
     const { spinner } = await renderSpinner();
-    expect(animate).toHaveBeenCalledWith(spinner(), expect.any(Array));
+    expect(spinner().getAttribute('enable-new-animator')).toBe('false');
+    // Android rotates only a view of its own.
+    expect(spinner().getAttribute('flatten')).toBe('false');
+    // animate() does nothing on an element the platform animates.
+    expect(animate).not.toHaveBeenCalled();
     animate.mockRestore();
+  });
+
+  it('turns once every 1.6 seconds, for as long as it shows', () => {
+    const css = componentStyles(UiSpinner);
+    expect(css).toMatch(
+      /@keyframes ui-spinner-turn\s*\{\s*from\s*\{\s*transform:\s*rotate\(0deg\);?\s*\}\s*to\s*\{\s*transform:\s*rotate\(360deg\);?\s*\}/,
+    );
+    // The host is the box that turns: the build matches `ui-spinner` to the
+    // class the runtime gives it, so the app's classes stay its own.
+    expect(css).toMatch(
+      /ui-spinner\s*\{\s*animation:\s*ui-spinner-turn 1600ms linear infinite;?\s*\}/,
+    );
   });
 });

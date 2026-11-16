@@ -1,12 +1,4 @@
-import {
-  Component,
-  ElementRef,
-  ViewEncapsulation,
-  computed,
-  effect,
-  inject,
-  input,
-} from '@angular/core';
+import { Component, ViewEncapsulation, computed, input } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 import { cn } from '@blotch/dolan/utils/cn';
@@ -31,10 +23,41 @@ const SIZE_MAP = { xs: 16, sm: 20, md: 24, lg: 32 } as const;
   // model — the renderer doesn't support nested SVG elements. Passing the full
   // SVG markup string as the `content` attribute is the Lynx-native way to
   // embed vector graphics.
+  //
+  // It turns by a CSS animation the platform runs, not `animate()`: Lynx's
+  // own animator ticks on the thread Angular runs on, so a spinner froze for
+  // as long as Angular was busy building a screen, which is when it's shown.
+  // `enable-new-animator` false hands the host's `@keyframes` to Core
+  // Animation on iOS, which runs them in the render server, and to Android's
+  // animators on the UI thread. Lynx picks the animator as the animation is
+  // set, so the attribute is static, there from the moment the host is made.
+  // Android rotates only a view of its own (`flatten` false). The web preview
+  // ignores the attribute, and the browser runs the animation.
   host: {
+    'enable-new-animator': 'false',
+    flatten: 'false',
     '[class]': 'containerClass()',
     '[style]': 'sizeStyle()',
   },
+  // In the component, not the theme, so an app that copies the spinner gets
+  // them with it, and with no class on the host: `ui-spinner` matches the
+  // class the runtime gives the host for its tag. Lynx's iOS animator turns a
+  // rotation of half a turn or more by `transform.rotation.z`, so 0deg to
+  // 360deg turns there, as it does on Android (`View.setRotation`) and the
+  // web.
+  styles: `
+    @keyframes ui-spinner-turn {
+      from {
+        transform: rotate(0deg);
+      }
+      to {
+        transform: rotate(360deg);
+      }
+    }
+    ui-spinner {
+      animation: ui-spinner-turn 1600ms linear infinite;
+    }
+  `,
   template: `
     <svg [attr.content]="svgContent()" style="width: 100%; height: 100%;" />
   `,
@@ -50,24 +73,6 @@ export class UiSpinner {
   readonly userClass = input<string>('', { alias: 'class' });
 
   readonly #resolveColor = injectIconColor();
-
-  readonly #host = inject(ElementRef).nativeElement;
-
-  /**
-   * Turns the spinner for as long as it's shown. A field rather than a
-   * constructor: Angular's test build keeps a function for a constructor that
-   * nothing calls, which an app's coverage report would show as uncovered.
-   */
-  protected readonly rotation = effect(() => {
-    this.#host.animate(
-      [{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }],
-      {
-        duration: 1600,
-        iterations: Infinity,
-        easing: 'linear',
-      },
-    );
-  });
 
   // Lynx SVG elements don't inherit the CSS `color` property into their stroke
   // attributes, so we substitute the literal `currentColor` in the SVG string

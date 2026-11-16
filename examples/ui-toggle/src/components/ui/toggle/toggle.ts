@@ -329,10 +329,10 @@ export class UiToggleGroupItem {
    */
   protected readonly moveListeners = [
     this.#renderer.listen(this.#host, 'bindtouchmove', (event: unknown) =>
-      this.#onPressMove(event),
+      this.onPressMove(event),
     ),
     this.#renderer.listen(this.#host, 'bindmousemove', (event: unknown) =>
-      this.#onPressMove(event),
+      this.onPressMove(event),
     ),
   ];
 
@@ -426,7 +426,7 @@ export class UiToggleGroupItem {
     this.#pressAnim = pressDown(this.#host);
   }
 
-  #onPressMove(event: unknown): void {
+  protected onPressMove(event: unknown): void {
     this.#segmented.move(event);
   }
 

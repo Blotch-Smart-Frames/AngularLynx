@@ -680,13 +680,12 @@ export class UiSlider implements FormValueControl<number> {
     const root = this.rootRef().nativeElement;
     const removers = [
       this.#renderer.listen(root, 'bindtouchmove', (event: PointerEvent) =>
-        this.#onPressMove(event),
+        this.onPressMove(event),
       ),
       this.#renderer.listen(
         root,
         'bindmousemove',
-        (event: PointerEvent & { buttons?: number }) =>
-          this.#onMouseMove(event),
+        (event: PointerEvent & { buttons?: number }) => this.onMouseMove(event),
       ),
     ];
     onCleanup(() => {
@@ -726,7 +725,7 @@ export class UiSlider implements FormValueControl<number> {
     this.#locatePress(press);
   }
 
-  #onPressMove(event: PointerEvent): void {
+  protected onPressMove(event: PointerEvent): void {
     const press = this.#press;
     const point = pointOf(event);
     if (!press || !point || press.scrolling) return;
@@ -752,15 +751,15 @@ export class UiSlider implements FormValueControl<number> {
   }
 
   /**
-   * The mouse's twin of #onPressMove, on the web. A move with no button held
+   * The mouse's twin of onPressMove, on the web. A move with no button held
    * means the button came up outside the slider, where it couldn't see it.
    */
-  #onMouseMove(event: PointerEvent & { buttons?: number }): void {
+  protected onMouseMove(event: PointerEvent & { buttons?: number }): void {
     if (event.buttons === 0) {
       this.onPressEnd();
       return;
     }
-    this.#onPressMove(event);
+    this.onPressMove(event);
   }
 
   /**

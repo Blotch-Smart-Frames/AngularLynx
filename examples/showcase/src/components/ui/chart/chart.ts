@@ -707,12 +707,12 @@ export class UiChart {
     const remove = this.#renderer.listen(
       this.rootRef().nativeElement,
       'bindtouchmove',
-      (event: unknown) => this.#onTouchMove(event),
+      (event: unknown) => this.onTouchMove(event),
     );
     onCleanup(remove);
   });
 
-  #onTouchMove(event: unknown): void {
+  protected onTouchMove(event: unknown): void {
     const touch = touchPoint(event);
     if (!touch || this.#pinned() || this.zoomable()) return;
     this.#focusAt(touch);

@@ -283,10 +283,10 @@ export class UiTabsTrigger {
    */
   protected readonly moveListeners = [
     this.#renderer.listen(this.#host, 'bindtouchmove', (event: unknown) =>
-      this.#move(event),
+      this.move(event),
     ),
     this.#renderer.listen(this.#host, 'bindmousemove', (event: unknown) =>
-      this.#move(event),
+      this.move(event),
     ),
   ];
 
@@ -428,7 +428,7 @@ export class UiTabsTrigger {
     this.#segment()?.press(this.triggerValue(), event);
   }
 
-  #move(event: unknown): void {
+  protected move(event: unknown): void {
     this.#segment()?.move(event);
   }
 

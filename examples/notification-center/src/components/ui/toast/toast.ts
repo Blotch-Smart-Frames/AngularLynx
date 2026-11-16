@@ -143,7 +143,7 @@ export class UiToastItem implements OnInit, OnDestroy {
     this.#host.nativeElement,
     'catchtouchmove',
     (event: { touches?: ReadonlyArray<{ clientY: number }> }) =>
-      this.#onTouchMove(event),
+      this.onTouchMove(event),
   );
 
   /**
@@ -291,7 +291,9 @@ export class UiToastItem implements OnInit, OnDestroy {
     this.#dragStartY = y;
   }
 
-  #onTouchMove(e: { touches?: ReadonlyArray<{ clientY: number }> }): void {
+  protected onTouchMove(e: {
+    touches?: ReadonlyArray<{ clientY: number }>;
+  }): void {
     if (!this.#isDragging) return;
     const y = e.touches?.[0]?.clientY;
     if (y == null) return;

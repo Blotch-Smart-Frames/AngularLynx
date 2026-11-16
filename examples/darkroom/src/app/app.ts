@@ -95,9 +95,11 @@ const NOTE_MS = 2600;
           class="flex flex-row justify-between px-3 pt-2"
           style="height: 30px"
         >
-          <text class="text-[12px] text-ink-muted" [text-maxline]="1">{{
-            state.photo().title
-          }}</text>
+          <text
+            class="text-[12px] text-ellipsis text-ink-muted"
+            [text-maxline]="1"
+            >{{ state.photo().title }}</text
+          >
           @if (note()) {
             <text class="font-marker text-[14px] text-marker">{{
               note()

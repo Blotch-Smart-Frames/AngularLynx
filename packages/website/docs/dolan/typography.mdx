@@ -60,14 +60,23 @@ export class App {}
 
 Your classes replace the variant's classes where they conflict, so `text-primary` wins over `text-foreground`.
 
+### Line limit
+
+```angular-html
+<ui-text variant="small" [maxLines]="2">{{ notification.title }}</ui-text>
+```
+
+`maxLines` stops the text after that many lines and ends the last one with "…". It sets Lynx's `text-maxline` attribute and the `text-ellipsis` class together: `text-maxline` alone only sizes the box, so Android draws the lines past it over whatever follows, and iOS cuts them off with no "…". Without `maxLines`, the text takes every line it needs.
+
 ## API
 
 ### UiText
 
-| Input     | Type                                                                             | Default | Description                          |
-| --------- | -------------------------------------------------------------------------------- | ------- | ------------------------------------ |
-| `variant` | `'h1' \| 'h2' \| 'h3' \| 'h4' \| 'p' \| 'lead' \| 'large' \| 'small' \| 'muted'` | `'p'`   | The text style.                      |
-| `class`   | `string`                                                                         | `''`    | Extra Tailwind classes for the text. |
+| Input      | Type                                                                             | Default     | Description                                              |
+| ---------- | -------------------------------------------------------------------------------- | ----------- | -------------------------------------------------------- |
+| `variant`  | `'h1' \| 'h2' \| 'h3' \| 'h4' \| 'p' \| 'lead' \| 'large' \| 'small' \| 'muted'` | `'p'`       | The text style.                                          |
+| `maxLines` | `number \| undefined`                                                            | `undefined` | The most lines the text takes, ending the last with "…". |
+| `class`    | `string`                                                                         | `''`        | Extra Tailwind classes for the text.                     |
 
 No outputs.
 

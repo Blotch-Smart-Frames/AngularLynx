@@ -570,6 +570,28 @@ describe('reportLynxDiagnostics', () => {
 
     expect(warnSpy).toHaveBeenCalledWith('[Lynx] Unsupported CSS properties:');
   });
+
+  it('groups capped texts without an ellipsis under a header that says why', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    reportLynxDiagnostics([
+      {
+        file: '/src/row.ts',
+        message:
+          'src/row.ts:8:7: <text> sets text-maxline without text-overflow: ellipsis. Add the text-ellipsis class.',
+        category: 'text',
+      },
+    ]);
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /^\[Lynx\] Capped text without an ellipsis .*Android draws the lines past it/,
+      ),
+    );
+    expect(warnSpy).toHaveBeenCalledWith(
+      '  src/row.ts:8:7: <text> sets text-maxline without text-overflow: ellipsis. Add the text-ellipsis class.',
+    );
+  });
 });
 
 describe('createLynxDiagnosticsReporter', () => {
@@ -617,6 +639,54 @@ describe('createLynxDiagnosticsReporter', () => {
     expect(warnSpy).toHaveBeenCalledWith(
       '[Lynx] HTML elements detected in templates:',
     );
+  });
+
+  it('drops a diagnostic a stylesheet in the bundle excuses', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const readSpy = vi.spyOn(fs, 'readFileSync').mockImplementation((file) => {
+      if (file === path.normalize('/repo/src/styles.css')) {
+        return '.summary { text-overflow: ellipsis; }';
+      }
+      throw new Error('ENOENT');
+    });
+    const reporter = createLynxDiagnosticsReporter();
+    const capped = (name: string): LynxDiagnostic => ({
+      file: '/repo/src/app.ts',
+      message: `<text class="${name}"> sets text-maxline without text-overflow: ellipsis.`,
+      category: 'text',
+      excusedByStylesheet: (css) => css.includes(`.${name} `),
+    });
+
+    reporter.collect([capped('summary'), capped('title')]);
+    reporter.report(
+      modules(
+        '/repo/src/app.ts',
+        '/repo/src/styles.css',
+        // In the bundle, but gone from the disk.
+        '/repo/src/deleted.scss',
+      ),
+    );
+
+    expect(warnSpy.mock.calls.flat()).toEqual([
+      expect.stringContaining('Capped text without an ellipsis'),
+      '  <text class="title"> sets text-maxline without text-overflow: ellipsis.',
+    ]);
+    // Each stylesheet once, and no other file.
+    expect(readSpy.mock.calls.map(([file]) => file)).toEqual([
+      path.normalize('/repo/src/styles.css'),
+      path.normalize('/repo/src/deleted.scss'),
+    ]);
+  });
+
+  it('reads no stylesheet when no diagnostic asks', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const readSpy = vi.spyOn(fs, 'readFileSync');
+    const reporter = createLynxDiagnosticsReporter();
+
+    reporter.collect([diagnostic('/repo/src/app.ts')]);
+    reporter.report(modules('/repo/src/app.ts', '/repo/src/styles.css'));
+
+    expect(readSpy).not.toHaveBeenCalled();
   });
 
   it('reports each compile once, and nothing before the first compile', () => {

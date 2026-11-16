@@ -59,7 +59,7 @@ import { BRUSHED_BRASS } from './materials';
           </view>
         </view>
         <text
-          class="engraved mt-1 font-italic text-[11px] leading-[15px] text-wax-soft"
+          class="engraved mt-1 font-italic text-[11px] leading-[15px] text-ellipsis text-wax-soft"
           [text-maxline]="2"
           >{{ body.kind }}. {{ body.note }}</text
         >
@@ -73,7 +73,7 @@ import { BRUSHED_BRASS } from './materials';
                   >{{ figure.label }}</text
                 >
                 <text
-                  class="engraved font-engraved text-[12px] leading-[16px] text-wax"
+                  class="engraved font-engraved text-[12px] leading-[16px] text-ellipsis text-wax"
                   [text-maxline]="1"
                   >{{ figure.value }}</text
                 >

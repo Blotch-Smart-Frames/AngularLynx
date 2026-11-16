@@ -510,6 +510,9 @@ describe('UiSearchField before iOS 26', () => {
     await update(() => host.cancelable.set(true));
     const cancel = () => getByRole('button', { name: 'Cancel', hidden: true });
     expect(getByText('Cancel').classList).toContain('text-primary');
+    // One line, ending with "…" for a long translation (issue #437).
+    expect(getByText('Cancel').getAttribute('text-maxline')).toBe('1');
+    expect(getByText('Cancel').classList).toContain('text-ellipsis');
     expect(style(cancel(), 'max-width')).toBe('0px');
 
     fireEvent.focus(field());

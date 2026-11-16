@@ -89,7 +89,7 @@ const MONDAY = Date.UTC(2000, 0, 3);
       </view>
       <view class="silver flex flex-1 flex-col items-center justify-center">
         <text
-          class="engraved font-engraved text-[12px] tracking-[1px] text-wax"
+          class="engraved font-engraved text-[12px] tracking-[1px] text-ellipsis text-wax"
           [text-maxline]="1"
           >{{ date() }}</text
         >

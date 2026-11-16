@@ -378,7 +378,9 @@ export class UiNavigationBar {
         ? 'text-[22px] leading-7'
         : 'text-[17px] font-semibold leading-[22px]',
       !this.titleAtStart() && 'text-center',
-      'text-foreground',
+      // The title is one line ([text-maxline]="1"): without the ellipsis,
+      // Android draws a long title's second line under the bar.
+      'text-ellipsis text-foreground',
     ),
   );
 

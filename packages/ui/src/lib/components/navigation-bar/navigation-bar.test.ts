@@ -206,6 +206,9 @@ describe('UiNavigationBar on iOS 26 and later', () => {
       await renderBar(IOS_26);
     expect(title()?.className).toContain('font-semibold');
     expect(title()?.className).toContain('text-center');
+    // One line, ending with "…" (issue #437).
+    expect(title()?.getAttribute('text-maxline')).toBe('1');
+    expect(title()?.className).toContain('text-ellipsis');
     const ends = Array.from(row().children);
     expect(ends.indexOf(leading())).toBeLessThan(ends.indexOf(trailing()));
 

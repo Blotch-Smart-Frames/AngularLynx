@@ -252,7 +252,9 @@ export class UiSelect {
   protected readonly valueTextClass = computed(() => {
     const val = this.value();
     return cn(
-      'flex-1 text-base',
+      // One line ([text-maxline]="1"), ending with "…": without the ellipsis,
+      // Android draws a long value's second line below the field.
+      'flex-1 text-ellipsis text-base',
       val ? 'text-foreground' : 'text-muted-foreground',
     );
   });

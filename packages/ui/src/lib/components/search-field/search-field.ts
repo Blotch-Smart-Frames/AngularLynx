@@ -270,9 +270,11 @@ const iconSvg = (icon: IconName, color: string): string =>
               [style]="frostedCancelStyle()"
               (bindtap)="cancel()"
             >
-              <text class="text-[17px] text-primary" [text-maxline]="1">{{
-                cancelLabel()
-              }}</text>
+              <text
+                class="text-ellipsis text-[17px] text-primary"
+                [text-maxline]="1"
+                >{{ cancelLabel() }}</text
+              >
             </view>
           }
         }

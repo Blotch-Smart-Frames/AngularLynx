@@ -124,7 +124,8 @@ const installNativeFakes = (): void => {
 
 /**
  * The buttons' variant. A module signal rather than an input: Vitest
- * compiles these components just in time, which can't see signal inputs.
+ * compiles these components just in time, without the transform that
+ * makes an `input()` field an input, so a binding to one sets nothing.
  */
 const variant = signal<'primary' | 'ghost'>('primary');
 

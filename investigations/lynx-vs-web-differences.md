@@ -329,7 +329,7 @@ How the renderer could in principle hand Lynx a cyclic attach: an Angular reorde
 
 ### The fix
 
-`wouldFormCycle(parent, candidate)` (`packages/runtime/src/lib/lynx-element/lynx-element.ts`) walks `parent`→root via `__GetParent`, comparing `__GetElementUniqueID`s (native refs can't be used as keys or reliably `===`-compared). `appendChild` and `insertBefore` skip the attach when it would form a cycle — the DOM's ancestor check, minus the throw. The walk is bounded by tree depth, two cheap native reads per step. Kept as defensive coding for a real hazard even though it wasn't the cause below. Covered by `packages/runtime/src/lib/lynx-element/lynx-element-cycle.test.ts`.
+`wouldFormCycle(parent, candidate)` (`packages/runtime/src/lib/lynx-element/lynx-element.ts`) walks `parent`→root via `__GetParent`, comparing `__GetElementUniqueID`s (native refs can't be used as keys or reliably `===`-compared). `appendChild` and `insertBefore` skip the attach when it would form a cycle — the DOM's ancestor check, minus the throw. The walk costs two native reads per level, and `__GetParent` returns a new handle each time, so it first answers the two cases that can't form a cycle: a `candidate` with no native child (`__FirstElement`), which is nearly every append, since Angular appends each element before its children, and a `candidate` that is already one of `parent`'s children (an `@for` reorder). Kept as defensive coding for a real hazard even though it wasn't the cause below. Covered by `packages/runtime/src/lib/lynx-element/lynx-element-cycle.test.ts`.
 
 ---
 

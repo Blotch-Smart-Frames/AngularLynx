@@ -72,6 +72,10 @@ const setupGlobals = () => {
   globalThis.__RemoveElement = mock(() => makeRef());
   globalThis.__InsertElementBefore = mock(() => makeRef());
   globalThis.__GetParent = mock(() => null);
+  // This fake keeps no element tree, so it says every element has a child:
+  // that keeps the cycle check on its full walk rather than its shortcut for
+  // a childless element (see wouldFormCycle).
+  globalThis.__FirstElement = mock(() => makeRef());
   globalThis.__NextElement = mock(() => makeRef());
   globalThis.__SetAttribute = mock(() => {});
   globalThis.__GetAttributeByName = mock(() => null);

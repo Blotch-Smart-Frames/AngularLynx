@@ -254,9 +254,21 @@ const isCustomProperty = (name: string): boolean => name.startsWith('--');
  *
  * This is the same ancestor check a browser performs in `insertBefore` (it
  * throws HierarchyRequestError); we return the answer so callers can skip the
- * attach instead of throwing. The walk is bounded by the depth of `parent`, and
- * each step is two cheap native reads — comparable to the tree bookkeeping the
- * attach itself does.
+ * attach instead of throwing.
+ *
+ * The full check walks `parent`'s ancestors up to the root of its tree, two
+ * native reads a step, and `__GetParent` hands back a new handle each time.
+ * Angular appends nearly every element right after creating it, before its
+ * children, so two exact shortcuts answer most attaches in a few reads:
+ *
+ * - A `candidate` with no native child can't be anyone's ancestor, so only
+ *   `parent` being `candidate` itself can form a cycle.
+ * - A `candidate` already among `parent`'s children (an `@for` reorder of
+ *   rows with children) can't also be one of its ancestors.
+ *
+ * Both read the native tree, not the wrappers' `#children`: a list's items,
+ * anonymous texts and hydrated elements can have native children no wrapper
+ * lists.
  *
  * Compares by unique ID rather than ref identity: native refs must not be used
  * as map/Set keys (hashing one crashes the Lepus engine — see
@@ -265,7 +277,12 @@ const isCustomProperty = (name: string): boolean => name.startsWith('--');
  */
 const wouldFormCycle = (parent: ElementRef, candidate: ElementRef): boolean => {
   const candidateId = __GetElementUniqueID(candidate);
-  for (let cur: ElementRef | null = parent; cur; cur = __GetParent(cur)) {
+  const parentId = __GetElementUniqueID(parent);
+  if (parentId === candidateId) return true;
+  if (!__FirstElement(candidate)) return false;
+  const current = __GetParent(candidate);
+  if (current && __GetElementUniqueID(current) === parentId) return false;
+  for (let cur = __GetParent(parent); cur; cur = __GetParent(cur)) {
     if (__GetElementUniqueID(cur) === candidateId) return true;
   }
   return false;
@@ -1359,7 +1376,8 @@ export class LynxElement implements BaseLynxElement {
     newChild.#recreateIfDead();
     newChild.#anchorFor(this);
     if (refChild == null) {
-      this.#append(newChild);
+      // The checks above are #append's own, done once (see #appendPrepared).
+      this.#appendPrepared(newChild);
     } else {
       // Never insert an element into its own subtree — Lynx would build a cyclic
       // native tree and hang the layout pass (see wouldFormCycle). Skipping is
@@ -1419,6 +1437,16 @@ export class LynxElement implements BaseLynxElement {
     newChild.#removeIfMoveWouldBeLost(this);
     newChild.#recreateIfDead();
     newChild.#anchorFor(this);
+    this.#appendPrepared(newChild);
+  }
+
+  /**
+   * #append once its checks on `newChild` have run, which #attach runs
+   * itself. Running them twice did nothing more the second time, but read
+   * the child's native parent again, and for a move to another parent walked
+   * both ancestries again (see #removeIfMoveWouldBeLost).
+   */
+  #appendPrepared(newChild: LynxElement): void {
     // Guard against a cycle-forming attach (see wouldFormCycle) — the same hang
     // insertBefore protects against.
     if (wouldFormCycle(this.element, newChild.element)) return;
@@ -1459,7 +1487,10 @@ export class LynxElement implements BaseLynxElement {
     }
     newChild.#jsParent = this;
     if (refChild) {
-      const idx = this.#children.indexOf(refChild);
+      // From the end: `@for` puts each new item before its anchor, which
+      // follows them all, so searching from the front cost a step per item
+      // already there. A child is in #children once, so both find the same.
+      const idx = this.#children.lastIndexOf(refChild);
       // Defensive: refChild always sits in #children when it's used as an
       // anchor for insertBefore. If a caller passes a foreign refChild, fall
       // back to appending at the tail rather than throwing.

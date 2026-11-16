@@ -66,6 +66,7 @@ const installNativeFakes = () => {
   };
   g.__GetParent = (n: FakeEl) => n.parent;
   g.__GetChildren = (n: FakeEl) => n.children.slice();
+  g.__FirstElement = (n: FakeEl) => n.children[0] ?? null;
   g.__NextElement = (n: FakeEl) =>
     n.parent?.children[n.parent.children.indexOf(n) + 1] ?? null;
   for (const name of [

@@ -19,10 +19,18 @@ const makeRef = (): ElementRef => ({ __uid: ++uid }) as ElementRef;
  */
 let calls: string[] = [];
 
+/**
+ * The lists whose update-list-info native refuses, by their element.
+ */
+let refused = new Set<unknown>();
+
 const setupGlobals = () => {
   calls = [];
-  globalThis.__SetAttribute = vi.fn((_ref: unknown, name: string) => {
-    if (name === 'update-list-info') calls.push('list');
+  refused = new Set();
+  globalThis.__SetAttribute = vi.fn((ref: { __uid?: number }, name: string) => {
+    if (name !== 'update-list-info') return;
+    if (refused.has(ref)) throw new Error(`refused ${ref.__uid}`);
+    calls.push('list');
   });
   globalThis.__GetAttributeByName = vi.fn(() => null);
   globalThis.__GetElementUniqueID = vi.fn(
@@ -138,6 +146,79 @@ describe('list updates', () => {
     flushTreeWithListUpdates();
 
     expect(calls).toEqual(['list', 'flush with layout']);
+  });
+
+  it('sends every other list, flushes, then throws the first error when lists throw', async () => {
+    const { flushTreeWithListUpdates, list, item } = await load();
+    const [a, b, c] = [list(), list(), list()];
+    for (const each of [a, b, c]) each.appendChild(item());
+    refused = new Set([a.element, c.element]);
+
+    expect(() => flushTreeWithListUpdates()).toThrow(
+      `refused ${(a.element as { __uid?: number }).__uid}`,
+    );
+
+    // A list that threw may have sent its update before it did: layout.
+    expect(calls).toEqual(['list', 'flush with layout']);
+  });
+
+  it('sends every other list, then throws, when no flush follows', async () => {
+    // A `*lynxListFor` item's change detection: its flush comes after.
+    const { processPendingListUpdates, list, item } = await load();
+    const [a, b] = [list(), list()];
+    for (const each of [a, b]) each.appendChild(item());
+    refused = new Set([a.element]);
+
+    expect(() => processPendingListUpdates()).toThrow('refused');
+
+    expect(calls).toEqual(['list']);
+  });
+
+  it('lays out the other lists changed outside a cycle when one throws', async () => {
+    const thrown: unknown[] = [];
+    const queue = globalThis.queueMicrotask;
+    vi.stubGlobal('queueMicrotask', (callback: () => void) =>
+      queue(() => {
+        try {
+          callback();
+        } catch (error) {
+          thrown.push(error);
+        }
+      }),
+    );
+    try {
+      const { list, item } = await load();
+      const [a, b] = [list(), list()];
+      for (const each of [a, b]) each.appendChild(item());
+      refused = new Set([b.element]);
+
+      await flushMicrotasks();
+
+      expect(calls).toEqual(['list', 'flush with layout']);
+      expect(thrown).toHaveLength(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('lays out the other lists the first render changed when one throws', async () => {
+    vi.useFakeTimers();
+    try {
+      const { lifecycle, list, item, processPendingListUpdates } = await load({
+        firstRender: 'pending',
+      });
+      const [a, b] = [list(), list()];
+      for (const each of [a, b]) each.appendChild(item());
+      processPendingListUpdates();
+      refused = new Set([a.element]);
+
+      lifecycle.markFirstRenderComplete();
+      await expect(vi.runAllTimersAsync()).rejects.toThrow('refused');
+
+      expect(calls).toEqual(['list', 'flush with layout']);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('waits for the first render, then sends every list it changed with one flush', async () => {

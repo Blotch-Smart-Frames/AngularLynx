@@ -201,22 +201,28 @@ export class LynxRendererFactory2 implements RendererFactory2 {
         processPendingListUpdates();
         return;
       }
-      if (isFirstRenderPending()) {
-        // Native's own flush after renderPage commits the cycle; the lists
-        // wait for the first render to finish (see processPendingListUpdates).
-        processPendingListUpdates();
-      } else {
-        // Everything written so far goes with this flush, the commit passes'
-        // writes included: the next native event has nothing to flush for
-        // them (see markTreeFlushed). So do the lists' update-list-info,
-        // sent right before it.
-        markTreeFlushed();
-        flushTreeWithListUpdates();
+      try {
+        if (isFirstRenderPending()) {
+          // Native's own flush after renderPage commits the cycle; the lists
+          // wait for the first render to finish (see
+          // processPendingListUpdates).
+          processPendingListUpdates();
+        } else {
+          // Everything written so far goes with this flush, the commit
+          // passes' writes included: the next native event has nothing to
+          // flush for them (see markTreeFlushed). So do the lists'
+          // update-list-info, sent right before it. A list that throws
+          // doesn't keep the flush from coming; its error is thrown after.
+          markTreeFlushed();
+          flushTreeWithListUpdates();
+        }
+      } finally {
+        // Then the UI method calls made on elements this cycle created, which
+        // have their UIs now (see LynxElement.invoke), and on lists, which
+        // have their items: after the flush, which was made even if a list
+        // threw.
+        processPendingInvokes();
       }
-      // Then the UI method calls made on elements this cycle created, which
-      // have their UIs now (see LynxElement.invoke), and on lists, which have
-      // their items.
-      processPendingInvokes();
     } finally {
       // In `finally` so a cycle that returns early or throws still ends its
       // timing: the start times nest, so a missed end would pair every later

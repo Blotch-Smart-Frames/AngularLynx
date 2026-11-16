@@ -38,7 +38,9 @@ import { setPageElementRef } from '../lynx-document/page-ref';
 import { markFirstRenderComplete } from '../lynx-render-lifecycle';
 import { LynxRendererFactory2 } from '../renderer/lynx-renderer-factory2';
 import { LYNX_DOCUMENT } from '../renderer/token';
+import type { ListSlot } from '../lynx-element/lynx-list-element';
 import type { FakeNativeGlobal } from '../testing/fake-native-global';
+import { seededBelow, untrimmedListDiff } from '../testing/untrimmed-list-diff';
 import { LynxListFor, type LynxListItemAttributes } from './list-for';
 
 vi.mock('../lynx-element/collect-garbage', () => ({
@@ -586,6 +588,94 @@ describe('*lynxListFor', () => {
     expect(info.removeAction).toEqual([2, 4]);
     expect(info.insertAction.map((action) => action.position)).toEqual([0, 4]);
     expect(theList().keys).toEqual(['5', '1', '2', '4', '6']);
+  });
+
+  it('sends what the diff over every item sent, over random edits', async () => {
+    const below = seededBelow(1116);
+    type SizedRow = Row & { size?: number };
+    const attributesOf = (row: SizedRow): LynxListItemAttributes => ({
+      'estimated-main-axis-size-px': row.size,
+      'reuse-identifier': row.kind,
+    });
+    /**
+     * The items as the list tells native about them, from the rows: what
+     * the diff reads of a run's items.
+     */
+    const slotsOf = (rows: readonly SizedRow[]): ListSlot[] =>
+      rows.map((row, index) => {
+        const attributes = attributesOf(row);
+        const type = attributes['reuse-identifier'] ?? 'list-item';
+        return {
+          id: `run|${type}|${row.id}`,
+          ref: null,
+          source: {} as ListSlot['source'],
+          index,
+          key: String(row.id),
+          type,
+          attributes,
+        };
+      });
+    let rows: SizedRow[] = rowsOf(8);
+    const { set } = await render({ rows, attributes: attributesOf });
+    let nextId = 1000;
+    const edits: Array<(next: SizedRow[]) => void> = [
+      // A row comes, at the end or anywhere, goes, or moves.
+      (next) => {
+        if (next.length < 16)
+          next.push({ id: nextId, name: `Row ${nextId++}` });
+      },
+      (next) => {
+        if (next.length >= 16) return;
+        next.splice(below(next.length + 1), 0, {
+          id: nextId,
+          name: `Row ${nextId++}`,
+        });
+      },
+      (next) => {
+        if (next.length > 0) next.splice(below(next.length), 1);
+      },
+      (next) => {
+        if (next.length === 0) return;
+        const [row] = next.splice(below(next.length), 1);
+        next.splice(below(next.length + 1), 0, row!);
+      },
+      // A row's layout changes, at either end or between, or its reuse type,
+      // or only what it shows.
+      (next) => {
+        if (next.length === 0) return;
+        const at = below(next.length);
+        next[at] = { ...next[at]!, size: [undefined, 40, 80][below(3)] };
+      },
+      (next) => {
+        if (next.length === 0) return;
+        const at = below(next.length);
+        next[at] = { ...next[at]!, kind: next[at]!.kind ? undefined : 'big' };
+      },
+      (next) => {
+        if (next.length === 0) return;
+        const at = below(next.length);
+        next[at] = { ...next[at]!, name: `${next[at]!.name}!` };
+      },
+    ];
+    let updated = 0;
+
+    for (let step = 0; step < 300; step++) {
+      const next = [...rows];
+      const count = 1 + below(3);
+      for (let e = 0; e < count; e++) edits[below(edits.length)]!(next);
+      const sent = theList().updates.length;
+
+      await set({ rows: next });
+
+      const expected = untrimmedListDiff(slotsOf(rows), slotsOf(next));
+      expect(theList().updates.slice(sent)).toStrictEqual(
+        expected ? [expected.info] : [],
+      );
+      expect(theList().keys).toEqual(next.map((row) => String(row.id)));
+      if (expected?.info.updateAction.length) updated++;
+      rows = next;
+    }
+    expect(updated).toBeGreaterThan(30);
   });
 
   it('updates the index of the items on screen when items go in above them', async () => {

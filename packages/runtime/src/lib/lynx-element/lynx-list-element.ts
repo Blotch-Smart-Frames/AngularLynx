@@ -113,6 +113,13 @@ export type ListSlot = {
   readonly attributes: ListItemAttributes | undefined;
 };
 
+/**
+ * An element child's slot id, kept on its native ref as `__appended` is
+ * (see isAppendedToNativeList): a plain property, which Lepus reads as a
+ * field rather than through a Map/Set.
+ */
+type ListIdOnRef = { __angularLynxListId?: string };
+
 /** An insertAction entry: the position, then what native reads for the item. */
 type InsertAction = {
   position: number;
@@ -507,9 +514,18 @@ export class LynxListElement extends LynxElement {
         // precisely the case on removal. The ids of the old items are the
         // strings captured on the previous update, so the diff never calls
         // a native accessor on an already-removed element.
+        //
+        // The id is read once per element, when the list first sees it, and
+        // kept on the ref: asking native on every update cost a call per
+        // item, so one row added to a list of thousands made thousands. A
+        // unique id never changes for the element it names, and an element
+        // made again (LynxElement swaps its native ref) has a ref of its own,
+        // which the list asks about anew. Not in LynxElement's constructor:
+        // most elements never go in a list.
         const ref = child.element;
         slots.push({
-          id: `#${__GetElementUniqueID(ref)}`,
+          id: ((ref as ListIdOnRef).__angularLynxListId ??=
+            `#${__GetElementUniqueID(ref)}`),
           ref,
           source: null,
           index: -1,
@@ -564,6 +580,28 @@ export class LynxListElement extends LynxElement {
   }
 
   /**
+   * Adds an updateAction for a run's item that stays at `position` when its
+   * layout attributes changed since `old`, the same item as last told to
+   * native. An element child's attributes are its own, set on its element.
+   */
+  #updateIfChanged(
+    updateAction: UpdateAction[],
+    old: ListSlot,
+    slot: ListSlot,
+    position: number,
+  ): void {
+    if (!slot.source || !attributesDiffer(old.attributes, slot.attributes)) {
+      return;
+    }
+    updateAction.push({
+      ...this.#insertAction(slot, position),
+      from: position,
+      to: position,
+      flush: false,
+    });
+  }
+
+  /**
    * Compute a diff against the last committed items and send update-list-info.
    * Called from processPendingListUpdates() — NOT directly.
    * __FlushElementTree() is called afterwards by the renderer factory.
@@ -607,56 +645,94 @@ export class LynxListElement extends LynxElement {
     // pass); by then this must already reflect the new list.
     this.#committed = newSlots;
 
-    // Each item's index in the old array, by identity: strings, never
-    // element refs (see #collectSlots).
+    // Most updates change the items in one place: a row added at the end, one
+    // removed, a page of a feed loaded. The items before the first change and
+    // after the last stay where they are, so only the items between them go
+    // through the diff below, and it costs what changed rather than the
+    // whole list. That changes nothing in what native is sent: every longest
+    // run that kept its order holds all of them (their old indices are
+    // below, and above, every old index between them), and
+    // longestIncreasing() picks the same items between them either way. New
+    // items [start, newEnd) were old items [start, oldEnd). Indices into the
+    // arrays themselves, not slices of them, which would copy the list.
+    const newLength = newSlots.length;
+    const oldLength = oldSlots.length;
+    let start = 0;
+    while (
+      start < newLength &&
+      start < oldLength &&
+      newSlots[start]!.id === oldSlots[start]!.id
+    ) {
+      start++;
+    }
+    let newEnd = newLength;
+    let oldEnd = oldLength;
+    while (
+      newEnd > start &&
+      oldEnd > start &&
+      newSlots[newEnd - 1]!.id === oldSlots[oldEnd - 1]!.id
+    ) {
+      newEnd--;
+      oldEnd--;
+    }
+
+    // Each changed item's index in the old array, by identity: strings,
+    // never element refs (see #collectSlots). An id is in each array once,
+    // so a new item between the ends can only have been an old one between
+    // them. oldIndexOf[i - start] is new item i's old index, or -1.
     const oldIndexById = new Map<string, number>();
-    for (let i = 0; i < oldSlots.length; i++) {
+    for (let i = start; i < oldEnd; i++) {
       oldIndexById.set(oldSlots[i]!.id, i);
     }
-    const oldIndexOf = newSlots.map((slot) => oldIndexById.get(slot.id) ?? -1);
+    const oldIndexOf: number[] = [];
     // The kept items, in their new order, and which of them stay in place.
     const kept: number[] = [];
-    for (let i = 0; i < newSlots.length; i++) {
-      if (oldIndexOf[i]! >= 0) kept.push(i);
+    for (let i = start; i < newEnd; i++) {
+      const oldIndex = oldIndexById.get(newSlots[i]!.id) ?? -1;
+      oldIndexOf.push(oldIndex);
+      if (oldIndex >= 0) kept.push(i);
     }
-    const staying = longestIncreasing(kept.map((i) => oldIndexOf[i]!));
-    const stays = Array.from({ length: newSlots.length }, () => false);
+    const staying = longestIncreasing(kept.map((i) => oldIndexOf[i - start]!));
+    const stays = Array.from({ length: newEnd - start }, () => false);
+    // What became of each old item between the ends (at oldIndex - start):
+    // kept, and kept in place.
+    const keptOld = Array.from({ length: oldEnd - start }, () => false);
+    const stayingOld = Array.from({ length: oldEnd - start }, () => false);
     kept.forEach((newIndex, k) => {
-      if (staying[k]) stays[newIndex] = true;
+      const oldIndex = oldIndexOf[newIndex - start]! - start;
+      keptOld[oldIndex] = true;
+      if (staying[k]) {
+        stays[newIndex - start] = true;
+        stayingOld[oldIndex] = true;
+      }
     });
 
-    // Items gone, or moving: removed from where they were. Indices are
-    // numbers, safe to hash.
-    const keptOldIndices = new Set<number>();
-    const stayingOldIndices = new Set<number>();
-    for (const i of kept) {
-      keptOldIndices.add(oldIndexOf[i]!);
-      if (stays[i]) stayingOldIndices.add(oldIndexOf[i]!);
-    }
+    // Items gone, or moving: removed from where they were.
     const removeAction: number[] = [];
-    for (let i = 0; i < oldSlots.length; i++) {
-      if (!stayingOldIndices.has(i)) removeAction.push(i);
+    for (let i = start; i < oldEnd; i++) {
+      if (!stayingOld[i - start]) removeAction.push(i);
     }
 
     // Items new, or moving: inserted where they are now. And a run's item in
-    // place whose layout attributes changed: updated where it is.
+    // place whose layout attributes changed: updated where it is, the ends'
+    // items included, all in the order of the new array.
     const insertAction: InsertAction[] = [];
     const updateAction: UpdateAction[] = [];
-    for (let i = 0; i < newSlots.length; i++) {
+    for (let i = 0; i < start; i++) {
+      this.#updateIfChanged(updateAction, oldSlots[i]!, newSlots[i]!, i);
+    }
+    for (let i = start; i < newEnd; i++) {
       const slot = newSlots[i]!;
-      if (!stays[i]) {
+      if (!stays[i - start]) {
         insertAction.push(this.#insertAction(slot, i));
-      } else if (
-        slot.source &&
-        attributesDiffer(oldSlots[oldIndexOf[i]!]!.attributes, slot.attributes)
-      ) {
-        updateAction.push({
-          ...this.#insertAction(slot, i),
-          from: i,
-          to: i,
-          flush: false,
-        });
+      } else {
+        const old = oldSlots[oldIndexOf[i - start]!]!;
+        this.#updateIfChanged(updateAction, old, slot, i);
       }
+    }
+    for (let i = newEnd; i < newLength; i++) {
+      const old = oldSlots[i - newLength + oldLength]!;
+      this.#updateIfChanged(updateAction, old, newSlots[i]!, i);
     }
 
     // CRITICAL: Never send empty update-list-info. Vue Lynx skips updates
@@ -677,7 +753,7 @@ export class LynxListElement extends LynxElement {
     // appended: the run reuses them.
     for (const index of removeAction) {
       const removed = oldSlots[index]!;
-      if (removed.ref && !keptOldIndices.has(index)) {
+      if (removed.ref && !keptOld[index - start]) {
         (removed.ref as { __appended?: boolean }).__appended = false;
       }
     }

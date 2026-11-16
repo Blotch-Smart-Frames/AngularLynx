@@ -169,8 +169,9 @@ export const transformPrivateMethods = (
  *
  * The names are per class in the source, not per class made, which is the
  * same thing for a class the module makes once: one at the top level, or in
- * a function called at once, such as the pure `(() => {…})()` Angular
- * wraps a decorated class in. A class expression that can run more
+ * a function called at once that can't be called again, such as the pure
+ * `(() => {…})()` Angular wraps a decorated class in (see
+ * {@link isCalledAtOnce}). A class expression that can run more
  * than once (a mixin or a class factory) makes a class each time, all with
  * the same names on their prototypes, so one of them made from another, as
  * `Mixin(Mixin(Base))` is, would override its base's `#m` with its own.
@@ -182,9 +183,10 @@ export const transformPrivateMethods = (
  *   once anyway.
  * - Any class that uses `#name in object`: a public name can't answer it.
  * - A class with `extends` that can be made more than once: one inside a
- *   function that isn't called at once, inside a loop, or in an instance
- *   field's initializer. One without `extends` can't be made from another,
- *   and is renamed.
+ *   function that isn't called at once, or is but has a name or uses
+ *   `arguments` (either can call it again), inside a loop, or in an
+ *   instance field's initializer. One without `extends` can't be made from
+ *   another, and is renamed.
  *
  * As class methods, the renamed ones are non-enumerable and live on the
  * prototype: `Object.keys()` of an instance doesn't change, and
@@ -252,8 +254,8 @@ export const renamePrivateMethods = (
  *
  * `#m(…) {…}` becomes `static { __m_<key><n> = { m(…) {…} }.m; }` where it
  * was, and every `this.#m(…)` becomes `__m_<key><n>.call(this, …)`, with
- * `var __m_<key><n>;` at the end of the module (the static block assigns it,
- * as a class can't declare a variable its methods share). As an object
+ * `;var __m_<key><n>;` after the module's last statement (the static block
+ * assigns it, as a class can't declare a variable its methods share). As an object
  * literal's method, it keeps a method's semantics: strict, with its own
  * `this` and `arguments`, not a constructor. Its async and generator markers
  * stay with it.
@@ -274,8 +276,11 @@ export const renamePrivateMethods = (
  *   A call on another object (`other.#m()`) keeps the brand check that throws
  *   for an object that isn't an instance; so does reading the method without
  *   calling it, or `#m in object`, which keeps the whole class as it is.
- *   Called on the wrong `this`, which TypeScript rejects (an unbound
- *   callback), a function runs where the method would throw a TypeError.
+ *   Called on an object that doesn't carry the class's private brand, or
+ *   doesn't yet, a function runs where the method would throw a TypeError:
+ *   on the wrong `this`, which TypeScript rejects (an unbound callback), or
+ *   before the instance has its private methods, as when a base class's
+ *   constructor calls an overridden method that uses the subclass's `#m`.
  * - Its body doesn't use `super`, whose home is the class's prototype.
  * - No static block or static field initializer that could run code (more
  *   than a literal or a function) comes before it: they run in order, and
@@ -287,9 +292,8 @@ export const renamePrivateMethods = (
  *   Getters and setters stay private: a function call can't stand in for an
  *   assignment's value, or `this.#x += 1`.
  *
- * Edits never add or remove a line, besides the one with the variables at
- * the end, after every line an inline source map maps; the map's columns are
- * moved to match the edits.
+ * Edits never add or remove a line: the variables go on the line the last
+ * statement ends on. An inline source map's columns are moved to match.
  *
  * @param code - The module's code, after the cross-thread and worklet
  *   transforms (their IDs come from the code as written) and before SWC.
@@ -363,16 +367,13 @@ export const hidePrivateMethods = (
   }
   // `var`, so the declaration is hoisted above the classes, whose static
   // blocks assign it during the module's evaluation; a `let` there would
-  // still be in its temporal dead zone. On a line of its own, before the
-  // inline source map, so no mapped line moves.
-  const declaration = `var ${variables.join(', ')};\n`;
-  const transformed = applyEdits(code, edits, sourceFile);
-  const map = findInlineSourceMap(transformed);
-  return map
-    ? transformed.slice(0, map.index) +
-        declaration +
-        transformed.slice(map.index)
-    : `${transformed}\n${declaration}`;
+  // still be in its temporal dead zone. Right after the last statement, at
+  // the top level, on its line: no line moves, and nothing in a string or a
+  // comment can be taken for the end of the code. The `;` ends a last
+  // statement written without one.
+  const end = sourceFile.statements[sourceFile.statements.length - 1]!.end;
+  edits.push({ start: end, end, text: `;var ${variables.join(', ')};` });
+  return applyEdits(code, edits, sourceFile);
 };
 
 /**
@@ -388,7 +389,7 @@ const canBecomeFunction = (
     !declaration.body ||
     declaration.questionToken ||
     ts.getDecorators(declaration)?.length ||
-    containsSuper(declaration)
+    contains(declaration, (node) => node.kind === ts.SyntaxKind.SuperKeyword)
   ) {
     return false;
   }
@@ -405,12 +406,13 @@ const canBecomeFunction = (
 };
 
 /**
- * Whether `super` appears anywhere in the node, a nested function or class
- * included (which only makes the check stricter).
+ * Whether `test` holds for the node or anything inside it, nested functions
+ * and classes included (which only makes a check for `super` or `arguments`
+ * stricter).
  */
-const containsSuper = (node: ts.Node): boolean =>
-  node.kind === ts.SyntaxKind.SuperKeyword ||
-  (ts.forEachChild(node, (child) => containsSuper(child) || undefined) ??
+const contains = (node: ts.Node, test: (node: ts.Node) => boolean): boolean =>
+  test(node) ||
+  (ts.forEachChild(node, (child) => contains(child, test) || undefined) ??
     false);
 
 /**
@@ -621,17 +623,17 @@ const applyEdits = (
   if (edits.length === 0) {
     return code;
   }
-  // In source order, as the edits below and the map's lines expect. Edits
-  // never overlap.
-  edits.sort((a, b) => a.start - b.start);
+  const mapEdit = shiftInlineSourceMap(edits, sourceFile);
+  const all = mapEdit ? [...edits, mapEdit] : edits;
+  // In source order, as the loop below expects. Edits never overlap.
+  all.sort((a, b) => a.start - b.start);
   let result = '';
   let last = 0;
-  for (const { start, end, text } of edits) {
+  for (const { start, end, text } of all) {
     result += code.slice(last, start) + text;
     last = end;
   }
-  result += code.slice(last);
-  return shiftInlineSourceMap(result, edits, sourceFile);
+  return result + code.slice(last);
 };
 
 /**
@@ -647,10 +649,26 @@ const isStatic = (member: ts.ClassElement): boolean =>
  * Whether a function is called where it's written, and so runs once each
  * time the code around it does: `(() => {…})()`, as Angular wraps a
  * decorated class, or `(function () {…}())`. Parentheses around it don't
- * count.
+ * count. Only an arrow function, or a function expression without a name
+ * that doesn't use `arguments`, can't run again: a name lets it call itself,
+ * or leave by an assignment and be called later, and so does
+ * `arguments.callee` in sloppy code.
  */
 const isCalledAtOnce = (node: ts.Node): boolean => {
-  let callee = node;
+  if (
+    !ts.isArrowFunction(node) &&
+    !(
+      ts.isFunctionExpression(node) &&
+      !node.name &&
+      !contains(
+        node,
+        (inner) => ts.isIdentifier(inner) && inner.text === 'arguments',
+      )
+    )
+  ) {
+    return false;
+  }
+  let callee: ts.Node = node;
   while (ts.isParenthesizedExpression(callee.parent)) {
     callee = callee.parent;
   }
@@ -669,50 +687,70 @@ const keyForFile = (filename: string, root: string): string => {
 };
 
 /**
- * The inline source map Angular's transformer and compiler append, on a line
- * of its own.
+ * The inline source map Angular's transformer and compiler append, as the
+ * text of a `//` comment.
  */
 const INLINE_SOURCE_MAP =
-  /^(\/\/# sourceMappingURL=data:application\/json(?:;charset=utf-8)?;base64,)([A-Za-z0-9+/]+=*)/gm;
+  /^\/\/# sourceMappingURL=data:application\/json(?:;charset=utf-8)?;base64,([A-Za-z0-9+/]+=*)/;
 
 /**
- * The last inline source map comment in `code`, the one a bundler reads. It
- * isn't always at the end: the plugin appends the code that takes hot
- * updates, and component scope IDs, after the map Angular's compiler left
- * (transform-module.ts).
+ * Where the base64 of the module's inline source map is: in the last `//`
+ * comment at its top level that holds one, the one a bundler reads. Only a
+ * comment between the module's statements, or before or after them, counts:
+ * the same text in a template literal or a block comment is the code's own.
+ * The map isn't always the last thing in the module: the plugin appends the
+ * code that takes hot updates, and component scope IDs, after the one
+ * Angular's compiler left (transform-module.ts).
  */
-const findInlineSourceMap = (code: string): RegExpExecArray | undefined => {
-  let last: RegExpExecArray | undefined;
-  for (const match of code.matchAll(INLINE_SOURCE_MAP)) {
-    last = match as RegExpExecArray;
+const findInlineSourceMap = (
+  sourceFile: ts.SourceFile,
+): { start: number; end: number } | undefined => {
+  const { text } = sourceFile;
+  let found: { start: number; end: number } | undefined;
+  const readComments = (position: number) =>
+    ts.forEachLeadingCommentRange(text, position, (start, end, kind) => {
+      const match =
+        kind === ts.SyntaxKind.SingleLineCommentTrivia &&
+        INLINE_SOURCE_MAP.exec(text.slice(start, end));
+      if (match) {
+        found = { start: end - match[1]!.length, end };
+      }
+    });
+  readComments(0);
+  for (const statement of sourceFile.statements) {
+    readComments(statement.end);
   }
-  return last;
+  return found;
 };
 
 /**
- * Moves the columns of `code`'s inline source map by `edits`, which were made
- * to the code the map was written for. `code` comes back unchanged when it
- * has no inline map, or one this can't read: the build goes on, with a map
- * that's as wrong as it was.
+ * The edit that moves the columns of the module's inline source map by
+ * `edits`, made to the code the map was written for. None when it has no
+ * inline map, or one this can't read: the build goes on, with a map that's as
+ * wrong as it was.
  */
 const shiftInlineSourceMap = (
-  code: string,
   edits: Edit[],
   sourceFile: ts.SourceFile,
-): string => {
-  const match = findInlineSourceMap(code);
-  if (!match) {
-    return code;
+): Edit | undefined => {
+  const found = findInlineSourceMap(sourceFile);
+  if (!found) {
+    return undefined;
   }
   let map: { mappings?: unknown };
   try {
-    map = JSON.parse(Buffer.from(match[2], 'base64').toString('utf8'));
+    map = JSON.parse(
+      Buffer.from(
+        sourceFile.text.slice(found.start, found.end),
+        'base64',
+      ).toString('utf8'),
+    );
   } catch {
-    return code;
+    return undefined;
   }
   const mappings = map.mappings;
   if (typeof mappings !== 'string') {
-    return code;
+    return undefined;
   }
   // The edits on each line, in order, by column.
   const editsByLine = new Map<
@@ -738,14 +776,12 @@ const shiftInlineSourceMap = (
       })
       .join(';');
   } catch {
-    return code;
+    return undefined;
   }
-  return (
-    code.slice(0, match.index) +
-    match[1] +
-    Buffer.from(JSON.stringify(map)).toString('base64') +
-    code.slice(match.index + match[0].length)
-  );
+  return {
+    ...found,
+    text: Buffer.from(JSON.stringify(map)).toString('base64'),
+  };
 };
 
 /**

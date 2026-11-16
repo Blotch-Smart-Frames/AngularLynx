@@ -3,6 +3,7 @@ import type {
   AnimationOptions,
 } from '@lynx-js/types/main-thread';
 
+import { writePendingClasses } from '../lynx-element/class-writes';
 import type { ElementRef } from '../types/lynx';
 
 /**
@@ -111,7 +112,12 @@ export class LynxAnimation implements Pick<
       wireOptions['fillMode'] = options.fill;
     }
 
-    // Immediately start the animation on the native element.
+    // Immediately start the animation on the native element. Native resolves
+    // and lays out the tree as it is when an animation starts, plays, pauses
+    // or is canceled (`Element::AnimateV2` ends in `OnPatchFinish`), so the
+    // classes changed earlier in this change detection go first (see
+    // class-writes.ts).
+    writePendingClasses();
     __ElementAnimate(this.#element, [
       ANIMATION_START,
       this.#key,
@@ -141,16 +147,19 @@ export class LynxAnimation implements Pick<
   }
 
   play(): void {
+    writePendingClasses();
     __ElementAnimate(this.#element, [ANIMATION_PLAY, this.#key]);
     afterAnimate();
   }
 
   pause(): void {
+    writePendingClasses();
     __ElementAnimate(this.#element, [ANIMATION_PAUSE, this.#key]);
     afterAnimate();
   }
 
   cancel(): void {
+    writePendingClasses();
     __ElementAnimate(this.#element, [ANIMATION_CANCEL, this.#key]);
     afterAnimate();
     // Reaches the animation even after it finished (see the constructor).

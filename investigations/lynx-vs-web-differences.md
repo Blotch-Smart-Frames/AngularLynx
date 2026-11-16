@@ -4276,6 +4276,28 @@ This is why the Angular renderer's `setAttribute('class', value)` must call `__S
 
 ---
 
+## `__AddClass` keeps a name twice on iOS and Android, and once on the web
+
+### What you'd expect (web)
+
+`classList.add('a')` on an element that has `a` changes nothing: a class list holds each name once.
+
+### What Lynx does
+
+On iOS and Android, `__AddClass` puts the name on the end of the element's list whether it's there or not (`AttributeHolder::AddClass` is a `push_back`), so `__GetClasses` then returns it twice. `__SetClasses` splits its string on spaces alone, keeping a name twice too, and a tab or newline inside a name. Lynx for Web's element functions use the DOM's class list (`classList.add`, the `class` attribute), which keeps each name once, splits on any whitespace and throws for a name with whitespace in it. The testing library's jsdom does the same. Styles don't change either way: a selector matches a class once.
+
+Angular adds a name twice when a static class and a binding name it: `class="a" [class.a]="on"` writes `a` with the class string, then adds it.
+
+### What AngularLynx does
+
+Class changes made during change detection wait for the end of the cycle: `LynxRendererFactory2.end()` writes each changed element's class string with one `__SetClasses` (`processPendingClasses()`, before its other commit passes and the flush, on every path). Angular applies a `[class]` binding one class at a time, and each call crossed into C++ and marked the element's styles dirty, though native resolves styles only when the tree is flushed: a host switching between two 15-class variants made up to 45 calls (`__AddClass` for each class added, `__GetClasses` and `__SetClasses` for each removed), and makes one.
+
+The element writes its class string whole only while native's list is known to be exactly its names, each once (`LynxElement`'s `#nativeClasses`): an element `LynxDocument` made, which starts with none, or one whose whole class string was written. A name added twice (which iOS, Android and the web keep differently, see above), a name with whitespace in it, and an element from a server render's snapshot, whose classes only native knows, go to native at once, as `__AddClass` or a read of native's list, as every change did before. So native ends up with the list a call for each change gave it, in the same order, on every platform. Outside change detection, each change still goes to native at once. Whatever reads native's classes during the cycle gets the cycle's changes first: `querySelector()`, `querySelectorAll()`, `getAttribute('class')` and a server render's snapshot (`serializeElementTree`).
+
+Raw `__AddClass` or `__SetClasses` calls on an Angular element's `el.element` aren't seen: the element's next whole class string, during change detection or from `setAttribute('class', …)`, replaces them. Change its classes through `Renderer2` instead.
+
+---
+
 ## HSL space-separated syntax is not supported
 
 ### What you'd expect (web)

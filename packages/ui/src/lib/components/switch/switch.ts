@@ -1,9 +1,11 @@
 import {
   type ElementRef,
   Component,
+  Renderer2,
   ViewEncapsulation,
   booleanAttribute,
   computed,
+  effect,
   inject,
   input,
   model,
@@ -289,7 +291,8 @@ type Press = {
   // Mouse events are bound beside the touch events because a desktop
   // browser never sends touches for a mouse (see the bottom sheet). There's
   // no mouseleave: Chrome doesn't deliver it to Lynx for Web, so a move with
-  // no button held ends the drag instead.
+  // no button held ends the drag instead. The moves are listened for in code
+  // (see `listen`), not here.
   //
   // iOS 26's lens sits under the solid thumb, a little smaller, so it's
   // hidden until the switch is touched: then the thumb fades as the lens
@@ -297,6 +300,7 @@ type Press = {
   // pops in at once when it's added.
   template: `
     <view
+      #root
       [class]="rootClass()"
       [style]="rootStyle()"
       hit-slop="8px"
@@ -307,11 +311,9 @@ type Press = {
       [accessibility-label]="accessibilityLabel()"
       [accessibility-value]="shownChecked() ? 'On' : 'Off'"
       (bindtouchstart)="onPressStart($event)"
-      (bindtouchmove)="onPressMove($event)"
       (bindtouchend)="onPressEnd()"
       (bindtouchcancel)="onPressCancel()"
       (bindmousedown)="onPressStart($event)"
-      (bindmousemove)="onMouseMove($event)"
       (bindmouseup)="onPressEnd()"
       (bindtap)="onTap()"
     >
@@ -369,7 +371,10 @@ export class UiSwitch implements FormCheckboxControl {
 
   /** The thumb is always in the template, so the switch can always slide it. */
   readonly thumbRef = viewChild.required<ElementRef>('thumb');
+  /** The view that takes the switch's touches, always in the template. */
+  readonly rootRef = viewChild.required<ElementRef>('root');
 
+  readonly #renderer = inject(Renderer2);
   readonly #settings = inject(LynxAccessibilitySettings);
   readonly #design = injectGlassDesign();
   readonly #scheme = injectColorScheme();
@@ -553,6 +558,33 @@ export class UiSwitch implements FormCheckboxControl {
   });
 
   /**
+   * Listens for the moves of a press in code rather than in the template.
+   * Angular checks a template listener's component and every component
+   * around it after each event, and a finger sends one for every frame it
+   * moves, as does the mouse on the web, held or not. Listened for here, a
+   * move that changes what the switch draws has Angular check only the
+   * switch, and one that changes nothing, such as a mouse passing over it,
+   * runs no check at all (see the bottom sheet's `listen`).
+   */
+  protected readonly listen = effect((onCleanup) => {
+    const root = this.rootRef().nativeElement;
+    const removers = [
+      this.#renderer.listen(root, 'bindtouchmove', (event: PointerEvent) =>
+        this.#onPressMove(event),
+      ),
+      this.#renderer.listen(
+        root,
+        'bindmousemove',
+        (event: PointerEvent & { buttons?: number }) =>
+          this.#onMouseMove(event),
+      ),
+    ];
+    onCleanup(() => {
+      for (const remove of removers) remove();
+    });
+  });
+
+  /**
    * Turns the switch on or off, sliding the thumb across. Does nothing while
    * it's disabled.
    */
@@ -577,7 +609,7 @@ export class UiSwitch implements FormCheckboxControl {
     this.#holding.set(true);
   }
 
-  protected onPressMove(event: PointerEvent): void {
+  #onPressMove(event: PointerEvent): void {
     const press = this.#press;
     const point = pointOf(event);
     if (!press || !point || press.scrolling) return;
@@ -604,15 +636,15 @@ export class UiSwitch implements FormCheckboxControl {
   }
 
   /**
-   * The mouse's twin of onPressMove, on the web. A move with no button held
+   * The mouse's twin of #onPressMove, on the web. A move with no button held
    * means the button came up outside the switch, where it couldn't see it.
    */
-  protected onMouseMove(event: PointerEvent & { buttons?: number }): void {
+  #onMouseMove(event: PointerEvent & { buttons?: number }): void {
     if (event.buttons === 0) {
       this.onPressEnd();
       return;
     }
-    this.onPressMove(event);
+    this.#onPressMove(event);
   }
 
   /**

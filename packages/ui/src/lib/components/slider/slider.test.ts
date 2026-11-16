@@ -47,6 +47,33 @@ class SliderHost {
   touches = 0;
 }
 
+/**
+ * A screen with a slider whose value it takes once a drag ends, which counts
+ * how often Angular checks it: its template calls `check()` each time.
+ */
+@Component({
+  imports: [LYNX_ELEMENTS, UiSlider],
+  template: `
+    <view>
+      <text>{{ check() }}</text>
+      <ui-slider
+        [value]="volume()"
+        (changed)="volume.set($event)"
+        accessibility-label="Volume"
+      />
+    </view>
+  `,
+})
+class CountingHost {
+  readonly volume = signal(50);
+  checks = 0;
+
+  check(): string {
+    this.checks++;
+    return 'Sound';
+  }
+}
+
 /** Accessibility settings a test can change, as the host app would. */
 const settings = {
   reduceMotion: signal(false),
@@ -211,6 +238,54 @@ describe('UiSlider', () => {
     // Lynx may send a tap after a short drag: it doesn't move the thumb.
     await tap();
     expect(host.changes).toEqual([60]);
+  });
+
+  // A finger sends a move for every frame it moves, and the mouse on the web
+  // one for every pixel it passes over the slider. Each one had Angular check
+  // the screen around the slider too, as it does for a template listener.
+  it('moves without Angular checking the screen around it', async () => {
+    vi.stubGlobal('SystemInfo', undefined);
+    const result = await render(CountingHost, {
+      providers: [{ provide: LynxAccessibilitySettings, useValue: settings }],
+    });
+    const host = result.componentRef.instance as CountingHost;
+    const slider = result.getByRole('slider', { name: 'Volume' });
+    fireEvent.layoutchange(slider, { detail: { width: WIDTH, height: 20 } });
+    await waitForUpdate();
+    const moveBy = async (send: (x: number) => void, xs: number[]) => {
+      for (const x of xs) {
+        send(x);
+        await waitForUpdate();
+      }
+    };
+
+    // The mouse passing over it, its button up, changes nothing.
+    const before = host.checks;
+    await moveBy(
+      (x) => fireEvent.mousemove(slider, { x, y: 10, buttons: 0 }),
+      [100, 120, 140, 160, 180],
+    );
+    expect(host.checks).toBe(before);
+
+    fireEvent.touchstart(slider, { touches: [{ x: 150, y: 10 }] });
+    await waitForUpdate();
+    const pressed = host.checks;
+    await moveBy(
+      (x) => fireEvent.touchmove(slider, { touches: [{ x, y: 10 }] }),
+      [160, 170, 178],
+    );
+    // The slider still draws its thumb under the finger.
+    expect(style(slider.lastElementChild!, 'transform')).toBe(
+      'translateX(178px)',
+    );
+    expect(slider.getAttribute('accessibility-value')).toBe('60%');
+    expect(host.checks).toBe(pressed);
+
+    // Let go, the screen takes the value.
+    fireEvent.touchend(slider);
+    await waitForUpdate();
+    expect(host.volume()).toBe(60);
+    expect(host.checks).toBeGreaterThan(pressed);
   });
 
   it('pulls the thumb under a finger that drags beside it', async () => {

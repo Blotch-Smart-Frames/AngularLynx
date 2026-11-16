@@ -7,17 +7,23 @@ import {
   it,
   vi,
 } from 'vitest';
+import { Injector, runInInjectionContext } from '@angular/core';
 import {
   bindListItem,
   markFirstRenderComplete,
   setInsideChangeDetection,
 } from '../lynx-render-lifecycle';
+import { MainThreadElement } from '../main-thread/main-thread-element';
+import { LynxRendererFactory2 } from '../renderer/lynx-renderer-factory2';
+import { LYNX_DOCUMENT } from '../renderer/token';
+import { InMemoryDocument } from '../testing/in-memory-document';
 import type { ElementRef } from '../types/lynx';
 import { setSafeAreaInsets } from './safe-area-insets';
 import {
   listenForScrollsFromTheStart,
   LynxElement,
   scheduleSettleFlush,
+  settleAfterListItems,
 } from './lynx-element';
 
 /**
@@ -90,6 +96,16 @@ afterEach(async () => {
   await settle();
   vi.unstubAllGlobals();
 });
+
+/**
+ * Flushes the whole tree as a settle flush does, and forgets the flushes
+ * so far: nothing is waiting for the next event's flush after it.
+ */
+const flushed = async (): Promise<void> => {
+  scheduleSettleFlush();
+  await settle();
+  flush.mockClear();
+};
 
 /**
  * A scroll-view as LynxDocument makes one on iOS, its handler flushed.
@@ -270,8 +286,8 @@ describe("a native event's flush", () => {
     element.setStyle('--y', '1px');
     setSafeAreaInsets({ edgeToEdge: true, safeAreaTop: 62 });
     element.appendChild(child);
-    await settle();
-    flush.mockClear();
+    // Flushed, so what the tap flushes is the listener's write.
+    await flushed();
 
     tap();
     await settle();
@@ -353,4 +369,190 @@ describe("a native event's flush", () => {
     await settle();
     expect(flush).toHaveBeenCalledOnce();
   });
+});
+
+/**
+ * A write made outside change detection and outside any listener, as a
+ * timer, a promise, an observer's or a gesture's callback makes one, given
+ * an element and a child of it, which leaves its flush to whoever made it.
+ * Every event used to flush, so it reached the screen with the next one.
+ */
+type Leftover = [
+  name: string,
+  write: (element: LynxElement, child: LynxElement) => unknown,
+  removes: boolean,
+];
+
+const LEFTOVERS: Leftover[] = [
+  ['a class', (el) => el.setAttribute('class', 'active'), false],
+  ['a custom property', (el) => el.setStyle('--progress', '60%'), false],
+  ['hidden', (el) => el.setAttribute('hidden', ''), false],
+  ['a data attribute', (el) => el.setAttribute('data-state', 'open'), false],
+  ['a removal', (_, child) => child.remove(), true],
+  [
+    "a main-thread script's animation",
+    (el) => new MainThreadElement(el.element).animate([{ opacity: 0 }], 100),
+    false,
+  ],
+];
+
+/**
+ * Makes `write` once `element` holds `child` natively and everything so far
+ * is flushed, and checks that nothing flushed it by itself.
+ */
+const leaveUnflushed = async (
+  element: LynxElement,
+  write: Leftover[1],
+): Promise<void> => {
+  const child = view();
+  element.appendChild(child);
+  await flushed();
+  // The child is in the native tree, for its removal to take it out.
+  vi.stubGlobal('__GetParent', () => ({}));
+  write(element, child);
+  await settle();
+  expect(flush).not.toHaveBeenCalled();
+};
+
+/**
+ * Checks the one flush the next event made, with a removal sent before it.
+ */
+const expectCommitted = (removes: boolean): void => {
+  expect(flush).toHaveBeenCalledOnce();
+  const removeElement = vi.mocked(globalThis.__RemoveElement);
+  expect(removeElement).toHaveBeenCalledTimes(removes ? 1 : 0);
+  for (const order of removeElement.mock.invocationCallOrder) {
+    expect(order).toBeLessThan(flush.mock.invocationCallOrder[0]!);
+  }
+};
+
+describe('what was written outside change detection and listeners', () => {
+  it.each(LEFTOVERS)(
+    'commits %s with the next event, whose listener writes nothing',
+    async (_, write, removes) => {
+      const { element, tap } = await tappable(() => {});
+      await leaveUnflushed(element, write);
+
+      tap();
+      await settle();
+      expectCommitted(removes);
+    },
+  );
+
+  it.each(LEFTOVERS)(
+    'commits %s with the next frame of an iOS scroll only the placeholder hears',
+    async (_, write, removes) => {
+      const element = await scrollView();
+      const scroll = nativeHandler('scroll');
+      await leaveUnflushed(element, write);
+
+      scroll({ type: 'scroll' });
+      await settle();
+      expectCommitted(removes);
+    },
+  );
+
+  it('flushes nothing more for the events after that flush', async () => {
+    await scrollView();
+    const scroll = nativeHandler('scroll');
+    const { element, tap } = await tappable(() => {});
+    await flushed();
+    element.setAttribute('class', 'active');
+    scroll({ type: 'scroll' });
+    await settle();
+    expect(flush).toHaveBeenCalledOnce();
+
+    for (let i = 0; i < 5; i++) {
+      scroll({ type: 'scroll' });
+      tap();
+    }
+    await settle();
+    expect(flush).toHaveBeenCalledOnce();
+  });
+
+  it("is left to change detection's flush when one comes first", async () => {
+    const { element, tap } = await tappable(() => {});
+    await flushed();
+    element.setAttribute('class', 'active');
+    const factory = runInInjectionContext(
+      Injector.create({
+        providers: [
+          { provide: LYNX_DOCUMENT, useValue: new InMemoryDocument() },
+        ],
+      }),
+      () => new LynxRendererFactory2(),
+    );
+    factory.begin!();
+    factory.end!();
+    expect(flush).toHaveBeenCalledOnce();
+
+    // end() flushed the whole tree: the next event has nothing to flush.
+    tap();
+    await settle();
+    expect(flush).toHaveBeenCalledOnce();
+  });
+});
+
+describe("what a list item's binding left", () => {
+  /**
+   * componentAtIndex building or rebinding an item: `write` in its binding,
+   * then the item's flush, which covers the item only, and
+   * settleAfterListItems.
+   */
+  const bindItem = (write: () => void): void => {
+    bindListItem(write);
+    settleAfterListItems();
+  };
+
+  /**
+   * `write` inside the item's own change detection, which a pooled rebind's
+   * detectChanges() runs.
+   */
+  const inCycle =
+    (write: () => void): (() => void) =>
+    () => {
+      setInsideChangeDetection(true);
+      write();
+      setInsideChangeDetection(false);
+    };
+
+  it.each<[string, (header: LynxElement) => () => void]>([
+    [
+      'a style in its change detection',
+      (header) => inCycle(() => header.setStyle('color', 'red')),
+    ],
+    [
+      'a UI method in its change detection',
+      (header) => inCycle(() => header.invoke('scrollTo', {})),
+    ],
+    [
+      'a class in its change detection',
+      (header) => inCycle(() => header.setAttribute('class', 'x')),
+    ],
+    [
+      'a class outside a cycle',
+      (header) => () => header.setAttribute('class', 'x'),
+    ],
+  ])(
+    'commits %s outside the item with the next iOS scroll frame',
+    async (_, write) => {
+      const header = view();
+      await scrollView();
+      const scroll = nativeHandler('scroll');
+      await flushed();
+
+      bindItem(write(header));
+      await settle();
+      expect(flush).not.toHaveBeenCalled();
+
+      scroll({ type: 'scroll' });
+      await settle();
+      expect(flush).toHaveBeenCalledOnce();
+
+      // Once.
+      scroll({ type: 'scroll' });
+      await settle();
+      expect(flush).toHaveBeenCalledOnce();
+    },
+  );
 });

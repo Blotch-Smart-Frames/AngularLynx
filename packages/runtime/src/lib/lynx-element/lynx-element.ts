@@ -2,6 +2,7 @@
 import {
   LynxAnimation,
   type LynxAnimationOptions,
+  setAfterAnimate,
 } from '../animation/animation';
 import { devStats } from '../devtools/stats';
 // Imported by DIRECT file path (not the ../lynx-document barrel) on purpose:
@@ -418,10 +419,10 @@ const isTextish = (el: LynxElement): boolean =>
   el.tagName === 'text' || el.tagName === 'raw-text';
 
 /**
- * Whether the first LynxElement has made layout reads ask for a flush (see
- * the constructor).
+ * Whether the first LynxElement has made layout reads ask for a flush, and
+ * animations count as writes waiting for one (see the constructor).
  */
-let measureFlushInstalled = false;
+let hooksInstalled = false;
 
 export class LynxElement implements BaseLynxElement {
   /**
@@ -842,14 +843,17 @@ export class LynxElement implements BaseLynxElement {
     // Every layout read asks for the flush its UI method waits for: an
     // element's (getBoundingClientRect, ResizeObserver) and an
     // IntersectionObserver's, which measures from timers and other events'
-    // listeners and imports layout.ts alone. Installed by the first element
-    // rather than when this module loads, because a module-level call is a
-    // side effect that keeps this module in every bundle that imports the
-    // runtime (see side-effects.test.ts); nothing is measured before an
+    // listeners and imports layout.ts alone. And every animation operation
+    // counts as a write the next event flushes, a main-thread script's
+    // included (see setAfterAnimate). Installed by the first element rather
+    // than when this module loads, because a module-level call is a side
+    // effect that keeps this module in every bundle that imports the runtime
+    // (see side-effects.test.ts); nothing is measured or animated before an
     // element exists.
-    if (!measureFlushInstalled) {
-      measureFlushInstalled = true;
+    if (!hooksInstalled) {
+      hooksInstalled = true;
       setMeasureFlush(scheduleSettleFlush);
+      setAfterAnimate(countNativeWrite);
     }
     this.#nativeRef = element;
     // Register as the canonical wrapper for this native ref. #canonicalFor()
@@ -3024,16 +3028,20 @@ export class LynxElement implements BaseLynxElement {
     // iOS sends a scroll-view's `scroll` on every frame, to the placeholder
     // every scroll-view and list has there (see listenForScrollsFromTheStart).
     // While it's the only listener, nothing runs that could change anything,
-    // so the event goes no further: no shims, no listener walk, no flush.
-    // ignoreScroll returns undefined, as this does.
+    // so the event goes no further: no shims, no listener walk, and no flush
+    // unless something is waiting for one. ignoreScroll returns undefined,
+    // as this does.
     if (
       !__WEB__ &&
       entry.eventName === 'scroll' &&
       this.#hearsOnlyScrollPlaceholder(entry)
     ) {
-      // What a list item's build left for a later flush still gets one from
-      // the next event, this one included (see settleSkippedForListItem).
-      if (settleSkippedForListItem) scheduleSettleFlush();
+      // What was written since the last flush of the whole tree, from a
+      // timer, a promise or an observer, or what a list item left behind,
+      // still reaches the screen with the next event, as when every event
+      // flushed: on iOS that's the next frame of any scroll (see
+      // hasUnflushedWrites).
+      if (hasUnflushedWrites()) scheduleSettleFlush();
       return undefined;
     }
     if (event && typeof event === 'object') {
@@ -3091,7 +3099,6 @@ export class LynxElement implements BaseLynxElement {
       this.#fieldText = event.detail.value;
     }
     let result: unknown;
-    const epoch = nativeWriteEpoch;
     // As a DOM event does: the listeners are those registered when the event
     // fires, so one that removes itself doesn't make the next one skip, and a
     // listener an earlier one removed (an @if hiding part of the element, say)
@@ -3109,23 +3116,25 @@ export class LynxElement implements BaseLynxElement {
     // nothing (verified in a headless browser). Most writes schedule the same
     // coalesced safety-net flush used for content built outside a cycle
     // themselves; the ones that leave it to their caller (see
-    // nativeWriteEpoch) get it here.
+    // nativeWriteEpoch) get it here. So do those made earlier outside both
+    // change detection and a listener, from a timer, a promise, an observer
+    // or a gesture callback: every event used to flush, and such a write
+    // reached the screen with the next one.
     //
-    // Only when a listener did make one, or a list item's build left a flush
-    // for later (see settleSkippedForListItem). A flush with nothing to
-    // commit isn't free: Lynx still runs its patch pass on the engine thread
-    // and queues an operation for the UI thread. Scroll listeners that change
-    // nothing on most frames (ui-bar-scroll's) paid it on every frame, and a
-    // template listener that only sets signals paid it as well as its change
-    // detection's flush, which comes a task later.
-    if (nativeWriteEpoch !== epoch || settleSkippedForListItem) {
+    // Only when something was written since the last flush of the whole
+    // tree, or a list item left work behind (see hasUnflushedWrites). A
+    // flush with nothing to commit isn't free: Lynx still runs its patch pass
+    // on the engine thread and queues an operation for the UI thread. Scroll
+    // listeners that change nothing on most frames (ui-bar-scroll's) paid it
+    // on every frame, and a template listener that only sets signals paid it
+    // as well as its change detection's flush, which comes a task later.
+    if (hasUnflushedWrites()) {
       scheduleSettleFlush();
     } else {
       // A listener's code that runs in a microtask it queued (an async
       // listener after an `await`) writes after this returns, and before
       // the flush scheduled here would have run: it got that flush, so it
       // still does.
-      dispatchesToCheck.push(epoch);
       queueMicrotask(checkDispatchWrites);
     }
     return result;
@@ -3190,15 +3199,26 @@ export const processPendingInvokes = (): void => {
 const awaitingFlush: Array<() => void> = [];
 
 /**
- * After a list's componentAtIndex has built and flushed `*lynxListFor`
- * items (see bindListItem): flushes again on a task of its own if a call is
- * waiting for a flush, such as a UI method on an element the item just made
- * (see LynxElement.invoke). The settle flush it would have asked for was
- * skipped while the item was built, and only a macrotask runs after native's
- * layout pass has returned: a microtask would still run inside it. Nothing
- * else needs it: the item's own flush committed the item.
+ * After a list's componentAtIndex has built or rebound `*lynxListFor` items
+ * and flushed them (see bindListItem).
+ *
+ * The item's own flush commits the item and nothing else, so the next native
+ * event flushes once (see settleSkippedForListItem). The binding may have
+ * left work elsewhere: a write that leaves its flush to its caller (a class,
+ * a custom property, see nativeWriteEpoch), or one the item's own change
+ * detection made outside the item (an app's write to a header, a UI method
+ * on another element), whose settle flush was skipped inside the cycle
+ * without a note. Every event used to flush, and that work reached the screen
+ * with the next one, the next scroll frame on iOS.
+ *
+ * And it flushes again on a task of its own if a call is waiting for a
+ * flush, such as a UI method on an element the item just made (see
+ * LynxElement.invoke). The settle flush it would have asked for was skipped
+ * while the item was built, and only a macrotask runs after native's layout
+ * pass has returned: a microtask would still run inside it.
  */
 export const settleAfterListItems = (): void => {
+  settleSkippedForListItem = true;
   if (awaitingFlush.length === 0) return;
   setTimeout(scheduleSettleFlush, 0);
 };
@@ -3224,43 +3244,80 @@ export const afterNextFlush = (callback: () => void): void => {
 let settleFlushScheduled = false;
 
 /**
- * Whether a settle flush was asked for, and skipped, while a list item was
- * being built (see scheduleSettleFlush), with no settle flush since. The
- * item's own flush covers the item only, so a change it made elsewhere waits
- * for the next flush. The next native event brings it, even one whose
- * listeners change nothing (see #dispatch), as every event did when each one
- * flushed.
+ * Whether a list item left work for a later flush, with no settle flush
+ * since: a settle flush was asked for, and skipped, while an item was being
+ * built (see scheduleSettleFlush), or componentAtIndex built or rebound one
+ * (see settleAfterListItems). The item's own flush covers the item only, so
+ * a change it made elsewhere waits for the next flush. The next native event
+ * brings it, even one whose listeners change nothing (see #dispatch), as
+ * every event did when each one flushed.
  */
 let settleSkippedForListItem = false;
 
 /**
- * Counts the writes to native made through LynxElement that leave their
- * flush to whoever made them, so #dispatch can tell whether an event's
- * listeners changed anything it should flush: setAttribute (a class, id,
- * data-* or `hidden`), #rewriteInlineStyle (custom properties, `hidden` and
- * the runtime's own styles), appendChild, insertBefore and remove. The other
- * writes (a style, a class added, a UI method, an animation, a handler, a
- * new element) call scheduleSettleFlush themselves, and get their flush
- * whatever the dispatch does. A counter, not a flag: dispatches nest (the
- * document's listeners run inside the page's, see global-events), and an
- * inner one mustn't hide an outer one's writes.
+ * Counts the writes to native that leave their flush to whoever made them:
+ * setAttribute (a class, id, data-* or `hidden`), #rewriteInlineStyle (custom
+ * properties, `hidden` and the runtime's own styles), appendChild,
+ * insertBefore and remove, and an animation's start, play, pause and cancel
+ * (see countNativeWrite). The other writes (a style, a class added, a UI
+ * method, a handler, a new element) call scheduleSettleFlush themselves.
+ * Compared with flushedEpoch, its value at the last flush of the whole tree,
+ * so the next native event can tell whether one is still waiting for a
+ * flush (see hasUnflushedWrites). A counter rather than a flag, so a write
+ * costs one increment and a flush one assignment, with nothing to clear.
  */
 let nativeWriteEpoch = 0;
 
 /**
- * The epochs of the dispatches whose listeners wrote nothing while they ran,
- * oldest first, each checked again in a microtask (see #dispatch). Numbers in
- * a queue rather than a closure per event: they come on every frame.
+ * nativeWriteEpoch as it was at the last flush of the whole tree that
+ * committed everything written before it (see markTreeFlushed).
  */
-const dispatchesToCheck: number[] = [];
+let flushedEpoch = 0;
 
 /**
- * Flushes for the oldest dispatch in dispatchesToCheck if anything was
- * written since it began.
+ * @internal Notes that the whole element tree is flushed next, after the
+ * commit passes (removals, loose text, attribute removals and text
+ * normalization), so every write counted so far reaches native with it. The
+ * settle flush and `LynxRendererFactory2.end()` call it right before their
+ * `__FlushElementTree()`, after the commit passes, which can write
+ * themselves. A list item's flush, which covers the item only, and a list's
+ * update flush, which runs none of the commit passes, don't.
+ */
+export const markTreeFlushed = (): void => {
+  flushedEpoch = nativeWriteEpoch;
+};
+
+/**
+ * Whether the next native event flushes (see #dispatch): something was
+ * written to native since the last flush of the whole tree (see
+ * nativeWriteEpoch), or a list item left work for a later flush (see
+ * settleSkippedForListItem). Every event used to flush, so a write made
+ * outside change detection and outside a listener, from a timer, a promise,
+ * an observer or a gesture callback, reached the screen with the next one.
+ * This keeps that, and lets an event with nothing pending skip the flush. An
+ * app calling the raw `__*` element functions isn't counted.
+ */
+const hasUnflushedWrites = (): boolean =>
+  nativeWriteEpoch !== flushedEpoch || settleSkippedForListItem;
+
+/**
+ * Counts a write made outside LynxElement that leaves its flush to whoever
+ * made it: an animation a main-thread script starts, plays, pauses or
+ * cancels on a MainThreadElement, which schedules no flush, and which the
+ * next event's flush brought to the screen when every event flushed (see
+ * setAfterAnimate).
+ */
+const countNativeWrite = (): void => {
+  nativeWriteEpoch++;
+};
+
+/**
+ * Flushes, a microtask after a dispatch with nothing to flush, if something
+ * was written since: an async listener's code after its first `await` (see
+ * #dispatch).
  */
 const checkDispatchWrites = (): void => {
-  const epoch = dispatchesToCheck.shift();
-  if (nativeWriteEpoch !== epoch) scheduleSettleFlush();
+  if (nativeWriteEpoch !== flushedEpoch) scheduleSettleFlush();
 };
 
 /**
@@ -3327,6 +3384,9 @@ export const scheduleSettleFlush = (): void => {
     LynxElement.commitPendingFlow();
     LynxElement.commitPendingAttributeRemovals();
     LynxElement.commitPendingTextNormalization();
+    // After the commit passes, which write themselves (a regroup inserts):
+    // everything written so far goes with this flush.
+    markTreeFlushed();
     __FlushElementTree();
     LynxElement.commitPendingInvokes();
   });

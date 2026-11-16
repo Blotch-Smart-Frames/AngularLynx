@@ -36,6 +36,25 @@ const ANIMATION_PAUSE = 2 as const;
 const ANIMATION_CANCEL = 3 as const;
 
 /**
+ * What each animation operation calls after `__ElementAnimate`, which
+ * reaches native with the element tree's next flush: lynx-element.ts makes it
+ * count a write waiting for one, so the next native event flushes it (see
+ * hasUnflushedWrites there). LynxElement.animate() schedules a flush of its
+ * own too; a main-thread script's MainThreadElement.animate() doesn't. A hook
+ * rather than an import, as for layout.ts's measureLayout: lynx-element.ts
+ * imports this module, and MainThreadElement, which imports it too, has no
+ * need of the element module.
+ */
+let afterAnimate: () => void = () => {};
+
+/**
+ * Sets what each animation operation calls (see afterAnimate).
+ */
+export const setAfterAnimate = (hook: () => void): void => {
+  afterAnimate = hook;
+};
+
+/**
  * Represents a running animation on a Lynx element.
  * Created by calling `element.animate()` on a LynxElement.
  * Mirrors the Animation class from React Lynx's worklet-runtime, except for
@@ -99,6 +118,7 @@ export class LynxAnimation implements Pick<
       keyframes,
       wireOptions,
     ]);
+    afterAnimate();
 
     // web-core's __ElementAnimate forgets an animation the moment it finishes
     // (its `onfinish` drops it from the map it looks names up in), so a later
@@ -122,14 +142,17 @@ export class LynxAnimation implements Pick<
 
   play(): void {
     __ElementAnimate(this.#element, [ANIMATION_PLAY, this.#key]);
+    afterAnimate();
   }
 
   pause(): void {
     __ElementAnimate(this.#element, [ANIMATION_PAUSE, this.#key]);
+    afterAnimate();
   }
 
   cancel(): void {
     __ElementAnimate(this.#element, [ANIMATION_CANCEL, this.#key]);
+    afterAnimate();
     // Reaches the animation even after it finished (see the constructor).
     // Canceling an animation web-core already canceled is a no-op.
     this.#webAnimation?.cancel();

@@ -34,8 +34,10 @@ const renderSpinner = async () => {
   return {
     ...result,
     host: result.componentRef.instance as SpinnerHost,
-    // The spinner: its host, which holds the svg.
-    spinner: () => result.container.querySelector('svg')!.parentElement!,
+    // The spinner: its host, marked with its tag's class, which holds the
+    // view that turns the svg.
+    spinner: () => result.container.querySelector('._ngtag-ui-spinner')!,
+    turner: () => result.container.querySelector('svg')!.parentElement!,
     svgContent: () =>
       result.container.querySelector('svg')!.getAttribute('content'),
   };
@@ -94,33 +96,43 @@ describe('UiSpinner', () => {
   it('puts a static class on one element, the spinner', async () => {
     const { container } = await render(StaticClassHost);
     expect([...container.querySelectorAll('.mx-2')]).toEqual([
-      container.querySelector('svg')!.parentElement,
+      container.querySelector('._ngtag-ui-spinner'),
     ]);
   });
 
   // Core Animation and Android's animators turn it, so it keeps turning
   // while Angular builds a screen, which is when a spinner shows. Lynx's own
   // animator ticks on Angular's thread, and stood still meanwhile.
-  it("turns on the platform's animator", async () => {
+  it("turns the drawing on the platform's animator", async () => {
     const animate = vi.spyOn(lynxMainThread(), '__ElementAnimate');
-    const { spinner } = await renderSpinner();
-    expect(spinner().getAttribute('enable-new-animator')).toBe('false');
+    const { turner } = await renderSpinner();
+    expect(turner().getAttribute('enable-new-animator')).toBe('false');
     // Android rotates only a view of its own.
-    expect(spinner().getAttribute('flatten')).toBe('false');
+    expect(turner().getAttribute('flatten')).toBe('false');
+    const { style } = turner() as HTMLElement;
+    expect(style.animationName).toBe('ui-spinner-turn');
+    expect(style.animationDuration).toBe('1600ms');
+    expect(style.animationTimingFunction).toBe('linear');
+    expect(style.animationIterationCount).toBe('infinite');
+    // It fills the spinner.
+    expect(style.width).toBe('100%');
+    expect(style.height).toBe('100%');
     // animate() does nothing on an element the platform animates.
     expect(animate).not.toHaveBeenCalled();
     animate.mockRestore();
   });
 
-  it('turns once every 1.6 seconds, for as long as it shows', () => {
-    const css = componentStyles(UiSpinner);
-    expect(css).toMatch(
+  // animate() does nothing on an element the platform animates, so the
+  // spinner itself stays on Lynx's animator for an app to fade it in or out.
+  it("leaves the spinner on Lynx's animator, for the app to animate", async () => {
+    const { spinner } = await renderSpinner();
+    expect(spinner().hasAttribute('enable-new-animator')).toBe(false);
+    expect(spinner().hasAttribute('flatten')).toBe(false);
+  });
+
+  it('turns a full turn', () => {
+    expect(componentStyles(UiSpinner)).toMatch(
       /@keyframes ui-spinner-turn\s*\{\s*from\s*\{\s*transform:\s*rotate\(0deg\);?\s*\}\s*to\s*\{\s*transform:\s*rotate\(360deg\);?\s*\}/,
-    );
-    // The host is the box that turns: the build matches `ui-spinner` to the
-    // class the runtime gives it, so the app's classes stay its own.
-    expect(css).toMatch(
-      /ui-spinner\s*\{\s*animation:\s*ui-spinner-turn 1600ms linear infinite;?\s*\}/,
     );
   });
 });

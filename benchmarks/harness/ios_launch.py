@@ -29,7 +29,8 @@ From each trace:
 
 The apps alternate run by run (ABBA order), so drift over a session (heat,
 battery, background work) falls on every app alike. Battery level, charging,
-thermal state and the OS build are recorded with every run.
+thermal state, the OS build and the Mac's load average (the fixture
+server runs on it) are recorded with every run.
 """
 
 import argparse
@@ -64,6 +65,7 @@ FIELDS = [
     "thermal_state",
     "battery_percent",
     "charging",
+    "host_load",
 ]
 
 
@@ -204,6 +206,8 @@ def main():
                     "run": run,
                     "battery_percent": device_value(args.device, "BatteryCurrentCapacity", "com.apple.mobile.battery"),
                     "charging": device_value(args.device, "BatteryIsCharging", "com.apple.mobile.battery"),
+                    # The Mac serves the fixtures: a busy Mac answers later.
+                    "host_load": f"{os.getloadavg()[0]:.1f}",
                 }
                 try:
                     record(args.device, bundle_id, trace, args.seconds, [])

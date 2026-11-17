@@ -3,7 +3,9 @@
 Every app in `benchmarks/apps/` is the same app: Software Mansion's
 [`launchperf-poke-rn`](https://github.com/software-mansion-labs/launchperf-poke-rn)
 (MIT), ported screen for screen. `apps/react-native` is their app with only the
-API's base URL changed; the others copy it. When in doubt about a pixel, a
+API's base URL changed, plus one change iOS 27 forces (it ends an app built
+with Xcode 27 that doesn't adopt the scene life cycle, which Expo 54's template
+doesn't); the others copy it. When in doubt about a pixel, a
 size, a color or a behavior, do what `apps/react-native` does.
 
 ## Screens

@@ -13,7 +13,7 @@ frameworks never touch the monorepo's build.
 | Folder | What's in it |
 | --- | --- |
 | [`SPEC.md`](SPEC.md) | What every app does, screen by screen |
-| `apps/react-native` | [Software Mansion's `launchperf-poke-rn`](https://github.com/software-mansion-labs/launchperf-poke-rn) (MIT), with only the API's base URL changed: Expo 54, React Native 0.81 |
+| `apps/react-native` | [Software Mansion's `launchperf-poke-rn`](https://github.com/software-mansion-labs/launchperf-poke-rn) (MIT), with only the API's base URL changed, and the scene life cycle iOS 27 requires: Expo 54, React Native 0.81 |
 | `apps/react-native-0.88` | The same app on Expo SDK 58 / React Native 0.88, the base Angular Native uses |
 | `apps/angular-lynx` | The port to AngularLynx, on this repository's packages |
 | `apps/react-lynx` | The port to ReactLynx, in the same native shell as the AngularLynx app |

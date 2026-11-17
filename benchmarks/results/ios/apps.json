@@ -1,0 +1,22 @@
+{
+  "angular-lynx": {
+    "label": "AngularLynx",
+    "versions": "AngularLynx master (22.2.26 + #438, #439), Angular 22.2.6, Lynx 4.1.0",
+    "notes": "The port, built with ng build --platform ios"
+  },
+  "react-lynx": {
+    "label": "ReactLynx",
+    "versions": "@lynx-js/react 0.129.3, rspeedy 0.18.6, Lynx 4.1.0",
+    "notes": "The port, in the same native shell as the AngularLynx app"
+  },
+  "react-native": {
+    "label": "React Native 0.81",
+    "versions": "React Native 0.81.5, Expo 54.0.33, React 19.1.0, Hermes",
+    "notes": "Software Mansion's app, with the server's address changed and iOS 27's scene life cycle added"
+  },
+  "react-native-0.88": {
+    "label": "React Native 0.88",
+    "versions": "React Native 0.88.1, Expo 58.0.25, React 19.3.0, Hermes V1",
+    "notes": "The same app on Expo SDK 58"
+  }
+}

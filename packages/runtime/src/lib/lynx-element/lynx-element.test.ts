@@ -422,13 +422,16 @@ describe('LynxElement', () => {
         setSafeAreaInsets({ ...PHONE, safeAreaTop: 0, safeAreaBottom: 21 });
         LynxElement.refreshSafeAreaInsets();
 
+        // The bar sets a variable, so its [style.x] styles are in the string
+        // (see "[style.x] styles beside a variable" below).
         expect(vi.mocked(globalThis.__SetInlineStyles).mock.calls).toEqual([
-          [fakeRef, 'position: absolute; bottom: 21px; --gap: 0px'],
+          [
+            fakeRef,
+            'position: absolute; bottom: 21px; --gap: 0px; ' +
+              'height: calc(49px + 21px); opacity: 0.5',
+          ],
         ]);
-        expect(vi.mocked(globalThis.__AddInlineStyle).mock.calls).toEqual([
-          [fakeRef, 'height', 'calc(49px + 21px)'],
-          [fakeRef, 'opacity', 0.5],
-        ]);
+        expect(globalThis.__AddInlineStyle).not.toHaveBeenCalled();
       });
     });
   });
@@ -503,11 +506,85 @@ describe('LynxElement', () => {
 
       element.setStyle('--a', 'red');
 
-      expect(globalThis.__AddInlineStyle).toHaveBeenCalledWith(
+      expect(globalThis.__SetInlineStyles).toHaveBeenLastCalledWith(
         fakeRef,
-        'opacity',
-        0.5,
+        '--a: red; opacity: 0.5',
       );
+      expect(globalThis.__AddInlineStyle).not.toHaveBeenCalled();
+    });
+
+    // Native Lynx parses an inline style string waiting for the flush as soon
+    // as __AddInlineStyle reaches the element, and parsed there it doesn't
+    // note which variables changed: the descendants already drawn kept the
+    // old values (issue #446).
+    describe('[style.x] styles beside a variable', () => {
+      it('go into the string rather than through __AddInlineStyle', () => {
+        element = new LynxElement(fakeRef);
+        element.setStyle('--primary', 'red');
+        element.setStyle('transform', 'translateY(0%)');
+        element.setStyle('opacity', 0.5);
+
+        expect(globalThis.__SetInlineStyles).toHaveBeenLastCalledWith(
+          fakeRef,
+          '--primary: red; transform: translateY(0%); opacity: 0.5',
+        );
+
+        element.removeStyle('transform');
+        expect(globalThis.__SetInlineStyles).toHaveBeenLastCalledWith(
+          fakeRef,
+          '--primary: red; opacity: 0.5',
+        );
+
+        element.setStyle('--primary', 'blue');
+        expect(globalThis.__SetInlineStyles).toHaveBeenLastCalledWith(
+          fakeRef,
+          '--primary: blue; opacity: 0.5',
+        );
+        expect(globalThis.__AddInlineStyle).not.toHaveBeenCalled();
+      });
+
+      it('do so beside a variable in the style attribute too', () => {
+        element = new LynxElement(fakeRef);
+        element.setInlineStyles('--primary: red;');
+        // Written as native gets it (see forNative).
+        element.setStyle('padding-bottom', 'calc(calc(1px + 2px) * 3)');
+
+        expect(globalThis.__SetInlineStyles).toHaveBeenLastCalledWith(
+          fakeRef,
+          '--primary: red; padding-bottom: calc((1px + 2px) * 3)',
+        );
+        expect(globalThis.__AddInlineStyle).not.toHaveBeenCalled();
+      });
+
+      it('stay in the string once the variable is gone, which the descendants need to see too', () => {
+        element = new LynxElement(fakeRef);
+        element.setStyle('--primary', 'red');
+        element.setStyle('opacity', 0.5);
+
+        element.removeStyle('--primary');
+        expect(globalThis.__SetInlineStyles).toHaveBeenLastCalledWith(
+          fakeRef,
+          'opacity: 0.5',
+        );
+        element.removeStyle('opacity');
+        expect(globalThis.__SetInlineStyles).toHaveBeenLastCalledWith(
+          fakeRef,
+          null,
+        );
+        expect(globalThis.__AddInlineStyle).not.toHaveBeenCalled();
+      });
+
+      it('leave an element that never set a variable on __AddInlineStyle', () => {
+        element = new LynxElement(fakeRef);
+        element.setInlineStyles('color: var(--primary)');
+        element.setStyle('opacity', 0.5);
+
+        expect(globalThis.__AddInlineStyle).toHaveBeenCalledWith(
+          fakeRef,
+          'opacity',
+          0.5,
+        );
+      });
     });
   });
 
@@ -581,6 +658,21 @@ describe('LynxElement', () => {
       expect(lastInlineStyle()).toBeNull();
       // Lynx has no hidden attribute to pass it to.
       expect(globalThis.__SetAttribute).not.toHaveBeenCalled();
+    });
+
+    it('puts [style.x] styles back after hiding it', () => {
+      element = new LynxElement(fakeRef);
+      element.setStyle('opacity', 0.5);
+      vi.mocked(globalThis.__AddInlineStyle).mockClear();
+
+      element.setAttribute('hidden', '');
+
+      expect(lastInlineStyle()).toBe('display: none; overflow: hidden');
+      expect(globalThis.__AddInlineStyle).toHaveBeenCalledWith(
+        fakeRef,
+        'opacity',
+        0.5,
+      );
     });
 
     it("lets the app's own inline display win, as an author style does", () => {
@@ -886,11 +978,12 @@ describe('LynxElement', () => {
 
       element.setAttribute('blur-effect', 'dark');
 
-      expect(globalThis.__AddInlineStyle).toHaveBeenCalledWith(
+      // In the string, after the material's variables (see #setsVariables).
+      expect(globalThis.__SetInlineStyles).toHaveBeenLastCalledWith(
         fakeRef,
-        'opacity',
-        0.5,
+        expect.stringMatching(/^--angular-lynx-blur-.*; opacity: 0\.5$/),
       );
+      expect(globalThis.__AddInlineStyle).not.toHaveBeenCalled();
     });
 
     it('leaves iOS’s blur-views alone', () => {

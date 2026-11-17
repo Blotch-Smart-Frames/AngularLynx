@@ -251,10 +251,11 @@ describe('LynxCanvasElement', () => {
     style.setProperty('opacity', '');
     style.maxHeight = null;
     canvas.style.width = '';
-    expect(globalThis.__AddInlineStyle).toHaveBeenCalledWith(
+    // The canvas sets a variable, so its styles go in the inline style
+    // string (see LynxElement's #setsVariables).
+    expect(globalThis.__SetInlineStyles).toHaveBeenLastCalledWith(
       canvas.element,
-      'width',
-      null,
+      '--glow: red',
     );
     expect((canvas.style as any)[Symbol.iterator]).toBeUndefined();
     expect(Reflect.set(canvas.style, Symbol.iterator, 1)).toBe(false);

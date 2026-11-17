@@ -5796,7 +5796,7 @@ The iOS shell registers its own class for `blur-view`, `BlurView` (`packages/nat
 
 ### The fix
 
-`LynxElement` writes the whole inline style with `__SetInlineStyles` whenever a variable changes: the runtime's own variables first (the blur-view materials above), then the app's `style` string, then the `[style.--x]` bindings, which win over the attribute as they do on the web. The `[style.x]` styles are re-added after it, since `__SetInlineStyles` drops them (`#rewriteInlineStyle` in `packages/runtime/src/lib/lynx-element/lynx-element.ts`).
+`LynxElement` writes the whole inline style with `__SetInlineStyles` whenever a variable changes: the runtime's own variables first (the blur-view materials above), then the app's `style` string, then the `[style.--x]` bindings, which win over the attribute as they do on the web. On an element that sets a variable, the `[style.x]` styles go at the end of the same string, since `__SetInlineStyles` drops them and adding them back with `__AddInlineStyle` hides the variable's change from the descendants (see "A CSS variable set inline doesn't reach drawn descendants when `__AddInlineStyle` follows it" below; `#rewriteInlineStyle` in `packages/runtime/src/lib/lynx-element/lynx-element.ts`).
 
 An inline variable reaches the element's descendants, as on the web, and changing it restyles them. Checked on the Android emulator (Lynx 4.1) and in the web preview with Dynamic Color's `uiDynamicColor`, which sets the theme's variables on the app's root view with a host `[style]` binding, and changes them when the wallpaper or dark mode does.
 
@@ -6907,6 +6907,29 @@ A unit test that calls `setStyle('--accent', …)` never sees the placeholder. O
 `LynxRenderer.setStyle()` and `removeStyle()` take the placeholder out of a variable's name (`cssVariableName` in `packages/runtime/src/lib/renderer/renderer.ts`), as the build plugin takes it out of component styles (`fillCssVarNamespace` in `packages/rsbuild-plugin-angular-lynx/src/component-styles.ts`). Checked on the iOS 27 Simulator and the Android API 34 emulator in Lynx Explorer 4.1, and in the web preview: a variable bound on an element with and without a `style` attribute, read by a child and by the element itself, and bound a second after the first render. On Android, a variable bound on an element whose class sets the same one wins over the class (the showcase's root view, in its dark theme).
 
 - **`provideCssVarNamespacing()` isn't applied.** Lynx CSS is compiled ahead of time, so a stylesheet can't take a namespace the app provides when it starts, and a binding has to set the name the stylesheets read. Both keep the variables' own names. The namespace keeps apps that share a document apart, and a Lynx page holds one app, so there's nothing for it to do. An app that provides it anyway gets prefixed names wherever its own code asks Angular for a variable's namespaced name, and those match nothing.
+
+---
+
+## A CSS variable set inline doesn't reach drawn descendants when `__AddInlineStyle` follows it
+
+### What you'd expect (web)
+
+`<ui-tab-bar [style.--primary]="tint()">`, on a host that also binds `[style.transform]`, gives every `var(--primary)` below it the bound color, and changing `tint()` restyles them, whatever else is bound on the host.
+
+### What Lynx does
+
+The descendants that were already drawn keep the old value (issue #446). `__SetInlineStyles` only stores its string, and the element parses it when it resolves its style at the flush, noting which variables changed so that it can mark the descendants that read them for a restyle (`Element::DoFullCSSResolving`, which runs `RecursivelyMarkChildrenCSSVariableDirty`). But `__AddInlineStyle` (`Element::SetStyle`) parses a string that's still waiting at once, so that the string can't override the style it adds, and it parses it with no map to note the changes in (`ProcessFullRawInlineStyle(nullptr)`). The element's own variables are updated, but at the flush there's nothing left to parse and no change to pass on. So the descendants aren't restyled, and keep the values they had. A descendant drawn for the first time in the same flush reads the new value, which is why the first render usually looks right. The same happens when a variable is taken out. Lynx 4.1.0 and lynx-family/lynx master (November 2026) both do this.
+
+AngularLynx hit it in two ways: a `[style.x]` set in the same cycle as a `[style.--x]` (Angular applies a parent's binding on a component host before the host's own bindings), and `#rewriteInlineStyle` putting the element's `[style.x]` styles back with `__AddInlineStyle` right after the `__SetInlineStyles` that changed a variable.
+
+Measured on the iOS 27 Simulator (Lynx 4.1, an `ng build --platform ios` app):
+
+- Two views each bound `[style.--probe]`, changed from blue to red 3 seconds after launch, over a `<text>` drawn with `color: var(--probe)`. The text under the view that also bound `[style.transform]` stayed `rgb(0, 0, 255)`; the other turned `rgb(255, 0, 0)`.
+- The benchmark's AngularLynx app (`benchmarks/apps/angular-lynx`), with `[style.--primary]="'#ff0000'"` and `[style.--muted-foreground]="'#00aa00'"` on its `<ui-tab-bar>`, whose host binds `[style.transform]` and `[style.transition]`: the labels drew the theme's `rgb(24, 24, 27)` and `rgb(113, 113, 122)`. The tab screen is a lazily loaded route, and its labels had been drawn before the variables reached them. The `ui-tab-bar` example, where the bar is in the root component, drew the bound colors at first render with the same bindings.
+
+### The fix
+
+Once an element's inline style string has declared a CSS variable, from a `[style.--x]` binding, a `style="--x: …"` or the runtime's own (the Android blur-view materials), its `[style.x]` styles go at the end of that string too, and none of its styles go through `__AddInlineStyle` again (`#setsVariables` in `packages/runtime/src/lib/lynx-element/lynx-element.ts`). The string is parsed at the flush, which notes the changed variables and restyles the descendants that read them. It stays that way after the variables go, because taking one out is a change the descendants need to see too. Elements that never set a variable keep `__AddInlineStyle`. After the fix, the same two apps drew the probe text `rgb(255, 0, 0)` under both views, and the benchmark's labels `rgb(255, 0, 0)` and `rgb(0, 170, 0)`.
 
 ---
 

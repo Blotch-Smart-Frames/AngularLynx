@@ -5,3 +5,4 @@ export { Banner } from './banner';
 export { Compare } from './compare';
 export { FeatureBubbles } from './feature-bubbles';
 export { SkillCommand } from './skill-command';
+export { Performance } from './performance';

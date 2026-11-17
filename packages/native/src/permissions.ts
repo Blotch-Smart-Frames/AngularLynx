@@ -50,6 +50,13 @@ export const PERMISSION_MAP: Record<
     ios: ['NSContactsUsageDescription'],
     android: ['android.permission.READ_CONTACTS'],
   },
+  // Connecting to a device or server on the local network, such as a printer,
+  // a TV or a server on the Mac during development: iOS (14 and later) asks
+  // first, with this reason. Android needs no permission for it.
+  localNetwork: {
+    ios: ['NSLocalNetworkUsageDescription'],
+    android: [],
+  },
   // iOS asks for notification permission at runtime without a usage string.
   notifications: {
     ios: [],

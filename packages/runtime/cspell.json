@@ -1,4 +1,11 @@
 {
   "import": ["../../cspell.json"],
-  "words": ["WHATWG", "stylesheet", "subdirs", "trimmable"]
+  "words": [
+    "logcat",
+    "Macrobenchmark",
+    "stylesheet",
+    "subdirs",
+    "trimmable",
+    "WHATWG"
+  ]
 }

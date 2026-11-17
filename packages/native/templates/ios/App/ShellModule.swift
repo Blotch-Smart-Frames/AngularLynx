@@ -1,5 +1,6 @@
 import Lynx
 import UIKit
+import os
 
 /// The native module the AngularLynx runtime calls as
 /// `NativeModules.AngularLynxShell` (from the background thread, where
@@ -18,6 +19,12 @@ import UIKit
 /// `hideSplashScreen` fades out the copy of the launch screen the shell keeps
 /// over the app until its first screen is ready (SplashScreen.swift). The
 /// runtime's LynxSplashScreen calls it.
+///
+/// `reportFullyDrawn` marks the moment the app's first screen is complete
+/// (the runtime's `reportFullyDrawn()`) with an `os_signpost` event named
+/// `Fully Drawn` in the Points of Interest category, which Instruments shows
+/// beside the App Launch template's phases. iOS has no API of its own for it,
+/// as Android has `Activity.reportFullyDrawn()`.
 final class ShellModule: NSObject, LynxModule {
   static var name: String { "AngularLynxShell" }
 
@@ -25,6 +32,7 @@ final class ShellModule: NSObject, LynxModule {
     [
       "collectGarbage": NSStringFromSelector(#selector(collectGarbage)),
       "hideSplashScreen": NSStringFromSelector(#selector(hideSplashScreen)),
+      "reportFullyDrawn": NSStringFromSelector(#selector(reportFullyDrawn)),
     ]
   }
 
@@ -51,5 +59,23 @@ final class ShellModule: NSObject, LynxModule {
     DispatchQueue.main.async {
       SplashScreen.shared.hide()
     }
+  }
+
+  private static let pointsOfInterest = OSLog(
+    subsystem: Bundle.main.bundleIdentifier ?? "AngularLynx", category: .pointsOfInterest)
+  private static let fullyDrawnOnce = NSLock()
+  private static var fullyDrawn = false
+
+  // Emitted on the calling thread: the runtime calls it from Lynx's engine
+  // thread, through main-thread modules, and a hop to the main queue would
+  // add a frame's wait to the moment it marks. os_signpost is thread-safe.
+  @objc func reportFullyDrawn() {
+    ShellModule.fullyDrawnOnce.lock()
+    defer { ShellModule.fullyDrawnOnce.unlock() }
+    // Once per process, as Android's is: the development build loads the app
+    // again on every edit, and each load reports.
+    guard !ShellModule.fullyDrawn else { return }
+    ShellModule.fullyDrawn = true
+    os_signpost(.event, log: ShellModule.pointsOfInterest, name: "Fully Drawn")
   }
 }

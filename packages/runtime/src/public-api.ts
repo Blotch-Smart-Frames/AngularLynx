@@ -37,6 +37,7 @@ export type {
   ObserverFrameRateOptions,
 } from './lib/exposure';
 export { LynxFont } from './lib/font';
+export { reportFullyDrawn } from './lib/fully-drawn';
 export { ImagePickerError, LynxImagePicker } from './lib/image-picker';
 export type {
   ImagePickerErrorCode,

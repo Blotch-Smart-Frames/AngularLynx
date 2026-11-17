@@ -63,7 +63,9 @@
     "lipo",
     "llround",
     "LOCALAPPDATA",
+    "logcat",
     "lynxsdk",
+    "Macrobenchmark",
     "malloc",
     "mdpi",
     "memcpy",
@@ -163,9 +165,18 @@
   ],
   "// patterns": "OpenGL ES's identifiers in the shells' WebGL code: its functions (glGetProgramiv), constants (GL_RENDERBUFFER), types (GLsizei), Android's GLES30 class, and the generated opcode names.",
   "patterns": [
-    { "name": "gl-functions", "pattern": "/\\bgl[A-Z]\\w*/g" },
-    { "name": "gl-constants", "pattern": "/\\b(?:GL|EGL)_\\w+/g" },
-    { "name": "gl-types", "pattern": "/\\bGL(?:ES\\d*|[a-z]\\w*)/g" },
+    {
+      "name": "gl-functions",
+      "pattern": "/\\bgl[A-Z]\\w*/g"
+    },
+    {
+      "name": "gl-constants",
+      "pattern": "/\\b(?:GL|EGL)_\\w+/g"
+    },
+    {
+      "name": "gl-types",
+      "pattern": "/\\bGL(?:ES\\d*|[a-z]\\w*)/g"
+    },
     {
       "name": "webgl-ops",
       "pattern": "/\\b(?:ALWebGLOp|WebGLOps\\.|const val )\\w*/g"

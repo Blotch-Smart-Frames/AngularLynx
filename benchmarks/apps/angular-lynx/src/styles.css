@@ -1,0 +1,9 @@
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+/* @blotch/ui's theme, for the tab bar, the sheet and the spinner. The app
+   stays in its light colors (provideColorScheme('light') in app.config.ts),
+   so dark.css isn't imported. */
+@import './styles/default.css';
+@import './styles/tailwind.css';

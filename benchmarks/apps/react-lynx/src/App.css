@@ -1,0 +1,423 @@
+/*
+ * The original's StyleSheets (benchmarks/apps/react-native), value for value.
+ * Containers spell out display: flex and their direction: React Native's
+ * views are column flexboxes by default, Lynx's are `linear` (ReactLynx's
+ * defaultDisplayLinear), and flex reads the same as the original.
+ */
+
+page {
+  background-color: #fff;
+}
+
+.fill {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+/* app/(tabs)/_layout.tsx and TabScreenFrame.tsx */
+.app {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background-color: #fff;
+}
+
+.screens {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.tab-screen {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  background-color: #fff;
+}
+
+.tab-screen-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  background-color: #f7f7f7;
+}
+
+/*
+ * React Navigation's bottom tab bar on an iPhone in portrait: 49 tall plus
+ * the bottom inset, the theme's card color with a hairline in its border
+ * color on top, and each tab a column, 5 of padding, a 31×28 icon box with a
+ * 25 icon, and the label beneath in the medium weight.
+ */
+.tab-bar {
+  display: flex;
+  flex-direction: row;
+  background-color: rgb(255, 255, 255);
+  border-top-width: 0.33px;
+  border-top-style: solid;
+  border-top-color: rgb(216, 216, 216);
+}
+
+.tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  flex: 1;
+  padding: 5px;
+}
+
+.tab-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 31px;
+  height: 28px;
+}
+
+.tab-label {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  text-align: center;
+}
+
+/* PokemonList.tsx */
+.list {
+  flex: 1;
+  width: 100%;
+}
+
+.list-header {
+  margin-bottom: 8px;
+  font-size: 16px;
+  font-weight: bold;
+  color: #000;
+}
+
+.list-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-top: 16px;
+  padding-bottom: 16px;
+}
+
+/* The list's padding: 16 around its content (contentContainerStyle). */
+.list-pad-x {
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+.list-pad-top {
+  padding-top: 16px;
+}
+
+.list-pad-bottom {
+  padding-bottom: 16px;
+}
+
+/* ListEmpty.tsx: the empty list grows to fill it (flexGrow: 1). */
+.list-empty-frame {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  padding: 16px;
+}
+
+.list-empty {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  justify-content: center;
+  align-items: center;
+  padding-top: 64px;
+}
+
+.list-empty-text {
+  color: #9e9e9e;
+  font-size: 14px;
+}
+
+/* PokemonItem.tsx */
+.card {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 16px;
+  border-radius: 4px;
+  background-color: #fff;
+  margin-bottom: 8px;
+  border-width: 1px;
+  border-style: solid;
+  border-color: #e3e3e3;
+}
+
+.card-image {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 64px;
+  height: 64px;
+  margin-right: 12px;
+  border-radius: 8px;
+  border-width: 1px;
+  border-style: solid;
+  border-color: #e3e3e3;
+}
+
+.card-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.card-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.card-subtitle {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #9e9e9e;
+}
+
+.card-trailing {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-left: 8px;
+}
+
+.type-dots {
+  display: flex;
+  flex-direction: row;
+  margin-right: 8px;
+}
+
+.type-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 10px;
+}
+
+.type-dot + .type-dot {
+  margin-left: 4px;
+}
+
+/*
+ * ActivityIndicator: UIKit's spinner, gray. `large` is 37 across and the
+ * default (small) 20.
+ */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spinner {
+  border-style: solid;
+  border-color: rgba(153, 153, 153, 0.25);
+  border-top-color: #999;
+  animation: spin 0.8s linear infinite;
+}
+
+.spinner-large {
+  width: 37px;
+  height: 37px;
+  border-radius: 18.5px;
+  border-width: 4px;
+}
+
+.spinner-small {
+  width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  border-width: 2.5px;
+}
+
+/*
+ * app/pokemon/[id].tsx: a form sheet at 75% of the screen, radius 16, over
+ * the dimmed tabs.
+ */
+.sheet-root {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+}
+
+.sheet-backdrop {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  transition: opacity 0.35s ease-out;
+}
+
+.sheet-backdrop-shown {
+  opacity: 1;
+}
+
+.sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 75%;
+  display: flex;
+  flex-direction: column;
+  background-color: #fff;
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+  overflow: hidden;
+  transform: translateY(100%);
+  transition: transform 0.35s ease-out;
+}
+
+.sheet-shown {
+  transform: translateY(0px);
+}
+
+.sheet-header {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: 52px;
+}
+
+.sheet-header-bare {
+  display: flex;
+  flex-direction: column;
+}
+
+.sheet-handle {
+  width: 64px;
+  height: 4px;
+  border-radius: 2px;
+  margin-top: 12px;
+  margin-bottom: 12px;
+  background-color: #1a1a1a;
+  align-self: center;
+}
+
+.sheet-favourite {
+  position: absolute;
+  right: 16px;
+  top: 11px;
+}
+
+.sheet-scroll {
+  flex: 1;
+}
+
+.sheet-content {
+  display: flex;
+  flex-direction: column;
+  padding: 24px 16px;
+}
+
+.sheet-center {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.sheet-link {
+  margin-top: 15px;
+  padding-top: 15px;
+  padding-bottom: 15px;
+}
+
+/* PokemonDetail.tsx: its gap: 16 between image, name and rows. */
+.detail-image {
+  align-self: center;
+}
+
+.detail-name {
+  margin-top: 16px;
+  font-size: 26px;
+  line-height: 30px;
+  font-weight: 600;
+  text-align: center;
+  color: #000;
+}
+
+.detail-rows {
+  display: flex;
+  flex-direction: column;
+  margin-top: 16px;
+}
+
+.detail-row {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.detail-label {
+  font-size: 14px;
+  line-height: 20px;
+  color: #9e9e9e;
+}
+
+.detail-value {
+  font-size: 14px;
+  line-height: 20px;
+  color: #1a1a1a;
+  font-weight: 500;
+  flex-shrink: 1;
+  text-align: right;
+  margin-left: 16px;
+}
+
+/* The rows' gap: 12, around each separator. */
+.detail-separator {
+  height: 1px;
+  margin-top: 12px;
+  margin-bottom: 12px;
+  background-color: #e3e3e3;
+}
+
+/* app/bench/mount.tsx */
+.bench {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  background-color: #fff;
+}
+
+.bench-container {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+.bench-box {
+  width: 10px;
+  height: 10px;
+  background-color: #1a1a1a;
+}
+
+.bench-image {
+  width: 24px;
+  height: 24px;
+}

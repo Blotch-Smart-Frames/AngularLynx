@@ -158,10 +158,12 @@ export const infoPlistEntries = (
   // `ng serve --platform ios`'s development app loads from the dev server at
   // the Mac's address on the local network, which iOS (14 and later) lets an
   // app reach only once the person allows it. iOS asks the first time, with
-  // this reason. Only the development app has it: the app for the stores
-  // loads its own bundle, and App Review asks about any reason it doesn't
-  // need.
-  if (development) {
+  // this reason. Only the development app has it, unless the app asks for
+  // `localNetwork` itself: the app for the stores loads its own bundle, and
+  // App Review asks about any reason it doesn't need.
+  // An app that asks for `localNetwork` already has the key, with its own
+  // reason, which also covers the dev server.
+  if (development && !app.permissions.localNetwork) {
     lines.push(
       '<key>NSLocalNetworkUsageDescription</key>',
       `<string>${escapeXml(LOCAL_NETWORK_REASON)}</string>`,

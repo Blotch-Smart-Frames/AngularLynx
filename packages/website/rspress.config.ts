@@ -241,6 +241,7 @@ export default defineConfig({
         { text: 'Debugging', link: '/guide/debugging' },
         { text: 'Handling Errors', link: '/guide/error-handling' },
         { text: 'Profiling', link: '/guide/profiling' },
+        { text: 'Benchmarks', link: '/guide/benchmarks' },
         {
           text: 'Testing',
           collapsed: true,
@@ -318,6 +319,10 @@ export default defineConfig({
             {
               text: 'LynxSplashScreen',
               link: '/api/angular-lynx/splash-screen',
+            },
+            {
+              text: 'reportFullyDrawn',
+              link: '/api/angular-lynx/fully-drawn',
             },
             {
               text: 'LynxImagePicker',
@@ -529,6 +534,17 @@ export default defineConfig({
     },
     server: {
       open: 'http://localhost:<port>/',
+    },
+    tools: {
+      rspack: {
+        module: {
+          rules: [
+            // The benchmark results the performance charts read
+            // (src/components/benchmarks), as text.
+            { test: /\.csv$/, type: 'asset/source' },
+          ],
+        },
+      },
     },
   },
 });

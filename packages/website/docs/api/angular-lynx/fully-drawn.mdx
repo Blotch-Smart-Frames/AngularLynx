@@ -1,0 +1,47 @@
+# reportFullyDrawn
+
+Tells the phone that the app's first screen is complete: its data has loaded and is on screen. Android and Xcode's startup tools measure **time to full display** from it. `import { reportFullyDrawn } from '@blotch/angular-lynx';`
+
+## Usage
+
+Call it once the screen the app opens on is complete, such as when its list has drawn the first page from the network:
+
+```typescript title="pokedex.ts"
+export class Pokedex {
+  readonly pokemon = httpResource<Pokemon[]>(() => '/api/pokemon');
+
+  constructor() {
+    effect(() => {
+      // Once, when the first page is in. Later calls do nothing.
+      if (this.pokemon.hasValue()) reportFullyDrawn();
+    });
+  }
+}
+```
+
+The phone already knows when the app draws its **first frame**. That frame is often a splash screen or a spinner. `reportFullyDrawn()` marks the moment the person can use the screen.
+
+- **It waits for the screen.** The report goes after the next batch of changes reaches native, so it marks what Angular has just rendered being drawn, not the data arriving.
+- **Only the first call counts,** for the life of the app.
+
+## Where it shows up
+
+| Host                                                   | What it does                                                                                                                                                                                                           |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Android (`ng build --platform`, `ng serve --platform`) | Calls `Activity.reportFullyDrawn()`. Logcat prints a `Fully drawn` line, and [Macrobenchmark](https://developer.android.com/topic/performance/benchmarking/macrobenchmark-overview) reads time to full display from it |
+| iOS (`ng build --platform`, `ng serve --platform`)     | Emits an `os_signpost` event named `Fully Drawn` in the Points of Interest category, which Instruments shows beside the App Launch template's phases                                                                   |
+| Web preview, Lynx Explorer, unit tests                 | Nothing: there's no app of your own to report to                                                                                                                                                                       |
+
+To see it on iOS, open Instruments' **App Launch** template, add the **Points of Interest** instrument, and record the app's launch. `Fully Drawn` is the point after the launch phases.
+
+## API
+
+```typescript
+function reportFullyDrawn(): void;
+```
+
+## Related
+
+- [Profiling](/guide/profiling#measure-startup-on-a-phone)
+- [`LynxSplashScreen`](/api/angular-lynx/splash-screen): keeps the launch screen up until the first screen is ready
+- [Benchmarks](/guide/benchmarks), which use it to time AngularLynx's launch

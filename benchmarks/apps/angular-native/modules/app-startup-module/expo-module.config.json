@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["AppStartupModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.appstartupmodule.AppStartupModule"]
+  }
+}

@@ -6,6 +6,7 @@ import {
   FeatureBubbles,
   Features,
   MeteorsBackground,
+  Performance,
   ShowCase,
   SkillCommand,
 } from '../src/components/home-comps';
@@ -156,6 +157,8 @@ const HomeLayout = (props: Parameters<typeof BaseHomeLayout>[0]) => {
         <Features />
         <ShowCase />
         <Compare />
+        {/* Then the measured numbers behind it. */}
+        <Performance />
         {/* After the case for AngularLynx, everything it comes with. */}
         <FeatureBubbles />
         <Banner />

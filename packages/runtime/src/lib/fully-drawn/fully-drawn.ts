@@ -33,12 +33,12 @@ let reported = false;
  *
  * @usageNotes
  * ```typescript
- * export class Pokedex {
- *   readonly pokemon = httpResource<Pokemon[]>(() => '/api/pokemon');
+ * export class Inbox {
+ *   readonly messages = httpResource<Message[]>(() => '/api/messages');
  *
  *   constructor() {
  *     effect(() => {
- *       if (this.pokemon.hasValue()) reportFullyDrawn();
+ *       if (this.messages.hasValue()) reportFullyDrawn();
  *     });
  *   }
  * }

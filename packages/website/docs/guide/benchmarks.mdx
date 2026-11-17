@@ -1,0 +1,67 @@
+import {
+  LaunchCharts,
+  SizeTable,
+  VersionTable,
+} from '../../src/components/benchmarks';
+
+# Benchmarks
+
+How fast an AngularLynx app starts, how much memory it takes and how big it is, next to the same app in other frameworks, on a real iPhone. Every app, script and raw sample is in the repository's [`benchmarks/`](https://github.com/Blotch-Smart-Frames/AngularLynx/tree/master/benchmarks) folder.
+
+{/* FINDINGS */}
+
+## Launch
+
+<LaunchCharts />
+
+## App size
+
+The release build for a phone, as it's installed and zipped into an `.ipa`. The zipped size is close to what a download sends, before the App Store's own encryption and thinning.
+
+<SizeTable />
+
+## Method
+
+### The app
+
+Every framework builds the same app: [Software Mansion's Pokédex](https://github.com/software-mansion-labs/launchperf-poke-rn), from their [React Native vs Kotlin Multiplatform study](https://swmansion.com/blog/we-built-the-same-app-in-kmp-and-react-native-here-s-what-we-found). It has two tabs, a list that loads 50 Pokémon at a time with each row loading its own types, a detail sheet and favourites. Their React Native app is used as is, with only the server's address changed. The others are ports, screen for screen ([what each app does](https://github.com/Blotch-Smart-Frames/AngularLynx/blob/master/benchmarks/SPEC.md)).
+
+<VersionTable />
+
+### The data
+
+The apps load recorded PokeAPI responses and images from a server on the Mac, over the local network, never from pokeapi.co. Each request takes the same few milliseconds in every run, so the times measure the framework, not the internet.
+
+### What's measured
+
+| Metric                  | How                                                                                                                                                                                                                                                                                     |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Time to first frame** | Instruments' **App Launch** template: from the process starting to the end of its "Initial Frame Rendering" phase. That frame is the launch screen                                                                                                                                      |
+| **Time to fully drawn** | From the process starting to the app's own mark that the first page of the list is on screen: the original's `TTFD` signpost, or [`reportFullyDrawn()`](/api/angular-lynx/fully-drawn) in AngularLynx. Each app marks it after the frame that shows the rows, not when the data arrives |
+| **Memory**              | Instruments' **Activity Monitor**: the app's physical footprint, what iOS counts against its memory limit, in the last sample before the eight-second recording ends                                                                                                                    |
+| **Size**                | The release `.app` for a phone, installed and zipped                                                                                                                                                                                                                                    |
+
+### Rules
+
+- **Release builds,** each app in its own native app: never Expo Go, never Lynx Explorer.
+- **A real phone** for every number here. Simulators only check the scripts.
+- **Apps alternate run by run** (A B, B A, A B…), so heat, battery and background work fall on every app alike.
+- **Battery, charging, thermal state and the iOS build** are recorded with every run, in the CSVs.
+- **Each launch is a new process,** started by Instruments, with the phone's file caches warm: what iOS calls a warm launch. A cold launch, the first after a reboot, can't be repeated without rebooting the phone each time.
+- **Medians and p90,** with every run drawn as a dot.
+
+### Limits
+
+- **One phone so far,** an iPhone 14 Pro. Android needs a physical phone, and none has been measured yet.
+- **Instruments' App Launch template samples the CPU** while it records, which slows every app a little. It's the same for every app, and it's how Apple measures a launch.
+- **The free Apple team used to sign the apps allows three apps on a phone at once,** so each other framework ran in its own session against AngularLynx, two apps at a time. AngularLynx's dots come from every session.
+
+## Run it yourself
+
+The [benchmarks README](https://github.com/Blotch-Smart-Frames/AngularLynx/tree/master/benchmarks#running-it) has the commands: start the fixture server, build and install each app, and run the harness against your phone.
+
+## Related
+
+- [`reportFullyDrawn()`](/api/angular-lynx/fully-drawn)
+- [Profiling](/guide/profiling)
+- [Building for production](/guide/building-for-production)

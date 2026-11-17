@@ -1,0 +1,28 @@
+.charts {
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+  width: 100%;
+}
+
+.figure {
+  margin: 0;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--rp-c-text-1);
+}
+
+.summary {
+  margin: 4px 0 8px;
+  font-size: 14px;
+  color: var(--rp-c-text-2);
+}
+
+.caption {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--rp-c-text-2);
+}

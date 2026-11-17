@@ -369,7 +369,7 @@ export class LynxLinking {
   }
 
   /**
-   * Asks the shell for the links that arrived since the last time. 
+   * Asks the shell for the links that arrived since the last time.
    */
   async #take(): Promise<void> {
     let result: TakeURLsResult | undefined;

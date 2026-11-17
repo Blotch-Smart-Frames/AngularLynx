@@ -66,7 +66,7 @@ const stubHost = (initialURL?: string) => {
 };
 
 /**
- * Starts the app as `bootstrapApplication` would, and returns its router. 
+ * Starts the app as `bootstrapApplication` would, and returns its router.
  */
 const start = (...providers: unknown[]) => {
   TestBed.configureTestingModule({
@@ -85,12 +85,12 @@ const strategy = () =>
   TestBed.inject(LocationStrategy) as unknown as LynxLocationStrategy;
 
 /**
- * Lets the service's calls to the shell, and the microtasks after them, go. 
+ * Lets the service's calls to the shell, and the microtasks after them, go.
  */
 const settle = () => new Promise((resolve) => setTimeout(resolve));
 
 /**
- * A link to the app arrives while it's open. 
+ * A link to the app arrives while it's open.
  */
 const arrive = async (url: string) => {
   waiting.push(url);

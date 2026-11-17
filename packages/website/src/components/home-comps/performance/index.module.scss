@@ -1,0 +1,185 @@
+// AngularLynx in the site's red, the others in one neutral gray: the bars are
+// labeled, so the color only picks ours out.
+.frame {
+  --perf-ours: #dd0031;
+  --perf-theirs: #b4b4bc;
+  --perf-track: rgba(17, 17, 19, 0.06);
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 0 auto 80px;
+  padding: 0 20px;
+  max-width: 960px;
+}
+
+:global(.dark) .frame {
+  --perf-ours: #ff4d6d;
+  --perf-theirs: #5c5c66;
+  --perf-track: rgba(255, 255, 255, 0.06);
+}
+
+.title {
+  margin: 0 0 12px;
+  color: var(--home-title-color);
+  text-align: center;
+  font-size: 36px;
+  font-weight: 600;
+  line-height: 40px;
+  text-wrap: balance;
+  // Rspress styles every h2 in its content; this one is the home page's.
+  border: 0;
+  padding: 0;
+}
+
+.desc {
+  margin: 0 0 40px;
+  max-width: 56ch;
+  color: var(--home-desc-color);
+  text-align: center;
+  font-size: 16px;
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
+.pairs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 48px;
+  width: 100%;
+}
+
+.pair {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 0;
+}
+
+.verdict {
+  font-size: 16px;
+  line-height: 1.4;
+  color: var(--rp-c-text-2);
+
+  strong {
+    display: block;
+    font-size: 32px;
+    line-height: 1.15;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--home-title-color);
+  }
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.row-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--rp-c-text-1);
+}
+
+.figure {
+  font-weight: 600;
+}
+
+.track {
+  height: 10px;
+  border-radius: 5px;
+  background: var(--perf-track);
+  overflow: hidden;
+}
+
+.bar-ours,
+.bar-theirs {
+  height: 100%;
+  border-radius: 5px;
+  transform-origin: left center;
+}
+
+.bar-ours {
+  background: var(--perf-ours);
+}
+
+.bar-theirs {
+  background: var(--perf-theirs);
+}
+
+// The bars run out as the section scrolls in, where the browser ties an
+// animation to scrolling. Elsewhere, and with reduced motion, they're simply
+// drawn: nothing waits on script, so the static page shows them in full.
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .bar-ours,
+    .bar-theirs {
+      animation: perf-grow linear both;
+      animation-timeline: view();
+      animation-range: entry 10% cover 35%;
+    }
+  }
+}
+
+@keyframes perf-grow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.note {
+  margin: 40px 0 0;
+  font-size: 16px;
+  color: var(--rp-c-text-2);
+  text-align: center;
+
+  .figure {
+    color: var(--rp-c-text-1);
+  }
+}
+
+.link {
+  margin-top: 20px;
+  color: #dd0031;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  text-underline-offset: 3px;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+:global(.dark) .link {
+  color: #ff6b6b;
+}
+
+.footnote {
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: var(--rp-c-text-2);
+  text-align: center;
+}
+
+@media (max-width: 760px) {
+  .pairs {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 32px;
+    max-width: 420px;
+  }
+}
+
+@media (max-width: 500px) {
+  .title {
+    font-size: 8vw;
+    line-height: normal;
+  }
+}

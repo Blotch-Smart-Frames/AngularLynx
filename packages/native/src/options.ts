@@ -176,7 +176,8 @@ export type Permission =
   | 'photos'
   | 'savePhotos'
   | 'contacts'
-  | 'notifications';
+  | 'notifications'
+  | 'localNetwork';
 
 /**
  * How the `.ipa` is signed, as Xcode's export methods name it:
@@ -332,6 +333,7 @@ const PERMISSIONS: readonly Permission[] = [
   'savePhotos',
   'contacts',
   'notifications',
+  'localNetwork',
 ];
 
 /**

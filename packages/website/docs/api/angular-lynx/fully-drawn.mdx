@@ -26,11 +26,11 @@ The phone already knows when the app draws its **first frame**. That frame is of
 
 ## Where it shows up
 
-| Host                                                           | What it does                                                                                                                                                                        |
-| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Android (`ng build --platform`, `ng serve --platform`)         | Calls `Activity.reportFullyDrawn()`. Logcat prints a `Fully drawn` line, and [Macrobenchmark](https://developer.android.com/topic/performance/benchmarking/macrobenchmark-overview) reads time to full display from it |
-| iOS (`ng build --platform`, `ng serve --platform`)             | Emits an `os_signpost` event named `Fully Drawn` in the Points of Interest category, which Instruments shows beside the App Launch template's phases                                |
-| Web preview, Lynx Explorer, unit tests                         | Nothing: there's no app of your own to report to                                                                                                                                    |
+| Host                                                   | What it does                                                                                                                                                                                                           |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Android (`ng build --platform`, `ng serve --platform`) | Calls `Activity.reportFullyDrawn()`. Logcat prints a `Fully drawn` line, and [Macrobenchmark](https://developer.android.com/topic/performance/benchmarking/macrobenchmark-overview) reads time to full display from it |
+| iOS (`ng build --platform`, `ng serve --platform`)     | Emits an `os_signpost` event named `Fully Drawn` in the Points of Interest category, which Instruments shows beside the App Launch template's phases                                                                   |
+| Web preview, Lynx Explorer, unit tests                 | Nothing: there's no app of your own to report to                                                                                                                                                                       |
 
 To see it on iOS, open Instruments' **App Launch** template, add the **Points of Interest** instrument, and record the app's launch. `Fully Drawn` is the point after the launch phases.
 

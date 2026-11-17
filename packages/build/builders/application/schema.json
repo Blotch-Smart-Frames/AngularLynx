@@ -236,6 +236,10 @@
         "contacts": {
           "type": "string"
         },
+        "localNetwork": {
+          "type": "string",
+          "description": "Why the app connects to devices or servers on the local network: iOS asks the first time it does. Android needs no permission."
+        },
         "notifications": {
           "type": "string"
         }

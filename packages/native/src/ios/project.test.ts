@@ -136,6 +136,20 @@ describe('infoPlistEntries', () => {
     );
   });
 
+  it('asks for the local network with the app’s own reason when it uses it', () => {
+    const reason = 'Finds the printers on your network';
+    for (const development of [false, true]) {
+      const entries = infoPlistEntries(
+        app({ permissions: { localNetwork: reason } }),
+        { development },
+      );
+      expect(entries).toContain(
+        `<key>NSLocalNetworkUsageDescription</key>\n<string>${reason}</string>`,
+      );
+      expect(entries.match(/NSLocalNetworkUsageDescription/g)).toHaveLength(1);
+    }
+  });
+
   it('tells the shell to keep the page inside the safe area', () => {
     expect(infoPlistEntries(app({ edgeToEdge: false }))).toContain(
       '<key>AngularLynxEdgeToEdge</key>\n<false/>',

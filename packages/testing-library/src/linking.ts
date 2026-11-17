@@ -115,7 +115,8 @@ export const openedURLs = (): readonly OpenedURL[] => {
  * thread: wait for it with `waitForUpdate()`. Sent before the app listens,
  * it waits for the first handler, as a link that arrives while an app is
  * starting does. It's never the link that started the app:
- * `LynxLinking.getInitialURL()` stays `null`.
+ * `LynxLinking.getInitialURL()` stays `null`. Give that one to `render()` as
+ * its `initialURL` option.
  *
  * @example
  * ```ts

@@ -228,7 +228,7 @@ providers: [
 - **The URL itself** comes from `LynxLinking` (React Native's `Linking.getInitialURL()` and `url` event): `getInitialURL()` returns the link that started the app or `null`, synchronously, and the same for the whole run; `onURL(url => ...)` hears each later link (not the launching one), returns a remover, and goes with the component or service whose constructor registered it (or pass `{ injector }`). Links that arrived while the app was starting wait for the first handler. Both work without the router.
 - **Only `--platform` apps** (`ng build` or `ng serve`) get links: in Lynx Explorer and the web preview `getInitialURL()` is `null` and nothing arrives. Try them with the app both closed and open.
 - **Not supported:** universal links and Android App Links (https links to your site that open the app) aren't set up by the build.
-- **Specs:** `openLink('tickets://events/42')` from the testing library sends a link as one arriving while the app is open; `await waitForUpdate()` before checking.
+- **Specs:** `render(App, { providers: [provideRouter(routes)], initialURL: 'tickets://events/42' })` starts the app from a link, which `getInitialURL()` returns and the router starts at (an unknown route starts at `/`). `openLink('tickets://events/42')` from the testing library sends a link as one arriving while the app is open. `await waitForUpdate()` before checking.
 
 ## Key Differences from Web Routing
 

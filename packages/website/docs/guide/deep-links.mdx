@@ -124,7 +124,7 @@ The Simulator may ask "Open in Tickets?" before handing the link over. Run the c
 ## In the web preview, Lynx Explorer and tests
 
 - **In the [web preview](/guide/glossary#web-preview) and in Lynx Explorer,** no link ever opens the app: `getInitialURL()` is `null`, and `onURL()` handlers aren't called. The router starts at `/`.
-- **In unit tests,** open the app with a link with the testing library's [`openLink()`](/api/testing-library/#openlink), and check where it went:
+- **In unit tests,** start the app with a link with the testing library's [`render()`](/api/testing-library/#rendercomponent-options) option `initialURL`, and send one while it's open with [`openLink()`](/api/testing-library/#openlink). Then check where it went:
 
 ```typescript title="src/app/app.test.ts"
 import {
@@ -134,7 +134,17 @@ import {
   waitForUpdate,
 } from '@blotch/angular-lynx-testing-library';
 
-it('shows the event a link opens', async () => {
+it('starts at the event the link opens', async () => {
+  await render(App, {
+    providers: [provideRouter(routes)],
+    initialURL: 'tickets://events/jazz-night',
+  });
+  await waitForUpdate();
+
+  expect(screen.getByText('Jazz Night')).toBeInTheDocument();
+});
+
+it('shows the event a link opens while the app is open', async () => {
   await render(App, { providers: [provideRouter(routes)] });
 
   openLink('tickets://events/jazz-night');

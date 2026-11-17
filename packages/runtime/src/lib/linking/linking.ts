@@ -302,7 +302,8 @@ export class LynxLinking {
    * the shell hands it over before the app starts.
    *
    * Only the apps `ng build --platform` makes are started by links. In Lynx
-   * Explorer and on the web, it's always `null`.
+   * Explorer and on the web, it's always `null`. In a spec, it's the testing
+   * library's `render()` option `initialURL`.
    */
   getInitialURL(): string | null {
     const props =

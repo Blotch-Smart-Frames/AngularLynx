@@ -34,7 +34,7 @@ class LynxLinking {}
 | Lynx Explorer                                                    | Rejects with `unavailable` | Rejects with `unavailable` | `false`                    |
 | Unit tests ([testing library](/api/testing-library/#openedurls)) | Records the URL            | Records the URL            | `true`                     |
 
-Links to the app arrive only in the apps `--platform` builds (`ng build` or `ng serve`), from a scheme in angular.json's [`deepLinkSchemes`](/api/build/#native-app-options). In the web preview and Lynx Explorer, [`getInitialURL()`](#lynxlinkinggetinitialurl) is `null` and no [`onURL()`](#lynxlinkingonurl) handler is called; in unit tests, the testing library's [`openLink()`](/api/testing-library/#openlink) sends one.
+Links to the app arrive only in the apps `--platform` builds (`ng build` or `ng serve`), from a scheme in angular.json's [`deepLinkSchemes`](/api/build/#native-app-options). In the web preview and Lynx Explorer, [`getInitialURL()`](#lynxlinkinggetinitialurl) is `null` and no [`onURL()`](#lynxlinkingonurl) handler is called; in unit tests, the testing library's [`render()`](/api/testing-library/#rendercomponent-options) starts the app with one (its `initialURL` option), and [`openLink()`](/api/testing-library/#openlink) sends one while it's open.
 
 ### `LynxLinking.openURL()`
 

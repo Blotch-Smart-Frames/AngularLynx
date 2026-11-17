@@ -81,6 +81,7 @@ expect(getByText('Hello, Angular')).toBeTruthy();
 - It first destroys the app a previous `render()` left, and clears `document.body`.
 - The app gets `provideZonelessChangeDetection()`, `provideRenderer()` and your `options.providers`.
 - **`options.inputs`** are set before the first change detection, as a parent template binds them. A required input has its value when the template first reads it, and `ngOnInit` sees them all.
+- **`options.initialURL`** is the link that started the app, such as `myapp://orders/42`. [`LynxLinking.getInitialURL()`](/api/angular-lynx/linking#lynxlinkinggetinitialurl) returns it, and with `provideRouter()` the app's first screen is the link's route, with nothing under it. A link the router has no route for starts the app at `/`, as on a phone. Left out, `getInitialURL()` is `null`.
 - Elements render under a `<page>` element, the result's `container`.
 - It rejects a name that isn't one of the component's inputs, and lists the ones it has.
 - Like `bootstrapApplication()`, it hides the [splash screen](/api/angular-lynx/splash-screen) once the component is rendered, unless `options.providers` has `provideSplashScreen()`. A spec reads `LynxSplashScreen.visible()` to check when the app hides it.
@@ -169,7 +170,7 @@ expect(screen.getByText('Refreshed')).toBeInTheDocument();
 function openLink(url: string): void;
 ```
 
-Opens the app with a link, as the person does by tapping a link with one of angular.json's [`deepLinkSchemes`](/guide/deep-links) while the app is open, so a spec can check where it leads. With `provideRouter()`, the router navigates to the link's route, and each [`LynxLinking.onURL()`](/api/angular-lynx/linking#lynxlinkingonurl) handler is called with the URL. The link reaches the app as it does on a phone, through the background thread, so wait for it with `waitForUpdate()`. Sent before the app listens, it waits for the first handler, as a link that arrives while an app starts does. It's never the link that started the app: `getInitialURL()` stays `null`. Each test starts with none waiting.
+Opens the app with a link, as the person does by tapping a link with one of angular.json's [`deepLinkSchemes`](/guide/deep-links) while the app is open, so a spec can check where it leads. With `provideRouter()`, the router navigates to the link's route, and each [`LynxLinking.onURL()`](/api/angular-lynx/linking#lynxlinkingonurl) handler is called with the URL. The link reaches the app as it does on a phone, through the background thread, so wait for it with `waitForUpdate()`. Sent before the app listens, it waits for the first handler, as a link that arrives while an app starts does. It's never the link that started the app: `getInitialURL()` stays `null`. Give that one to `render()` as [`initialURL`](#rendercomponent-options). Each test starts with none waiting.
 
 ```typescript
 await render(App, { providers: [provideRouter(routes)] });

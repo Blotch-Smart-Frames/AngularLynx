@@ -239,6 +239,26 @@ const withAddedTraits = (
  */
 const isCustomProperty = (name: string): boolean => name.startsWith('--');
 
+/** A declaration of a CSS variable in an inline style string. */
+const VARIABLE_DECLARATION = /(?:^|;)\s*--/;
+
+/**
+ * An inline style string with an element's `[style.x]` styles after it,
+ * which win over the string's own declarations of the same names, as
+ * `__AddInlineStyle` makes them win (see LynxElement's #setsVariables).
+ */
+const withStyleKeys = (
+  inlineStyle: string | null,
+  keys: Map<string, unknown> | null,
+): string | null => {
+  if (!keys?.size) return inlineStyle;
+  const declarations = [...keys]
+    .map(([key, value]) => `${key}: ${String(forNative(value))}`)
+    .join('; ');
+  const own = inlineStyle?.replace(/[\s;]+$/, '');
+  return own ? `${own}; ${declarations}` : declarations;
+};
+
 const WHITESPACE = /\s/;
 
 /**
@@ -583,6 +603,18 @@ export class LynxElement implements BaseLynxElement {
    * #runtimeStyle.
    */
   #customProperties: Map<string, string> | null = null;
+  /**
+   * Set once the element's inline style string has declared a CSS variable.
+   * From then on its `[style.x]` styles go into that string too, rather than
+   * through `__AddInlineStyle`: native Lynx parses a string waiting for the
+   * flush as soon as `__AddInlineStyle` reaches the element, and parsed
+   * there it doesn't note which variables changed, so the descendants
+   * already drawn keep their old values (see "A CSS variable set inline
+   * doesn't reach drawn descendants when `__AddInlineStyle` follows it" in
+   * investigations/lynx-vs-web-differences.md). It stays set, because a
+   * variable taken out is a change the descendants need to see too.
+   */
+  #setsVariables = false;
   /**
    * Set once any of the inline styles above reads a safe-area inset. They're
    * kept as written, with their env(safe-area-inset-*), and each write fills
@@ -1300,8 +1332,9 @@ export class LynxElement implements BaseLynxElement {
     // gets the inset the shell sends (see safe-area-insets.ts), and is kept
     // as written to get the next one.
     if (readsSafeAreaInsets(value)) this.#readsSafeArea = true;
-    __AddInlineStyle(this.element, key, forNative(value));
     (this.#inlineStyleKeys ??= new Map()).set(key, value);
+    if (this.#setsVariables) this.#rewriteInlineStyle();
+    else __AddInlineStyle(this.element, key, forNative(value));
     if (LAYOUT_STYLES.has(key)) this.#layoutChanged();
     // A style set outside change detection, as a transition's last frame is
     // from a timer, reaches native only with a flush (see scheduleSettleFlush).
@@ -1312,8 +1345,9 @@ export class LynxElement implements BaseLynxElement {
       if (this.#customProperties?.delete(key)) this.#rewriteInlineStyle();
       return;
     }
-    __AddInlineStyle(this.element, key, null);
     this.#inlineStyleKeys?.delete(key);
+    if (this.#setsVariables) this.#rewriteInlineStyle();
+    else __AddInlineStyle(this.element, key, null);
     if (LAYOUT_STYLES.has(key)) this.#layoutChanged();
     scheduleSettleFlush();
   }
@@ -1326,7 +1360,11 @@ export class LynxElement implements BaseLynxElement {
       // Its env(safe-area-inset-*) get the insets as in setStyle.
       if (readsSafeAreaInsets(inlineStyle)) this.#readsSafeArea = true;
     }
-    __SetInlineStyles(this.element, this.#inlineStyleFor(inlineStyle));
+    const whole = this.#inlineStyleFor(inlineStyle);
+    // A style="--x: …" makes the [style.x] styles that come after it go into
+    // the string as well (see #setsVariables).
+    if (whole && VARIABLE_DECLARATION.test(whole)) this.#setsVariables = true;
+    __SetInlineStyles(this.element, whole);
     this.#inlineStyleWhole = inlineStyle;
     this.#layoutChanged();
     scheduleSettleFlush();
@@ -1489,10 +1527,19 @@ export class LynxElement implements BaseLynxElement {
     // insets, inheritance) ask for no flush themselves (see
     // nativeWriteEpoch).
     nativeWriteEpoch++;
-    __SetInlineStyles(
-      this.element,
-      this.#inlineStyleFor(this.#inlineStyleWhole),
-    );
+    const whole = this.#inlineStyleFor(this.#inlineStyleWhole);
+    if (whole && VARIABLE_DECLARATION.test(whole)) this.#setsVariables = true;
+    // An element that sets variables gets its [style.x] styles in the same
+    // string: an __AddInlineStyle after it would hide a variable's change
+    // from the descendants (see #setsVariables).
+    if (this.#setsVariables) {
+      __SetInlineStyles(
+        this.element,
+        withStyleKeys(whole, this.#inlineStyleKeys),
+      );
+      return;
+    }
+    __SetInlineStyles(this.element, whole);
     // __SetInlineStyles replaces every inline style, including the [style.x]
     // ones __AddInlineStyle set, which the app didn't ask to drop.
     if (this.#inlineStyleKeys) {

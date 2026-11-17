@@ -16,6 +16,7 @@ import { applyStrictEsm } from './strict-esm.js';
 import { applyTailwind } from './tailwind.js';
 import { applyTextInheritance } from './text-inheritance.js';
 import { applyTypeSelectors } from './type-selectors.js';
+import { applyUnicodePropertyRegex } from './unicode-property-regex.js';
 import {
   deprecatedOptionsIn,
   normalizeOptions,
@@ -68,6 +69,7 @@ export const pluginAngularLynx = (
       applyLayers(api);
       applyResolve(api);
       applyStrictEsm(api);
+      applyUnicodePropertyRegex(api);
       // applyAngularRules reads angular.json asynchronously and only then
       // registers its hooks (including the modifyRsbuildConfig that adds
       // polyfills, $localize init and global styles to `source.preEntry`).

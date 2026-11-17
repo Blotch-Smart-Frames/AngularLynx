@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { rspack } from '@rspack/core';
 import {
   applyIntl,
-  FORMATJS_POLYFILL,
   renderIntlModule,
   UNICODE_PROPERTY_REGEX_SWC_OPTIONS,
 } from './apply-intl';
@@ -261,9 +260,9 @@ describe('applyIntl', () => {
     expect(written).toBeGreaterThan(0);
   });
 
-  it("spells out FormatJS's and our runtime's Unicode property escapes for PrimJS, in the lynx environment only", async () => {
+  it("spells out our runtime's Unicode property escapes for PrimJS outside node_modules, in the lynx environment only", async () => {
     const { api, chain } = createApi();
-    const runtimePath = '/app/node_modules/@blotch/plugin/dist/intl-runtime.js';
+    const runtimePath = '/repo/packages/plugin/dist/intl-runtime.js';
     applyIntl(api as never, {
       apis: ['ListFormat'],
       sourceLocale: 'en',
@@ -275,10 +274,10 @@ describe('applyIntl', () => {
     expect(chain('lynx')).toEqual([
       {
         name: 'intl-unicode-property-regex',
-        // The runtime too, which every `intl` list imports: rspeedy's own
-        // compile, which spells the escapes out, skips `node_modules`, where
-        // it is in an app (#316).
-        test: [FORMATJS_POLYFILL, runtimePath],
+        // In this repository, the runtime every `intl` list imports isn't in
+        // `node_modules`, where the plugin spells out every package's
+        // escapes, FormatJS's among them (#316, #473).
+        test: runtimePath,
         enforce: 'pre',
         use: [
           {
@@ -290,11 +289,7 @@ describe('applyIntl', () => {
       },
     ]);
     const listFormat = path.join(formatJs, 'intl-listformat/polyfill.js');
-    expect(FORMATJS_POLYFILL.test(listFormat)).toBe(true);
-    expect(
-      FORMATJS_POLYFILL.test(path.join(formatJs, 'intl-listformat/index.js')),
-    ).toBe(false);
-    // What SWC makes of it has no escape PrimJS can't compile.
+    // What SWC makes of FormatJS's has no escape PrimJS can't compile.
     const { code } = await rspack.experiments.swc.transform(
       fs.readFileSync(listFormat, 'utf8'),
       UNICODE_PROPERTY_REGEX_SWC_OPTIONS,
@@ -319,6 +314,18 @@ describe('applyIntl', () => {
     expect(collatorCode).not.toMatch(/\\p\{/);
     // U+3000, the ideographic space, written out.
     expect(collatorCode).toContain('u3000');
+  });
+
+  it('leaves an installed runtime to the rule for every package', () => {
+    const { api } = createApi();
+    applyIntl(api as never, {
+      apis: ['ListFormat'],
+      sourceLocale: 'en',
+      locales: [],
+      polyfillsEntry: '/polyfills',
+      runtimePath: '/app/node_modules/@blotch/plugin/dist/intl-runtime.js',
+    });
+    expect(api.modifyBundlerChain).not.toHaveBeenCalled();
   });
 
   it('warns about locales without data', () => {

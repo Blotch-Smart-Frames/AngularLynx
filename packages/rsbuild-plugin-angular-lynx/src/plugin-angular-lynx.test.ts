@@ -19,6 +19,9 @@ vi.mock('./split-chunks.js', () => ({ applySplitChunksRule: vi.fn() }));
 vi.mock('./strict-esm.js', () => ({ applyStrictEsm: vi.fn() }));
 vi.mock('./tailwind.js', () => ({ applyTailwind: vi.fn() }));
 vi.mock('./type-selectors.js', () => ({ applyTypeSelectors: vi.fn() }));
+vi.mock('./unicode-property-regex.js', () => ({
+  applyUnicodePropertyRegex: vi.fn(),
+}));
 vi.mock('./utils/options.js', async (importOriginal) => ({
   deprecatedOptionsIn: (await importOriginal<typeof OptionsModule>())
     .deprecatedOptionsIn,
@@ -41,6 +44,7 @@ import { applySplitChunksRule } from './split-chunks.js';
 import { applyStrictEsm } from './strict-esm.js';
 import { applyTailwind } from './tailwind.js';
 import { applyTypeSelectors } from './type-selectors.js';
+import { applyUnicodePropertyRegex } from './unicode-property-regex.js';
 import { normalizeOptions } from './utils/options.js';
 import { pluginAngularLynx } from './plugin-angular-lynx';
 
@@ -217,6 +221,13 @@ describe('pluginAngularLynx', () => {
       plugin.setup(mockApi);
 
       expect(applyStrictEsm).toHaveBeenCalledWith(mockApi);
+    });
+
+    it('calls applyUnicodePropertyRegex with api', () => {
+      const plugin = pluginAngularLynx();
+      plugin.setup(mockApi);
+
+      expect(applyUnicodePropertyRegex).toHaveBeenCalledWith(mockApi);
     });
 
     it('calls applyLayers with api', () => {

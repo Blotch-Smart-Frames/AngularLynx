@@ -9,6 +9,10 @@ import {
   intlApiPackages,
   resolveIntlApis,
 } from './apis.js';
+import {
+  PACKAGE_JAVASCRIPT,
+  UNICODE_PROPERTY_REGEX_SWC_OPTIONS,
+} from '../unicode-property-regex.js';
 import { collationData } from './collation-data.js';
 import { appLocales, findDataLocale } from './locales.js';
 
@@ -176,25 +180,7 @@ const writeIfChanged = (file: string, contents: string): void => {
   fs.writeFileSync(file, contents);
 };
 
-/**
- * FormatJS's polyfills, which may hold regular expressions with Unicode
- * property escapes the Lynx build's bytecode compiler rejects. Our runtime
- * (`runtimePath`) has some too, so the rule takes it as well.
- */
-export const FORMATJS_POLYFILL = /[\\/]@formatjs[\\/][^\\/]+[\\/]polyfill\.js$/;
-
-/**
- * The SWC options that spell out each Unicode property escape (`\p{…}`) as
- * the characters it stands for, and change nothing else: the targets have
- * every other feature the code uses.
- */
-export const UNICODE_PROPERTY_REGEX_SWC_OPTIONS = {
-  env: {
-    targets: 'chrome 120',
-    include: ['transform-unicode-property-regex'],
-  },
-  isModule: true,
-};
+export { UNICODE_PROPERTY_REGEX_SWC_OPTIONS };
 
 /**
  * Adds the `Intl` module to the Lynx bundle's preEntry, after the plugin's
@@ -233,27 +219,24 @@ export const applyIntl = (
     module.canonicalLocalesSource,
   );
   writeIfChanged(file, module.source);
-  // The bytecode compiler the build runs on the main thread's script fails
-  // the build on any Unicode property escape in a regex literal ("invalid
-  // escape sequence in regular expression"), `\p{L}` as much as
-  // `\p{Script=Hebrew}`, though PrimJS on the device runs them (from
-  // `new RegExp()`). FormatJS's ListFormat has one, and so does our
-  // Collator, in the runtime every `intl` list imports (issue #316). SWC
-  // spells them out first. The rest of the build doesn't: the main thread's
-  // ES2019 target keeps them, and rspeedy's own SWC rule, which runs
-  // `transform-unicode-property-regex`, skips JavaScript in `node_modules`,
-  // where both are in an app. (In this repository the runtime isn't, which
-  // is how #316 got past the examples.)
-  api.modifyBundlerChain((chain, { environment }) => {
-    if (environment.name !== 'lynx') return;
-    chain.module
-      .rule('intl-unicode-property-regex')
-      .test([FORMATJS_POLYFILL, runtimePath])
-      .enforce('pre')
-      .use('swc')
-      .loader('builtin:swc-loader')
-      .options(UNICODE_PROPERTY_REGEX_SWC_OPTIONS);
-  });
+  // Our Collator, in the runtime every `intl` list imports, has a Unicode
+  // property escape in a regex literal, which the build's bytecode compiler
+  // rejects (issue #316), as does FormatJS's ListFormat. In an app both are
+  // in `node_modules`, where unicode-property-regex.ts spells out every
+  // package's escapes. Only a runtime outside it, as in this repository,
+  // needs a rule of its own.
+  if (!PACKAGE_JAVASCRIPT.test(runtimePath)) {
+    api.modifyBundlerChain((chain, { environment }) => {
+      if (environment.name !== 'lynx') return;
+      chain.module
+        .rule('intl-unicode-property-regex')
+        .test(runtimePath)
+        .enforce('pre')
+        .use('swc')
+        .loader('builtin:swc-loader')
+        .options(UNICODE_PROPERTY_REGEX_SWC_OPTIONS);
+    });
+  }
   api.modifyEnvironmentConfig((config, { name }) => {
     if (name !== 'lynx') return;
     const preEntry = [config.source.preEntry ?? []].flat();

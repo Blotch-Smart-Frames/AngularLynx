@@ -3508,7 +3508,9 @@ Most code never meets it. rspeedy's own SWC rule runs `transform-unicode-propert
 
 ### The fix
 
-The `intl` option runs FormatJS's polyfills and its own runtime (`dist/intl-runtime.js`) through SWC's `transform-unicode-property-regex` first, in the lynx environment (`applyIntl` in `intl/apply-intl.ts`). A package with a `\p{…}` literal on the main thread fails the same way; build the pattern with `new RegExp()` instead.
+The build plugin runs every installed package's JavaScript with an escape in it through SWC's `transform-unicode-property-regex` first, in the lynx environment (`unicode-property-regex.ts`, issue #473). The rule's condition is a function that reads the file and looks for `\p{` or `\P{`, so Rspack's own SWC loader runs only on the few files that have one: the kitchen-sink app's Lynx build took 4.93 s on average with it and without it (four runs each, 2026-11-17). FormatJS's polyfills and the `intl` option's runtime are in `node_modules` in an app, so it covers them too. In this repository the runtime isn't, so `applyIntl` (`intl/apply-intl.ts`) keeps a rule for `dist/intl-runtime.js` there.
+
+Until then, the `intl` option ran FormatJS's polyfills and its own runtime (`dist/intl-runtime.js`) through SWC's `transform-unicode-property-regex` first, in the lynx environment (`applyIntl` in `intl/apply-intl.ts`), and a package with a `\p{…}` literal of its own failed the build.
 
 ---
 

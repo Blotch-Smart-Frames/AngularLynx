@@ -1,5 +1,5 @@
-import { APPS, APP_ORDER, deviceName, LAUNCHES, SIZES } from './data';
-import { MetricChart } from './metric-chart';
+import { APPS, APP_ORDER, deviceName, LAUNCHES, SESSIONS, SIZES } from './data';
+import { type Metric, MetricChart } from './metric-chart';
 import styles from './index.module.scss';
 
 /**
@@ -35,10 +35,52 @@ const Caption = () => {
     <p className={styles['caption']}>
       {devices.join(', ')}, iOS {builds.join(', ')},{' '}
       {dateRange(LAUNCHES.map((l) => l.timestamp))}. Launches per app:{' '}
-      {runs.join(', ')}. Release builds; each launch is a new process with warm
-      file caches, recorded with Instruments' App Launch template.{' '}
+      {runs.join(', ')}. Each panel is one session, the two apps launched in
+      turn; sessions aren't compared with each other, since the phone and the
+      network vary between them. Release builds; each launch is a new process
+      with warm file caches, recorded with Instruments' App Launch template.{' '}
       <a href="/guide/benchmarks#method">How we measured</a>
     </p>
+  );
+};
+
+/**
+ * One panel per session, each the other app beside AngularLynx from the same
+ * session, all on one axis so the panels compare too.
+ */
+const SessionCharts = ({
+  metric,
+  unit,
+  axisLabel,
+}: {
+  readonly metric: Metric;
+  readonly unit: string;
+  readonly axisLabel: string;
+}) => {
+  const values = LAUNCHES.flatMap((launch) =>
+    launch[metric] === undefined ? [] : [launch[metric]],
+  );
+  // Round the axis up to a whole step: 50 ms, or 10 MB.
+  const step = unit === 'ms' ? 50 : 10;
+  const xMax = Math.ceil(Math.max(...values, step) / step) * step;
+  return (
+    <div className={styles['sessions']}>
+      {SESSIONS.map((session) => (
+        <div key={session.id}>
+          <p className={styles['session']}>
+            With {APPS[session.rival]?.label ?? session.rival}
+          </p>
+          <MetricChart
+            launches={session.launches}
+            metric={metric}
+            unit={unit}
+            axisLabel={axisLabel}
+            order={['angular-lynx', session.rival]}
+            xMax={xMax}
+          />
+        </div>
+      ))}
+    </div>
   );
 };
 
@@ -56,12 +98,10 @@ export const LaunchCharts = ({
           From the tap to the first page of the list on screen, its data loaded
           from a server on the local network. Lower is better.
         </p>
-        <MetricChart
-          launches={LAUNCHES}
+        <SessionCharts
           metric="fullyDrawnMs"
           unit="ms"
           axisLabel="Milliseconds from launch"
-          order={APP_ORDER}
         />
       </figure>
     )}
@@ -72,12 +112,10 @@ export const LaunchCharts = ({
           From the tap to the app's first frame, which is its launch screen.
           Lower is better.
         </p>
-        <MetricChart
-          launches={LAUNCHES}
+        <SessionCharts
           metric="firstFrameMs"
           unit="ms"
           axisLabel="Milliseconds from launch"
-          order={APP_ORDER}
         />
       </figure>
     )}
@@ -89,13 +127,7 @@ export const LaunchCharts = ({
           seven seconds after launch, with the first page and its images loaded.
           Lower is better.
         </p>
-        <MetricChart
-          launches={LAUNCHES}
-          metric="memoryMb"
-          unit="MB"
-          axisLabel="Megabytes"
-          order={APP_ORDER}
-        />
+        <SessionCharts metric="memoryMb" unit="MB" axisLabel="Megabytes" />
       </figure>
     )}
     <Caption />

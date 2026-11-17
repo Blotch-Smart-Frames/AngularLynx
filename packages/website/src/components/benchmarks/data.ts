@@ -159,3 +159,28 @@ export const SIZES: readonly AppSize[] = parseCsv<
 export const APP_ORDER: readonly string[] = Object.keys(APPS).filter((app) =>
   LAUNCHES.some((launch) => launch.app === app),
 );
+
+/**
+ * One sitting of the harness: AngularLynx and one other app, launched in
+ * turn (`launch-<date>-<app>.csv`). Runs from different sessions don't mix:
+ * the phone and the network differ from one sitting to the next (AngularLynx's
+ * median moved by 60 ms between two sessions with the Mac equally idle), so
+ * each app is compared with AngularLynx from its own session.
+ */
+export type Session = {
+  readonly id: string;
+  /** The other app. */
+  readonly rival: string;
+  readonly launches: readonly Launch[];
+};
+
+export const SESSIONS: readonly Session[] = [
+  ...new Set(LAUNCHES.map((launch) => launch.session)),
+]
+  .map((id) => {
+    const launches = LAUNCHES.filter((launch) => launch.session === id);
+    const rival =
+      launches.find((launch) => launch.app !== 'angular-lynx')?.app ?? '';
+    return { id, rival, launches };
+  })
+  .sort((a, b) => APP_ORDER.indexOf(a.rival) - APP_ORDER.indexOf(b.rival));

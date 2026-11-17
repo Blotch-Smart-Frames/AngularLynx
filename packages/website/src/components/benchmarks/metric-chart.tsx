@@ -1,4 +1,4 @@
-import { defineChart, dot, ruleX, text, tickX } from '@tanstack/charts';
+import { defineChart, dot, text, tickX } from '@tanstack/charts';
 import { Chart } from '@tanstack/charts/react';
 import { scaleBand } from '@tanstack/charts/scales/band';
 import { scaleLinear } from '@tanstack/charts/scales/linear';
@@ -38,6 +38,7 @@ export const MetricChart = ({
   unit,
   axisLabel,
   order,
+  xMax,
 }: {
   readonly launches: readonly Launch[];
   readonly metric: Metric;
@@ -45,6 +46,8 @@ export const MetricChart = ({
   readonly axisLabel: string;
   /** The apps, top to bottom. */
   readonly order: readonly string[];
+  /** The axis's end, so that charts side by side share one scale. */
+  readonly xMax: number;
 }) => {
   const { rows, summaries } = useMemo(() => {
     const rows: Row[] = launches
@@ -101,8 +104,6 @@ export const MetricChart = ({
       });
     return defineChart({
       marks: [
-        // The axis starts at zero, so the gaps between apps are to scale.
-        ruleX([0], { strokeOpacity: 0.4 }),
         dots(
           rows.filter((row) => !ours(row)),
           OTHER,
@@ -127,8 +128,7 @@ export const MetricChart = ({
       ],
       scales: {
         x: {
-          scale: scaleLinear,
-          nice: true,
+          scale: scaleLinear().domain([0, xMax]),
           grid: true,
           axis: { label: axisLabel },
         },
@@ -142,13 +142,13 @@ export const MetricChart = ({
       },
       tooltip,
     });
-  }, [rows, summaries, order, unit, axisLabel]);
+  }, [rows, summaries, order, unit, axisLabel, xMax]);
 
   return (
     <>
       <Chart
         definition={definition}
-        height={Math.max(160, 56 * summaries.length + 60)}
+        height={56 * summaries.length + 64}
         ariaLabel={`${axisLabel}, every run and the median, for ${summaries.map((s) => s.label).join(', ')}`}
       />
       {/* The same numbers as a table, for screen readers and for copying. */}

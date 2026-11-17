@@ -26,3 +26,16 @@
   line-height: 1.5;
   color: var(--rp-c-text-2);
 }
+
+.sessions {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.session {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--rp-c-text-2);
+}

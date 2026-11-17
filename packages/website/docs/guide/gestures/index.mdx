@@ -166,7 +166,7 @@ export class Sticker {
 
 ## Limitations
 
-- **Pinch and rotation never fire.** `PinchGesture` and `RotationGesture` exist, but no Lynx platform recognizes them yet. Drive zoom from a pan or from on-screen buttons.
+- **Pinch and rotation never fire.** `PinchGesture` and `RotationGesture` exist, but no Lynx platform recognizes them yet. For a pinch, set `"multiTouch": true` in the build target's options in `angular.json`, and work out the zoom from the fingers in `touchstart`, `touchmove` and `touchend` (each event's `changedTouches`, by `identifier`, with `pageX` and `pageY`; `x` and `y` in the web preview). Without it, Lynx reports one finger at a time. Taps don't fire while two fingers are down. The [Vitrine example](/examples/museum)'s viewer (`src/app/artwork/viewer.ts`) zooms this way.
 - **`numberOfTaps(2)` doesn't make a double tap.** No Lynx platform counts taps, so it fires on the first one. Compare the times of successive taps in `onEnd` yourself.
 - **Some options do nothing yet, including `enabled(false)`.** Lynx reads only a few of them, such as `minDistance` and `maxDuration`. See [Options Lynx doesn't read yet](/api/gestures/gesture-types#options-lynx-doesnt-read-yet).
 - **A fling has no `onStart`**, and fires reliably only on an element that also has a pan. See [FlingGesture](/api/gestures/gesture-types#flinggesture).

@@ -230,6 +230,7 @@ The examples on the [Dock](/dolan/dock) and [Tab Bar](/dolan/tab-bar) pages each
 - **A screen's own route stays its own.** Coming back to a screen, the router activates its route again. The screen's `ActivatedRoute` follows it, and its observables emit only what changed.
 - **Angular reuses a component when only the params change,** as on the web: `/notes/1` to `/notes/2` updates the note in place rather than pushing a screen. Read params reactively (see [Read route parameters](#read-route-parameters)).
 - **The [Navigation Bar](/dolan/navigation-bar) and the [Toolbar](/dolan/toolbar) keep their state per screen,** so each screen in the stack has its own large title and scroll edge. A bar of your own does the same with `injectBarState()`.
+- **Something that drags sideways itself swipes back only from the edge:** a horizontal `<scroll-view>` or `<list>`, a `<viewpager>`, and an element whose `consume-slide-event` keeps rightward slides (an angle range that holds `0`), such as a picture that pans while it's zoomed in. Bind it only while it drags (`[consume-slide-event]="zoomed() ? [[-180, 180]] : []"`), and a swipe anywhere goes back the rest of the time.
 - **In Lynx Explorer, the left edge is Explorer's:** its own back gesture takes swipes from the edge. Swipe from inside the screen there. Apps built with `ng build --platform` have no such gesture.
 
 ## Keep each tab alive, as a tab bar does

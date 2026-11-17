@@ -92,6 +92,14 @@ type AngularWebpackPluginOptions = {
    * @defaultValue 'high'
    */
   preferredFps?: PreferredFps;
+
+  /**
+   * Whether touch events carry every finger, written into the page config
+   * as `enableMultiTouch` (see PluginAngularLynxOptions' `multiTouch`).
+   *
+   * @defaultValue false
+   */
+  multiTouch?: boolean;
 };
 
 /**
@@ -164,6 +172,7 @@ class AngularWebpackPlugin {
       extractStr: false,
       experimental_isLazyBundle: false,
       preferredFps: 'high',
+      multiTouch: false,
     });
 
   /**
@@ -407,6 +416,14 @@ class AngularWebpackPlugin {
             this.options?.preferredFps ??
             AngularWebpackPlugin.defaultOptions.preferredFps,
           enableElementInvokeUIMethodPendingTask: true,
+          // Lynx reads it from the page config when the bundle loads, on iOS
+          // (LynxUIRenderer's touch recognizer) and Android
+          // (TouchEventDispatcher), and nowhere else: a LynxView has no
+          // property for it. Lynx for Web has no flag; its touch events
+          // carry the browser's touch lists either way.
+          enableMultiTouch:
+            this.options?.multiTouch ??
+            AngularWebpackPlugin.defaultOptions.multiTouch,
           // iOS exposure measures elements against the active scene's key
           // window, and with this on (Lynx's default) an app that isn't
           // active has none: Control Center, Notification Center or the app

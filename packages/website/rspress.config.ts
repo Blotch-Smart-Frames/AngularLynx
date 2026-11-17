@@ -441,6 +441,7 @@ export default defineConfig({
         },
         { text: 'Darkroom: a film photo editor', link: '/examples/darkroom' },
         { text: 'Par Avion: a chat app', link: '/examples/chat' },
+        { text: 'Vitrine: a museum collection', link: '/examples/museum' },
         {
           text: 'Furniture shop: the Lynx tutorial app',
           link: '/examples/furniture-shop',

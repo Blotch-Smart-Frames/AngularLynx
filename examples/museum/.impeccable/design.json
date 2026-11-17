@@ -1,0 +1,524 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-17T01:59:03+00:00",
+  "title": "Design System: Vitrine",
+  "extensions": {
+    "colorMeta": {
+      "bar": {
+        "role": "neutral",
+        "displayName": "Glazing Black",
+        "canonical": "rgba(20, 20, 20, 1)",
+        "tonalRamp": [
+          "#262626",
+          "#434343",
+          "#616161",
+          "#7e7e7e",
+          "#9b9b9b",
+          "#b8b8b8",
+          "#d5d5d5",
+          "#f2f2f2"
+        ]
+      },
+      "clear": {
+        "role": "neutral",
+        "displayName": "Clear Glass",
+        "canonical": "rgba(236, 235, 230, 1)",
+        "tonalRamp": [
+          "#292823",
+          "#4a483d",
+          "#6c6855",
+          "#8f896d",
+          "#a7a38f",
+          "#bfbdb1",
+          "#d9d7d2",
+          "#f3f3f1"
+        ]
+      },
+      "clear-lit": {
+        "role": "neutral",
+        "displayName": "Lit Glass",
+        "canonical": "rgba(252, 251, 248, 1)",
+        "tonalRamp": [
+          "#2f2b1d",
+          "#574d30",
+          "#827140",
+          "#b0974c",
+          "#beac78",
+          "#cdc2a3",
+          "#dfdacb",
+          "#f5f3f0"
+        ]
+      },
+      "seed": {
+        "role": "neutral",
+        "displayName": "Seeded Glass",
+        "canonical": "rgba(222, 220, 212, 1)",
+        "tonalRamp": [
+          "#292823",
+          "#4a473d",
+          "#6b6756",
+          "#8e886d",
+          "#a6a28f",
+          "#bfbcb1",
+          "#d8d7d2",
+          "#f3f3f1"
+        ]
+      },
+      "cobalt": {
+        "role": "primary",
+        "displayName": "Gallery Cobalt",
+        "canonical": "rgba(29, 63, 166, 1)",
+        "tonalRamp": [
+          "#171e36",
+          "#213265",
+          "#27439a",
+          "#2652d5",
+          "#5d7cd8",
+          "#93a6dd",
+          "#c4cce7",
+          "#eef0f6"
+        ]
+      },
+      "amber": {
+        "role": "secondary",
+        "displayName": "Saved Amber",
+        "canonical": "rgba(200, 138, 28, 1)",
+        "tonalRamp": [
+          "#372b16",
+          "#684e1f",
+          "#9f7222",
+          "#dc9820",
+          "#ddad59",
+          "#dfc391",
+          "#e8dac2",
+          "#f7f3ee"
+        ]
+      },
+      "oxblood": {
+        "role": "tertiary",
+        "displayName": "Oxblood",
+        "canonical": "rgba(94, 26, 34, 1)",
+        "tonalRamp": [
+          "#331a1d",
+          "#5f282e",
+          "#8f323d",
+          "#c43748",
+          "#cc6975",
+          "#d69aa1",
+          "#e3c7ca",
+          "#f6eff0"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "rgba(17, 17, 17, 1)",
+        "tonalRamp": [
+          "#262626",
+          "#434343",
+          "#616161",
+          "#7e7e7e",
+          "#9b9b9b",
+          "#b8b8b8",
+          "#d5d5d5",
+          "#f2f2f2"
+        ]
+      },
+      "ink-soft": {
+        "role": "neutral",
+        "displayName": "Soft Ink",
+        "canonical": "rgba(70, 68, 62, 1)",
+        "tonalRamp": [
+          "#282725",
+          "#464540",
+          "#66635c",
+          "#858176",
+          "#a09d96",
+          "#bbbab5",
+          "#d7d6d4",
+          "#f3f2f2"
+        ]
+      },
+      "on-color": {
+        "role": "neutral",
+        "displayName": "On-Color",
+        "canonical": "rgba(246, 244, 238, 1)",
+        "tonalRamp": [
+          "#2d2a1f",
+          "#524b35",
+          "#7a6d47",
+          "#a49157",
+          "#b6a880",
+          "#c8c0a8",
+          "#ddd9cd",
+          "#f4f3f0"
+        ]
+      },
+      "bar-night": {
+        "role": "neutral",
+        "displayName": "Glazing Black (night)",
+        "canonical": "rgba(6, 6, 6, 1)",
+        "tonalRamp": [
+          "#262626",
+          "#434343",
+          "#616161",
+          "#7e7e7e",
+          "#9b9b9b",
+          "#b8b8b8",
+          "#d5d5d5",
+          "#f2f2f2"
+        ]
+      },
+      "clear-night": {
+        "role": "neutral",
+        "displayName": "Clear Glass (night)",
+        "canonical": "rgba(38, 38, 36, 1)",
+        "tonalRamp": [
+          "#272726",
+          "#454542",
+          "#63635e",
+          "#81817a",
+          "#9d9d98",
+          "#b9b9b7",
+          "#d6d6d4",
+          "#f2f2f2"
+        ]
+      },
+      "clear-lit-night": {
+        "role": "neutral",
+        "displayName": "Lit Glass (night)",
+        "canonical": "rgba(58, 58, 55, 1)",
+        "tonalRamp": [
+          "#272726",
+          "#454542",
+          "#63635e",
+          "#81817a",
+          "#9d9d99",
+          "#b9b9b7",
+          "#d6d6d4",
+          "#f2f2f2"
+        ]
+      },
+      "seed-night": {
+        "role": "neutral",
+        "displayName": "Seeded Glass (night)",
+        "canonical": "rgba(48, 47, 44, 1)",
+        "tonalRamp": [
+          "#272725",
+          "#454441",
+          "#64625d",
+          "#838078",
+          "#9f9d97",
+          "#bab9b6",
+          "#d6d6d4",
+          "#f3f2f2"
+        ]
+      },
+      "cobalt-night": {
+        "role": "primary",
+        "displayName": "Gallery Cobalt (night)",
+        "canonical": "rgba(58, 98, 222, 1)",
+        "tonalRamp": [
+          "#161e36",
+          "#213266",
+          "#26429b",
+          "#2550d7",
+          "#5d7bd9",
+          "#93a5dd",
+          "#c3cce7",
+          "#eef0f6"
+        ]
+      },
+      "amber-night": {
+        "role": "secondary",
+        "displayName": "Saved Amber (night)",
+        "canonical": "rgba(224, 162, 48, 1)",
+        "tonalRamp": [
+          "#372b16",
+          "#674e20",
+          "#9e7324",
+          "#da9922",
+          "#dbae5a",
+          "#dfc391",
+          "#e8dbc3",
+          "#f7f4ee"
+        ]
+      },
+      "oxblood-night": {
+        "role": "tertiary",
+        "displayName": "Oxblood (night)",
+        "canonical": "rgba(140, 42, 54, 1)",
+        "tonalRamp": [
+          "#321a1d",
+          "#5d2930",
+          "#8d343f",
+          "#c13b4b",
+          "#ca6c77",
+          "#d49ca3",
+          "#e3c8cb",
+          "#f5eff0"
+        ]
+      },
+      "ink-night": {
+        "role": "neutral",
+        "displayName": "Ink (night)",
+        "canonical": "rgba(236, 235, 230, 1)",
+        "tonalRamp": [
+          "#292823",
+          "#4a483d",
+          "#6c6855",
+          "#8f896d",
+          "#a7a38f",
+          "#bfbdb1",
+          "#d9d7d2",
+          "#f3f3f1"
+        ]
+      },
+      "ink-soft-night": {
+        "role": "neutral",
+        "displayName": "Soft Ink (night)",
+        "canonical": "rgba(184, 182, 174, 1)",
+        "tonalRamp": [
+          "#282725",
+          "#474540",
+          "#66645b",
+          "#868375",
+          "#a19e95",
+          "#bbbab5",
+          "#d7d6d3",
+          "#f3f2f2"
+        ]
+      },
+      "on-color-night": {
+        "role": "neutral",
+        "displayName": "On-Color (night)",
+        "canonical": "rgba(250, 249, 245, 1)",
+        "tonalRamp": [
+          "#2e2b1f",
+          "#544d33",
+          "#7c7145",
+          "#a79754",
+          "#b8ac7e",
+          "#c9c2a7",
+          "#dddacd",
+          "#f4f3f0"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "A tab's title in its transom pane, caps, one line per text."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "A work's title on its screen; steps down to 28, 24 and 21px with its pane."
+      },
+      "numeral": {
+        "displayName": "Numeral",
+        "purpose": "Counts and gallery numbers in colored panes."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Empty and trouble state headings; makers at 17px."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Notes, bylines and summaries."
+      },
+      "body-long": {
+        "displayName": "Body (long)",
+        "purpose": "A work's description."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Controls and tab names, in caps."
+      },
+      "label-small": {
+        "displayName": "Label (small)",
+        "purpose": "Field names and units (Date, Gallery, Works)."
+      }
+    },
+    "shadows": [],
+    "materials": [
+      {
+        "name": "frost",
+        "value": "<blur-view blur-effect=\"light\" blur-radius=\"18px\"> under rgba(var(--frost-rgb), 0.72)",
+        "purpose": "Floating bar panes: the wall shows blurred through them."
+      },
+      {
+        "name": "glazing",
+        "value": "border: 3px solid var(--bar)",
+        "purpose": "Each floating pane's own border; two meet as a 6px bar."
+      },
+      {
+        "name": "press-color",
+        "value": "filter: brightness(1.14)",
+        "purpose": "Pressed colored glass and pictures."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-glass",
+        "value": "cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "Every flood, fade and clear."
+      },
+      {
+        "name": "flood",
+        "value": "background-color 280ms",
+        "purpose": "Pressed and selected glass; top bar fade-in."
+      },
+      {
+        "name": "clear",
+        "value": "opacity 400ms",
+        "purpose": "A picture clearing in from frosted glass."
+      },
+      {
+        "name": "daylight",
+        "value": "opacity 0 / 0.75 / 0, 1600ms cubic-bezier(0.45, 0, 0.55, 1), 140ms stagger per pane",
+        "purpose": "Loading; still under Reduce Motion."
+      }
+    ],
+    "breakpoints": []
+  },
+  "components": [
+    {
+      "name": "Action Pane",
+      "kind": "button",
+      "refersTo": "action-pane",
+      "description": "Clear glass button in a row of equal panes; brightens under a finger.",
+      "html": "<div class=\"ds-row\"><button class=\"ds-action\">SAVE</button><button class=\"ds-action\">ZOOM IN</button><button class=\"ds-action\">SHARE</button></div>",
+      "css": ":root{--bar:rgba(20,20,20,1);--clear:rgba(236,235,230,1);--clear-lit:rgba(252,251,248,1);--frost-rgb:236,235,230;--seed:rgba(222,220,212,1);--cobalt:rgba(29,63,166,1);--amber:rgba(200,138,28,1);--oxblood:rgba(94,26,34,1);--ink:rgba(17,17,17,1);--ink-soft:rgba(70,68,62,1);--on-color:rgba(246,244,238,1)} .ds-row{display:flex;gap:6px;background:var(--bar);padding:6px} .ds-action{flex:1;height:56px;padding:0 12px;text-align:left;border:0;border-radius:0;background:var(--clear);color:var(--ink);font-family:'Sofia Sans Semi Condensed','SofiaSansLabel',sans-serif;font-weight:600;font-size:12px;letter-spacing:1.4px;transition:background-color 280ms cubic-bezier(0.22, 1, 0.36, 1)} .ds-action:hover,.ds-action:active{background:var(--clear-lit)} .ds-action:focus-visible{outline:3px solid var(--cobalt);outline-offset:-3px}"
+    },
+    {
+      "name": "Saved Action Pane",
+      "kind": "button",
+      "refersTo": "action-pane-saved",
+      "description": "The Save pane once a work is saved: flooded amber, ink label.",
+      "html": "<div class=\"ds-row\"><button class=\"ds-action ds-saved\">SAVED</button></div>",
+      "css": ":root{--bar:rgba(20,20,20,1);--clear:rgba(236,235,230,1);--clear-lit:rgba(252,251,248,1);--frost-rgb:236,235,230;--seed:rgba(222,220,212,1);--cobalt:rgba(29,63,166,1);--amber:rgba(200,138,28,1);--oxblood:rgba(94,26,34,1);--ink:rgba(17,17,17,1);--ink-soft:rgba(70,68,62,1);--on-color:rgba(246,244,238,1)} .ds-row{display:flex;gap:6px;background:var(--bar);padding:6px} .ds-action{flex:1;height:56px;padding:0 12px;text-align:left;border:0;border-radius:0;color:var(--ink);font-family:'Sofia Sans Semi Condensed','SofiaSansLabel',sans-serif;font-weight:600;font-size:12px;letter-spacing:1.4px;transition:background-color 280ms cubic-bezier(0.22, 1, 0.36, 1)} .ds-saved{background:var(--amber)} .ds-saved:hover,.ds-saved:active{filter:brightness(1.14)} .ds-saved:focus-visible{outline:3px solid var(--cobalt);outline-offset:-3px}"
+    },
+    {
+      "name": "Search Field",
+      "kind": "input",
+      "refersTo": "search-field",
+      "description": "A clear pane holding the query, with a Clear pane beside it.",
+      "html": "<div class=\"ds-row\"><label class=\"ds-field\"><input placeholder=\"Artist, title, place or material\"></label><button class=\"ds-clear\">CLEAR</button></div>",
+      "css": ":root{--bar:rgba(20,20,20,1);--clear:rgba(236,235,230,1);--clear-lit:rgba(252,251,248,1);--frost-rgb:236,235,230;--seed:rgba(222,220,212,1);--cobalt:rgba(29,63,166,1);--amber:rgba(200,138,28,1);--oxblood:rgba(94,26,34,1);--ink:rgba(17,17,17,1);--ink-soft:rgba(70,68,62,1);--on-color:rgba(246,244,238,1)} .ds-row{display:flex;gap:6px;background:var(--bar);padding:6px} .ds-field{flex:1;height:52px;display:flex;align-items:center;padding:0 16px;background:var(--clear)} .ds-field input{flex:1;border:0;background:transparent;color:var(--ink);font-size:17px;font-family:'Sofia Sans','SofiaSans',sans-serif;outline:none} .ds-field input::placeholder{color:var(--ink-soft)} .ds-field:focus-within{background:var(--clear-lit)} .ds-clear{width:76px;border:0;border-radius:0;background:var(--clear);color:var(--ink);font-family:'Sofia Sans Semi Condensed','SofiaSansLabel',sans-serif;font-weight:600;font-size:12px;letter-spacing:1.4px;} .ds-clear:hover{background:var(--clear-lit)} .ds-clear:focus-visible{outline:3px solid var(--cobalt);outline-offset:-3px}"
+    },
+    {
+      "name": "Tab Bar",
+      "kind": "nav",
+      "refersTo": "tab-pane",
+      "description": "Three frosted panes between black bars; the current one floods cobalt.",
+      "html": "<nav class=\"ds-tabs\"><a class=\"ds-tab ds-current\" href=\"#\">ON VIEW</a><a class=\"ds-tab\" href=\"#\">SEARCH</a><a class=\"ds-tab\" href=\"#\">SAVED <span class=\"ds-count\">3</span></a></nav>",
+      "css": ":root{--bar:rgba(20,20,20,1);--clear:rgba(236,235,230,1);--clear-lit:rgba(252,251,248,1);--frost-rgb:236,235,230;--seed:rgba(222,220,212,1);--cobalt:rgba(29,63,166,1);--amber:rgba(200,138,28,1);--oxblood:rgba(94,26,34,1);--ink:rgba(17,17,17,1);--ink-soft:rgba(70,68,62,1);--on-color:rgba(246,244,238,1)} .ds-tabs{display:flex;border:3px solid var(--bar);background:linear-gradient(90deg,#8a6b3a,#2c4f6b)} .ds-tab{flex:1;height:52px;display:flex;align-items:center;justify-content:center;gap:8px;border:3px solid var(--bar);background:rgba(var(--frost-rgb),0.72);backdrop-filter:blur(18px);color:var(--ink);text-decoration:none;font-family:'Sofia Sans Semi Condensed','SofiaSansLabel',sans-serif;font-weight:600;font-size:12px;letter-spacing:1.4px;font-size:13px;transition:background-color 280ms cubic-bezier(0.22, 1, 0.36, 1)} .ds-tab:hover{filter:brightness(1.14)} .ds-tab:focus-visible{outline:3px solid var(--cobalt);outline-offset:-6px} .ds-current{background:var(--cobalt);color:var(--on-color)} .ds-count{min-width:20px;height:20px;padding:0 4px;display:inline-flex;align-items:center;justify-content:center;background:var(--amber);color:var(--ink);font-size:11px}"
+    },
+    {
+      "name": "Top Bar",
+      "kind": "nav",
+      "refersTo": "top-bar-pane",
+      "description": "Black status strip, then a frosted Back pane and the title pane.",
+      "html": "<header class=\"ds-top\"><div class=\"ds-status\"></div><div class=\"ds-bar\"><a class=\"ds-back\" href=\"#\"><i class=\"ds-chev\"></i>ON VIEW</a><div class=\"ds-title\">PORTRAIT OF DORA WHEELER</div></div></header>",
+      "css": ":root{--bar:rgba(20,20,20,1);--clear:rgba(236,235,230,1);--clear-lit:rgba(252,251,248,1);--frost-rgb:236,235,230;--seed:rgba(222,220,212,1);--cobalt:rgba(29,63,166,1);--amber:rgba(200,138,28,1);--oxblood:rgba(94,26,34,1);--ink:rgba(17,17,17,1);--ink-soft:rgba(70,68,62,1);--on-color:rgba(246,244,238,1)} .ds-status{height:20px;background:var(--bar)} .ds-bar{display:flex;border:3px solid var(--bar);background:linear-gradient(90deg,#8a6b3a,#2c4f6b)} .ds-back,.ds-title{height:44px;display:flex;align-items:center;gap:6px;padding:0 12px;border:3px solid var(--bar);background:rgba(var(--frost-rgb),0.72);backdrop-filter:blur(18px);color:var(--ink)} .ds-back{width:94px;text-decoration:none;font-family:'Sofia Sans Semi Condensed','SofiaSansLabel',sans-serif;font-weight:600;font-size:12px;letter-spacing:1.4px;} .ds-back:hover{background:rgba(252,251,248,0.9)} .ds-back:focus-visible{outline:3px solid var(--cobalt);outline-offset:-6px} .ds-chev{width:9px;height:9px;margin-left:3px;border-left:2px solid var(--ink);border-bottom:2px solid var(--ink);transform:rotate(45deg)} .ds-title{flex:1;font-size:21px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:'Sofia Sans Extra Condensed','SofiaSansDisplay',sans-serif;font-weight:700;letter-spacing:-0.2px;}"
+    },
+    {
+      "name": "Transom",
+      "kind": "custom",
+      "refersTo": "pane",
+      "description": "A tab's title pane beside its cobalt count pane.",
+      "html": "<div class=\"ds-transom\"><div class=\"ds-pane ds-big\">ON VIEW<br>NOW</div><div class=\"ds-count-pane\"><b>143</b><span>WORKS</span></div></div>",
+      "css": ":root{--bar:rgba(20,20,20,1);--clear:rgba(236,235,230,1);--clear-lit:rgba(252,251,248,1);--frost-rgb:236,235,230;--seed:rgba(222,220,212,1);--cobalt:rgba(29,63,166,1);--amber:rgba(200,138,28,1);--oxblood:rgba(94,26,34,1);--ink:rgba(17,17,17,1);--ink-soft:rgba(70,68,62,1);--on-color:rgba(246,244,238,1)} .ds-transom{display:flex;gap:6px;background:var(--bar);padding:6px} .ds-pane{flex:1;padding:20px 16px 8px;background:var(--clear);color:var(--ink)} .ds-big{font-size:68px;line-height:60px;font-family:'Sofia Sans Extra Condensed','SofiaSansDisplay',sans-serif;font-weight:700;letter-spacing:-0.2px;} .ds-count-pane{width:92px;display:flex;flex-direction:column;justify-content:flex-end;padding:0 12px 12px;background:var(--cobalt);color:var(--on-color)} .ds-count-pane b{font-size:40px;line-height:40px;font-weight:700;font-family:'Sofia Sans Extra Condensed','SofiaSansDisplay',sans-serif;font-weight:700;letter-spacing:-0.2px;} .ds-count-pane span{font-family:'Sofia Sans Semi Condensed','SofiaSansLabel',sans-serif;font-weight:600;font-size:12px;letter-spacing:1.4px;font-size:11px}"
+    },
+    {
+      "name": "Fact Panes",
+      "kind": "card",
+      "refersTo": "pane",
+      "description": "A row of two clear panes, each a field label over its value.",
+      "html": "<div class=\"ds-row\"><div class=\"ds-fact\"><span>DATE</span><p>1882–83</p></div><div class=\"ds-fact\"><span>TYPE</span><p>Painting</p></div></div>",
+      "css": ":root{--bar:rgba(20,20,20,1);--clear:rgba(236,235,230,1);--clear-lit:rgba(252,251,248,1);--frost-rgb:236,235,230;--seed:rgba(222,220,212,1);--cobalt:rgba(29,63,166,1);--amber:rgba(200,138,28,1);--oxblood:rgba(94,26,34,1);--ink:rgba(17,17,17,1);--ink-soft:rgba(70,68,62,1);--on-color:rgba(246,244,238,1)} .ds-row{display:flex;gap:6px;background:var(--bar);padding:6px} .ds-fact{flex:1;padding:12px 16px 14px;background:var(--clear);display:flex;flex-direction:column;gap:4px} .ds-fact span{color:var(--ink-soft);font-family:'Sofia Sans Semi Condensed','SofiaSansLabel',sans-serif;font-weight:600;font-size:12px;letter-spacing:1.4px;font-size:11px} .ds-fact p{margin:0;color:var(--ink);font-size:16px;line-height:21px;font-family:'Sofia Sans','SofiaSans',sans-serif;}"
+    },
+    {
+      "name": "Rail",
+      "kind": "custom",
+      "refersTo": "rail-cobalt",
+      "description": "The narrow pane beside a work carrying its gallery number.",
+      "html": "<div class=\"ds-row\"><div class=\"ds-pic\"></div><div class=\"ds-rail\"><span>GALLERY</span><b>208</b></div></div>",
+      "css": ":root{--bar:rgba(20,20,20,1);--clear:rgba(236,235,230,1);--clear-lit:rgba(252,251,248,1);--frost-rgb:236,235,230;--seed:rgba(222,220,212,1);--cobalt:rgba(29,63,166,1);--amber:rgba(200,138,28,1);--oxblood:rgba(94,26,34,1);--ink:rgba(17,17,17,1);--ink-soft:rgba(70,68,62,1);--on-color:rgba(246,244,238,1)} .ds-row{display:flex;gap:6px;background:var(--bar);padding:6px;height:200px} .ds-pic{flex:1;background:var(--seed)} .ds-rail{width:56px;padding-top:12px;display:flex;flex-direction:column;align-items:center;background:var(--seed)} .ds-rail span{color:var(--ink);font-family:'Sofia Sans Semi Condensed','SofiaSansLabel',sans-serif;font-weight:600;font-size:12px;letter-spacing:1.4px;font-size:10px} .ds-rail b{color:var(--cobalt);font-size:26px;line-height:30px;font-family:'Sofia Sans Extra Condensed','SofiaSansDisplay',sans-serif;font-weight:700;letter-spacing:-0.2px;}"
+    },
+    {
+      "name": "Trouble",
+      "kind": "custom",
+      "refersTo": "trouble-pane",
+      "description": "An oxblood pane saying what failed, with the way out beside it.",
+      "html": "<div class=\"ds-row\"><div class=\"ds-trouble\"><b>The museum can't be reached.</b><p>Check the connection and try again.</p></div><button class=\"ds-retry\">TRY AGAIN</button></div>",
+      "css": ":root{--bar:rgba(20,20,20,1);--clear:rgba(236,235,230,1);--clear-lit:rgba(252,251,248,1);--frost-rgb:236,235,230;--seed:rgba(222,220,212,1);--cobalt:rgba(29,63,166,1);--amber:rgba(200,138,28,1);--oxblood:rgba(94,26,34,1);--ink:rgba(17,17,17,1);--ink-soft:rgba(70,68,62,1);--on-color:rgba(246,244,238,1)} .ds-row{display:flex;gap:6px;background:var(--bar);padding:6px} .ds-trouble{flex:1;padding:16px;background:var(--oxblood);color:var(--on-color);font-family:'Sofia Sans','SofiaSans',sans-serif;} .ds-trouble b{display:block;font-weight:600;font-size:19px;line-height:23px} .ds-trouble p{margin:4px 0 0;font-size:15px;line-height:21px} .ds-retry{width:104px;padding:12px;display:flex;align-items:flex-end;border:0;border-radius:0;background:var(--clear);color:var(--ink);font-family:'Sofia Sans Semi Condensed','SofiaSansLabel',sans-serif;font-weight:600;font-size:12px;letter-spacing:1.4px;} .ds-retry:hover{background:var(--clear-lit)} .ds-retry:focus-visible{outline:3px solid var(--cobalt);outline-offset:-3px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Glazed Partition",
+    "overview": "**Creative North Star: \"The Glazed Partition\"**\n\nThe collection is a steel-framed glass wall you walk along. Every work is a pane between matte black glazing bars, every fact a pane of its own, and saturated glass appears only where something matters now. The black of the bars is the screen's own background (`page` is painted `bar`); panes are laid on it with a 6px gap, so the gap is the line. There are no other lines, no rounded corners, no shadows and no cards.\n\nHierarchy comes from pane size and glass color first: the widest pane holds the lead work, a narrow rail pane carries a gallery number, a flooded pane says \"here\" or \"saved\". Type sits inside a pane, never across a bar: an extra condensed face, big and tight in caps, for titles and numbers; a quiet grotesque for reading; a semi condensed tracked caps label for controls and field names. A semibold weight names makers and state headings, the one place weight carries rank.\n\nAt night (the phone's dark appearance, `page.dark`) the wall is lit from behind: panes go smoked, the bars go deeper, and the three colors brighten into glow. Motion is light, not travel: glass brightens under a finger, floods with color when selected, pictures clear in from frosted glass, and loading is daylight crossing the panes. Nothing in the world slides; the stack's push and swipe-back are the platform's.",
+    "keyCharacteristics": [
+      "One line in the whole system: the 6px black bar between panes.",
+      "Square glass everywhere (0px radius); depth is frosting and blur, never shadow.",
+      "Three meaning colors, each with one job: cobalt for where you are and what's on view, amber for saved, oxblood for failure.",
+      "Titles in extra condensed caps, set tight; labels in semi condensed tracked caps.",
+      "Floating bars are real frosted glass over the scrolling wall."
+    ],
+    "rules": [
+      {
+        "name": "The One Job Rule",
+        "body": "Each saturated glass means one thing: cobalt is place and on view, amber is saved, oxblood is failure. Never use one decoratively or for a second meaning.",
+        "section": "colors"
+      },
+      {
+        "name": "The Color That Marks Everything Marks Nothing Rule",
+        "body": "Where every work on a wall shares a state, that state's color drops out: On View's rails are seeded glass with the number in cobalt, and no rail on Saved turns amber.",
+        "section": "colors"
+      },
+      {
+        "name": "The rgba Rule",
+        "body": "Colors are authored as `rgba()` values in custom properties on `page`, with their night values under `page.dark`; translucency comes from a `-rgb` channel twin (`--frost-rgb`). Hex is not used in source.",
+        "section": "colors"
+      },
+      {
+        "name": "The Caps Come From The Text Rule",
+        "body": "Lynx has no `text-transform`: display and label text is set in caps by Angular's `uppercase` pipe or written in caps, and accessibility labels keep sentence case.",
+        "section": "typography"
+      },
+      {
+        "name": "The Pane Holds The Type Rule",
+        "body": "Text sits inside a pane with its inset; it never crosses a bar or sits directly on the black.",
+        "section": "typography"
+      },
+      {
+        "name": "The Glass Not Paper Rule",
+        "body": "Nothing casts a shadow or floats on a card. A surface is either a pane in the wall or frosted glass over it.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Glazing Is A Border Rule",
+        "body": "A floating bar's black bars are each pane's own 3px black border (two panes meet at 6px), never a black backing, which the blur would turn grey.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do separate every pane with the 6px black bar, and inset the wall 6px from the screen edge.",
+      "Do give each saturated glass its one job: cobalt for place and on view, amber for saved, oxblood for failure.",
+      "Do set titles and numbers in Sofia Sans Extra Condensed Bold, in caps, tight (line height at or under the size), and labels in Sofia Sans Semi Condensed SemiBold caps at 12px with 1.4px tracking.",
+      "Do show pressed state by brightening glass (lit glass, or `brightness(1.14)` on color and pictures), and selection by flooding over 280ms with `cubic-bezier(0.22, 1, 0.36, 1)`.",
+      "Do make floating bars from frosted `<blur-view>` panes with 3px black borders.",
+      "Do author colors as `rgba()` custom properties with a night value under `page.dark`.",
+      "Do show loading as daylight crossing seeded panes laid out like the content they stand in for."
+    ],
+    "donts": [
+      "Don't round a corner, cast a shadow, or put content on a card.",
+      "Don't draw lines other than the bars: no hairline dividers, no outlines on wall panes.",
+      "Don't set text across a bar or directly on the black.",
+      "Don't use a saturated glass where every item on the screen shares its meaning.",
+      "Don't use a spinner, or slide anything in the world's own motion.",
+      "Don't use icon glyphs or icon fonts; the chevron and the zoom marks are drawn from borders and bars.",
+      "Don't author hex or space-separated color functions; Lynx's build and parser mangle or drop them."
+    ]
+  }
+}

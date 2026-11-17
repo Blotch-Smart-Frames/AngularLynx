@@ -15,6 +15,7 @@ import {
   WebEncodePlugin,
 } from '@lynx-js/template-webpack-plugin';
 import type { UndefinedOnPartialDeep } from 'type-fest';
+import { getAngularCliContext } from './angular-cli-context.js';
 import { AngularWebpackPlugin } from './angular-webpack-plugin.js';
 import type { BackgroundEntries } from './background-entry.js';
 import { LAYERS } from './layers.js';
@@ -359,6 +360,11 @@ export const applyEntry = (
           enableSSR: options.enableSSR,
           isWeb,
           preferredFps: options.preferredFps,
+          // The plugin's own option wins, as `intl`'s does: a plain rspeedy
+          // app has no Angular CLI build options to set it in.
+          multiTouch:
+            options.multiTouch ??
+            getAngularCliContext(api)?.buildOptions?.['multiTouch'] === true,
         },
       ]);
   });

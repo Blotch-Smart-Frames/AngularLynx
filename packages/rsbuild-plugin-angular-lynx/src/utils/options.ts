@@ -66,6 +66,17 @@ export type PluginAngularLynxOptions = {
    * screen's rate whichever you choose.
    */
   preferredFps?: PreferredFps;
+  /**
+   * Whether touch events carry every finger on the screen, as a browser's
+   * do (Lynx's `enableMultiTouch` page config). Off, Lynx's default, a
+   * touch event has one finger, and a second is never reported, so a pinch
+   * can't be told from a drag. On, a second finger fires its own
+   * `touchstart`, and `touches` lists them all with `pageX`/`pageY`, which
+   * is how an app zooms with two fingers (Lynx recognizes no pinch itself).
+   * Taps don't fire while more than one finger is down. The same as the
+   * `multiTouch` build option in angular.json, which this replaces when set.
+   */
+  multiTouch?: boolean;
   removeDescendantSelectorScope?: boolean;
   targetSdkVersion?: string;
   // Enables true lazy loading for Angular Router's loadComponent() routes.
@@ -146,6 +157,10 @@ export const normalizeOptions = (
     // the rest of a ProMotion iPhone runs at 120, so they looked half as
     // smooth as the system's.
     preferredFps: 'high',
+    // Undefined so angular.json's `multiTouch` build option decides (see
+    // entry.ts); off unless one of them turns it on.
+    //@ts-expect-error
+    multiTouch: undefined,
     targetSdkVersion: '3.2',
     // Lynx's own default (lynx_config.yml), and what web developers expect.
     defaultOverflowVisible: true,

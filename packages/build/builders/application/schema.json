@@ -53,6 +53,11 @@
       "uniqueItems": true,
       "description": "The Intl APIs to add to the Lynx bundle, which Lynx lacks, with data for i18n.sourceLocale and i18n.locales. Needs the FormatJS packages they use installed. The web bundle uses the browser's own."
     },
+    "multiTouch": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether touch events carry every finger on the screen, as a browser's do (Lynx's enableMultiTouch page config). Off, a touch event has one finger and a second is never reported. On, a second finger fires its own touchstart and touches lists them all, which is how an app zooms with two fingers: Lynx recognizes no pinch. Taps don't fire while more than one finger is down. Lynx for Web carries every finger either way."
+    },
     "browser": {
       "type": "string",
       "description": "Angular: the app's entry point. Read by @blotch/rsbuild-plugin-angular-lynx and `ng test`, and rspeedy's `source.entry` unless lynx.config.ts sets one."

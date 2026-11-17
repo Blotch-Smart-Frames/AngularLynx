@@ -1673,6 +1673,13 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
       ) {
         return true;
       }
+      // An element that keeps rightward slides for itself, such as a
+      // picture that pans while it's zoomed in, drags as a sideways scroller
+      // does: the swipe back starts only at the edge. Lynx's own gestures
+      // read the attribute; this swipe is the outlet's, so it reads it too.
+      if (keepsRightwardSlides(element.getAttribute?.('consume-slide-event'))) {
+        return true;
+      }
       element = parentOf(element);
     }
     return false;
@@ -1698,6 +1705,50 @@ const elementOf = (target: unknown): TargetElement | null => {
   }
   return target as TargetElement;
 };
+
+/**
+ * Whether a `consume-slide-event` value keeps a slide to the right (0°, as
+ * Lynx measures angles from the right) for its element. The value is
+ * `[from, to]` ranges in degrees, in whichever form `getAttribute()` gives
+ * it back: native Lynx's own array type, which isn't an `Array` (iOS), the
+ * bound array, or text where it went through a DOM attribute (`[[-45,45]]`,
+ * or `-45,45` from an array's `toString()`).
+ */
+export const keepsRightwardSlides = (value: unknown): boolean => {
+  const numbers = anglesOf(value).map(Number);
+  for (let i = 0; i + 1 < numbers.length; i += 2) {
+    const from = Math.min(numbers[i]!, numbers[i + 1]!);
+    const to = Math.max(numbers[i]!, numbers[i + 1]!);
+    if (from <= 0 && to >= 0) return true;
+  }
+  return false;
+};
+
+/**
+ * A `consume-slide-event` value's angles, flattened: `[from, to, …]`.
+ */
+const anglesOf = (value: unknown): unknown[] => {
+  if (typeof value === 'string') {
+    if (!value.trim()) return [];
+    try {
+      return flatten(JSON.parse(value));
+    } catch {
+      return value.split(/[\s,[\]]+/).filter(Boolean);
+    }
+  }
+  if (value && typeof value === 'object') {
+    // A JSON round trip makes native Lynx's array type an Array.
+    try {
+      return flatten(JSON.parse(JSON.stringify(value)));
+    } catch {
+      return [];
+    }
+  }
+  return [];
+};
+
+const flatten = (value: unknown): unknown[] =>
+  Array.isArray(value) ? value.flatMap(flatten) : [value];
 
 /**
  * An element's parent: LynxElement's `parentNode()`, or the DOM's property.

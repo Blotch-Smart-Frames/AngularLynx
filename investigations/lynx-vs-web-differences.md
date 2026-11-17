@@ -6875,7 +6875,7 @@ A component's `host: { '(document:pointermove)': … }`, `'(window:resize)'` or 
 
 ### What Lynx does
 
-With multi-touch on, Lynx numbers each finger from 0 and keeps its number until it lifts (`touches_map_` and `reuse_id_pool_` in iOS's `LynxTouchHandler.mm`, `MotionEvent.getPointerId()` on Android). With it off, which is a LynxView's default, there's one touch at a time, and its `identifier` is the address of the dictionary the touch is built in: `reinterpret_cast<int64_t>(&touch)` in `TouchEventHandler::GetTouchEventParam` (`core/renderer/events/touch_event_handler.cc`). On the iOS 27 Simulator, a drag's `touchmove`s had one identifier and its `touchend` another. The element pointer events made from touches (`pointer-events.ts`) followed a finger by its identifier, so on iOS a drag's `pointermove`s and `pointerup` never fired, and each new touch was a second, non-primary pointer.
+With multi-touch on, Lynx numbers each finger from 0 and keeps its number until it lifts (`touches_map_` and `reuse_id_pool_` in iOS's `LynxTouchHandler.mm`, `MotionEvent.getPointerId()` on Android). With it off, Lynx's default, there's one touch at a time, and its `identifier` is the address of the dictionary the touch is built in: `reinterpret_cast<int64_t>(&touch)` in `TouchEventHandler::GetTouchEventParam` (`core/renderer/events/touch_event_handler.cc`). On the iOS 27 Simulator, a drag's `touchmove`s had one identifier and its `touchend` another. The element pointer events made from touches (`pointer-events.ts`) followed a finger by its identifier, so on iOS a drag's `pointermove`s and `pointerup` never fired, and each new touch was a second, non-primary pointer.
 
 ### The fix
 
@@ -7273,3 +7273,46 @@ On iOS, and in the web preview, it does. On Android (API 34 emulator, Lynx Explo
 ### What to do
 
 Give a rounded element a border on every side (`border border-border`, which follows the corners on Android too), or none. `ui-bottom-sheet`'s default panel has none: its tone against the dimmed backdrop is its edge.
+
+---
+
+## Touch events carry one finger unless the bundle turns multi-touch on
+
+### What you'd expect (web)
+
+A second finger fires its own `touchstart`, and every touch event's `touches` lists all the fingers on the screen, which is how a page zooms with a pinch.
+
+### What Lynx does
+
+- **One finger, by default.** Lynx reads multi-touch from the page config, `enableMultiTouch` (default `false`, since Lynx 2.14), when the bundle loads: `LynxUIRenderer.mm` hands it to iOS's touch recognizer, `TouchEventDispatcher.java` to Android's. It isn't a LynxView or LynxViewBuilder property, Lynx has no call to change it at runtime, and its docs don't mention it. Off, iOS gives a second finger only to native views, and Android ignores it.
+- **The build's `multiTouch` option** (angular.json, or `pluginAngularLynx({ multiTouch })`) writes `enableMultiTouch` into the bundle. Then a second finger fires its own `touchstart` on the element under it, `touches` lists every finger on the page, and `changedTouches` every finger in the batch. Each touch's `x`/`y` is relative to the element that finger started on, so measure a pinch with `pageX`/`pageY`. A handler can run twice for one batch when the fingers started on different children of its element.
+- **Taps and long presses don't fire** while more than one finger is down, and iOS's gesture arena follows only the first finger: Lynx has no pinch recognizer (`PinchGesture` never fires), so the app works out the zoom itself.
+- **Lynx for Web has no flag**: its touch events carry the browser's touch lists. But it listens passively, so the browser pinch-zooms the page as well. Set `touch-action: none` on the element there. Native Lynx has no `touch-action`: a stylesheet rule for it is dropped from the iOS and Android bundles with a build warning, so bind it inline, on the web only (`[style.touch-action]="web ? 'none' : null"`).
+
+The museum example's viewer (`examples/museum/src/app/artwork/viewer.ts`) zooms this way.
+
+---
+
+## The dev server's web preview doesn't show images from servers without CORP
+
+### What you'd expect (web)
+
+`<img src="https://other-site.example/photo.jpg">` shows the photo, whatever server it's on.
+
+### What Lynx does
+
+`ng serve`'s web preview page (`/__web_preview`, from `@lynx-js/web-rsbuild-server-middleware`) is cross-origin isolated, for `SharedArrayBuffer`: it sends `Cross-Origin-Embedder-Policy: require-corp`. The browser then refuses a cross-origin image whose server sends no `Cross-Origin-Resource-Policy` header (the Cleveland Museum of Art's image server, for one), and the `<image>` stays empty with no error in the app. The docs site's `<Go>` previews and the native apps aren't isolated and show the image.
+
+To check such an app in the dev preview, serve the images from a server that sends `Cross-Origin-Resource-Policy: cross-origin`, or, in an automated browser, add the header to their responses (Playwright's `page.route()`).
+
+---
+
+## An array attribute comes back from `getAttribute()` as something that isn't an `Array`
+
+### What you'd expect (web)
+
+What you set is what you read: a property set to an array reads back as that array.
+
+### What Lynx does
+
+On iOS (measured on the iOS 27 Simulator, 2026-11-17), `__GetAttributeByName` gives an attribute set to an array, such as `[consume-slide-event]="[[-180, 180]]"`, back as Lynx's own array type: `JSON.stringify()` writes it as `[[-180,180]]` and `typeof` says `object`, but `Array.isArray()` is `false`, so code that checks for an array sees nothing. `<lynx-stack-outlet>`'s swipe back, which reads `consume-slide-event` up the touched element's ancestors, missed it this way until it read the value through a JSON round trip (`keepsRightwardSlides()` in `lynx-stack-outlet.ts`). Read such a value with `JSON.parse(JSON.stringify(value))` before treating it as an array.

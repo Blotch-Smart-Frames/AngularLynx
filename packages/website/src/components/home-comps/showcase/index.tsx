@@ -75,7 +75,9 @@ const sweepTheLine: AutoGestureOptions = {
 /**
  * The apps the landing page runs live. The showcase comes first: it's the
  * one that makes the case. The Orrery is a whole 3D world of hand-written
- * shaders, and Darkroom the 2D counterpart, image processing on the GPU. The furniture shop is the Lynx tutorials' app,
+ * shaders, and Darkroom the 2D counterpart, image processing on the GPU.
+ * Par Avion is the everyday feel of a chat app, and Vitrine a real app's
+ * architecture: live data in tabs that each keep a stack. The furniture shop is the Lynx tutorials' app,
  * for a reader who knows the ReactLynx original; the other two are there for
  * anyone who wants the simplest app and the widest one. `code` is the docs
  * page with the app's source beside it.
@@ -134,6 +136,19 @@ const demos: {
     // No demonstration: Lynx for Web takes a tap only from a real click, so
     // a synthesized one can't open a conversation.
     code: '/examples/chat',
+  },
+  {
+    id: 'museum',
+    label: 'Vitrine',
+    tagline: 'A museum’s collection, live',
+    blurb:
+      'The Cleveland Museum of Art’s open collection over its live API, hung as a glass wall: tabs that each keep a stack of screens, a wall that loads as you scroll, and a painting to zoom into with two fingers.',
+    hint: 'Tap a painting, then tap its picture to zoom in. Switch tabs and come back.',
+    // No demonstration: Lynx for Web takes a tap only from a real click, so
+    // a synthesized one can't open a work. The status bar sits on the black
+    // glazing bars.
+    code: '/examples/museum',
+    statusBar: 'light',
   },
   {
     id: 'furniture-shop',

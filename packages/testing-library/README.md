@@ -209,12 +209,12 @@ expect(getByRole('button', { name: 'Week', selected: true })).toBeTruthy();
 | `adjustable`           | `slider`    |
 | `tabbar`               | `tablist`   |
 
-- **Role**: from each trait in the table. An `<image>` is an `img` unless it sets `accessibility-traits`.
+- **Role**: from each trait in the table. An `<image>` is an `img` unless it sets `accessibility-traits`. `accessibility-heading` adds `heading`, and an `accessibility-role-description` of `button`, `switch`, `checkbox`, `image` or `progressbar` adds that role (`image` is `img`), as Android reads them.
 - **Reachable**: a screen reader reaches `<text>`, `<image>`, and other elements with `accessibility-element="true"`, outside `accessibility-elements-hidden`. A `tabbar` is read from the container around the tabs, so it needs no `accessibility-element`. Others match only with `hidden: true`.
-- **`name`**: the `accessibility-label`, or a `<text>`'s own text. A `<view>` gets no name from the text inside it, since iOS doesn't read it.
+- **`name`**: the `accessibility-label`, or a `<text>`'s own text. A `<view>` gets no name from the text inside it, since iOS doesn't read it. An `accessibility-status` comes first, as iOS and Android read it: `'Unread, Inbox'`.
 - **`selected`**: the `selected` trait, as in `accessibility-traits="button,selected"`, which an active `routerLinkActive` element gets, and which `[lynxAccessibilityTraits]="{ selected: true }"` adds. iOS reads a comma-separated list. Android reads one trait (`button` or `image`) and treats a list as `none`.
 - **`value: { text }`**: the `accessibility-value`.
-- **Other ARIA states** (`checked`, `pressed`, `expanded`, `level`, …) have no Lynx attribute, so Lynx elements never match them.
+- **Other ARIA states** (`checked`, `pressed`, `expanded`, `level`, …) have no Lynx attribute, so Lynx elements never match them, a `switch` or `checkbox` from a role description included.
 
 ### `screen`, `within()` and `getQueriesForElement()`
 

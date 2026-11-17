@@ -138,6 +138,28 @@ describe('LynxElementBase static attributes', () => {
     expect(text['event-through']).toBe(true);
   });
 
+  // Issue #456: none of these were inputs, so a binding to one failed ng
+  // test's template check, and a static one reached Lynx as a string.
+  it('takes the accessibility attributes Lynx reads on one platform or both', () => {
+    const text = textDirective(`
+      <text
+        accessibility-status="Unread"
+        accessibility-heading
+        accessibility-role-description="switch"
+        accessibility-enable-tap="true"
+        accessibility-auto-scroll-if-focused="false"
+        android-accessibility-keep-focused
+      >a</text>
+    `);
+
+    expect(text['accessibility-status']).toBe('Unread');
+    expect(text['accessibility-heading']).toBe(true);
+    expect(text['accessibility-role-description']).toBe('switch');
+    expect(text['accessibility-enable-tap']).toBe(true);
+    expect(text['accessibility-auto-scroll-if-focused']).toBe(false);
+    expect(text['android-accessibility-keep-focused']).toBe(true);
+  });
+
   it('keeps bound booleans, and undefined so the attribute can be removed', () => {
     const text = textDirective(
       '<text [flatten]="false" [user-interaction-enabled]="unset">a</text>',

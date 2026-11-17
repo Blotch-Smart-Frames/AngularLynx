@@ -106,6 +106,69 @@ describe('roles from accessibility-traits', () => {
   });
 });
 
+// Issue #456: Lynx reads these, and the queries didn't.
+describe('roles from accessibility-heading and accessibility-role-description', () => {
+  it('reads accessibility-heading as the heading role, unless it is "false"', () => {
+    const inbox = el('text', { 'accessibility-heading': 'true' }, 'Inbox');
+    const container = mount(
+      inbox,
+      el('text', { 'accessibility-heading': 'false' }, 'Archive'),
+    );
+    expect(getAllByRole(container, 'heading')).toEqual([inbox]);
+    expect(getByRole(container, 'heading', { name: 'Inbox' })).toBe(inbox);
+  });
+
+  it.each([
+    ['button', 'button'],
+    ['switch', 'switch'],
+    ['checkbox', 'checkbox'],
+    ['image', 'img'],
+    ['progressbar', 'progressbar'],
+  ])(
+    'reads the %s role description as the %s role, as Android does',
+    (description, role) => {
+      const element = el('view', {
+        'accessibility-element': 'true',
+        'accessibility-role-description': description,
+      });
+      const container = mount(element);
+      expect(getByRole(container, role)).toBe(element);
+    },
+  );
+
+  it('gives any other role description no role', () => {
+    const container = mount(
+      el('view', {
+        'accessibility-element': 'true',
+        'accessibility-role-description': 'card',
+      }),
+    );
+    expect(queryAllByRole(container, 'card')).toEqual([]);
+  });
+
+  it('adds them to the roles from traits', () => {
+    const element = el('view', {
+      'accessibility-element': 'true',
+      'accessibility-traits': 'button',
+      'accessibility-heading': 'true',
+    });
+    const container = mount(element);
+    expect(getByRole(container, 'button')).toBe(element);
+    expect(getByRole(container, 'heading')).toBe(element);
+  });
+
+  it("doesn't match a checked switch, as Lynx has no checked state", () => {
+    const container = mount(
+      el('view', {
+        'accessibility-element': 'true',
+        'accessibility-role-description': 'switch',
+      }),
+    );
+    expect(queryByRole(container, 'switch', { checked: true })).toBeNull();
+    expect(getByRole(container, 'switch', { checked: false })).toBeTruthy();
+  });
+});
+
 describe('what a screen reader reaches', () => {
   it('leaves out a <view> that is not an accessibility element', () => {
     const container = mount(el('view', { 'accessibility-traits': 'button' }));
@@ -254,6 +317,29 @@ describe('names', () => {
     expect(getByRole(container, 'button', { name: '' })).toBeTruthy();
   });
 
+  it('reads accessibility-status before the name, as iOS and Android do', () => {
+    const container = mount(
+      el('view', {
+        'accessibility-element': 'true',
+        'accessibility-traits': 'button',
+        'accessibility-label': 'Inbox',
+        'accessibility-status': 'Unread',
+      }),
+      el(
+        'text',
+        { 'accessibility-heading': 'true', 'accessibility-status': 'New' },
+        'Messages',
+      ),
+    );
+    expect(
+      getByRole(container, 'button', { name: 'Unread, Inbox' }),
+    ).toBeTruthy();
+    expect(queryByRole(container, 'button', { name: 'Inbox' })).toBeNull();
+    expect(
+      getByRole(container, 'heading', { name: 'New, Messages' }),
+    ).toBeTruthy();
+  });
+
   it('gives Lynx elements no description', () => {
     const container = mount(accessible('button', 'Save'));
     expect(getByRole(container, 'button', { description: '' })).toBeTruthy();
@@ -381,6 +467,17 @@ describe("Testing Library's roles", () => {
     expect(() =>
       queryAllByRole(container, 'button', { checked: true }),
     ).toThrow('"aria-checked" is not supported on role "button".');
+  });
+
+  it('reads accessibility-status before the name of an element ARIA gives a role', () => {
+    const field = el('input', {
+      'accessibility-label': 'Email',
+      'accessibility-status': 'Required',
+    });
+    const container = mount(field);
+    expect(getByRole(container, 'textbox', { name: 'Required, Email' })).toBe(
+      field,
+    );
   });
 
   it("throws Testing Library's message for a container that isn't an element", () => {

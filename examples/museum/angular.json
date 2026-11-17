@@ -1,0 +1,82 @@
+{
+  "$schema": "./node_modules/@angular/cli/lib/config/schema.json",
+  "version": 1,
+  "projects": {
+    "museum": {
+      "projectType": "application",
+      "root": ".",
+      "sourceRoot": "src",
+      "prefix": "app",
+      "architect": {
+        "build": {
+          "builder": "@blotch/angular-lynx-build:application",
+          "options": {
+            "outputPath": "dist",
+            "index": "src/index.html",
+            "browser": "src/main.ts",
+            "polyfills": [],
+            "tsConfig": "tsconfig.app.json",
+            "styles": ["src/styles.css"],
+            "scripts": [],
+            "appName": "Vitrine",
+            "appId": "dev.angularlynx.examples.vitrine",
+            "multiTouch": true,
+            "icon": "src/assets/launch/icon.png",
+            "splash": {
+              "image": "src/assets/launch/splash.png",
+              "imageWidth": 120,
+              "backgroundColor": "#141414"
+            },
+            "shortcuts": [
+              {
+                "id": "on-view",
+                "title": "What's on view",
+                "phrases": [
+                  "What's on view in {appName}",
+                  "Show what's on view in {appName}"
+                ],
+                "route": "/on-view",
+                "symbol": "building.columns"
+              },
+              {
+                "id": "search",
+                "title": "Search the collection",
+                "phrases": [
+                  "Search {appName}",
+                  "Search the collection in {appName}"
+                ],
+                "route": "/search",
+                "symbol": "magnifyingglass"
+              },
+              {
+                "id": "saved",
+                "title": "Saved works",
+                "phrases": [
+                  "Show my saved works in {appName}",
+                  "Open saved works in {appName}"
+                ],
+                "route": "/saved",
+                "symbol": "bookmark"
+              },
+              {
+                "id": "surprise",
+                "title": "Show me a work",
+                "phrases": [
+                  "Show me a work in {appName}",
+                  "Surprise me in {appName}"
+                ],
+                "symbol": "sparkles"
+              }
+            ]
+          }
+        },
+        "serve": {
+          "builder": "@blotch/angular-lynx-build:dev-server",
+          "options": {
+            "buildTarget": "museum:build"
+          }
+        }
+      }
+    }
+  }
+}

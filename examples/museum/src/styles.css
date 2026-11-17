@@ -1,0 +1,196 @@
+/*
+ * Tailwind CSS 4, as `ng add` sets it up: its theme and utilities, without
+ * Preflight, whose rules are for HTML elements. The build rewrites the CSS
+ * Tailwind writes into CSS Lynx reads.
+ */
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+/*
+ * Sofia Sans (SIL OFL 1.1, see assets/fonts/OFL.txt), a quiet grotesque in
+ * three widths. Lynx's @font-face takes no font-weight, so each weight is a
+ * family of its own: the extra condensed bold sets titles, the semi
+ * condensed semibold labels and buttons, the regular and semibold the text.
+ */
+@font-face {
+  font-family: 'SofiaSans';
+  src: url('./assets/fonts/sofia-sans.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'SofiaSansSemibold';
+  src: url('./assets/fonts/sofia-sans-semibold.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'SofiaSansLabel';
+  src: url('./assets/fonts/sofia-sans-semi-condensed-semibold.ttf')
+    format('truetype');
+}
+@font-face {
+  font-family: 'SofiaSansDisplay';
+  src: url('./assets/fonts/sofia-sans-extra-condensed-bold.ttf')
+    format('truetype');
+}
+
+@theme inline {
+  --font-body: 'SofiaSans';
+  --font-strong: 'SofiaSansSemibold';
+  --font-label: 'SofiaSansLabel';
+  --font-display: 'SofiaSansDisplay';
+
+  --color-bar: var(--bar);
+  --color-clear: var(--clear);
+  --color-seed: var(--seed);
+  --color-cobalt: var(--cobalt);
+  --color-amber: var(--amber);
+  --color-oxblood: var(--oxblood);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-on-color: var(--on-color);
+}
+
+/*
+ * The wall's glass. Bars are the only line; panes are clear or seeded white;
+ * cobalt marks where you are and what's on view, amber what's saved,
+ * oxblood what failed. Ink is for text on clear glass, on-color for text on
+ * cobalt and oxblood (amber is light enough for ink).
+ *
+ * At night (the phone's dark appearance, which gives `page` the dark class)
+ * the wall is lit from behind: the panes go smoked and the colors glow.
+ */
+page {
+  font-size: 16px;
+  background-color: var(--bar);
+
+  --bar: rgba(20, 20, 20, 1);
+  --clear: rgba(236, 235, 230, 1);
+  --clear-lit: rgba(252, 251, 248, 1);
+  --frost-rgb: 236, 235, 230;
+  --seed: rgba(222, 220, 212, 1);
+  --cobalt: rgba(29, 63, 166, 1);
+  --amber: rgba(200, 138, 28, 1);
+  --oxblood: rgba(94, 26, 34, 1);
+  --ink: rgba(17, 17, 17, 1);
+  --ink-soft: rgba(70, 68, 62, 1);
+  --on-color: rgba(246, 244, 238, 1);
+}
+page.dark {
+  --bar: rgba(6, 6, 6, 1);
+  --clear: rgba(38, 38, 36, 1);
+  --clear-lit: rgba(58, 58, 55, 1);
+  --frost-rgb: 38, 38, 36;
+  --seed: rgba(48, 47, 44, 1);
+  --cobalt: rgba(58, 98, 222, 1);
+  --amber: rgba(224, 162, 48, 1);
+  --oxblood: rgba(140, 42, 54, 1);
+  --ink: rgba(236, 235, 230, 1);
+  --ink-soft: rgba(184, 182, 174, 1);
+  --on-color: rgba(250, 249, 245, 1);
+}
+
+/* Lynx text doesn't inherit a font or color from the views around it. */
+text {
+  font-family: 'SofiaSans';
+  color: var(--ink);
+}
+
+/*
+ * A pane. Its glass brightens under a finger (`pressed`, from the Press
+ * directive) and floods with color when it's selected, over 280ms: the
+ * glass lights; nothing slides.
+ */
+.pane {
+  background-color: var(--clear);
+  transition: background-color 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.pane-seed {
+  background-color: var(--seed);
+}
+.pane-cobalt {
+  background-color: var(--cobalt);
+}
+.pane-amber {
+  background-color: var(--amber);
+}
+.pane-oxblood {
+  background-color: var(--oxblood);
+}
+.pane.pressed {
+  background-color: var(--clear-lit);
+}
+/* Colored glass and pictures brighten instead: there's no lighter glass
+   to change to. */
+.pane-cobalt.pressed,
+.pane-amber.pressed,
+.pane-oxblood.pressed,
+.glow.pressed {
+  filter: brightness(1.14);
+}
+
+/* Frosted glass over a <blur-view>: the clear pane's color, thinned so the
+   blurred wall shows through it. */
+.frost {
+  background-color: rgba(var(--frost-rgb), 0.72);
+  transition: background-color 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.frost.flooded {
+  background-color: var(--cobalt);
+}
+
+/* The glazing bars of glass that floats over the wall (the bars): each
+   pane's own black border, 3px a side, so two panes meet with a 6px bar and
+   the outer row's border makes the frame. A black backing behind the panes
+   would be all their <blur-view>s blurred. */
+.glazing {
+  border-width: 3px;
+  border-style: solid;
+  border-color: var(--bar);
+}
+
+/* Back's chevron: two sides of a square, in the ink of the glass it's on,
+   so it follows the light and dark walls as the text does. */
+.chevron {
+  width: 9px;
+  height: 9px;
+  margin-left: 3px;
+  border-left-width: 2px;
+  border-bottom-width: 2px;
+  border-style: solid;
+  border-color: var(--ink);
+  transform: rotate(45deg);
+}
+
+/* A label: semi condensed caps, tracked. Lynx has no text-transform, so
+   the text itself is in caps (the uppercase pipe). */
+.label {
+  font-family: 'SofiaSansLabel';
+  font-size: 12px;
+  letter-spacing: 1.4px;
+}
+/* Titles: extra condensed, caps, tight. */
+.display {
+  font-family: 'SofiaSansDisplay';
+  letter-spacing: -0.2px;
+}
+
+/* The status bar sits over the wall's top bar, the home indicator under the
+   tab bar. */
+.pt-status {
+  padding-top: env(safe-area-inset-top);
+}
+.pb-home {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+/* A pushed screen's content starts below the top bar: its 44px panes
+   between 6px bars, a bar's gap, and the status bar. */
+.pt-top-bar {
+  padding-top: calc(62px + env(safe-area-inset-top));
+}
+.pb-home-6 {
+  padding-bottom: calc(6px + env(safe-area-inset-bottom));
+}
+/* The end of a tab's first screen clears the tab bar floating over it: its
+   52px panes between 6px bars, and the home indicator. */
+.pb-tab-bar {
+  padding-bottom: calc(70px + env(safe-area-inset-bottom));
+}

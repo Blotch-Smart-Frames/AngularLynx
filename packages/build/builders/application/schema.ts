@@ -18,6 +18,12 @@ export type ApplicationBuilderOptions = NativeAppOptions & {
    */
   readonly intl?: readonly string[];
   /**
+   * Whether touch events carry every finger (Lynx's `enableMultiTouch` page
+   * config), which @blotch/rsbuild-plugin-angular-lynx reads from the build
+   * options it's passed.
+   */
+  readonly multiTouch?: boolean;
+  /**
    * The Angular compiler options `ng new` puts in the build target (browser,
    * tsConfig, polyfills, styles, optimization, ...).
    * @blotch/rsbuild-plugin-angular-lynx and `ng test` read them;

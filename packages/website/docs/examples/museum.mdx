@@ -1,0 +1,28 @@
+# Vitrine: a museum collection
+
+The Cleveland Museum of Art's open-access collection as a steel-framed glass wall: every work a pane between black glazing bars, every fact a pane of its own, with cobalt for what's on view, amber for what you've saved and oxblood for what went wrong. It's a real app's architecture, built on live data from a public API, in tabs that each keep a stack of screens.
+
+<Go example="museum" defaultFile="src/app/on-view/on-view.ts" />
+
+Scroll the wall: more works load as you near its end. Tap a painting to open it, then tap its picture and zoom into the brushwork with two fingers, or double-tap. Save it, switch to Search, browse a department, and come back: everything is where you left it.
+
+## What it shows
+
+- **Live network data** — Angular's `HttpClient` and [`httpResource`](/guide/http) against the museum's [Open Access API](https://openaccess-api.clevelandart.org/): a page of works at a time as the wall scrolls, a work's whole record on its own screen, and the collection's size on the Search tab. An `HttpInterceptor` gives the web preview's requests URLs of their own, because the API's cache answers browsers from copies made for the apps, which send no `Origin` (see `src/app/data/web-cache-key.ts`).
+- **Every state** — loading panes that daylight crosses, an oxblood pane with **Try again** when a page fails, an empty Saved tab, and a snapshot of the wall bundled with the app for when the museum can't be reached, which the app says it's showing.
+- **Tabs with a stack each** — [`<lynx-tab-outlet>`](/guide/routing#keep-each-tab-alive-as-a-tab-bar-does) keeps each tab once it's shown, its [`<lynx-stack-outlet>`](/guide/routing#slide-screens-in-and-out-as-a-native-app-does) screens and scroll positions too. The tabs are lazy routes (`loadChildren`), and Search and Saved are built ahead with `prebuild`, so the first tap on either shows it at once.
+- **Bars of its own** — the tab bar is the app's, not a component library's: frosted [`<blur-view>`](/api/elements/blur-view) panes with `RouterLink` and `RouterLinkActive`, carried off by a pushed screen through `LynxStackBottomBar`. The top bar's large title gives way to a compact one as the wall scrolls under it.
+- **Two-finger zoom** — the viewer zooms the 3,400-pixel print image with a pinch, pans it with momentum and double-taps to a point, in [main-thread scripts](/guide/main-thread/) that write the picture's transform on every touch with no change detection. Lynx recognizes no pinch, so the build's `multiTouch` option turns on Lynx's multi-touch and the scripts read every finger. While zoomed in, `consume-slide-event` keeps sideways drags from swiping the screen away.
+- **Virtualized lists** — the walls are [`<list>`](/api/elements/list)s built with `*lynxListFor`: each bay of panes is one item, reused as the wall scrolls.
+- **Launch** — a splash screen (the `splash` build option) that stays up until the wall has its works (`provideSplashScreen({ hide: 'manual' })`), and [app shortcuts](/guide/shortcuts): ask Siri "What's on view in Vitrine", or long-press the icon on Android. "Show me a work" opens one at random, through `LynxShortcuts`.
+- **Storage and sharing** — saved works persist whole with [`LynxLocalStorage`](/guide/persistent-storage), so Saved works offline; **Share** sends a work's page to the [share sheet](/guide/share), and **On the museum's site** opens it with `LynxLinking`.
+- **Dark mode** — at night the wall is lit from behind: the panes turn to smoked glass and the colors glow, from the theme's values under `page.dark`.
+- **Custom fonts** — Sofia Sans in three widths through [`@font-face`](/guide/custom-fonts/).
+
+Every record and picture is the museum's, published under CC0 and loaded live; the app credits it on each work. The app isn't the museum's and doesn't speak for it. In the web preview served by `ng serve`, the pictures don't show: the preview page is cross-origin isolated, and the museum's image server sends no `Cross-Origin-Resource-Policy`. They show here, in the apps, and in Lynx Explorer.
+
+## Related
+
+- [Par Avion](./chat) — a chat app: lists, gestures and the keyboard
+- [Facet](./showcase) — 3D on the GPU
+- [Load data from a server](/guide/http) — `HttpClient` and `httpResource`

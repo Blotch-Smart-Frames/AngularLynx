@@ -50,7 +50,7 @@ import {
   type StartedTransition,
   spyOnTransitions,
 } from '../../testing/transition-spy';
-import { LynxStackOutlet } from './lynx-stack-outlet';
+import { keepsRightwardSlides, LynxStackOutlet } from './lynx-stack-outlet';
 import { LynxStackBottomBar } from './stack-bottom-bar';
 import { LynxStackChrome, STILL } from './stack-chrome';
 import { LynxStackPage } from './stack-page';
@@ -1053,6 +1053,29 @@ describe('LynxStackOutlet', () => {
       await settle();
     });
 
+    it('swipes only from the edge on something that keeps rightward slides', async () => {
+      const { frames, settle } = await pushed();
+      const top = frames()[1]!;
+      // A zoomed-in picture that pans: its slides are its own, but upward
+      // ones aren't, so they still go back from anywhere.
+      const picture = document.createElement('view');
+      picture.setAttribute('consume-slide-event', '[[-180,180]]');
+      const inner = document.createElement('image');
+      picture.appendChild(inner);
+      top.firstElementChild!.appendChild(picture);
+      await drag(inner, 100, 300);
+      expect(top.style.transform).toBe('translateX(0px)');
+      touch(inner, 'touchend', 300);
+
+      const upward = document.createElement('view');
+      upward.setAttribute('consume-slide-event', '[[60,120]]');
+      top.firstElementChild!.appendChild(upward);
+      await drag(upward, 100, 200);
+      expect(top.style.transform).toBe('translateX(100px)');
+      touch(upward, 'touchend', 200);
+      await settle();
+    });
+
     it("reads a Lynx touch's target by its unique id", async () => {
       const { frames, host } = await pushed();
       const top = frames()[1]!;
@@ -1901,3 +1924,27 @@ const setInput = (component: object, name: string, value: unknown): void => {
     }
   ).applyValueToInputSignal(node, value);
 };
+
+describe('keepsRightwardSlides', () => {
+  it('reads the ranges as bound, or as a DOM attribute has them', () => {
+    expect(keepsRightwardSlides([[-35, 35]])).toBe(true);
+    expect(
+      keepsRightwardSlides([
+        [145, 180],
+        [-180, -145],
+      ]),
+    ).toBe(false);
+    expect(keepsRightwardSlides('[[-45,45],[135,180]]')).toBe(true);
+    expect(keepsRightwardSlides('10,-10')).toBe(true);
+    expect(keepsRightwardSlides('[[60,120]]')).toBe(false);
+    expect(keepsRightwardSlides('')).toBe(false);
+    expect(keepsRightwardSlides(null)).toBe(false);
+    // Native Lynx gives the attribute back as its own array type, which
+    // isn't an Array but writes itself as one.
+    const nativeArray = { toJSON: () => [[-180, 180]] };
+    expect(keepsRightwardSlides(nativeArray)).toBe(true);
+    expect(keepsRightwardSlides({ toJSON: () => [[60, 120]] })).toBe(false);
+    // An object that writes itself as nothing holds no angles.
+    expect(keepsRightwardSlides({ toJSON: () => undefined })).toBe(false);
+  });
+});

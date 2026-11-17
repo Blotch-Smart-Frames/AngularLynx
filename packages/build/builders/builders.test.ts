@@ -1148,6 +1148,7 @@ describe('unit-test builder', () => {
       'config',
       'environment',
       'intl',
+      'multiTouch',
       'appName',
       'appId',
       'version',

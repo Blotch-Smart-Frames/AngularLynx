@@ -74,8 +74,9 @@ const MAX_TOUCH_NUMBER = 0xffff;
  *
  * With multi-touch on, Lynx numbers each finger from 0 and keeps its number
  * until it lifts (`touches_map_` in iOS's LynxTouchHandler.mm, and Android's
- * `MotionEvent.getPointerId()`). With it off, which is the LynxView's
- * default, there's one touch at a time, and its `identifier` is the address
+ * `MotionEvent.getPointerId()`). With it off, Lynx's default (the
+ * `enableMultiTouch` page config, which the build's `multiTouch` option
+ * sets), there's one touch at a time, and its `identifier` is the address
  * of the dictionary Lynx builds the touch in (`reinterpret_cast<int64_t>(&touch)`
  * in TouchEventHandler::GetTouchEventParam), which changes from one event to
  * the next: on the iOS 27 Simulator, a drag's touchmove events had one and its

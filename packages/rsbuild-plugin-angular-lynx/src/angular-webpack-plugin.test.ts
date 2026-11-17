@@ -245,6 +245,7 @@ describe('AngularWebpackPlugin', () => {
         extractStr: false,
         experimental_isLazyBundle: false,
         preferredFps: 'high',
+        multiTouch: false,
       });
     });
 
@@ -1034,11 +1035,38 @@ describe('AngularWebpackPlugin', () => {
           enableCSSInlineVariables: true,
           preferredFps: 'high',
           enableElementInvokeUIMethodPendingTask: true,
+          enableMultiTouch: false,
           enableDisexposureWhenBackground: false,
         });
         expect(
           configOf(new AngularWebpackPlugin({ preferredFps: 'auto' })),
         ).toEqual(expect.objectContaining({ preferredFps: 'auto' }));
+      });
+
+      it('reports one finger at a time unless the app asks for every finger', () => {
+        const configOf = (plugin: AngularWebpackPlugin) => {
+          const { compiler, triggerCompilation } = createMockCompiler();
+          const triggerBeforeEncode = setupBeforeEncodeHook();
+          plugin.apply(compiler as never);
+          triggerCompilation(createMockCompilation());
+          const args = {
+            encodeData: {
+              lepusCode: { root: null },
+              sourceContent: { appType: 'card', config: {} },
+            },
+          };
+          triggerBeforeEncode(args);
+          return args.encodeData.sourceContent.config;
+        };
+
+        // Lynx reads multi-touch only from the page config, so it's there
+        // either way, off as Lynx's own default unless the app turns it on.
+        expect(configOf(new AngularWebpackPlugin())).toEqual(
+          expect.objectContaining({ enableMultiTouch: false }),
+        );
+        expect(
+          configOf(new AngularWebpackPlugin({ multiTouch: true })),
+        ).toEqual(expect.objectContaining({ enableMultiTouch: true }));
       });
 
       it('keeps elements on the screen while an iOS app is visible but not active', () => {
@@ -1132,6 +1160,7 @@ describe('AngularWebpackPlugin', () => {
           enableCSSInlineVariables: true,
           preferredFps: 'high',
           enableElementInvokeUIMethodPendingTask: true,
+          enableMultiTouch: false,
           enableDisexposureWhenBackground: false,
         });
       });

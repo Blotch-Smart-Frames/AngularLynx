@@ -270,8 +270,43 @@ describe('applyEntry', () => {
     // the page config.
     const angularUse = pluginUses.find((u) => u.name === 'lynx:angular')!;
     expect(angularUse.args[0]).toEqual(
-      expect.objectContaining({ preferredFps: 'auto' }),
+      expect.objectContaining({ preferredFps: 'auto', multiTouch: false }),
     );
+  });
+
+  it("takes multi-touch from the plugin's option, or else angular.json's build option", () => {
+    const multiTouchOf = (
+      pluginOption: boolean | undefined,
+      buildOptions: Record<string, unknown> | undefined,
+    ): unknown => {
+      const { api, lynxConfig, triggerChain } = createMockApi();
+      // The Lynx config and the Angular CLI context are both exposed; the
+      // CLI context is there only under `ng build` / `ng serve`.
+      api.useExposed.mockImplementation(((id: symbol) =>
+        id === Symbol.for('@lynx-js/rsbuild-plugin:config')
+          ? lynxConfig
+          : buildOptions && { buildOptions }) as never);
+      const { chain, pluginUses } = createMockChain({
+        entries: { main: { values: () => ['./src/main.ts'] } },
+      });
+      applyEntry(
+        api as never,
+        { ...entryOptions, multiTouch: pluginOption },
+        createBackgroundEntries(),
+        new Set(),
+      );
+      triggerChain(chain, { name: 'lynx', config: {} }, false);
+      return (
+        pluginUses.find((u) => u.name === 'lynx:angular')!.args[0] as {
+          multiTouch: unknown;
+        }
+      ).multiTouch;
+    };
+
+    expect(multiTouchOf(undefined, undefined)).toBe(false);
+    expect(multiTouchOf(undefined, { multiTouch: true })).toBe(true);
+    expect(multiTouchOf(false, { multiTouch: true })).toBe(false);
+    expect(multiTouchOf(true, undefined)).toBe(true);
   });
 
   it('adds the hot update clients to both threads in a dev build', () => {

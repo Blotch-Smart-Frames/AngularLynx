@@ -560,6 +560,62 @@ describe('global-callbacks', () => {
     });
   });
 
+  // The testing library's environment emulates both threads in one realm,
+  // and loads the runtime once, on its main thread (issue #467).
+  describe('runOnBackground in the testing environment', () => {
+    /**
+     * Wires the environment's contexts as it does: the main thread's
+     * getJSContext() delivers to the background thread's getCoreContext(),
+     * and back.
+     */
+    const loadInEnvironment = async () => {
+      const main = makeFakeJSContext();
+      const background = makeFakeJSContext();
+      main.ctx.dispatchEvent = (event) =>
+        background.listeners[event.type]?.({ data: event.data });
+      background.ctx.dispatchEvent = (event) =>
+        main.listeners[event.type]?.({ data: event.data });
+      vi.stubGlobal('lynxTestingEnv', {
+        backgroundThread: {
+          globalThis: { lynx: { getCoreContext: () => background.ctx } },
+        },
+      });
+      await load({ mainThread: true, lynx: { getJSContext: () => main.ctx } });
+      return { main, background };
+    };
+
+    it("runs the function on the environment's background thread", async () => {
+      const { background } = await loadInEnvironment();
+      globalThis.registerWorklet('background', 'double', (n: number) => n * 2);
+
+      await expect(
+        (globalThis as any).runOnBackground({ _wkltId: 'double' }, 21),
+      ).resolves.toBe(42);
+      expect(Object.keys(background.listeners)).toContain(
+        'Lynx.Worklet.runOnBackground',
+      );
+    });
+
+    it('listens on each context once', async () => {
+      const { main, background } = await loadInEnvironment();
+      const added = vi.fn();
+      for (const ctx of [main.ctx, background.ctx]) {
+        const addEventListener = ctx.addEventListener;
+        ctx.addEventListener = (type, fn) => {
+          added(type);
+          addEventListener(type, fn);
+        };
+      }
+      globalThis.registerWorklet('background', 'one', () => 1);
+
+      await (globalThis as any).runOnBackground({ _wkltId: 'one' });
+      await (globalThis as any).runOnBackground({ _wkltId: 'one' });
+
+      // The main thread's context listened as the module loaded.
+      expect(added.mock.calls).toEqual([['Lynx.Worklet.runOnBackground']]);
+    });
+  });
+
   describe('background-thread cross-thread RPC', () => {
     // Regression: the background thread hears the main thread on
     // getCoreContext(). Listening on getJSContext() (its own context) meant

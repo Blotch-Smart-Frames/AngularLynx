@@ -43,7 +43,14 @@ export const backgroundFn = <TArgs extends unknown[], TReturn>(
 ): BackgroundFnHandle<TArgs, TReturn> => {
   const workletId = id ?? '__angular_bg_' + nextBgWorkletId++;
 
-  if (!__MAIN_THREAD__) {
+  // The testing library's environment emulates both threads in one realm, and
+  // a spec's modules load once, on its main thread, so the function is
+  // registered there too: the environment's background thread shares the
+  // registry, and answers runOnBackground() from it (issue #467).
+  if (
+    !__MAIN_THREAD__ ||
+    (globalThis as { lynxTestingEnv?: unknown }).lynxTestingEnv
+  ) {
     globalThis.registerWorklet('background', workletId, fn);
   }
 

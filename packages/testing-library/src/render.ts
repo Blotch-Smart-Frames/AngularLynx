@@ -106,7 +106,7 @@ export type RenderOptions<Q extends Queries = LynxQueries, C = unknown> = {
  */
 const INITIAL_URL_PROP = 'initialURL';
 
-type LynxGlobals = { lynx?: { __globalProps?: Record<string, unknown> } };
+type LynxGlobals = { lynx: { __globalProps?: Record<string, unknown> } };
 
 /**
  * Hands the app the link that started it, or none, as the shells do: in the
@@ -118,13 +118,15 @@ type LynxGlobals = { lynx?: { __globalProps?: Record<string, unknown> } };
  * new `lynx`, so nothing carries over to the next test either.
  */
 const setInitialURL = (env: any, url: string | undefined): void => {
+  // The environment gives both threads a `lynx`, but no global props: the
+  // first render() of a test creates them.
   for (const thread of [env.mainThread, env.backgroundThread]) {
-    const lynx = (thread?.globalThis as LynxGlobals | undefined)?.lynx;
-    if (!lynx) continue;
+    const props = ((thread.globalThis as LynxGlobals).lynx.__globalProps ??=
+      {});
     if (url === undefined) {
-      if (lynx.__globalProps) delete lynx.__globalProps[INITIAL_URL_PROP];
+      delete props[INITIAL_URL_PROP];
     } else {
-      (lynx.__globalProps ??= {})[INITIAL_URL_PROP] = url;
+      props[INITIAL_URL_PROP] = url;
     }
   }
 };

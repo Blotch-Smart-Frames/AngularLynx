@@ -2,6 +2,57 @@ import Lynx
 import SafariServices
 import UIKit
 
+/// The links with one of angular.json's `deepLinkSchemes` that opened the app.
+///
+/// The one that starts the app arrives in the scene's connection options,
+/// before there's a LynxView: it becomes the `initialURL` global prop, which
+/// LynxViewController sends before the bundle runs, so the router's first
+/// screen is already the link's. One that arrives while the app is open
+/// (SceneDelegate's `scene(_:openURLContexts:)`) waits here, and the runtime's
+/// `LynxLinking` takes it with `takeURLs` when it hears the `angularLynxURL`
+/// global event, and once as it starts listening. A link waits for as long
+/// as that takes, so one that arrives while Angular is still starting isn't
+/// lost, and none is handled twice. ShortcutCenter works the same way.
+final class LinkCenter {
+  static let shared = LinkCenter()
+
+  /// The global event that says a link is waiting. It carries nothing: the
+  /// listener answers by taking them.
+  static let event = "angularLynxURL"
+
+  /// The link that started the app, if one did. Set before the
+  /// LynxViewController is made.
+  var initialURL: String?
+
+  /// Lynx calls modules off the main thread, and the scene delegate leaves
+  /// links on it.
+  private let lock = NSLock()
+  private var waiting: [String] = []
+
+  /// The app's LynxView, which LynxViewController sets once it has one.
+  weak var lynxView: LynxView?
+
+  /// Leaves a link that arrived while the app is open for the runtime, and
+  /// tells it. Called on the main thread.
+  func open(_ url: URL) {
+    lock.lock()
+    waiting.append(url.absoluteString)
+    lock.unlock()
+    // Before the LynxView exists there's nobody to tell, and the runtime
+    // asks when it starts listening anyway.
+    lynxView?.sendGlobalEvent(Self.event, withParams: [])
+  }
+
+  /// The waiting links, oldest first, which stop waiting.
+  func take() -> [String] {
+    lock.lock()
+    defer { lock.unlock() }
+    let taken = waiting
+    waiting = []
+    return taken
+  }
+}
+
 /// The native module behind the runtime's `LynxLinking`, which calls it as
 /// `NativeModules.AngularLynxLinking` (from the background thread, where
 /// NativeModules lives).
@@ -10,7 +61,9 @@ import UIKit
 /// its own. `openURL` hands it to iOS, which opens it in Safari, Mail or the
 /// app that claims it, and `openInApp` shows it in SFSafariViewController over
 /// the app. Each method calls back once: with `{}` when it's done, `{ value }`
-/// for `canOpenURL`, or `{ error: "failed", message }`.
+/// for `canOpenURL`, or `{ error: "failed", message }`. `takeURLs` calls back
+/// with `{ urls }`: the links to the app that arrived since the last call
+/// (see LinkCenter).
 final class LinkingModule: NSObject, LynxModule, SFSafariViewControllerDelegate {
   static var name: String { "AngularLynxLinking" }
 
@@ -19,6 +72,7 @@ final class LinkingModule: NSObject, LynxModule, SFSafariViewControllerDelegate 
       "openURL": NSStringFromSelector(#selector(openURL(_:callback:))),
       "openInApp": NSStringFromSelector(#selector(openInApp(_:options:callback:))),
       "canOpenURL": NSStringFromSelector(#selector(canOpenURL(_:callback:))),
+      "takeURLs": NSStringFromSelector(#selector(takeURLs(_:))),
     ]
   }
 
@@ -65,6 +119,10 @@ final class LinkingModule: NSObject, LynxModule, SFSafariViewControllerDelegate 
       }
       callback(["value": UIApplication.shared.canOpenURL(url)])
     }
+  }
+
+  @objc func takeURLs(_ callback: @escaping LynxCallbackBlock) {
+    callback(["urls": LinkCenter.shared.take()])
   }
 
   /// Shows `address` in SFSafariViewController and calls back once the

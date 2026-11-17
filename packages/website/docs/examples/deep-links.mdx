@@ -1,0 +1,19 @@
+# Deep Links
+
+Tickets, an app that `tickets://` links open on an event: `tickets://events/jazz-night?seat=B12` opens Jazz Night with seat B12, whether the app was closed or open. The bar at the bottom shows what `LynxLinking` says about the links. The preview has no links, so tap the events instead.
+
+<Go example="deep-links" defaultFile="src/app/app.routes.ts" />
+
+## What it shows
+
+- **`deepLinkSchemes` in angular.json** — `["tickets"]` registers the scheme with the phone. See [Open the app from a link](/guide/deep-links).
+- **`provideRouter()`** — navigates to each link's route: `tickets://events/jazz-night` goes to the `events/:id` route. The event screen has no code for it: `withComponentInputBinding()` hands it the `:id` and the `?seat=` as inputs.
+- **`LynxLinking.getInitialURL()` and `onURL()`** — the root component shows the link that started the app and the last one that arrived.
+- **`LynxLinking.openURL()`** — "Follow a link to Film Club" hands a `tickets://` link to the system, which opens it in the app that claims it: this one.
+
+Run it with `ng build --platform ios --run` or `--platform android --run`, then open a link with `xcrun simctl openurl booted 'tickets://events/jazz-night'` or `adb shell am start -a android.intent.action.VIEW -d 'tickets://events/jazz-night'`.
+
+## Related
+
+- [Linking](/examples/linking)
+- [`LynxLinking` API](/api/angular-lynx/linking)

@@ -223,6 +223,7 @@ export default defineConfig({
         { text: 'HTTP Requests', link: '/guide/http' },
         { text: 'Sign In with a Web Page', link: '/guide/web-sign-in' },
         { text: 'Open Links Outside the App', link: '/guide/open-links' },
+        { text: 'Open the App from a Link', link: '/guide/deep-links' },
         {
           text: 'Shortcuts for Siri and the App Icon',
           link: '/guide/shortcuts',
@@ -498,6 +499,7 @@ export default defineConfig({
         { dividerType: 'solid' },
         { sectionHeaderText: 'Platform' },
         { text: 'Defer Blocks', link: '/examples/defer' },
+        { text: 'Deep Links', link: '/examples/deep-links' },
         { text: 'Linking', link: '/examples/linking' },
         { text: 'Shortcuts', link: '/examples/shortcuts' },
         { text: 'Splash Screen', link: '/examples/splash-screen' },

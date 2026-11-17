@@ -77,8 +77,9 @@ final class LynxViewController: UIViewController {
     lynxView.layoutHeightMode = .exact
     view.addSubview(lynxView)
     self.lynxView = lynxView
-    // Who hears that a shortcut ran while the app is open.
+    // Who hears that a shortcut ran, or a link arrived, while the app is open.
     ShortcutCenter.shared.lynxView = lynxView
+    LinkCenter.shared.lynxView = lynxView
 
     layoutLynxView()
     lynxView.updateGlobalProps(with: globalProps())
@@ -174,10 +175,10 @@ final class LynxViewController: UIViewController {
   /// The global props the runtime reads: `theme` (LynxTheme), `isNotchScreen`
   /// (LynxSafeArea), `appLocale` (LynxLocale), `appTimeZone` (the `intl`
   /// build option's Intl.DateTimeFormat), the accessibility settings
-  /// (LynxAccessibilitySettings) and `osVersion` (LynxSystemInfo), plus the
-  /// safe-area insets and `edgeToEdge`, which env(safe-area-inset-*) reads.
-  /// The Android shell sends the same keys, and Lynx Explorer sends theme and
-  /// isNotchScreen too.
+  /// (LynxAccessibilitySettings), `osVersion` (LynxSystemInfo) and
+  /// `initialURL` (LynxLinking and the router), plus the safe-area insets and
+  /// `edgeToEdge`, which env(safe-area-inset-*) reads. The Android shell
+  /// sends the same keys, and Lynx Explorer sends theme and isNotchScreen too.
   private func globalProps() -> LynxTemplateData {
     let insets = view.safeAreaInsets
     var props: [String: Any] = [
@@ -214,6 +215,11 @@ final class LynxViewController: UIViewController {
     // option's Intl.DateTimeFormat formats in the device's zone by default,
     // which it reads from the engine's local time, and names it with this.
     props["appTimeZone"] = TimeZone.current.identifier
+    // The link that started the app, which the router starts at. In every
+    // update, since each sends the whole set.
+    if let url = LinkCenter.shared.initialURL {
+      props["initialURL"] = url
+    }
     // Without useBoolLiterals, Lynx turns a Bool into 1 or 0.
     return LynxTemplateData(dictionary: props, useBoolLiterals: true)
   }

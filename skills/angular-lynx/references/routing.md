@@ -201,8 +201,37 @@ export class Postcards {
 - **Not supported:** input from what was said ("show stamps from Japan"), running without opening the app, phrases in more than one language, voice on Android.
 - **Specs:** `runShortcut('refresh')` from the testing library runs one (`runShortcut('stamps', { route: '/stamps' })` for one with a route, since a spec doesn't read angular.json); `await waitForUpdate()` before checking.
 
+## Deep links (links that open the app)
+
+`deepLinkSchemes` in the `build` target's options in `angular.json` registers URL schemes with the phone (`ng build --platform` writes them into Info.plist and the Android manifest; rebuild after changing them):
+
+```json
+"deepLinkSchemes": ["tickets"]
+```
+
+`provideRouter()` from `@blotch/angular-lynx` then navigates to each link's route, with no code, as Expo Router does:
+
+- **The route** is everything after `scheme://`, the first part too, with the query and fragment: `tickets://events/42?seat=B12` and `tickets:///events/42?seat=B12` go to `/events/42?seat=B12`, `tickets://` to `/`. For an `https://` link the route starts after the host. `withComponentInputBinding()` hands the route's params and query to `input()`s.
+- **A link that starts the app** is the router's first route (the history starts there, so nothing is under it and back leaves the app). If no route matches it, the app starts at `/` and `console.warn`s; add a `**` route to catch these.
+- **A link while the app is open** (front or background) navigates there from the current screen; back returns. One no route matches leaves the app where it is. Guards and redirects run as for any navigation.
+- **`provideDeepLinkRoute(({ url, route, initial }) => ...)`** changes where a link leads: return another route, or `null` to stay put (at launch, `/`). Use it for links the app handles itself:
+
+```typescript
+providers: [
+  provideRouter(routes),
+  provideDeepLinkRoute(({ url, route }) =>
+    url.startsWith('tickets://invite') ? null : route,
+  ),
+],
+```
+
+- **The URL itself** comes from `LynxLinking` (React Native's `Linking.getInitialURL()` and `url` event): `getInitialURL()` returns the link that started the app or `null`, synchronously, and the same for the whole run; `onURL(url => ...)` hears each later link (not the launching one), returns a remover, and goes with the component or service whose constructor registered it (or pass `{ injector }`). Links that arrived while the app was starting wait for the first handler. Both work without the router.
+- **Only `--platform` apps** (`ng build` or `ng serve`) get links: in Lynx Explorer and the web preview `getInitialURL()` is `null` and nothing arrives. Try them with the app both closed and open.
+- **Not supported:** universal links and Android App Links (https links to your site that open the app) aren't set up by the build.
+- **Specs:** `openLink('tickets://events/42')` from the testing library sends a link as one arriving while the app is open; `await waitForUpdate()` before checking.
+
 ## Key Differences from Web Routing
 
-- **No URL bar** — users can't type URLs. All navigation goes through `routerLink` or the `Router`.
+- **No URL bar** — users can't type URLs. All navigation goes through `routerLink` or the `Router`, or a [deep link](#deep-links-links-that-open-the-app) that opens the app.
 - **No browser back button** — use `Location.back()`. In the Android app `ng build --platform android` makes, the system back button goes back a screen through the router (and leaves the app from the first one).
 - **In-memory only** — the URL state exists only in `LynxLocationStrategy`'s internal signal. There's no `window.location` or `history.pushState`.

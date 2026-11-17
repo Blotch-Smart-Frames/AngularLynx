@@ -1,6 +1,6 @@
 # Routing
 
-Router providers, the stack outlet that moves between screens as native apps do, the tab outlet that keeps each tab as a tab bar does, and the in-memory location classes that let Angular Router run on Lynx. `import { provideRouter, LynxStackOutlet, LynxStackPage, LynxStackChrome, LynxStackBottomBar, LynxTabOutlet, LynxTabPage, LynxLocationStrategy, LynxPlatformLocation, LynxRouteReuseStrategy, LynxRouterLinkActive } from '@blotch/angular-lynx';`
+Router providers, the stack outlet that moves between screens as native apps do, the tab outlet that keeps each tab as a tab bar does, and the in-memory location classes that let Angular Router run on Lynx. `import { provideRouter, provideDeepLinkRoute, type DeepLink, type DeepLinkRoute, LynxStackOutlet, LynxStackPage, LynxStackChrome, LynxStackBottomBar, LynxTabOutlet, LynxTabPage, LynxLocationStrategy, LynxPlatformLocation, LynxRouteReuseStrategy, LynxRouterLinkActive } from '@blotch/angular-lynx';`
 
 ## Usage
 
@@ -48,8 +48,33 @@ Calls Angular's `provideRouter()` with your routes and features, and adds the Ly
 - **Your own `withRouterConfig()`** replaces this one, so include `resolveNavigationPromiseOnError: true` in it.
 - **From an event handler,** call `router.navigate()` directly, as on the web.
 - **A [shortcut](/guide/shortcuts) with a `route`** navigates there when the person runs it, from Siri or the app icon's menu. `provideRouter()` starts [`LynxShortcuts`](/api/angular-lynx/shortcuts) with the app, so it takes no code.
+- **A [deep link](/guide/deep-links)** with one of angular.json's `deepLinkSchemes` navigates to its route: `myapp://orders/42?tab=items` to `/orders/42?tab=items`. A link that starts the app is its first route, with nothing before it in the history; if the router can't go there, such as when no route matches, the app starts at `/` and logs a warning. A link while the app is open navigates there from the current screen. [`provideDeepLinkRoute()`](#providedeeplinkroute) changes where links lead.
 - **It also tells `LynxRouterLinkActive`** where to find an element's `RouterLinkActive`, so that `LYNX_ELEMENTS` doesn't import the router itself. Without `provideRouter()`, active links don't get the `selected` trait.
 - **The Android back button** calls `Location.back()` while `LynxLocationStrategy.canGoBack()` is `true`, and leaves the app when it's `false`. It works in the Android app `ng build --platform android` makes, and in [your own app](/guide/embedding/#connect-the-android-back-button) if it sends the same event. With a `LocationStrategy` of your own, the back button always leaves the app.
+
+### `provideDeepLinkRoute()`
+
+```typescript
+function provideDeepLinkRoute(route: DeepLinkRoute): EnvironmentProviders;
+
+type DeepLinkRoute = (link: DeepLink) => string | null;
+
+type DeepLink = {
+  readonly url: string;
+  readonly route: string;
+  readonly initial: boolean;
+};
+```
+
+Decides where the router goes for a link that opens the app, as Expo Router's `redirectSystemPath` does. It's called with each link: its whole `url`, the `route` the router goes to without it, and `initial`, whether the link started the app. Return a route to navigate to, or `null` to stay where the app is (for the link that started the app, that's `/`). An error it throws goes to the app's `ErrorHandler`, and the link goes nowhere.
+
+`route` is the link's path with its query and fragment. For the app's own scheme, everything after `//` is the path, the host too: `myapp://orders/42` and `myapp:///orders/42` both lead to `/orders/42`. For an `http` or `https` link, the path starts after the host.
+
+```typescript
+provideDeepLinkRoute(({ url, route }) =>
+  url.startsWith('myapp://auth') ? null : route,
+);
+```
 
 ### `LynxStackOutlet`
 

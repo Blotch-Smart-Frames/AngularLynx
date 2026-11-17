@@ -1,6 +1,7 @@
 {
   "import": ["../../cspell.json"],
   "words": [
+    "assetlinks",
     "cqmin",
     "dagre",
     "devicectl",
@@ -13,6 +14,7 @@
     "Macrobenchmark",
     "Multiplatform",
     "objc",
+    "openurl",
     "PKCE",
     "pokeapi",
     "pokedex",

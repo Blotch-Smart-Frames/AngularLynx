@@ -1,0 +1,156 @@
+# Open the app from a link
+
+A deep link is a link that opens your app on a screen: `tickets://events/jazz-night` in a message, an email or a QR code opens the Tickets app on Jazz Night. You give the app a URL scheme in angular.json, and the router does the rest. A link opens the app on its route whether the app was closed or already open.
+
+<Go example="deep-links" defaultFile="src/app/app.routes.ts" />
+
+Nothing on the web opens an app's scheme, so links only arrive in the app `ng build --platform` or `ng serve --platform` makes. See [Try it](#try-it).
+
+## Give the app a scheme
+
+List the schemes that open the app in `deepLinkSchemes`, in the `build` target's options:
+
+```json title="angular.json"
+"build": {
+  "builder": "@blotch/angular-lynx-build:application",
+  "options": {
+    "appName": "Tickets",
+    "deepLinkSchemes": ["tickets"]
+  }
+}
+```
+
+`ng build --platform` registers each one with the phone: as a URL type in Info.plist on iOS, and as an intent filter on the app's activity on Android. Pick a scheme no other app is likely to use, such as your app's name. When two apps claim one, the phone picks either.
+
+## Links open their route
+
+With `provideRouter()` from `@blotch/angular-lynx`, a link navigates to its route by itself, as Expo Router does:
+
+| Link                                 | Route                       |
+| ------------------------------------ | --------------------------- |
+| `tickets://events/jazz-night`        | `/events/jazz-night`        |
+| `tickets://events/jazz-night?seat=4` | `/events/jazz-night?seat=4` |
+| `tickets:///events/jazz-night`       | `/events/jazz-night`        |
+| `tickets://`                         | `/`                         |
+
+Everything after `tickets://` is the route, the first part too: in `tickets://events/jazz-night`, `events` is what a URL parser calls the host. The query and the fragment come along, so `withComponentInputBinding()` hands a component both the route's parameters and the query's:
+
+```typescript title="src/app/app.routes.ts"
+export const routes: Routes = [
+  { path: '', component: Events },
+  { path: 'events/:id', component: EventDetail },
+];
+```
+
+```typescript title="src/app/event-detail.ts"
+export class EventDetail {
+  readonly id = input.required<string>(); // jazz-night
+  readonly seat = input<string>(); // 4
+}
+```
+
+- **A link that starts the app** makes its route the first screen, as an address does when you open a page in a browser. The app doesn't draw the home screen first, and there's nothing under the link's screen: back leaves the app, as it does from any first screen.
+- **A link while the app is open,** in front or in the background, navigates there from wherever the app is, as a `routerLink` does. Back goes to where the person was.
+- **A link no route matches** leaves the app where it is. If it started the app, the app starts at `/` instead, and logs a warning that names the link. Add a `**` route to show a page of your own for these.
+
+Guards, resolvers and redirects run as for any navigation, so a link to a screen behind sign-in goes to your sign-in page if the guard sends it there.
+
+## Send a link somewhere else
+
+To change where links lead, provide a function that gets each one and returns the route to go to, or `null` to stay where the app is. It's Expo Router's `redirectSystemPath`:
+
+```typescript title="src/app/app.config.ts"
+import { provideDeepLinkRoute, provideRouter } from '@blotch/angular-lynx';
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideRouter(routes),
+    provideDeepLinkRoute(({ url, route, initial }) => {
+      // Links from before the screen was renamed.
+      if (route.startsWith('/shows/'))
+        return route.replace('/shows/', '/events/');
+      // A link the app handles itself, below.
+      if (url.startsWith('tickets://invite')) return null;
+      return route;
+    }),
+  ],
+};
+```
+
+It gets the whole `url`, the `route` it would go to, and whether the link is the one that started the app (`initial`). For a link that started the app, `null` starts it at `/`.
+
+## Read the URL yourself
+
+For a link that isn't a screen, such as an invitation to accept, read the URL with [`LynxLinking`](/api/angular-lynx/linking), the same service that opens links out of the app:
+
+```typescript title="src/app/app.ts"
+export class App {
+  readonly #linking = inject(LynxLinking);
+  readonly #invites = inject(Invites);
+
+  constructor() {
+    // The link that started the app, or null.
+    const first = this.#linking.getInitialURL();
+    if (first) this.#accept(first);
+
+    // Each link that arrives while the app is open.
+    this.#linking.onURL((url) => this.#accept(url));
+  }
+
+  #accept(url: string): void {
+    if (url.startsWith('tickets://invite')) this.#invites.accept(url);
+  }
+}
+```
+
+They're React Native's `Linking.getInitialURL()` and `url` event. `getInitialURL()` answers straight away, since the app is given the link before it starts, and stays the same for as long as the app runs. `onURL()` never gets that first link. A link that arrives while the app is still starting waits for the first `onURL()` handler, so none is lost. A handler registered in a constructor goes when its component or service is destroyed, and `onURL()` returns a function that removes it sooner.
+
+Both work without the router too. With it, the router still navigates: return `null` from `provideDeepLinkRoute()` for the links you handle yourself.
+
+## Try it
+
+Links need the real app, so run it with `--platform`, then open a link from your computer:
+
+```sh
+ng build --platform ios --run
+xcrun simctl openurl booted 'tickets://events/jazz-night?seat=4'
+
+ng build --platform android --run
+adb shell am start -a android.intent.action.VIEW -d 'tickets://events/jazz-night?seat=4'
+```
+
+The Simulator may ask "Open in Tickets?" before handing the link over. Run the command with the app closed to see a link start it, and again with it open. On a phone, send yourself the link in a message, or open it from a QR code. After changing `deepLinkSchemes`, build the app again: the schemes are compiled into it.
+
+## In the web preview, Lynx Explorer and tests
+
+- **In the [web preview](/guide/glossary#web-preview) and in Lynx Explorer,** no link ever opens the app: `getInitialURL()` is `null`, and `onURL()` handlers aren't called. The router starts at `/`.
+- **In unit tests,** open the app with a link with the testing library's [`openLink()`](/api/testing-library/#openlink), and check where it went:
+
+```typescript title="src/app/app.test.ts"
+import {
+  openLink,
+  render,
+  screen,
+  waitForUpdate,
+} from '@blotch/angular-lynx-testing-library';
+
+it('shows the event a link opens', async () => {
+  await render(App, { providers: [provideRouter(routes)] });
+
+  openLink('tickets://events/jazz-night');
+  await waitForUpdate();
+
+  expect(screen.getByText('Jazz Night')).toBeInTheDocument();
+});
+```
+
+## What isn't there yet
+
+- **Universal links and App Links,** `https://` links to your website that open the app instead. They need the website to vouch for the app (an `apple-app-site-association` file, and `assetlinks.json` on Android), which `ng build --platform` doesn't set up.
+
+## Related
+
+- [`LynxLinking` reference](/api/angular-lynx/linking)
+- [`provideDeepLinkRoute()` reference](/api/angular-lynx/routing#providedeeplinkroute)
+- [Open links outside the app](/guide/open-links)
+- [Build options](/api/build/#native-app-options)

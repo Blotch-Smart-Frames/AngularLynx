@@ -255,7 +255,7 @@
       "items": {
         "type": "string"
       },
-      "description": "Custom URL schemes that open the app, e.g. [\"myapp\"]."
+      "description": "Custom URL schemes that open the app, e.g. [\"myapp\"]. A link such as myapp://orders/42 opens the app, and provideRouter() navigates to its route (/orders/42)."
     },
     "canOpenURLSchemes": {
       "type": "array",

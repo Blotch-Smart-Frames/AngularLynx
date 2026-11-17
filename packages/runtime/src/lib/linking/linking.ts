@@ -1,5 +1,12 @@
-import { Injectable } from '@angular/core';
+import {
+  DestroyRef,
+  ErrorHandler,
+  inject,
+  Injectable,
+  Injector,
+} from '@angular/core';
 import { callOnBackground } from '../background-call';
+import { LynxNativeModule } from '../native-module/native-module';
 import type { PlatformType } from '../system-info/system-info';
 
 /**
@@ -7,6 +14,30 @@ import type { PlatformType } from '../system-info/system-info';
  * (`LinkingModule.swift` and `LinkingModule.kt` in `packages/native/templates`).
  */
 const LINKING_MODULE = 'AngularLynxLinking';
+
+/**
+ * The global event those apps send when a link to the app arrives while it's
+ * open. It carries nothing: the listener answers by taking the links waiting
+ * (`takeURLs`).
+ */
+const LINK_EVENT = 'angularLynxURL';
+
+/**
+ * The global prop holding the link that started the app. The shells send it
+ * with the others before the bundle runs, so it's there on the main thread
+ * when the router picks its first route.
+ */
+const INITIAL_URL_PROP = 'initialURL';
+
+/** What a handler registered with {@link LynxLinking.onURL} is called with. */
+export type LynxLinkHandler = (url: string) => void;
+
+/** What the shell's `takeURLs` calls back with. */
+type TakeURLsResult = { readonly urls?: readonly string[] };
+
+type GlobalEventEmitter = {
+  addListener(name: string, listener: () => void): unknown;
+};
 
 /**
  * What the shell's module calls back with: `{}` once it's done, `{ value }`
@@ -67,6 +98,41 @@ export type OpenInAppOptions = {
 
 /** `https:`, `mailto:`, `myapp:`: a URL starts with its scheme. */
 const SCHEME = /^([a-z][a-z0-9+.-]*):/i;
+
+/**
+ * The route a link to the app leads to: its path, with the query and the
+ * fragment. For the app's own scheme, everything after the `//` is the route,
+ * the host too, as Expo Router reads a link: `myapp://orders/42?tab=items`
+ * and `myapp:///orders/42?tab=items` both lead to `/orders/42?tab=items`, and
+ * `myapp://` to `/`. For an http(s) link, the host is the website's, so the
+ * route starts after it. Read by hand rather than with `URL`, which puts a
+ * custom scheme's first part in `host`, where the route wants it.
+ */
+export const routeOfLink = (url: string): string => {
+  const scheme = SCHEME.exec(url);
+  let rest = scheme ? url.slice(scheme[0].length) : url;
+  if (rest.startsWith('//')) {
+    rest = rest.slice(2);
+    if (scheme && /^https?$/i.test(scheme[1])) {
+      const end = rest.search(/[/?#]/);
+      rest = end < 0 ? '' : rest.slice(end);
+    }
+  }
+  return rest.startsWith('/') ? rest : `/${rest}`;
+};
+
+/**
+ * The DestroyRef of whatever is being constructed, or null outside an
+ * injection context. Angular has no public check for one, and `inject()`
+ * throws outside it.
+ */
+const currentDestroyRef = (): DestroyRef | null => {
+  try {
+    return inject(DestroyRef);
+  } catch {
+    return null;
+  }
+};
 
 /**
  * Checks that `url` has a scheme, as `window.open` and the platforms need:
@@ -187,8 +253,8 @@ const untilBack = (window: BrowserWindow, tab: BrowserTab): Promise<void> =>
   });
 
 /**
- * Opens links outside the app: in the browser, in another app, or in a
- * browser sheet over the app.
+ * Opens links outside the app, in the browser, in another app, or in a
+ * browser sheet over the app, and hears the links that open this one.
  *
  * Lynx has no `window.open`, `location` or `<a href>`, so a link can't leave
  * the app on its own. This hands it to the platform:
@@ -205,16 +271,134 @@ const untilBack = (window: BrowserWindow, tab: BrowserTab): Promise<void> =>
  * resolves `false`. Under the testing library, they record the URLs, so a
  * spec can check where a tap leads.
  *
+ * A link with one of angular.json's `deepLinkSchemes`, such as
+ * `myapp://orders/42`, opens the app. With `provideRouter()`, the router goes
+ * to the link's route (`/orders/42`) by itself, at launch and while the app
+ * is open; `provideDeepLinkRoute()` changes where a link leads. For the URL
+ * itself, {@link getInitialURL} returns the link that started the app, and
+ * {@link onURL} hears the links that arrive while it's open.
+ *
  * @usageNotes
  * ```typescript
  * const linking = inject(LynxLinking);
  *
  * await linking.openInApp('https://example.com/help');
  * await linking.openURL('mailto:support@example.com');
+ *
+ * linking.onURL((url) => console.log('Opened with', url));
  * ```
  */
 @Injectable({ providedIn: 'root' })
 export class LynxLinking {
+  readonly #injector = inject(Injector);
+  readonly #handlers = new Set<LynxLinkHandler>();
+  #listening = false;
+
+  /**
+   * The link that started the app, such as `myapp://orders/42`, or `null`
+   * when the person started it some other way, from its icon for instance.
+   * It stays the same for as long as the app runs, as React Native's
+   * `Linking.getInitialURL()` does, though it doesn't need to wait for it:
+   * the shell hands it over before the app starts.
+   *
+   * Only the apps `ng build --platform` makes are started by links. In Lynx
+   * Explorer and on the web, it's always `null`.
+   */
+  getInitialURL(): string | null {
+    const props =
+      typeof lynx !== 'undefined'
+        ? (lynx.__globalProps as Record<string, unknown> | undefined)
+        : undefined;
+    const url = props?.[INITIAL_URL_PROP];
+    return typeof url === 'string' && url !== '' ? url : null;
+  }
+
+  /**
+   * Calls `handler` with each link that opens the app while it's running,
+   * whether it's on screen or in the background, as React Native's `url`
+   * event does. The link that started the app isn't one of them: read it
+   * with {@link getInitialURL}.
+   *
+   * Links that arrived before anything listened, while the app was still
+   * starting, wait for the first handler.
+   *
+   * Called from an injection context, such as a constructor, the handler is
+   * removed when the component or service is destroyed; pass an `injector`
+   * to tie it to another one. The function it returns removes it sooner.
+   *
+   * @param handler - Called with the whole URL, such as
+   *   `myapp://orders/42?tab=items`.
+   * @returns A function that removes the handler.
+   */
+  onURL(
+    handler: LynxLinkHandler,
+    options?: { readonly injector?: Injector },
+  ): () => void {
+    this.#handlers.add(handler);
+    const remove = () => {
+      this.#handlers.delete(handler);
+    };
+    (options?.injector?.get(DestroyRef) ?? currentDestroyRef())?.onDestroy(
+      remove,
+    );
+    this.#listen();
+    return remove;
+  }
+
+  /**
+   * Starts hearing links, once. The shell keeps each link until it's taken,
+   * and sends the event when one arrives. Listening before the first take
+   * means none is missed: one that arrives in between is taken by whichever
+   * call comes next, and one from before, by the first.
+   *
+   * On the main thread, where Angular runs, the emitter is a proxy whose
+   * calls go through the background thread and return promises.
+   */
+  #listen(): void {
+    if (this.#listening) return;
+    this.#listening = true;
+    const emitter = this.#injector
+      .get(LynxNativeModule)
+      .getJSModule<GlobalEventEmitter>('GlobalEventEmitter');
+    void Promise.resolve()
+      .then(() => emitter?.addListener(LINK_EVENT, () => void this.#take()))
+      .catch(() => {
+        // Without a background thread there are no global events to hear.
+      })
+      .then(() => this.#take());
+  }
+
+  /**
+   * Asks the shell for the links that arrived since the last time.
+   */
+  async #take(): Promise<void> {
+    let result: TakeURLsResult | undefined;
+    try {
+      result = (await callOnBackground(
+        'callNativeModuleAsync',
+        LINKING_MODULE,
+        'takeURLs',
+        [],
+      )) as TakeURLsResult | undefined;
+    } catch {
+      // A host without the module, such as Lynx Explorer or the web, has no
+      // links to the app.
+      return;
+    }
+    for (const url of result?.urls ?? []) {
+      // A handler may remove itself as it's called: a Set skips what was
+      // removed and carries on.
+      for (const handler of this.#handlers) {
+        // One handler's error mustn't keep the link from the others.
+        try {
+          handler(url);
+        } catch (error) {
+          this.#injector.get(ErrorHandler).handleError(error);
+        }
+      }
+    }
+  }
+
   /**
    * Opens `url` where the system opens it: the default browser for http(s),
    * Mail for `mailto:`, the phone for `tel:`, and another app for its own

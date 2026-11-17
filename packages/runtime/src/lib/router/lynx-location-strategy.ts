@@ -52,6 +52,12 @@ let insertBefore: (
   entries: readonly HistoryEntry[],
 ) => void;
 
+/**
+ * Starts a strategy's history at another URL (see {@link startHistoryAt}).
+ * Assigned as {@link snapshotOf} is.
+ */
+let start: (strategy: LynxLocationStrategy, url: string) => boolean;
+
 /** Whether a strategy's constructor has assigned the accessors above. */
 let accessorsSet = false;
 
@@ -104,6 +110,22 @@ export const rewindHistory = (
 ): void => rewind(strategy, index);
 
 /**
+ * Starts a new strategy's history at `url` rather than at `/`, before the
+ * router's initial navigation, which then goes there first, as a browser's
+ * router starts at the address a page was opened with. `provideRouter()`
+ * starts it at the route of the link that opened the app (see
+ * deep-links.ts).
+ *
+ * A strategy holding the history a hot update carried over keeps it, so an
+ * edit doesn't take the app back to the link. Returns whether it started at
+ * `url`.
+ */
+export const startHistoryAt = (
+  strategy: LynxLocationStrategy,
+  url: string,
+): boolean => start(strategy, url);
+
+/**
  * Keeps the app on the screen it was showing when a hot update re-bootstraps
  * it. Called with the old app's injector before it's destroyed, it saves the
  * old strategy's history, and the next strategy created starts from it. The
@@ -142,6 +164,8 @@ export class LynxLocationStrategy extends LocationStrategy {
   #historyIndex = 0;
   #listeners: LocationChangeListener[] = [];
   readonly #canGoBack = signal(false);
+  /** Whether the history came from the app a hot update replaced. */
+  #carried = false;
 
   constructor() {
     super();
@@ -157,14 +181,24 @@ export class LynxLocationStrategy extends LocationStrategy {
         return entry && { ...entry };
       };
       insertBefore = (strategy, entries) => strategy.#insertBefore(entries);
+      start = (strategy, url) => strategy.#start(url);
     }
     if (carriedOver) {
+      this.#carried = true;
       this.#history = carriedOver.history;
       this.#historyIndex = carriedOver.index;
       this.#path = this.#history[this.#historyIndex].url;
       this.#canGoBack.set(this.#historyIndex > 0);
       carriedOver = undefined;
     }
+  }
+
+  #start(url: string): boolean {
+    if (this.#carried) return false;
+    this.#history = [{ state: null, url }];
+    this.#historyIndex = 0;
+    this.#path = url;
+    return true;
   }
 
   #insertBefore(entries: readonly HistoryEntry[]): void {

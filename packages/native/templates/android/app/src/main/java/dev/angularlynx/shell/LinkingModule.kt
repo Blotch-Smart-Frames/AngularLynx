@@ -14,6 +14,7 @@ import androidx.lifecycle.LifecycleOwner
 import com.lynx.jsbridge.LynxMethod
 import com.lynx.jsbridge.LynxModule
 import com.lynx.react.bridge.Callback
+import com.lynx.react.bridge.JavaOnlyArray
 import com.lynx.react.bridge.JavaOnlyMap
 import com.lynx.react.bridge.ReadableMap
 
@@ -29,6 +30,17 @@ import com.lynx.react.bridge.ReadableMap
  * Custom Tab over the app. Each method calls back once: with `{}` when it's
  * done, `{ value }` for `canOpenURL`, or `{ error: "failed", message }`, as
  * the iOS module does.
+ *
+ * It also hands over the links with one of angular.json's `deepLinkSchemes`
+ * that open the app. The one that starts it is MainActivity's `initialURL`
+ * global prop, which goes out before the bundle runs, so the router's first
+ * screen is already the link's. One that arrives while the app is open
+ * (MainActivity.onNewIntent) waits here, and the runtime's `LynxLinking`
+ * takes it with `takeURLs`, which calls back with `{ urls }`, when it hears
+ * the `angularLynxURL` global event, and once as it starts listening. A link
+ * waits for as long as that takes, so one that arrives while Angular is still
+ * starting isn't lost, and none is handled twice. ShortcutsModule works the
+ * same way.
  */
 class LinkingModule(context: Context, param: Any?) : LynxModule(context, param) {
     private val activity = param as ComponentActivity
@@ -125,6 +137,15 @@ class LinkingModule(context: Context, param: Any?) : LynxModule(context, param) 
         }
     }
 
+    @LynxMethod
+    fun takeURLs(callback: Callback) {
+        val urls = JavaOnlyArray()
+        for (url in takeWaiting()) {
+            urls.pushString(url)
+        }
+        callback.invoke(JavaOnlyMap.from(mapOf("urls" to urls)))
+    }
+
     private fun closed(watcher: DefaultLifecycleObserver) {
         activity.lifecycle.removeObserver(watcher)
         sheet = null
@@ -145,5 +166,25 @@ class LinkingModule(context: Context, param: Any?) : LynxModule(context, param) 
 
     companion object {
         const val NAME = "AngularLynxLinking"
+
+        // The global event that says a link is waiting. It carries nothing:
+        // the listener answers by taking them.
+        const val EVENT = "angularLynxURL"
+
+        // The activity leaves them on the main thread, and Lynx calls
+        // modules off it.
+        private val waiting = mutableListOf<String>()
+
+        /** Leaves a link that arrived while the app is open for the runtime. */
+        fun open(url: String) {
+            synchronized(waiting) { waiting.add(url) }
+        }
+
+        private fun takeWaiting(): List<String> =
+            synchronized(waiting) {
+                val taken = waiting.toList()
+                waiting.clear()
+                taken
+            }
     }
 }

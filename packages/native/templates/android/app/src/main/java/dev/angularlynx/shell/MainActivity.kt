@@ -84,6 +84,10 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
     }
     private var webAuthSession: WebAuthSession? = null
 
+    // The link with one of angular.json's deepLinkSchemes that started the
+    // app, sent as the initialURL global prop (see LinkingModule).
+    private var initialURL: String? = null
+
     // The Photo Picker (see ImagePickerModule), and who to tell what was
     // picked. An activity registers for results as it's created, before it
     // starts, so a result that arrives after Android recreated it still
@@ -137,6 +141,17 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
             intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY == 0
         ) {
             ShortcutsModule.run(intent)
+        }
+        // A link that started the app, which the router starts at. Unlike a
+        // shortcut it's read again when Android recreates the activity: the
+        // app starts again then, and a link tapped after Android ended the
+        // app in the background starts it that way too. Reopening the app
+        // from Recents hands over the link it last started with, which isn't
+        // the person following it again.
+        if (intent.action == Intent.ACTION_VIEW &&
+            intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY == 0
+        ) {
+            initialURL = intent.dataString
         }
 
         // The bundle in the app's assets, or in the debug build `ng serve
@@ -325,14 +340,22 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
             lynxView.sendGlobalEvent(ShortcutsModule.EVENT, JavaOnlyArray())
             return
         }
+        if (intent.action != Intent.ACTION_VIEW) return
+        val url = intent.data ?: return
         // The sign-in page's redirect to the callback scheme: the deep link
         // comes back to this activity, which closes the Custom Tab above it.
         // It arrives before onResume, which then finds no session open.
-        val url = intent.data ?: return
-        val session = webAuthSession ?: return
-        if (url.scheme?.lowercase() != session.scheme) return
-        webAuthSession = null
-        session.done(WebAuthModule.Result.Returned(url.toString()))
+        val session = webAuthSession
+        if (session != null && url.scheme?.lowercase() == session.scheme) {
+            webAuthSession = null
+            session.done(WebAuthModule.Result.Returned(url.toString()))
+            return
+        }
+        // Any other link with one of the app's schemes: the runtime's
+        // LynxLinking takes it when it hears the event, and the router
+        // navigates to it.
+        LinkingModule.open(url.toString())
+        lynxView.sendGlobalEvent(LinkingModule.EVENT, JavaOnlyArray())
     }
 
     // The manifest's configChanges keeps the activity, and the running app,
@@ -363,7 +386,8 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
      * The global props the runtime reads: `theme` (LynxTheme), `isNotchScreen`
      * (LynxSafeArea), `appLocale` (LynxLocale), `appTimeZone` (the `intl`
      * build option's Intl.DateTimeFormat), the accessibility settings
-     * (LynxAccessibilitySettings) and `osVersion` (LynxSystemInfo), plus the
+     * (LynxAccessibilitySettings), `osVersion` (LynxSystemInfo) and
+     * `initialURL` (LynxLinking and the router), plus the
      * safe-area insets in dp and `edgeToEdge`, which env(safe-area-inset-*)
      * reads. The iOS shell sends the same keys, and Lynx Explorer sends theme
      * and isNotchScreen too. Android 12 and later also send the wallpaper's
@@ -398,6 +422,9 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
         // which it reads from the engine's local time, and names it with this.
         props["appTimeZone"] = java.util.TimeZone.getDefault().id
         DynamicColors.read(this)?.let { props["dynamicColors"] = it }
+        // The link that started the app, which the router starts at. In
+        // every update, since each sends the whole set.
+        initialURL?.let { props["initialURL"] = it }
         return props
     }
 

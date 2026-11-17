@@ -1,2 +1,6 @@
-export { LinkingError, LynxLinking } from './linking';
-export type { LinkingErrorCode, OpenInAppOptions } from './linking';
+export { LinkingError, LynxLinking, routeOfLink } from './linking';
+export type {
+  LinkingErrorCode,
+  LynxLinkHandler,
+  OpenInAppOptions,
+} from './linking';

@@ -76,7 +76,7 @@ export const applySplitChunksRule = (
     // loadComponent() syntax but modules are synchronously available at runtime — this
     // avoids needing Lynx's async chunk loading (lynx.loadLazyBundle → QueryComponent),
     // which can only load a bundle on the main thread synchronously, while a route's
-    // first navigation would need to wait for it to download (see BUG_LIST.md).
+    // first navigation would need to wait for it to download (issue #451).
     // Applying this only to `lynx` once left `web` emitting lazy bundles, which then
     // had no main-thread code (both threads' modules shared a layer until issue #84):
     // every lazy route and @defer block failed there with "SyntaxError: Unexpected

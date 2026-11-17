@@ -86,6 +86,47 @@ export type RenderOptions<Q extends Queries = LynxQueries, C = unknown> = {
    * sees `@Input()` and `inputs` metadata, but not `input()` or `model()`.
    */
   inputs?: RenderInputs<C>;
+  /**
+   * The link that started the app, such as `myapp://orders/42`, as when the
+   * person opens the app from a link with one of angular.json's
+   * `deepLinkSchemes` while it's closed.
+   *
+   * `LynxLinking.getInitialURL()` returns it, and with `provideRouter()` the
+   * app's first screen is the link's route, with nothing under it to go back
+   * to. A link whose route the router can't find starts the app at `/`
+   * instead. Left out, the app starts from its icon: `getInitialURL()` is
+   * `null`. A link that arrives while the app is open is `openLink()`'s.
+   */
+  initialURL?: string;
+};
+
+/**
+ * The global prop the shells hand the link that started the app in, which
+ * `LynxLinking.getInitialURL()` reads (see the runtime's linking.ts).
+ */
+const INITIAL_URL_PROP = 'initialURL';
+
+type LynxGlobals = { lynx?: { __globalProps?: Record<string, unknown> } };
+
+/**
+ * Hands the app the link that started it, or none, as the shells do: in the
+ * global props, on both threads, before the app's code runs.
+ *
+ * Each render() sets it or clears it, so a rerender() with another component
+ * starts the app the way its own options say rather than with the last
+ * render's link. The environment's reset after each test gives each thread a
+ * new `lynx`, so nothing carries over to the next test either.
+ */
+const setInitialURL = (env: any, url: string | undefined): void => {
+  for (const thread of [env.mainThread, env.backgroundThread]) {
+    const lynx = (thread?.globalThis as LynxGlobals | undefined)?.lynx;
+    if (!lynx) continue;
+    if (url === undefined) {
+      if (lynx.__globalProps) delete lynx.__globalProps[INITIAL_URL_PROP];
+    } else {
+      (lynx.__globalProps ??= {})[INITIAL_URL_PROP] = url;
+    }
+  }
 };
 
 export type RenderResult<Q extends Queries = LynxQueries, C = unknown> = {
@@ -252,6 +293,10 @@ export const render = async <Q extends Queries = LynxQueries, C = unknown>(
   // are available as globals. LynxDocument requires them to create elements.
   const env = (globalThis as any).lynxTestingEnv;
   env.switchToMainThread();
+
+  // Before createApplication(): provideRouter() reads the link while the
+  // app's providers start, to pick the router's first route.
+  setInitialURL(env, options.initialURL);
 
   // Clear JSDOM body so previous render's elements are gone.
   const doc = (globalThis as any).document as Document;

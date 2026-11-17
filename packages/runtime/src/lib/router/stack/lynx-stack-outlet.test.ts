@@ -1944,5 +1944,7 @@ describe('keepsRightwardSlides', () => {
     const nativeArray = { toJSON: () => [[-180, 180]] };
     expect(keepsRightwardSlides(nativeArray)).toBe(true);
     expect(keepsRightwardSlides({ toJSON: () => [[60, 120]] })).toBe(false);
+    // An object that writes itself as nothing holds no angles.
+    expect(keepsRightwardSlides({ toJSON: () => undefined })).toBe(false);
   });
 });

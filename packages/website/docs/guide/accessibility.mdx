@@ -31,6 +31,8 @@ Use `id` unless you have a reason not to.
 - **`[accessibility-element]="true"` makes an element one stop** for the screen reader. Use it on a `<view>` that acts as a button or groups related content.
 - **`accessibility-label` is what gets read.** Give one to anything without readable text, such as an icon button.
 - **`accessibility-traits` says what kind of thing it is,** such as `button`, `image`, `link` or `header`. Note the plural: Lynx ignores `accessibility-trait`. iOS takes several, separated by commas with no spaces, such as `button,selected`; Android reads only one.
+- **A heading needs two attributes:** `accessibility-traits="header"` for iOS and `accessibility-heading` for Android, which reads only the `none`, `image` and `button` traits. Screen reader users skim a screen by jumping from heading to heading.
+- **`accessibility-status` is read before the label,** on iOS and Android: `accessibility-status="Unread"` on a row labeled `Inbox` reads "Unread, Inbox".
 - **An active `routerLinkActive` link is `selected` for you.** `LYNX_ELEMENTS` adds the trait while its route is active, after the element's own traits. See [Routing](/guide/routing#navigate-between-screens).
 
 ## Mark what's selected
@@ -219,6 +221,8 @@ You can test either way in [Lynx Explorer](/guide/glossary#lynx-explorer) or in 
 | `accessibility-elements-a11y`   | comma-separated `a11y-id`s   | The same, by `a11y-id`                                            |
 | `accessibility-elements-hidden` | `true` / `false`             | Hides the element and its children                                |
 | `accessibility-exclusive-focus` | `true` / `false`             | Keeps focus inside the element                                    |
+| `accessibility-status`          | text                         | A state read before the label, such as "Unread"                   |
+| `accessibility-heading`         | `true` / `false`             | Makes the element a heading on Android                            |
 
 The full list, with platform support, is in the [accessibility API reference](/api/angular-lynx/accessibility).
 

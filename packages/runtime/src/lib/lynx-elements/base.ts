@@ -99,6 +99,12 @@ function panInterceptScopeInput(
     'accessibility-elements',
     { name: 'accessibility-elements-hidden', transform: booleanInput },
     { name: 'accessibility-exclusive-focus', transform: booleanInput },
+    'accessibility-status',
+    { name: 'accessibility-heading', transform: booleanInput },
+    'accessibility-role-description',
+    { name: 'accessibility-enable-tap', transform: booleanInput },
+    { name: 'accessibility-auto-scroll-if-focused', transform: booleanInput },
+    { name: 'android-accessibility-keep-focused', transform: booleanInput },
     'a11y-id',
     { name: 'user-interaction-enabled', transform: booleanInput },
     { name: 'native-interaction-enabled', transform: booleanInput },
@@ -179,6 +185,44 @@ export class LynxElementBase implements OnChanges {
    * Whether this element exclusively captures accessibility focus.
    */
   declare 'accessibility-exclusive-focus'?: boolean;
+  /**
+   * A state a screen reader reads before the label, such as `'Unread'`:
+   * iOS and Android read `'Unread, Inbox'`.
+   */
+  declare 'accessibility-status'?: string;
+  /**
+   * Whether a screen reader treats the element as a heading, one of the
+   * places it jumps between when skimming a screen. Android only (9 and
+   * later); on iOS, use the `header` trait.
+   */
+  declare 'accessibility-heading'?: boolean;
+  /**
+   * What TalkBack calls the element instead of its kind. `'button'`,
+   * `'switch'`, `'checkbox'`, `'image'` and `'progressbar'` make it that
+   * kind of control; any other text is read as it is. Android only.
+   */
+  declare 'accessibility-role-description'?:
+    | 'button'
+    | 'switch'
+    | 'checkbox'
+    | 'image'
+    | 'progressbar'
+    | (string & {});
+  /**
+   * Whether TalkBack's double tap sends the element a tap. Android only.
+   */
+  declare 'accessibility-enable-tap'?: boolean;
+  /**
+   * Whether the page scrolls the element into view when code moves
+   * VoiceOver's focus to it. iOS only.
+   */
+  declare 'accessibility-auto-scroll-if-focused'?: boolean;
+  /**
+   * Whether TalkBack keeps its focus on the element when the screen's
+   * elements change around it, rather than losing it to whatever took the
+   * element's place. Android only.
+   */
+  declare 'android-accessibility-keep-focused'?: boolean;
   /**
    * Accessibility identifier (separate from name).
    */

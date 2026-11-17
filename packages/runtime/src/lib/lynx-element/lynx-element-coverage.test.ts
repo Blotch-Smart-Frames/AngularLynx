@@ -109,6 +109,44 @@ describe('LynxElement setAttribute id / data- branches', () => {
     });
   });
 
+  // Issue #472: the web preview's __SetDataset replaces the element's
+  // dataset, so a row with data-id and data-section reported only the one set
+  // last in its events.
+  it('sends every data-* key with each write, each in a copy of its own', () => {
+    const el = new LynxElement(makeRef() as unknown as ElementRef);
+    const setDataset = vi.mocked(globalThis.__SetDataset);
+    el.setAttribute('data-id', '42');
+    el.setAttribute('data-section', 'inbox');
+    expect(setDataset).toHaveBeenLastCalledWith(expect.anything(), {
+      id: '42',
+      section: 'inbox',
+    });
+    // The web preview keeps the object it's given: a later write mustn't
+    // change the one an earlier call handed over.
+    const [[, first], [, second]] = setDataset.mock.calls.slice(-2);
+    expect(first).toEqual({ id: '42' });
+    expect(second).not.toBe(first);
+  });
+
+  it('sends a removed data-* key as undefined, and keeps the others', () => {
+    // Native's __SetDataset merges what it's given into the dataset, so a
+    // key left out would keep its old value there.
+    const el = new LynxElement(makeRef() as unknown as ElementRef);
+    el.setAttribute('data-id', '42');
+    el.setAttribute('data-section', 'inbox');
+    el.removeAttribute('data-section');
+    expect(globalThis.__SetDataset).toHaveBeenLastCalledWith(
+      expect.anything(),
+      { id: '42', section: undefined },
+    );
+    // Gone from what the element holds too, so the next write leaves it out.
+    el.setAttribute('data-id', '43');
+    expect(globalThis.__SetDataset).toHaveBeenLastCalledWith(
+      expect.anything(),
+      { id: '43' },
+    );
+  });
+
   it('routes name="style" through setInlineStyles → __SetInlineStyles', () => {
     const el = new LynxElement(makeRef() as unknown as ElementRef);
     el.setAttribute('style', 'color: red');

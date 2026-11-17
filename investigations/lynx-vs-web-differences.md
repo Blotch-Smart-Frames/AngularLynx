@@ -7359,3 +7359,20 @@ What you set is what you read: a property set to an array reads back as that arr
 ### What Lynx does
 
 On iOS (measured on the iOS 27 Simulator, 2026-11-17), `__GetAttributeByName` gives an attribute set to an array, such as `[consume-slide-event]="[[-180, 180]]"`, back as Lynx's own array type: `JSON.stringify()` writes it as `[[-180,180]]` and `typeof` says `object`, but `Array.isArray()` is `false`, so code that checks for an array sees nothing. `<lynx-stack-outlet>`'s swipe back, which reads `consume-slide-event` up the touched element's ancestors, missed it this way until it read the value through a JSON round trip (`keepsRightwardSlides()` in `lynx-stack-outlet.ts`). Read such a value with `JSON.parse(JSON.stringify(value))` before treating it as an array.
+
+---
+
+## `__SetDataset` replaces the dataset on the web, and merges it on iOS and Android
+
+### What you'd expect (web)
+
+Setting `data-section` on an element with `data-id` leaves `data-id` alone, as `element.dataset.section = 'inbox'` does.
+
+### What Lynx does
+
+The two platforms' `__SetDataset(element, object)` disagree:
+
+- **Lynx for Web** replaces the element's dataset with the object: each `data-*` attribute it doesn't name is removed, and the object becomes what its events carry in `target.dataset` (`set_dataset` in web-core's `dataset_apis.rs`). It keeps the object itself, not a copy.
+- **iOS and Android** merge the object's keys into the dataset (`AttributeHolder::SetDataSet` in Lynx core): a key it doesn't name keeps its value, and there's no element API to remove one.
+
+`LynxElement.setAttribute()` used to pass only the key it was setting, so in the web preview an element with `data-id` and `data-section` kept only the one set last, and its taps reported only that one (issue #472). It now passes a copy of every key the element has, with a removed key as `undefined` so native drops its value too. `__AddDataset`, which sets one key, would keep the others, but web-core's removes the DOM attribute for any falsy value, `data-index="0"` included.

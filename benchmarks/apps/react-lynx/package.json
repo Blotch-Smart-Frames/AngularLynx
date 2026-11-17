@@ -1,0 +1,28 @@
+{
+  "name": "launchperf-poke-react-lynx",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "rspeedy build",
+    "build:ios": "node scripts/build-ios.mjs",
+    "typecheck": "tsc -p src --noEmit"
+  },
+  "dependencies": {
+    "@lynx-js/react": "0.129.3",
+    "@tanstack/react-query": "5.90.21",
+    "zustand": "5.0.12"
+  },
+  "devDependencies": {
+    "@blotch/angular-lynx-native": "file:../../../packages/native",
+    "@lynx-js/react-rsbuild-plugin": "0.22.3",
+    "@lynx-js/rspeedy": "0.18.6",
+    "@lynx-js/template-webpack-plugin": "0.16.8",
+    "@lynx-js/types": "4.4.2",
+    "@types/react": "19.3.0",
+    "typescript": "6.0.3"
+  },
+  "engines": {
+    "node": ">=22.12"
+  }
+}

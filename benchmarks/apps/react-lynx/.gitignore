@@ -1,0 +1,7 @@
+node_modules
+dist/
+# The native project rendered from @blotch/angular-lynx-native's template,
+# Xcode's derived data and the build logs (scripts/build-ios.mjs).
+build/
+*.tsbuildinfo
+.DS_Store

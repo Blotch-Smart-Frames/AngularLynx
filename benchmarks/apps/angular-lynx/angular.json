@@ -1,0 +1,95 @@
+{
+  "$schema": "./node_modules/@angular/cli/lib/config/schema.json",
+  "version": 1,
+  "cli": {
+    "packageManager": "npm",
+    "schematicCollections": [
+      "@blotch/angular-lynx",
+      "@schematics/angular"
+    ]
+  },
+  "newProjectRoot": "projects",
+  "projects": {
+    "angular-lynx": {
+      "projectType": "application",
+      "schematics": {},
+      "root": "",
+      "sourceRoot": "src",
+      "prefix": "app",
+      "architect": {
+        "build": {
+          "builder": "@blotch/angular-lynx-build:application",
+          "options": {
+            "browser": "src/main.ts",
+            "tsConfig": "tsconfig.app.json",
+            "styles": [
+              "src/styles.css"
+            ],
+            "appName": "LaunchPerfAL",
+            "appId": "com.angularlynx.bench.angularlynx",
+            "version": "1.0.0",
+            "icon": "src/assets/icon.png",
+            "splash": {
+              "image": "src/assets/splash-icon.png",
+              "imageWidth": 200,
+              "backgroundColor": "#ffffff",
+              "dark": {
+                "backgroundColor": "#000000"
+              }
+            },
+            "deepLinkSchemes": [
+              "launchperfal"
+            ],
+            "permissions": {
+              "localNetwork": "Loads the Pokédex from the benchmark's fixture server on your computer."
+            },
+            "ios": {
+              "teamId": "F64LTK85F6"
+            }
+          },
+          "configurations": {
+            "production": {
+              "budgets": [
+                {
+                  "type": "initial",
+                  "maximumWarning": "2MB",
+                  "maximumError": "5MB"
+                },
+                {
+                  "type": "anyComponentStyle",
+                  "maximumWarning": "4kB",
+                  "maximumError": "8kB"
+                }
+              ],
+              "outputHashing": "all"
+            },
+            "development": {
+              "optimization": false,
+              "extractLicenses": false,
+              "sourceMap": true
+            }
+          },
+          "defaultConfiguration": "production"
+        },
+        "serve": {
+          "builder": "@blotch/angular-lynx-build:dev-server",
+          "configurations": {
+            "production": {
+              "buildTarget": "angular-lynx:build:production"
+            },
+            "development": {
+              "buildTarget": "angular-lynx:build:development"
+            }
+          },
+          "defaultConfiguration": "development"
+        },
+        "test": {
+          "builder": "@blotch/angular-lynx-build:unit-test"
+        },
+        "extract-i18n": {
+          "builder": "@blotch/angular-lynx-build:extract-i18n"
+        }
+      }
+    }
+  }
+}

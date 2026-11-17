@@ -90,37 +90,85 @@ const parseCsv = <Column extends string>(
 const number = (value: string): number | undefined =>
   value === '' ? undefined : Number(value);
 
+/**
+ * One CSV's rows, as launches of the given session.
+ */
+const readLaunches = (text: string, session: string): Launch[] =>
+  parseCsv<
+    | 'app'
+    | 'timestamp'
+    | 'device'
+    | 'os_build'
+    | 'run'
+    | 'first_frame_ms'
+    | 'fully_drawn_ms'
+    | 'memory_mb'
+    | 'peak_memory_mb'
+    | 'thermal_state'
+    | 'battery_percent'
+  >(text).map((row) => ({
+    app: row.app,
+    session,
+    timestamp: row.timestamp,
+    device: row.device,
+    osBuild: row.os_build,
+    run: Number(row.run),
+    firstFrameMs: number(row.first_frame_ms),
+    fullyDrawnMs: number(row.fully_drawn_ms),
+    memoryMb: number(row.memory_mb),
+    peakMemoryMb: number(row.peak_memory_mb),
+    thermalState: row.thermal_state,
+    batteryPercent: number(row.battery_percent),
+  }));
+
 export const LAUNCHES: readonly Launch[] = launchFiles
   .keys()
+  .flatMap((file) =>
+    readLaunches(
+      launchFiles(file) as string,
+      file.replace(/^\.\/launch-|\.csv$/g, ''),
+    ),
+  );
+
+/** Every CSV of the mount benchmark (`harness/ios_mount.py`). */
+const mountFiles = import.meta.webpackContext(
+  '../../../../../benchmarks/results/ios',
+  { recursive: false, regExp: /^\.\/mount-.*\.csv$/ },
+);
+
+/** One mount session: a screen of `count` elements, AngularLynx and one other app. */
+export type MountSession = {
+  readonly kind: 'view' | 'text' | 'image';
+  readonly count: number;
+  readonly rival: string;
+  readonly launches: readonly Launch[];
+};
+
+export const MOUNTS: readonly MountSession[] = mountFiles
+  .keys()
   .flatMap((file) => {
-    const session = file.replace(/^\.\/launch-|\.csv$/g, '');
-    return parseCsv<
-      | 'app'
-      | 'timestamp'
-      | 'device'
-      | 'os_build'
-      | 'run'
-      | 'first_frame_ms'
-      | 'fully_drawn_ms'
-      | 'memory_mb'
-      | 'peak_memory_mb'
-      | 'thermal_state'
-      | 'battery_percent'
-    >(launchFiles(file) as string).map((row) => ({
-      app: row.app,
-      session,
-      timestamp: row.timestamp,
-      device: row.device,
-      osBuild: row.os_build,
-      run: Number(row.run),
-      firstFrameMs: number(row.first_frame_ms),
-      fullyDrawnMs: number(row.fully_drawn_ms),
-      memoryMb: number(row.memory_mb),
-      peakMemoryMb: number(row.peak_memory_mb),
-      thermalState: row.thermal_state,
-      batteryPercent: number(row.battery_percent),
-    }));
-  });
+    // mount-<date>-<kind>-<count>-<rival>.csv; the rival's name can hold dashes.
+    const match =
+      /^\.\/mount-(\d{4}-\d{2}-\d{2})-(view|text|image)-(\d+)-(.+)\.csv$/.exec(
+        file,
+      );
+    if (!match) return [];
+    const [, , kind, count, rival] = match;
+    return [
+      {
+        kind: kind as MountSession['kind'],
+        count: Number(count),
+        rival,
+        launches: readLaunches(mountFiles(file) as string, file),
+      },
+    ];
+  })
+  .sort(
+    (a, b) =>
+      a.count - b.count ||
+      ['view', 'text', 'image'].indexOf(a.kind) -
+        ['view', 'text', 'image'].indexOf(b.kind),
+  );
 
 /** Linear interpolation between the closest ranks, as the harness's summarize.py. */
 export const percentile = (values: readonly number[], p: number): number => {

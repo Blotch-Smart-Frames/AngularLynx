@@ -1,4 +1,13 @@
-import { APPS, APP_ORDER, deviceName, LAUNCHES, SESSIONS, SIZES } from './data';
+import {
+  APPS,
+  APP_ORDER,
+  deviceName,
+  LAUNCHES,
+  MOUNTS,
+  percentile,
+  SESSIONS,
+  SIZES,
+} from './data';
 import { type Metric, MetricChart } from './metric-chart';
 import styles from './index.module.scss';
 
@@ -177,3 +186,57 @@ export const VersionTable = () => (
     </tbody>
   </table>
 );
+
+const KIND_NAMES = { view: 'views', text: 'texts', image: 'images' } as const;
+
+/**
+ * The mount benchmark: a screen of N views, texts or images, from the
+ * process starting to the app reporting it drawn. Each row is one session, so
+ * AngularLynx and the other app sit side by side.
+ */
+export const MountTable = () => {
+  if (MOUNTS.length === 0) return null;
+  const median = (session: (typeof MOUNTS)[number], app: string) => {
+    const values = session.launches
+      .filter(
+        (launch) => launch.app === app && launch.fullyDrawnMs !== undefined,
+      )
+      .map((launch) => launch.fullyDrawnMs!);
+    return values.length > 0
+      ? `${Math.round(percentile(values, 0.5))} ms`
+      : '–';
+  };
+  return (
+    <table>
+      <thead>
+        <tr>
+          <th>Screen</th>
+          <th>AngularLynx</th>
+          <th>Other app</th>
+          <th>Launches each</th>
+        </tr>
+      </thead>
+      <tbody>
+        {MOUNTS.map((session) => (
+          <tr key={`${session.kind}-${session.count}-${session.rival}`}>
+            <td>
+              {session.count.toLocaleString('en-US')} {KIND_NAMES[session.kind]}
+            </td>
+            <td>{median(session, 'angular-lynx')}</td>
+            <td>
+              {APPS[session.rival]?.label ?? session.rival}:{' '}
+              {median(session, session.rival)}
+            </td>
+            <td>
+              {
+                session.launches.filter(
+                  (launch) => launch.app === session.rival,
+                ).length
+              }
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+};

@@ -64,6 +64,12 @@ export const eventMap = {
   mousedblclick: { defaultInit: { bubbles: true } },
   mouselongpress: { defaultInit: { bubbles: true } },
   wheel: { defaultInit: { bubbles: true } },
+  // The pointer moving onto and off an element. They stay on it, as on the
+  // web: Lynx's desktop engine sends them outside HandleBubbleEvent, and Lynx
+  // for Web forwards the DOM's mouseenter and mouseleave, which don't bubble.
+  // A component clears a pressed state on mouseleave.
+  mouseenter: { defaultInit: {} },
+  mouseleave: { defaultInit: {} },
   // Scroll / viewport
   scroll: { defaultInit: {} },
   scrollend: { defaultInit: {} },
@@ -83,6 +89,14 @@ export const eventMap = {
   blur: { defaultInit: {} },
   input: { defaultInit: {} },
   confirm: { defaultInit: {} },
+  // An <input> or <textarea> with focus reporting the keyboard's height as it
+  // shows, changes size and hides (`detail.height`, 0 once it's gone).
+  keyboardheightchange: { defaultInit: {} },
+  // Accessibility: a screen reader running one of the element's
+  // `accessibility-actions`, named in `detail.name`.
+  accessibilityaction: { defaultInit: {} },
+  // Overlays: Android's back button asking an <overlay> to close.
+  requestclose: { defaultInit: {} },
   // Layout / loading. `load` is an <image>, <svg>, <frame> or <webview>
   // reporting its content arrived, and `error` an <image>, <video>,
   // <webview> or <overlay> reporting it didn't. A device sends both to the

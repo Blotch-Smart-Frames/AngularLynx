@@ -106,7 +106,7 @@ await vi.advanceTimersByTimeAsync(300); // the component's own 300 ms timer
 await waitForUpdate();
 ```
 
-For an event without a method, fire one whose type is the handler's kind and the event name: `fireEvent(pager, new CustomEvent('bindEvent:change', { detail }))` runs `(bindchange)` with that `detail`.
+`fireEvent` has a method for each event in its `eventMap`: touches, mouse (with the pointer entering and leaving an element, `fireEvent.mouseenter()` and its counterpart, which stay on it, so a spec can clear a pressed state), keys, scrolling, `uiappear`/`uidisappear`, form events with `keyboardheightchange` (`{ detail: { height } }`), `accessibilityaction` (`{ detail: { name } }`), an `<overlay>`'s `requestclose` (Android's back button), layout and loading, and transitions. For an event without a method, fire one whose type is the handler's kind and the event name: `fireEvent(pager, new CustomEvent('bindEvent:change', { detail }))` runs `(bindchange)` with that `detail`.
 
 To render a component with inputs, pass them to `render()` instead of writing a host component: `await render(Greeting, { inputs: { name: 'Lynx' } })`. They're set before the first change detection, as a parent template binds them, so a required input has its value and `ngOnInit` sees it. Key each by the name a template binds (an aliased input takes its alias, such as `class`). `await rerender({ inputs: { name: 'Angular' } })` changes them and keeps the component, but only inputs `render()` set: a component whose inputs are bound takes no other inputs, nor `componentRef.setInput()`. So give `render()` a starting value for any input the test changes later.
 

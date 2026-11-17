@@ -9,7 +9,18 @@ import {
 
 How fast an AngularLynx app starts, how much memory it takes and how big it is, next to the same app in other frameworks, on a real iPhone. Every app, script and raw sample is in the repository's [`benchmarks/`](https://github.com/Blotch-Smart-Frames/AngularLynx/tree/master/benchmarks) folder.
 
-{/* FINDINGS */}
+## What it shows
+
+Measured on an iPhone 14 Pro (iOS 27.0.1) on 17 November 2026. Each number is a median, launching the app again right after it last ran.
+
+- **The first screen is complete sooner than in React Native and Angular Native.** AngularLynx's list is drawn about 170 ms after launch. React Native 0.81 takes about 215 ms, React Native 0.88 about 205 ms and Angular Native about 230 ms.
+- **ReactLynx is a little sooner still,** about 175 ms against AngularLynx's 195 ms in their session. Both run on the same Lynx engine in the same native app, so that gap is Angular's own cost.
+- **The first frame is level.** Every app shows its launch screen in about 90 ms.
+- **AngularLynx uses the most memory with React Native 0.88:** about 60 MB, against 51 MB for React Native 0.81, 46 MB for ReactLynx and 41 MB for Angular Native.
+- **Building a big screen is AngularLynx's weak spot.** 5,000 plain views take it about 625 ms from launch. ReactLynx takes about 145 ms and React Native 0.81 about 225 ms. Against Angular Native it depends on the screen: AngularLynx is faster at 1,500 of anything and at 5,000 texts, Angular Native at 5,000 views (555 ms against 625 ms).
+- **The download is among the smallest:** 10.1 MB, against 9.0 MB for ReactLynx, 11.1 MB for React Native 0.81, 14.3 MB for Angular Native and 15.2 MB for React Native 0.88.
+
+Android isn't measured yet: it needs a physical phone.
 
 ## Launch
 

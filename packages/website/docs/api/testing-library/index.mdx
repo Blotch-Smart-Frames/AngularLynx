@@ -163,6 +163,23 @@ await waitForUpdate();
 expect(screen.getByText('Refreshed')).toBeInTheDocument();
 ```
 
+### `openLink()`
+
+```typescript
+function openLink(url: string): void;
+```
+
+Opens the app with a link, as the person does by tapping a link with one of angular.json's [`deepLinkSchemes`](/guide/deep-links) while the app is open, so a spec can check where it leads. With `provideRouter()`, the router navigates to the link's route, and each [`LynxLinking.onURL()`](/api/angular-lynx/linking#lynxlinkingonurl) handler is called with the URL. The link reaches the app as it does on a phone, through the background thread, so wait for it with `waitForUpdate()`. Sent before the app listens, it waits for the first handler, as a link that arrives while an app starts does. It's never the link that started the app: `getInitialURL()` stays `null`. Each test starts with none waiting.
+
+```typescript
+await render(App, { providers: [provideRouter(routes)] });
+
+openLink('myapp://orders/42');
+await waitForUpdate();
+
+expect(screen.getByText('Order 42')).toBeInTheDocument();
+```
+
 ### `*ByAccessibilityLabel`
 
 ```typescript

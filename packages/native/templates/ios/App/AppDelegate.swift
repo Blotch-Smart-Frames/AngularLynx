@@ -65,10 +65,23 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     options connectionOptions: UIScene.ConnectionOptions
   ) {
     guard let windowScene = scene as? UIWindowScene else { return }
+    // A link with one of the app's schemes that started it. It comes only
+    // here, not to scene(_:openURLContexts:) too, and before the LynxView
+    // exists, so it goes out with the first global props (LinkCenter).
+    LinkCenter.shared.initialURL = connectionOptions.urlContexts.first?.url.absoluteString
     let window = UIWindow(windowScene: windowScene)
     window.rootViewController = LynxViewController()
     window.makeKeyAndVisible()
     self.window = window
+  }
+
+  // A link with one of the app's schemes while the app is open, in front or
+  // in the background: the runtime's LynxLinking takes it, and the router
+  // navigates to it.
+  func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+    for context in URLContexts {
+      LinkCenter.shared.open(context.url)
+    }
   }
 
   // Out of sight, a collection's pause can't show, and the memory it frees

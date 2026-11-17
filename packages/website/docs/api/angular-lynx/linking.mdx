@@ -1,8 +1,8 @@
 # LynxLinking
 
-Opens links outside the app: in the browser, in another app, or in a browser sheet over the app. `import { LynxLinking, LinkingError, type OpenInAppOptions, type LinkingErrorCode } from '@blotch/angular-lynx';`
+Opens links outside the app, in the browser, in another app, or in a browser sheet over the app, and hears the links that open this one. `import { LynxLinking, LinkingError, type OpenInAppOptions, type LinkingErrorCode, type LynxLinkHandler } from '@blotch/angular-lynx';`
 
-[Open links outside the app](/guide/open-links) shows it in use.
+[Open links outside the app](/guide/open-links) and [Open the app from a link](/guide/deep-links) show it in use.
 
 ## Usage
 
@@ -12,6 +12,9 @@ const linking = inject(LynxLinking);
 await linking.openInApp('https://example.com/help');
 await linking.openURL('mailto:support@example.com');
 const hasWhatsApp = await linking.canOpenURL('whatsapp://send');
+
+const startedWith = linking.getInitialURL(); // 'myapp://orders/42', or null
+linking.onURL((url) => console.log('Opened with', url));
 ```
 
 ## API
@@ -30,6 +33,8 @@ class LynxLinking {}
 | Web preview                                                      | A new tab                  | A new tab                  | `true`                     |
 | Lynx Explorer                                                    | Rejects with `unavailable` | Rejects with `unavailable` | `false`                    |
 | Unit tests ([testing library](/api/testing-library/#openedurls)) | Records the URL            | Records the URL            | `true`                     |
+
+Links to the app arrive only in the apps `--platform` builds (`ng build` or `ng serve`), from a scheme in angular.json's [`deepLinkSchemes`](/api/build/#native-app-options). In the web preview and Lynx Explorer, [`getInitialURL()`](#lynxlinkinggetinitialurl) is `null` and no [`onURL()`](#lynxlinkingonurl) handler is called; in unit tests, the testing library's [`openLink()`](/api/testing-library/#openlink) sends one.
 
 ### `LynxLinking.openURL()`
 
@@ -62,6 +67,29 @@ canOpenURL(url: string): Promise<boolean>;
 ```
 
 Resolves whether something on the device opens `url`. iOS answers only for the schemes the app declares, and Android 11 and later only for the apps the app says it looks for, so list the schemes you ask about in [`canOpenURLSchemes`](/api/build/#native-app-options) in angular.json. `http`, `https`, `mailto`, `tel` and `sms` are always declared. For any other scheme, the answer is `false`.
+
+### `LynxLinking.getInitialURL()`
+
+```typescript
+getInitialURL(): string | null;
+```
+
+The link that started the app, such as `myapp://orders/42`, or `null` when the person started it another way, from its icon for instance. It stays the same for as long as the app runs. React Native's `Linking.getInitialURL()` is asynchronous; this answers at once, because the app is given the link before it starts. With [`provideRouter()`](/api/angular-lynx/routing#providerouter), the router's first screen is already the link's route.
+
+### `LynxLinking.onURL()`
+
+```typescript
+onURL(
+  handler: LynxLinkHandler,
+  options?: { readonly injector?: Injector },
+): () => void;
+
+type LynxLinkHandler = (url: string) => void;
+```
+
+Calls `handler` with each link that opens the app while it's running, in front or in the background, as React Native's `url` event does. The link that started the app isn't one of them: read it with `getInitialURL()`. Links that arrived while the app was still starting wait for the first handler. Called from an injection context, such as a constructor, the handler is removed when its component or service is destroyed; pass `injector` to tie it to another one. The function it returns removes it sooner. A handler's error goes to the app's `ErrorHandler`, and the other handlers are still called.
+
+With [`provideRouter()`](/api/angular-lynx/routing#providerouter), the router navigates to each link's route as well; [`provideDeepLinkRoute()`](/api/angular-lynx/routing#providedeeplinkroute) changes that.
 
 ### `OpenInAppOptions`
 

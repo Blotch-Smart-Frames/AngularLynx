@@ -15,6 +15,7 @@ import {
   withRouterConfig,
 } from '@angular/router';
 import { LynxShortcuts, SHORTCUT_NAVIGATE } from '../shortcuts';
+import { startDeepLinks } from './deep-links';
 import { LynxBackButton } from './lynx-back-button';
 import { LynxLocationStrategy } from './lynx-location-strategy';
 import { LynxPlatformLocation } from './lynx-platform-location';
@@ -73,6 +74,11 @@ export const provideRouter = (
       },
     },
     provideEnvironmentInitializer(() => inject(LynxShortcuts)),
+    // A link with one of angular.json's deepLinkSchemes navigates to its
+    // route, the one that starts the app and those that arrive while it's
+    // open, like an address typed into a browser (see deep-links.ts). Before
+    // the router's initial navigation, which this lets start at the link.
+    provideEnvironmentInitializer(startDeepLinks),
     // Lets LYNX_ELEMENTS mark an active routerLinkActive element `selected`
     // for screen readers without importing the router itself (see
     // lynx-router-link-active.ts). Taps reach Angular's own RouterLink without

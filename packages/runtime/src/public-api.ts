@@ -172,7 +172,11 @@ export type {
 } from './lib/types/element-events';
 export { LynxLogger } from './lib/lynx-logger';
 export { LinkingError, LynxLinking } from './lib/linking';
-export type { LinkingErrorCode, OpenInAppOptions } from './lib/linking';
+export type {
+  LinkingErrorCode,
+  LynxLinkHandler,
+  OpenInAppOptions,
+} from './lib/linking';
 export { LynxNativeModule } from './lib/native-module';
 export { LynxPortal, PortalRef } from './lib/portal';
 export type { PortalConfig } from './lib/portal';
@@ -250,6 +254,8 @@ export type { HostElementTag } from './lib/lynx-document/host-elements';
 export { LynxLocationStrategy } from './lib/router/lynx-location-strategy';
 export { LynxPlatformLocation } from './lib/router/lynx-platform-location';
 export { LynxRouteReuseStrategy } from './lib/router/lynx-route-reuse-strategy';
+export { provideDeepLinkRoute } from './lib/router/deep-links';
+export type { DeepLink, DeepLinkRoute } from './lib/router/deep-links';
 export { provideRouter } from './lib/router/lynx-router';
 export { LynxStackOutlet } from './lib/router/stack/lynx-stack-outlet';
 export { LynxStackPage } from './lib/router/stack/stack-page';

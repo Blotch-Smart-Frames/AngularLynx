@@ -221,6 +221,15 @@ The apps `ng build --platform` makes have them to copy, in AngularLynx's `packag
 
 The apps `ng build --platform` makes have one you can copy: `LinkingModule.swift`, which uses `UIApplication.open` and `SFSafariViewController`, and `LinkingModule.kt`, which sends an `ACTION_VIEW` intent and opens a Custom Tab, given the activity as its param. Both are in AngularLynx's `packages/native/templates`. List the schemes `canOpenURL` asks about in your Info.plist's `LSApplicationQueriesSchemes` and your manifest's `<queries>`. Without the module, `openURL()` and `openInApp()` reject with `unavailable`, and `canOpenURL()` resolves `false`.
 
+## Hand over the links that open the app
+
+`LynxLinking.getInitialURL()`, `onURL()` and the router's [deep links](/guide/deep-links) need the links your app is opened with:
+
+- **The link that started the app** goes in the `initialURL` global prop, the whole URL as a string, sent before the bundle loads and in every global props update after. The router starts at its route.
+- **A link while the app is open:** keep it until the page takes it, and send the global event `angularLynxURL` to the LynxView, with no parameters. The page answers by calling **`takeURLs(callback)`** on the `AngularLynxLinking` module, which calls back with `{ urls }`, the links kept since the last call, oldest first, and forgets them. The page also calls it once as it starts listening, so a link that came while it was loading isn't lost.
+
+The apps `ng build --platform` make do it in `AppDelegate.swift` (the scene's `connectionOptions.urlContexts` and `scene(_:openURLContexts:)`) with `LinkingModule.swift`'s `LinkCenter`, and in `MainActivity.kt` (the intent in `onCreate` and `onNewIntent`) with `LinkingModule.kt`. Without them, `getInitialURL()` is `null` and no link reaches the page.
+
 ## Hear the app's shortcuts
 
 [`LynxShortcuts`](/guide/shortcuts) calls a native module named `AngularLynxShortcuts`, and listens for a global event. To tell an AngularLynx page that the person ran one of your app's shortcuts, such as an App Intent, a Home Screen quick action or an Android app shortcut:

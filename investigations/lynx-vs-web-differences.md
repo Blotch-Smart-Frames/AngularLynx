@@ -1130,6 +1130,24 @@ None of these exist in Lynx. `window` itself is not a global (though we shim it 
 
 ---
 
+## The link that opened the app never reaches the page by itself
+
+### What you'd expect (web)
+
+A page opened from a link starts at that address: `location.href` is the link, and Angular's router starts at its path. Following another link to the site loads it again at the new address.
+
+### What Lynx does
+
+A LynxView has no address. A link with one of the app's schemes (`deepLinkSchemes`) opens the native app, and the shell is told, not the page: iOS hands the link that launched the app to the scene's `connectionOptions.urlContexts` only (not to `scene(_:openURLContexts:)` as well), and later links to `scene(_:openURLContexts:)`; Android puts the launching link in the activity's intent in `onCreate`, and later ones in `onNewIntent` for a `singleTask` activity. Lynx forwards none of it. Before issue #445 the shells dropped the URL, so `myapp://bench/mount` opened the app on its first screen. The iOS Simulator also asks "Open in <app>?" before handing over a link from `simctl openurl`.
+
+### The fix
+
+- The shells send the launching link as the `initialURL` global prop before the bundle loads, so it's on `lynx.__globalProps` on the main thread when the router starts. `provideRouter()` starts `LynxLocationStrategy`'s history at the link's route (`startDeepLinks` in `router/deep-links.ts`), so the first screen is the link's, as a browser starts at an address, rather than `/` and then a navigation.
+- A later link waits in the shell (`LinkCenter` on iOS, `LinkingModule`'s companion on Android) behind the `angularLynxURL` global event, and `LynxLinking` takes it with `takeURLs`, as `LynxShortcuts` takes shortcuts: the event alone would be lost while the page is still loading.
+- On Android, an intent the app is reopened with from Recents (`FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY`) still carries the last link, so it isn't treated as a new one.
+
+---
+
 ## There is no ~256-slot native element pool — removed elements don't run the app out of anything
 
 ### What you'd expect (web)

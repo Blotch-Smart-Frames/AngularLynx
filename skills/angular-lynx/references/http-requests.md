@@ -71,7 +71,7 @@ async signIn(): Promise<string | null> {
 
 ## Open links outside the app
 
-Lynx has no `<a href>`, `window.open` or `location`, so a link can't leave the app by itself. `LynxLinking` hands it to the phone:
+Lynx has no `<a href>`, `window.open` or `location`, so a link can't leave the app by itself. `LynxLinking` hands it to the phone (for links into the app, `getInitialURL()` and `onURL()`, see the deep links section of [routing.md](routing.md)):
 
 ```typescript
 import { inject } from '@angular/core';

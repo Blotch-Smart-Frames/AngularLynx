@@ -74,6 +74,7 @@ The apps load recorded PokeAPI responses and images from a server on the Mac, ov
 
 - **One phone so far,** an iPhone 14 Pro. Android needs a physical phone, and none has been measured yet.
 - **Instruments' App Launch template samples the CPU** while it records, which slows every app a little. It's the same for every app, and it's how Apple measures a launch.
+- **"Drawn" is each framework's own signal.** Each app marks it the way its framework tells a component its output is committed: `requestAnimationFrame` after React's commit in the React Native apps, the next flush to native in AngularLynx, a round trip to Lynx's main thread in ReactLynx. None of them waits for the screen's next frame, and React Native builds its native views on the UI thread after the commit, so for 5,000 elements its mark may come before the last of them is built.
 - **The free Apple team used to sign the apps allows three apps on a phone at once,** so each other framework ran in its own session against AngularLynx, two apps at a time. AngularLynx's dots come from every session.
 
 ## Run it yourself

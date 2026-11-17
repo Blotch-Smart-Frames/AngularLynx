@@ -117,7 +117,7 @@ export const MetricChart = ({
         y: 'label',
         r: 3,
         fill,
-        fillOpacity: 0.35,
+        fillOpacity: 0.5,
         key: (row) => `${row.app}-${row.session}-${row.run}`,
       });
     const medians = (source: readonly Summary[], stroke: string) =>

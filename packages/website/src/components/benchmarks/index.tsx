@@ -210,7 +210,7 @@ export const MountTable = () => {
       )
       .map((launch) => launch.fullyDrawnMs!);
     return values.length > 0
-      ? `${Math.round(percentile(values, 0.5))} ms`
+      ? `${Math.round(percentile(values, 0.5)).toLocaleString('en-US')} ms`
       : '–';
   };
   return (

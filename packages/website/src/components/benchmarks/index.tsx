@@ -94,51 +94,41 @@ const SessionCharts = ({
 };
 
 /** The launch charts: fully drawn, first frame and memory. */
-export const LaunchCharts = ({
-  metrics = ['fullyDrawnMs', 'firstFrameMs', 'memoryMb'],
-}: {
-  readonly metrics?: readonly ('fullyDrawnMs' | 'firstFrameMs' | 'memoryMb')[];
-}) => (
+export const LaunchCharts = () => (
   <div className={styles['charts']}>
-    {metrics.includes('fullyDrawnMs') && (
-      <figure className={styles['figure']}>
-        <figcaption className={styles['title']}>Time to fully drawn</figcaption>
-        <p className={styles['summary']}>
-          From the tap to the first page of the list on screen, its data loaded
-          from a server on the local network. Lower is better.
-        </p>
-        <SessionCharts
-          metric="fullyDrawnMs"
-          unit="ms"
-          axisLabel="Milliseconds from launch"
-        />
-      </figure>
-    )}
-    {metrics.includes('firstFrameMs') && (
-      <figure className={styles['figure']}>
-        <figcaption className={styles['title']}>Time to first frame</figcaption>
-        <p className={styles['summary']}>
-          From the tap to the app's first frame, which is its launch screen.
-          Lower is better.
-        </p>
-        <SessionCharts
-          metric="firstFrameMs"
-          unit="ms"
-          axisLabel="Milliseconds from launch"
-        />
-      </figure>
-    )}
-    {metrics.includes('memoryMb') && (
-      <figure className={styles['figure']}>
-        <figcaption className={styles['title']}>Memory</figcaption>
-        <p className={styles['summary']}>
-          The app's footprint, what iOS counts against its memory limit, about
-          seven seconds after launch, with the first page and its images loaded.
-          Lower is better.
-        </p>
-        <SessionCharts metric="memoryMb" unit="MB" axisLabel="Megabytes" />
-      </figure>
-    )}
+    <figure className={styles['figure']}>
+      <figcaption className={styles['title']}>Time to fully drawn</figcaption>
+      <p className={styles['summary']}>
+        From the tap to the first page of the list on screen, its data loaded
+        from a server on the local network. Lower is better.
+      </p>
+      <SessionCharts
+        metric="fullyDrawnMs"
+        unit="ms"
+        axisLabel="Milliseconds from launch"
+      />
+    </figure>
+    <figure className={styles['figure']}>
+      <figcaption className={styles['title']}>Time to first frame</figcaption>
+      <p className={styles['summary']}>
+        From the tap to the app's first frame, which is its launch screen. Lower
+        is better.
+      </p>
+      <SessionCharts
+        metric="firstFrameMs"
+        unit="ms"
+        axisLabel="Milliseconds from launch"
+      />
+    </figure>
+    <figure className={styles['figure']}>
+      <figcaption className={styles['title']}>Memory</figcaption>
+      <p className={styles['summary']}>
+        The app's footprint, what iOS counts against its memory limit, about
+        seven seconds after launch, with the first page and its images loaded.
+        Lower is better.
+      </p>
+      <SessionCharts metric="memoryMb" unit="MB" axisLabel="Megabytes" />
+    </figure>
     <Caption />
   </div>
 );

@@ -224,7 +224,10 @@ const RUN_ON_BACKGROUND_EVENT = 'Lynx.Worklet.runOnBackground';
 const RETURN_EVENT = 'Lynx.Worklet.BgFunctionCallRet';
 
 type ThreadContext = {
-  addEventListener(type: string, listener: (event: { data: string }) => void): void;
+  addEventListener(
+    type: string,
+    listener: (event: { data: string }) => void,
+  ): void;
   dispatchEvent(event: { type: string; data: string }): void;
 };
 

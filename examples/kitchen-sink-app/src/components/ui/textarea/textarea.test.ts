@@ -1,4 +1,5 @@
 import { Component, signal } from '@angular/core';
+import { FormField, form } from '@angular/forms/signals';
 import {
   fireEvent,
   render,
@@ -36,6 +37,7 @@ import { UiTextarea } from './textarea';
       (changed)="changes.push($event)"
       (focused)="events.push('focused')"
       (blurred)="events.push('blurred')"
+      (touch)="events.push('touch')"
     />
   `,
 })
@@ -102,6 +104,57 @@ describe('UiTextarea', () => {
     // A phone's body size, in medium weight, as ui-input's label is.
     expect(getByText('Notes').classList).toContain('text-base');
     expect(getByText('Notes').classList).toContain('font-medium');
+  });
+
+  // Issue #466: VoiceOver could land on the label but not on a field named
+  // after it.
+  it('names the native field after its label, for screen readers', async () => {
+    const { host, field, getByRole, getByText } = await renderTextarea();
+    // A screen reader reaches the field with or without a label.
+    expect(field().getAttribute('accessibility-element')).toBe('true');
+    expect(field().hasAttribute('accessibility-label')).toBe(false);
+
+    host.label.set('Notes');
+    await waitForUpdate();
+    expect(getByRole('textbox', { name: 'Notes' })).toBe(field());
+    // The label the field reads isn't a second stop of its own.
+    expect(
+      getByText('Notes').getAttribute('accessibility-elements-hidden'),
+    ).toBe('true');
+  });
+
+  it('takes its name from accessibility-label when shown without a label', async () => {
+    @Component({
+      imports: [UiTextarea],
+      template: `
+        <ui-textarea
+          [label]="label()"
+          accessibility-label="Delivery notes"
+          placeholder="Add a note"
+        />
+      `,
+    })
+    class UnlabeledHost {
+      readonly label = signal('');
+    }
+
+    const {
+      componentRef,
+      container,
+      getAllByAccessibilityLabel,
+      getByText,
+      queryByText,
+    } = await render(UnlabeledHost);
+    const field = container.querySelector('textarea')!;
+    // Only the native field is named: the host drops its copy.
+    expect(getAllByAccessibilityLabel('Delivery notes')).toEqual([field]);
+    expect(queryByText('Delivery notes')).toBeNull();
+
+    // A label wins, and is shown.
+    (componentRef.instance as UnlabeledHost).label.set('Notes');
+    await waitForUpdate();
+    expect(field.getAttribute('accessibility-label')).toBe('Notes');
+    expect(getByText('Notes')).toBeTruthy();
   });
 
   it("draws the placeholder in the theme's muted foreground, on every platform", async () => {
@@ -172,7 +225,7 @@ describe('UiTextarea', () => {
     setAttribute.mockRestore();
   });
 
-  it('shows a focus ring while focused, and emits `focused` and `blurred`', async () => {
+  it('shows a focus ring while focused, and emits `focused`, `blurred` and `touch`', async () => {
     const { host, field, ring } = await renderTextarea();
     expect(ring().style.getPropertyValue('opacity')).toBe('0');
 
@@ -186,7 +239,31 @@ describe('UiTextarea', () => {
     fireEvent.blur(field());
     await waitForUpdate();
     expect(ring().style.getPropertyValue('opacity')).toBe('0');
-    expect(host.events).toEqual(['focused', 'blurred']);
+    expect(host.events).toEqual(['focused', 'blurred', 'touch']);
+  });
+
+  // Issue #466: without `touch`, a textarea's error could only show once
+  // submit() marked every field touched, while an input's showed on blur.
+  it('marks a Signal Forms field touched when it loses focus', async () => {
+    @Component({
+      imports: [FormField, UiTextarea],
+      template: `<ui-textarea label="Notes" [formField]="order.notes" />`,
+    })
+    class SignalHost {
+      readonly model = signal({ notes: '' });
+      readonly order = form(this.model);
+    }
+    const { componentRef, getByRole } = await render(SignalHost);
+    const host = componentRef.instance as SignalHost;
+    const notes = getByRole('textbox', { name: 'Notes' });
+
+    fireEvent.focus(notes);
+    fireEvent.input(notes, { detail: { value: 'Leave by the door' } });
+    expect(host.model().notes).toBe('Leave by the door');
+    expect(host.order.notes().touched()).toBe(false);
+
+    fireEvent.blur(notes);
+    expect(host.order.notes().touched()).toBe(true);
   });
 
   it('shows its helper text', async () => {

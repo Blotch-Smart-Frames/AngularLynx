@@ -25,16 +25,22 @@ import { injectIconColor } from '../icon/icon-theme';
   // The host is the field's column. Angular gives a component's host every
   // static attribute the app writes on it, so a class on <ui-textarea> lands
   // there whatever the component does: a column inside the host applied it
-  // twice. A placeholder lands there too, and goes: it belongs to the
-  // <textarea>, and a second element with it is a second match for
-  // getByPlaceholderText.
+  // twice. A placeholder and an accessibility label land there too, and go:
+  // they belong to the <textarea>, and a second element with one is a second
+  // match for getByPlaceholderText or getByLabelText.
   host: {
     '[class]': 'containerClass()',
     '[attr.placeholder]': 'null',
+    '[attr.accessibility-label]': 'null',
   },
   template: `
+    <!-- The <textarea> below carries the label as its accessibility-label, so
+         screen readers read it with the field. Hidden here, or VoiceOver and
+         TalkBack would stop on it a second time. -->
     @if (label()) {
-      <text [class]="labelClass()">{{ label() }}</text>
+      <text [class]="labelClass()" accessibility-elements-hidden="true">{{
+        label()
+      }}</text>
     }
     <!-- The min/max height lives on this wrapper, not the textarea: a native
          Lynx textarea only auto-grows when it drives its container's height
@@ -81,7 +87,15 @@ import { injectIconColor } from '../icon/icon-theme';
            avoids the overlap on all platforms. Its color is given twice, as
            ui-input's is: iOS reads the style and the web preview the
            attribute. -->
+      <!-- accessibility-element: on iOS, Lynx makes only <text> and <image>
+           accessibility elements by default, so the native text view under a
+           <textarea> isn't one, and VoiceOver could land on the label but
+           not on the field. As one, it reads its accessibility-label, the
+           label (or the accessibility label when there's none), then its
+           text. -->
       <textarea
+        accessibility-element="true"
+        [attr.accessibility-label]="label() || accessibilityLabel() || null"
         [attr.placeholder]="value() ? null : placeholder()"
         [attr.placeholder-color]="placeholderColor()"
         [style.-x-placeholder-color]="placeholderColor()"
@@ -105,6 +119,14 @@ import { injectIconColor } from '../icon/icon-theme';
 export class UiTextarea implements FormValueControl<string> {
   readonly value = model<string>('');
   readonly label = input<string>('');
+  /**
+   * What a screen reader calls the field when it's shown without a label,
+   * such as a textarea under a label of the app's own. `label` wins when both
+   * are set.
+   */
+  readonly accessibilityLabel = input<string>('', {
+    alias: 'accessibility-label',
+  });
   readonly placeholder = input<string>('');
   readonly helperText = input<string>('');
   readonly error = input<string>('');
@@ -120,6 +142,13 @@ export class UiTextarea implements FormValueControl<string> {
   readonly changed = output<string>();
   readonly focused = output<void>();
   readonly blurred = output<void>();
+  /**
+   * The field lost focus, for forms, which mark it as touched as they do a
+   * native textarea (FormUiControl's `touch`). Signal Forms, reactive forms
+   * and template-driven forms all listen for it; a `touched` model's change
+   * isn't read by any of them.
+   */
+  readonly touch = output<void>();
 
   readonly #host = inject(ElementRef).nativeElement;
   readonly #resolveColor = injectIconColor();
@@ -238,6 +267,7 @@ export class UiTextarea implements FormValueControl<string> {
   protected onBlur(): void {
     this.#isFocused.set(false);
     this.blurred.emit();
+    this.touch.emit();
   }
 
   /**

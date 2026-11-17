@@ -15,8 +15,10 @@
 // request.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FakeNativeGlobal } from '../testing/fake-native-global';
+import { setPageElementRef } from '../lynx-document/page-ref';
 import type { ElementRef } from '../types/lynx';
 import { LynxElement } from './lynx-element';
+import { noteNativeTreeChanged } from './tree-version';
 
 // --- Faithful fake native tree ------------------------------------------------
 // Unlike a defensive fake, __AppendElement/__InsertElementBefore here build
@@ -270,10 +272,11 @@ describe('LynxElement cycle check cost', () => {
 
     // One __GetParent each, for #removeIfMoveWouldBeLost: the ancestors are
     // never walked, and the child's checks run once, not twice. It was 23
-    // each.
+    // each. Each wrapper reads its unique id once, when it's made, so the
+    // check reads none.
     expect(counts.parent).toBe(200);
     expect(counts.first).toBe(200);
-    expect(counts.uid).toBe(400);
+    expect(counts.uid).toBe(0);
     expect((bottom.element as unknown as FakeEl).children.length).toBe(101);
     expect((text.element as unknown as FakeEl).children.length).toBe(100);
     expect(() => assertAcyclic()).not.toThrow();
@@ -302,5 +305,139 @@ describe('LynxElement cycle check cost', () => {
       a.element,
     ]);
     expect(() => assertAcyclic()).not.toThrow();
+  });
+});
+
+// What LynxDocument makes is new: in no tree, with nothing in it
+// (markUnattached). Building a screen inserts thousands of those, and the
+// wrappers answer the checks themselves rather than asking native, which costs
+// a call out of JavaScript each (#444).
+describe('LynxElement inserting new elements', () => {
+  const counts = { parent: 0, uid: 0, first: 0 };
+
+  beforeEach(() => {
+    vi.stubGlobal('__PROFILE__', false);
+    installNativeFakes();
+    setPageElementRef(pageRoot as unknown as ElementRef);
+    const g = globalThis as unknown as FakeNativeGlobal<FakeEl>;
+    const { __GetParent, __GetElementUniqueID, __FirstElement } = g;
+    g.__GetParent = (n) => (counts.parent++, __GetParent(n));
+    g.__GetElementUniqueID = (n) => (counts.uid++, __GetElementUniqueID(n));
+    g.__FirstElement = (n) => (counts.first++, __FirstElement(n));
+  });
+
+  /**
+   * A new element, as LynxDocument makes one.
+   */
+  const make = (tag: string): LynxElement => {
+    const el = wrap(makeEl(tag), tag);
+    el.markUnattached();
+    return el;
+  };
+
+  const resetCounts = (): void => {
+    counts.parent = 0;
+    counts.uid = 0;
+    counts.first = 0;
+  };
+
+  /**
+   * A chain of `depth` views under the page; returns the deepest.
+   */
+  const chain = (depth: number): LynxElement => {
+    let bottom = wrap(pageRoot, 'page');
+    for (let i = 0; i < depth; i++) {
+      const next = make('view');
+      bottom.appendChild(next);
+      bottom = next;
+    }
+    return bottom;
+  };
+
+  it('inserts new elements without reading the native tree', () => {
+    const bottom = chain(20);
+    const anchor = make('comment');
+    bottom.appendChild(anchor);
+    const views = Array.from({ length: 100 }, () => make('view'));
+    resetCounts();
+
+    // As an `@for` adds its rows: the anchor's parent, then each row before it.
+    for (const view of views) anchor.parentNode()!.insertBefore(view, anchor);
+
+    // The anchor's parent is read once; nothing else is.
+    expect(counts.parent).toBe(1);
+    expect(counts.first).toBe(0);
+    expect(counts.uid).toBe(1);
+    expect((bottom.element as unknown as FakeEl).children.length).toBe(101);
+    expect(() => assertAcyclic()).not.toThrow();
+  });
+
+  it("walks the parent's ancestry once for new elements with children", () => {
+    const bottom = chain(20);
+    // `<text>{{ i }}</text>` rows: each text has its run before it's inserted.
+    const texts = Array.from({ length: 100 }, () => {
+      const text = make('text');
+      text.appendChild(make('raw-text'));
+      return text;
+    });
+    resetCounts();
+
+    for (const text of texts) bottom.appendChild(text);
+
+    // The 20 levels once, and the page's id to know the walk reached it.
+    expect(counts.parent).toBe(21);
+    expect(counts.uid).toBe(21);
+    expect(counts.first).toBe(0);
+    expect(() => assertAcyclic()).not.toThrow();
+  });
+
+  it('refuses to insert a new element into its own descendant', () => {
+    const outer = make('view');
+    const inner = make('view');
+    outer.appendChild(inner);
+
+    inner.appendChild(outer);
+
+    expect((inner.element as unknown as FakeEl).children).toEqual([]);
+    expect(() => assertAcyclic()).not.toThrow();
+  });
+
+  it('finds a cycle after a move changes an ancestry it walked before', () => {
+    const page = wrap(pageRoot, 'page');
+    const a = make('view');
+    const b = make('view');
+    page.appendChild(a);
+    page.appendChild(b);
+    // Walks b's ancestry, the page alone, for a new element with children.
+    const row = make('view');
+    row.appendChild(make('view'));
+    b.appendChild(row);
+
+    // b moves under a, so a is one of b's ancestors now.
+    a.appendChild(b);
+    b.appendChild(a);
+
+    expect((a.element as unknown as FakeEl).parent).toBe(pageRoot);
+    expect((b.element as unknown as FakeEl).children).not.toContain(a.element);
+    expect(() => assertAcyclic()).not.toThrow();
+  });
+
+  it('reads the parent again once the tree changes shape', () => {
+    const page = wrap(pageRoot, 'page');
+    const a = make('view');
+    const b = make('view');
+    const child = make('view');
+    page.appendChild(a);
+    page.appendChild(b);
+    expect(child.parentNode()).toBeNull();
+
+    a.appendChild(child);
+    expect(child.parentNode()).toBe(a);
+    b.appendChild(child);
+    expect(child.parentNode()).toBe(b);
+    // A list's updates, which take items out natively, come with a flush.
+    (child.element as unknown as FakeEl).parent = null;
+    noteNativeTreeChanged();
+    expect(child.parentNode()).toBeNull();
   });
 });

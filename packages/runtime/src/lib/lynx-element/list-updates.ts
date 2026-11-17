@@ -1,3 +1,4 @@
+import { noteNativeTreeChanged } from './tree-version';
 import {
   isFirstRenderPending,
   runAfterFirstRender,
@@ -85,7 +86,11 @@ const rethrow = (sending: Readonly<Sending>): void => {
  * if one did.
  */
 const layOutLists = (sending: Readonly<Sending>): void => {
-  if (sending.sent) __FlushElementTree(undefined, { triggerLayout: true });
+  if (sending.sent) {
+    // Native applies the lists' updates, which take items out of them.
+    noteNativeTreeChanged();
+    __FlushElementTree(undefined, { triggerLayout: true });
+  }
   rethrow(sending);
 };
 
@@ -169,6 +174,9 @@ export const processPendingListUpdates = (): boolean => {
  */
 export const flushTreeWithListUpdates = (): void => {
   const sending = sendPendingListUpdates();
+  // A list's updates take items out of it natively, with no __RemoveElement,
+  // and a flush is when native applies them (see tree-version.ts).
+  noteNativeTreeChanged();
   if (sending.sent) {
     __FlushElementTree(undefined, { triggerLayout: true });
   } else {

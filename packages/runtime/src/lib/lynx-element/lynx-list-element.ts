@@ -237,6 +237,9 @@ export class LynxListElement extends LynxElement {
     // attachItemSource). Angular inserts it through its view container all
     // the same, which is what keeps the item's view checked and destroyed with
     // the directive; the parent link is all that's kept, for parentNode().
+    // Native puts it in the list when it asks for the item, with the list's
+    // own calls (see create-list-element.ts).
+    newChild.forgetNativePlace();
     if (newChild._ownedByListSource) {
       newChild._virtualParent = this;
       return;
@@ -266,6 +269,7 @@ export class LynxListElement extends LynxElement {
       return;
     }
 
+    newChild.forgetNativePlace();
     newChild._virtualParent = this;
     newChild._virtualNext = refChild;
     newChild._virtualPrev = refChild._virtualPrev;

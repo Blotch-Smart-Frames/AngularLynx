@@ -57,6 +57,7 @@ import {
 } from './layout';
 import { POINTER_EVENT_NAMES, PointerEventSource } from './pointer-events';
 import { setPendingClassWriter } from './class-writes';
+import { nativeTreeVersion, noteNativeTreeChanged } from './tree-version';
 import { noteReleased, scheduleCollection } from './collect-garbage';
 import { removeNativeHandler } from './remove-native-handler';
 import { dropsTap, WebLongPress } from './web-long-press';
@@ -285,17 +286,21 @@ const isWholeClassList = (classes: string): boolean => {
  * throws HierarchyRequestError); we return the answer so callers can skip the
  * attach instead of throwing.
  *
- * The full check walks `parent`'s ancestors up to the root of its tree, two
- * native reads a step, and `__GetParent` hands back a new handle each time.
+ * The check itself is LynxElement's #wouldFormCycle, which needs its wrappers'
+ * state. The full check walks `parent`'s ancestors up to the root of its tree,
+ * two native reads a step, and `__GetParent` hands back a new handle each time.
  * Angular appends nearly every element right after creating it, before its
- * children, so two exact shortcuts answer most attaches in a few reads:
+ * children, so exact shortcuts answer most attaches without walking:
  *
  * - A `candidate` with no native child can't be anyone's ancestor, so only
  *   `parent` being `candidate` itself can form a cycle.
  * - A `candidate` already among `parent`'s children (an `@for` reorder of
  *   rows with children) can't also be one of its ancestors.
+ * - `parent`'s ancestors are the same for every row an `@for` adds to it,
+ *   so the walk is kept until the tree changes shape (see ancestorIds).
  *
- * Both read the native tree, not the wrappers' `#children`: a list's items,
+ * The first two read the native tree, not the wrappers' `#children`, unless the
+ * wrapper knows the answer for certain (see #unattached): a list's items,
  * anonymous texts and hydrated elements can have native children no wrapper
  * lists.
  *
@@ -304,17 +309,44 @@ const isWholeClassList = (classes: string): boolean => {
  * LynxDocument.createComment), and `__GetParent` is not guaranteed to return the
  * same JS handle across calls.
  */
-const wouldFormCycle = (parent: ElementRef, candidate: ElementRef): boolean => {
-  const candidateId = __GetElementUniqueID(candidate);
-  const parentId = __GetElementUniqueID(parent);
-  if (parentId === candidateId) return true;
-  if (!__FirstElement(candidate)) return false;
-  const current = __GetParent(candidate);
-  if (current && __GetElementUniqueID(current) === parentId) return false;
-  for (let cur = __GetParent(parent); cur; cur = __GetParent(cur)) {
-    if (__GetElementUniqueID(cur) === candidateId) return true;
+
+/**
+ * The last ancestry ancestorIds walked: `parent`'s ancestors' unique ids, read
+ * at tree version `version` (see tree-version.ts). Only an ancestry that
+ * reaches the page is kept. Inserting a new element doesn't change any element's
+ * ancestors in the page's tree, but it does change those of the elements under
+ * it, if it has any, and an ancestry that stops short of the page may be one of
+ * those.
+ */
+let ancestryMemo: {
+  parentId: number;
+  version: number;
+  ids: ReadonlySet<number>;
+} | null = null;
+
+/**
+ * The unique ids of `parent`'s ancestors, not its own, up to the root of its
+ * tree. Each `@for` row asks for its container's, so the last one walked is
+ * kept while the tree keeps its shape (see ancestryMemo).
+ */
+const ancestorIds = (
+  parent: ElementRef,
+  parentId: number,
+): ReadonlySet<number> => {
+  const version = nativeTreeVersion();
+  const memo = ancestryMemo;
+  if (memo && memo.parentId === parentId && memo.version === version) {
+    return memo.ids;
   }
-  return false;
+  const ids = new Set<number>();
+  let last = parentId;
+  for (let cur = __GetParent(parent); cur; cur = __GetParent(cur)) {
+    last = __GetElementUniqueID(cur);
+    ids.add(last);
+  }
+  ancestryMemo =
+    last === getPageId() ? { parentId, version, ids } : ancestryMemo;
+  return ids;
 };
 
 /**
@@ -656,6 +688,32 @@ export class LynxElement implements BaseLynxElement {
   /** Back-pointer to the JS parent, for O(1) detach from its #children. */
   #jsParent: LynxElement | null = null;
   /**
+   * The native element's unique id, read once: a native call costs more than
+   * a field, and attaching an element asks for it (see #wouldFormCycle).
+   * Changes with the native element (see #recreateSubtree, #anchorFor).
+   */
+  #uniqueId: number;
+  /**
+   * Whether the wrapper knows its native element has no parent: true from
+   * LynxDocument making it (see markUnattached) until it's first inserted.
+   * While it's true, inserting it can't move anything (see #attach), and
+   * nothing need be read to know where it was.
+   */
+  #unattached = false;
+  /**
+   * Whether the wrapper knows its native element has no children: true from
+   * LynxDocument making it until something is first inserted in it. Such an
+   * element can't be anyone's ancestor (see #wouldFormCycle).
+   */
+  #childless = false;
+  /**
+   * parentNode()'s last answer, and the tree version it was read at (see
+   * tree-version.ts): Angular asks for the parent of an `@for`'s anchor for
+   * every row it adds. -1 when there's none.
+   */
+  #parentAnswer: LynxElement | null = null;
+  #parentAnswerVersion = -1;
+  /**
    * An anonymous `<text>`: one the runtime made to draw loose text, and the
    * inline tags beside it, which Angular never sees (see #regroup).
    */
@@ -915,10 +973,11 @@ export class LynxElement implements BaseLynxElement {
       setPendingClassWriter(() => LynxElement.commitPendingClasses());
     }
     this.#nativeRef = element;
+    this.#uniqueId = __GetElementUniqueID(element);
     // Register as the canonical wrapper for this native ref. #canonicalFor()
     // checks the map before constructing, so this never overwrites an existing
     // canonical wrapper with a throwaway.
-    LynxElement.#register(__GetElementUniqueID(element), this);
+    LynxElement.#register(this.#uniqueId, this);
   }
 
   /**
@@ -928,7 +987,7 @@ export class LynxElement implements BaseLynxElement {
    * registry doesn't retain wrappers for dead native refs.
    */
   deregisterNative(): void {
-    const id = __GetElementUniqueID(this.#nativeRef);
+    const id = this.#uniqueId;
     // Only clear if WE are the registered wrapper — a later element that reused
     // this id (native id reuse) must keep its entry.
     if (LynxElement.#registered(id) === this) {
@@ -1540,10 +1599,11 @@ export class LynxElement implements BaseLynxElement {
       // native tree and hang the layout pass (see wouldFormCycle). Skipping is
       // safe: a cyclic insert is a corrupt request, and leaving newChild where it
       // is beats freezing the app.
-      if (wouldFormCycle(this.element, newChild.element)) return;
+      if (this.#wouldFormCycle(newChild)) return;
       if (insertHidesBlurView(this, newChild)) {
         this.#appendBefore(newChild, refChild);
       } else {
+        this.#noteInserting(newChild);
         __InsertElementBefore(this.element, newChild.element, refChild.element);
       }
       this.#adoptChild(newChild, refChild);
@@ -1561,7 +1621,7 @@ export class LynxElement implements BaseLynxElement {
    * the siblings keep their painting nodes, as any Angular move does.
    */
   #appendBefore(newChild: LynxElement, refChild: LynxElement): void {
-    const childId = __GetElementUniqueID(newChild.element);
+    const childId = newChild.#uniqueId;
     const following: ElementRef[] = [];
     for (
       let sibling: ElementRef | null = refChild.element;
@@ -1570,7 +1630,10 @@ export class LynxElement implements BaseLynxElement {
     ) {
       if (__GetElementUniqueID(sibling) !== childId) following.push(sibling);
     }
+    this.#noteInserting(newChild);
     __AppendElement(this.element, newChild.element);
+    // The siblings move.
+    noteNativeTreeChanged();
     for (const sibling of following) {
       __AppendElement(this.element, sibling);
     }
@@ -1606,7 +1669,8 @@ export class LynxElement implements BaseLynxElement {
   #appendPrepared(newChild: LynxElement): void {
     // Guard against a cycle-forming attach (see wouldFormCycle) — the same hang
     // insertBefore protects against.
-    if (wouldFormCycle(this.element, newChild.element)) return;
+    if (this.#wouldFormCycle(newChild)) return;
+    this.#noteInserting(newChild);
     __AppendElement(this.element, newChild.element);
     this.#adoptChild(newChild);
     // Attaching a run to (or as) a text shifts inline layout — re-derive the
@@ -1617,6 +1681,43 @@ export class LynxElement implements BaseLynxElement {
     if (isTextish(this) || isTextish(newChild)) {
       LynxElement.#enqueueTextNormalization(newChild);
     }
+  }
+
+  /**
+   * Whether attaching `candidate` under this element would form a cycle (see
+   * the comment above ancestorIds for why the check exists and how it's kept
+   * cheap).
+   */
+  #wouldFormCycle(candidate: LynxElement): boolean {
+    const candidateId = candidate.#uniqueId;
+    const parentId = this.#uniqueId;
+    if (parentId === candidateId) return true;
+    if (candidate.#childless) return false;
+    // A new element with children is the root of its own tree, so only the
+    // ancestry can answer, and the last one walked usually does (see
+    // ancestorIds).
+    if (candidate.#unattached) {
+      return ancestorIds(this.element, parentId).has(candidateId);
+    }
+    if (!__FirstElement(candidate.element)) return false;
+    const current = __GetParent(candidate.element);
+    if (current && __GetElementUniqueID(current) === parentId) return false;
+    return ancestorIds(this.element, parentId).has(candidateId);
+  }
+
+  /**
+   * Keeps what the wrappers know of the native tree right as `newChild` goes
+   * into this element natively: it has a parent now and this element a child,
+   * and if it had a parent before, it moves, which changes the tree's shape
+   * (see tree-version.ts). A new element going in changes no one's ancestry
+   * but its own subtree's, which is why building a screen keeps the answers
+   * read so far.
+   */
+  #noteInserting(newChild: LynxElement): void {
+    if (!newChild.#unattached) noteNativeTreeChanged();
+    newChild.#unattached = false;
+    newChild.#parentAnswerVersion = -1;
+    this.#childless = false;
   }
 
   /**
@@ -1672,13 +1773,20 @@ export class LynxElement implements BaseLynxElement {
     const inText = parent.tagName === 'text';
     if (inText === this.#anchorInText) return;
     const old = this.element;
-    const oldParent = __GetParent(old);
-    if (oldParent) __RemoveElement(oldParent, old);
+    const oldParent = this.#unattached ? null : __GetParent(old);
+    if (oldParent) {
+      __RemoveElement(oldParent, old);
+      noteNativeTreeChanged();
+    }
     this.deregisterNative();
     this.#nativeRef = inText
       ? __CreateRawText('')
       : createNativeRefByTag('comment', getPageId());
-    LynxElement.#register(__GetElementUniqueID(this.#nativeRef), this);
+    this.#uniqueId = __GetElementUniqueID(this.#nativeRef);
+    LynxElement.#register(this.#uniqueId, this);
+    // The new native element is in no tree, with nothing in it.
+    this.markUnattached();
+    this.#parentAnswerVersion = -1;
     this.#anchorInText = inText;
   }
 
@@ -1749,6 +1857,7 @@ export class LynxElement implements BaseLynxElement {
   static #anonymousText(): LynxElement {
     const text = new LynxElement(createNativeRefByTag('text', getPageId()));
     text.markNew();
+    text.markUnattached();
     text.tagName = 'text';
     text.#anonymous = true;
     text.#webText = true;
@@ -1997,6 +2106,28 @@ export class LynxElement implements BaseLynxElement {
    */
   markNew(): void {
     this.#nativeClasses = true;
+  }
+
+  /**
+   * @internal LynxDocument has just made this element's native element, which
+   * is in no tree and has nothing in it: the wrapper knows its place there
+   * without asking, until it's inserted or something is inserted in it (see
+   * #unattached, #childless).
+   */
+  markUnattached(): void {
+    this.#unattached = true;
+    this.#childless = true;
+  }
+
+  /**
+   * @internal A `<list>` has taken this element: native puts it in the list
+   * when it asks for the item, through the list's own calls, and takes it out
+   * through update-list-info. The wrapper stops assuming it knows where it
+   * is.
+   */
+  forgetNativePlace(): void {
+    this.#unattached = false;
+    this.#parentAnswerVersion = -1;
   }
 
   /**
@@ -2382,13 +2513,11 @@ export class LynxElement implements BaseLynxElement {
    * moves. Lynx for Web moves DOM nodes and doesn't have the problem.
    */
   #removeIfMoveWouldBeLost(newParent: LynxElement): void {
+    // An element that was never inserted has no move to lose.
     if (__WEB__ || this.#paintingDead || this._virtualParent) return;
+    if (this.#unattached) return;
     const oldParent = __GetParent(this.element);
-    if (
-      !oldParent ||
-      __GetElementUniqueID(oldParent) ===
-        __GetElementUniqueID(newParent.element)
-    ) {
+    if (!oldParent || __GetElementUniqueID(oldParent) === newParent.#uniqueId) {
       return;
     }
     if (flushesBefore(newParent.element, oldParent)) this.#doRemove();
@@ -2456,6 +2585,9 @@ export class LynxElement implements BaseLynxElement {
     // #recreateSubtree). That is why we mark the whole subtree painting-dead just
     // below rather than "parking" the children somewhere to keep them alive.
     __RemoveElement(parent, this.element);
+    noteNativeTreeChanged();
+    this.#parentAnswerVersion = -1;
+    this.#parentAnswer = null;
     // The native painting nodes of this element and its entire subtree are now
     // gone (Lynx tears them down for a non-move removal — is_move=false). Unlink
     // from the JS parent and mark the subtree painting-dead so the next re-insert
@@ -2578,7 +2710,12 @@ export class LynxElement implements BaseLynxElement {
       ? __CreateRawText('')
       : createNativeRefByTag(this.tagName, getPageId(), this.#text);
     this.#nativeRef = fresh;
-    LynxElement.#register(__GetElementUniqueID(fresh), this);
+    this.#uniqueId = __GetElementUniqueID(fresh);
+    LynxElement.#register(this.#uniqueId, this);
+    // In no tree yet: the insert that asked for it puts it in (see #attach).
+    this.#unattached = true;
+    this.#childless = this.#children.length === 0;
+    this.#parentAnswerVersion = -1;
 
     if (this.tagName === 'raw-text') {
       // #text may be stale: normalization is SKIPPED for a subtree while it is
@@ -2638,6 +2775,7 @@ export class LynxElement implements BaseLynxElement {
     }
     for (const child of this.#children) {
       child.#recreateSubtree();
+      this.#noteInserting(child);
       __AppendElement(fresh, child.element);
     }
     // Its loose text changed while it was out (see commitPendingFlow).
@@ -2657,6 +2795,18 @@ export class LynxElement implements BaseLynxElement {
    */
   parentNode(): LynxElement | null {
     if (this._virtualParent) return this._virtualParent;
+    // Angular asks for the parent of an `@for`'s anchor for every row it adds:
+    // the answer holds until the tree changes shape (see tree-version.ts).
+    const version = nativeTreeVersion();
+    if (this.#parentAnswerVersion === version) return this.#parentAnswer;
+    const answer = this.#readParentNode();
+    this.#parentAnswer = answer;
+    this.#parentAnswerVersion = version;
+    return answer;
+  }
+
+  #readParentNode(): LynxElement | null {
+    if (this.#unattached) return null;
     const parent = __GetParent(this.element);
     if (!parent) return null;
     // Return the CANONICAL wrapper, not a throwaway: Angular uses this as the
@@ -2910,7 +3060,7 @@ export class LynxElement implements BaseLynxElement {
       return () => target.removeEventListener(name, cb);
     }
     this.#pointerEvents ??= new PointerEventSource({
-      uid: __GetElementUniqueID(this.element),
+      uid: this.#uniqueId,
       layoutOrigin: () => this.#layoutTracker().rect,
       listen: (event, listener) => this.addEventListener(event, listener),
       eventTarget: this,

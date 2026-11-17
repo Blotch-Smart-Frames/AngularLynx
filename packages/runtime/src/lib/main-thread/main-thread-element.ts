@@ -5,6 +5,7 @@ import {
 } from '../animation/animation';
 import type { MainThread } from './types';
 import { writePendingClasses } from '../lynx-element/class-writes';
+import { noteNativeTreeChanged } from '../lynx-element/tree-version';
 import { withSafeAreaInsets } from '../lynx-element/safe-area-insets';
 
 /**
@@ -23,6 +24,8 @@ const scheduleFlush = (): void => {
   // current event handler are applied, but before the next frame renders.
   Promise.resolve().then(() => {
     willFlush = false;
+    // Any flush may apply a list's updates (see tree-version.ts).
+    noteNativeTreeChanged();
     __FlushElementTree();
   });
 };

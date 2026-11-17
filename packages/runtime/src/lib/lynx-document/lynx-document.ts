@@ -24,6 +24,7 @@ import {
   createListElement,
   createPageElement,
 } from './element-creators';
+import { noteNativeTreeChanged } from '../lynx-element/tree-version';
 import type { ElementRef } from '../types/lynx';
 import type { LynxDocumentBase } from './types';
 
@@ -44,6 +45,7 @@ const takeOverPage = (): ElementRef | null => {
   for (const child of __GetChildren(page) ?? []) {
     __RemoveElement(page, child);
   }
+  noteNativeTreeChanged();
   return page;
 };
 
@@ -121,8 +123,10 @@ export class LynxDocument implements LynxDocumentBase {
         ? new LynxCanvasElement(element)
         : new LynxElement(element);
     // Its native element is new, with no classes: they can wait for the end
-    // of the cycle (see LynxElement's #nativeClasses).
+    // of the cycle (see LynxElement's #nativeClasses). And it's in no tree,
+    // with nothing in it, which inserting it needn't ask native (#444).
     el.markNew();
+    el.markUnattached();
     el.tagName = tag;
     // raw-text bakes its text into the native element at creation, bypassing the
     // cached setter path — seed the recreation cache so a remounted raw-text can
@@ -151,6 +155,7 @@ export class LynxDocument implements LynxDocumentBase {
     scheduleSettleFlush();
     const text = __CreateRawText(value);
     const lynxElement = new LynxElement(text);
+    lynxElement.markUnattached();
     lynxElement.tagName = 'raw-text';
     // Seed the recreation cache: the text is baked into the native ref at
     // creation and never flows through a cached setter, so without this a
@@ -163,6 +168,7 @@ export class LynxDocument implements LynxDocumentBase {
     scheduleSettleFlush();
     const element = createCommentElement(this.#pageId);
     const el = new LynxElement(element);
+    el.markUnattached();
     // tagName 'comment' is the SOLE marker LynxListElement.getUIChildren() uses
     // to skip these @for/@if insertion anchors. It deliberately does not go in a
     // WeakSet of element refs — hashing a native ref crashes the Lepus engine

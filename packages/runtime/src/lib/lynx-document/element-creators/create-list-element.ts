@@ -1,5 +1,6 @@
 import { LynxListElement, settleAfterListItems } from '../../lynx-element';
 import type { ListSlot } from '../../lynx-element/lynx-list-element';
+import { noteNativeTreeChanged } from '../../lynx-element/tree-version';
 import type { ElementRef, ListElementRef } from '../../types/lynx';
 
 /**
@@ -42,6 +43,9 @@ export const createListElement = (pageId: number): LynxListElement => {
       : { element: slot.ref!, reused: false };
     if (!item) return null;
     if (!listEl.isAppendedToNativeList(item.element)) {
+      // The list's own call, which the item's wrapper doesn't see (see
+      // tree-version.ts).
+      noteNativeTreeChanged();
       __AppendElement(listRef, item.element);
       listEl.markAppendedToNativeList(item.element);
     }

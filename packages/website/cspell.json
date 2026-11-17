@@ -4,6 +4,7 @@
     "cqmin",
     "dagre",
     "devicectl",
+    "dyld",
     "fract",
     "globaldata",
     "initdata",

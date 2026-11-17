@@ -25,6 +25,8 @@ Build commands and outputs (no flavors, so the names are fixed):
                                                   # app/build/outputs/bundle/release/app-release.aab
 ```
 
+The release build runs R8 and the resource shrinker (`isMinifyEnabled`, `isShrinkResources`), and writes the mapping that turns the renamed classes back to `app/build/outputs/mapping/release/mapping.txt`, which also goes in the `.aab` for Google Play. Lynx's AAR ships keep rules for its own classes; `app/proguard-rules.pro` adds the ones they miss, each with what broke without it (the app aborting on launch, for one). Any class Lynx or the shell reaches only by name needs a rule there. How they were found, and the sizes, are in `investigations/native-app-builds.md` ("R8 in the Android release build").
+
 ## How the shell loads the app
 
 - **Bundles** come from `assets/` (`ResourceFetchers.kt`, `BundleAssets.kt`). A URL without a scheme (`/static/…`, `static/…`), `asset:///…` and `file:///android_asset/…` all mean "the file at that path in `assets/`", so the bundle works with Rspeedy's default asset prefix (`/`) and doesn't need a platform-specific one. Absolute `http(s)` URLs are fetched with OkHttp.

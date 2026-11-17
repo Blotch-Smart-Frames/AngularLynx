@@ -72,11 +72,17 @@ android {
 
     buildTypes {
         release {
-            // R8 shrinking is off until the Lynx keep rules in
-            // proguard-rules.pro are verified against every AngularLynx
-            // feature; Lynx reaches much of its Java code through JNI and
-            // reflection, which R8 can't see.
-            isMinifyEnabled = false
+            // R8 shrinks, optimizes and renames the app's Java and Kotlin,
+            // and the resource shrinker drops the resources nothing uses.
+            // Most of the code is libraries the app uses a little of (media3
+            // and Guava behind <video>, appcompat and material behind
+            // XElement): R8 takes the dex from 19.5 MB to 3.3 MB, and what an
+            // arm64 phone downloads from 13.6 MB to 7.5 MB. Lynx reaches much
+            // of its Java through JNI and reflection, which R8 can't see:
+            // Lynx's AAR ships keep rules for its own classes, and
+            // proguard-rules.pro adds the ones they miss.
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",

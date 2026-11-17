@@ -7,7 +7,7 @@ fireEvent.tap(element); // runs (bindtap) or (catchtap), then the ancestors'
 fireEvent.input(element, { detail: { value: 'hello' } }); // $event.detail.value
 ```
 
-Each method takes the element and an optional `init` object. It runs the element's `(bind*)` or `(catch*)` handler. Touch, mouse and key events then go up to the page, as on a device, until a `(catch*)` handler stops them. The other events stay on the element.
+Each method takes the element and an optional `init` object. It runs the element's `(bind*)` or `(catch*)` handler. Touch, mouse and key events then go up to the page, as on a device, until a `(catch*)` handler stops them. The other events stay on the element, as do `mouseenter` and `mouseleave`.
 
 As on a device, every `(global-bind*)` handler for the event runs first, wherever it is in the page. They're how [`document:` and `window:` listeners](/api/angular-lynx/element-events#document-window-and-body-listeners) hear touches, so those run too, after the elements' handlers. One that a `(catch*)` handler stopped reaches them on the next timer:
 
@@ -41,6 +41,8 @@ await waitForUpdate(); // the component's (document:click) has run
 | `fireEvent.mousedblclick`  | `(bindmousedblclick)`  |
 | `fireEvent.mouselongpress` | `(bindmouselongpress)` |
 | `fireEvent.wheel`          | `(bindwheel)`          |
+| `fireEvent.mouseenter`     | `(bindmouseenter)`     |
+| `fireEvent.mouseleave`     | `(bindmouseleave)`     |
 | `fireEvent.keydown`        | `(bindkeydown)`        |
 | `fireEvent.keyup`          | `(bindkeyup)`          |
 
@@ -73,12 +75,40 @@ await waitForUpdate();
 
 ## Forms and focus
 
-| Method              | Binding         |
-| ------------------- | --------------- |
-| `fireEvent.input`   | `(bindinput)`   |
-| `fireEvent.confirm` | `(bindconfirm)` |
-| `fireEvent.focus`   | `(bindfocus)`   |
-| `fireEvent.blur`    | `(bindblur)`    |
+| Method                           | Binding                      |
+| -------------------------------- | ---------------------------- |
+| `fireEvent.input`                | `(bindinput)`                |
+| `fireEvent.confirm`              | `(bindconfirm)`              |
+| `fireEvent.focus`                | `(bindfocus)`                |
+| `fireEvent.blur`                 | `(bindblur)`                 |
+| `fireEvent.keyboardheightchange` | `(bindkeyboardheightchange)` |
+
+A focused `<input>` or `<textarea>` fires `keyboardheightchange` as the keyboard shows, changes size and hides. Pass its height as `detail.height`, and `0` for a keyboard that went away:
+
+```typescript
+fireEvent.keyboardheightchange(field, { detail: { height: 336 } });
+await waitForUpdate();
+```
+
+## Accessibility
+
+| Method                          | Binding                     |
+| ------------------------------- | --------------------------- |
+| `fireEvent.accessibilityaction` | `(bindaccessibilityaction)` |
+
+A screen reader user picking one of an element's `accessibility-actions` fires `accessibilityaction`, with the action's name in `detail.name`:
+
+```typescript
+fireEvent.accessibilityaction(row, { detail: { name: 'Delete' } });
+```
+
+## Overlays
+
+| Method                   | Binding              |
+| ------------------------ | -------------------- |
+| `fireEvent.requestclose` | `(bindrequestclose)` |
+
+Android's back button fires `requestclose` at an open `<overlay>`, which has no detail.
 
 ## Layout and loading
 

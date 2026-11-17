@@ -5,8 +5,10 @@
 
 import { Component, signal } from '@angular/core';
 import type {
+  AccessibilityActionDetail,
   ImageErrorDetail,
   ImageLoadDetail,
+  KeyboardHeightDetail,
   LynxEvent,
 } from '@blotch/angular-lynx';
 import { configure, getConfig } from '@testing-library/dom';
@@ -293,6 +295,128 @@ describe('fireEvent', () => {
   });
 });
 
+// Issue #457: events a component handles that had no shortcut.
+describe('fireEvent — pointer, keyboard, accessibility and overlay events', () => {
+  it('clears a pressed state on mouseleave, on the element alone', async () => {
+    const left: string[] = [];
+
+    @Component({
+      selector: 'test-pressable',
+      template: `
+        <view (bindmouseleave)="left.push('card')">
+          <view
+            class="button"
+            (bindmouseenter)="hovered.set(true)"
+            (bindmousedown)="pressed.set(true)"
+            (bindmouseleave)="pressed.set(false); hovered.set(false)"
+          >
+            <text>{{ pressed() ? 'Pressed' : 'Idle' }}</text>
+            <text>{{ hovered() ? 'Hovered' : 'Away' }}</text>
+          </view>
+        </view>
+      `,
+    })
+    class PressableComponent {
+      readonly pressed = signal(false);
+      readonly hovered = signal(false);
+      readonly left = left;
+    }
+
+    const { container } = await render(PressableComponent);
+    const button = container.querySelector('.button')!;
+
+    fireEvent.mouseenter(button);
+    fireEvent.mousedown(button);
+    await waitForUpdate();
+    expect(screen.getByText('Pressed')).toBeInTheDocument();
+    expect(screen.getByText('Hovered')).toBeInTheDocument();
+
+    fireEvent.mouseleave(button);
+    await waitForUpdate();
+    expect(screen.getByText('Idle')).toBeInTheDocument();
+    expect(screen.getByText('Away')).toBeInTheDocument();
+    // Leaving the button isn't leaving the card around it.
+    expect(left).toEqual([]);
+  });
+
+  it('runs the accessibility action a screen reader picked', async () => {
+    let action: AccessibilityActionDetail | undefined;
+
+    @Component({
+      selector: 'test-accessibility-action',
+      template: `
+        <view
+          class="row"
+          [accessibility-element]="true"
+          [accessibility-actions]="['Delete']"
+          (bindaccessibilityaction)="act($event)"
+        ></view>
+      `,
+    })
+    class AccessibilityActionComponent {
+      act({ detail }: LynxEvent<AccessibilityActionDetail>) {
+        action = detail;
+      }
+    }
+
+    const { container } = await render(AccessibilityActionComponent);
+    fireEvent.accessibilityaction(container.querySelector('.row')!, {
+      detail: { name: 'Delete' },
+    });
+
+    expect(action).toEqual({ name: 'Delete' });
+  });
+
+  it("closes an overlay on Android's back button", async () => {
+    @Component({
+      selector: 'test-request-close',
+      template: `
+        @if (open()) {
+          <overlay [visible]="true" (bindrequestclose)="open.set(false)">
+            <text>Sheet</text>
+          </overlay>
+        }
+      `,
+    })
+    class RequestCloseComponent {
+      readonly open = signal(true);
+    }
+
+    const { container } = await render(RequestCloseComponent);
+    fireEvent.requestclose(container.querySelector('overlay')!);
+    await waitForUpdate();
+
+    expect(screen.queryByText('Sheet')).not.toBeInTheDocument();
+  });
+
+  it("moves a field above the keyboard by the keyboard's height", async () => {
+    @Component({
+      selector: 'test-keyboard-height',
+      template: `
+        <view class="footer" [style.padding-bottom.px]="keyboard()">
+          <input (bindkeyboardheightchange)="resized($event)" />
+        </view>
+      `,
+    })
+    class KeyboardHeightComponent {
+      readonly keyboard = signal(0);
+      resized({ detail }: LynxEvent<KeyboardHeightDetail>) {
+        this.keyboard.set(detail.height);
+      }
+    }
+
+    const { container } = await render(KeyboardHeightComponent);
+    fireEvent.keyboardheightchange(container.querySelector('input')!, {
+      detail: { height: 336 },
+    });
+    await waitForUpdate();
+
+    expect(container.querySelector('.footer')).toHaveStyle({
+      paddingBottom: '336px',
+    });
+  });
+});
+
 describe('eventMap', () => {
   it('contains all expected Lynx event types', () => {
     expect(Object.keys(eventMap)).toEqual([
@@ -315,6 +439,8 @@ describe('eventMap', () => {
       'mousedblclick',
       'mouselongpress',
       'wheel',
+      'mouseenter',
+      'mouseleave',
       // Scroll / viewport
       'scroll',
       'scrollend',
@@ -332,6 +458,11 @@ describe('eventMap', () => {
       'blur',
       'input',
       'confirm',
+      'keyboardheightchange',
+      // Accessibility
+      'accessibilityaction',
+      // Overlays
+      'requestclose',
       // Layout / loading
       'layoutchange',
       'load',

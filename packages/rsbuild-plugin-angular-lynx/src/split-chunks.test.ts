@@ -166,7 +166,7 @@ describe('applySplitChunksRule', () => {
     it('inlines dynamic imports for the web environment too', () => {
       // The web bundle loads lazy bundles through Lynx for Web, which needs
       // each one's main-thread code. Leaving web out made every lazy route
-      // fail there (BUG_LIST.md, "Lazy routes fail in production builds").
+      // fail there with "SyntaxError: Unexpected token '}'" (see #84).
       const { api, triggerRspackConfig } = createMockApi();
       const config = { optimization: { splitChunks: { chunks: 'all' } } };
 

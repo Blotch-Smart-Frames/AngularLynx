@@ -34,8 +34,8 @@ export type Flow = {
   readonly file: string;
   readonly description: string;
   /**
-   * Set, per platform, while a known bug makes this flow fail. A failure is
-   * then only reported, and a pass fails the run, so the marker is removed
+   * Set, per platform, while a known bug makes this flow fail: the GitHub
+   * issue that tracks it and what goes wrong. A failure is then only reported, and a pass fails the run, so the marker is removed
    * together with the fix (the same contract as Playwright's test.fail()).
    */
   readonly knownFailure?: Partial<Record<Platform, string>>;
@@ -187,7 +187,7 @@ export const judgeFlow = (
   const knownFailure = flow.knownFailure?.[platform];
   if (knownFailure) {
     if (outcome.status === 'passed') {
-      return `native/${flow.file} (the app ${flow.description}) now passes on ${platform}, but is marked as a known failure (${knownFailure}). Remove it from knownFailure in src/native/maestro.ts, and the bug from BUG_LIST.md once no platform has it.`;
+      return `native/${flow.file} (the app ${flow.description}) now passes on ${platform}, but is marked as a known failure (${knownFailure}). Remove it from knownFailure in src/native/maestro.ts, and close the bug's issue once no platform has it.`;
     }
     console.warn(`! native/${flow.file} failed as expected: ${knownFailure}`);
     return undefined;

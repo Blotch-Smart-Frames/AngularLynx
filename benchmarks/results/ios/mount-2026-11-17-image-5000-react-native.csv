@@ -1,0 +1,21 @@
+timestamp,device,os_build,app,bundle_id,run,first_frame_ms,fully_drawn_ms,memory_mb,peak_memory_mb,thermal_state,battery_percent,charging,host_load
+2026-11-17T04:33:31+00:00,"iPhone15,2",27.0.1 (24A446),angular-lynx,com.angularlynx.bench.angularlynx,1,,711.3,,,Nominal,100,false,7.9
+2026-11-17T04:33:49+00:00,"iPhone15,2",27.0.1 (24A446),react-native,com.angularlynx.bench.rival,1,,545.7,,,Nominal,100,false,6.7
+2026-11-17T04:34:06+00:00,"iPhone15,2",27.0.1 (24A446),react-native,com.angularlynx.bench.rival,2,,454.4,,,Nominal,100,false,6.4
+2026-11-17T04:34:23+00:00,"iPhone15,2",27.0.1 (24A446),angular-lynx,com.angularlynx.bench.angularlynx,2,,800.4,,,Nominal,100,false,5.7
+2026-11-17T04:34:40+00:00,"iPhone15,2",27.0.1 (24A446),angular-lynx,com.angularlynx.bench.angularlynx,3,,690.4,,,Nominal,100,false,5.6
+2026-11-17T04:34:56+00:00,"iPhone15,2",27.0.1 (24A446),react-native,com.angularlynx.bench.rival,3,,441.2,,,Nominal,100,false,5.2
+2026-11-17T04:35:13+00:00,"iPhone15,2",27.0.1 (24A446),react-native,com.angularlynx.bench.rival,4,,435.3,,,Nominal,100,false,5.1
+2026-11-17T04:35:30+00:00,"iPhone15,2",27.0.1 (24A446),angular-lynx,com.angularlynx.bench.angularlynx,4,,693.8,,,Nominal,100,false,4.7
+2026-11-17T04:35:47+00:00,"iPhone15,2",27.0.1 (24A446),angular-lynx,com.angularlynx.bench.angularlynx,5,,689.7,,,Nominal,100,false,6.1
+2026-11-17T04:36:03+00:00,"iPhone15,2",27.0.1 (24A446),react-native,com.angularlynx.bench.rival,5,,435.8,,,Nominal,100,false,5.8
+2026-11-17T04:36:20+00:00,"iPhone15,2",27.0.1 (24A446),react-native,com.angularlynx.bench.rival,6,,435.3,,,Nominal,100,false,5.9
+2026-11-17T04:36:37+00:00,"iPhone15,2",27.0.1 (24A446),angular-lynx,com.angularlynx.bench.angularlynx,6,,696.7,,,Nominal,100,false,5.8
+2026-11-17T04:36:53+00:00,"iPhone15,2",27.0.1 (24A446),angular-lynx,com.angularlynx.bench.angularlynx,7,,683.5,,,Nominal,100,false,5.5
+2026-11-17T04:37:10+00:00,"iPhone15,2",27.0.1 (24A446),react-native,com.angularlynx.bench.rival,7,,437.5,,,Nominal,100,false,5.2
+2026-11-17T04:37:26+00:00,"iPhone15,2",27.0.1 (24A446),react-native,com.angularlynx.bench.rival,8,,439.4,,,Nominal,100,false,5.3
+2026-11-17T04:37:43+00:00,"iPhone15,2",27.0.1 (24A446),angular-lynx,com.angularlynx.bench.angularlynx,8,,694.3,,,Nominal,100,false,5.0
+2026-11-17T04:37:59+00:00,"iPhone15,2",27.0.1 (24A446),angular-lynx,com.angularlynx.bench.angularlynx,9,,684.9,,,Nominal,100,false,5.7
+2026-11-17T04:38:16+00:00,"iPhone15,2",27.0.1 (24A446),react-native,com.angularlynx.bench.rival,9,,435.7,,,Nominal,100,false,5.5
+2026-11-17T04:38:33+00:00,"iPhone15,2",27.0.1 (24A446),react-native,com.angularlynx.bench.rival,10,,434.2,,,Nominal,100,false,5.5
+2026-11-17T04:38:49+00:00,"iPhone15,2",27.0.1 (24A446),angular-lynx,com.angularlynx.bench.angularlynx,10,,694.2,,,Nominal,100,false,5.2

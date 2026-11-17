@@ -32,6 +32,10 @@ KNOWN_COLUMNS = {
     "device-thermal-state-intervals": [
         "start", "duration", "end", "thermal-state", "track-label", "is-induced", "narrative",
     ],
+    "dyld-activity-interval": [
+        "start", "type", "duration", "process", "thread", "description", "library", "symbol",
+        "path", "level", "backtrace",
+    ],
 }
 
 # A cell type only that table has, which names a headerless table.
@@ -40,6 +44,7 @@ DISTINCT_CELL = {
     "PointsOfInterestEvents": "signpost-name",
     "activity-monitor-process-live": "size-in-bytes",
     "device-thermal-state-intervals": "thermal-state",
+    "dyld-activity-interval": "dyld-activity",
 }
 
 

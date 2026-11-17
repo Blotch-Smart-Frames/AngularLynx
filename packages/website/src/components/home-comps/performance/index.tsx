@@ -12,9 +12,10 @@ export const Performance: React.FC = () => (
     <div className={styles['title']}>How it performs</div>
     <div className={styles['desc']}>
       The same app in each framework, launched over and over on a real iPhone.
-      Every run is a dot.
+      Every run is a dot. Memory, first frame and app size are on the Benchmarks
+      page.
     </div>
-    <LaunchCharts metrics={['fullyDrawnMs', 'memoryMb']} />
+    <LaunchCharts metrics={['fullyDrawnMs']} />
     <a href="/guide/benchmarks" className={styles['link']}>
       Every metric, and how we measured{' '}
       <i className="fa-light fa-arrow-right" aria-hidden="true" />

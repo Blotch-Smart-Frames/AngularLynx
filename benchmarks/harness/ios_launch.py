@@ -124,14 +124,53 @@ def measure(trace):
     }
 
 
-def record(udid, bundle_id, trace, seconds, extra_instruments):
-    command = [
-        "xcrun", "xctrace", "record",
-        "--template", "App Launch",
-        "--instrument", "Points of Interest",
-        "--instrument", "Activity Monitor",
-        "--instrument", "Thermal State",
-    ]
+def measure_light(trace):
+    """A light recording's fully drawn: no App Launch phases, so the process's
+    start is dyld's "Launch Executable", which begins about 2 ms after the
+    App Launch template's first phase (measured on one trace with both)."""
+    data = tables(
+        trace,
+        "dyld-activity-interval",
+        "PointsOfInterestEvents",
+        "device-thermal-state-intervals",
+    )
+    launches = [r for r in data["dyld-activity-interval"] if r["type"][1] == "Launch Executable"]
+    if not launches:
+        raise RuntimeError("no dyld launch in the trace")
+    launch = min(launches, key=lambda r: int(r["start"][0]))
+    pid = launch["process"][2].findtext("pid")
+    start = int(launch["start"][0])
+    fully_drawn = None
+    for r in data["PointsOfInterestEvents"]:
+        if of_pid(r["process"], pid) and r["name"][1] in FULLY_DRAWN:
+            fully_drawn = int(r["time"][0]) - start
+            break
+    thermal = sorted({r["thermal-state"][1] for r in data["device-thermal-state-intervals"]})
+    return {
+        "first_frame_ms": "",
+        "fully_drawn_ms": f"{fully_drawn / 1e6:.1f}" if fully_drawn is not None else "",
+        "memory_mb": "",
+        "peak_memory_mb": "",
+        "thermal_state": "/".join(thermal),
+    }
+
+
+def record(udid, bundle_id, trace, seconds, extra_instruments, light=False):
+    command = ["xcrun", "xctrace", "record"]
+    if light:
+        # About 15 s a launch instead of 60: no CPU sampling, no launch phases.
+        command += [
+            "--instrument", "Points of Interest",
+            "--instrument", "dyld Activity",
+            "--instrument", "Thermal State",
+        ]
+    else:
+        command += [
+            "--template", "App Launch",
+            "--instrument", "Points of Interest",
+            "--instrument", "Activity Monitor",
+            "--instrument", "Thermal State",
+        ]
     for instrument in extra_instruments:
         command += ["--instrument", instrument]
     command += [
@@ -153,6 +192,11 @@ def main():
     parser.add_argument("--out", required=True, help="the CSV to append to")
     parser.add_argument("--keep-traces", help="a folder to keep each trace in")
     parser.add_argument("--rest", type=float, default=3, help="seconds between launches")
+    parser.add_argument(
+        "--light",
+        action="store_true",
+        help="record only fully drawn, without the App Launch template (for the mount screens)",
+    )
     args = parser.parse_args()
 
     apps = [tuple(app.split("=", 1)) for app in args.app]
@@ -171,7 +215,7 @@ def main():
         # Reading a trace takes about as long as recording one, so it runs
         # beside the next launch, on the Mac, while the phone records.
         try:
-            values = measure(trace)
+            values = measure_light(trace) if args.light else measure(trace)
         except Exception as error:  # noqa: BLE001 - one bad run shouldn't end a session
             print(f"{row['app']} run {row['run']}: {error}", file=sys.stderr, flush=True)
             values = {}
@@ -210,7 +254,7 @@ def main():
                     "host_load": f"{os.getloadavg()[0]:.1f}",
                 }
                 try:
-                    record(args.device, bundle_id, trace, args.seconds, [])
+                    record(args.device, bundle_id, trace, args.seconds, [], light=args.light)
                 except subprocess.CalledProcessError as error:
                     print(f"{name} run {run}: xctrace failed: {error.stderr.strip()[-500:]}", file=sys.stderr, flush=True)
                     with lock:

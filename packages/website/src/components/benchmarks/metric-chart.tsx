@@ -113,11 +113,14 @@ export const MetricChart = ({
           OTHER,
         ),
         medians(summaries.filter(ours), ANGULAR_LYNX),
+        // Beside the median's tick, above the dots, so neither covers it.
         text(summaries, {
           x: 'median',
           y: 'label',
           text: (summary) => format(summary.median, unit),
-          dy: -16,
+          anchor: 'start',
+          dx: 6,
+          dy: -14,
           fontSize: 12,
           fontWeight: 600,
         }),
@@ -129,9 +132,12 @@ export const MetricChart = ({
           grid: true,
           axis: { label: axisLabel },
         },
+        // An instance, not a factory, so the apps keep this order instead of
+        // the order their rows come in.
         y: {
-          scale: () => scaleBand().padding(0.3),
-          domain: order.map((app) => APPS[app]?.label ?? app),
+          scale: scaleBand()
+            .domain(order.map((app) => APPS[app]?.label ?? app))
+            .padding(0.3),
         },
       },
       tooltip,

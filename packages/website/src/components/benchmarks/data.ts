@@ -40,14 +40,47 @@ export type Launch = {
   readonly batteryPercent?: number;
 };
 
+/**
+ * Splits one CSV line into its cells. The harness writes Python's csv module's
+ * output, which quotes a cell holding a comma: the phone's model identifier,
+ * such as "iPhone15,2", has one.
+ */
+const splitCsvLine = (line: string): string[] => {
+  const cells: string[] = [];
+  let cell = '';
+  let quoted = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (quoted) {
+      if (char === '"' && line[i + 1] === '"') {
+        cell += '"';
+        i++;
+      } else if (char === '"') {
+        quoted = false;
+      } else {
+        cell += char;
+      }
+    } else if (char === '"') {
+      quoted = true;
+    } else if (char === ',') {
+      cells.push(cell);
+      cell = '';
+    } else {
+      cell += char;
+    }
+  }
+  cells.push(cell);
+  return cells;
+};
+
 const parseCsv = <Column extends string>(
   text: string,
 ): Record<Column, string>[] => {
-  // The harness writes plain values: no quoted commas or newlines.
+  // No cell holds a newline, so each line is a row.
   const [header, ...lines] = text.trim().split(/\r?\n/);
-  const columns = header.split(',');
+  const columns = splitCsvLine(header);
   return lines.map((line) => {
-    const cells = line.split(',');
+    const cells = splitCsvLine(line);
     return Object.fromEntries(
       columns.map((column, i) => [column, cells[i] ?? '']),
     ) as Record<Column, string>;

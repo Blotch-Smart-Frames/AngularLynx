@@ -10,7 +10,11 @@ declare module '*.csv' {
   export default text;
 }
 
-type ImportMeta = {
+// Rspack's import.meta.webpackContext(), which the benchmark charts read
+// the results folder with. An interface, because only an interface merges
+// into the global ImportMeta.
+// oxlint-disable-next-line typescript/consistent-type-definitions
+interface ImportMeta {
   webpackContext(
     request: string,
     options?: { recursive?: boolean; regExp?: RegExp },

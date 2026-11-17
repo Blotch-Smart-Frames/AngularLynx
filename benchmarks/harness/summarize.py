@@ -4,6 +4,11 @@ table, from one or more of the harness's CSVs.
 
     python3 summarize.py ../results/ios/launch-*.csv
 
+Each app's launches are split by what ran before: "again" right after its
+own last launch (iOS still has its files in memory, about 80 ms faster) and
+"after other" after the other app's. The harness alternates A B, B A, so each
+app has about half of each. The order comes from each row's timestamp.
+
 Percentiles use linear interpolation between the closest ranks, as numpy's
 default does. Runs where a metric is missing (a failed recording) are left
 out of that metric and counted in the "failed" column.
@@ -32,8 +37,15 @@ def main(paths):
     order = []
     for path in paths:
         with open(path, newline="") as file:
-            for row in csv.DictReader(file):
-                app = row["app"]
+            ordered = sorted(csv.DictReader(file), key=lambda row: row["timestamp"])
+            previous = None
+            for row in ordered:
+                condition = "again" if row["app"] == previous else "after other"
+                first = previous is None
+                previous = row["app"]
+                if first:
+                    continue
+                app = f"{row['app']} ({condition})"
                 if app not in order:
                     order.append(app)
                 if not row.get("fully_drawn_ms"):

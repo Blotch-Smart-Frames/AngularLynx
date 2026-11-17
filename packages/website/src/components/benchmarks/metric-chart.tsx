@@ -12,6 +12,14 @@ const OTHER = '#8b8b94';
 
 export type Metric = 'firstFrameMs' | 'fullyDrawnMs' | 'memoryMb';
 
+type Condition = 'again' | 'afterOther';
+
+/** How each condition reads on the axis, after the app's name. */
+const CONDITION_LABELS: Record<Condition, string> = {
+  again: 'again',
+  afterOther: 'after the other',
+};
+
 type Row = {
   app: string;
   label: string;
@@ -28,9 +36,20 @@ type Summary = {
 };
 
 /**
+ * One row of the chart: an app, launched in one condition.
+ */
+const rowLabel = (app: string, condition: Condition) =>
+  `${APPS[app]?.label ?? app}, ${CONDITION_LABELS[condition]}`;
+
+/**
  * One metric across the apps: a dot for every run, a bar at the median, the
  * median written over it. Every run stays visible, so a spread or an outlier
  * is there to see rather than hidden in an average.
+ *
+ * Each app has two rows: launched again, right after itself, and launched
+ * after the other app. iOS keeps an app's files in memory for a while, so the
+ * first is about 80 ms faster, and the second depends on what the other app
+ * pushed out; mixing them would give each app two humps and a median between.
  */
 export const MetricChart = ({
   launches,
@@ -49,34 +68,41 @@ export const MetricChart = ({
   /** The axis's end, so that charts side by side share one scale. */
   readonly xMax: number;
 }) => {
-  const { rows, summaries } = useMemo(() => {
-    const rows: Row[] = launches
-      .filter(
-        (launch) => launch[metric] !== undefined && order.includes(launch.app),
-      )
-      .map((launch) => ({
-        app: launch.app,
-        label: APPS[launch.app]?.label ?? launch.app,
-        value: launch[metric]!,
-        run: launch.run,
-        session: launch.session,
-      }));
-    const summaries: Summary[] = order.flatMap((app) => {
+  const { rows, summaries, labels } = useMemo(() => {
+    const groups = (['again', 'afterOther'] as const).flatMap((condition) =>
+      order.map((app) => ({ app, condition, label: rowLabel(app, condition) })),
+    );
+    const rows: Row[] = launches.flatMap((launch) =>
+      launch[metric] === undefined ||
+      launch.condition === 'first' ||
+      !order.includes(launch.app)
+        ? []
+        : [
+            {
+              app: launch.app,
+              label: rowLabel(launch.app, launch.condition),
+              value: launch[metric],
+              run: launch.run,
+              session: launch.session,
+            },
+          ],
+    );
+    const summaries: Summary[] = groups.flatMap(({ app, label }) => {
       const values = rows
-        .filter((row) => row.app === app)
+        .filter((row) => row.label === label)
         .map((row) => row.value);
       if (values.length === 0) return [];
       return [
         {
           app,
-          label: APPS[app]?.label ?? app,
+          label,
           median: percentile(values, 0.5),
           p90: percentile(values, 0.9),
           runs: values.length,
         },
       ];
     });
-    return { rows, summaries };
+    return { rows, summaries, labels: groups.map((group) => group.label) };
   }, [launches, metric, order]);
 
   const definition = useMemo(() => {
@@ -135,14 +161,12 @@ export const MetricChart = ({
         // An instance, not a factory, so the apps keep this order instead of
         // the order their rows come in.
         y: {
-          scale: scaleBand()
-            .domain(order.map((app) => APPS[app]?.label ?? app))
-            .padding(0.3),
+          scale: scaleBand().domain(labels).padding(0.3),
         },
       },
       tooltip,
     });
-  }, [rows, summaries, order, unit, axisLabel, xMax]);
+  }, [rows, summaries, labels, unit, axisLabel, xMax]);
 
   return (
     <>
@@ -165,7 +189,7 @@ export const MetricChart = ({
           </thead>
           <tbody>
             {summaries.map((summary) => (
-              <tr key={summary.app}>
+              <tr key={summary.label}>
                 <td>{summary.label}</td>
                 <td>{format(summary.median, unit)}</td>
                 <td>{format(summary.p90, unit)}</td>

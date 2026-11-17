@@ -45,9 +45,9 @@ const Caption = () => {
       {devices.join(', ')}, iOS {builds.join(', ')},{' '}
       {dateRange(LAUNCHES.map((l) => l.timestamp))}. Launches per app:{' '}
       {runs.join(', ')}. Each panel is one session, the two apps launched in
-      turn; sessions aren't compared with each other, since the phone and the
-      network vary between them. Release builds; each launch is a new process
-      with warm file caches, recorded with Instruments' App Launch template.{' '}
+      turn. "Again" is a launch right after the app's own last one, when iOS
+      still has its files in memory; "after the other" follows the other app's
+      launch. Release builds, recorded with Instruments' App Launch template.{' '}
       <a href="/guide/benchmarks#method">How we measured</a>
     </p>
   );
@@ -196,10 +196,17 @@ const KIND_NAMES = { view: 'views', text: 'texts', image: 'images' } as const;
  */
 export const MountTable = () => {
   if (MOUNTS.length === 0) return null;
-  const median = (session: (typeof MOUNTS)[number], app: string) => {
+  const median = (
+    session: (typeof MOUNTS)[number],
+    app: string,
+    condition: 'again' | 'afterOther',
+  ) => {
     const values = session.launches
       .filter(
-        (launch) => launch.app === app && launch.fullyDrawnMs !== undefined,
+        (launch) =>
+          launch.app === app &&
+          launch.condition === condition &&
+          launch.fullyDrawnMs !== undefined,
       )
       .map((launch) => launch.fullyDrawnMs!);
     return values.length > 0
@@ -210,10 +217,16 @@ export const MountTable = () => {
     <table>
       <thead>
         <tr>
-          <th>Screen</th>
+          <th rowSpan={2}>Screen</th>
+          <th rowSpan={2}>Other app</th>
+          <th colSpan={2}>Launched again</th>
+          <th colSpan={2}>After the other app</th>
+        </tr>
+        <tr>
           <th>AngularLynx</th>
           <th>Other app</th>
-          <th>Launches each</th>
+          <th>AngularLynx</th>
+          <th>Other app</th>
         </tr>
       </thead>
       <tbody>
@@ -222,18 +235,11 @@ export const MountTable = () => {
             <td>
               {session.count.toLocaleString('en-US')} {KIND_NAMES[session.kind]}
             </td>
-            <td>{median(session, 'angular-lynx')}</td>
-            <td>
-              {APPS[session.rival]?.label ?? session.rival}:{' '}
-              {median(session, session.rival)}
-            </td>
-            <td>
-              {
-                session.launches.filter(
-                  (launch) => launch.app === session.rival,
-                ).length
-              }
-            </td>
+            <td>{APPS[session.rival]?.label ?? session.rival}</td>
+            <td>{median(session, 'angular-lynx', 'again')}</td>
+            <td>{median(session, session.rival, 'again')}</td>
+            <td>{median(session, 'angular-lynx', 'afterOther')}</td>
+            <td>{median(session, session.rival, 'afterOther')}</td>
           </tr>
         ))}
       </tbody>

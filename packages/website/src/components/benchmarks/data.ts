@@ -38,6 +38,14 @@ export type Launch = {
   readonly peakMemoryMb?: number;
   readonly thermalState: string;
   readonly batteryPercent?: number;
+  /**
+   * What ran before it. `again`: this app was the last one launched, so
+   * iOS still has its files in memory (a warm launch), the faster case by
+   * about 80 ms. `afterOther`: the session's other app ran in between and
+   * pushed some of them out. `first`: the session's first launch, which
+   * neither describes, left off the charts.
+   */
+  readonly condition: 'again' | 'afterOther' | 'first';
 };
 
 /**
@@ -91,35 +99,58 @@ const number = (value: string): number | undefined =>
   value === '' ? undefined : Number(value);
 
 /**
+ * Sets each launch's condition from the launch before it. Rows are written
+ * as each trace is read, which isn't always the order they ran in, so they're
+ * put back in order by when each launch started.
+ */
+const withConditions = (launches: Launch[]): Launch[] => {
+  const ordered = [...launches].sort((a, b) =>
+    a.timestamp.localeCompare(b.timestamp),
+  );
+  return ordered.map((launch, i) => ({
+    ...launch,
+    condition:
+      i === 0
+        ? 'first'
+        : ordered[i - 1].app === launch.app
+          ? 'again'
+          : 'afterOther',
+  }));
+};
+
+/**
  * One CSV's rows, as launches of the given session.
  */
 const readLaunches = (text: string, session: string): Launch[] =>
-  parseCsv<
-    | 'app'
-    | 'timestamp'
-    | 'device'
-    | 'os_build'
-    | 'run'
-    | 'first_frame_ms'
-    | 'fully_drawn_ms'
-    | 'memory_mb'
-    | 'peak_memory_mb'
-    | 'thermal_state'
-    | 'battery_percent'
-  >(text).map((row) => ({
-    app: row.app,
-    session,
-    timestamp: row.timestamp,
-    device: row.device,
-    osBuild: row.os_build,
-    run: Number(row.run),
-    firstFrameMs: number(row.first_frame_ms),
-    fullyDrawnMs: number(row.fully_drawn_ms),
-    memoryMb: number(row.memory_mb),
-    peakMemoryMb: number(row.peak_memory_mb),
-    thermalState: row.thermal_state,
-    batteryPercent: number(row.battery_percent),
-  }));
+  withConditions(
+    parseCsv<
+      | 'app'
+      | 'timestamp'
+      | 'device'
+      | 'os_build'
+      | 'run'
+      | 'first_frame_ms'
+      | 'fully_drawn_ms'
+      | 'memory_mb'
+      | 'peak_memory_mb'
+      | 'thermal_state'
+      | 'battery_percent'
+    >(text).map((row) => ({
+      app: row.app,
+      session,
+      timestamp: row.timestamp,
+      device: row.device,
+      osBuild: row.os_build,
+      run: Number(row.run),
+      firstFrameMs: number(row.first_frame_ms),
+      fullyDrawnMs: number(row.fully_drawn_ms),
+      memoryMb: number(row.memory_mb),
+      peakMemoryMb: number(row.peak_memory_mb),
+      thermalState: row.thermal_state,
+      batteryPercent: number(row.battery_percent),
+      condition: 'first' as const,
+    })),
+  );
 
 export const LAUNCHES: readonly Launch[] = launchFiles
   .keys()

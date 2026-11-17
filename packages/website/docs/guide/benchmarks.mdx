@@ -17,7 +17,7 @@ How fast an AngularLynx app starts, how much memory it takes and how big it is, 
 
 ## Rendering many elements
 
-Each app built to open on a screen of 1,500 or 5,000 plain views, texts or images, not in a list that renders only what's on screen. The time runs from the process starting to the app reporting all of them drawn, median of 10 launches each. Each row is one session, AngularLynx and the other app launched in turn.
+Each app built to open on a screen of 1,500 or 5,000 plain views, texts or images, not in a list that renders only what's on screen. The time runs from the process starting to the app reporting all of them drawn: the median of about five launches each way, launched again and after the other app. Each row is one session, AngularLynx and the other app launched in turn.
 
 <MountTable />
 
@@ -55,6 +55,7 @@ The apps load recorded PokeAPI responses and images from a server on the Mac, ov
 - **A real phone** for every number here. Simulators only check the scripts.
 - **Apps alternate run by run** (A B, B A, A B…), so heat, battery and background work fall on every app alike.
 - **Battery, charging, thermal state and the iOS build** are recorded with every run, in the CSVs.
+- **Two kinds of launch, charted apart.** The apps go A B, B A, A B…, so half of each app's launches come right after its own last launch, and half after the other app's. iOS keeps a closed app's files in memory for a while, so launching it again is about 80 ms faster, at every metric and for every app. After the other app, it depends on how much the other app pushed out. Each chart has a row for each.
 - **Each launch is a new process,** started by Instruments, with the phone's file caches warm: what iOS calls a warm launch. A cold launch, the first after a reboot, can't be repeated without rebooting the phone each time.
 - **Medians and p90,** with every run drawn as a dot.
 

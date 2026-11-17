@@ -220,6 +220,92 @@ globalThis.runWorklet = (ctx: unknown, params: unknown[]) => {
   }
 };
 
+const RUN_ON_BACKGROUND_EVENT = 'Lynx.Worklet.runOnBackground';
+const RETURN_EVENT = 'Lynx.Worklet.BgFunctionCallRet';
+
+type ThreadContext = {
+  addEventListener(
+    type: string,
+    listener: (event: { data: string }) => void,
+  ): void;
+  dispatchEvent(event: { type: string; data: string }): void;
+};
+
+/** The contexts listening for runOnBackground() traffic, so none listens twice. */
+const listeningContexts = new WeakSet<object>();
+
+/**
+ * Main thread: settles each runOnBackground() promise with the background
+ * thread's reply, which arrives on getJSContext().
+ */
+const listenForReturns = (context: ThreadContext): void => {
+  if (listeningContexts.has(context)) return;
+  listeningContexts.add(context);
+  context.addEventListener(RETURN_EVENT, (event) => {
+    const { resolveId, returnValue, error } = JSON.parse(event.data);
+    const resolver = __pendingResolvers[resolveId];
+    if (resolver) {
+      delete __pendingResolvers[resolveId];
+      if (error) {
+        resolver.reject(new Error(error));
+      } else {
+        resolver.resolve(returnValue);
+      }
+    }
+  });
+};
+
+/**
+ * Background thread: runs the main thread's runOnBackground() requests, which
+ * arrive on getCoreContext(), and replies on the same context.
+ *
+ * The background thread reaches the main thread through getCoreContext(), not
+ * getJSContext(): each thread talks to the *other* thread's context (see the
+ * "RuntimeProxy API summary" in investigations/lynx-vs-web-differences.md, and
+ * React Lynx's runtime/src/worklet/call/runOnBackground.ts). Listening on
+ * getJSContext() here meant native runOnBackground() requests never arrived, so
+ * main-thread code (every Angular event handler) could not reach
+ * background-only APIs such as NativeModules.
+ */
+const listenForCalls = (context: ThreadContext): void => {
+  if (listeningContexts.has(context)) return;
+  listeningContexts.add(context);
+  context.addEventListener(RUN_ON_BACKGROUND_EVENT, (event) => {
+    const { worklet, params, resolveId } = JSON.parse(event.data);
+    // answerCall awaits an async function, such as one that fetches, before
+    // replying. The reply goes out on the context the call came in on, not
+    // `lynx`'s at that moment: in the testing library's environment, `lynx`
+    // is the main thread's again by the time an async function settles.
+    answerCall(
+      resolveId,
+      () =>
+        callWorklet(
+          worklet._wkltId,
+          params.map(restoreRefs),
+          'Background function',
+        ),
+      (data) => context.dispatchEvent({ type: RETURN_EVENT, data }),
+    );
+  });
+};
+
+/**
+ * Listens on both threads' contexts in the testing library's environment,
+ * when this runs in it, as background-call.ts does for its relay (#200).
+ *
+ * The environment emulates both threads in one realm, and the runtime loads
+ * there once, on the main thread, so the background thread's half below never
+ * ran, and a runOnBackground() call waited forever (issue #467). The
+ * environment's reset() after each test gives both threads new contexts, so
+ * this runs before each call rather than once.
+ */
+const listenInTestingEnvironment = (): void => {
+  const env = (globalThis as any).lynxTestingEnv;
+  if (!env) return;
+  listenForReturns((lynx as any).getJSContext());
+  listenForCalls(env.backgroundThread.globalThis.lynx.getCoreContext());
+};
+
 // Cross-thread RPC: the main thread calls background functions with
 // 'Lynx.Worklet.runOnBackground', and the background thread replies with
 // 'Lynx.Worklet.BgFunctionCallRet'. resolveId ties each reply to its Promise.
@@ -228,24 +314,7 @@ globalThis.runWorklet = (ctx: unknown, params: unknown[]) => {
 if (__MAIN_THREAD__) {
   try {
     if (typeof lynx !== 'undefined' && (lynx as any).getJSContext) {
-      // Listen for return values from background-thread function calls
-      (lynx as any)
-        .getJSContext()
-        .addEventListener(
-          'Lynx.Worklet.BgFunctionCallRet',
-          (event: { data: string }) => {
-            const { resolveId, returnValue, error } = JSON.parse(event.data);
-            const resolver = __pendingResolvers[resolveId];
-            if (resolver) {
-              delete __pendingResolvers[resolveId];
-              if (error) {
-                resolver.reject(new Error(error));
-              } else {
-                resolver.resolve(returnValue);
-              }
-            }
-          },
-        );
+      listenForReturns((lynx as any).getJSContext());
     }
   } catch {
     // lynx.getJSContext() may not be available in all environments
@@ -263,8 +332,9 @@ if (__MAIN_THREAD__) {
     return new Promise((resolve, reject) => {
       __pendingResolvers[resolveId] = { resolve, reject };
       try {
+        listenInTestingEnvironment();
         (lynx as any).getJSContext().dispatchEvent({
-          type: 'Lynx.Worklet.runOnBackground',
+          type: RUN_ON_BACKGROUND_EVENT,
           data: JSON.stringify({
             worklet: { _wkltId: handle._wkltId },
             params: args,
@@ -281,42 +351,10 @@ if (__MAIN_THREAD__) {
 
 // Cross-thread RPC: the background thread runs the main thread's
 // runOnBackground requests.
-//
-// The background thread reaches the main thread through getCoreContext(), not
-// getJSContext(): each thread talks to the *other* thread's context (see the
-// "RuntimeProxy API summary" in investigations/lynx-vs-web-differences.md, and
-// React Lynx's runtime/src/worklet/call/runOnBackground.ts). Listening on
-// getJSContext() here meant native runOnBackground() requests never arrived, so
-// main-thread code (every Angular event handler) could not reach
-// background-only APIs such as NativeModules.
 if (!__MAIN_THREAD__) {
   try {
     if (typeof lynx !== 'undefined' && (lynx as any).getCoreContext) {
-      // Listen for runOnBackground requests from main thread
-      (lynx as any)
-        .getCoreContext()
-        .addEventListener(
-          'Lynx.Worklet.runOnBackground',
-          (event: { data: string }) => {
-            const { worklet, params, resolveId } = JSON.parse(event.data);
-            // answerCall awaits an async function, such as one that fetches,
-            // before replying.
-            answerCall(
-              resolveId,
-              () =>
-                callWorklet(
-                  worklet._wkltId,
-                  params.map(restoreRefs),
-                  'Background function',
-                ),
-              (data) =>
-                (lynx as any).getCoreContext().dispatchEvent({
-                  type: 'Lynx.Worklet.BgFunctionCallRet',
-                  data,
-                }),
-            );
-          },
-        );
+      listenForCalls((lynx as any).getCoreContext());
     }
   } catch {
     // lynx.getCoreContext() may not be available in all environments

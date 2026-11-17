@@ -89,6 +89,24 @@ describe('backgroundFn', () => {
       expect(registerWorklet).not.toHaveBeenCalled();
     });
 
+    // The testing library's environment loads a spec's modules once, on its
+    // main thread, and its background thread answers runOnBackground() from
+    // the same registry (issue #467).
+    it('registers the function in the testing environment', () => {
+      const registerWorklet = vi.fn();
+      vi.stubGlobal('registerWorklet', registerWorklet);
+      vi.stubGlobal('lynxTestingEnv', {});
+      const fn = () => 'hi';
+
+      const handle = backgroundFn(fn);
+
+      expect(registerWorklet).toHaveBeenCalledWith(
+        'background',
+        handle._wkltId,
+        fn,
+      );
+    });
+
     it('still returns a handle with an incrementing id', () => {
       const first = backgroundFn(() => 'hi');
       const second = backgroundFn(() => 'there');

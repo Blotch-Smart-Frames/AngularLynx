@@ -45,23 +45,49 @@ milliseconds in every run, and "fully drawn" measures the framework.
 - **Battery, charging, thermal state and OS build** recorded with every run.
 - **Medians and p90**, and every raw sample in `results/`.
 
+## Results
+
+[`results/ios`](results/ios) holds every run, one CSV per session: `launch-<date>-<app>.csv` for the launches, `mount-<date>-<kind>-<count>-<app>.csv` for the screens of many elements, `size.csv` for the apps' sizes and `apps.json` for their versions. The website's [Benchmarks page](https://angularlynx.js.org/guide/benchmarks) charts them as they are, and `harness/summarize.py` prints the same medians.
+
+Two things the runs showed, which shape how they're read:
+
+- **Each session stands alone.** The phone and the network differ from one sitting to the next (AngularLynx's median moved by 60 ms between two sessions with the Mac equally idle), so each app is compared with AngularLynx from its own session.
+- **A launch right after the same app is about 80 ms faster** than one after the other app, for every app: iOS still has its files in memory. The A B, B A order gives each app about half of each, and the charts and `summarize.py` split them (`again`, `after other`) by each row's timestamp.
+
+The first session, run while the Mac was building the other apps, is in `results/ios/pilot` and isn't charted.
+
 ## Running it
 
 ```sh
 # 1. The fixture server, on the Mac
 node fixtures/server.mjs
 
-# 2. Build and install each app on the phone (see each app's README), with
-#    the fixture origin set to the Mac's LAN address
+# 2. Build and install each app on the phone. build_ios_app.sh builds any of
+#    them for a phone with the Mac's LAN address as the fixture origin (the
+#    Expo apps need `expo prebuild` with the bundle ID first, see their
+#    READMEs)
+xcrun devicectl device install app --device <UDID> \
+  "$(sh harness/build_ios_app.sh angular-lynx com.angularlynx.bench.angularlynx)"
 
-# 3. Launch them under Instruments, alternating
+# 3. Launch two apps in turn under Instruments
 python3 harness/ios_launch.py --device <UDID> --runs 20 \
   --app angular-lynx=<bundle id> --app react-native=<bundle id> \
-  --out results/ios/launch.csv
+  --out results/ios/launch-<date>-react-native.csv
 
-# 4. Medians and p90
-python3 harness/summarize.py results/ios/launch.csv
+# 4. The screens of many elements: builds and installs both apps for each
+#    screen, and launches them with a lighter recording
+python3 harness/ios_mount.py --device <UDID> --rival react-native --runs 10
+
+# 5. Sizes, and the medians
+sh harness/ios_size.sh <app> path/to/App.app >> results/ios/size.csv
+python3 harness/summarize.py results/ios/launch-*.csv
 ```
 
 The harness needs Xcode and `ideviceinfo` (`brew install libimobiledevice`)
-for the battery level.
+for the battery level. The first launch of each app asks for local network
+access on the phone: tap Allow.
+
+A free Apple team (a Personal Team) can have three apps on a phone at once
+and register ten App IDs a week, so the runs keep AngularLynx installed as
+`com.angularlynx.bench.angularlynx` and put each other app in turn on
+`com.angularlynx.bench.rival`.

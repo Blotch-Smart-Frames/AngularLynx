@@ -98,7 +98,7 @@ So lazy loading doesn't make the bundle smaller. It still delays creating the vi
 
 - **`initial`** checks each entry's Lynx bundle. **`anyComponentStyle`** checks each component's stylesheet.
 - **The web preview bundle isn't checked.**
-- **Why 2 MB?** `ng add` raises `ng new`'s `initial` budget from 500 kB and 1 MB to 2 MB and 5 MB. A Lynx bundle holds Angular twice, once for each of [Lynx's two threads](/guide/concepts/threads), so a new app's bundle is already about 1 MB.
+- **Why 2 MB?** `ng add` raises `ng new`'s `initial` budget from 500 kB and 1 MB to 2 MB and 5 MB. A Lynx bundle carries more than a web app's first download: besides Angular, it holds AngularLynx's renderer and the runtime the background thread loads (see [Lynx's two threads](/guide/concepts/threads)), so a new app's bundle is already about 720 kB, 300 kB gzipped.
 
 The [build plugin's README](https://github.com/Blotch-Smart-Frames/AngularLynx/tree/master/packages/rsbuild-plugin-angular-lynx#budgets) explains what every budget type measures.
 

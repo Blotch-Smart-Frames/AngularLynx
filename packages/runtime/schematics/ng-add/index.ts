@@ -399,9 +399,9 @@ const NG_NEW_INITIAL_BUDGET = { maximumWarning: '500kB', maximumError: '1MB' };
 
 /**
  * The initial-bundle budget for a Lynx bundle. It carries more than a web
- * app's first download: Angular runs on both of Lynx's threads, so the
- * framework is in it twice, and a new app's bundle is already about 1 MB.
- * Kept at roughly the same multiples of a new app as Angular's budget.
+ * app's first download: the renderer and the runtime the background thread
+ * loads, besides Angular itself, so a new app's bundle is already about
+ * 720 kB (300 kB gzipped), measured from `npm create angular-lynx`.
  */
 const LYNX_INITIAL_BUDGET = { maximumWarning: '2MB', maximumError: '5MB' };
 

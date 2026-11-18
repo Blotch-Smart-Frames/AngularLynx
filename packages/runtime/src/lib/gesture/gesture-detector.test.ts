@@ -523,6 +523,167 @@ describe('LynxGestureDetector', () => {
     });
   });
 
+  describe('enabled and options set after binding', () => {
+    const fnFor = (name: string): ((event: unknown) => void) => {
+      const [, , , config] = setGestureDetector.mock.lastCall!;
+      return config.callbacks.find((c: { name: string }) => c.name === name)
+        .callback._fn;
+    };
+
+    it("doesn't register a disabled gesture, so it can't take a touch", () => {
+      const pan = new PanGesture().enabled(false).onUpdate(vi.fn());
+      const tap = new TapGesture();
+      const directive = createDirective(nativeEl);
+
+      applyGesture(directive, Gesture.Race(pan, tap));
+
+      expect(setGestureDetector).toHaveBeenCalledOnce();
+      expect(setGestureDetector.mock.lastCall![1]).toBe(tap.id);
+    });
+
+    it('unregisters a bound gesture when it is disabled, and registers it again when enabled', () => {
+      const onUpdate = vi.fn();
+      const pan = new PanGesture().onUpdate(onUpdate);
+      const directive = createDirective(nativeEl);
+      applyGesture(directive, pan);
+
+      pan.enabled(false);
+
+      expect(removeGestureDetector).toHaveBeenCalledWith(fakeRef, pan.id);
+      expect(setGestureDetector).toHaveBeenCalledOnce();
+
+      pan.enabled(true);
+
+      expect(setGestureDetector).toHaveBeenCalledTimes(2);
+      expect(removeGestureDetector).toHaveBeenCalledOnce();
+      fnFor('onUpdate')({ params: { pageX: 1, pageY: 1 } });
+      expect(onUpdate).toHaveBeenCalledOnce();
+    });
+
+    it('runs nothing for events Lynx sent before it heard the gesture was disabled', () => {
+      const onUpdate = vi.fn();
+      const pan = new PanGesture().onUpdate(onUpdate);
+      const directive = createDirective(nativeEl);
+      applyGesture(directive, pan);
+      const inFlight = fnFor('onUpdate');
+
+      pan.enabled(false);
+      inFlight({ params: { pageX: 1, pageY: 1 } });
+
+      expect(onUpdate).not.toHaveBeenCalled();
+    });
+
+    it('can be disabled from its own callback', () => {
+      const pan = new PanGesture();
+      pan.onEnd(() => pan.enabled(false));
+      const directive = createDirective(nativeEl);
+      applyGesture(directive, pan);
+
+      fnFor('onEnd')({ params: {} });
+
+      expect(removeGestureDetector).toHaveBeenCalledWith(fakeRef, pan.id);
+    });
+
+    it('registers a gesture again, with the new option, when one changes after binding', () => {
+      const tap = new TapGesture();
+      const directive = createDirective(nativeEl);
+      applyGesture(directive, tap);
+
+      tap.maxDuration(900);
+
+      expect(removeGestureDetector).toHaveBeenCalledWith(fakeRef, tap.id);
+      expect(setGestureDetector).toHaveBeenCalledTimes(2);
+      expect(setGestureDetector.mock.lastCall![3].config).toMatchObject({
+        maxDuration: 900,
+      });
+    });
+
+    it('registers a gesture on every element it is bound to', () => {
+      const pan = new PanGesture();
+      const otherRef = { _isRef: 'other' };
+      applyGesture(createDirective(nativeEl), pan);
+      applyGesture(createDirective({ element: otherRef }), pan);
+
+      pan.minDistance(5);
+
+      expect(removeGestureDetector).toHaveBeenCalledWith(fakeRef, pan.id);
+      expect(removeGestureDetector).toHaveBeenCalledWith(otherRef, pan.id);
+      expect(setGestureDetector).toHaveBeenCalledTimes(4);
+    });
+
+    it('stops following the options of a gesture it no longer binds', () => {
+      const pan = new PanGesture();
+      const directive = createDirective(nativeEl);
+      applyGesture(directive, pan);
+      applyGesture(directive, []);
+      setGestureDetector.mockClear();
+      removeGestureDetector.mockClear();
+
+      pan.enabled(false).enabled(true);
+
+      expect(setGestureDetector).not.toHaveBeenCalled();
+      expect(removeGestureDetector).not.toHaveBeenCalled();
+    });
+
+    it("doesn't remove a disabled gesture again when unbound", () => {
+      const pan = new PanGesture().enabled(false);
+      const directive = createDirective(nativeEl);
+      applyGesture(directive, pan);
+
+      directive.ngOnDestroy();
+
+      expect(removeGestureDetector).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("options Lynx doesn't read", () => {
+    const registeredNames = (): string[] => {
+      const [, , , config] = setGestureDetector.mock.lastCall!;
+      return config.callbacks.map((c: { name: string }) => c.name);
+    };
+
+    const fnFor = (name: string): ((event: unknown) => void) => {
+      const [, , , config] = setGestureDetector.mock.lastCall!;
+      return config.callbacks.find((c: { name: string }) => c.name === name)
+        .callback._fn;
+    };
+
+    it("registers the callbacks a pan's active offset needs, and starts it past the offset", () => {
+      // Lynx's own fail(), through the state manager.
+      const setGestureState = vi.fn();
+      (globalThis as any).__SetGestureState = setGestureState;
+      const onStart = vi.fn();
+      const pan = new PanGesture()
+        .activeOffsetX([-20, 20])
+        .failOffsetY([-10, 10])
+        .onStart(onStart);
+      const directive = createDirective(nativeEl);
+
+      applyGesture(directive, pan);
+
+      expect(registeredNames().sort()).toEqual([
+        'onBegin',
+        'onStart',
+        'onTouchesCancel',
+        'onTouchesDown',
+        'onTouchesUp',
+        'onUpdate',
+      ]);
+      fnFor('onBegin')({ params: { pageX: 100, pageY: 100 } });
+      fnFor('onStart')({ params: { pageX: 101, pageY: 100 } });
+      expect(onStart).not.toHaveBeenCalled();
+      fnFor('onUpdate')({ params: { pageX: 121, pageY: 100 } });
+      expect(onStart).toHaveBeenCalledOnce();
+      expect(onStart.mock.lastCall![0].translationX).toBe(21);
+
+      // The next touch moves down first, and fails.
+      fnFor('onBegin')({ params: { pageX: 0, pageY: 0 } });
+      fnFor('onUpdate')({ params: { pageX: 0, pageY: 11 } });
+      expect(setGestureState).toHaveBeenCalledWith(fakeRef, pan.id, 2);
+      delete (globalThis as any).__SetGestureState;
+    });
+  });
+
   describe('ngOnDestroy', () => {
     it('removes all attached gesture detectors', () => {
       const g1 = new TapGesture();

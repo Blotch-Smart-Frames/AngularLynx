@@ -43,6 +43,15 @@ export abstract class BaseGesture<
    * @internal
    */
   _continueWith: BaseGesture[] = [];
+  /**
+   * @internal
+   *
+   * One function per `[lynxGesture]` the gesture is bound to, which registers
+   * it with Lynx again. Lynx reads a gesture's options only when it's
+   * registered, so an option set after binding (`enabled(false)` from a
+   * handler, say) re-registers it. See `_option`.
+   */
+  readonly _bindings = new Set<() => void>();
 
   /**
    * Fires when the gesture starts tracking a touch, before it's recognized:
@@ -122,14 +131,29 @@ export abstract class BaseGesture<
   }
 
   /**
-   * ⚠️ Not read by Lynx's native gesture handlers yet (as of Lynx 4.1, no
-   * handler looks up `enabled`), so a disabled gesture still fires on a
-   * device. Unbind the gesture from `[lynxGesture]` to turn it off. Kept for
-   * API parity with Lynx's gesture-runtime.
+   * Turns the gesture off (`false`) and on again. A disabled gesture runs no
+   * callbacks and doesn't take touches from other gestures, as if it weren't
+   * bound. It can be called at any time, a callback included.
+   *
+   * Lynx's native handlers don't read `enabled` (as of Lynx 4.1), so
+   * `[lynxGesture]` doesn't register a disabled gesture with Lynx at all, and
+   * registers it again once it's enabled.
    */
   enabled(value: boolean): TSelf {
-    this._config['enabled'] = value;
-    return this as unknown as TSelf;
+    return this._option('enabled', value) as unknown as TSelf;
+  }
+
+  /**
+   * @internal
+   *
+   * Sets one of the gesture's options, and re-registers the gesture wherever
+   * it's bound so that Lynx, and the runtime's own checks (./callback-gate.ts),
+   * see the change.
+   */
+  _option(key: string, value: unknown): this {
+    this._config[key] = value;
+    for (const rebind of this._bindings) rebind();
+    return this;
   }
 }
 

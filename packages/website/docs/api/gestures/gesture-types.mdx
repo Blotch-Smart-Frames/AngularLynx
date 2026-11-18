@@ -14,9 +14,9 @@ Create a gesture with `new`, chain its options and callbacks, then bind it with 
 
 ## Common to every gesture
 
-| Option           | Type      | Default | Description                                                                                             |
-| ---------------- | --------- | ------- | ------------------------------------------------------------------------------------------------------- |
-| `enabled(value)` | `boolean` | `true`  | Meant to turn the gesture off and on, but does nothing yet (see [below](#options-lynx-doesnt-read-yet)) |
+| Option           | Type      | Default | Description                                                                                                      |
+| ---------------- | --------- | ------- | ---------------------------------------------------------------------------------------------------------------- |
+| `enabled(value)` | `boolean` | `true`  | Turns the gesture off and on, at any time. A disabled gesture runs no callbacks and takes no touches from others |
 
 | Callback        | Tap, LongPress | Pan, Fling, Pinch, Rotation |
 | --------------- | -------------- | --------------------------- |
@@ -49,9 +49,9 @@ readonly tap = new TapGesture().maxDistance(20).onEnd((event) => this.select(eve
 | ----------------- | -------- | ------- | ---------------------------------------------------------- |
 | `maxDuration(ms)` | `number` | `500`   | The longest the finger can stay down. A longer touch fails |
 | `maxDistance(px)` | `number` | `10`    | How far the finger can move. Moving further fails the tap  |
-| `numberOfTaps(n)` | `number` | —       | Does nothing yet (see below)                               |
+| `numberOfTaps(n)` | `number` | `1`     | How many taps in a row it takes: `2` is a double tap       |
 
-**Callbacks:** `onBegin`, `onStart`, `onEnd`, `onTouchesDown`, `onTouchesUp`. `onEnd` fires only when the tap succeeded.
+**Callbacks:** `onBegin`, `onStart`, `onEnd`, `onTouchesDown`, `onTouchesUp`. `onEnd` fires only when the tap succeeded, and with `numberOfTaps`, `onStart` and `onEnd` fire on the last tap only.
 
 ```typescript
 interface TapGestureEvent extends GestureEvent {
@@ -60,8 +60,14 @@ interface TapGestureEvent extends GestureEvent {
 }
 ```
 
+```typescript
+readonly like = new TapGesture().numberOfTaps(2).onEnd(() => this.toggleLike());
+```
+
 :::info Double taps
-No Lynx platform counts taps, so `numberOfTaps(2)` still fires on the first tap. To detect a double tap, compare the times of successive `onEnd` calls yourself.
+The taps of a double tap must each succeed, land within `maxDistance` of the first, and follow each other within 500 ms of the finger lifting. No Lynx platform counts taps, so AngularLynx does, from the single taps Lynx recognizes.
+
+So a single tap on the same element can't wait for a double tap to fail: `Gesture.Exclusive(doubleTap, singleTap)` doesn't work. Gestures on one element race, so only one of the two ever runs. To handle both, put them in `Gesture.Simultaneous`, and let the single tap's action also suit the first tap of a double one.
 :::
 
 ## PanGesture
@@ -80,14 +86,25 @@ A **pointer** is one finger touching the screen. `minPointers(2)` means the gest
 | Option                  | Type                         | Default | Description                                                                   |
 | ----------------------- | ---------------------------- | ------- | ----------------------------------------------------------------------------- |
 | `minDistance(px)`       | `number`                     | `0`     | How far the finger moves before the pan activates. `0` activates at once      |
-| `activeOffsetX(offset)` | `number \| [number, number]` | —       | Activate after this much horizontal movement. A number means either direction |
+| `activeOffsetX(offset)` | `number \| [number, number]` | —       | The pan starts once the horizontal movement leaves this range                 |
 | `activeOffsetY(offset)` | `number \| [number, number]` | —       | The same, vertically                                                          |
-| `failOffsetX(offset)`   | `number \| [number, number]` | —       | Fail after this much horizontal movement before activating                    |
-| `failOffsetY(offset)`   | `number \| [number, number]` | —       | Fail after this much vertical movement. Lets a vertical scroll take over      |
-| `minPointers(n)`        | `number`                     | —       | The fewest fingers the pan needs                                              |
-| `maxPointers(n)`        | `number`                     | —       | The most fingers the pan allows                                               |
+| `failOffsetX(offset)`   | `number \| [number, number]` | —       | The pan fails once the horizontal movement leaves this range before it starts |
+| `failOffsetY(offset)`   | `number \| [number, number]` | —       | The same, vertically. Lets a scroll view take a vertical drag                 |
+| `minPointers(n)`        | `number`                     | —       | Does nothing: Lynx follows one finger at a time                               |
+| `maxPointers(n)`        | `number`                     | —       | Does nothing, as `minPointers`                                                |
 
-Lynx reads only `minDistance` so far. The other options do nothing yet: see [Options Lynx doesn't read yet](#options-lynx-doesnt-read-yet).
+An offset is a range of movement from where the finger touched down, in pixels, as in react-native-gesture-handler. `[-20, 20]` is the range itself: `activeOffsetX([-20, 20])` starts the pan after 20 pixels left or right. A single number is open on one side: `20` means up to 20, so only moving right (or down) past 20 leaves it, and `-20` means from −20 on. With active offsets on both axes, leaving either range starts the pan.
+
+A horizontal pan inside a vertical scroll view, which lets the scroll view have the vertical drags:
+
+```typescript
+readonly swipe = new PanGesture()
+  .activeOffsetX([-20, 20])
+  .failOffsetY([-10, 10])
+  .onUpdate((event) => this.offset.set(event.translationX));
+```
+
+A fail offset counts only until the pan starts, and without an active offset the pan starts at `minDistance`, which is `0`: give it an active offset or a `minDistance`. How AngularLynx enforces these, and what that means for other gestures on the element, is under [Options AngularLynx enforces](#options-angularlynx-enforces).
 
 **Callbacks:** all six.
 
@@ -133,10 +150,16 @@ readonly gesture = Gesture.Simultaneous(this.drag, this.fling);
 
 | Option                | Type             | Default | Description                                         |
 | --------------------- | ---------------- | ------- | --------------------------------------------------- |
-| `direction(dir)`      | `FlingDirection` | —       | The directions to recognize. Combine them with `\|` |
-| `numberOfPointers(n)` | `number`         | —       | The exact number of fingers the fling needs         |
+| `direction(dir)`      | `FlingDirection` | any     | The directions to recognize. Combine them with `\|` |
+| `numberOfPointers(n)` | `number`         | —       | Does nothing: Lynx follows one finger at a time     |
 
-Lynx doesn't read either option yet: every fling fires, in any direction.
+A fling goes the way its first frame moves, along whichever axis it moves further. With `direction` set, a fling another way runs none of its callbacks, and neither does one too slow to move. `onBegin` then fires on the first frame, with that frame's `onUpdate`, rather than when the finger lifts:
+
+```typescript
+readonly fling = new FlingGesture()
+  .direction(FlingDirection.LEFT | FlingDirection.RIGHT)
+  .onBegin(() => this.flip());
+```
 
 **Callbacks:**
 
@@ -205,20 +228,20 @@ interface RotationGestureEvent extends GestureEvent {
 
 Once a gesture sends any option, Lynx reads every option it leaves out as `0`. Without the defaults, a tap that set only `numberOfTaps` would get a `maxDuration` of 0 and fail the instant a finger lands. So `TapGesture`, `LongPressGesture` and `PanGesture` always send their full default set, shown above, and every other gesture sends `{ enabled: true }`. You don't need to set them yourself.
 
-## Options Lynx doesn't read yet
+## Options AngularLynx enforces
 
-Lynx 4.1's native handlers read only these options:
+Lynx 4.1's native handlers read only a tap's `maxDuration` and `maxDistance`, a long press's `minDuration` and `maxDistance`, and a pan's `minDistance`. AngularLynx enforces these others itself, the same way on a device and in the web preview:
 
-- `TapGesture`: `maxDuration`, `maxDistance`
-- `LongPressGesture`: `minDuration`, `maxDistance`
-- `PanGesture`: `minDistance`
+- **`enabled(false)`**: `[lynxGesture]` doesn't register a disabled gesture with Lynx, so it can't run a callback or take a touch, and registers it again when it's enabled.
+- **A pan's `activeOffsetX`, `activeOffsetY`, `failOffsetX` and `failOffsetY`**: AngularLynx holds `onStart` and `onUpdate` back until the pan passes an active offset, and calls the state manager's `fail()` when it passes a fail offset first.
+- **A fling's `direction`**: AngularLynx holds `onBegin` back until the first frame shows the fling's direction, and fails a fling that goes another way.
+- **A tap's `numberOfTaps`**: AngularLynx counts the taps Lynx recognizes, and runs `onStart` and `onEnd` on the last one.
 
-AngularLynx sends the others, but they don't change anything yet, on a device or in the web preview:
+Because Lynx doesn't know about the pan offsets, they only decide when your callbacks run. To Lynx, a pan is active from `minDistance` on, so while it waits for an active offset it already holds the touch, and fails the element's other gestures that aren't simultaneous with it. A vertical pan beside a horizontal one on the same element can't wait for its offset: whichever Lynx activates first wins. Put them on different elements, or use one pan and read `translationX` and `translationY`.
 
-- **`enabled(false)`** doesn't turn a gesture off. To turn one off, bind `[lynxGesture]` to a list without it, such as `[lynxGesture]="draggable() ? pan : []"`.
-- **A pan's `activeOffsetX`, `activeOffsetY`, `failOffsetX`, `failOffsetY`, `minPointers` and `maxPointers`.** To let a scroll view take a mostly vertical drag, call `fail()` from `onUpdate` instead (see [Lifecycle](/api/gestures/lifecycle)).
-- **A fling's `direction` and `numberOfPointers`.** Check `deltaX` and `deltaY` in `onUpdate` instead.
-- **A tap's `numberOfTaps`** (see [Double taps](#tapgesture)).
+`minPointers`, `maxPointers` and a fling's `numberOfPointers` still do nothing: Lynx follows one finger at a time and doesn't say how many are down.
+
+Any option set after the gesture is bound takes effect at once: `[lynxGesture]` registers the gesture with Lynx again.
 
 ## If no gesture fires
 

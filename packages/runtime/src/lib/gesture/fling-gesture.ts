@@ -21,26 +21,27 @@ export class FlingGesture extends ContinuousGesture<
   readonly type = GestureType.FLING;
 
   /**
-   * FlingDirection is a bitmask — combine values with | for multi-direction:
-   * e.g. FlingDirection.LEFT | FlingDirection.RIGHT recognizes horizontal flings.
+   * The directions the fling recognizes. FlingDirection is a bitmask, so
+   * combine values with `|`: `FlingDirection.LEFT | FlingDirection.RIGHT`
+   * recognizes horizontal flings. A fling goes the way its first frame moves,
+   * along whichever axis it moves further. One that goes another way fails
+   * and runs none of its callbacks, and so does one too slow to move at all.
    *
-   * ⚠️ Not read by Lynx's native fling handlers yet: as of Lynx 4.1, iOS's
-   * `handleConfigMap` is a TODO and Android's is empty, so every fling fires,
-   * in any direction. Kept for API parity with Lynx's gesture-runtime.
+   * Lynx's fling handlers read no options (as of Lynx 4.1: iOS's
+   * `handleConfigMap` is a TODO, Android's is empty), so the runtime decides,
+   * holding back `onBegin` until the first frame shows the direction (see
+   * ./callback-gate.ts).
    */
   direction(dir: FlingDirection): this {
-    this._config['direction'] = dir;
-    return this;
+    return this._option('direction', dir);
   }
 
   /**
-   * The gesture only recognizes when exactly `count` fingers are involved.
-   * Defaults to 1 if not set.
-   *
-   * ⚠️ Not read by Lynx's native fling handlers yet (see `direction`).
+   * ⚠️ Does nothing: Lynx follows one finger at a time, and neither reads
+   * this option nor says how many fingers are down (as of Lynx 4.1). Kept for
+   * API parity with Lynx's gesture-runtime.
    */
   numberOfPointers(count: number): this {
-    this._config['numberOfPointers'] = count;
-    return this;
+    return this._option('numberOfPointers', count);
   }
 }

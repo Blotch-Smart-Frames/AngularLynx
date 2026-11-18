@@ -167,8 +167,9 @@ export class Sticker {
 ## Limitations
 
 - **Pinch and rotation never fire.** `PinchGesture` and `RotationGesture` exist, but no Lynx platform recognizes them yet. For a pinch, set `"multiTouch": true` in the build target's options in `angular.json`, and work out the zoom from the fingers in `touchstart`, `touchmove` and `touchend` (each event's `changedTouches`, by `identifier`, with `pageX` and `pageY`; `x` and `y` in the web preview). Without it, Lynx reports one finger at a time. Taps don't fire while two fingers are down. The [Vitrine example](/examples/museum)'s viewer (`src/app/artwork/viewer.ts`) zooms this way.
-- **`numberOfTaps(2)` doesn't make a double tap.** No Lynx platform counts taps, so it fires on the first one. Compare the times of successive taps in `onEnd` yourself.
-- **Some options do nothing yet, including `enabled(false)`.** Lynx reads only a few of them, such as `minDistance` and `maxDuration`. See [Options Lynx doesn't read yet](/api/gestures/gesture-types#options-lynx-doesnt-read-yet).
+- **A double tap can't make a single tap wait.** `numberOfTaps(2)` works, but `Gesture.Exclusive(doubleTap, singleTap)` on one element doesn't: Lynx recognizes each tap on its own. See [Double taps](/api/gestures/gesture-types#tapgesture).
+- **A pan waiting for its `activeOffsetX` already holds the touch.** AngularLynx holds back its callbacks, but Lynx activates the pan at `minDistance`, so it fails the element's other gestures (unless they're simultaneous with it) before the offset is reached. See [Options AngularLynx enforces](/api/gestures/gesture-types#options-angularlynx-enforces).
+- **`minPointers`, `maxPointers` and a fling's `numberOfPointers` do nothing.** Lynx follows one finger at a time.
 - **A fling has no `onStart`**, and fires reliably only on an element that also has a pan. See [FlingGesture](/api/gestures/gesture-types#flinggesture).
 - **If no gesture in the app fires on a device**, check that your `lynx.config.ts` doesn't set `enableNewGesture` to `false`. AngularLynx turns it on by default, and Lynx ignores every gesture without it. See [If no gesture fires](/api/gestures/gesture-types#if-no-gesture-fires).
 

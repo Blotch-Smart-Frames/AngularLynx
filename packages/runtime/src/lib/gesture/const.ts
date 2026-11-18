@@ -26,3 +26,10 @@ export const DEFAULT_LONG_PRESS_DURATION = 500;
 
 /** Min finger travel (px) before a pan activates (0 = activates immediately). */
 export const DEFAULT_PAN_MIN_DISTANCE = 0;
+
+/**
+ * The longest a finger can stay up between the taps of a `numberOfTaps` tap
+ * (ms), as react-native-gesture-handler's `maxDelay` defaults to. Lynx counts
+ * no taps, so the runtime does (see ./callback-gate.ts).
+ */
+export const DEFAULT_TAP_MAX_DELAY = 500;

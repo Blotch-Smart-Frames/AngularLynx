@@ -125,7 +125,7 @@ export class Card {
 
 - **Create each gesture once, as a field.** Callbacks run on the main thread, like event handlers, and get the event and a state manager.
 - **Gestures:** `TapGesture`, `LongPressGesture`, `PanGesture` and `FlingGesture`. A fling is the momentum after a release: put it on the element with a pan (`Gesture.Simultaneous(pan, fling)`), read `deltaX`/`deltaY` in its `onUpdate`, and expect no `onStart`. `PinchGesture` and `RotationGesture` never fire: no Lynx platform recognizes them. Work out a pinch from the touch events with multi-touch on (see "Two fingers" above).
-- **`translationX`/`translationY`** run from where the touch began. Events carry no velocity.
+- **`translationX`/`translationY`** run from where the touch began. **`velocityX`/`velocityY`** (px/s, over the last 100 ms) are derived by the runtime, as Lynx sends none: a pan's `onEnd` has the release speed (`0` if the finger stopped first), and a fling's `onUpdate` has the momentum's current speed in the swipe's direction (`0` in its `onBegin`).
 - **`onEnd` of a tap or long press means it happened**: the runtime drops the `onEnd` Lynx also sends when one fails. A pan's `onEnd` runs after every touch, a tap included, so don't take it as a completed drag.
 - **Gestures on one element race.** The first to activate fails the others, unless they're `simultaneousWith` it. `waitFor`, and so `Gesture.Exclusive`'s order, only takes effect between elements (a child's gesture waiting for its parent's). In the example, a drag past 10px wins and a tap is recognized when the finger lifts before that.
 - **State from code:** `fail()` and `end()` on the state manager work. `activate()` does nothing on any platform.

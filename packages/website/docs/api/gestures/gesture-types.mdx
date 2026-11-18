@@ -100,7 +100,18 @@ interface PanGestureEvent extends GestureEvent {
 }
 ```
 
-`translationX` is measured from where the finger touched down, when `onBegin` fires. So at `onStart` it already includes the distance the finger moved before the pan activated, such as the 10 pixels of `minDistance(10)`. Lynx doesn't report velocity yet, so `velocityX` and `velocityY` are `undefined`.
+`translationX` is measured from where the finger touched down, when `onBegin` fires. So at `onStart` it already includes the distance the finger moved before the pan activated, such as the 10 pixels of `minDistance(10)`. `velocityX` and `velocityY` are in pixels a second, positive to the right and down, averaged over the last 100 ms. In `onEnd` they're the speed the finger let go at, and `0` if it stopped before lifting, so they can decide whether a swiped card flies off or a dragged sheet closes:
+
+```typescript
+readonly swipe = new PanGesture()
+  .onUpdate((event) => this.offset.set(event.translationX))
+  .onEnd((event) => {
+    if (Math.abs(event.velocityX) > 800) this.dismiss(Math.sign(event.velocityX));
+    else this.offset.set(0);
+  });
+```
+
+Lynx doesn't send velocity: AngularLynx works it out from the finger's positions and the events' timestamps.
 
 ## FlingGesture
 
@@ -136,10 +147,12 @@ Lynx doesn't read either option yet: every fling fires, in any direction.
 
 ```typescript
 interface FlingGestureEvent extends GestureEvent {
-  velocityX: number; // undefined: Lynx doesn't report velocity yet
+  velocityX: number;
   velocityY: number;
 }
 ```
+
+`velocityX` and `velocityY` are how fast the fling still carries, in pixels a second, in the direction of the swipe like a pan's: they start near the release speed and fall to about `0` as it slows. In `onBegin` they're `0`, since the fling hasn't moved yet; read the speed the finger let go at from the pan's `onEnd`.
 
 The event also has Lynx's `deltaX` and `deltaY`, which the type doesn't declare yet. Read them from `event.params`.
 

@@ -47,6 +47,11 @@ export type GestureEvent = {
 export type PanGestureEvent = {
   translationX: number;
   translationY: number;
+  /**
+   * The finger's velocity in px/s over the last 100 ms, positive to the right
+   * and down; in `onEnd`, the speed it let go at. Lynx doesn't send it, so
+   * mapGestureEvent derives it from the events' positions and timestamps.
+   */
   velocityX: number;
   velocityY: number;
 } & GestureEvent;
@@ -57,6 +62,11 @@ export type TapGestureEvent = {
 } & GestureEvent;
 
 export type FlingGestureEvent = {
+  /**
+   * How fast the fling still carries, in px/s, in the swipe's direction (the
+   * opposite of Lynx's `deltaX`/`deltaY` steps). `0` in `onBegin`, before the
+   * first frame. Derived by mapGestureEvent, as Lynx doesn't send it.
+   */
   velocityX: number;
   velocityY: number;
 } & GestureEvent;

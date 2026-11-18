@@ -118,11 +118,13 @@ Lynx passes the config object from `__SetGestureDetector` straight to the platfo
 
 Nothing reads `enabled`, so a gesture set to `enabled(false)` still fires: verified on the iOS Simulator and the Android emulator in Lynx Explorer 4.1, where a disabled pan's `onUpdate` ran on every move. A pan's `activeOffsetX/Y`, `failOffsetX/Y`, `minPointers` and `maxPointers`, a fling's `direction` and `numberOfPointers`, and a tap's `numberOfTaps` (see above) are all sent and ignored. React Lynx's gesture-runtime declares the same options and has the same gap.
 
-The events carry no velocity. A pan's params are `clientX`, `clientY`, `pageX`, `pageY`, `x`, `y`, `scrollX`, `scrollY`, `isAtStart`, `isAtEnd` and `type`; a fling's are `deltaX`, `deltaY`, `scrollX`, `scrollY`, `isAtStart` and `isAtEnd` (both read from the events on both platforms). So `PanGestureEvent.velocityX` and `FlingGestureEvent.velocityX` are `undefined`.
+The events carry no velocity. A pan's params are `clientX`, `clientY`, `pageX`, `pageY`, `x`, `y`, `scrollX`, `scrollY`, `isAtStart`, `isAtEnd` and `type`; a fling's are `deltaX`, `deltaY`, `scrollX`, `scrollY`, `isAtStart` and `isAtEnd` (both read from the events on both platforms). A touch's params also get a `timestamp` in ms (`CACurrentMediaTime()` on iOS, `System.currentTimeMillis()` on Android), which Lynx's C++ moves onto the event envelope (`GetCustomEventParam`); a fling's frames have none, so the envelope gets the time they were sent.
 
 ### The fix
 
-None in the runtime yet: the options are kept for API parity, with TSDoc warnings, and the gesture types docs list which ones work (`/api/gestures/gesture-types#options-lynx-doesnt-read-yet`). To turn a gesture off, unbind it from `[lynxGesture]`; to cede a drag to a scroll view, call `fail()` from `onUpdate`.
+None in the runtime for the options yet: they're kept for API parity, with TSDoc warnings, and the gesture types docs list which ones work (`/api/gestures/gesture-types#options-lynx-doesnt-read-yet`). To turn a gesture off, unbind it from `[lynxGesture]`; to cede a drag to a scroll view, call `fail()` from `onUpdate`.
+
+The runtime derives velocity itself (#453). `mapGestureEvent()` keeps each gesture's positions over the last 100 ms with their timestamps (`VelocityTracker`, the one the web preview's arena uses to decide whether a release flings) and fills in `velocityX`/`velocityY` in px/s: a pan's from the finger's `pageX`/`pageY`, a fling's from its frames' `deltaX`/`deltaY` summed into a position. A fling's steps run against the swipe, as a scroll offset does, so they're negated and both gestures report velocity in the finger's direction.
 
 ---
 

@@ -14,8 +14,8 @@ import {
   type TouchPoint,
   type TouchType,
   touchPointOf,
-  VelocityTracker,
 } from './touch-point';
+import { VelocityTracker } from '../velocity';
 
 /**
  * Gestures on Lynx for Web.
@@ -336,7 +336,7 @@ export class WebGestureArena {
 
   #touch(event: PointerEvent, type: TouchType): void {
     const touch = touchPointOf(event, type, this.#pointer!.target);
-    this.#velocity.add(touch);
+    this.#velocity.add(touch.timestamp, touch.pageX, touch.pageY);
     // As on iOS, every member of the touch hears of it first
     // (`onTouchesDown` and the like), then the arena resolves it.
     if (this.#winner) {

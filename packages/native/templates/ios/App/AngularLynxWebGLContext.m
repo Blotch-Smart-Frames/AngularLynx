@@ -195,6 +195,10 @@ static NSUInteger componentsOf(GLenum format) {
   GLuint _readFramebuffer;
   GLuint _renderbuffer;
 
+  /// An error the app's earlier calls raised, which a read took off GL to
+  /// learn whether the read itself failed. getError reports it first.
+  GLenum _heldError;
+
   // The runtime's object ids, to GL names (ids are never reused).
   GLuint *_names;
   NSUInteger _namesCapacity;
@@ -2149,8 +2153,11 @@ static BOOL isUnsignedUniform(GLenum type) {
   switch ((ALWebGLOp)op) {
     case ALWebGLOpGetParameter:
       return [self parameter:nextEnum(r)];
-    case ALWebGLOpGetError:
-      return @(glGetError());
+    case ALWebGLOpGetError: {
+      GLenum error = _heldError != GL_NO_ERROR ? _heldError : glGetError();
+      _heldError = GL_NO_ERROR;
+      return @(error);
+    }
     case ALWebGLOpShaderInfo: {
       GLuint shader = [self nameOf:nextUInt(r)];
       GLint compiled = GL_FALSE;
@@ -2381,11 +2388,52 @@ static BOOL isUnsignedUniform(GLenum type) {
       GLsizei width = nextInt(r), height = nextInt(r);
       GLenum format = nextEnum(r), type = nextEnum(r);
       NSUInteger length = (NSUInteger)MAX(0, nextNumber(r));
-      NSMutableData *data = [NSMutableData dataWithLength:(length + 3) / 4 * 4];
+      // Read into a pixel pack buffer and mapped, rather than straight into
+      // memory, as encodeImageOfType: does: ANGLE on Metal is slow at the
+      // read into memory. In the Simulator that took a whole readPixels() of
+      // a 2048 by 1365 canvas from about 418 ms to 342 (the rest is the
+      // trip back as numbers), and one of 256 by 256 from 23 to 13. The
+      // app's pack alignment, row length and
+      // skips lay the pixels out in a buffer just as they do in memory, so
+      // they stay as the app set them, and `length` (the runtime's count of
+      // what they need) is the buffer's size.
+      //
+      // A failed read writes nothing, and WebGL leaves the app's array alone
+      // then. Into memory that was a zeroed array; a buffer holds whatever
+      // it was given. So GL's error tells: an error from before the read is
+      // held for getError, and one after it means the read failed and
+      // answers nil, which the runtime takes as nothing read.
+      GLenum earlier = glGetError();
+      if (_heldError == GL_NO_ERROR) _heldError = earlier;
+      // The runtime sends this only while no pack buffer is bound (an app
+      // reading into one sends ReadPixelsToBuffer), but the binding is put
+      // back whatever it was.
+      GLint packBuffer = 0;
+      glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING, &packBuffer);
+      GLuint pack = 0;
+      glGenBuffers(1, &pack);
+      glBindBuffer(GL_PIXEL_PACK_BUFFER, pack);
+      glBufferData(GL_PIXEL_PACK_BUFFER, (GLsizeiptr)length, NULL, GL_STREAM_READ);
       BOOL resolved = [self beginRead];
-      glReadPixels(x, y, width, height, format, type, data.mutableBytes);
+      glReadPixels(x, y, width, height, format, type, 0);
       [self endRead:resolved];
-      return wordsFromBytes(data.bytes, length);
+      GLenum failed = glGetError();
+      NSArray *result = nil;
+      if (failed != GL_NO_ERROR) {
+        if (_heldError == GL_NO_ERROR) _heldError = failed;
+      } else if (length == 0) {
+        result = wordsFromBytes(NULL, 0);
+      } else {
+        const void *mapped =
+            glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0, (GLsizeiptr)length, GL_MAP_READ_BIT);
+        if (mapped) {
+          result = wordsFromBytes(mapped, length);
+          glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+        }
+      }
+      glDeleteBuffers(1, &pack);
+      glBindBuffer(GL_PIXEL_PACK_BUFFER, (GLuint)packBuffer);
+      return result;
     }
     case ALWebGLOpGetBufferSubData: {
       GLenum target = nextEnum(r);

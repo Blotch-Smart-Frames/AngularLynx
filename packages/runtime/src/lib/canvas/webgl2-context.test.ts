@@ -478,11 +478,6 @@ describe('the commands', () => {
     ['endTransformFeedback', [], [OP.endTransformFeedback]],
     ['pauseTransformFeedback', [], [OP.pauseTransformFeedback]],
     ['resumeTransformFeedback', [], [OP.resumeTransformFeedback]],
-    [
-      'readPixels',
-      [0, 0, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 64],
-      [OP.readPixelsToBuffer, 0, 0, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 64],
-    ],
   ] as [keyof LynxWebGL2RenderingContext, unknown[], unknown[]][])(
     '%s',
     async (method, args, expected) => {
@@ -1772,6 +1767,38 @@ describe('pixels', () => {
     expect(bridge.batches.at(-1)!.at(-1)).toBe(2 * 16 + 3 * 4);
     gl.readPixels(0, 0, 0, 2, GL.RGBA, GL.UNSIGNED_BYTE, new Uint8Array(0));
     expect(bridge.batches.at(-1)!.at(-1)).toBe(0);
+  });
+
+  it('reads into the bound pack buffer at an offset', async () => {
+    const pack = gl.createBuffer();
+    gl.bindBuffer(GL.PIXEL_PACK_BUFFER, pack);
+    gl.readPixels(0, 0, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 64);
+    expect((await flushed()).slice(-8)).toEqual([
+      OP.readPixelsToBuffer,
+      0,
+      0,
+      1,
+      1,
+      GL.RGBA,
+      GL.UNSIGNED_BYTE,
+      64,
+    ]);
+  });
+
+  it('fails reading at an offset with no pack buffer, or into an array with one', () => {
+    gl.readPixels(0, 0, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 0);
+    expect(gl.getError()).toBe(GL.INVALID_OPERATION);
+    const pack = gl.createBuffer();
+    gl.bindBuffer(GL.PIXEL_PACK_BUFFER, pack);
+    const destination = new Uint8Array([7, 7, 7, 7]);
+    gl.readPixels(0, 0, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, destination);
+    expect(gl.getError()).toBe(GL.INVALID_OPERATION);
+    expect(destination).toEqual(new Uint8Array([7, 7, 7, 7]));
+    // Deleting the buffer unbinds it, and arrays can be read into again.
+    gl.deleteBuffer(pack);
+    bridge.answers.push(words([1, 2, 3, 4]));
+    gl.readPixels(0, 0, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, destination);
+    expect(destination).toEqual(new Uint8Array([1, 2, 3, 4]));
   });
 
   it('fails without room for the pixels, or without an array', () => {

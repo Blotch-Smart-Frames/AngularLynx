@@ -7376,3 +7376,45 @@ The two platforms' `__SetDataset(element, object)` disagree:
 - **iOS and Android** merge the object's keys into the dataset (`AttributeHolder::SetDataSet` in Lynx core): a key it doesn't name keeps its value, and there's no element API to remove one.
 
 `LynxElement.setAttribute()` used to pass only the key it was setting, so in the web preview an element with `data-id` and `data-section` kept only the one set last, and its taps reported only that one (issue #472). It now passes a copy of every key the element has, with a removed key as `undefined` so native drops its value too. `__AddDataset`, which sets one key, would keep the others, but web-core's removes the DOM attribute for any falsy value, `data-index="0"` included.
+
+---
+
+## Inserting before a sibling in a container that's already been flushed walks its children, once per insert
+
+### What you'd expect (web)
+
+Inserting a node costs the same wherever it goes: `parent.insertBefore(node, anchor)` with the anchor last is as cheap as `appendChild`, and a page built in two steps (an empty shell, then its rows) costs what it costs built at once.
+
+### What Lynx does
+
+It depends on whether the container has been flushed. Measured on an iPhone 14 Pro with Lynx 4.1 (2026-11-18), flushing 5,000 `<view>`s into a scroll-view's container:
+
+| How the rows went in | The flush |
+| --- | --- |
+| Appended, or inserted before a hidden anchor, into a new container | 14–27 ms |
+| Appended into a container flushed before | 14–25 ms |
+| Inserted before a hidden anchor, into a container flushed (with the anchor) before | 111–113 ms |
+
+A container that has never been flushed takes its children in order when it first is (`PrepareAndGenerateChildrenActions`'s fast path in `fiber_element.cc`). Once it has been flushed, each insert is kept as an action with its reference sibling, and at the next flush `ElementContainer::FindParentAndIndexForChildForFiber` (`element_container.cc`) finds the new child's UI index by walking the container's children from the first (`GetUIIndexForChildForFiber`). An append has no reference sibling and skips the walk. So N inserts before a sibling take N²/2 steps.
+
+Angular inserts every `@for` row before its anchor. A routed screen was exactly the slow case: `RouterOutlet` creates the component, whose template builds its static elements (the container and the anchors) outside any change detection, and the flush that followed (the settle flush, or native's after `renderPage()` for the first screen) drew the empty shell before Angular's scheduled tick added the rows. That was 90 ms of the 5,000-view benchmark screen's 200 ms flush (#444).
+
+### The fix
+
+`scheduleSettleFlush()` (`lynx-element.ts`) runs the tick Angular has scheduled instead of flushing first (`runComingTick()` in `lynx-render-lifecycle.ts`, set by `LynxRendererFactory2`), and while the first render is pending it runs it from a microtask, inside `renderPage()`. The rows then go into a container that hasn't been flushed. Rows added to a screen already on view, such as a list loaded later, still take the walk: give a long list a `<list>`.
+
+---
+
+## An element that sets custom properties of its own pays to resolve them at every flush that styles it
+
+### What you'd expect (web)
+
+A rule that sets a custom property nobody reads costs next to nothing, and browsers that lack `@property` get Tailwind's starting values from its `*, ::before, ::after` fallback without noticing.
+
+### What Lynx does
+
+For each element with custom properties of its own, the flush collects them and checks them for cycles (`FiberElement::CollectCustomProperties` → `CSSValue::SubstituteAll` → `CycleDetector`, a strongly-connected-components search over string-keyed maps), whether or not anything reads them. Variables an element only inherits, such as the theme's on `page`, cost nothing. Measured on an iPhone 14 Pro (2026-11-18), the build plugin's old `*` rule with Tailwind 4's two dozen starting values cost 18 µs an element: CSS resolution for a screen of 5,000 views was 93 ms with it, 2–5 ms without it, and ReactLynx's was 2 ms.
+
+### The fix
+
+The build plugin sets the starting values only on the elements that read them (`startingValueRules` in `packages/rsbuild-plugin-angular-lynx/src/tailwind-v4/starting-values.ts`): each rule that reads a variable without setting it gets them on its subject's class, before every utility.

@@ -76,7 +76,12 @@ describe('tailwindForLynx', () => {
       'padding-right: calc(var(--spacing) * 4)',
     ]);
     expect(declarationsOf(root, '.opacity-50')).toEqual(['opacity: 0.5']);
-    expect(declarationsOf(root, '.translate-x-2')).toEqual([
+    // The last: before it, the rule that starts its other variables (see
+    // the starting values' tests below).
+    const translate = rules(root).filter(
+      ({ selector }) => selector === '.translate-x-2',
+    );
+    expect(translate[translate.length - 1]?.nodes.map(String)).toEqual([
       '--tw-translate-x: 0.5rem',
       expect.stringMatching(/^transform: translate3d\(/),
     ]);
@@ -93,33 +98,48 @@ describe('tailwindForLynx', () => {
     );
   });
 
-  it("starts every element with Tailwind's and the transform's variables", async () => {
+  it("starts the elements that read Tailwind's variables with the ones they read", async () => {
     const root = await compile(`@charset "utf-8";\n${STYLESHEET}`);
     const charset = root.nodes.find((node) => node.type === 'atrule')!;
 
     expect(charset.toString()).toBe('@charset "utf-8"');
-    expect((charset.next() as Rule).selector).toBe('*');
-    expect(declarationsOf(root, '*')).toEqual(
-      expect.arrayContaining([
-        '--tw-border-style: solid',
-        '--tw-translate-x: 0',
-        '--tw-rotate: 0deg',
-        '--tw-scale-x: 1',
-      ]),
+    // Not every element: setting custom properties costs an element at each
+    // flush, whether it reads them or not.
+    expect(rules(root).map(({ selector }) => selector)).not.toContain('*');
+    const starting = (selector: string) =>
+      rules(root)
+        .find((rule) => rule.selectors.includes(selector))
+        ?.nodes.map(String);
+    expect((charset.next() as Rule).nodes.map(String)).toEqual(
+      starting((charset.next() as Rule).selectors[0]!),
+    );
+    expect(starting('.border')).toEqual(['--tw-border-style: solid']);
+    // Every transform variable but the one it sets.
+    expect(starting('.translate-x-2')).toEqual(
+      expect.arrayContaining(['--tw-rotate: 0deg', '--tw-scale-x: 1']),
+    );
+    expect(starting('.translate-x-2')).not.toContainEqual(
+      expect.stringMatching(/^--tw-translate-x:/),
     );
   });
 
   it('writes the starting values first when there is nothing before them', async () => {
     const root = await compile(STYLESHEET);
-    expect(rules(root)[0]?.selector).toBe('*');
     expect(root.first?.type).toBe('rule');
+    expect(
+      (root.first as Rule).nodes.every((node) =>
+        String(node).startsWith('--tw-'),
+      ),
+    ).toBe(true);
   });
 
   it('adds no starting values when nothing needs them', async () => {
     const root = await compile(
       `@import 'tailwindcss/theme.css' layer(theme);\n.a { @apply text-red-500; }`,
     );
-    expect(rules(root).map(({ selector }) => selector)).not.toContain('*');
+    expect(
+      rules(root).flatMap((rule) => rule.nodes.map(String)),
+    ).not.toContainEqual(expect.stringMatching(/^--tw-/));
   });
 
   it("writes the @blotch/ui theme's opacity modifiers with its channel variables", async () => {

@@ -53,6 +53,30 @@ const deferredCallbacks: Array<() => void> = [];
 export const isFirstRenderPending = (): boolean => firstRenderPending;
 
 /**
+ * Whether the first render is running inside native's renderPage() call:
+ * bootstrapApplication() has had Lynx's renderPage callback and is
+ * bootstrapping Angular. A test (render(), or Angular's TestBed) builds its
+ * app with no renderPage, and never completes the first render.
+ */
+let renderingPage = false;
+
+/**
+ * Called by bootstrapApplication() once Lynx's renderPage callback has come,
+ * before it bootstraps Angular (see isRenderingPage()).
+ */
+export const markRenderingPage = (): void => {
+  renderingPage = firstRenderPending;
+};
+
+/**
+ * True while bootstrapApplication() renders the first page inside native's
+ * renderPage() call, until markFirstRenderComplete(). Native flushes the
+ * page once that call returns, so what it should draw has to be built by
+ * then (see scheduleSettleFlush).
+ */
+export const isRenderingPage = (): boolean => renderingPage;
+
+/**
  * Called exactly once by bootstrapApplication() after Angular's bootstrap
  * resolves. Flips the latch so all subsequent updates run inline, then drains
  * anything parked via runAfterFirstRender() during bootstrap.
@@ -66,6 +90,7 @@ export const isFirstRenderPending = (): boolean => firstRenderPending;
  */
 export const markFirstRenderComplete = (): void => {
   firstRenderPending = false;
+  renderingPage = false;
   if (deferredCallbacks.length === 0) return;
   const callbacks = deferredCallbacks.splice(0);
   setTimeout(() => {
@@ -102,6 +127,42 @@ export const setInsideChangeDetection = (value: boolean): void => {
 };
 
 export const isInsideChangeDetection = (): boolean => insideChangeDetection;
+
+/**
+ * Runs the change-detection tick Angular has scheduled, if it has one that
+ * will refresh (and so reach the renderer's end()). LynxRendererFactory2 sets
+ * it, since it can reach Angular's scheduler; until it does (and outside an
+ * app), there's no tick to run.
+ */
+let comingTick: () => boolean = () => false;
+
+export const setRunComingTick = (run: () => boolean): void => {
+  comingTick = run;
+};
+
+/**
+ * Runs now the tick Angular has scheduled, and returns true, or returns false
+ * when none is scheduled. scheduleSettleFlush() calls it instead of flushing
+ * elements built outside a cycle on their own.
+ *
+ * The canonical case is a routed screen. RouterOutlet creates the component,
+ * whose template builds its static elements (a scroll-view, a container, the
+ * anchors of its `@for`s) outside any cycle, and marks it for check, which
+ * schedules the tick that builds the rest: every `@for` row. Angular runs that
+ * tick from a timer or an animation frame, whichever comes first, so native
+ * flushed the static shell first: from the settle flush, or after renderPage()
+ * when the screen is the first one. That costs the rows a lot. Once a
+ * container has been flushed, native keeps each row inserted before its
+ * anchor as an action, and places it by walking the container's children from
+ * the first, so N rows take N²/2 steps: 90 ms of a 200 ms flush for 5,000
+ * views on an iPhone 14 Pro. Built before their container's first flush, the
+ * rows are placed in order, without the walk. It also draws the screen whole
+ * in its first frame, not its empty shell first.
+ *
+ * Angular itself runs ticks this early: once one has run, its scheduler runs
+ * the next from a microtask until the current task ends.
+ */
+export const runComingTick = (): boolean => comingTick();
 
 // How many list items are being built or rebound right now, by a list's
 // componentAtIndex (see bindListItem). More than one when an item holds a

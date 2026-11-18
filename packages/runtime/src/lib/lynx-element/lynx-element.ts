@@ -22,6 +22,8 @@ import {
   isBindingListItem,
   isFirstRenderPending,
   isInsideChangeDetection,
+  isRenderingPage,
+  runComingTick,
   runAfterFirstRender,
 } from '../lynx-render-lifecycle';
 import type { ElementRef } from '../types/lynx';
@@ -3502,6 +3504,13 @@ export const afterNextFlush = (callback: () => void): void => {
 let settleFlushScheduled = false;
 
 /**
+ * Whether elements built outside a cycle during the first render have a
+ * microtask coming that runs the tick Angular scheduled for them (see
+ * scheduleSettleFlush).
+ */
+let firstRenderTickScheduled = false;
+
+/**
  * Whether a list item left work for a later flush, with no settle flush
  * since: a settle flush was asked for, and skipped, while an item was being
  * built (see scheduleSettleFlush), or componentAtIndex built or rebound one
@@ -3606,20 +3615,36 @@ const checkDispatchWrites = (): void => {
  * no-op while:
  *  - inside a CD cycle — end() will flush;
  *  - the first render is pending — native flushes after renderPage, and any
- *    `<list>` defers its own first flush (see isFirstRenderPending());
+ *    `<list>` defers its own first flush (see isFirstRenderPending()). Only
+ *    a tick Angular has scheduled runs, from a microtask, inside renderPage
+ *    (see runComingTick());
  *  - a list's componentAtIndex is building a `*lynxListFor` item, which it
  *    flushes itself (see bindListItem). What else is left for a flush then
  *    waits for the next one (see settleSkippedForListItem); calls waiting for
  *    it are seen to by settleAfterListItems().
+ * When the microtask runs, a tick Angular has scheduled runs instead of the
+ * flush, and its end() flushes (see runComingTick()).
  * The near-no-op cost when nothing is layout-dirty (the core's `need_layout_`
  * gate) keeps the steady-state overhead negligible.
  */
 export const scheduleSettleFlush = (): void => {
-  if (
-    settleFlushScheduled ||
-    isInsideChangeDetection() ||
-    isFirstRenderPending()
-  ) {
+  if (settleFlushScheduled || isInsideChangeDetection()) {
+    return;
+  }
+  if (isFirstRenderPending()) {
+    // Native flushes after renderPage(), and the microtasks run before it
+    // returns: the first screen's route is built in them, outside a cycle.
+    // Its tick runs in one too, so that flush draws the whole screen (see
+    // runComingTick), rather than leaving the tick for a later task. Not in
+    // a test, which has no renderPage(), and whose first render never ends:
+    // its ticks keep the timing they always had.
+    if (isRenderingPage() && !firstRenderTickScheduled) {
+      firstRenderTickScheduled = true;
+      queueMicrotask(() => {
+        firstRenderTickScheduled = false;
+        if (!isInsideChangeDetection()) runComingTick();
+      });
+    }
     return;
   }
   if (isBindingListItem()) {
@@ -3632,6 +3657,10 @@ export const scheduleSettleFlush = (): void => {
     // A CD cycle began in the meantime — its end() will flush; don't double up
     // (and avoid a re-entrant flush).
     if (isInsideChangeDetection()) return;
+    // Angular has a tick scheduled (a routed screen, marked for check after
+    // its static elements were built): it runs now, and its end() flushes
+    // what it builds with what was built before it (see runComingTick).
+    if (runComingTick()) return;
     // Cleared before the flush: a list item built inside it (its layout pass
     // calls componentAtIndex) leaves the next flush its own leftovers.
     settleSkippedForListItem = false;

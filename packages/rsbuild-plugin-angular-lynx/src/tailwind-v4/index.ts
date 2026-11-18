@@ -13,6 +13,7 @@ import {
   takePropertyRegistrations,
   unwrapLayers,
 } from './structure.js';
+import { startingValueRules } from './starting-values.js';
 import { resolveNestedVariables } from './variables.js';
 
 /**
@@ -87,21 +88,25 @@ export const lowerForLynx = (
   lowerTransformVariables(root);
   completeKeyframes(root);
   removeEmptyContainers(root);
-  if (defaults.size > 0) {
-    // On every element, as Tailwind's own fallback for browsers without
-    // `@property` does: the variables aren't inherited, so each element
-    // starts from these values rather than its parent's.
-    const defaultsRule = createRule('*');
-    for (const [prop, value] of defaults) {
-      defaultsRule.append({ prop, value });
-    }
+  // The variables' starting values, on the elements that read them (see
+  // startingValueRules), before every rule that could set them.
+  const startingValues = startingValueRules(root, defaults).map(
+    ({ selectors, variables }) => {
+      const startingRule = createRule(selectors.join(', '));
+      for (const name of variables) {
+        startingRule.append({ prop: name, value: defaults.get(name)! });
+      }
+      return startingRule;
+    },
+  );
+  if (startingValues.length > 0) {
     const imports = root.nodes.filter(
       (node) => node.type === 'atrule' && /^(charset|import)$/i.test(node.name),
     );
     if (imports.length > 0) {
-      imports[imports.length - 1]!.after(defaultsRule);
+      imports[imports.length - 1]!.after(startingValues);
     } else {
-      root.prepend(defaultsRule);
+      root.prepend(startingValues);
     }
   }
 };

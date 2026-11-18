@@ -1,10 +1,13 @@
 import {
+  ApplicationRef,
   Injectable,
+  Injector,
   inject,
   type Renderer2,
   type RendererFactory2,
   type RendererType2,
   ViewEncapsulation,
+  ɵChangeDetectionScheduler as ChangeDetectionScheduler,
 } from '@angular/core';
 import { devStats, endCdTiming, startCdTiming } from '../devtools/stats';
 import type { LynxDocumentBase } from '../lynx-document';
@@ -23,6 +26,7 @@ import {
   isBindingListItem,
   isFirstRenderPending,
   setInsideChangeDetection,
+  setRunComingTick,
 } from '../lynx-render-lifecycle';
 import { EmulatedLynxRenderer } from './emulated-lynx-renderer';
 import { LynxRenderer } from './renderer';
@@ -33,6 +37,10 @@ export class LynxRendererFactory2 implements RendererFactory2 {
   lynxDocument: LynxDocumentBase = inject(LYNX_DOCUMENT);
   #defaultRenderer: LynxRenderer | null = null;
   #emulatedRenderers = new Map<string, EmulatedLynxRenderer>();
+
+  constructor() {
+    setRunComingTick(comingTickRunner(inject(Injector)));
+  }
 
   /**
    * Angular calls createRenderer once per component type. The renderer is
@@ -235,3 +243,68 @@ export class LynxRendererFactory2 implements RendererFactory2 {
     }
   }
 }
+
+/**
+ * The parts of Angular's zoneless scheduler (ChangeDetectionSchedulerImpl)
+ * and ApplicationRef that tell whether a tick is scheduled, and run it. None
+ * of them is public API: Angular's own `exhaustiveCheckNoChangesInterval`
+ * reads `pendingRenderTaskId` the same way. If a later Angular renames them,
+ * no tick runs early, and elements built outside a cycle flush as before.
+ */
+type SchedulerState = {
+  pendingRenderTaskId?: number | null;
+  tick?: () => void;
+};
+type ApplicationRefState = {
+  destroyed: boolean;
+  dirtyFlags?: number;
+};
+
+/**
+ * Runs the tick Angular's scheduler has scheduled, if it will refresh, and
+ * says whether it did (see runComingTick in lynx-render-lifecycle.ts).
+ *
+ * The scheduler has a tick scheduled while `pendingRenderTaskId` is set. Its
+ * `tick()` runs it as the timer would: errors go to the app's error handler,
+ * and the timer is canceled. The tick only refreshes, and calls begin() and
+ * end(), if ApplicationRef has something dirty: one scheduled when a pending
+ * task ends (to let the app become stable) marks nothing and returns without
+ * a flush, so it's left to its timer, and the caller flushes.
+ *
+ * Both are resolved at the first call, as they're made after the renderer
+ * factory, and kept: a destroyed app's injector throws, and a settle flush
+ * can come after the app it was scheduled in is destroyed (a test's).
+ */
+const comingTickRunner = (injector: Injector): (() => boolean) => {
+  let state: {
+    scheduler: SchedulerState | null;
+    appRef: ApplicationRefState | null;
+  } | null = null;
+  return () => {
+    try {
+      state ??= {
+        scheduler: injector.get(ChangeDetectionScheduler, null, {
+          optional: true,
+        }) as SchedulerState | null,
+        appRef: injector.get(ApplicationRef, null, {
+          optional: true,
+        }) as ApplicationRefState | null,
+      };
+    } catch {
+      // The app was destroyed before its first call: no tick is coming.
+      return false;
+    }
+    const { scheduler, appRef } = state;
+    if (
+      scheduler?.pendingRenderTaskId == null ||
+      typeof scheduler.tick !== 'function' ||
+      !appRef ||
+      appRef.destroyed ||
+      !appRef.dirtyFlags
+    ) {
+      return false;
+    }
+    scheduler.tick();
+    return true;
+  };
+};

@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   markFirstRenderComplete,
+  markRenderingPage,
   setInsideChangeDetection,
+  setRunComingTick,
 } from '../lynx-render-lifecycle';
 import { measureLayout } from './layout';
 import { LynxElement, scheduleSettleFlush } from './lynx-element';
@@ -27,6 +29,8 @@ describe('scheduleSettleFlush', () => {
   beforeEach(() => {
     (globalThis as any).__FlushElementTree = vi.fn();
     setInsideChangeDetection(false);
+    // No app: Angular has no tick scheduled.
+    setRunComingTick(() => false);
   });
 
   afterEach(async () => {
@@ -41,6 +45,36 @@ describe('scheduleSettleFlush', () => {
     expect((globalThis as any).__FlushElementTree).not.toHaveBeenCalled();
   });
 
+  it("leaves a test's ticks to Angular's timing, as it has no renderPage", async () => {
+    const runComingTick = vi.fn(() => true);
+    setRunComingTick(runComingTick);
+    scheduleSettleFlush();
+
+    await flushMicrotasks();
+    expect(runComingTick).not.toHaveBeenCalled();
+  });
+
+  it('runs a tick Angular has scheduled during the first render, from one microtask', async () => {
+    // The first screen's route, built outside a cycle inside renderPage: its
+    // tick runs before renderPage returns, so native's flush draws it whole.
+    markRenderingPage();
+    const runComingTick = vi.fn(() => true);
+    setRunComingTick(runComingTick);
+    scheduleSettleFlush();
+    scheduleSettleFlush();
+    expect(runComingTick).not.toHaveBeenCalled();
+
+    await flushMicrotasks();
+    expect(runComingTick).toHaveBeenCalledOnce();
+    expect((globalThis as any).__FlushElementTree).not.toHaveBeenCalled();
+
+    // A cycle that began first builds it itself.
+    scheduleSettleFlush();
+    setInsideChangeDetection(true);
+    await flushMicrotasks();
+    expect(runComingTick).toHaveBeenCalledOnce();
+  });
+
   it('flushes once, on a microtask, for content created outside a CD cycle', async () => {
     // Everything below runs post-first-render.
     markFirstRenderComplete();
@@ -52,6 +86,28 @@ describe('scheduleSettleFlush', () => {
 
     await flushMicrotasks();
     expect((globalThis as any).__FlushElementTree).toHaveBeenCalledTimes(1);
+  });
+
+  it('runs the tick Angular has scheduled instead of flushing', async () => {
+    // A routed screen, marked for check after its static elements were
+    // built: the tick builds its rows, and its end() flushes them all.
+    const runComingTick = vi.fn(() => true);
+    setRunComingTick(runComingTick);
+    scheduleSettleFlush();
+
+    await flushMicrotasks();
+    expect(runComingTick).toHaveBeenCalledOnce();
+    expect((globalThis as any).__FlushElementTree).not.toHaveBeenCalled();
+  });
+
+  it('flushes when Angular has no tick scheduled', async () => {
+    const runComingTick = vi.fn(() => false);
+    setRunComingTick(runComingTick);
+    scheduleSettleFlush();
+
+    await flushMicrotasks();
+    expect(runComingTick).toHaveBeenCalledOnce();
+    expect((globalThis as any).__FlushElementTree).toHaveBeenCalledOnce();
   });
 
   it('coalesces multiple calls into a single flush', async () => {

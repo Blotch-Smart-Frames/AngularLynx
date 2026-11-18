@@ -1,14 +1,21 @@
 import {
+  ApplicationRef,
+  createEnvironmentInjector,
+  type EnvironmentInjector,
   type RendererType2,
   Injector,
   runInInjectionContext,
   ViewEncapsulation,
+  ɵChangeDetectionScheduler as ChangeDetectionScheduler,
 } from '@angular/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LynxElement, LynxListElement } from '../lynx-element';
 import { afterNextFlush } from '../lynx-element/lynx-element';
 import { InMemoryDocument } from '../testing/in-memory-document';
-import { markFirstRenderComplete } from '../lynx-render-lifecycle';
+import {
+  markFirstRenderComplete,
+  runComingTick,
+} from '../lynx-render-lifecycle';
 import { EmulatedLynxRenderer } from './emulated-lynx-renderer';
 import { LynxRendererFactory2 } from './lynx-renderer-factory2';
 import { LynxRenderer } from './renderer';
@@ -307,6 +314,70 @@ describe('LynxRendererFactory2', () => {
       factory.end?.();
 
       expect(globalThis.__FlushElementTree).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('runComingTick', () => {
+    /**
+     * A factory whose app has this scheduler and ApplicationRef.
+     */
+    const withApp = (scheduler: object | null, appRef: object | null) => {
+      const injector = Injector.create({
+        providers: [
+          { provide: LYNX_DOCUMENT, useFactory: () => new InMemoryDocument() },
+          { provide: ChangeDetectionScheduler, useValue: scheduler },
+          { provide: ApplicationRef, useValue: appRef },
+        ],
+      });
+      runInInjectionContext(injector, () => new LynxRendererFactory2());
+    };
+
+    it("runs the tick Angular's scheduler has scheduled, when it will refresh", () => {
+      const scheduler = { pendingRenderTaskId: 1, tick: vi.fn() };
+      withApp(scheduler, { destroyed: false, dirtyFlags: 2 });
+
+      expect(runComingTick()).toBe(true);
+      expect(scheduler.tick).toHaveBeenCalledOnce();
+    });
+
+    it('runs none when none is scheduled, or it would refresh nothing', () => {
+      const tick = vi.fn();
+      // Nothing scheduled.
+      withApp(
+        { pendingRenderTaskId: null, tick },
+        { destroyed: false, dirtyFlags: 2 },
+      );
+      expect(runComingTick()).toBe(false);
+      // Scheduled when a pending task ended: it returns without end().
+      withApp(
+        { pendingRenderTaskId: 1, tick },
+        { destroyed: false, dirtyFlags: 0 },
+      );
+      expect(runComingTick()).toBe(false);
+      withApp(
+        { pendingRenderTaskId: 1, tick },
+        { destroyed: true, dirtyFlags: 2 },
+      );
+      expect(runComingTick()).toBe(false);
+      // An Angular whose scheduler runs its ticks some other way.
+      withApp({ pendingRenderTaskId: 1 }, { destroyed: false, dirtyFlags: 2 });
+      expect(runComingTick()).toBe(false);
+      withApp({ pendingRenderTaskId: 1, tick }, null);
+      expect(runComingTick()).toBe(false);
+      withApp(null, null);
+      expect(runComingTick()).toBe(false);
+      expect(tick).not.toHaveBeenCalled();
+    });
+
+    it('runs none for an app destroyed before it was asked', () => {
+      const injector = createEnvironmentInjector(
+        [{ provide: LYNX_DOCUMENT, useFactory: () => new InMemoryDocument() }],
+        Injector.create({ providers: [] }) as EnvironmentInjector,
+      );
+      runInInjectionContext(injector, () => new LynxRendererFactory2());
+      injector.destroy();
+
+      expect(runComingTick()).toBe(false);
     });
   });
 });

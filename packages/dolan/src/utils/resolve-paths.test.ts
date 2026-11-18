@@ -10,7 +10,7 @@ import {
 
 // Deliberately unmocked (unlike the command tests, which stub this module out
 // for isolation): this is the one place that must exercise the real
-// filesystem lookups. The dolan vite.config.ts `copy-ui` plugin copies
+// filesystem lookups. The dolan vite.config.ts `copy-ui` plugin syncs
 // packages/ui/src/lib into packages/dolan/dist/ui on every Vite config
 // resolution (including vitest's), so `dist/ui/components/*` is always
 // populated with real @blotch/ui source when this test runs — no fixture

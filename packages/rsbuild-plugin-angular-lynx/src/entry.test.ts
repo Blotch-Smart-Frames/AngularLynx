@@ -618,6 +618,27 @@ describe('applyEntry', () => {
     );
   });
 
+  it('builds lazy bundles for FetchBundle when lazy bundles are on', () => {
+    const templateOptions = (options: typeof entryOptions) => {
+      const { api, triggerChain } = createMockApi();
+      const { chain, pluginUses } = createMockChain({
+        entries: { main: { values: () => ['./src/main.ts'] } },
+      });
+      applyEntry(api as never, options, createBackgroundEntries(), new Set());
+      triggerChain(chain, { name: 'lynx', config: {} }, false);
+      return pluginUses[0].args[0];
+    };
+
+    // The main thread, where Angular routes, can wait for a FetchBundle
+    // bundle to download; with QueryComponent it couldn't (#451).
+    expect(
+      templateOptions({ ...entryOptions, experimental_isLazyBundle: true }),
+    ).toHaveProperty('lazyBundleFetcher', 'FetchBundle');
+    expect(
+      templateOptions({ ...entryOptions, experimental_isLazyBundle: false }),
+    ).not.toHaveProperty('lazyBundleFetcher');
+  });
+
   it('passes the enableA11y option to the template plugin', () => {
     const { api, triggerChain } = createMockApi();
     const { chain, pluginUses } = createMockChain({

@@ -268,6 +268,16 @@ export const applyEntry = (
             removeDescendantSelectorScope,
             targetSdkVersion,
             enableA11y,
+            // A lazy bundle carries its main-thread code, its background code
+            // and its CSS as sections that `lynx.fetchBundle()` and
+            // `lynx.loadScript()` read (Lynx 3.9 and later), so the main
+            // thread, where Angular routes, can wait for a bundle to download
+            // (chunk-loader.ts). With QueryComponent, Lynx's default, the main
+            // thread could only take a bundle that was already loaded, and a
+            // route's first navigation never got its component (#451).
+            ...(options.experimental_isLazyBundle
+              ? { lazyBundleFetcher: 'FetchBundle' as const }
+              : {}),
             // DO NOT pass experimental_isLazyBundle to LynxTemplatePlugin.
             // Setting it here would make the ROOT app a standalone lazy bundle
             // (appType: DynamicComponent), which crashes LynxExplorer with decode

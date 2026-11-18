@@ -79,14 +79,16 @@ export type PluginAngularLynxOptions = {
   multiTouch?: boolean;
   removeDescendantSelectorScope?: boolean;
   targetSdkVersion?: string;
-  // Enables true lazy loading for Angular Router's loadComponent() routes.
-  // When true: asyncChunks remains enabled so each dynamic import() produces a
-  // separate .js file, AMD-wrapped and loadable via Lynx's native
-  // requireModuleAsync API at runtime.
-  // When false (default): all dynamic imports are inlined into the initial bundle
-  // (asyncChunks=false), avoiding the need for native chunk loading entirely.
-  // Note: this flag is NOT passed to LynxTemplatePlugin — doing so would change
-  // the root app's appType from 'card' to 'DynamicComponent', crashing the runtime.
+  // Code splitting for `loadComponent()` routes and `@defer` blocks.
+  // When true: asyncChunks stays on, so each dynamic import() becomes a lazy
+  // bundle of its own, built for FetchBundle (entry.ts), which the runtime
+  // downloads on the main thread when the route or block first needs it
+  // (the runtime's chunk-loader.ts). It needs Lynx 3.9 or later.
+  // When false (default): all dynamic imports are inlined into the initial
+  // bundle (asyncChunks=false), and import() only runs their modules.
+  // Note: this flag is NOT passed to LynxTemplatePlugin itself — doing so would
+  // change the root app's appType from 'card' to 'DynamicComponent', crashing
+  // the runtime.
   experimental_isLazyBundle?: boolean;
 };
 

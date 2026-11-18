@@ -20,14 +20,16 @@ Each entry is duplicated into two webpack entries with different layers:
 - `{name}__main-thread` → layer `"main"`, target ES2019, gets `globalThis["__MAIN_THREAD__"]=true` banner
 - `{name}` (background) → layer `"background"`, target ES2015, gets `globalThis["__MAIN_THREAD__"]=false` banner
 
-Both halves contain the whole app, but Angular boots on the main thread only: the runtime's `bootstrapApplication()` returns early on the background thread, which runs module-level code. `cross-thread-transform.ts` ties a module's two copies together: it gives module-level `backgroundFn()`, `createMainThreadRef()` and `new MainThreadRef()` calls an ID from a hash of the file path and the call's position (so it matches whatever order the threads run modules in), and rewrites each `import()` in the app's own files so the background thread runs the same lazy import as the main thread (the runtime's `lazy-bundle/mirrored-imports.ts`).
+Angular boots on the main thread only. The background half starts from an entry the build generates (`background-entry.ts`), which loads the runtime and only the modules that define a `backgroundFn()` or a `MainThreadRef`, and runs their module-level code. `cross-thread-transform.ts` ties a module's two copies together: it gives module-level `backgroundFn()`, `createMainThreadRef()` and `new MainThreadRef()` calls an ID from a hash of the file path and the call's position (so it matches whatever order the threads run modules in).
+
+With `experimental_isLazyBundle`, each lazy route and `@defer` block is a lazy bundle built for FetchBundle (`lazyBundleFetcher` in `entry.ts`), and `angular-webpack-plugin.ts` wraps a native lazy chunk's main-thread file as a function of its entry, which the runtime's `lazy-bundle/chunk-loader.ts` calls after `lynx.fetchBundle()` and `lynx.loadScript()` (see `investigations/lynx-vs-web-differences.md`).
 
 ## Lynx Webpack Plugins (applied in `applyEntry`)
 
 - `LynxTemplatePlugin` — Generates Lynx template bundles from main+background chunks
 - `RuntimeWrapperWebpackPlugin` — Wraps background JS (not main-thread) with Lynx runtime
 - `LynxEncodePlugin` — Encodes output for Lynx runtime (lynx environment only)
-- `AngularWebpackPlugin` — Thread banners, env vars (`__DEV__`, `__MAIN_THREAD__`), async chunk wrapping via `module.exports` injection, `lynxProcessEvalResult` runtime module
+- `AngularWebpackPlugin` — Thread banners, env vars (`__DEV__`, `__MAIN_THREAD__`), the lazy chunks' main-thread wrapper (a function returning `module.exports`), `lynxProcessEvalResult` runtime module
 
 ## Hot Updates (development builds)
 
@@ -47,7 +49,7 @@ The `.js`/`.cjs` wiring files are copied into `dist/client/` as they are, becaus
 - `fileReplacements` take two steps, as in Angular's own builders: `compilation.initialize()` gets them, so the compiler host resolves imports of each `replace` file to its `with` file, and `file-replacements.ts` adds a `NormalModuleReplacementPlugin` per replacement, so rspack builds the `with` file wherever the compiled code imports the `replace` one
 - Uses `@angular/build` internal APIs: `JavaScriptTransformer` (JS transform), `createAngularCompilation` (TS compilation with AOT). Import them from `utils/angular/build-internals.ts`, never from `@angular/build/src/...` directly: those paths aren't in `@angular/build`'s `exports`, so bare imports fail in users' apps (the old postinstall patch that worked around this no longer runs under npm 11)
 - `onBeforeEnvironmentCompile`: initializes Angular compilation, emits affected files to cache, runs diagnostics. Runs on every watch rebuild too. `angular-rebuild-coordinator.ts` feeds the compiler's `modifiedFiles` to `compilation.update()`, serializes the `web`/`lynx` hooks onto the one shared compilation, and adds files whose Angular output changed back to `modifiedFiles` so rspack rebuilds them
-- `api.transform`: serves compiled TS from cache, transforms JS via `JavaScriptTransformer`, prepends component stylesheet imports, registers external templates/stylesheets as watched dependencies, then runs the worklet transform and the cross-thread transform (lazy imports only in Angular-compiled files)
+- `api.transform`: serves compiled TS from cache, transforms JS via `JavaScriptTransformer`, prepends component stylesheet imports, registers external templates/stylesheets as watched dependencies, then runs the worklet transform and the cross-thread transform
 
 ## Key Files
 
@@ -59,7 +61,7 @@ src/
   angular.ts                           # Angular compilation and transform pipeline
   angular-rebuild-coordinator.ts       # Keeps the Angular compilation in sync with watch rebuilds
   angular-webpack-plugin.ts            # Webpack plugin: banners, defines, async chunk wrapping
-  cross-thread-transform.ts            # Cross-thread IDs for module-level backgroundFn/MainThreadRef, mirrored lazy imports
+  cross-thread-transform.ts            # Cross-thread IDs for module-level backgroundFn/MainThreadRef
   hot-updates.ts                       # Hot update accept code for entries and component modules
   client/                              # Hot update clients the dev bundles run (see Hot Updates)
   budgets-plugin.ts                    # Checks angular.json budgets on the lynx environment's bundles and component styles

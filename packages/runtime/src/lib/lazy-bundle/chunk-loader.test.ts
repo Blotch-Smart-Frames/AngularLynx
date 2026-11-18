@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-type QueryComponentResult = { code: number; detail: { schema: string } };
-type QueryCallback = (result: QueryComponentResult) => void;
-type LoadLazyBundle = (source: string, mode?: string) => Promise<unknown>;
+type FetchBundleResponse = { code: number; url: string } | null;
+type LoadLazyBundle = (source: string) => Promise<unknown>;
+
+const SOURCE = 'http://host/lazy-bundle/route.bundle';
 
 /**
  * Re-imports the module and installs the loader onto a fresh `lynx` stub, so
- * each test observes the globals (`__MAIN_THREAD__`, `__DEV__`, `lynx`) it set
- * up. Mirrors the dynamic-import pattern in lazy-bundle.test.ts.
+ * each test observes the globals (`__MAIN_THREAD__`, `lynx`) it set up.
  */
 const install = async (
   lynxStub: Record<string, unknown>,
@@ -20,52 +20,53 @@ const install = async (
 };
 
 /**
- * Builds a background-thread `lynx` stub whose QueryComponent invokes the
- * callback either synchronously (cached bundle) or later (network fetch).
- * The exports lookup is keyed by schema so tests can simulate a bundle whose
- * JS threw (code 0 but no exports).
+ * A `lynx` stub whose `fetchBundle()` handler answers at once (a bundle native
+ * already has) or when the test calls `respond()` (one still downloading).
  */
-const makeBackgroundLynx = (opts: {
-  code?: number;
-  exports?: unknown;
+const makeLynx = (opts: {
+  response?: FetchBundleResponse;
   sync?: boolean;
-  native?: boolean;
+  loadScript?: (section: string, options: { bundleName: string }) => unknown;
 }) => {
   const {
-    code = 0,
-    exports = { default: 'Mod' },
+    response = { code: 0, url: SOURCE },
     sync = true,
-    native = false,
+    loadScript = () => () => ({ ids: [1], modules: {} }),
   } = opts;
   let pending: (() => void) | undefined;
-  const queryComponent = vi.fn((source: string, callback: QueryCallback) => {
-    const fire = () => callback({ code, detail: { schema: source } });
-    if (sync) {
-      fire();
-    } else {
-      pending = fire;
-    }
-  });
-  const getDynamicComponentExports = vi.fn(() => exports);
+  const fetchBundle = vi.fn((_url: string, _options: object) => ({
+    // lynx.fetchBundle()'s handler is thenable, which is what's under test.
+    // oxlint-disable-next-line unicorn/no-thenable
+    then: (callback: (r: FetchBundleResponse) => void) => {
+      const fire = () => callback(response);
+      if (sync) {
+        fire();
+      } else {
+        pending = fire;
+      }
+    },
+  }));
+  const loadScriptMock = vi.fn(loadScript);
   const stub: Record<string, unknown> = {
-    getApp: () => ({ getDynamicComponentExports }),
-    getNativeLynx: vi.fn(() => ({ QueryComponent: queryComponent })),
+    fetchBundle,
+    loadScript: loadScriptMock,
   };
-  if (!native) {
-    stub['QueryComponent'] = queryComponent;
-  }
   return {
     stub,
-    queryComponent,
-    getDynamicComponentExports,
-    flush: () => pending?.(),
+    fetchBundle,
+    loadScript: loadScriptMock,
+    respond: () => pending?.(),
   };
 };
 
+/**
+ * Settles the microtask queue, so a promise that would settle has.
+ */
+const flushMicrotasks = () => new Promise((resolve) => setTimeout(resolve, 0));
+
 describe('installLazyBundleLoader', () => {
   beforeEach(() => {
-    vi.stubGlobal('__MAIN_THREAD__', false);
-    vi.stubGlobal('__DEV__', false);
+    vi.stubGlobal('__MAIN_THREAD__', true);
   });
 
   afterEach(() => {
@@ -73,232 +74,185 @@ describe('installLazyBundleLoader', () => {
   });
 
   it('installs loadLazyBundle onto the lynx global', async () => {
-    const stub: Record<string, unknown> = {};
-    const load = await install(stub);
+    const load = await install({});
     expect(typeof load).toBe('function');
   });
 
+  it('rejects with what to upgrade when the engine has no fetchBundle', async () => {
+    const load = await install({});
+    await expect(load(SOURCE)).rejects.toThrow(
+      `Lazy bundle ${SOURCE} can't load: lazy bundles need Lynx 3.9 or later (lynx.fetchBundle).`,
+    );
+  });
+
   describe('main thread', () => {
-    beforeEach(() => {
-      vi.stubGlobal('__MAIN_THREAD__', true);
-    });
-
-    it('resolves with evalResult and runs `then` synchronously', async () => {
-      const mod = { default: 'Main' };
-      const queryComponent = vi.fn(() => ({ evalResult: mod }));
-      vi.stubGlobal('__QueryComponent', queryComponent);
-      const load = await install({});
-
-      let seen: unknown;
-      const promise = load('a.bundle');
-      void promise.then((m) => {
-        seen = m;
+    it("calls the section's function with the bundle's entry and resolves with the chunk", async () => {
+      const chunk = { ids: ['route'], modules: {} };
+      const factory = vi.fn(() => chunk);
+      const { stub, fetchBundle, loadScript } = makeLynx({
+        response: { code: 0, url: 'resolved-url' },
+        loadScript: () => factory,
       });
-      // Synchronous `then`: the value is available in the same tick.
-      expect(seen).toBe(mod);
-      expect(queryComponent).toHaveBeenCalledWith(
-        'a.bundle',
-        expect.any(Function),
-      );
-      // The no-op callback is part of the shared signature only.
-      (queryComponent.mock.calls[0] as unknown[] as [string, () => void])[1]();
-      await expect(promise).resolves.toBe(mod);
+      const load = await install(stub);
+
+      await expect(load(SOURCE)).resolves.toBe(chunk);
+      expect(fetchBundle).toHaveBeenCalledWith(SOURCE, {});
+      expect(loadScript).toHaveBeenCalledWith('main-thread', {
+        bundleName: 'resolved-url',
+      });
+      expect(factory).toHaveBeenCalledWith(SOURCE);
     });
 
-    it('returns a never-settling promise when __QueryComponent throws', async () => {
-      vi.stubGlobal(
-        '__QueryComponent',
-        vi.fn(() => {
-          throw new Error('boom');
-        }),
-      );
-      const load = await install({});
+    it("resolves with the section's exports when they are the chunk itself (Lynx for Web)", async () => {
+      const chunk = { ids: ['route'], modules: {} };
+      const { stub } = makeLynx({ loadScript: () => chunk });
+      const load = await install(stub);
 
-      const onSettled = vi.fn();
-      load('a.bundle').then(onSettled, onSettled);
-      await new Promise((r) => setTimeout(r, 0));
-      expect(onSettled).not.toHaveBeenCalled();
+      await expect(load(SOURCE)).resolves.toBe(chunk);
     });
 
-    it('ignores `mode` on the main thread even in __DEV__', async () => {
-      vi.stubGlobal('__DEV__', true);
-      vi.stubGlobal(
-        '__QueryComponent',
-        vi.fn(() => ({ evalResult: 1 })),
+    it('waits for a bundle that is still downloading', async () => {
+      const { stub, loadScript, respond } = makeLynx({ sync: false });
+      const load = await install(stub);
+      const settled = vi.fn();
+
+      void load(SOURCE).then(settled);
+      await flushMicrotasks();
+      expect(settled).not.toHaveBeenCalled();
+      expect(loadScript).not.toHaveBeenCalled();
+
+      respond();
+      await flushMicrotasks();
+      expect(settled).toHaveBeenCalledWith({ ids: [1], modules: {} });
+    });
+
+    it("adopts the bundle's CSS section", async () => {
+      const styleSheet = { id: 'sheet' };
+      const loadStyleSheet = vi.fn(() => styleSheet);
+      const adoptStyleSheet = vi.fn();
+      vi.stubGlobal('__LoadStyleSheet', loadStyleSheet);
+      vi.stubGlobal('__AdoptStyleSheet', adoptStyleSheet);
+      const { stub } = makeLynx({
+        response: { code: 0, url: 'resolved-url' },
+      });
+      const load = await install(stub);
+
+      await load(SOURCE);
+      expect(loadStyleSheet).toHaveBeenCalledWith('CSS', 'resolved-url');
+      expect(adoptStyleSheet).toHaveBeenCalledWith(styleSheet);
+    });
+
+    it('adopts nothing when the bundle has no CSS', async () => {
+      const adoptStyleSheet = vi.fn();
+      vi.stubGlobal('__LoadStyleSheet', () => null);
+      vi.stubGlobal('__AdoptStyleSheet', adoptStyleSheet);
+      const { stub } = makeLynx({});
+      const load = await install(stub);
+
+      await load(SOURCE);
+      expect(adoptStyleSheet).not.toHaveBeenCalled();
+    });
+
+    it('adopts nothing when only one of the stylesheet globals exists', async () => {
+      const loadStyleSheet = vi.fn(() => ({}));
+      vi.stubGlobal('__LoadStyleSheet', loadStyleSheet);
+      const { stub } = makeLynx({});
+      const load = await install(stub);
+
+      await expect(load(SOURCE)).resolves.toBeDefined();
+      expect(loadStyleSheet).not.toHaveBeenCalled();
+    });
+
+    it('rejects with the response as the cause when the bundle failed to load', async () => {
+      const response = { code: 4, url: SOURCE };
+      const { stub, loadScript } = makeLynx({ response });
+      const load = await install(stub);
+
+      const error = await load(SOURCE).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toBe(
+        `Lazy bundle load failed, schema: ${SOURCE}`,
       );
-      const load = await install({});
-      await expect(load('a.bundle', 'sync')).resolves.toBe(1);
+      expect((error as Error & { cause?: unknown }).cause).toBe(
+        JSON.stringify(response),
+      );
+      expect(loadScript).not.toHaveBeenCalled();
+    });
+
+    it('rejects when there is no response', async () => {
+      const { stub } = makeLynx({ response: null });
+      const load = await install(stub);
+
+      await expect(load(SOURCE)).rejects.toThrow(
+        `Lazy bundle load failed, schema: ${SOURCE}`,
+      );
+    });
+
+    it("rejects with the error the bundle's code throws", async () => {
+      const thrown = new Error('module threw');
+      const { stub } = makeLynx({
+        loadScript: () => () => {
+          throw thrown;
+        },
+      });
+      const load = await install(stub);
+
+      await expect(load(SOURCE)).rejects.toBe(thrown);
+    });
+
+    it('wraps a thrown value that is not an Error', async () => {
+      const { stub } = makeLynx({
+        loadScript: () => {
+          // A section that throws a string, as a script may.
+          // oxlint-disable-next-line no-throw-literal
+          throw 'section missing';
+        },
+      });
+      const load = await install(stub);
+
+      await expect(load(SOURCE)).rejects.toThrow('section missing');
     });
   });
 
   describe('background thread', () => {
-    it('uses lynx.QueryComponent and resolves synchronously when cached', async () => {
-      const bg = makeBackgroundLynx({ exports: { default: 'Cached' } });
-      const load = await install(bg.stub);
+    beforeEach(() => {
+      vi.stubGlobal('__MAIN_THREAD__', false);
+    });
 
-      let seen: unknown;
-      void load('b.bundle').then((m) => {
-        seen = m;
+    it("runs the background section with the bundle's entry set, and puts the old one back", async () => {
+      const exports = { ids: ['bg'], modules: {} };
+      const g = globalThis as { globDynamicComponentEntry?: string };
+      g.globDynamicComponentEntry = '__Card__';
+      let entryDuringLoad: string | undefined;
+      const { stub, loadScript } = makeLynx({
+        response: { code: 0, url: 'resolved-url' },
+        loadScript: () => {
+          entryDuringLoad = g.globDynamicComponentEntry;
+          return exports;
+        },
       });
-      expect(seen).toEqual({ default: 'Cached' });
-      expect(bg.queryComponent).toHaveBeenCalledWith(
-        'b.bundle',
-        expect.any(Function),
-      );
-      expect(bg.stub['getNativeLynx']).not.toHaveBeenCalled();
-      expect(bg.getDynamicComponentExports).toHaveBeenCalledWith('b.bundle');
-    });
+      const load = await install(stub);
 
-    it('falls back to getNativeLynx().QueryComponent', async () => {
-      const bg = makeBackgroundLynx({ native: true });
-      const load = await install(bg.stub);
-
-      await expect(load('c.bundle')).resolves.toEqual({ default: 'Mod' });
-      expect(bg.stub['getNativeLynx']).toHaveBeenCalled();
-      expect(bg.queryComponent).toHaveBeenCalledTimes(1);
-    });
-
-    it('rejects synchronously-reported failures (code != 0) with a cause', async () => {
-      const bg = makeBackgroundLynx({ code: 1 });
-      const load = await install(bg.stub);
-
-      const error = await load('d.bundle').catch((e: unknown) => e);
-      expect(error).toBeInstanceOf(Error);
-      expect((error as Error).message).toBe(
-        'Lazy bundle load failed, schema: d.bundle',
-      );
-      expect((error as Error & { cause: unknown }).cause).toBe(
-        JSON.stringify({ code: 1, detail: { schema: 'd.bundle' } }),
-      );
-      expect(bg.getDynamicComponentExports).not.toHaveBeenCalled();
-    });
-
-    it('rejects when code is 0 but the bundle produced no exports', async () => {
-      const bg = makeBackgroundLynx({ code: 0, exports: null });
-      const load = await install(bg.stub);
-
-      const error = await load('e.bundle').catch((e: unknown) => e);
-      expect((error as Error).message).toBe(
-        'Lazy bundle load failed, schema: e.bundle',
-      );
-      expect((error as Error & { cause: unknown }).cause).toBe(
-        JSON.stringify({ code: 0, detail: { schema: 'e.bundle' } }),
-      );
-    });
-
-    it('resolves when the callback fires asynchronously', async () => {
-      const bg = makeBackgroundLynx({ sync: false });
-      const load = await install(bg.stub);
-
-      const promise = load('f.bundle');
-      bg.flush();
-      await expect(promise).resolves.toEqual({ default: 'Mod' });
-    });
-
-    it('rejects when the callback fires asynchronously with a failure', async () => {
-      const bg = makeBackgroundLynx({ sync: false, code: 2 });
-      const load = await install(bg.stub);
-
-      const promise = load('g.bundle');
-      bg.flush();
-      const error = await promise.catch((e: unknown) => e);
-      expect((error as Error).message).toBe(
-        'Lazy bundle load failed, schema: g.bundle',
-      );
-      expect((error as Error & { cause: unknown }).cause).toBe(
-        JSON.stringify({ code: 2, detail: { schema: 'g.bundle' } }),
-      );
-    });
-
-    it('throws for an explicit `mode` in __DEV__', async () => {
-      vi.stubGlobal('__DEV__', true);
-      const bg = makeBackgroundLynx({});
-      const load = await install(bg.stub);
-
-      expect(() => load('h.bundle', 'sync')).toThrow(
-        "Lazy bundle import `mode: 'sync'` requires FetchBundle, but the current build uses QueryComponent.",
-      );
-      expect(bg.queryComponent).not.toHaveBeenCalled();
-    });
-
-    it('allows no `mode` in __DEV__', async () => {
-      vi.stubGlobal('__DEV__', true);
-      const bg = makeBackgroundLynx({});
-      const load = await install(bg.stub);
-      await expect(load('i.bundle')).resolves.toEqual({ default: 'Mod' });
-    });
-
-    it('ignores `mode` when __DEV__ is false', async () => {
-      const bg = makeBackgroundLynx({});
-      const load = await install(bg.stub);
-      await expect(load('j.bundle', 'async')).resolves.toEqual({
-        default: 'Mod',
+      await expect(load(SOURCE)).resolves.toBe(exports);
+      expect(loadScript).toHaveBeenCalledWith('background', {
+        bundleName: 'resolved-url',
       });
+      expect(entryDuringLoad).toBe(SOURCE);
+      expect(g.globDynamicComponentEntry).toBe('__Card__');
+      delete g.globDynamicComponentEntry;
     });
-  });
 
-  describe('synchronous then', () => {
-    /**
-     * A sync-resolved promise from the cached background path. It's wrapped in
-     * an object because awaiting the promise itself would unwrap it.
-     */
-    const syncLoad = async (value: unknown) => {
-      const bg = makeBackgroundLynx({ exports: value });
-      const load = await install(bg.stub);
-      return { promise: load('k.bundle') };
-    };
-
-    it('returns another sync-resolved promise when onFulfilled is omitted', async () => {
-      const { promise } = await syncLoad({ v: 1 });
-      const next = promise.then();
-      expect(next).not.toBe(promise);
-
-      let seen: unknown;
-      void next.then((m) => {
-        seen = m;
+    it('puts the old entry back when the section throws', async () => {
+      const g = globalThis as { globDynamicComponentEntry?: string };
+      const { stub } = makeLynx({
+        loadScript: () => {
+          throw new Error('no background section');
+        },
       });
-      expect(seen).toEqual({ v: 1 });
-      // `null` is treated the same as omitted.
-      await expect(promise.then(null)).resolves.toEqual({ v: 1 });
-    });
+      const load = await install(stub);
 
-    it('returns a rejected promise when onFulfilled throws', async () => {
-      const { promise } = await syncLoad({ v: 1 });
-      const failure = new Error('handler failed');
-      const next = promise.then(() => {
-        throw failure;
-      });
-      await expect(next).rejects.toBe(failure);
-    });
-
-    it('returns a thenable from onFulfilled as-is', async () => {
-      const { promise } = await syncLoad({ v: 1 });
-      const inner = Promise.resolve('inner');
-      const next = promise.then(() => inner);
-      expect(next).toBe(inner);
-      await expect(next).resolves.toBe('inner');
-    });
-
-    it('chains a plain value synchronously', async () => {
-      const { promise } = await syncLoad({ v: 1 });
-      let seen: unknown;
-      void promise
-        .then((m) => (m as { v: number }).v + 1)
-        .then((n) => {
-          seen = n;
-        });
-      expect(seen).toBe(2);
-    });
-
-    it('chains a falsy plain value synchronously', async () => {
-      const { promise } = await syncLoad({ v: 1 });
-      let seen: unknown = 'unset';
-      void promise
-        .then(() => 0)
-        .then((n) => {
-          seen = n;
-        });
-      expect(seen).toBe(0);
+      await expect(load(SOURCE)).rejects.toThrow('no background section');
+      expect(g.globDynamicComponentEntry).toBeUndefined();
     });
   });
 });

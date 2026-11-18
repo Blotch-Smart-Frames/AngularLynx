@@ -367,20 +367,64 @@ class AngularWebpackPlugin {
         );
       }
 
+      // A native lazy bundle's main-thread code is a function of the
+      // bundle's entry that returns the chunk (`{ ids, modules }`): the
+      // runtime's loader (chunk-loader.ts) evaluates the bundle's main-thread
+      // section with `lynx.loadScript()`, which returns what the script
+      // evaluates to, and calls it. Lynx for Web runs the section as CommonJS
+      // and returns its `module.exports` (web-core's template loader starts
+      // it with `var exports=(module.exports={});`), which the chunk sets
+      // itself, so the web's isn't wrapped. The entries' own main-thread
+      // files run as they are. As in React Lynx, this runs after the minifier
+      // (which could drop the wrapped code as unused) and before the source
+      // maps are made (which the extra lines would shift), and well before
+      // LynxTemplatePlugin reads the files into the bundle.
+      if (!options.isWeb) {
+        const { ConcatSource } = compiler.webpack.sources;
+        const mainThreadChunkSet = new Set(options.mainThreadChunks ?? []);
+        compilation.hooks.processAssets.tap(
+          {
+            name: `${this.constructor.name}:lazyBundleWrapper`,
+            stage:
+              compiler.webpack.Compilation.PROCESS_ASSETS_STAGE_OPTIMIZE_SIZE +
+              1,
+          },
+          () => {
+            for (const asset of compilation.getAssets()) {
+              if (
+                asset.name.endsWith('.js') &&
+                asset.info['lynx:main-thread'] === true &&
+                !mainThreadChunkSet.has(asset.name) &&
+                // The main thread's hot update client runs a hot update
+                // chunk's CommonJS as it is.
+                !asset.info.hotModuleReplacement
+              ) {
+                compilation.updateAsset(
+                  asset.name,
+                  (old) =>
+                    new ConcatSource(
+                      `(function (globDynamicComponentEntry) {
+  const module = { exports: {} }
+  const exports = module.exports
+`,
+                      old,
+                      `
+  ;return module.exports
+})`,
+                    ),
+                );
+              }
+            }
+          },
+        );
+      }
+
       const hooks = LynxTemplatePlugin.getLynxTemplatePluginHooks(
         compilation as unknown as Parameters<
           typeof LynxTemplatePlugin.getLynxTemplatePluginHooks
         >[0],
       );
 
-      const { ConcatSource } = compiler.webpack.sources;
-
-      // Inject `module.exports` wrapper for DynamicComponent (lazy bundle)
-      // main-thread chunks. When the native engine loads a lazy bundle, it
-      // evaluates the main-thread JS via __init_card_bundle__() which expects
-      // a function that returns `module.exports`. Card-type (root app) chunks
-      // don't need this — they execute at top level. Only DynamicComponent
-      // chunks (from loadComponent routes) need the wrapper.
       hooks.beforeEncode.tap(this.constructor.name, (args) => {
         const { encodeData } = args;
 
@@ -438,29 +482,6 @@ class AngularWebpackPlugin {
           enableDisexposureWhenBackground: false,
         };
 
-        if (!encodeData.lepusCode.root) {
-          return args;
-        }
-
-        if (encodeData.sourceContent.appType === 'card') {
-          return args;
-        }
-
-        compilation.updateAsset(
-          encodeData.lepusCode.root.name,
-          (old) =>
-            new ConcatSource(
-              `\
-(function (globDynamicComponentEntry) {
-  const module = { exports: {} }
-  const exports = module.exports
-`,
-              old,
-              `
-  ;return module.exports
-})`,
-            ),
-        );
         return args;
       });
     });

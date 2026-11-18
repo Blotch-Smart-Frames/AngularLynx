@@ -3629,19 +3629,36 @@ Background-thread code can still be split normally. This means main-thread bundl
 
 ---
 
-## CSS is scoped per lazy-loaded bundle — lazy chunks have isolated CSS scope
+## A lazy bundle's CSS reaches the page only when the main thread adopts it
 
 ### What you'd expect (web)
 
-CSS loaded from lazy-loaded chunks merges into the same global stylesheet. A class defined in a lazy module can accidentally affect elements in other modules.
+CSS that a lazy-loaded chunk brings joins the page's styles when the chunk loads, and the page's own styles (utility classes, the theme) apply to the lazy component's elements.
 
 ### What Lynx does
 
-Lynx scopes CSS **per bundle**. When a component is lazy-loaded, its CSS lives in its own isolated scope. Styles from the main bundle do **not** affect lazy-loaded components, and vice versa. This is enforced by the Lynx template engine's CSS scoping mechanism (not CSS Modules or Shadow DOM). While this prevents accidental style leakage, it also means:
+With `experimental_isLazyBundle`, a lazy bundle is built for FetchBundle, which keeps its CSS in a section of its own (`CSS`). Native Lynx adds those rules to the page only when the main thread loads and adopts the section (`__LoadStyleSheet('CSS', url)`, then `__AdoptStyleSheet()`), which the runtime's lazy-bundle loader (`lazy-bundle/chunk-loader.ts`) does after it runs the bundle's main-thread code. Lynx for Web has neither global: its `lynx.fetchBundle()` loads the bundle's styles itself.
 
-- Global utility classes defined in the main bundle are **not available** in lazy-loaded components.
-- Each lazy bundle must include or import its own copy of shared styles.
-- The `__SetCSSId` and `entryName` parameters on elements control which CSS scope applies.
+Lynx can scope CSS per bundle by CSS id (`__SetCSSId`), but the runtime sets none, so every element is in the page's scope: the main bundle's classes, such as Tailwind's utilities, apply inside a lazy component, and an adopted bundle's rules apply to the whole page, as on the web. Checked on the iOS Simulator (Lynx Explorer 4.1) on 2026-11-18: a lazy route's component styles and a Tailwind border used only in that route both drew.
+
+---
+
+## The main thread can wait for a lazy bundle only through `lynx.fetchBundle()`
+
+### What you'd expect (web)
+
+`import()` downloads a chunk and resolves when it has run, wherever it's called.
+
+### What Lynx does
+
+Lynx has two ways to load a lazy bundle, and the main thread, where Angular routes, can wait for a download with only one of them:
+
+- **QueryComponent**, the default for bundles built with `lazyBundleFetcher: 'QueryComponent'`: on the main thread, `__QueryComponent(url)` returns synchronously, and has nothing to return for a bundle Lynx hasn't loaded yet. React Lynx's main thread renders only the first screen and leaves lazy content to its background thread, so that's enough there. An Angular route's first navigation never got its component (#451): on the iOS Simulator, a `@defer (on timer(3000ms))` block downloaded its bundle and stayed on its placeholder.
+- **FetchBundle** (Lynx 3.9 and later), with bundles built with `lazyBundleFetcher: 'FetchBundle'`: `lynx.fetchBundle(url, {})` returns a handler whose `then(callback)` native calls on the engine thread once the bundle has downloaded (at once if it had it), and `lynx.loadScript(section, { bundleName })` runs one of its sections. `experimental_isLazyBundle` builds for this.
+
+`lynx.loadScript()` answers differently on each platform. Native Lynx evaluates the section as a script and returns its completion value, so a native lazy chunk's main-thread file is wrapped as a function expression (`(function (globDynamicComponentEntry) { … return module.exports })`). Lynx for Web starts the section with `var exports=(module.exports={});`, runs it, and returns `module.exports`, where that wrapper would be lost, so the web build leaves the chunk as plain CommonJS.
+
+Lynx Explorer fetches a lazy bundle by the URL the build wrote (`/lazy-bundle/…` with the default `output.assetPrefix` of a production build) and doesn't resolve a root-relative one against the page's bundle: nothing is requested. `ng serve` writes absolute URLs, and the app shells resolve `/` against their bundle folder (`BundleResourceFetcher.swift`, `ResourceFetchers.kt`). To open a production build in Explorer from a static server, set an absolute `output.assetPrefix` for the `lynx` environment.
 
 ---
 
@@ -7389,10 +7406,10 @@ Inserting a node costs the same wherever it goes: `parent.insertBefore(node, anc
 
 It depends on whether the container has been flushed. Measured on an iPhone 14 Pro with Lynx 4.1 (2026-11-18), flushing 5,000 `<view>`s into a scroll-view's container:
 
-| How the rows went in | The flush |
-| --- | --- |
-| Appended, or inserted before a hidden anchor, into a new container | 14–27 ms |
-| Appended into a container flushed before | 14–25 ms |
+| How the rows went in                                                               | The flush  |
+| ---------------------------------------------------------------------------------- | ---------- |
+| Appended, or inserted before a hidden anchor, into a new container                 | 14–27 ms   |
+| Appended into a container flushed before                                           | 14–25 ms   |
 | Inserted before a hidden anchor, into a container flushed (with the anchor) before | 111–113 ms |
 
 A container that has never been flushed takes its children in order when it first is (`PrepareAndGenerateChildrenActions`'s fast path in `fiber_element.cc`). Once it has been flushed, each insert is kept as an action with its reference sibling, and at the next flush `ElementContainer::FindParentAndIndexForChildForFiber` (`element_container.cc`) finds the new child's UI index by walking the container's children from the first (`GetUIIndexForChildForFiber`). An append has no reference sibling and skips the walk. So N inserts before a sibling take N²/2 steps.

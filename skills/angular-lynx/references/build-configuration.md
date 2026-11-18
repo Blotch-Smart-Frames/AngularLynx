@@ -130,13 +130,32 @@ export default defineConfig({
 });
 ```
 
+### Code splitting: `experimental_isLazyBundle`
+
+By default, `loadComponent()` routes and `@defer` blocks are built into the main bundle, and their `import()` only runs modules that are already there. `pluginAngularLynx({ experimental_isLazyBundle: true })` makes each one a lazy bundle of its own (`dist/lazy-bundle/`), which the main thread downloads the first time the route or block needs it, while the router or the `@defer` block's `@loading` waits:
+
+- It needs Lynx 3.9 or later (`lynx.fetchBundle()`). The apps `ng build --platform` makes, and Lynx Explorer 4.1, have it.
+- A failed download rejects the `import()`: the navigation fails (`NavigationError`), or the `@defer` block shows its `@error`.
+- The main bundle's classes (Tailwind's utilities, the theme) apply inside a lazy component, and the lazy bundle's component styles are added to the page when it loads.
+- Lazy bundle URLs start with `output.assetPrefix`, `/` in a production build. `ng serve` and the native apps resolve them; Lynx Explorer doesn't resolve a `/` URL, so to open a production build from a static server in Explorer, give the `lynx` environment an absolute prefix:
+
+```typescript
+export default defineConfig({
+  environments: {
+    lynx: { output: { assetPrefix: 'http://192.168.1.20:8080/' } },
+    web: {},
+  },
+  plugins: [pluginAngularLynx({ experimental_isLazyBundle: true })],
+});
+```
+
 ## What `pluginAngularLynx()` Does
 
 1. **Angular compilation** — Uses `JavaScriptTransformer` + `createAngularCompilation` for AOT template compilation
 2. **Entry splitting** — Creates two bundles: main-thread (ES2019) and background-thread (ES2015)
 3. **Thread banners** — Injects `globalThis["__MAIN_THREAD__"]=true/false` into each bundle
 4. **CSS handling** — Processes component styles and global CSS
-5. **Chunk splitting** — Optimizes code splitting for lazy-loaded routes
+5. **Chunk splitting** — Builds lazy routes and `@defer` blocks into the main bundle, or into lazy bundles with `experimental_isLazyBundle`
 6. **Tailwind** — Runs Tailwind CSS 3 from a `tailwind.config.*`, and rewrites what Tailwind CSS 4 writes into CSS Lynx reads
 
 ## Project Files

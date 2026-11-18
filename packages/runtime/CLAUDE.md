@@ -26,7 +26,7 @@ Provides everything needed to run Angular on the Lynx runtime. Maps Angular's `R
 
 **Bootstrap** (`runtime.ts`):
 
-- `bootstrapApplication(rootComponent, config?)` — on main thread, waits for `renderPage` callback before bootstrapping. On the background thread it doesn't bootstrap and returns a promise that never settles: Angular runs on the main thread only (issue #81). The background thread runs module-level code: each module-level `backgroundFn()` registers, and the side-effect imports install its half of the bridges (`background-call.ts`, `lynx-logger`, `exposure/global-exposure-bridge.ts`, `lazy-bundle/mirrored-imports.ts`)
+- `bootstrapApplication(rootComponent, config?)` — on main thread, waits for `renderPage` callback before bootstrapping. On the background thread it doesn't bootstrap and returns a promise that never settles: Angular runs on the main thread only (issue #81). The background thread runs module-level code: each module-level `backgroundFn()` registers, and the side-effect imports install its half of the bridges (`background-call.ts`, `lynx-logger`, `exposure/global-exposure-bridge.ts`). Both threads install `lynx.loadLazyBundle` (`lazy-bundle/chunk-loader.ts`), which loads the lazy bundles `experimental_isLazyBundle` builds through `lynx.fetchBundle()`
 - Registers global Lynx callbacks: `renderPage`, `updatePage`, `updateGlobalProps`, `processData`, `runWorklet`. Host data updates reach the main thread through `updatePage`/`updateGlobalProps` (and web-core's `__UpdateGlobalProps` engine event), and the background thread through the `updateCardData`/`updateGlobalProps` hooks on `lynx.getApp()`; both publish through `data-flow/host-updates.ts`
 
 **Providers** (`providers.ts`):

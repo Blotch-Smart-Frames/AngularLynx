@@ -92,6 +92,7 @@ const createMockCompiler = (
       Compilation: {
         PROCESS_ASSETS_STAGE_ADDITIONAL: 20000,
         PROCESS_ASSETS_STAGE_ADDITIONS: -100,
+        PROCESS_ASSETS_STAGE_OPTIMIZE_SIZE: 400,
       },
       sources: { ConcatSource: MockConcatSource },
     },
@@ -155,6 +156,7 @@ const createMockCompilation = () => {
     chunks: [] as Array<{ files: Set<string> }>,
     assets,
     getAsset: vi.fn((name: string) => assets[name] ?? null),
+    getAssets: vi.fn(() => Object.values(assets)),
     updateAsset: vi.fn(
       (
         name: string,
@@ -1094,7 +1096,7 @@ describe('AngularWebpackPlugin', () => {
         );
       });
 
-      it('wraps lepus root asset with module.exports IIFE', () => {
+      it('returns args and leaves the files alone', () => {
         const { compiler, triggerCompilation } = createMockCompiler();
         const triggerBeforeEncode = setupBeforeEncodeHook();
 
@@ -1103,32 +1105,10 @@ describe('AngularWebpackPlugin', () => {
         compilation.addAsset('main-thread.js', 'template code');
         triggerCompilation(compilation);
 
-        triggerBeforeEncode({
-          encodeData: {
-            lepusCode: { root: { name: 'main-thread.js' } },
-            sourceContent: { appType: 'card2' },
-          },
-        });
-
-        const finalSource =
-          compilation.assets['main-thread.js'].source.source();
-        expect(finalSource).toContain('module.exports');
-        expect(finalSource).toContain('globDynamicComponentEntry');
-        expect(finalSource).toContain('return module.exports');
-      });
-
-      it('returns args unchanged when lepusCode.root is null', () => {
-        const { compiler, triggerCompilation } = createMockCompiler();
-        const triggerBeforeEncode = setupBeforeEncodeHook();
-
-        new AngularWebpackPlugin().apply(compiler as never);
-        const compilation = createMockCompilation();
-        triggerCompilation(compilation);
-
         const args = {
           encodeData: {
-            lepusCode: { root: null },
-            sourceContent: { appType: 'card2' },
+            lepusCode: { root: { name: 'main-thread.js' } },
+            sourceContent: { appType: 'DynamicComponent' },
           },
         };
 
@@ -1164,48 +1144,63 @@ describe('AngularWebpackPlugin', () => {
           enableDisexposureWhenBackground: false,
         });
       });
+    });
 
-      it('returns args unchanged when appType is "card"', () => {
+    describe('lazy chunk wrapper', () => {
+      const OPTIMIZE_SIZE = 400;
+
+      const wrapped = (options = {}) => {
         const { compiler, triggerCompilation } = createMockCompiler();
-        const triggerBeforeEncode = setupBeforeEncodeHook();
-
-        new AngularWebpackPlugin().apply(compiler as never);
+        setupBeforeEncodeHook();
+        new AngularWebpackPlugin({
+          mainThreadChunks: ['main/main-thread.js'],
+          ...options,
+        }).apply(compiler as never);
         const compilation = createMockCompilation();
-        compilation.addAsset('main-thread.js', 'template code');
+        compilation.addAsset('main/main-thread.js', 'entry code', {
+          'lynx:main-thread': true,
+        });
+        compilation.addAsset('lazy/main-thread.js', 'exports.ids=[1];', {
+          'lynx:main-thread': true,
+        });
+        compilation.addAsset('lazy/main-thread.hot-update.js', 'update', {
+          'lynx:main-thread': true,
+          hotModuleReplacement: true,
+        });
+        compilation.addAsset('lazy/background.js', 'background code');
+        compilation.addAsset('lazy/main-thread.css', '.a{}', {
+          'lynx:main-thread': true,
+        });
         triggerCompilation(compilation);
+        compilation.triggerProcessAssets(OPTIMIZE_SIZE + 1);
+        return (name: string) => compilation.assets[name].source.source();
+      };
 
-        const args = {
-          encodeData: {
-            lepusCode: { root: { name: 'main-thread.js' } },
-            sourceContent: { appType: 'card' },
-          },
-        };
+      it("makes a lazy chunk's main-thread file a function of its entry that returns the chunk", () => {
+        const source = wrapped();
+        const factory = new Function(
+          `return ${source('lazy/main-thread.js')}`,
+        )() as (entry: string) => { ids: number[] };
 
-        const result = triggerBeforeEncode(args);
-
-        expect(result).toBe(args);
-        expect(compilation.updateAsset).not.toHaveBeenCalled();
+        expect(factory('lazy.bundle')).toEqual({ ids: [1] });
+        expect(source('lazy/main-thread.js')).toContain(
+          '(function (globDynamicComponentEntry) {',
+        );
       });
 
-      it('returns args after wrapping non-card templates', () => {
-        const { compiler, triggerCompilation } = createMockCompiler();
-        const triggerBeforeEncode = setupBeforeEncodeHook();
+      it("leaves the entry's main-thread file, hot updates, background code and CSS alone", () => {
+        const source = wrapped();
 
-        new AngularWebpackPlugin().apply(compiler as never);
-        const compilation = createMockCompilation();
-        compilation.addAsset('main-thread.js', 'template code');
-        triggerCompilation(compilation);
+        expect(source('main/main-thread.js')).toBe('entry code');
+        expect(source('lazy/main-thread.hot-update.js')).toBe('update');
+        expect(source('lazy/background.js')).toBe('background code');
+        expect(source('lazy/main-thread.css')).toBe('.a{}');
+      });
 
-        const args = {
-          encodeData: {
-            lepusCode: { root: { name: 'main-thread.js' } },
-            sourceContent: { appType: 'card2' },
-          },
-        };
+      it("leaves the web's lazy chunks as CommonJS, which Lynx for Web runs as they are", () => {
+        const source = wrapped({ isWeb: true });
 
-        const result = triggerBeforeEncode(args);
-
-        expect(result).toBe(args);
+        expect(source('lazy/main-thread.js')).toBe('exports.ids=[1];');
       });
     });
   });

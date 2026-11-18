@@ -1,0 +1,73 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+#
+# CodeRabbit reviews every pull request against this repository. It already
+# reads the repo's own rules as review criteria (CLAUDE.md at every level,
+# .claude/rules, .github/copilot-instructions.md), so the conventions live
+# there and aren't repeated here. This file only sets what CodeRabbit can't
+# work out by itself: what's noise in this monorepo, and what to stay quiet
+# about.
+language: en-US
+
+reviews:
+  # Only bugs and real problems, not style nits: oxlint, oxfmt and cspell
+  # already gate style in CI.
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  in_progress_fortune: false
+  auto_review:
+    enabled: true
+    drafts: false
+    # Renovate and Dependabot open several version bumps a day, each tested
+    # by CI and the E2E run. A review comment on a lockfile bump adds nothing
+    # but noise, so those PRs are skipped. `@coderabbitai review` still
+    # reviews one on request.
+    ignore_usernames:
+      - renovate[bot]
+      - dependabot[bot]
+  path_filters:
+    # One lockfile at the root covers every workspace.
+    - '!**/package-lock.json'
+    - '!**/pnpm-lock.yaml'
+    # Every example installs packages/ui's components and theme with dolan,
+    # so a change to a component shows up again in each example's copy.
+    # Review the source in packages/ui once, not ~100 times.
+    - '!examples/*/src/components/ui/**'
+    - '!examples/*/src/styles/**'
+    - '!examples/*/dolan.lock.json'
+    # Built output the website serves (example bundles, Lynx's web core).
+    - '!packages/website/docs/public/examples/**'
+    - '!packages/website/docs/public/web-core/**'
+  path_instructions:
+    - path: 'packages/runtime/**'
+      instructions: >-
+        The whole Angular app runs on Lynx's main thread, which builds the
+        element tree with the global __* element functions rather than a
+        browser DOM. The background thread runs only module-level code and
+        the bridges to its APIs. When the renderer diverges from what
+        Angular expects, compare with React Lynx (lynx-family/lynx-stack,
+        packages/react), the production reference. Flag workarounds that
+        leave an Angular API only partly working: the goal is near-1:1
+        Angular parity.
+    - path: 'packages/ui/**'
+      instructions: >-
+        Components are copied into apps by the dolan CLI, specs included,
+        and each component's own specs must cover it 100%. Colors must come
+        from the theme's semantic classes (bg-background, text-foreground,
+        bg-card...) so dark mode works; flag hardcoded neutrals such as
+        bg-white or text-zinc-900, and any space-separated hsl(), which
+        Lynx silently drops.
+    - path: '**/*.test.ts'
+      instructions: >-
+        Tests use the .test.ts suffix, never .spec.ts. Private state is
+        tested through the public API.
+  tools:
+    # The repo formats with oxfmt and lints with oxlint (which CodeRabbit
+    # also runs, as `oxc`). Biome's defaults disagree with oxfmt's output,
+    # so its comments would only be noise.
+    biome:
+      enabled: false
+
+chat:
+  auto_reply: true

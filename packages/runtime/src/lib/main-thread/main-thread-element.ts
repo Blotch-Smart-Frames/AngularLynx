@@ -6,6 +6,7 @@ import {
 import type { MainThread } from './types';
 import { writePendingClasses } from '../lynx-element/class-writes';
 import { withSafeAreaInsets } from '../lynx-element/safe-area-insets';
+import { writeScriptStyles } from '../lynx-element/script-styles';
 
 /**
  * Batched flush — coalesces multiple style/attribute mutations into a single
@@ -59,22 +60,32 @@ export class MainThreadElement {
   }
 
   /**
-   * Sets one inline style. An env(safe-area-inset-*) in the value gets the
-   * inset a generated app's shell sends, as in a template's inline style
-   * (see safe-area-insets.ts). Unlike a template's, it isn't written again
-   * when the insets change: the script owns the value it set.
+   * Sets one inline style. On an element Angular made, it goes through the
+   * element's LynxElement, as a `[style.x]` binding does (see
+   * script-styles.ts): so a CSS variable change detection set on the element
+   * still reaches the text under it, and the style is kept when the element's
+   * whole inline style is written again. That also lets a script set a CSS
+   * variable (`--x`), which `__AddInlineStyle` drops, and an empty value
+   * removes the style, as the DOM's `style.setProperty()` does.
+   *
+   * An env(safe-area-inset-*) in the value gets the inset a generated app's
+   * shell sends, as in a template's inline style (see safe-area-insets.ts),
+   * and on an element Angular made, the new one when the insets change.
    */
   setStyleProperty(name: string, value: string): void {
-    __AddInlineStyle(this.#element, name, withSafeAreaInsets(value));
-    scheduleFlush();
+    this.setStyleProperties({ [name]: value });
   }
 
   /**
    * Sets several inline styles, as setStyleProperty does each.
    */
   setStyleProperties(styles: Record<string, string>): void {
-    for (const key in styles) {
-      __AddInlineStyle(this.#element, key, withSafeAreaInsets(styles[key]!));
+    // An element no LynxElement drives (one a script or the shell made) has
+    // nothing else writing its inline style: native gets the styles straight.
+    if (!writeScriptStyles(this.#element, styles)) {
+      for (const key in styles) {
+        __AddInlineStyle(this.#element, key, withSafeAreaInsets(styles[key]!));
+      }
     }
     scheduleFlush();
   }

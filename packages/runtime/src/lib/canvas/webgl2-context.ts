@@ -1693,6 +1693,15 @@ export class LynxWebGL2RenderingContext {
     destination: ArrayBufferView | number | null,
     dstOffset = 0,
   ): void {
+    // WebGL 2 reads into a pack buffer only by offset, and into an array only
+    // while none is bound: GL would take the other as a pointer into the
+    // buffer, or an offset into memory. The native read of an array also
+    // reads through a pack buffer of its own, and counts on the app's not
+    // being bound.
+    if ((typeof destination === 'number') !== !!this.#pixelPackBuffer) {
+      this.#fail(GL.INVALID_OPERATION);
+      return;
+    }
     if (typeof destination === 'number') {
       this.#cmd(
         OP.readPixelsToBuffer,

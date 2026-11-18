@@ -1,3 +1,5 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { RsbuildPluginAPI } from '@lynx-js/rspeedy';
 
 /**
@@ -20,6 +22,47 @@ export const LAYERS = {
  */
 export const THIRD_PARTY =
   /[\\/]node_modules[\\/](?!@blotch[\\/])(?:(?![\\/]node_modules[\\/]).)*$/;
+
+/**
+ * A module of one of AngularLynx's packages installed in `node_modules`: the
+ * last `node_modules` in its path is followed by `@blotch/` (THIRD_PARTY, the other
+ * way round).
+ */
+const INSTALLED_PACKAGE =
+  /[\\/]node_modules[\\/]@blotch[\\/](?:(?![\\/]node_modules[\\/]).)*$/;
+
+/**
+ * The folder that holds this plugin's package: `packages/` in this
+ * repository, whose examples resolve the runtime to `packages/runtime/dist`
+ * (their tsconfig `paths`) rather than through `node_modules`.
+ */
+export const PACKAGES_DIR = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../..',
+);
+
+/**
+ * Whether `file` is AngularLynx's own published code: in a `@blotch/` package
+ * in `node_modules`, or in the build output (`<package>/dist/`) of a package
+ * next to this one, as this repository's examples resolve the runtime.
+ *
+ * @param file - The module's path.
+ * @param packagesDir - The folder this plugin's package is in.
+ */
+export const isAngularLynxPackageModule = (
+  file: string,
+  packagesDir: string = PACKAGES_DIR,
+): boolean => {
+  if (INSTALLED_PACKAGE.test(file)) {
+    return true;
+  }
+  const relative = path.relative(packagesDir, file);
+  return (
+    !path.isAbsolute(relative) &&
+    /^(?!\.\.[\\/])[^\\/]+[\\/]dist[\\/]/.test(relative) &&
+    !/[\\/]node_modules[\\/]/.test(relative)
+  );
+};
 
 export const applyLayers = (api: RsbuildPluginAPI): void => {
   api.modifyBundlerChain((chain) => {
@@ -45,11 +88,17 @@ export const applyLayers = (api: RsbuildPluginAPI): void => {
       [LAYERS.BACKGROUND, 'es2015', false],
       [LAYERS.MAIN_THREAD, 'es2019', true],
     ] as const) {
-      const swcOptions = (privateFieldsAsProperties: boolean) => ({
+      const swcOptions = (
+        privateFieldsAsProperties: boolean,
+        setPublicClassFields = false,
+      ) => ({
         jsc: {
           target,
           ...(privateFieldsAsProperties && {
-            assumptions: { privateFieldsAsProperties: true },
+            assumptions: {
+              privateFieldsAsProperties: true,
+              ...(setPublicClassFields && { setPublicClassFields: true }),
+            },
           }),
           parser: {
             syntax: 'typescript',
@@ -81,6 +130,28 @@ export const applyLayers = (api: RsbuildPluginAPI): void => {
       // properties instead, as Babel's assumption of that name does, which
       // PrimJS collects. Both threads, so a class compiles the same way on
       // either.
+      // AngularLynx's own packages also set their class fields with an
+      // assignment (`this.x = v`), where SWC's ES2019 lowering defines each
+      // one through its `_define_property` helper. The runtime makes a
+      // LynxElement for every element, text and anchor Angular creates, with
+      // a few dozen fields, keyed by symbols (see renamePrivateMethods in
+      // private-methods.ts), and PrimJS has no JIT to take that call away:
+      // set up in a constructor, 60 of them took 13 ms for 5,000 objects on
+      // an iPhone 14 Pro as assignments and 30 ms through the helper.
+      // Assigning and defining differ only for a field named like an
+      // accessor the class inherits, which TypeScript rejects (TS2610). An
+      // app's code keeps defining them, as its own tsconfig says.
+      chain.module
+        .rule('typescript')
+        .oneOf(`${layer}-angular-lynx`)
+        .issuerLayer(layer)
+        .test(/\.[cm]?[jt]sx?$/)
+        .include.add((file: string) => isAngularLynxPackageModule(file))
+        .end()
+        .use('builtin:swc-loader')
+        .loader('builtin:swc-loader')
+        .options(swcOptions(true, true))
+        .end();
       chain.module
         .rule('typescript')
         .oneOf(layer)

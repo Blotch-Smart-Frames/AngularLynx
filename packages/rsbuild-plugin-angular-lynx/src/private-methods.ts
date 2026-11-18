@@ -1,8 +1,11 @@
 import { createHash } from 'node:crypto';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import * as ts from 'typescript';
-import { THIRD_PARTY } from './layers.js';
+import {
+  isAngularLynxPackageModule,
+  PACKAGES_DIR,
+  THIRD_PARTY,
+} from './layers.js';
 
 export type PrivateMethodsOptions = {
   /** The directory the file keys are relative to, as in cross-thread-transform.ts. */
@@ -42,24 +45,6 @@ type ClassInfo = {
 };
 
 /**
- * A module of one of AngularLynx's packages installed in `node_modules`: the
- * last `node_modules` in its path is followed by `@blotch/` (THIRD_PARTY in
- * layers.ts, the other way round).
- */
-const INSTALLED_PACKAGE =
-  /[\\/]node_modules[\\/]@blotch[\\/](?:(?![\\/]node_modules[\\/]).)*$/;
-
-/**
- * The folder that holds this plugin's package: `packages/` in this
- * repository, whose examples resolve the runtime to `packages/runtime/dist`
- * (their tsconfig `paths`) rather than through `node_modules`.
- */
-const PACKAGES_DIR = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  '../..',
-);
-
-/**
  * The declaration of a private method, getter or setter: a private name
  * that isn't after a `.` (as a use is), followed by `(` or, for type
  * parameters, `<`. A module without one is left without being parsed: most
@@ -70,27 +55,13 @@ const PRIVATE_METHOD_HINT =
   /(?<![.\p{ID_Continue}$\\\u200C\u200D])#[\p{ID_Start}$_\\][\p{ID_Continue}$\\\u200C\u200D]*\s*[(<]/u;
 
 /**
- * Whether `file` is AngularLynx's own published code: in a `@blotch/` package
- * in `node_modules`, or in the build output (`<package>/dist/`) of a package
- * next to this one, as this repository's examples resolve the runtime.
- *
- * @param file - The module's path.
- * @param packagesDir - The folder this plugin's package is in.
+ * A private name anywhere: the packages' pass (see
+ * {@link renamePrivateMethods}) turns fields into symbol-keyed properties as
+ * well as renaming methods, so a module with only private fields needs it too.
+ * A color (`'#fff'`) matches, which only costs a parse.
  */
-export const isAngularLynxPackageModule = (
-  file: string,
-  packagesDir: string = PACKAGES_DIR,
-): boolean => {
-  if (INSTALLED_PACKAGE.test(file)) {
-    return true;
-  }
-  const relative = path.relative(packagesDir, file);
-  return (
-    !path.isAbsolute(relative) &&
-    /^(?!\.\.[\\/])[^\\/]+[\\/]dist[\\/]/.test(relative) &&
-    !/[\\/]node_modules[\\/]/.test(relative)
-  );
-};
+const PRIVATE_NAME_HINT =
+  /(?<![\p{ID_Continue}$\\\u200C\u200D])#[\p{ID_Start}$_\\]/u;
 
 /**
  * Whether `file` is the app's own code: outside `node_modules` (the app's
@@ -109,7 +80,8 @@ export const isAppModule = (
 /**
  * Compiles a main-thread module's instance `#private` methods so they're no
  * longer defined on every instance: {@link renamePrivateMethods} for
- * AngularLynx's own packages (see {@link isAngularLynxPackageModule}), and
+ * AngularLynx's own packages (see {@link isAngularLynxPackageModule}), which
+ * also keys their private fields by symbols, and
  * {@link hidePrivateMethods} for the app's own code (see
  * {@link isAppModule}). Other packages' modules come back unchanged: their
  * private members keep SWC's standard compile (layers.ts).
@@ -147,7 +119,8 @@ export const transformPrivateMethods = (
 /**
  * Turns each class's instance `#private` methods, getters and setters into
  * ordinary methods with unique public names, so they're defined once on the
- * prototype instead of on every instance. AngularLynx's own packages use it
+ * prototype instead of on every instance, and its instance `#private`
+ * fields into properties keyed by symbols. AngularLynx's own packages use it
  * (see {@link transformPrivateMethods}).
  *
  * The main thread compiles to ES2019 with SWC's `privateFieldsAsProperties`
@@ -176,11 +149,28 @@ export const transformPrivateMethods = (
  * the same names on their prototypes, so one of them made from another, as
  * `Mixin(Mixin(Base))` is, would override its base's `#m` with its own.
  *
+ * **Fields.** SWC compiles a private field to a property for PrimJS's sake
+ * (issue #237, layers.ts), but defines each with its own descriptor in the
+ * constructor (`Object.defineProperty(this, _x, { writable: true, value })`)
+ * and reads and writes it through a function that checks the instance has
+ * it (`_class_private_field_loose_base`). On an iPhone 14 Pro, 5,000 objects
+ * with 60 such fields took 54–61 ms to make, and 100,000 reads and writes of
+ * one 28 ms; keyed by symbols, 13 ms and 8 ms. `LynxElement` has 40, and the
+ * runtime makes one for every element, text node and anchor. So
+ * `#x = v` becomes `[__x_<key><n>] = v` where it was, every `a.#x` becomes
+ * `a[__x_<key><n>]` and `a?.#x` becomes `a?.[__x_<key><n>]`, and the module
+ * declares the symbols, `var __x_<key><n> = Symbol("x")`, at the start of its
+ * first line, before any class that needs them. A symbol-keyed property is
+ * left out of `Object.keys()`, `JSON.stringify()`, spreads and `for…in`, as
+ * a private field is (and as SWC's non-enumerable one was), and is collected
+ * as an ordinary property is. Code that misuses a field sees a difference,
+ * as for methods: reading one on an object that isn't an instance gives
+ * `undefined` rather than a TypeError. An auto-accessor (`accessor #x`) and
+ * a decorated field stay private.
+ *
  * Left as they are:
  *
- * - Private fields, which SWC compiles to properties for PrimJS's sake
- *   (issue #237, layers.ts), and static private methods, which are defined
- *   once anyway.
+ * - Static private members, which are made once anyway.
  * - Any class that uses `#name in object`: a public name can't answer it.
  * - A class with `extends` that can be made more than once: one inside a
  *   function that isn't called at once, or is but has a name or uses
@@ -215,32 +205,97 @@ export const renamePrivateMethods = (
   filename: string,
   options: PrivateMethodsOptions,
 ): string => {
-  if (!PRIVATE_METHOD_HINT.test(code)) {
+  if (!PRIVATE_NAME_HINT.test(code)) {
     return code;
   }
   const sourceFile = parse(code, filename);
   const key = keyForFile(filename, options.root);
   const edits: Edit[] = [];
+  const symbols: string[] = [];
   for (const info of analyzeClasses(sourceFile)) {
     // Every class it makes would share these names, and one made from
     // another would override its base's methods (see above).
     if (info.branded || (info.repeated && info.extendsAnother)) continue;
     for (const [name, declarations] of info.members) {
-      // A getter and setter share one name, and so one new name.
-      const renamed = declarations.every(
-        (member) =>
-          (ts.isMethodDeclaration(member) || ts.isAccessor(member)) &&
-          !isStatic(member),
-      );
-      if (!renamed) continue;
+      if (declarations.some(isStatic)) continue;
       const text = `__${name.slice(1)}_${key}${info.index}`;
-      // Its declarations' names are among its uses.
-      for (const use of info.uses.get(name)!) {
-        edits.push({ start: use.getStart(sourceFile), end: use.end, text });
+      const uses = info.uses.get(name)!;
+      // A getter and setter share one name, and so one new name.
+      if (
+        declarations.every(
+          (member) => ts.isMethodDeclaration(member) || ts.isAccessor(member),
+        )
+      ) {
+        // Its declarations' names are among its uses.
+        for (const use of uses) {
+          edits.push({ start: use.getStart(sourceFile), end: use.end, text });
+        }
+        continue;
       }
+      const fieldEdits = isPlainField(declarations)
+        ? symbolKeyEdits(uses, text, code, sourceFile)
+        : null;
+      if (!fieldEdits) continue;
+      edits.push(...fieldEdits);
+      symbols.push(`${text} = Symbol(${JSON.stringify(name.slice(1))})`);
     }
   }
+  if (symbols.length > 0) {
+    // Before everything, on the first line (a hashbang keeps it), so a class
+    // whose field keys they are can be defined: `import` declarations are
+    // hoisted anyway, and nothing before this line can use them.
+    const start = code.startsWith('#!') ? code.indexOf('\n') + 1 : 0;
+    edits.push({ start, end: start, text: `var ${symbols.join(', ')}; ` });
+  }
   return applyEdits(code, edits, sourceFile);
+};
+
+/**
+ * Whether a private member's declarations are one field that can be keyed
+ * by a symbol: not an auto-accessor (`accessor #x`), which defines a getter
+ * and setter, and without decorators, which receive its private name.
+ */
+const isPlainField = (declarations: ts.ClassElement[]): boolean => {
+  const [field] = declarations;
+  return (
+    declarations.length === 1 &&
+    ts.isPropertyDeclaration(field!) &&
+    !ts
+      .getModifiers(field)
+      ?.some((modifier) => modifier.kind === ts.SyntaxKind.AccessorKeyword) &&
+    !ts.getDecorators(field)?.length
+  );
+};
+
+/**
+ * The edits that key a private field by the symbol `text` names: `#x` in its
+ * declaration becomes `[text]`, `a.#x` becomes `a[text]` and `a?.#x`
+ * becomes `a?.[text]`. Null when a comment comes between a `.` and the
+ * name, so the field stays as it is.
+ */
+const symbolKeyEdits = (
+  uses: ts.PrivateIdentifier[],
+  text: string,
+  code: string,
+  sourceFile: ts.SourceFile,
+): Edit[] | null => {
+  const edits: Edit[] = [];
+  for (const use of uses) {
+    const start = use.getStart(sourceFile);
+    const parent = use.parent;
+    edits.push({ start, end: use.end, text: `[${text}]` });
+    if (ts.isPropertyDeclaration(parent)) continue;
+    // Otherwise `a.#x` or `a?.#x`: a private name is used nowhere else but in
+    // `#x in object`, whose class the caller leaves as it is.
+    if ((parent as ts.PropertyAccessExpression).questionDotToken) continue;
+    // The `.` goes, and any space after it stays: `a\n  [x]` is still
+    // `a[x]`, and no line is removed.
+    let dot = start - 1;
+    while (dot > 0 && /\s/.test(code[dot]!)) dot--;
+    if (code[dot] !== '.') return null;
+    edits.push({ start: dot, end: dot + 1, text: '' });
+  }
+  return edits;
 };
 
 /**

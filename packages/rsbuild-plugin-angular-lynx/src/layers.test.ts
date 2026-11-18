@@ -5,7 +5,12 @@
 import { experiments } from '@rspack/core';
 import { runInNewContext } from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
-import { LAYERS, THIRD_PARTY, applyLayers } from './layers';
+import {
+  LAYERS,
+  THIRD_PARTY,
+  applyLayers,
+  isAngularLynxPackageModule,
+} from './layers';
 
 /**
  * Builds a fluent oneOf builder that tracks calls, returned by chain.module.rule().oneOf().
@@ -21,11 +26,16 @@ const createOneOfBuilder = () => {
     add: vi.fn().mockReturnThis(),
     end: vi.fn(),
   };
+  const includeBuilder = {
+    add: vi.fn().mockReturnThis(),
+    end: vi.fn(),
+  };
 
   const builder = {
     issuerLayer: vi.fn().mockReturnThis(),
     test: vi.fn().mockReturnThis(),
     exclude: excludeBuilder,
+    include: includeBuilder,
     use: vi.fn().mockReturnValue(useBuilder),
     _use: useBuilder,
   };
@@ -34,6 +44,7 @@ const createOneOfBuilder = () => {
   // builder
   useBuilder.end.mockReturnValue(builder);
   excludeBuilder.end.mockReturnValue(builder);
+  includeBuilder.end.mockReturnValue(builder);
 
   return builder;
 };
@@ -408,5 +419,86 @@ describe("the first-party branch's compile", () => {
 
     expect(code).toContain('new WeakMap');
     expect(runInNewContext(code)).toEqual(['1:0', '0:1', 2, 0]);
+  });
+});
+
+describe("AngularLynx's packages' branch", () => {
+  it.each([LAYERS.BACKGROUND, LAYERS.MAIN_THREAD])(
+    'comes first in the %s layer, for the packages alone, setting class fields',
+    (layer) => {
+      const { api, triggerHandler } = createMockApi();
+      const { chain, getOneOf } = createMockChain();
+      applyLayers(api as never);
+      triggerHandler(chain);
+
+      const packages = getOneOf(`${layer}-angular-lynx`);
+      expect(packages.issuerLayer).toHaveBeenCalledWith(layer);
+      expect(packages.test).toHaveBeenCalledWith(/\.[cm]?[jt]sx?$/);
+      const [include] = packages.include.add.mock.calls[0]!;
+      expect(
+        include(
+          '/app/node_modules/@blotch/angular-lynx/fesm2022/blotch-angular-lynx.mjs',
+        ),
+      ).toBe(true);
+      expect(include('/app/src/app/app.ts')).toBe(false);
+      expect(include('/app/node_modules/rxjs/dist/esm/index.js')).toBe(false);
+      const [options] = packages._use.options.mock.calls[0]!;
+      expect(options.jsc.assumptions).toEqual({
+        privateFieldsAsProperties: true,
+        setPublicClassFields: true,
+      });
+      // oneOf takes the first branch that matches: the app's own branch
+      // matches the packages too.
+      const names =
+        chain.module.rule.mock.results[0]!.value.oneOf.mock.calls.map(
+          ([name]: [string]) => name,
+        );
+      expect(names.indexOf(`${layer}-angular-lynx`)).toBeLessThan(
+        names.indexOf(layer),
+      );
+      // The app's own code keeps defining its fields.
+      expect(
+        getOneOf(layer)._use.options.mock.calls[0]![0].jsc.assumptions,
+      ).toEqual({ privateFieldsAsProperties: true });
+    },
+  );
+
+  it("assigns class fields, where the app's branch defines them", () => {
+    const { api, triggerHandler } = createMockApi();
+    const { chain, getOneOf } = createMockChain();
+    applyLayers(api as never);
+    triggerHandler(chain);
+    const compile = (branch: string) =>
+      experiments.swc.transformSync(
+        'class A { a = 1; b = this.a + 1; }',
+        getOneOf(branch)._use.options.mock.calls[0]![0],
+      ).code;
+
+    expect(compile(`${LAYERS.MAIN_THREAD}-angular-lynx`)).toMatch(
+      /this\.a = 1;\s*this\.b = this\.a \+ 1;/,
+    );
+    expect(compile(LAYERS.MAIN_THREAD)).toContain(
+      '_define_property(this, "a", 1)',
+    );
+  });
+});
+
+describe('isAngularLynxPackageModule', () => {
+  it("matches an installed @blotch package, and a package's dist next to this one", () => {
+    expect(
+      isAngularLynxPackageModule(
+        '/app/node_modules/@blotch/ui/index.mjs',
+        '/repo/packages',
+      ),
+    ).toBe(true);
+    expect(
+      isAngularLynxPackageModule(
+        '/repo/packages/runtime/dist/fesm2022/blotch-angular-lynx.mjs',
+        '/repo/packages',
+      ),
+    ).toBe(true);
+    expect(
+      isAngularLynxPackageModule('/app/src/main.ts', '/repo/packages'),
+    ).toBe(false);
   });
 });

@@ -4,9 +4,9 @@
   "license": "MIT",
   "main": "src/main.ts",
   "dependencies": {
-    "@angular/common": "22.2.6",
-    "@angular/core": "22.2.6",
-    "@angular/router": "22.2.6",
+    "@angular/common": "22.3.0",
+    "@angular/core": "22.3.0",
+    "@angular/router": "22.3.0",
     "@ng-icons/core": "36.1.0",
     "@ng-native/components": "0.23.0",
     "@ng-native/device": "0.23.0",
@@ -32,7 +32,7 @@
     "rxjs": "7.8.2"
   },
   "devDependencies": {
-    "@angular/compiler-cli": "22.2.6",
+    "@angular/compiler-cli": "22.3.0",
     "@babel/core": "7.29.13",
     "@ng-native/testing": "0.23.0",
     "@types/react": "19.3.0",

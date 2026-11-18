@@ -118,12 +118,11 @@ export type AccessibilityActionDetail = {
 export type WithPrefixes<Events> = {
   [
     Name in keyof Events & string as Name extends `bind${infer Event}`
-      ?
-          | `bind${Event}`
-          | `catch${Event}`
-          | `capture-bind${Event}`
-          | `capture-catch${Event}`
-          | `global-bind${Event}`
+      ? | `bind${Event}`
+        | `catch${Event}`
+        | `capture-bind${Event}`
+        | `capture-catch${Event}`
+        | `global-bind${Event}`
       : never
   ]: Events[Name];
 };

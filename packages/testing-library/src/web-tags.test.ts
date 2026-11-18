@@ -29,8 +29,7 @@ afterEach(() => {
     <div class="card">
       <h2>{{ name() }}</h2>
       <p>
-        Hello, <strong>{{ name() }}</strong
-        >!
+        Hello, <strong>{{ name() }}</strong>!
       </p>
       <img class="avatar" src="https://example.com/a.png" alt="Avatar" />
       <input class="name" (input)="name.set($any($event.target).value)" />

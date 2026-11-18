@@ -178,6 +178,6 @@ dependencies {
     // vectordrawable 1.0.0 and vectordrawable-animated 1.0.0. Those two share
     // the namespace androidx.vectordrawable, and AGP 9's manifest merger
     // fails the build on that; newer versions give them distinct namespaces.
-    implementation("androidx.appcompat:appcompat:1.7.1")
+    implementation("androidx.appcompat:appcompat:1.8.0")
     implementation("com.google.android.material:material:1.12.0")
 }

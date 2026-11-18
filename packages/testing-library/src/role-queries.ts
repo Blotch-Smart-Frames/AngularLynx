@@ -11,6 +11,9 @@
  *
  * - Role: each trait in `accessibility-traits` that names a kind of element
  *   (`TRAIT_ROLES`), or the element's own default: an `<image>` is an image.
+ *   `accessibility-heading` makes it a heading, and an
+ *   `accessibility-role-description` that names a kind of control makes it
+ *   that control (`ROLE_DESCRIPTION_ROLES`), as Android reads them.
  * - Exposed: a screen reader reaches an element only when it's an
  *   accessibility element. `<text>` and `<image>` are by default; anything
  *   else needs `accessibility-element="true"`. The exception is a tab bar,
@@ -20,7 +23,9 @@
  *   Library leaves out what's off the accessibility tree.
  * - Name: `accessibility-label`, or a `<text>`'s own text when it has none.
  *   Lynx gives no other element a name from the text inside it: iOS reads an
- *   accessibility element's label and skips its children.
+ *   accessibility element's label and skips its children. An
+ *   `accessibility-status` comes first, as iOS and Android read it:
+ *   `"Unread, Inbox"`.
  * - State: the `selected` trait is `selected: true`, and `accessibility-value`
  *   is `value: { text }`. Lynx has no other ARIA state.
  *
@@ -56,6 +61,21 @@ const TRAIT_ROLES: ReadonlyMap<string, string> = new Map([
   ['search', 'searchbox'],
   ['adjustable', 'slider'],
   ['tabbar', 'tablist'],
+]);
+
+/**
+ * The ARIA role of each `accessibility-role-description` Android turns into
+ * a kind of control: it gives the node that control's class (a Switch, a
+ * CheckBox), and TalkBack names the control as it would a native one
+ * (`CustomAccessibilityDelegateCompat`). Any other description is read as
+ * it is, and gives no role.
+ */
+const ROLE_DESCRIPTION_ROLES: ReadonlyMap<string, string> = new Map([
+  ['button', 'button'],
+  ['switch', 'switch'],
+  ['checkbox', 'checkbox'],
+  ['image', 'img'],
+  ['progressbar', 'progressbar'],
 ]);
 
 /**
@@ -120,23 +140,42 @@ const traitsOf = (element: Element): string[] =>
   (element.localName === 'image' ? ['image'] : []);
 
 /**
- * The ARIA roles the element's traits give it.
+ * Whether a true/false attribute is on. The attribute holds a string, so any
+ * value but "false" is true, as the element directives' boolean inputs read
+ * it.
  */
-const lynxRolesOf = (element: Element): string[] =>
-  traitsOf(element).flatMap((trait) => TRAIT_ROLES.get(trait) ?? []);
+const isOn = (flag: string | null): boolean =>
+  flag !== null && flag !== 'false';
+
+/**
+ * The ARIA roles Lynx gives the element: its traits', a heading's, and its
+ * role description's.
+ */
+const lynxRolesOf = (element: Element): string[] => {
+  const roles = traitsOf(element).flatMap(
+    (trait) => TRAIT_ROLES.get(trait) ?? [],
+  );
+  if (isOn(element.getAttribute('accessibility-heading'))) {
+    roles.push('heading');
+  }
+  const described = ROLE_DESCRIPTION_ROLES.get(
+    element.getAttribute('accessibility-role-description') ?? '',
+  );
+  if (described !== undefined) roles.push(described);
+  return roles;
+};
 
 /**
  * Whether the element is an accessibility element, one stop for a screen
  * reader. Lynx makes `<text>` and `<image>` accessibility elements by default
  * and nothing else, so a `<view>` is one only with
- * `accessibility-element="true"`. The attribute holds a string, so any value
- * but "false" is true, as the element directives' boolean inputs read it.
+ * `accessibility-element="true"`.
  */
 const isAccessibilityElement = (element: Element): boolean => {
   const flag = element.getAttribute('accessibility-element');
   return flag === null
     ? element.localName === 'text' || element.localName === 'image'
-    : flag !== 'false';
+    : isOn(flag);
 };
 
 /**
@@ -154,23 +193,39 @@ const exposesRole = (element: Element, role: string): boolean =>
   !isInaccessible(element);
 
 /**
+ * `name` as a screen reader reads it, after the element's
+ * `accessibility-status`: iOS and Android join the two with a comma
+ * (`concatA11yStatus` in `LynxUI.m`, `concatA11yStatusAndLabel` on
+ * Android). A `<text>` with a status and no label is named by its text
+ * after the status, as Android reads it; iOS reads only the status then, as
+ * a status stops it reading the text, which a label avoids.
+ */
+const withStatus = (element: Element, name: string): string =>
+  [element.getAttribute('accessibility-status'), name]
+    .filter(Boolean)
+    .join(', ');
+
+/**
  * What a screen reader reads as the element's name: its
  * `accessibility-label`, or for a `<text>`, the text it shows (iOS and
- * Android read that when the label is missing or empty).
+ * Android read that when the label is missing or empty), after its status.
  */
 const lynxNameOf = (element: Element): string =>
-  element.getAttribute('accessibility-label') ||
-  (element.localName === 'text'
-    ? element.textContent!.replace(/\s+/g, ' ').trim()
-    : '');
+  withStatus(
+    element,
+    element.getAttribute('accessibility-label') ||
+      (element.localName === 'text'
+        ? element.textContent!.replace(/\s+/g, ' ').trim()
+        : ''),
+  );
 
 /**
  * Whether the element is in the states `options` asks for. Lynx has two:
  * the `selected` trait, and the value in `accessibility-value`. For the rest
  * it answers as Testing Library does for an element without the `aria-*`
- * attribute: not busy and not current, and never pressed, expanded, at a
- * level or at a number. `checked` never gets here: Testing Library refuses
- * it on every role Lynx gives.
+ * attribute: not busy and not current, and never checked, pressed,
+ * expanded, at a level or at a number. A role description makes a switch or
+ * a checkbox, but Lynx has no checked state to give it.
  */
 const matchesState = (
   element: Element,
@@ -178,6 +233,7 @@ const matchesState = (
   {
     selected,
     busy,
+    checked,
     pressed,
     current,
     expanded,
@@ -187,6 +243,7 @@ const matchesState = (
 ): boolean =>
   (selected === undefined || selected === traits.includes('selected')) &&
   !busy &&
+  !checked &&
   (current === undefined || current === false) &&
   pressed === undefined &&
   expanded === undefined &&
@@ -214,7 +271,7 @@ const queryAllByLynxRole = (
     (element) => {
       const traits = traitsOf(element);
       return (
-        traits.some((trait) => TRAIT_ROLES.get(trait) === role) &&
+        lynxRolesOf(element).includes(role as string) &&
         (hidden || exposesRole(element, role)) &&
         matchesState(element, traits, options) &&
         (name === undefined ||
@@ -245,7 +302,10 @@ const queryAllByAriaRole = (
           ? undefined
           : (accessibleName, element) =>
               matchesText(
-                element.getAttribute('accessibility-label') || accessibleName,
+                withStatus(
+                  element,
+                  element.getAttribute('accessibility-label') || accessibleName,
+                ),
                 element,
                 name,
               ),

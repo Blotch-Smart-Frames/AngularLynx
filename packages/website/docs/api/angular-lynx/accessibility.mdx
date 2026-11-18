@@ -158,6 +158,17 @@ Every Lynx element accepts these attributes. Set them as static attributes, or b
 | `accessibility-exclusive-focus` | `boolean`  | `false`  | Keeps the screen reader's focus inside this element, for example in a modal.                                               |
 | `a11y-id`                       | `string`   |          | An accessibility identifier, separate from `id`. Lynx's `accessibility-elements-a11y` attribute orders children by it.     |
 
+Some are read on one platform only:
+
+| Attribute                              | Type      | Default | Platforms    | Description                                                                                                                                                                                         |
+| -------------------------------------- | --------- | ------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `accessibility-status`                 | `string`  |         | iOS, Android | A state read before the label, such as `'Unread'`: the screen reader reads `'Unread, Inbox'`. Give a `<text>` with a status an `accessibility-label`: iOS then reads only the status, not the text. |
+| `accessibility-heading`                | `boolean` | `false` | Android 9+   | Makes the element a heading, which TalkBack can jump between. On iOS, use the `header` trait: Android ignores it, so give a heading both.                                                           |
+| `accessibility-role-description`       | `string`  |         | Android      | `'button'`, `'switch'`, `'checkbox'`, `'image'` or `'progressbar'` makes TalkBack call the element that kind of control. TalkBack reads any other text in place of the element's kind.              |
+| `accessibility-enable-tap`             | `boolean` | `false` | Android      | TalkBack's double tap sends the element a `tap`.                                                                                                                                                    |
+| `accessibility-auto-scroll-if-focused` | `boolean` | `false` | iOS          | Scrolls the element into view when code moves VoiceOver's focus to it.                                                                                                                              |
+| `android-accessibility-keep-focused`   | `boolean` | `false` | Android      | Keeps TalkBack's focus on the element when the elements around it change.                                                                                                                           |
+
 `accessibility-traits` takes one of `'text'`, `'image'`, `'button'`, `'link'`, `'header'`, `'search'`, `'selected'`, `'playable'`, `'keyboard'`, `'summary'`, `'disabled'`, `'updating'`, `'adjustable'`, `'tabbar'` or `'none'`. iOS also takes several, separated by commas with no spaces, such as `'button,selected'`. Android reads a single `'none'`, `'image'` or `'button'`, and ignores the rest. An active [`routerLinkActive`](/api/angular-lynx/routing#lynxrouterlinkactive) element gets `selected` added to its own traits. To add one from your own state, use [`LynxAccessibilityTraits`](#lynxaccessibilitytraits).
 
 HarmonyOS, like Android, reads a single trait: `'button'`, `'image'` or `'text'`.

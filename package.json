@@ -48,7 +48,7 @@
     "vitest": "^5.0.5",
     "yalc": "^1.0.0-pre.53"
   },
-  "packageManager": "npm@10.9.2",
+  "packageManager": "npm@10.9.11",
   "overrides": {
     "@lynx-js/rspeedy": {
       "typescript": ">=6.0.0"

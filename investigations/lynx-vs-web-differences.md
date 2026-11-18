@@ -3508,7 +3508,9 @@ Most code never meets it. rspeedy's own SWC rule runs `transform-unicode-propert
 
 ### The fix
 
-The `intl` option runs FormatJS's polyfills and its own runtime (`dist/intl-runtime.js`) through SWC's `transform-unicode-property-regex` first, in the lynx environment (`applyIntl` in `intl/apply-intl.ts`). A package with a `\p{…}` literal on the main thread fails the same way; build the pattern with `new RegExp()` instead.
+The build plugin runs every installed package's JavaScript with an escape in it through SWC's `transform-unicode-property-regex` first, in the lynx environment (`unicode-property-regex.ts`, issue #473). The rule's condition is a function that reads the file and looks for `\p{` or `\P{`, so Rspack's own SWC loader runs only on the few files that have one: the kitchen-sink app's Lynx build took 4.93 s on average with it and without it (four runs each, 2026-11-17). FormatJS's polyfills and the `intl` option's runtime are in `node_modules` in an app, so it covers them too. In this repository the runtime isn't, so `applyIntl` (`intl/apply-intl.ts`) keeps a rule for `dist/intl-runtime.js` there.
+
+Until then, the `intl` option ran FormatJS's polyfills and its own runtime (`dist/intl-runtime.js`) through SWC's `transform-unicode-property-regex` first, in the lynx environment (`applyIntl` in `intl/apply-intl.ts`), and a package with a `\p{…}` literal of its own failed the build.
 
 ---
 
@@ -7357,3 +7359,20 @@ What you set is what you read: a property set to an array reads back as that arr
 ### What Lynx does
 
 On iOS (measured on the iOS 27 Simulator, 2026-11-17), `__GetAttributeByName` gives an attribute set to an array, such as `[consume-slide-event]="[[-180, 180]]"`, back as Lynx's own array type: `JSON.stringify()` writes it as `[[-180,180]]` and `typeof` says `object`, but `Array.isArray()` is `false`, so code that checks for an array sees nothing. `<lynx-stack-outlet>`'s swipe back, which reads `consume-slide-event` up the touched element's ancestors, missed it this way until it read the value through a JSON round trip (`keepsRightwardSlides()` in `lynx-stack-outlet.ts`). Read such a value with `JSON.parse(JSON.stringify(value))` before treating it as an array.
+
+---
+
+## `__SetDataset` replaces the dataset on the web, and merges it on iOS and Android
+
+### What you'd expect (web)
+
+Setting `data-section` on an element with `data-id` leaves `data-id` alone, as `element.dataset.section = 'inbox'` does.
+
+### What Lynx does
+
+The two platforms' `__SetDataset(element, object)` disagree:
+
+- **Lynx for Web** replaces the element's dataset with the object: each `data-*` attribute it doesn't name is removed, and the object becomes what its events carry in `target.dataset` (`set_dataset` in web-core's `dataset_apis.rs`). It keeps the object itself, not a copy.
+- **iOS and Android** merge the object's keys into the dataset (`AttributeHolder::SetDataSet` in Lynx core): a key it doesn't name keeps its value, and there's no element API to remove one.
+
+`LynxElement.setAttribute()` used to pass only the key it was setting, so in the web preview an element with `data-id` and `data-section` kept only the one set last, and its taps reported only that one (issue #472). It now passes a copy of every key the element has, with a removed key as `undefined` so native drops its value too. `__AddDataset`, which sets one key, would keep the others, but web-core's removes the DOM attribute for any falsy value, `data-index="0"` included.

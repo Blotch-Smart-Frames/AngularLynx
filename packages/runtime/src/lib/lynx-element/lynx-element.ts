@@ -1166,11 +1166,24 @@ export class LynxElement implements BaseLynxElement {
       this.#id = value ?? null;
       this.#rulesChanged();
     } else if (name.startsWith('data-')) {
-      const data: Record<string, any> = {};
+      // __SetDataset gets the whole dataset, never the one key. The web
+      // preview's replaces the element's dataset with the object it's given
+      // (dropping the other data-* attributes, and the keys its events carry
+      // in target.dataset), while native's merges it in, keeping each key it
+      // isn't given: so a removed key goes as undefined, or native would
+      // keep its old value. __AddDataset, which sets one key, would keep the
+      // others, but the web preview's removes the attribute for any falsy
+      // value, a `data-index="0"` included. A copy, as the web preview keeps
+      // the object itself, and later writes to #dataset would change it.
       const key = name.slice(5);
-      data[key] = value;
-      __SetDataset(this.element, data);
-      (this.#dataset ??= {})[key] = value;
+      const dataset = (this.#dataset ??= {});
+      if (value == null) {
+        delete dataset[key];
+        __SetDataset(this.element, { ...dataset, [key]: undefined });
+      } else {
+        dataset[key] = value;
+        __SetDataset(this.element, { ...dataset });
+      }
     } else {
       // A stroke-dasharray the engine can't parse hangs Lynx's native SVG engine and
       // blanks every <svg> in the app (see svg-content.ts), so it's rewritten
@@ -2644,8 +2657,9 @@ export class LynxElement implements BaseLynxElement {
 
     if (this.#id != null) __SetID(fresh, this.#id);
     // Apply the dataset in one call so recreation is order- and merge-agnostic.
+    // A copy, for the reason setAttribute's data-* branch gives.
     if (this.#dataset && Object.keys(this.#dataset).length > 0) {
-      __SetDataset(fresh, this.#dataset);
+      __SetDataset(fresh, { ...this.#dataset });
     }
     if (this.#attrs) {
       for (const [name, value] of this.#attrs) {

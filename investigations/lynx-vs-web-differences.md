@@ -6255,6 +6255,24 @@ Measure a plain view instead. The dock puts an empty full-width `<view class="h-
 
 ---
 
+## On Lynx for Web, an element stops getting `layoutchange` once it's moved
+
+### What you'd expect (parity with iOS and Android)
+
+An element with `(bindlayoutchange)` reports each layout that resizes or moves it, wherever it has been moved in the tree. On iOS and Android a move keeps the element's native view and its handler, and it goes on reporting.
+
+### What Lynx does
+
+web-elements sends `layoutchange` from a `ResizeObserver` it starts when the element gets its first handler for the event (`CommonEventsAndMethods.js` in `@lynx-js/web-elements` 0.12). Its `dispose()`, which `disconnectedCallback` calls, stops the observer, and `connectedCallback` doesn't start it again: only the count of handlers going from none to one does. A DOM move takes the element off the page and puts it back, so an element moved with its handler, or inside an element that moved, never sends the event again.
+
+A page `<lynx-stack-outlet>` pushed was the case that showed it: Angular's view container inserts the page's component beside the outlet, and the outlet then moves it into the page's frame. The stack's first page was built before the outlet was on the page, so the move took nothing off it. In the museum example, the artwork viewer, a pushed page, never heard its size (#476).
+
+### What we do about it
+
+After LynxElement moves an element on Lynx for Web (it inserts one that already has a parent), it drops the event's count to none and back on that element and each element inside it with a `layoutchange` handler, its own or a main-thread directive's (`restartWebLayoutChange` in `layout.ts`). That starts a new observer, which reports the element's box as it starts. A fix in web-elements would be for the reactive to observe again in `connectedCallback` when the event is enabled. Some other web-elements reactives stop the same way on a disconnect (x-refresh-view's footer events, x-viewpager-ng's `change`); AngularLynx doesn't use those elements.
+
+---
+
 ## Native Lynx 4.1 loses an element moved to a parent its flush reaches first
 
 ### What you'd expect (web)

@@ -54,6 +54,7 @@ import {
   LayoutTracker,
   type LynxDOMRect,
   measureLayout,
+  restartWebLayoutChange,
   setMeasureFlush,
   toDOMRect,
 } from './layout';
@@ -447,6 +448,16 @@ const insertHidesBlurView = (
   child.tagName === 'blur-view' &&
   parent.tagName !== 'blur-view' &&
   isIOS();
+
+/**
+ * Whether inserting `child` on Lynx for Web moves it: it's in the tree
+ * already, so the browser takes it off the page and puts it back, which
+ * stops its `layoutchange` (see restartWebLayoutChange). A native element
+ * moves without that, and an element going in for the first time was never
+ * on the page.
+ */
+const isWebMove = (child: LynxElement): boolean =>
+  __WEB__ && __GetParent(child.element) !== null;
 
 /**
  * A raw-text leaf or a <text> container — the only elements that carry trimmable
@@ -1628,11 +1639,13 @@ export class LynxElement implements BaseLynxElement {
       // safe: a cyclic insert is a corrupt request, and leaving newChild where it
       // is beats freezing the app.
       if (wouldFormCycle(this.element, newChild.element)) return;
+      const moving = isWebMove(newChild);
       if (insertHidesBlurView(this, newChild)) {
         this.#appendBefore(newChild, refChild);
       } else {
         __InsertElementBefore(this.element, newChild.element, refChild.element);
       }
+      if (moving) newChild.#restartWebLayoutChanges();
       this.#adoptChild(newChild, refChild);
       if (isTextish(this) || isTextish(newChild)) {
         LynxElement.#enqueueTextNormalization(newChild);
@@ -1694,7 +1707,9 @@ export class LynxElement implements BaseLynxElement {
     // Guard against a cycle-forming attach (see wouldFormCycle) — the same hang
     // insertBefore protects against.
     if (wouldFormCycle(this.element, newChild.element)) return;
+    const moving = isWebMove(newChild);
     __AppendElement(this.element, newChild.element);
+    if (moving) newChild.#restartWebLayoutChanges();
     this.#adoptChild(newChild);
     // Attaching a run to (or as) a text shifts inline layout — re-derive the
     // enclosing context's edge whitespace at the next flush (see
@@ -1743,6 +1758,23 @@ export class LynxElement implements BaseLynxElement {
     } else {
       this.#children.push(newChild);
     }
+  }
+
+  /**
+   * After a move on Lynx for Web: gets `layoutchange` firing again on this
+   * element and each element inside it that has a handler for it, which the
+   * move stopped (see restartWebLayoutChange). A main-thread directive's
+   * handler (`[mainThreadBindlayoutchange]`) counts too: the event stopped
+   * for it the same way.
+   */
+  #restartWebLayoutChanges(): void {
+    if (
+      this.#nativeHandlers?.has('layoutchange') ||
+      this.#heldEvents?.has('layoutchange')
+    ) {
+      restartWebLayoutChange(this.element);
+    }
+    for (const child of this.#children) child.#restartWebLayoutChanges();
   }
 
   /**

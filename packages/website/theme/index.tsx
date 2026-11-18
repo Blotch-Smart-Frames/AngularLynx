@@ -1,5 +1,52 @@
 import { useEffect, useState, useCallback } from 'react';
 import { HomeLayout as BaseHomeLayout } from '@rspress/core/theme-original';
+
+// The theme's re-exports come before the home page's imports. The home page
+// imports `<Go>`, whose Rspress adapter (@lynx-js/go-web 0.14) imports `Link`
+// from `@theme`, this module, and reads it as it loads. Rspack binds a
+// re-export's module only when it reaches that statement, so with these at the
+// end the adapter read `Link` before Rspress's theme was bound here and the
+// build failed ("Cannot read properties of undefined (reading 'N_')").
+
+// Font Awesome replacements for Rspress's icons. They must be named exports:
+// a named export shadows the same name in the `export *` below, whereas a
+// second `export *` would make each name ambiguous and export neither.
+export {
+  IconArrowDown,
+  IconArrowRight,
+  IconClose,
+  IconCopy,
+  IconDeprecated,
+  IconDown,
+  IconEdit,
+  IconEmpty,
+  IconExperimental,
+  IconExternalLink,
+  IconFile,
+  IconGithub,
+  IconGitlab,
+  IconHeader,
+  IconJump,
+  IconLink,
+  IconLoading,
+  IconMenu,
+  IconMoon,
+  IconScrollToTop,
+  IconSearch,
+  IconSmallMenu,
+  IconSuccess,
+  IconSun,
+  IconTitle,
+  IconWrap,
+  IconWrapped,
+} from './icons';
+
+// The home page's footer, in place of Rspress's one-line message, by the
+// same rule: Rspress's home layout imports `HomeFooter` from the theme.
+export { HomeFooter } from '../src/components/home-footer';
+
+export * from '@rspress/core/theme-original';
+
 import {
   Banner,
   Compare,
@@ -182,42 +229,3 @@ const HomeLayout = (props: Parameters<typeof BaseHomeLayout>[0]) => {
 };
 
 export { HomeLayout };
-
-// Font Awesome replacements for Rspress's icons. They must be named exports:
-// a named export shadows the same name in the `export *` below, whereas a
-// second `export *` would make each name ambiguous and export neither.
-export {
-  IconArrowDown,
-  IconArrowRight,
-  IconClose,
-  IconCopy,
-  IconDeprecated,
-  IconDown,
-  IconEdit,
-  IconEmpty,
-  IconExperimental,
-  IconExternalLink,
-  IconFile,
-  IconGithub,
-  IconGitlab,
-  IconHeader,
-  IconJump,
-  IconLink,
-  IconLoading,
-  IconMenu,
-  IconMoon,
-  IconScrollToTop,
-  IconSearch,
-  IconSmallMenu,
-  IconSuccess,
-  IconSun,
-  IconTitle,
-  IconWrap,
-  IconWrapped,
-} from './icons';
-
-// The home page's footer, in place of Rspress's one-line message, by the
-// same rule: Rspress's home layout imports `HomeFooter` from the theme.
-export { HomeFooter } from '../src/components/home-footer';
-
-export * from '@rspress/core/theme-original';

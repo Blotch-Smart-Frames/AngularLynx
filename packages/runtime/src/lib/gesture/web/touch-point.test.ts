@@ -1,11 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import {
-  pageOf,
-  type TouchPoint,
-  touchPointOf,
-  VelocityTracker,
-} from './touch-point';
+import { pageOf, type TouchPoint, touchPointOf } from './touch-point';
 
 /**
  * Gives `element` a box, in the viewport's (drawn) pixels.
@@ -59,42 +54,5 @@ describe('touchPointOf', () => {
       clientX: 130,
       clientY: 90,
     } satisfies TouchPoint);
-  });
-});
-
-describe('VelocityTracker', () => {
-  const at = (timestamp: number, pageX: number, pageY = 0) =>
-    ({ timestamp, pageX, pageY }) as TouchPoint;
-
-  it('is still with fewer than two samples', () => {
-    const tracker = new VelocityTracker();
-    expect(tracker.velocity()).toEqual({ x: 0, y: 0 });
-    tracker.add(at(0, 10));
-    expect(tracker.velocity()).toEqual({ x: 0, y: 0 });
-  });
-
-  it('averages the last 100ms, in pixels a second', () => {
-    const tracker = new VelocityTracker();
-    tracker.add(at(0, 0));
-    tracker.add(at(500, 0));
-    tracker.add(at(550, 20, -10));
-    tracker.add(at(600, 50, -20));
-    expect(tracker.velocity()).toEqual({ x: 500, y: -200 });
-  });
-
-  it('is still for samples at the same time', () => {
-    const tracker = new VelocityTracker();
-    tracker.add(at(5, 0));
-    tracker.add(at(5, 30));
-    expect(tracker.velocity()).toEqual({ x: 0, y: 0 });
-  });
-
-  it('forgets a reset touch', () => {
-    const tracker = new VelocityTracker();
-    tracker.add(at(0, 0));
-    tracker.add(at(50, 100));
-    tracker.reset();
-    tracker.add(at(60, 0));
-    expect(tracker.velocity()).toEqual({ x: 0, y: 0 });
   });
 });

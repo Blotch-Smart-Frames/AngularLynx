@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createGestureOrigin, mapGestureEvent } from './event';
 
 describe('mapGestureEvent', () => {
@@ -159,6 +159,161 @@ describe('mapGestureEvent', () => {
       expect(result.translationY).toBe(0);
       expect(origin.x).toBe(0);
       expect(origin.y).toBe(0);
+    });
+  });
+
+  describe('velocity (derived from positions and timestamps)', () => {
+    type Moving = { velocityX: number; velocityY: number };
+    const pan = (
+      origin: ReturnType<typeof createGestureOrigin>,
+      name: string,
+      timestamp: number,
+      pageX: number,
+      pageY = 0,
+    ) =>
+      mapGestureEvent(
+        { timestamp, params: { pageX, pageY } },
+        name,
+        origin,
+      ) as unknown as Moving;
+
+    it("measures a pan's speed over the last 100ms, in px/s", () => {
+      const origin = createGestureOrigin();
+      expect(pan(origin, 'onBegin', 1000, 0)).toMatchObject({
+        velocityX: 0,
+        velocityY: 0,
+      });
+      pan(origin, 'onUpdate', 1050, 25, -10);
+      expect(pan(origin, 'onUpdate', 1100, 50, -20)).toMatchObject({
+        velocityX: 500,
+        velocityY: -200,
+      });
+    });
+
+    it('reports the speed the finger let go at in onEnd', () => {
+      const origin = createGestureOrigin();
+      pan(origin, 'onBegin', 0, 0);
+      pan(origin, 'onUpdate', 500, 0);
+      pan(origin, 'onUpdate', 550, 40);
+      expect(pan(origin, 'onEnd', 600, 80).velocityX).toBe(800);
+    });
+
+    it('is 0 when the finger stopped before letting go', () => {
+      const origin = createGestureOrigin();
+      pan(origin, 'onBegin', 0, 0);
+      pan(origin, 'onUpdate', 50, 100);
+      pan(origin, 'onUpdate', 300, 100);
+      expect(pan(origin, 'onEnd', 400, 100).velocityX).toBe(0);
+    });
+
+    it('starts each touch over', () => {
+      const origin = createGestureOrigin();
+      pan(origin, 'onBegin', 0, 0);
+      pan(origin, 'onUpdate', 50, 100);
+      // No onEnd: onBegin alone forgets the last touch's positions.
+      expect(pan(origin, 'onBegin', 80, 500).velocityX).toBe(0);
+      expect(pan(origin, 'onUpdate', 130, 550).velocityX).toBe(1000);
+    });
+
+    it('forgets the touch at onEnd', () => {
+      const origin = createGestureOrigin();
+      pan(origin, 'onUpdate', 0, 0);
+      pan(origin, 'onEnd', 50, 100);
+      expect(pan(origin, 'onUpdate', 60, 0).velocityX).toBe(0);
+    });
+
+    it("prefers the touch's own timestamp in params to the envelope's", () => {
+      // The web preview stamps the envelope when it calls the callback, and
+      // the touch's time, which is when the finger was there, in params.
+      const origin = createGestureOrigin();
+      mapGestureEvent(
+        { timestamp: 9_000, params: { timestamp: 0, pageX: 0, pageY: 0 } },
+        'onBegin',
+        origin,
+      );
+      const moved = mapGestureEvent(
+        { timestamp: 9_001, params: { timestamp: 50, pageX: 20, pageY: 0 } },
+        'onUpdate',
+        origin,
+      ) as unknown as Moving;
+      expect(moved.velocityX).toBe(400);
+    });
+
+    it('uses the time it maps the event at when nothing is stamped', () => {
+      const now = vi.spyOn(Date, 'now');
+      try {
+        const origin = createGestureOrigin();
+        now.mockReturnValue(0);
+        mapGestureEvent({ params: { pageX: 0, pageY: 0 } }, 'onBegin', origin);
+        now.mockReturnValue(100);
+        const moved = mapGestureEvent(
+          { params: { pageX: 0, pageY: 30 } },
+          'onUpdate',
+          origin,
+        ) as unknown as Moving;
+        expect(moved.velocityY).toBe(300);
+      } finally {
+        now.mockRestore();
+      }
+    });
+
+    it("measures a fling's momentum from its frames' steps, in the swipe's direction", () => {
+      // Lynx's fling steps run against the swipe, as a scroll offset does: a
+      // fling to the right and up steps left and down.
+      const origin = createGestureOrigin();
+      const fling = (
+        name: string,
+        timestamp: number,
+        deltaX: number,
+        deltaY: number,
+      ) =>
+        mapGestureEvent(
+          { timestamp, params: { scrollX: 0, deltaX, deltaY } },
+          name,
+          origin,
+        ) as unknown as Moving;
+
+      expect(fling('onBegin', 0, 0, 0)).toMatchObject({
+        velocityX: 0,
+        velocityY: 0,
+      });
+      fling('onUpdate', 16, -16, 8);
+      expect(fling('onUpdate', 32, -16, 8)).toMatchObject({
+        velocityX: 1000,
+        velocityY: -500,
+      });
+    });
+
+    it('treats a missing axis of a step as no movement in it', () => {
+      const origin = createGestureOrigin();
+      mapGestureEvent(
+        { timestamp: 0, params: { deltaX: 0 } },
+        'onBegin',
+        origin,
+      );
+      const moved = mapGestureEvent(
+        { timestamp: 50, params: { deltaX: -50 } },
+        'onUpdate',
+        origin,
+      ) as unknown as Moving;
+      expect(moved).toMatchObject({ velocityX: 1000, velocityY: 0 });
+    });
+
+    it('stays still for an event with neither a position nor a step', () => {
+      const origin = createGestureOrigin();
+      const event = mapGestureEvent(
+        { timestamp: 0, params: {} },
+        'onUpdate',
+        origin,
+      ) as unknown as Moving;
+      expect(event).toMatchObject({ velocityX: 0, velocityY: 0 });
+    });
+
+    it('omits velocity when no origin is supplied', () => {
+      const result = mapGestureEvent({ params: { pageX: 5, pageY: 6 } }) as {
+        velocityX?: number;
+      };
+      expect(result.velocityX).toBeUndefined();
     });
   });
 });

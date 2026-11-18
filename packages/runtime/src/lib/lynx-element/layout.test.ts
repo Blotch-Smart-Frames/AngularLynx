@@ -3,6 +3,7 @@ import {
   type LayoutRect,
   LayoutTracker,
   measureLayout,
+  restartWebLayoutChange,
   setMeasureFlush,
   toDOMRect,
 } from './layout';
@@ -101,6 +102,21 @@ describe('LayoutTracker', () => {
     h.layout(undefined);
     h.layout({ width: 'wide' });
     expect(tracker.rect).toBeNull();
+  });
+});
+
+describe('restartWebLayoutChange', () => {
+  it("takes the element's layoutchange count to none and back", () => {
+    const counted: string[] = [];
+    restartWebLayoutChange({
+      enableEvent: (name: string) => counted.push(`enable ${name}`),
+      disableEvent: (name: string) => counted.push(`disable ${name}`),
+    });
+    expect(counted).toEqual(['disable layoutchange', 'enable layoutchange']);
+  });
+
+  it("leaves an element that doesn't count its handlers alone", () => {
+    expect(() => restartWebLayoutChange({})).not.toThrow();
   });
 });
 

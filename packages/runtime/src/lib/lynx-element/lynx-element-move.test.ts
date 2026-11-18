@@ -331,3 +331,99 @@ describe('LynxElement moves to another parent', () => {
     ]);
   });
 });
+
+describe('LynxElement moves on Lynx for Web', () => {
+  let root: LynxElement;
+  /** What web-elements was asked, as `<class> <enable|disable> <event>`. */
+  let counted: string[];
+
+  beforeEach(() => {
+    vi.stubGlobal('__PROFILE__', false);
+    vi.stubGlobal('__WEB__', true);
+    installNativeFakes();
+    root = new LynxElement(page as unknown as ElementRef);
+    root.tagName = 'page';
+    counted = [];
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /**
+   * A view as web-elements makes it, which counts the handlers for each
+   * event, with `layoutchange` heard if `listening`.
+   */
+  const counting = (
+    cls: string,
+    parent: LynxElement | undefined,
+    listening = false,
+  ): LynxElement => {
+    const el = view(cls, parent);
+    Object.assign(el.element as object, {
+      enableEvent: (name: string) => counted.push(`${cls} enable ${name}`),
+      disableEvent: (name: string) => counted.push(`${cls} disable ${name}`),
+    });
+    if (listening) el.addEventListener('bindlayoutchange', () => {});
+    return el;
+  };
+
+  it('starts layoutchange again for each element a move takes with it', () => {
+    // A pushed stack page: its component goes in beside the outlet, then
+    // into its frame.
+    const outlet = counting('outlet', root);
+    const component = counting('component', root);
+    const header = counting('header', component, true);
+    counting('row', component);
+    counting('title', header, true);
+    flush();
+    counted = [];
+
+    const frame = counting('frame', outlet);
+    frame.appendChild(component);
+
+    expect(counted).toEqual([
+      'header disable layoutchange',
+      'header enable layoutchange',
+      'title disable layoutchange',
+      'title enable layoutchange',
+    ]);
+  });
+
+  it('starts it again on a move before a sibling too', () => {
+    const list = counting('list', root);
+    const first = counting('first', list);
+    const moved = counting('moved', list, true);
+    flush();
+    counted = [];
+
+    list.insertBefore(moved, first);
+
+    expect(counted).toEqual([
+      'moved disable layoutchange',
+      'moved enable layoutchange',
+    ]);
+  });
+
+  it('leaves an element going in for the first time alone', () => {
+    const header = counting('header', undefined, true);
+    counted = [];
+
+    root.appendChild(header);
+
+    expect(counted).toEqual([]);
+  });
+
+  it('leaves native moves alone, which keep their layoutchange', () => {
+    vi.stubGlobal('__WEB__', false);
+    vi.stubGlobal('__SetDataset', () => {});
+    const home = counting('home', root);
+    const moved = counting('moved', root, true);
+    flush();
+    counted = [];
+
+    home.appendChild(moved);
+
+    expect(counted).toEqual([]);
+  });
+});

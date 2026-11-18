@@ -87,6 +87,39 @@ export const measureLayout = (
   afterMeasure();
 };
 
+/**
+ * What an element is on Lynx for Web: a web-elements custom element, which
+ * counts the handlers web-core registers for each event.
+ */
+type WebEventCounting = {
+  enableEvent?(name: string): void;
+  disableEvent?(name: string): void;
+};
+
+/**
+ * Makes an element on Lynx for Web measure itself again for `layoutchange`,
+ * after a move took it off the page and put it back. Call it only for an
+ * element that has a handler for the event.
+ *
+ * web-elements fires `layoutchange` from a ResizeObserver it starts when the
+ * element gets its first handler for the event. Taking the element off the
+ * page (`disconnectedCallback`) stops it, and putting it back
+ * (`connectedCallback`) doesn't start it again: only a new first handler
+ * would. A DOM move is both at once, so an element moved with its handler,
+ * or inside an element that moved, never fires the event again. A page
+ * `<lynx-stack-outlet>` pushes is one: the view container inserts its
+ * component beside the outlet, and the outlet then moves it into the page's
+ * frame. Dropping the element's count for the event to none and back starts
+ * a new observer, which reports the element's box as it starts, as
+ * `layoutchange` does when a handler is added.
+ */
+export const restartWebLayoutChange = (element: unknown): void => {
+  const counting = element as WebEventCounting;
+  if (!counting.enableEvent || !counting.disableEvent) return;
+  counting.disableEvent('layoutchange');
+  counting.enableEvent('layoutchange');
+};
+
 /** What the tracker needs from its element. */
 export type LayoutHost = {
   /** Adds a listener for one of the element's Lynx events (`bindlayoutchange`). */

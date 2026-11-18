@@ -1,6 +1,56 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:recommended"
+  "extends": ["config:recommended"],
+  "packageRules": [
+    {
+      "description": "Angular majors go through the update-angular skill: ng update's migrations across the packages and ~100 examples, the published peer ranges, and the docs, none of which a version bump does. Minors and patches still come through.",
+      "matchPackageNames": [
+        "@angular/**",
+        "@angular-devkit/**",
+        "@schematics/angular",
+        "ng-packagr"
+      ],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
+      "description": "Architect is versioned 0.MMmm.p (Angular 22.2 is 0.2202), so semver calls its move to the next Angular major (0.2300) a minor, and the rule above doesn't catch it. The update-angular skill moves this bound up with each major.",
+      "matchPackageNames": ["@angular-devkit/architect"],
+      "allowedVersions": "<0.2300.0"
+    },
+    {
+      "description": "Each Angular release accepts only some TypeScript minors (its typescript peer range), so a TypeScript minor on its own fails the install. The update-angular skill moves TypeScript with Angular.",
+      "matchPackageNames": ["typescript"],
+      "matchUpdateTypes": ["major", "minor"],
+      "enabled": false
+    },
+    {
+      "description": "@types/node's major is the Node version it types, and the packages support Node 22.12 and later (engines), so a newer major lets the type check pass code using an API Node 22 lacks. Majors move by hand.",
+      "matchPackageNames": ["@types/node"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
+      "description": "The examples and packages/ui use Tailwind 3 on purpose: @lynx-js/tailwind-preset supports only Tailwind 3 (peer ^3.4.0), and with Tailwind 4 the build skips their tailwind.config.ts and they render unstyled though the build passes. examples/tailwind-4 covers Tailwind 4. Majors move by hand.",
+      "matchPackageNames": ["tailwindcss"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
+      "description": "The rsbuild plugin hands rspack plugins a Compiler from @lynx-js/rspeedy, which pins an exact @rsbuild/core and so an @rspack/core minor (2.2 in rspeedy 0.18.6). The plugin types that Compiler with its own @rspack/core, so a newer minor installs a second copy and its declaration build fails on the two Compiler types (#506). Move it by hand when rspeedy moves. @rsbuild/core minors build fine (#505).",
+      "matchPackageNames": ["@rspack/core"],
+      "matchUpdateTypes": ["major", "minor"],
+      "enabled": false
+    },
+    {
+      "description": "Each @ng-native package peers on the others at its exact version, so one moved alone fails the install (ERESOLVE). They move together.",
+      "matchPackageNames": ["@ng-native/**"],
+      "groupName": "ng-native"
+    },
+    {
+      "description": "The angular-lynx benchmark installs @blotch/* from tarballs that scripts/use-local-packages.mjs packs into .local-packages/, which is git-ignored, so Renovate never has them and every lockfile update there fails (#509). Its versions move by hand: copy the bumped entries from the root lockfile, or rerun the script after a root build.",
+      "matchFileNames": ["benchmarks/apps/angular-lynx/**"],
+      "enabled": false
+    }
   ]
 }

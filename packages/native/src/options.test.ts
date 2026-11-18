@@ -15,6 +15,7 @@ describe('resolveAppOptions', () => {
       edgeToEdge: true,
       permissions: {},
       deepLinkSchemes: [],
+      appLinkDomains: [],
       canOpenURLSchemes: ['http', 'https', 'mailto', 'tel', 'sms'],
       shortcuts: [],
       icon: undefined,
@@ -144,6 +145,38 @@ describe('resolveAppOptions', () => {
       resolveAppOptions({ deepLinkSchemes: ['my-app+x.y'] }, defaults)
         .deepLinkSchemes,
     ).toEqual(['my-app+x.y']);
+  });
+
+  it('keeps each app link domain once, in lowercase', () => {
+    expect(
+      resolveAppOptions(
+        {
+          appLinkDomains: [
+            'Example.com',
+            'example.com',
+            '*.example.com',
+            'shop.example.co.uk',
+          ],
+        },
+        defaults,
+      ).appLinkDomains,
+    ).toEqual(['example.com', '*.example.com', 'shop.example.co.uk']);
+  });
+
+  it.each([
+    'https://example.com',
+    'example.com/orders',
+    'example.com:8443',
+    'localhost',
+    'example.*.com',
+    '-example.com',
+    'example..com',
+  ])('rejects the app link domain %s', (domain) => {
+    expect(() =>
+      resolveAppOptions({ appLinkDomains: [domain] }, defaults),
+    ).toThrow(
+      `appLinkDomains entry "${domain}" is not a domain. Give the host name alone, without https:// or a path, e.g. "example.com", or "*.example.com" for its subdomains.`,
+    );
   });
 
   it('gives a shortcut a phrase from its title, and keeps the ones it has', () => {

@@ -417,6 +417,13 @@ const explainSigningFailure = (error: Error, teamId: string): Error => {
       `Team ${teamId} can't register this device: it has as many as Apple allows. A paid team can remove the devices it no longer uses at the start of its membership year (developer.apple.com → Certificates, IDs & Profiles → Devices). A free Personal Team can't remove them, so set ios.teamId to another team, such as the Personal Team of another Apple ID signed in to Xcode.\n\n${error.message}`,
     );
   }
+  // xcodebuild then also reports "No profiles for", which alone would point
+  // at the wrong fix.
+  if (/Personal development teams.*Associated Domains/is.test(error.message)) {
+    return new NativeBuildError(
+      `Team ${teamId} is a free Personal Team, which can't sign the Associated Domains capability that appLinkDomains adds. Set ios.teamId to a team in the paid Apple Developer Program, or leave appLinkDomains out of the configuration you build for this iPhone.\n\n${error.message}`,
+    );
+  }
   if (/requires a development team|No profiles for/i.test(error.message)) {
     return new NativeBuildError(
       `Xcode couldn't make a provisioning profile for team ${teamId}. Check that ios.teamId is a team your Apple ID in Xcode → Settings → Accounts belongs to, and for an .ipa that the team is in the paid Apple Developer Program.\n\n${error.message}`,

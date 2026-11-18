@@ -257,6 +257,13 @@
       },
       "description": "Custom URL schemes that open the app, e.g. [\"myapp\"]. A link such as myapp://orders/42 opens the app, and provideRouter() navigates to its route (/orders/42)."
     },
+    "appLinkDomains": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The app's own websites, whose https links open the app (Universal Links on iOS, App Links on Android), e.g. [\"example.com\", \"*.example.com\"]. The build writes the file each site serves for it, .well-known/apple-app-site-association or .well-known/assetlinks.json, beside the app. iOS needs ios.teamId, a team in the paid Apple Developer Program."
+    },
     "canOpenURLSchemes": {
       "type": "array",
       "items": {

@@ -98,6 +98,40 @@ describe('deepLinkEntries', () => {
     );
     expect(deepLinkEntries(app())).toBe('');
   });
+
+  it('writes a verified https filter for the app link domains', () => {
+    expect(
+      deepLinkEntries(
+        app({
+          deepLinkSchemes: ['a'],
+          appLinkDomains: ['example.com', '*.example.com'],
+        }),
+      ),
+    ).toBe(
+      [
+        '<intent-filter>',
+        '    <action android:name="android.intent.action.VIEW" />',
+        '    <category android:name="android.intent.category.DEFAULT" />',
+        '    <category android:name="android.intent.category.BROWSABLE" />',
+        '    <data android:scheme="a" />',
+        '</intent-filter>',
+        '<intent-filter android:autoVerify="true">',
+        '    <action android:name="android.intent.action.VIEW" />',
+        '    <category android:name="android.intent.category.DEFAULT" />',
+        '    <category android:name="android.intent.category.BROWSABLE" />',
+        '    <data android:scheme="https" />',
+        '    <data android:host="example.com" />',
+        '    <data android:host="*.example.com" />',
+        '</intent-filter>',
+      ].join('\n'),
+    );
+    // Without schemes, the app links' filter alone.
+    expect(
+      deepLinkEntries(app({ appLinkDomains: ['example.com'] })).startsWith(
+        '<intent-filter android:autoVerify="true">',
+      ),
+    ).toBe(true);
+  });
 });
 
 describe('queriesEntries', () => {

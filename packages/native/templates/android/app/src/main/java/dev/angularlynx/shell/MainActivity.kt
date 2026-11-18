@@ -84,8 +84,9 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
     }
     private var webAuthSession: WebAuthSession? = null
 
-    // The link with one of angular.json's deepLinkSchemes that started the
-    // app, sent as the initialURL global prop (see LinkingModule).
+    // The link that started the app, with one of angular.json's
+    // deepLinkSchemes or an App Link to one of its appLinkDomains, sent as
+    // the initialURL global prop (see LinkingModule).
     private var initialURL: String? = null
 
     // The Photo Picker (see ImagePickerModule), and who to tell what was
@@ -351,9 +352,9 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
             session.done(WebAuthModule.Result.Returned(url.toString()))
             return
         }
-        // Any other link with one of the app's schemes: the runtime's
-        // LynxLinking takes it when it hears the event, and the router
-        // navigates to it.
+        // Any other link with one of the app's schemes, or an App Link: the
+        // runtime's LynxLinking takes it when it hears the event, and the
+        // router navigates to it.
         LinkingModule.open(url.toString())
         lynxView.sendGlobalEvent(LinkingModule.EVENT, JavaOnlyArray())
     }

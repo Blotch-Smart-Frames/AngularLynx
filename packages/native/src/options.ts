@@ -31,6 +31,14 @@ export type NativeAppOptions = {
   /** Custom URL schemes that open the app, e.g. `["myapp"]`. */
   readonly deepLinkSchemes?: readonly string[];
   /**
+   * The app's own websites, whose https links open the app rather than the
+   * browser, e.g. `["example.com", "*.example.com"]`: Universal Links on iOS
+   * (the Associated Domains entitlement) and App Links on Android (a
+   * verified intent filter). Each site has to serve the file that names the
+   * app, which the build writes beside the app (see `appLinkFiles`).
+   */
+  readonly appLinkDomains?: readonly string[];
+  /**
    * Other apps' URL schemes `LynxLinking.canOpenURL()` can ask about, e.g.
    * `["whatsapp", "instagram"]`. iOS answers only for the schemes in
    * Info.plist's LSApplicationQueriesSchemes, and Android 11 and later only
@@ -258,6 +266,8 @@ export type ResolvedApp = {
   readonly edgeToEdge: boolean;
   readonly permissions: Partial<Record<Permission, string>>;
   readonly deepLinkSchemes: readonly string[];
+  /** {@link NativeAppOptions.appLinkDomains} in lowercase, each once. */
+  readonly appLinkDomains: readonly string[];
   /**
    * {@link NativeAppOptions.canOpenURLSchemes} after
    * {@link ALWAYS_QUERIED_SCHEMES}, in lowercase, each once.
@@ -285,6 +295,14 @@ const APP_ID = /^[A-Za-z][A-Za-z0-9]*(\.[A-Za-z][A-Za-z0-9]*)+$/;
 /** Up to three period-separated integers, as App Store Connect requires. */
 const VERSION = /^\d+(\.\d+){0,2}$/;
 const SCHEME = /^[A-Za-z][A-Za-z0-9+.-]*$/;
+/**
+ * A host name of two labels or more, optionally after `*.` for its
+ * subdomains, as both the `applinks:` entitlement and an intent filter's
+ * `android:host` take it. No scheme, port or path: iOS takes a port only in
+ * its developer mode, and the site's file chooses the paths.
+ */
+const APP_LINK_DOMAIN =
+  /^(\*\.)?([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]([a-z0-9-]*[a-z0-9])?$/;
 /**
  * The colors both CSS and Android resources read the same way. Android also
  * takes `#ARGB` and `#AARRGGBB`, but CSS reads 4 and 8 digits with the alpha
@@ -407,6 +425,21 @@ export const resolveAppOptions = (
     }
   }
 
+  // Host names are case-insensitive, so "Example.com" and "example.com" are
+  // one.
+  const appLinkDomains = [
+    ...new Set(
+      (options.appLinkDomains ?? []).map((domain) => domain.toLowerCase()),
+    ),
+  ];
+  for (const domain of appLinkDomains) {
+    if (!APP_LINK_DOMAIN.test(domain)) {
+      throw new NativeConfigError(
+        `appLinkDomains entry "${domain}" is not a domain. Give the host name alone, without https:// or a path, e.g. "example.com", or "*.example.com" for its subdomains.`,
+      );
+    }
+  }
+
   const userQueriedSchemes = options.canOpenURLSchemes ?? [];
   for (const scheme of userQueriedSchemes) {
     if (!SCHEME.test(scheme)) {
@@ -483,6 +516,7 @@ export const resolveAppOptions = (
     edgeToEdge: options.edgeToEdge ?? true,
     permissions,
     deepLinkSchemes,
+    appLinkDomains,
     canOpenURLSchemes,
     shortcuts,
     icon: options.icon,

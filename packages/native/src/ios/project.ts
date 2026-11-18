@@ -30,7 +30,8 @@ const ORIENTATIONS: Record<Orientation, readonly string[]> = {
  * Writes the app options into the iOS template: build settings go in
  * Config/App.xcconfig (which App.xcodeproj reads), Info.plist entries go
  * between the template's `angular-lynx:info` markers, the shortcuts
- * become App/AppShortcuts.swift, and the icon and the splash go in the asset
+ * become App/AppShortcuts.swift, the app link domains become
+ * Config/App.entitlements, and the icon and the splash go in the asset
  * catalog.
  */
 export const iosGenerator: PlatformGenerator = {
@@ -56,6 +57,14 @@ export const iosGenerator: PlatformGenerator = {
       );
     }
 
+    // In Config/, beside the xcconfig that points the target at it, rather
+    // than in App/: Xcode would copy a file in that synchronized folder into
+    // the app as a resource. An app without app links signs with no
+    // entitlements, as the template does.
+    if (app.appLinkDomains.length > 0) {
+      writeFileSync(path.join(dir, ENTITLEMENTS), entitlementsPlist(app));
+    }
+
     if (app.icon) {
       const icon = path.resolve(projectRoot, app.icon);
       const size = readPngSize(icon);
@@ -75,6 +84,9 @@ export const iosGenerator: PlatformGenerator = {
   bundleDir: (dir) => path.join(dir, 'LynxBundle'),
 };
 
+/** The app's entitlements, from the project folder (see xcconfig). */
+const ENTITLEMENTS = 'Config/App.entitlements';
+
 /**
  * xcconfig values can't be quoted; `$` and `//` would start a variable or a comment.
  */
@@ -92,6 +104,39 @@ export const xcconfig = (app: ResolvedApp): string =>
     `MARKETING_VERSION = ${app.version}`,
     `CURRENT_PROJECT_VERSION = ${app.buildNumber}`,
     `DEVELOPMENT_TEAM = ${app.ios.teamId ?? ''}`,
+    // Only with app links: the only entitlement the generator writes.
+    ...(app.appLinkDomains.length > 0
+      ? [`CODE_SIGN_ENTITLEMENTS = ${ENTITLEMENTS}`]
+      : []),
+    '',
+  ].join('\n');
+
+/**
+ * Config/App.entitlements: the Associated Domains entitlement, which has iOS
+ * open the app for an https link to one of the domains (a Universal Link),
+ * once the domain's apple-app-site-association names the app (see
+ * appLinkFiles). iOS fetches that file through Apple's CDN when the app is
+ * installed.
+ *
+ * Signing it needs a team in the paid Apple Developer Program: a free
+ * Personal Team can't sign Associated Domains. The simulator app needs no
+ * team.
+ */
+export const entitlementsPlist = (app: ResolvedApp): string =>
+  [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
+    '<!-- Written by @blotch/angular-lynx-native from appLinkDomains in angular.json. -->',
+    '<plist version="1.0">',
+    '<dict>',
+    '\t<key>com.apple.developer.associated-domains</key>',
+    '\t<array>',
+    ...app.appLinkDomains.map(
+      (domain) => `\t\t<string>applinks:${escapeXml(domain)}</string>`,
+    ),
+    '\t</array>',
+    '</dict>',
+    '</plist>',
     '',
   ].join('\n');
 

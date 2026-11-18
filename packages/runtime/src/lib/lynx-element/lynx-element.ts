@@ -59,6 +59,7 @@ import {
 } from './layout';
 import { POINTER_EVENT_NAMES, PointerEventSource } from './pointer-events';
 import { setPendingClassWriter } from './class-writes';
+import { setScriptStyleWriter } from './script-styles';
 import { noteReleased, scheduleCollection } from './collect-garbage';
 import { removeNativeHandler } from './remove-native-handler';
 import { dropsTap, WebLongPress } from './web-long-press';
@@ -947,6 +948,14 @@ export class LynxElement implements BaseLynxElement {
       // the element module writes the cycle's classes first (see
       // class-writes.ts).
       setPendingClassWriter(() => LynxElement.commitPendingClasses());
+      // A main-thread script's inline styles go through the element's
+      // LynxElement, as its [style.x] bindings do (see script-styles.ts).
+      setScriptStyleWriter((ref, styles) => {
+        const target = LynxElement.#registered(__GetElementUniqueID(ref));
+        if (!target) return false;
+        target.#setScriptStyles(styles);
+        return true;
+      });
     }
     this.#nativeRef = element;
     // Register as the canonical wrapper for this native ref. #canonicalFor()
@@ -1366,6 +1375,22 @@ export class LynxElement implements BaseLynxElement {
     if (LAYOUT_STYLES.has(key)) this.#layoutChanged();
     scheduleSettleFlush();
   }
+  /**
+   * Sets the inline styles a main-thread script set on this element (see
+   * script-styles.ts). They go with the `[style.x]` bindings' styles, so
+   * whichever was set last wins, as a script's `element.style` write and a
+   * binding do on the web, and they're kept when the whole inline style is
+   * written again. An empty or null value removes the style, as the DOM's
+   * `style.setProperty()` does.
+   */
+  #setScriptStyles(styles: Record<string, string | null | undefined>): void {
+    for (const key in styles) {
+      const value = styles[key];
+      if (value == null || value === '') this.removeStyle(key);
+      else this.setStyle(key, value);
+    }
+  }
+
   setInlineStyles(inlineStyle: string): void {
     // A `style="display: block"` lays out as Lynx's `linear`, as a
     // `[style.display]` binding does (see setStyle). Angular passes null when

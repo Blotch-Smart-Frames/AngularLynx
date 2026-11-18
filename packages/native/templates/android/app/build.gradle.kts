@@ -158,7 +158,7 @@ dependencies {
     implementation("com.facebook.fresco:animated-webp:$frescoVersion")
     implementation("com.facebook.fresco:webpsupport:$frescoVersion")
     implementation("com.facebook.fresco:animated-base:$frescoVersion")
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.1")
 
     // XElement: <input>, <textarea>, <overlay>, <svg>, <blur-view>,
     // <viewpager>, <refresh>, the <scroll-coordinator> family, <webview> and

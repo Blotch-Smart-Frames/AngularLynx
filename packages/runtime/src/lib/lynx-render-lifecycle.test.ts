@@ -62,4 +62,16 @@ describe('lynx-render-lifecycle', () => {
     m.setInsideChangeDetection(false);
     expect(m.isInsideChangeDetection()).toBe(false);
   });
+
+  it('is rendering the page from renderPage until the first render completes', async () => {
+    const m = await load();
+    expect(m.isRenderingPage()).toBe(false);
+    m.markRenderingPage();
+    expect(m.isRenderingPage()).toBe(true);
+    m.markFirstRenderComplete();
+    expect(m.isRenderingPage()).toBe(false);
+    // A hot update's bootstrap gets renderPage again, after the first render.
+    m.markRenderingPage();
+    expect(m.isRenderingPage()).toBe(false);
+  });
 });

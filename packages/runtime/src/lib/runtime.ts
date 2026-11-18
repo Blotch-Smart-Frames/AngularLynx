@@ -1,7 +1,10 @@
 import type { ApplicationConfig, ApplicationRef, Type } from '@angular/core';
 import { bootstrapApplication as ngBootstrapApplication } from '@angular/platform-browser';
 import { firstValueFrom } from 'rxjs';
-import { markFirstRenderComplete } from './lynx-render-lifecycle';
+import {
+  markFirstRenderComplete,
+  markRenderingPage,
+} from './lynx-render-lifecycle';
 
 // Side-effect imports install the runtime's global environment before bootstrap.
 // Order mirrors the original monolithic runtime.ts: crash diagnostics first, then
@@ -111,6 +114,9 @@ const bootstrapOnMainThread = async (
   // Wait for Lynx's renderPage callback. After the first boot, pageReady has
   // already fired, and replays it.
   await firstValueFrom(pageReady);
+  // Inside renderPage() from here until markFirstRenderComplete() below (see
+  // isRenderingPage).
+  markRenderingPage();
 
   const appRef = await ngBootstrapApplication(rootComponent, options);
   // Signal that the initial render is done. This is the point where control

@@ -126,7 +126,7 @@ android {
 }
 
 dependencies {
-    implementation("androidx.activity:activity-ktx:1.10.1")
+    implementation("androidx.activity:activity-ktx:1.13.0")
     implementation("androidx.core:core-ktx:1.16.0")
     // The splash screen (MainActivity, themes.xml): Android 12's on every
     // version the app runs on, and kept up until the app's first screen is

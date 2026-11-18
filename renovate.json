@@ -46,6 +46,11 @@
       "description": "Each @ng-native package peers on the others at its exact version, so one moved alone fails the install (ERESOLVE). They move together.",
       "matchPackageNames": ["@ng-native/**"],
       "groupName": "ng-native"
+    },
+    {
+      "description": "The angular-lynx benchmark installs @blotch/* from tarballs that scripts/use-local-packages.mjs packs into .local-packages/, which is git-ignored, so Renovate never has them and every lockfile update there fails (#509). Its versions move by hand: copy the bumped entries from the root lockfile, or rerun the script after a root build.",
+      "matchFileNames": ["benchmarks/apps/angular-lynx/**"],
+      "enabled": false
     }
   ]
 }

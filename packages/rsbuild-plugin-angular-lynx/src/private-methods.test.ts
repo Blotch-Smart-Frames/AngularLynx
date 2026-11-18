@@ -6,10 +6,9 @@ import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import * as ts from 'typescript';
 import { describe, expect, it } from 'vitest';
-import { LAYERS, applyLayers } from './layers.js';
+import { LAYERS, applyLayers, isAngularLynxPackageModule } from './layers.js';
 import {
   hidePrivateMethods,
-  isAngularLynxPackageModule,
   isAppModule,
   renamePrivateMethods,
   transformPrivateMethods,
@@ -69,6 +68,52 @@ const PER_INSTANCE_METHOD =
  * runs the pass on.
  */
 const FIXTURES: Record<string, string> = {
+  'private fields, out of keys, JSON and spreads': `
+    class Point {
+      #x = 1;
+      y = 2;
+      #label = 'p';
+      read() { return [this.#x, this.#label]; }
+      move(by) { this.#x += by; this.#label ??= 'q'; return this.#x; }
+    }
+    const point = new Point();
+    const spread = { ...point };
+    const keys = [];
+    for (const key in point) keys.push(key);
+    [point.move(2), point.read(), Object.keys(point), JSON.stringify(point), Object.keys(spread), keys];
+  `,
+  'field initializers in order, public and private': `
+    class Order {
+      a = 1;
+      #b = this.a + 1;
+      c = this.#b + 1;
+      #d = this.c * 2;
+      all() { return [this.a, this.#b, this.c, this.#d]; }
+    }
+    new Order().all();
+  `,
+  "a subclass's private field with its base's name": `
+    class Base { #v = 'base'; base() { return this.#v; } }
+    class Sub extends Base {
+      #v = 'sub';
+      sub() { return this.#v; }
+      both(other) { return [this.#v, other.#v]; }
+    }
+    const sub = new Sub();
+    [sub.base(), sub.sub(), sub.both(new Sub())];
+  `,
+  'private fields through optional chaining, on other instances and in static code': `
+    class Node {
+      #next = null;
+      #value;
+      constructor(value) { this.#value = value; }
+      link(next) { this.#next = next; return this; }
+      second() { return this.#next?.#value; }
+      static valueOf(node) { return node?.#value; }
+    }
+    const list = new Node(1).link(new Node(2));
+    [list.second(), new Node(3).second(), Node.valueOf(list), Node.valueOf(null)];
+  `,
   'instance methods': `
     class Counter {
       #count = 0;
@@ -882,9 +927,33 @@ describe('renamePrivateMethods', () => {
     expect(code).toMatch(/async \*__ag_[0-9a-f]{6}0\(\)/);
   });
 
-  it('leaves private fields and static private methods alone', () => {
+  it('keys an instance private field by a symbol', () => {
+    const code = rename(
+      'class A { #f = 1; g(o) { return this.#f + o?.#f + this\n  .#f; } }',
+    );
+    const [name] = renamed(code, 'f');
+    expect(code).toBe(
+      `var ${name} = Symbol("f"); class A { [${name}] = 1; g(o) { return this[${name}] + o?.[${name}] + this\n  [${name}]; } }`,
+    );
+  });
+
+  it('declares the symbols after a hashbang', () => {
+    const code = rename(
+      '#!/usr/bin/env node\nclass A { #f = 1; g() { return this.#f; } }',
+    );
+    expect(code).toMatch(
+      /^#!\/usr\/bin\/env node\nvar __f_[0-9a-f]{6}0 = Symbol\("f"\); class A/,
+    );
+  });
+
+  it('leaves static private members, auto-accessors and decorated fields alone', () => {
     const code =
-      'class A { #f = 1; static #s() {} static #t = 2; g() { return this.#f + A.#t; } h() { A.#s(); } }';
+      'class A { static #s() {} static #t = 2; accessor #a = 3; @tracked #d = 4; g() { A.#s(); return A.#t + this.#a + this.#d; } }';
+    expect(rename(code)).toBe(code);
+  });
+
+  it("leaves a field with a use it can't key", () => {
+    const code = 'class A { #f = 1; g() { return this./* f */ #f; } }';
     expect(rename(code)).toBe(code);
   });
 
@@ -997,7 +1066,7 @@ describe('renamePrivateMethods', () => {
     const plain = 'export const a = 1;';
     expect(rename(plain)).toBe(plain);
     const colors =
-      "const c = '#fff'; class A { #f = 1; m() { return this.#f; } }";
+      "const c = '#fff'; class A { f = 1; m() { return this.f; } }";
     expect(rename(colors)).toBe(colors);
   });
 
@@ -1092,7 +1161,18 @@ describe('renamePrivateMethods and hidePrivateMethods with an inline source map'
    * `code` with the private names put back.
    */
   const withPrivateNames = (code: string): string =>
-    code.replace(/__(\w+?)_[0-9a-f]{6}\d+/g, '#$1');
+    code
+      // A field's: `[__x_<key>0]` for `#x` in its declaration, and for `.#x`
+      // in a use, whose `.` goes (see samePrivateNames).
+      .replace(/\[__(\w+?)_[0-9a-f]{6}\d+\]/g, '#$1')
+      // A method's.
+      .replace(/__(\w+?)_[0-9a-f]{6}\d+/g, '#$1');
+
+  /**
+   * `code` with a field's `.#x` written `#x`, as withPrivateNames writes
+   * both. A segment can start at the `.`, which the field's key replaces.
+   */
+  const samePrivateNames = (code: string): string => code.replace(/\.#/g, '#');
 
   it("keeps TypeScript's map pointing at the same code", () => {
     const source = [
@@ -1129,9 +1209,9 @@ describe('renamePrivateMethods and hidePrivateMethods with an inline source map'
       segments.forEach(([column], index) => {
         const shifted = after[line]![index]![0]!;
         if (shifted !== column) moved++;
-        expect(withPrivateNames(outputLines[line]!.slice(shifted))).toBe(
-          inputLines[line]!.slice(column),
-        );
+        expect(
+          samePrivateNames(withPrivateNames(outputLines[line]!.slice(shifted))),
+        ).toBe(samePrivateNames(inputLines[line]!.slice(column)));
       }),
     );
     expect(moved).toBeGreaterThan(0);
@@ -1487,7 +1567,7 @@ describe("over the runtime's build", () => {
     }
   };
 
-  it('defines no private method on each LynxElement', async () => {
+  it('defines no private method or field on each LynxElement', async () => {
     const before = await compileRuntime(false);
     const after = await compileRuntime(true);
 
@@ -1502,8 +1582,10 @@ describe("over the runtime's build", () => {
     // 41 private methods, each defined on every instance until now.
     expect(methodSites(before.main)).toBeGreaterThan(30);
     expect(methodSites(after.main)).toBe(0);
-    // The private fields stay properties (issue #237).
-    expect(fieldSites(after.main)).toBe(fieldSites(before.main));
+    // Its private fields are keyed by symbols, not each defined with a
+    // descriptor.
+    expect(fieldSites(before.main)).toBeGreaterThan(30);
+    expect(fieldSites(after.main)).toBe(0);
     expect(after.main).not.toMatch(PER_INSTANCE_METHOD);
 
     const element = createLynxElement(before.fesm, before.main);
@@ -1511,7 +1593,10 @@ describe("over the runtime's build", () => {
     expect(
       Object.getOwnPropertyNames(element).length -
         Object.getOwnPropertyNames(renamedElement).length,
-    ).toBe(methodSites(before.main));
+    ).toBe(methodSites(before.main) + fieldSites(before.main));
+    expect(Object.getOwnPropertySymbols(renamedElement)).toHaveLength(
+      fieldSites(before.main),
+    );
     expect(Object.keys(renamedElement)).toEqual(Object.keys(element));
   }, 60_000);
 });

@@ -33,7 +33,7 @@
     "prettier": "3.10.1",
     "tailwindcss": "4.3.5",
     "typescript": "6.0.3",
-    "vitest": "5.1.0"
+    "vitest": "5.1.1"
   },
   "overrides": {
     "@blotch/rsbuild-plugin-angular-lynx": "file:.local-packages/blotch-rsbuild-plugin-angular-lynx-22.2.26-bd9ec260.tgz",

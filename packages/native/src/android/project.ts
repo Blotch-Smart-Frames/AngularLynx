@@ -110,19 +110,48 @@ export const permissionEntries = (app: ResolvedApp): string => {
   ].join('\n');
 };
 
+/**
+ * The intent filters for the links that open the app: one for the
+ * `deepLinkSchemes`, and one for https links to the `appLinkDomains`.
+ *
+ * The second is an App Link: `autoVerify` has Android check, when the app is
+ * installed, that each domain's assetlinks.json names the app and its
+ * signing key (see appLinkFiles), and then open its links in the app with
+ * no chooser. Android 12 and later open an unverified domain's links in the
+ * browser. The `<data>` elements of one filter combine, so the scheme goes
+ * with every host.
+ */
 export const deepLinkEntries = (app: ResolvedApp): string =>
-  app.deepLinkSchemes.length === 0
-    ? ''
-    : [
-        '<intent-filter>',
-        '    <action android:name="android.intent.action.VIEW" />',
-        '    <category android:name="android.intent.category.DEFAULT" />',
-        '    <category android:name="android.intent.category.BROWSABLE" />',
-        ...app.deepLinkSchemes.map(
-          (scheme) => `    <data android:scheme="${escapeXml(scheme)}" />`,
-        ),
-        '</intent-filter>',
-      ].join('\n');
+  [
+    ...(app.deepLinkSchemes.length === 0
+      ? []
+      : [
+          '<intent-filter>',
+          ...VIEW_INTENT,
+          ...app.deepLinkSchemes.map(
+            (scheme) => `    <data android:scheme="${escapeXml(scheme)}" />`,
+          ),
+          '</intent-filter>',
+        ]),
+    ...(app.appLinkDomains.length === 0
+      ? []
+      : [
+          '<intent-filter android:autoVerify="true">',
+          ...VIEW_INTENT,
+          '    <data android:scheme="https" />',
+          ...app.appLinkDomains.map(
+            (domain) => `    <data android:host="${escapeXml(domain)}" />`,
+          ),
+          '</intent-filter>',
+        ]),
+  ].join('\n');
+
+/** What an intent filter for links a browser can follow opens on. */
+const VIEW_INTENT = [
+  '    <action android:name="android.intent.action.VIEW" />',
+  '    <category android:name="android.intent.category.DEFAULT" />',
+  '    <category android:name="android.intent.category.BROWSABLE" />',
+];
 
 /**
  * The apps LinkingModule's canOpenURL can see from Android 11: those that

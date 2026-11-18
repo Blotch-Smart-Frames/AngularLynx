@@ -314,6 +314,11 @@ esac`,
         /^Xcode couldn't make a provisioning profile for team TEAM/,
       );
       process.env['XCODEBUILD_FAILS'] =
+        'error: Cannot create a iOS App Development provisioning profile for "com.example.myapp". Personal development teams, including "Jane Doe", do not support the Associated Domains capability.\nerror: No profiles for \'com.example.myapp\' were found';
+      await expect(build()).rejects.toThrow(
+        /^Team TEAM is a free Personal Team, which can't sign the Associated Domains capability that appLinkDomains adds\./,
+      );
+      process.env['XCODEBUILD_FAILS'] =
         'xcodebuild: error: Timed out waiting for all destinations matching the provided destination specifier to become available\n{ platform:iOS, name:Dolan’s iPhone, error:Dolan’s iPhone needs to be unlocked to enable development services Please unlock the device. }';
       await expect(build()).rejects.toThrow(
         /^Dolan’s iPhone is locked\. Unlock it, keep it unlocked until the app opens, and build again\./,

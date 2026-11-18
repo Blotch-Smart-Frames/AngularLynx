@@ -15,6 +15,7 @@ import { TEMPLATES_DIR } from '../generate.ts';
 import { resolveAppOptions } from '../options.ts';
 import {
   appShortcutsSwift,
+  entitlementsPlist,
   infoPlistEntries,
   iosGenerator,
   LOCAL_NETWORK_REASON,
@@ -61,6 +62,29 @@ describe('xcconfig', () => {
         'MARKETING_VERSION = 1.2.0',
         'CURRENT_PROJECT_VERSION = 42',
         'DEVELOPMENT_TEAM = ABCDE12345',
+      ].join('\n'),
+    );
+  });
+});
+
+describe('entitlements', () => {
+  it('points the target at them only with app link domains', () => {
+    expect(xcconfig(app())).not.toContain('CODE_SIGN_ENTITLEMENTS');
+    expect(xcconfig(app({ appLinkDomains: ['example.com'] }))).toContain(
+      'CODE_SIGN_ENTITLEMENTS = Config/App.entitlements\n',
+    );
+  });
+
+  it('associate the app with each domain', () => {
+    expect(
+      entitlementsPlist(app({ appLinkDomains: ['example.com', '*.a.b'] })),
+    ).toContain(
+      [
+        '\t<key>com.apple.developer.associated-domains</key>',
+        '\t<array>',
+        '\t\t<string>applinks:example.com</string>',
+        '\t\t<string>applinks:*.a.b</string>',
+        '\t</array>',
       ].join('\n'),
     );
   });
@@ -283,6 +307,20 @@ describe('iosGenerator', () => {
     expect(plist.match(/UILaunchScreen/g)).toHaveLength(1);
     expect(plist).toContain('<key>LSApplicationQueriesSchemes</key>');
     expect(iosGenerator.bundleDir(dir)).toBe(path.join(dir, 'LynxBundle'));
+  });
+
+  it('writes the entitlements beside the xcconfig, only with app link domains', () => {
+    const entitlements = path.join(dir, 'Config/App.entitlements');
+    iosGenerator.configure(dir, app(), dir);
+    expect(existsSync(entitlements)).toBe(false);
+
+    iosGenerator.configure(dir, app({ appLinkDomains: ['example.com'] }), dir);
+    expect(readFileSync(entitlements, 'utf8')).toContain(
+      '<string>applinks:example.com</string>',
+    );
+    expect(
+      readFileSync(path.join(dir, 'Config/App.xcconfig'), 'utf8'),
+    ).toContain('CODE_SIGN_ENTITLEMENTS = Config/App.entitlements');
   });
 
   it('lets the app draw at 120 fps on a ProMotion iPhone', () => {

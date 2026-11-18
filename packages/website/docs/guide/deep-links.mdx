@@ -55,6 +55,42 @@ export class EventDetail {
 
 Guards, resolvers and redirects run as for any navigation, so a link to a screen behind sign-in goes to your sign-in page if the guard sends it there.
 
+## Open the app from your website's links
+
+A scheme only works where the phone already knows the app is installed. Links in email, chat and search results are `https://` links, and a scheme link has no website to fall back to. To have your own site's links open the app, list its domains in `appLinkDomains`:
+
+```json title="angular.json"
+"options": {
+  "appName": "Tickets",
+  "appId": "com.example.tickets",
+  "deepLinkSchemes": ["tickets"],
+  "appLinkDomains": ["tickets.example.com"],
+  "ios": { "teamId": "ABCDE12345" }
+}
+```
+
+`https://tickets.example.com/events/jazz-night` then opens the app on `/events/jazz-night`, the route after the host, the same as `tickets://events/jazz-night`. Where the app isn't installed, the link opens the website as before. `*.example.com` covers every subdomain of `example.com`. These are Universal Links on iOS and App Links on Android:
+
+- **iOS** gets the Associated Domains entitlement. Signing it takes a team in the paid Apple Developer Program: a free Personal Team can't, so `--run --device` fails with one, and says so.
+- **Android** gets an intent filter that Android verifies when the app is installed. Android 12 and later open a domain's links in the browser until it's verified.
+
+The phone only trusts the domain once the domain names the app. `ng build --platform` writes the file it reads beside the app, ready to upload:
+
+| Platform | File                                              | Names the app by                                                           |
+| -------- | ------------------------------------------------- | -------------------------------------------------------------------------- |
+| iOS      | `dist/ios/.well-known/apple-app-site-association` | `ios.teamId` and `appId`                                                   |
+| Android  | `dist/android/.well-known/assetlinks.json`        | `appId` and the SHA-256 fingerprint of the certificate that signed the app |
+
+Serve each one at that path on every domain (for `*.example.com`, on `example.com`), over https, as `application/json` and with no redirect. iOS fetches it through Apple's servers when the app is installed, so a change can take a day to reach phones. Without `ios.teamId`, the iOS file has `TEAM_ID` where the team goes. The Android build reads the fingerprint from the app with the Android SDK's `apksigner`. An app installed from Google Play is signed with Google's key instead of your upload key, so add that key's fingerprint too, from Play Console → Test and release → App integrity → App signing.
+
+Every path on the domain opens the app. To leave some to the browser, narrow `components` in the iOS file on your site, or send those links back out with `provideDeepLinkRoute()` and [`LynxLinking.openURL()`](/api/angular-lynx/linking).
+
+To try one, install the app and open the link from Notes or Messages on an iPhone, or with `adb` on Android. `adb shell pm verify-app-links --re-verify com.example.tickets` checks the domain again after you upload the file.
+
+```sh
+adb shell am start -a android.intent.action.VIEW -d 'https://tickets.example.com/events/jazz-night'
+```
+
 ## Send a link somewhere else
 
 To change where links lead, provide a function that gets each one and returns the route to go to, or `null` to stay where the app is. It's Expo Router's `redirectSystemPath`:
@@ -153,10 +189,6 @@ it('shows the event a link opens while the app is open', async () => {
   expect(screen.getByText('Jazz Night')).toBeInTheDocument();
 });
 ```
-
-## What isn't there yet
-
-- **Universal links and App Links,** `https://` links to your website that open the app instead. They need the website to vouch for the app (an `apple-app-site-association` file, and `assetlinks.json` on Android), which `ng build --platform` doesn't set up.
 
 ## Related
 

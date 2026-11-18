@@ -9,6 +9,7 @@ import path from 'node:path';
 
 import { androidGenerator } from './android/project.ts';
 import { buildAndroid, resolveAndroidSigning } from './android/build.ts';
+import { writeAppLinkFile } from './app-links.ts';
 import { startAndroidDevice } from './android/run.ts';
 import { devBuildKey, recordDevBuild, reusableDevBuild } from './dev-build.ts';
 import {
@@ -244,6 +245,19 @@ export const buildNativeApp = async (
           development: !!devServer,
         });
   if (devKey) recordDevBuild(options.outputDir, devKey, artifacts);
+  // The file the app link domains serve, beside the app. Not for the
+  // development app: it's the store app's file, and the dev app's debug key
+  // isn't the key the store app is signed with.
+  if (!devServer) {
+    await writeAppLinkFile({
+      platform,
+      app,
+      outputDir: options.outputDir,
+      apk: artifacts.find((artifact) => artifact.endsWith('.apk')),
+      log,
+      warn: options.warn ?? log,
+    });
+  }
   await target?.launch(
     // The simulator's or the iPhone's .app or the .apk, not the .ipa or .aab
     // for the stores.

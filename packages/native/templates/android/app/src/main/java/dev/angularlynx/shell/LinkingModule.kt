@@ -31,8 +31,9 @@ import com.lynx.react.bridge.ReadableMap
  * done, `{ value }` for `canOpenURL`, or `{ error: "failed", message }`, as
  * the iOS module does.
  *
- * It also hands over the links with one of angular.json's `deepLinkSchemes`
- * that open the app. The one that starts it is MainActivity's `initialURL`
+ * It also hands over the links that open the app: those with one of
+ * angular.json's `deepLinkSchemes`, and App Links, https links to its
+ * `appLinkDomains`. The one that starts it is MainActivity's `initialURL`
  * global prop, which goes out before the bundle runs, so the router's first
  * screen is already the link's. One that arrives while the app is open
  * (MainActivity.onNewIntent) waits here, and the runtime's `LynxLinking`

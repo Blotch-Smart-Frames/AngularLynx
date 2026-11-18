@@ -2,13 +2,16 @@ import Lynx
 import SafariServices
 import UIKit
 
-/// The links with one of angular.json's `deepLinkSchemes` that opened the app.
+/// The links that opened the app: those with one of angular.json's
+/// `deepLinkSchemes`, and Universal Links, https links to its
+/// `appLinkDomains`.
 ///
 /// The one that starts the app arrives in the scene's connection options,
 /// before there's a LynxView: it becomes the `initialURL` global prop, which
 /// LynxViewController sends before the bundle runs, so the router's first
 /// screen is already the link's. One that arrives while the app is open
-/// (SceneDelegate's `scene(_:openURLContexts:)`) waits here, and the runtime's
+/// (SceneDelegate's `scene(_:openURLContexts:)` and `scene(_:continue:)`)
+/// waits here, and the runtime's
 /// `LynxLinking` takes it with `takeURLs` when it hears the `angularLynxURL`
 /// global event, and once as it starts listening. A link waits for as long
 /// as that takes, so one that arrives while Angular is still starting isn't

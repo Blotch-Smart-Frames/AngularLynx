@@ -1159,6 +1159,7 @@ describe('unit-test builder', () => {
       'splash',
       'permissions',
       'deepLinkSchemes',
+      'appLinkDomains',
       'canOpenURLSchemes',
       'shortcuts',
       'ios',

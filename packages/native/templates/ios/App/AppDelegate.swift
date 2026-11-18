@@ -65,10 +65,16 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     options connectionOptions: UIScene.ConnectionOptions
   ) {
     guard let windowScene = scene as? UIWindowScene else { return }
-    // A link with one of the app's schemes that started it. It comes only
-    // here, not to scene(_:openURLContexts:) too, and before the LynxView
-    // exists, so it goes out with the first global props (LinkCenter).
-    LinkCenter.shared.initialURL = connectionOptions.urlContexts.first?.url.absoluteString
+    // A link that started the app: one with one of the app's schemes, or a
+    // Universal Link (an https link to one of angular.json's appLinkDomains),
+    // which comes as a web browsing activity. It comes only here, not to
+    // scene(_:openURLContexts:) or scene(_:continue:) too, and before the
+    // LynxView exists, so it goes out with the first global props
+    // (LinkCenter).
+    LinkCenter.shared.initialURL =
+      (connectionOptions.urlContexts.first?.url
+      ?? connectionOptions.userActivities.lazy.compactMap(Self.universalLink).first)?
+      .absoluteString
     let window = UIWindow(windowScene: windowScene)
     window.rootViewController = LynxViewController()
     window.makeKeyAndVisible()
@@ -82,6 +88,21 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     for context in URLContexts {
       LinkCenter.shared.open(context.url)
     }
+  }
+
+  // A Universal Link while the app is open: the same as a link with one of
+  // its schemes.
+  func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
+    if let url = Self.universalLink(userActivity) {
+      LinkCenter.shared.open(url)
+    }
+  }
+
+  /// The https link a Universal Link's activity carries. iOS hands the app
+  /// one for a link to a domain in its Associated Domains entitlement, once
+  /// that domain's apple-app-site-association names the app.
+  private static func universalLink(_ activity: NSUserActivity) -> URL? {
+    activity.activityType == NSUserActivityTypeBrowsingWeb ? activity.webpageURL : nil
   }
 
   // Out of sight, a collection's pause can't show, and the memory it frees

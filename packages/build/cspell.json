@@ -1,5 +1,13 @@
 {
   "import": ["../../cspell.json"],
-  "words": ["lcovonly", "myapp", "RRGGBB", "teardowns", "widthxheight", "xlif"],
+  "words": [
+    "assetlinks",
+    "lcovonly",
+    "myapp",
+    "RRGGBB",
+    "teardowns",
+    "widthxheight",
+    "xlif"
+  ],
   "ignorePaths": ["coverage", "dist"]
 }

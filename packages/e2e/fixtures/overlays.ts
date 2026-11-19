@@ -217,16 +217,19 @@ export class OverlaysRoute implements OnDestroy {
    * button is tapped.
    */
   openPortalLater(): void {
-    this.#portalTimer = setTimeout(
-      () =>
-        this.#openPortal(() => {
-          this.#portalTimer = setTimeout(
-            () => this.#closePortal(),
-            PORTAL_DELAY_MS,
-          );
-        }),
-      PORTAL_DELAY_MS,
+    this.#later(() =>
+      this.#openPortal(() => this.#later(() => this.#closePortal())),
     );
+  }
+
+  /**
+   * Runs `fn` after PORTAL_DELAY_MS, in place of anything still waiting: a
+   * second tap within the delay would otherwise leave a timer ngOnDestroy
+   * can't cancel, which could open a portal after the page has gone.
+   */
+  #later(fn: () => void): void {
+    clearTimeout(this.#portalTimer);
+    this.#portalTimer = setTimeout(fn, PORTAL_DELAY_MS);
   }
 
   #openPortal(close: () => void): void {

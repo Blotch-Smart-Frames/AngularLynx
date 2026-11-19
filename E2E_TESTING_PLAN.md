@@ -184,7 +184,7 @@ Set `CI=true` and `NG_CLI_ANALYTICS=false`. CI has no terminal attached, so `ng 
    - `dolan init --yes` and `dolan add` with every component (with Tailwind), then `ng test --coverage`: the tests dolan copies pass and cover every copied component and theme file 100%.
    - `ng generate @blotch/angular-lynx:add-i18n`, then build.
    - Tailwind is added by `ng add` by default. Also cover `ng add ... --tailwind=false` in the nightly matrix.
-6. **Smoke-test the dev server:** start `npm start` in the background, wait for "ready", request the bundle URL, then stop it. The dev server takes code paths that `build` doesn't (watch mode, the Angular rebuild coordinator).
+6. **Smoke-test the dev server:** start `npm start` in the background, wait for "ready", request the bundle URL, then stop it. The dev server takes code paths that `build` doesn't (watch mode, the Angular rebuild coordinator). It also posts a `LynxLogger` entry and reads it back from `.dev-logs`, and asks for the web preview page as Chrome and as Safari: the page must stay cross-origin isolated, with `credentialless` for Chrome (so images from other servers load) and `require-corp` for Safari.
 7. **On failure,** upload the generated app (without `node_modules`), the Verdaccio log, npm's debug logs and the build output as workflow artifacts.
 
 ## Layer 3: Render the app in a browser

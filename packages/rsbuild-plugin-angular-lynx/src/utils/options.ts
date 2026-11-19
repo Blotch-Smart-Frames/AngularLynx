@@ -16,6 +16,15 @@ export type PluginAngularLynxOptions = {
   enableA11y?: boolean;
   enableAccessibilityElement?: boolean;
   enableCSSInheritance?: boolean;
+  /**
+   * Restyle the elements a combinator selector matches when a class or ID
+   * it depends on changes, as a browser does: when `page` gains the `dark`
+   * class, every `page.dark .card` restyles. On by default, as in React
+   * Lynx. With `false`, Lynx matches combinators only when an element's own
+   * classes are set, which saves the work of finding the elements to
+   * restyle, and `dark:` classes keep the appearance the screen first
+   * rendered in.
+   */
   enableCSSInvalidation?: boolean;
   enableCSSSelector?: boolean;
   /**
@@ -137,7 +146,13 @@ export const normalizeOptions = (
     enableA11y: true,
     enableAccessibilityElement: false,
     enableCSSInheritance: false,
-    enableCSSInvalidation: false,
+    // True like React Lynx. Without it, a descendant selector such as
+    // `page.dark .card`, which `dark:` classes compile to (color-scheme.ts),
+    // matched only when the element's own classes were set, so the screen
+    // didn't follow the phone's appearance until it was rebuilt. Native Lynx
+    // looks up only the rules that depend on the changed class, and walks
+    // the subtree only when one does.
+    enableCSSInvalidation: true,
     enableCSSSelector: true,
     // Default ON, unlike React Lynx (which defaults false). The native engine
     // only processes __SetGestureDetector calls when this page-config flag is

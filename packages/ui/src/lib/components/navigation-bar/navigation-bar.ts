@@ -8,6 +8,7 @@ import {
   computed,
   inject,
   input,
+  output,
   signal,
 } from '@angular/core';
 import { ROUTES, Router } from '@angular/router';
@@ -24,9 +25,12 @@ import { cn } from '../../utils/cn';
 import { UiGlass } from '../glass/glass';
 import { type GlassDesign, injectGlassDesign } from '../glass/glass-design';
 import {
+  TITLE_CHEVRON_GAP,
   edgeFadeOverlay,
   injectBarState,
+  injectTitleMenuChevron,
   platformOf,
+  titleMenuPressStyle,
 } from '../toolbar/bar-scroll';
 import { UiToolbarItem } from '../toolbar/toolbar';
 
@@ -53,6 +57,17 @@ const ROW_PADDING: Readonly<Record<GlassDesign, number>> = {
 
 /** The space between a centered title and the controls beside it, in px. */
 const TITLE_GAP = 8;
+
+/**
+ * The chevron after a title that opens a menu, in px: about the title's type
+ * size in each design, which on Android is also Material's icon size. The
+ * large title's is larger, in the same proportion (see UiBarScroll).
+ */
+const TITLE_CHEVRON: Readonly<Record<GlassDesign, number>> = {
+  glass: 18,
+  frosted: 18,
+  material: 24,
+};
 
 /**
  * How the inline title comes in as the large title scrolls under the bar,
@@ -116,6 +131,20 @@ const historyOf = (injector: Injector): LynxLocationStrategy | null => {
  * With `largeTitle`, the title starts large at the top of the content, and
  * the bar shows it once it has scrolled under: iOS's large title, and
  * Material 3 Expressive's medium flexible app bar.
+ *
+ * With `titleMenu`, the title is a button with a chevron after it, wherever
+ * it's drawn, for a screen whose title chooses what it shows, such as an
+ * account or a calendar's month: iOS's title menu, and the dropdown title of
+ * a Material top app bar. The bar only says it was tapped (`titlePressed`);
+ * the menu or picker it opens is the app's.
+ *
+ * ```html
+ * <ui-navigation-bar
+ *   [title]="account().name"
+ *   titleMenu
+ *   (titlePressed)="chooseAccount()"
+ * />
+ * ```
  */
 @Component({
   selector: 'ui-navigation-bar',
@@ -177,12 +206,50 @@ const historyOf = (injector: Injector): LynxLocationStrategy | null => {
         [style]="titleBoxStyle()"
         [attr.accessibility-elements-hidden]="titleShown() ? null : true"
       >
-        <text
-          [text-maxline]="1"
-          accessibility-traits="header"
-          [class]="titleClass()"
-          >{{ title() }}</text
-        >
+        @if (titleMenu()) {
+          <!-- A title that opens a menu is one accessibility element, a
+               button named by the title: a <view> isn't one by default, so
+               screen readers would read only the text, with nothing to say
+               it opens anything. It stays the screen's heading where the
+               platform reads more than one trait.
+
+               The title shortens and the chevron keeps its width, so a
+               long title ends with "…" and the chevron still shows.
+
+               It dims under a finger from the touch's start. Touch events
+               for native and mouse events for the web preview, which sends
+               no touches for a cursor; a canceled touch (a scroll taking
+               over) and a cursor leaving release too. -->
+          <view
+            [class]="titleButtonClass()"
+            [style]="titleButtonStyle()"
+            accessibility-element="true"
+            accessibility-traits="button"
+            [accessibility-label]="title()"
+            [lynxAccessibilityTraits]="{ header: true }"
+            (bindtouchstart)="pressTitle(true)"
+            (bindtouchend)="pressTitle(false)"
+            (bindtouchcancel)="pressTitle(false)"
+            (bindmousedown)="pressTitle(true)"
+            (bindmouseup)="pressTitle(false)"
+            (bindmouseleave)="pressTitle(false)"
+            (bindtap)="tapTitle()"
+          >
+            <text [text-maxline]="1" [class]="titleClass()">{{ title() }}</text>
+            <svg
+              class="shrink-0"
+              [attr.content]="titleChevron()"
+              [style]="titleChevronStyle()"
+            />
+          </view>
+        } @else {
+          <text
+            [text-maxline]="1"
+            accessibility-traits="header"
+            [class]="titleClass()"
+            >{{ title() }}</text
+          >
+        }
       </view>
       <view
         [class]="trailingClass()"
@@ -208,6 +275,12 @@ export class UiNavigationBar {
    */
   readonly titleCentered = input(false, { transform: booleanAttribute });
   /**
+   * The title opens a menu, such as a picker of what the screen shows: it's
+   * a button, with a chevron after it, in the bar and as the large title.
+   * Open the menu on `titlePressed`.
+   */
+  readonly titleMenu = input(false, { transform: booleanAttribute });
+  /**
    * The previous screen's title, which the Back button shows beside its
    * chevron before iOS 26, and which screen readers say for it everywhere.
    */
@@ -225,6 +298,12 @@ export class UiNavigationBar {
    */
   readonly backButtonHidden = input(false, { transform: booleanAttribute });
   readonly userClass = input<string>('', { alias: 'class' });
+
+  /**
+   * Emits on a tap on the title, in the bar or as the large title, while
+   * `titleMenu` is set.
+   */
+  readonly titlePressed = output<void>();
 
   readonly #state = injectBarState();
   readonly #settings = inject(LynxAccessibilitySettings);
@@ -245,6 +324,9 @@ export class UiNavigationBar {
   protected readonly trailingWidth = signal(0);
   protected readonly titleWidth = signal(0);
 
+  /** A finger (or the mouse) is down on a title that opens a menu. */
+  protected readonly titlePressing = signal(false);
+
   /**
    * Whether there's a screen to go back to in the router's history: there
    * is after a navigation, and isn't on the first screen.
@@ -256,12 +338,15 @@ export class UiNavigationBar {
   );
 
   // What the scroll view under the bar makes room for: the bar below the
-  // status bar, and the large title at the top of its content.
+  // status bar, and the large title at the top of its content, which opens
+  // the title's menu as the bar's own title does.
   protected readonly attachment = this.#state.attach(
     this.#state.topBar,
     {
       height: computed(() => BAR_HEIGHT[this.design()]),
       largeTitle: computed(() => (this.largeTitle() ? this.title() : null)),
+      titleMenu: this.titleMenu,
+      titlePressed: () => this.titlePressed.emit(),
     },
     inject(DestroyRef),
   );
@@ -355,6 +440,16 @@ export class UiNavigationBar {
       : 'flex-row items-center flex absolute bottom-0 top-0 justify-center',
   );
 
+  /**
+   * How wide the title is on one line, with its menu's chevron: the copy
+   * measures only the text, and the chevron's size is the bar's to know.
+   */
+  readonly #titleExtent = computed(
+    () =>
+      this.titleWidth() +
+      (this.titleMenu() ? TITLE_CHEVRON_GAP + TITLE_CHEVRON[this.design()] : 0),
+  );
+
   protected readonly titleBoxStyle = computed(() => {
     const style: Record<string, string> = {
       opacity: this.titleShown() ? '1' : '0',
@@ -365,7 +460,7 @@ export class UiNavigationBar {
       const leading = padding + this.leadingWidth() + TITLE_GAP;
       const trailing = padding + this.trailingWidth() + TITLE_GAP;
       const centered = Math.max(leading, trailing);
-      const fits = this.titleWidth() <= this.rowWidth() - 2 * centered;
+      const fits = this.#titleExtent() <= this.rowWidth() - 2 * centered;
       style['left'] = `${fits ? centered : leading}px`;
       style['right'] = `${fits ? centered : trailing}px`;
     }
@@ -384,6 +479,33 @@ export class UiNavigationBar {
     ),
   );
 
+  /**
+   * A title that opens a menu is a touch target as tall as each platform
+   * asks: the bar's height on iOS, and Material's 48dp. The title stays
+   * where it is, centered in it.
+   */
+  protected readonly titleButtonClass = computed(() =>
+    cn(
+      'flex-row items-center flex',
+      this.#material() ? 'h-[48px]' : 'h-[44px]',
+    ),
+  );
+
+  protected readonly titleButtonStyle = computed(() =>
+    titleMenuPressStyle(this.titlePressing(), this.#animate()),
+  );
+
+  protected readonly titleChevron = injectTitleMenuChevron();
+
+  protected readonly titleChevronStyle = computed(() => {
+    const size = `${TITLE_CHEVRON[this.design()]}px`;
+    return {
+      width: size,
+      height: size,
+      'margin-left': `${TITLE_CHEVRON_GAP}px`,
+    };
+  });
+
   protected measureRow({ detail }: LynxEvent<LayoutChangeDetail>): void {
     this.rowWidth.set(detail.width);
   }
@@ -398,6 +520,18 @@ export class UiNavigationBar {
 
   protected measureTrailing({ detail }: LynxEvent<LayoutChangeDetail>): void {
     this.trailingWidth.set(detail.width);
+  }
+
+  /**
+   * While the large title shows, the bar's own title is still in the bar,
+   * faded out: a touch where it would be isn't one on the title.
+   */
+  protected pressTitle(down: boolean): void {
+    this.titlePressing.set(down && this.titleShown());
+  }
+
+  protected tapTitle(): void {
+    if (this.titleShown()) this.titlePressed.emit();
   }
 
   /**

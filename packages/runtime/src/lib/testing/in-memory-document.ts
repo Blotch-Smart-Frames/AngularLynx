@@ -10,6 +10,8 @@ export class InMemoryDocument implements LynxDocumentBase {
 
   constructor() {}
   createRootElement(): InMemoryElement {
+    // The same page every time, as on the main thread (see LynxDocument).
+    if (this.#page) return this.#page;
     const page = new InMemoryElement();
     page.tagName = 'page';
     page.setAttribute('tagName', 'page');

@@ -2,6 +2,7 @@ import type { RsbuildPlugin } from '@lynx-js/rspeedy';
 import { ANGULAR_CLI_CONTEXT_PLUGIN_NAME } from './angular-cli-context.js';
 import { applyAngularRules } from './angular.js';
 import { createBackgroundEntries } from './background-entry.js';
+import { applyColorScheme } from './color-scheme.js';
 import { applyCSS } from './css.js';
 import { applyDisplay } from './display.js';
 import { applyEntry } from './entry.js';
@@ -17,6 +18,8 @@ import { applyTailwind } from './tailwind.js';
 import { applyTextInheritance } from './text-inheritance.js';
 import { applyTypeSelectors } from './type-selectors.js';
 import { applyUnicodePropertyRegex } from './unicode-property-regex.js';
+import { applyWebPreviewIsolation } from './web-preview-isolation.js';
+import { applyWebPreviewReload } from './web-preview-reload.js';
 import {
   deprecatedOptionsIn,
   normalizeOptions,
@@ -45,6 +48,11 @@ export const pluginAngularLynx = (
       });
       applyCSS(api, normalizedOptions);
       applyTailwind(api);
+      // Turns `prefers-color-scheme` queries, which Tailwind's `dark:`
+      // writes, into rules under `page.dark` (see color-scheme.ts). After
+      // applyTailwind, so it runs after Tailwind 4's lowering at OnceExit,
+      // which moves the queries Tailwind nests in rules to the top level.
+      applyColorScheme(api);
       // After Tailwind, so it also sees the rules Tailwind writes.
       applyTypeSelectors(api);
       // Its PostCSS plugin visits declarations, which PostCSS does after
@@ -88,6 +96,10 @@ export const pluginAngularLynx = (
       applyGenerator(api);
       applySplitChunksRule(api, normalizedOptions);
       applyDevLogger(api);
+      applyWebPreviewIsolation(api);
+      // Reloads the web preview after each rebuild, which can't take hot
+      // updates (see web-preview-reload.ts).
+      applyWebPreviewReload(api);
       await angularRules;
     },
   };

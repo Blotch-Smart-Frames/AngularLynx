@@ -14,6 +14,7 @@ import {
   provideRouter,
 } from '@blotch/angular-lynx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
 import { provideGlass } from '../glass/glass-design';
 import { UiBarScroll, UiBarState } from '../toolbar/bar-scroll';
 import { UiToolbarItem } from '../toolbar/toolbar';
@@ -57,6 +58,8 @@ const routes: Routes = [
       [title]="title()"
       [largeTitle]="largeTitle()"
       [titleCentered]="titleCentered()"
+      [titleMenu]="titleMenu()"
+      (titlePressed)="titlePressed()"
       [backLabel]="backLabel()"
       [backRoute]="backRoute()"
       [backButtonHidden]="backButtonHidden()"
@@ -72,12 +75,19 @@ class BarHost {
   readonly title = signal('Notes');
   readonly largeTitle = signal(false);
   readonly titleCentered = signal(false);
+  readonly titleMenu = signal(false);
+  /** How many times the title's menu was asked for. */
+  readonly titlePresses = signal(0);
   readonly backLabel = signal('Back');
   readonly backRoute = signal<string | undefined>(undefined);
   readonly backButtonHidden = signal(false);
   readonly barClass = signal('');
   readonly scroll = signal(false);
   readonly bar = viewChild.required(UiNavigationBar);
+
+  titlePressed(): void {
+    this.titlePresses.update((presses) => presses + 1);
+  }
 }
 
 /** Accessibility settings a test can change, as the host app would. */
@@ -90,6 +100,9 @@ const settings = {
 const IOS_26 = { platform: 'iOS', osVersion: '26.0' };
 const IOS_18 = { platform: 'iOS', osVersion: '18.5' };
 const ANDROID = { platform: 'Android', osVersion: '15' };
+
+/** The theme's light foreground, as icon-theme.ts resolves it for an SVG. */
+const FOREGROUND = 'rgba(9, 9, 11, 1)';
 
 /**
  * Runs change detection until `done` holds: a navigation takes a few ticks.
@@ -377,6 +390,148 @@ describe('UiNavigationBar on Android', () => {
 
     await update(() => settings.reduceMotion.set(true));
     expect(style(bar(), 'transition')).toBe('');
+  });
+});
+
+describe('UiNavigationBar with a title that opens a menu', () => {
+  it('makes the title a button with a chevron after it, and says when it’s tapped', async () => {
+    const { host, update, title, getByRole, queryByRole } =
+      await renderBar(IOS_26);
+    // A plain title is no button, and a tap on it says nothing.
+    expect(queryByRole('button', { name: 'Notes' })).toBeNull();
+    fireEvent.tap(title()!);
+    expect(host.titlePresses()).toBe(0);
+
+    await update(() => host.titleMenu.set(true));
+    const button = getByRole('button', { name: 'Notes' });
+    // One element for screen readers, still the screen's heading.
+    expect(title()).toBe(button);
+    // As tall as the bar, for a finger.
+    expect(button.className).toContain('h-[44px]');
+    const [text, chevron] = Array.from(button.children) as HTMLElement[];
+    expect(text?.textContent).toBe('Notes');
+    expect(text?.className).toContain('text-[17px]');
+    // The title shortens with "…", and the chevron keeps its width after it.
+    expect(text?.getAttribute('text-maxline')).toBe('1');
+    expect(text?.className).toContain('text-ellipsis');
+    expect(chevron?.localName).toBe('svg');
+    expect(chevron?.classList).toContain('shrink-0');
+    // A chevron pointing down, in the title's color.
+    expect(chevron?.getAttribute('content')).toContain('m6 9 6 6 6-6');
+    expect(chevron?.getAttribute('content')).toContain(FOREGROUND);
+    expect(style(chevron!, 'width')).toBe('18px');
+    expect(style(chevron!, 'height')).toBe('18px');
+
+    fireEvent.tap(button);
+    expect(host.titlePresses()).toBe(1);
+  });
+
+  it('dims the title under a finger, and fades it back when the finger lifts', async () => {
+    const { host, update, getByRole } = await renderBar(IOS_26);
+    await update(() => host.titleMenu.set(true));
+    const button = getByRole('button', { name: 'Notes' });
+    const after = async (act: () => void) => {
+      act();
+      await waitForUpdate();
+      return [style(button, 'opacity'), style(button, 'transition')];
+    };
+    // Dimmed at once, as a control answers the touch.
+    expect(await after(() => fireEvent.touchstart(button))).toEqual([
+      '0.4',
+      'none',
+    ]);
+    const [opacity, transition] = await after(() => fireEvent.touchend(button));
+    expect(opacity).toBe('1');
+    expect(transition).toContain('opacity');
+
+    // A touch the scroll took, and a mouse in the web preview, release it too.
+    await after(() => fireEvent.touchstart(button));
+    expect((await after(() => fireEvent.touchcancel(button)))[0]).toBe('1');
+    expect((await after(() => fireLynxEvent(button, 'mousedown')))[0]).toBe(
+      '0.4',
+    );
+    expect((await after(() => fireLynxEvent(button, 'mouseleave')))[0]).toBe(
+      '1',
+    );
+    await after(() => fireLynxEvent(button, 'mousedown'));
+    expect((await after(() => fireLynxEvent(button, 'mouseup')))[0]).toBe('1');
+
+    // Under Reduce Motion it comes back at once.
+    expect(await after(() => settings.reduceMotion.set(true))).toEqual([
+      '1',
+      'none',
+    ]);
+  });
+
+  it('counts the chevron in the room the title needs between the bar’s ends', async () => {
+    const { row, leading, trailing, titleBox, container, host, update } =
+      await renderBar(IOS_26);
+    const copy = container.querySelector<HTMLElement>(
+      '[accessibility-elements-hidden="true"] text',
+    )!;
+    const lay = async (element: Element, width: number) => {
+      fireEvent.layoutchange(element, { detail: { width, height: 44 } });
+      await waitForUpdate();
+    };
+    await lay(row(), 402);
+    await lay(leading(), 44);
+    await lay(trailing(), 100);
+    // A plain title this wide fits in the 154px clear of the wider end.
+    await lay(copy, 140);
+    expect(style(titleBox(), 'left')).toBe('124px');
+    expect(style(titleBox(), 'right')).toBe('124px');
+
+    // With its chevron it doesn't, so it takes the room between the ends.
+    await update(() => host.titleMenu.set(true));
+    expect(style(titleBox(), 'left')).toBe('68px');
+    expect(style(titleBox(), 'right')).toBe('124px');
+  });
+
+  it('opens the menu from the large title, and not from the bar’s own while it’s hidden', async () => {
+    const { host, state, update, titleBox, getByRole } =
+      await renderBar(IOS_26);
+    await update(() => {
+      host.titleMenu.set(true);
+      host.largeTitle.set(true);
+      host.scroll.set(true);
+    });
+    /**
+     * The bar's own title, which screen readers skip while it's hidden.
+     */
+    const inline = () =>
+      titleBox().querySelector<HTMLElement>('[accessibility-label="Notes"]')!;
+    // The scroll view draws the large title, a button too.
+    const large = getByRole('button', { name: 'Notes' });
+    expect(large).not.toBe(inline());
+    expect(large.querySelector('text')?.className).toContain('text-[34px]');
+    fireEvent.tap(large);
+    expect(host.titlePresses()).toBe(1);
+
+    // The bar's own is faded out: a touch there isn't one on the title.
+    fireEvent.touchstart(inline());
+    await waitForUpdate();
+    expect(style(inline(), 'opacity')).toBe('1');
+    fireEvent.tap(inline());
+    expect(host.titlePresses()).toBe(1);
+
+    await update(() => state.largeTitleUnder.set(true));
+    fireEvent.tap(inline());
+    expect(host.titlePresses()).toBe(2);
+  });
+
+  it('follows the title with the chevron at the start of Material’s small top app bar', async () => {
+    const { host, update, titleBox, getByRole } = await renderBar(ANDROID);
+    await update(() => host.titleMenu.set(true));
+    const button = getByRole('button', { name: 'Notes' });
+    expect(titleBox().className).toContain('flex-1');
+    expect(button.parentElement).toBe(titleBox());
+    // Material's touch target, in the taller bar.
+    expect(button.className).toContain('h-[48px]');
+    const chevron = button.querySelector<HTMLElement>('svg')!;
+    expect(button.lastElementChild).toBe(chevron);
+    expect(button.firstElementChild?.className).toContain('text-[22px]');
+    // Material's icon size.
+    expect(style(chevron, 'width')).toBe('24px');
   });
 });
 

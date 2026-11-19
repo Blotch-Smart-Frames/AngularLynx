@@ -60,6 +60,8 @@ Lynx Explorer only has Lynx's own native modules, not the ones your app adds. To
 
 The [**web preview**](/guide/glossary#web-preview) is Lynx's web renderer, running in your browser. It draws the same elements with HTML and CSS under the hood, so you can work without a phone.
 
+When you save a file, the web preview reloads the page once the rebuild finishes. It can't apply changes to the running app as Lynx Explorer does, so the app starts over on its first screen, with its state reset. If the build fails, the page stays as it was, and the browser's console shows the errors.
+
 It's close to a phone, not identical. Fonts, scrolling physics and a few CSS details differ. Check important screens on a real device or a [simulator](/guide/glossary#simulator) before you ship.
 
 ## Shipping

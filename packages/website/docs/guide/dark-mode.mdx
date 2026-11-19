@@ -1,6 +1,6 @@
 # Dark mode
 
-Your app follows the phone's light or dark appearance with no code. While the phone is dark, AngularLynx gives the **`page`** element a `dark` class, and your stylesheet's dark values go under it. **`LynxTheme`** gives you the appearance as signals, and lets the user choose their own.
+Your app follows the phone's light or dark appearance with no code. While the phone is dark, AngularLynx gives the **`page`** element a `dark` class, and your stylesheet's dark values go under it, or in a `prefers-color-scheme` query as on the web. **`LynxTheme`** gives you the appearance as signals, and lets the user choose their own.
 
 ## Switch colors with CSS variables
 
@@ -56,7 +56,37 @@ export class App {}
 - **CSS variables inherit**, unlike other properties on Lynx. Every element reads the `page.dark` values once the class is on, and the light ones otherwise.
 - **The first frame is already in the right theme.** The class is set before your app renders, so a dark phone never sees a flash of light.
 - **Give your text a color.** Lynx draws text black unless a style says otherwise, and black text vanishes on a dark background.
-- **Keep the theme in variables.** Avoid `page.dark .card` descendant selectors: by default, Lynx doesn't re-match them when a class changes, so the screen wouldn't update. See [`enableCSSInvalidation`](/api/build/#plugin-options).
+- **Rules under `page.dark` work too**, such as `page.dark .app-card { … }`. They restyle when the class changes, as on the web. Variables keep each color in one place.
+
+## Use `prefers-color-scheme` and Tailwind's `dark:`
+
+CSS written for the web works as it is. The build turns each `@media (prefers-color-scheme: dark)` block into rules under `page.dark`, so it follows the app's appearance:
+
+```css title="src/styles.css"
+@media (prefers-color-scheme: dark) {
+  /* Becomes page.dark { … } */
+  :root {
+    --surface: #1a1a1a;
+  }
+  /* Becomes page.dark .app-card { … } */
+  .app-card {
+    border-color: #333333;
+  }
+}
+```
+
+Tailwind's `dark:` variant writes the same query, so `dark:` classes work too:
+
+```html
+<view class="bg-white dark:bg-zinc-900">
+  <text class="text-zinc-900 dark:text-white">Hello in either theme</text>
+</view>
+```
+
+- **It works in global and component styles alike**, and with Tailwind 3 and 4. See [Tailwind CSS](/guide/tailwindcss#dark-mode).
+- **`(prefers-color-scheme: light)` becomes `page:not(.dark)`.**
+- **It follows the app's appearance, not only the phone's:** `setColorScheme('light')` keeps `dark:` classes off on a dark phone.
+- **Only a query for the color scheme alone works.** One with another condition, such as `(prefers-color-scheme: dark) and (min-width: 640px)`, is left as it is, and AngularLynx apps don't support `@media`.
 
 ## Where the appearance comes from
 
@@ -169,7 +199,7 @@ Use them for things CSS can't reach, such as picking an image or a chart palette
 
 ## Limitations
 
-- **`prefers-color-scheme` doesn't work in your CSS.** AngularLynx apps don't support `@media`. Put the dark values under `page.dark`.
+- **A `prefers-color-scheme` query with any other condition doesn't apply.** See [above](#use-prefers-color-scheme-and-tailwinds-dark).
 - **Your own native app has to send each change.** The app follows whatever theme the host app sends. See [Pass data from your native app](/guide/embedding/host-data#send-the-data-from-native-code).
 
 ## Related

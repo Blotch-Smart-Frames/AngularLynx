@@ -20,7 +20,8 @@ const IN_PLACE_FIELDS = new Set([
 /**
  * Whether a build environment takes hot updates, under the same conditions
  * entry.ts adds the hot update clients: a development build of a Lynx
- * environment (the web preview has none) without `dev.hmr: false`.
+ * environment without `dev.hmr: false`. The web preview has none: its page
+ * reloads after each rebuild instead (see web-preview-reload.ts).
  *
  * @param environment - The environment, as Rsbuild passes it to a transform.
  * @returns Whether modules should take hot updates.

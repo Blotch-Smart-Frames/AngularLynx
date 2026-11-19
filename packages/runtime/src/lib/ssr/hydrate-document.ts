@@ -73,6 +73,10 @@ export class LynxHydrateDocument implements LynxDocumentBase {
   }
 
   createRootElement(): LynxElement {
+    // Every later call gets the same page, as LynxDocument's does: a second
+    // wrapper would attach the global events and follow the insets and the
+    // color scheme a second time.
+    if (this.#page) return this.#page;
     // Reuse the page element the engine reconstructed from the snapshot
     // instead of calling __CreatePage which would create a duplicate.
     const page = new LynxElement(this.#pageElementRef);

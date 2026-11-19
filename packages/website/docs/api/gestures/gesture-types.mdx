@@ -65,7 +65,7 @@ readonly like = new TapGesture().numberOfTaps(2).onEnd(() => this.toggleLike());
 ```
 
 :::info Double taps
-The taps of a double tap must each succeed, land within `maxDistance` of the first, and follow each other within 500 ms of the finger lifting. No Lynx platform counts taps, so AngularLynx does, from the single taps Lynx recognizes.
+The taps of a double tap must each succeed and land within `maxDistance` of the first. Each touch must begin within 500 ms of the last one lifting. No Lynx platform counts taps, so AngularLynx does, from the single taps Lynx recognizes.
 
 So a single tap on the same element can't wait for a double tap to fail: `Gesture.Exclusive(doubleTap, singleTap)` doesn't work. Gestures on one element race, so only one of the two ever runs. To handle both, put them in `Gesture.Simultaneous`, and let the single tap's action also suit the first tap of a double one.
 :::

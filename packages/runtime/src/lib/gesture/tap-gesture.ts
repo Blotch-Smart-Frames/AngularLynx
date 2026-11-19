@@ -24,8 +24,8 @@ export class TapGesture extends BaseGesture<TapGestureEvent, TapGesture> {
   /**
    * How many taps in a row the gesture needs: `numberOfTaps(2)` is a double
    * tap. Its `onStart` and `onEnd` run on the last tap only. The taps must
-   * each succeed, follow each other within 500 ms of the finger lifting, and
-   * land within `maxDistance` of the first.
+   * each succeed and land within `maxDistance` of the first, and each touch
+   * must begin within 500 ms of the last one lifting.
    *
    * No Lynx platform counts taps (nothing in Lynx's source reads
    * `numberOfTaps`), so the runtime does, from the single taps Lynx

@@ -30,15 +30,19 @@ const POLL_MS = 60_000;
 /** CodeRabbit's login in GraphQL (REST calls it `coderabbitai[bot]`). */
 const CODE_RABBIT_LOGIN = 'coderabbitai';
 
-// One query for everything a wait looks at. A thread's or review's comments
-// past the first 100 are left out: no PR here has come near that.
+// One query for everything a wait looks at. Reviews and PR comments come
+// oldest first, so `last: 100` always holds the new ones. Threads don't: a
+// reply can come in any of them, so the script reads the first 100 and stops
+// with an error past that (see TooBig), rather than paging for PRs nobody
+// writes. The busiest PR so far (#543) had 7.
 const QUERY = `query($owner: String!, $name: String!, $n: Int!) {
   repository(owner: $owner, name: $name) { pullRequest(number: $n) {
     state headRefOid
     commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) {
       nodes { ... on CheckRun { name status conclusion } } } } } } }
-    reviewThreads(first: 100) { nodes { isResolved comments(first: 100) {
-      nodes { databaseId url body author { login } } } } }
+    reviewThreads(first: 100) { pageInfo { hasNextPage } nodes { isResolved
+      comments(first: 100) { pageInfo { hasNextPage }
+        nodes { databaseId url body author { login } } } } }
     reviews(last: 100) { nodes { databaseId url body author { login } commit { oid } } }
     comments(last: 100) { nodes { databaseId url body author { login } } }
   } }
@@ -71,6 +75,13 @@ type PullRequest = {
   items: Item[];
 };
 
+/**
+ * A PR with more threads, or a thread with more comments, than the query
+ * reads. Anything new past them would never show up, so a wait would print
+ * `quiet` forever: it stops instead of retrying.
+ */
+class TooBig extends Error {}
+
 const fetchPullRequest = (n: number): PullRequest => {
   const out = execFileSync(
     'gh',
@@ -93,6 +104,17 @@ const fetchPullRequest = (n: number): PullRequest => {
   );
   const pr = JSON.parse(out).data.repository.pullRequest;
   if (!pr) throw new Error(`No pull request #${n} in ${OWNER}/${NAME}`);
+  if (
+    pr.reviewThreads.pageInfo.hasNextPage ||
+    pr.reviewThreads.nodes.some(
+      (t: { comments: { pageInfo: { hasNextPage: boolean } } }) =>
+        t.comments.pageInfo.hasNextPage,
+    )
+  ) {
+    throw new TooBig(
+      `#${n} has more than 100 review threads, or a thread with more than 100 comments, and this script reads only the first 100 of each. Page through them in QUERY.`,
+    );
+  }
   const checks: { name?: string; status?: string; conclusion?: string }[] =
     pr.commits.nodes[0]?.commit.statusCheckRollup?.contexts.nodes ?? [];
   const check = checks.find(({ name }) => name === 'CodeRabbit');
@@ -194,6 +216,7 @@ const poll = async (
       }
     } catch (error) {
       console.error(`Couldn't read #${n}: ${(error as Error).message}`);
+      if (error instanceof TooBig) process.exit(1);
     }
     if (Date.now() >= deadline) {
       console.log(onTimeout);

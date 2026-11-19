@@ -22,6 +22,9 @@ vi.mock('./type-selectors.js', () => ({ applyTypeSelectors: vi.fn() }));
 vi.mock('./unicode-property-regex.js', () => ({
   applyUnicodePropertyRegex: vi.fn(),
 }));
+vi.mock('./web-preview-isolation.js', () => ({
+  applyWebPreviewIsolation: vi.fn(),
+}));
 vi.mock('./web-preview-reload.js', () => ({
   applyWebPreviewReload: vi.fn(),
 }));
@@ -48,8 +51,9 @@ import { applyStrictEsm } from './strict-esm.js';
 import { applyTailwind } from './tailwind.js';
 import { applyTypeSelectors } from './type-selectors.js';
 import { applyUnicodePropertyRegex } from './unicode-property-regex.js';
-import { normalizeOptions } from './utils/options.js';
+import { applyWebPreviewIsolation } from './web-preview-isolation.js';
 import { applyWebPreviewReload } from './web-preview-reload.js';
+import { normalizeOptions } from './utils/options.js';
 import { pluginAngularLynx } from './plugin-angular-lynx';
 
 describe('pluginAngularLynx', () => {
@@ -275,6 +279,13 @@ describe('pluginAngularLynx', () => {
       plugin.setup(mockApi);
 
       expect(applyDevLogger).toHaveBeenCalledWith(mockApi);
+    });
+
+    it('calls applyWebPreviewIsolation with api', () => {
+      const plugin = pluginAngularLynx();
+      plugin.setup(mockApi);
+
+      expect(applyWebPreviewIsolation).toHaveBeenCalledWith(mockApi);
     });
 
     it('calls applyWebPreviewReload with api', () => {

@@ -5436,7 +5436,7 @@ xcrun simctl spawn booted log show --last 5m --style compact \
 
 ---
 
-## `<webview src>` shows a broken-page icon in the rspeedy web preview, but works on device
+## `<webview src>` shows a broken-page icon in the web preview in Firefox and Safari, but works on device
 
 ### What you'd expect (web / native parity)
 
@@ -5451,18 +5451,32 @@ res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
 res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
 ```
 
-Under `require-corp`, Chrome refuses to load any cross-origin iframe whose response doesn't opt in with a `Cross-Origin-Resource-Policy` header. Almost no public site sends that, so the frame shows Chrome's broken-page icon. The DevTools Issues panel reports "Specify a Cross-Origin Resource Policy to stop a resource from being blocked." Two traps make this look like a renderer bug:
+In an isolated page, the browser refuses to load an iframe whose response doesn't opt in: it needs its own `Cross-Origin-Embedder-Policy` and, from another origin, a `Cross-Origin-Resource-Policy` header. That holds under `credentialless` too, the policy AngularLynx's dev server sends where it can (see "The dev server's web preview doesn't show images from servers without CORP" below): `credentialless` lets images and video through, not frames. Almost no public site sends both, so the frame shows the browser's "refused to connect" page. `angular.dev` sends the first header and not the second, and is blocked. Two traps make this look like a renderer bug:
 
 - `bindload` **still fires**, so the app reports a successful load over an empty frame.
 - The site's own headers are not the cause. `lynxjs.org` sends no `X-Frame-Options` and is still blocked.
 
-Native web views (WKWebView, `android.webkit.WebView`) are not iframes, so none of this applies on device. The docs site's `<Go>` preview doesn't send COEP either, so URLs that allow framing load there.
+Native web views (WKWebView, `android.webkit.WebView`) are not iframes, so none of this applies on device. The docs site's `<Go>` preview isn't isolated either, so URLs that allow framing load there.
 
 Separately, a URL that sends `X-Frame-Options: DENY` or a CSP `frame-ancestors` rule (MDN, for example) can never load in Lynx for Web, in any preview, because it is still an iframe.
 
 ### The fix
 
-Nothing to fix in the renderer: the element is created correctly and `src` reaches the iframe. To check `<webview>` in the local web preview, use the `html` attribute, which loads through `srcdoc` and isn't cross-origin. Check URL loading on a device, or in the docs-site preview with a URL that allows framing (`examples/element-webview` uses `https://angular.dev`).
+A frame with the `credentialless` attribute is exempt from the opt-in. The browser loads its page with cookies and storage of its own, apart from the ones the site has in the browser, and discards them when the page around the frame goes. The runtime sets the attribute on a `<webview>`'s frame when the page around it is cross-origin isolated (`packages/runtime/src/lib/lynx-document/web-webview.ts`), and leaves the frame alone in a page that isn't, where it loads as usual and keeps its cookies.
+
+Only Chromium knows the attribute (Chrome and Edge 110 and newer):
+
+| Browser         | `<webview src>` in the dev preview                           |
+| --------------- | ------------------------------------------------------------ |
+| Chrome, Edge    | Loads. A login the site has in the browser isn't carried in. |
+| Firefox, Safari | Still blocked, and `bindload` still fires.                   |
+
+In Firefox and Safari, check `<webview>` with the `html` attribute, which loads through `srcdoc` and isn't cross-origin, and check URL loading in Chrome or on a device.
+
+Two things the frame's timing depends on, found while fixing it:
+
+- **The element can exist before its definition.** web-core loads an element's definition the first time one is created, so an `<x-webview>` can be a plain element with no shadow root, and no frame, when the runtime creates it. Which comes first is up to the network: Firefox created the element 4 ms before the definition in one run and 66 ms after it in the next, and delaying web-core's lazy scripts gives the first order in Chrome. The runtime marks the frame at once when it's there, and otherwise when `customElements.whenDefined('x-webview')` resolves.
+- **Chromium ignores a `src` set again to the URL a frame is already loading.** By the time `whenDefined()` resolves, web-elements has given the frame its `src`, and the load has started without the attribute, which the browser reads when a load starts. Setting the same `src` again does nothing, in the same task or the next. Taking the frame out of its parent and putting it back ends the load and starts one that reads the attribute, with no `load` event for the one that ended. Removing `src` and setting it again works too. A page given as `html` (the frame's `srcdoc`) starts again the same way. It loads either way, but a frame inside it is blocked like any other unless the page was loaded credentialless, which it passes down: in Chromium 158, an `<iframe>` in the `html` stayed on the error page when the outer frame was marked after its `srcdoc`, and loaded once the outer frame was put back.
 
 ---
 
@@ -7421,9 +7435,28 @@ The museum example's viewer (`examples/museum/src/app/artwork/viewer.ts`) zooms 
 
 ### What Lynx does
 
-`ng serve`'s web preview page (`/__web_preview`, from `@lynx-js/web-rsbuild-server-middleware`) is cross-origin isolated, for `SharedArrayBuffer`: it sends `Cross-Origin-Embedder-Policy: require-corp`. The browser then refuses a cross-origin image whose server sends no `Cross-Origin-Resource-Policy` header (the Cleveland Museum of Art's image server, for one), and the `<image>` stays empty with no error in the app. The docs site's `<Go>` previews and the native apps aren't isolated and show the image.
+rspeedy's web preview page (`/__web_preview`, from `@lynx-js/web-rsbuild-server-middleware`) is cross-origin isolated, for `SharedArrayBuffer`: it sends `Cross-Origin-Embedder-Policy: require-corp`. The browser then refuses a cross-origin image, video or audio file whose server sends no `Cross-Origin-Resource-Policy` header (the Cleveland Museum of Art's image server, MDN's sample videos), and the `<image>` stays empty with no error in the app. The docs site's `<Go>` previews and the native apps aren't isolated and show the image.
 
-To check such an app in the dev preview, serve the images from a server that sends `Cross-Origin-Resource-Policy: cross-origin`, or, in an automated browser, add the header to their responses (Playwright's `page.route()`).
+### The fix
+
+`Cross-Origin-Embedder-Policy: credentialless` keeps the page isolated and lets those files load: the browser asks for them without cookies, so the response can't hold anything private to the user. The plugin adds a middleware ahead of rspeedy's that rewrites the header rspeedy sets (`packages/rsbuild-plugin-angular-lynx/src/web-preview-isolation.ts`), for a browser that supports the value:
+
+| Browser                              | Header           | Cross-origin images and video |
+| ------------------------------------ | ---------------- | ----------------------------- |
+| Chrome, Edge and other Chromium, 96+ | `credentialless` | Load                          |
+| Firefox 119+ on a computer           | `credentialless` | Load                          |
+| Safari, and anything else            | `require-corp`   | Blocked, as before            |
+
+The header depends on the request's `User-Agent` because a browser that doesn't know `credentialless` reads the header as if it weren't there: the page loses its isolation, `SharedArrayBuffer` is `undefined`, and the preview breaks. So Safari, and any client the middleware doesn't recognize, keeps `require-corp`. Firefox and Opera on Android don't support the value either, though their version numbers suggest it (MDN's compatibility data).
+
+Checked with the museum example in Playwright's builds: Chromium 158 and Firefox 159 load all 24 of its first pictures and the video example's MDN video, with `crossOriginIsolated` still `true`; WebKit 27.2 gets `require-corp` and loads none, as before.
+
+What `credentialless` doesn't cover:
+
+- **A file that needs the user's cookies on another origin** (a picture behind a login on a different host) arrives without them.
+- **Frames.** A `<webview>` needs the attribute of the same name on its `<iframe>` (see "`<webview src>` shows a broken-page icon in the web preview in Firefox and Safari" above).
+
+To check such an app in Safari's preview, serve the files from a server that sends `Cross-Origin-Resource-Policy: cross-origin`, or use Chrome or Firefox.
 
 ---
 

@@ -233,6 +233,10 @@ export class OverlaysRoute implements OnDestroy {
   }
 
   #openPortal(close: () => void): void {
+    // One portal at a time. "Open portal" tapped while "Open portal later"
+    // waits opens one before the timer does: the timer's replaces it, rather
+    // than leaving it open with nothing left to close it.
+    this.#portalRef?.destroy();
     this.#portalRef = this.#portal.open(OverlaysPortal);
     this.#portalRef.instance?.closed.subscribe(close);
     this.portalStatus.set('open');

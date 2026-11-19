@@ -219,13 +219,16 @@ type NativeCallbackEntry = {
  * see how far it has moved, so those are registered too, and Lynx's events
  * for them are mapped and routed like the rest.
  *
- * Continuous gestures (pan, fling, pinch, rotation) always get an `onBegin`.
+ * Continuous gestures (pan, fling, pinch, rotation) always get an `onBegin`
+ * and an `onEnd`.
  * Lynx's native fling handler, and its pan handler before Lynx 3.9, fire
  * `onStart` and `onEnd` only after `onBegin` has fired, and fire `onBegin`
  * only when one is registered (LynxFlingGestureHandler.m /
  * FlingGestureHandler.java), so without it those two callbacks never ran,
  * with no error. Running it also anchors the gesture's translation where the
- * touch began (see mapGestureEvent).
+ * touch began (see mapGestureEvent), and `onEnd` clears it, so that the next
+ * touch anchors afresh even when it sends this gesture only `onTouchesDown`
+ * (on an outer element whose gesture didn't win the touch).
  *
  * A callback of a registration that's been replaced or removed (`live`)
  * runs nothing. Disabling a gesture removes its registration, and changing
@@ -242,7 +245,10 @@ const buildGestureCallbacks = (
 ): NativeCallbackEntry[] => {
   const gate = createCallbackGate(gesture);
   const names = new Set([...Object.keys(gesture._callbacks), ...gate.observes]);
-  if (gesture instanceof ContinuousGesture) names.add('onBegin');
+  if (gesture instanceof ContinuousGesture) {
+    names.add('onBegin');
+    names.add('onEnd');
+  }
   return [...names].map((name) => ({
     name,
     callback: {

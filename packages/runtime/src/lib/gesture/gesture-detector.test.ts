@@ -464,6 +464,27 @@ describe('LynxGestureDetector', () => {
       },
     );
 
+    it('registers an onEnd on a pan that has none, so the next touch anchors afresh', () => {
+      // An outer element's pan that loses the next touch to an inner one gets
+      // only onTouchesDown, which anchors only once the last touch has ended.
+      const onTouchesDown = vi.fn();
+      const g = new PanGesture().onTouchesDown(onTouchesDown);
+      const directive = createDirective(nativeEl);
+
+      applyGesture(directive, g);
+
+      expect(registeredNames().sort()).toEqual([
+        'onBegin',
+        'onEnd',
+        'onTouchesDown',
+      ]);
+      fnFor('onBegin')({ params: { pageX: 10, pageY: 0 } });
+      fnFor('onEnd')({ params: { pageX: 10, pageY: 0 } });
+      // Measured from this touch, not the last one's x=10.
+      fnFor('onTouchesDown')({ params: { pageX: 110, pageY: 0 } });
+      expect(onTouchesDown.mock.lastCall![0].translationX).toBe(0);
+    });
+
     it("keeps the user's own onBegin as the only one", () => {
       const onBegin = vi.fn();
       const g = new PanGesture().onBegin(onBegin).onEnd(vi.fn());
@@ -704,6 +725,7 @@ describe('LynxGestureDetector', () => {
 
       expect(registeredNames().sort()).toEqual([
         'onBegin',
+        'onEnd',
         'onStart',
         'onTouchesCancel',
         'onTouchesDown',

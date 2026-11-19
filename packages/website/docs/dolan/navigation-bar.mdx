@@ -117,6 +117,24 @@ With `largeTitle`, the title starts large at the top of the content and scrolls 
 
 `ui-bar-scroll` draws the large title, so it needs a scroll view with it. On Android it's Material 3 Expressive's medium flexible app bar, which collapses into the small one the same way.
 
+### Title menu
+
+With `titleMenu`, the title is a button with a chevron after it. Use it when the title picks what the screen shows, such as an account, a workspace or a calendar's month:
+
+```angular-html
+<ui-navigation-bar
+  [title]="account().name"
+  largeTitle
+  titleMenu
+  (titlePressed)="accountsOpen.set(true)"
+/>
+```
+
+- **`titlePressed` emits on a tap** on the title, in the bar or as the large title.
+- **The menu is yours.** The bar draws none: open a [Menu](/dolan/menu), an [Action Sheet](/dolan/action-sheet) or a [Bottom Sheet](/dolan/bottom-sheet).
+- **A long title still ends with "…"**, and the chevron stays after it.
+- **It's iOS's title menu,** and the title with a dropdown arrow of a Material top app bar. In Android's small bar, the chevron follows the title at the start.
+
 ### The scroll edge effect
 
 On iOS 26 and later, content fades out as it passes under the glass bar, so the bar's controls stay legible over whatever is beneath them, as iOS's scroll edge effect does. It's a mask on the scroll view, so content fades to whatever is behind it: the screen's background, or an image. Android's scroll view takes no mask, so with the glass opt-in the bar fades content to the theme's `background` color instead.
@@ -147,10 +165,15 @@ The icons draw with the light theme's colors until you say otherwise, and the gl
 | `title`            | `string`              | `''`        | The screen's title.                                                                                  |
 | `largeTitle`       | `boolean`             | `false`     | Starts the title large at the top of the content. Needs `ui-bar-scroll`.                             |
 | `titleCentered`    | `boolean`             | `false`     | Material's center-aligned top app bar. iOS always centers the title.                                 |
+| `titleMenu`        | `boolean`             | `false`     | Makes the title a button with a chevron after it, in the bar and as the large title.                 |
 | `backLabel`        | `string`              | `'Back'`    | The previous screen's title, shown beside the Back button before iOS 26 and read by screen readers.  |
 | `backRoute`        | `string \| undefined` | `undefined` | Where Back goes when there's no history, in place of the screen: a URL for `Router.navigateByUrl()`. |
 | `backButtonHidden` | `boolean`             | `false`     | Hides the Back button.                                                                               |
 | `class`            | `string`              | `''`        | Extra Tailwind classes for the bar, which places itself at the top of its parent.                    |
+
+| Output         | Type   | Description                                                                 |
+| -------------- | ------ | --------------------------------------------------------------------------- |
+| `titlePressed` | `void` | Emits on a tap on the title, in the bar or large, while `titleMenu` is set. |
 
 | Property    | Type                                         | Description                                                          |
 | ----------- | -------------------------------------------- | -------------------------------------------------------------------- |
@@ -163,8 +186,9 @@ The icons draw with the light theme's colors until you say otherwise, and the gl
 ## Accessibility
 
 - **The title is a heading.** With a large title, the bar's copy is hidden from screen readers until the large one has scrolled under it.
+- **With `titleMenu`, the title is one button** named by its text. It's still a heading on iOS; Android reads one trait, so there it's a button.
 - **The Back button is a button** named by `backLabel`. Each item is a button named by its `label`, which icon-only items need too.
-- **Reduce Motion:** the title appears at once instead of fading in, and Material's bar changes color at once.
+- **Reduce Motion:** the title appears at once instead of fading in, and Material's bar changes color at once. A pressed title menu comes back at once instead of fading back.
 - **Reduce Transparency and Increase Contrast** are handled by the [glass](/dolan/glass#accessibility).
 
 ## Related

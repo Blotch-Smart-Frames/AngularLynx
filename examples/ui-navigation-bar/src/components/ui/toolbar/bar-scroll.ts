@@ -16,6 +16,7 @@ import {
 import {
   type LayoutChangeDetail,
   LYNX_ELEMENTS,
+  LynxAccessibilitySettings,
   type LynxEvent,
   LynxStackPage,
   LynxSystemInfo,
@@ -23,8 +24,11 @@ import {
   type ScrollDetail,
 } from '@blotch/angular-lynx';
 
+import { DURATION, EASING } from '@blotch/dolan/utils/animate';
 import { cn } from '@blotch/dolan/utils/cn';
 import { type GlassDesign, injectGlassDesign } from '../glass/glass-design';
+import { injectIconColor } from '../icon/icon-theme';
+import { ICONS, paintIcon } from '../icon/icons';
 
 /**
  * A bar over the top of the screen, as the scroll view under it sees it: a
@@ -38,6 +42,17 @@ export type UiTopBar = {
    * while the bar shows the title inline, or `null` for none.
    */
   readonly largeTitle: Signal<string | null>;
+  /**
+   * Whether the title opens a menu, such as a picker of what the screen
+   * shows: the large title is then a button, with a chevron after it. A bar
+   * that leaves it out has a plain title.
+   */
+  readonly titleMenu?: Signal<boolean>;
+  /**
+   * What a tap on the large title calls while `titleMenu` is set, for the
+   * bar to open its menu as a tap on its own title does.
+   */
+  readonly titlePressed?: () => void;
 };
 
 /** A bar over the bottom of the screen, such as a toolbar. */
@@ -148,6 +163,56 @@ const LARGE_TITLE_UNDER: Readonly<Record<GlassDesign, number>> = {
 };
 
 /**
+ * The chevron after a large title that opens a menu, in px: the title's type
+ * size in each design, so it's in proportion to the title, as the smaller
+ * one after the bar's own title is. The icon's strokes span half of its box,
+ * so it sits well inside the title's line and adds nothing to its height.
+ */
+const LARGE_TITLE_CHEVRON: Readonly<Record<GlassDesign, number>> = {
+  glass: 34,
+  frosted: 34,
+  material: 28,
+};
+
+/**
+ * The space between a title that opens a menu and its chevron, in px, for
+ * the large title and the bar's own.
+ */
+export const TITLE_CHEVRON_GAP = 2;
+
+/**
+ * The chevron of a title that opens a menu, as markup in the title's color,
+ * for a component's field: the large title here and the bar's own draw the
+ * same one. It's drawn as markup rather than by a nested `<ui-icon>`, as a
+ * toolbar item draws its icon: an SVG can't read the title's text class, so
+ * the theme's foreground is resolved to its value and written into it (see
+ * icon-theme.ts). A signal, so it follows the color scheme.
+ */
+export const injectTitleMenuChevron = (): Signal<string> => {
+  const resolveColor = injectIconColor();
+  return computed(() =>
+    paintIcon(ICONS['chevron-down'], resolveColor('var(--foreground)')),
+  );
+};
+
+/**
+ * How a title that opens a menu answers a finger: it dims at once, as a
+ * control answers the touch rather than the tap that follows it, and fades
+ * back when the finger lifts. Without `animate` (Reduce Motion) it comes
+ * back at once too.
+ */
+export const titleMenuPressStyle = (
+  pressing: boolean,
+  animate: boolean,
+): Record<string, string> => ({
+  opacity: pressing ? '0.4' : '1',
+  transition:
+    pressing || !animate
+      ? 'none'
+      : `opacity ${DURATION.fast}ms ${EASING.standard}`,
+});
+
+/**
  * How the scroll edge effect fades content under a glass bar: how much of it
  * shows (0 to 1) at fractions of the bar's space from the screen's edge.
  * None of it shows under the status bar, little under the bar's controls,
@@ -211,7 +276,8 @@ const stop = (alpha: number, at: string): string =>
  *   status bar, and ends above the bottom bar and the home indicator, so it
  *   scrolls beneath them but rests clear of them.
  * - **The large title** sits at the top of the content and scrolls away with
- *   it, and the bar shows the title once it has gone under.
+ *   it, and the bar shows the title once it has gone under. It's a button,
+ *   with a chevron after it, when the bar's title opens a menu.
  * - **The scroll edge effect:** under glass bars, content fades out as it
  *   passes under them, so their controls stay legible. It's a mask on the
  *   scroll view, so it fades to whatever is behind, the screen's background
@@ -238,9 +304,53 @@ const stop = (alpha: number, at: string): string =>
     ></view>
     @if (largeTitle(); as title) {
       <view [class]="largeTitleClass()">
-        <text accessibility-traits="header" [class]="largeTitleTextClass()">{{
-          title
-        }}</text>
+        @if (titleMenu()) {
+          <!-- A title that opens a menu is one accessibility element, a
+               button named by the title: a <view> isn't one by default, so
+               screen readers would read only the text, with nothing to say
+               it opens anything. It stays the screen's heading where the
+               platform reads more than one trait.
+
+               It keeps to its text and chevron (self-start) rather than
+               the row's width, so only a tap on the title opens the menu,
+               and to the row at most (max-w-full): a long title stays on
+               one line and ends with "…", and the chevron keeps its width
+               after it. Wrapped, the title would leave its band, over the
+               bar and the content.
+
+               It dims under a finger from the touch's start. Touch events
+               for native and mouse events for the web preview, which sends
+               no touches for a cursor; a canceled touch (a scroll taking
+               over) and a cursor leaving release too. -->
+          <view
+            class="max-w-full flex-row items-center self-start flex"
+            [style]="titleButtonStyle()"
+            accessibility-element="true"
+            accessibility-traits="button"
+            [accessibility-label]="title"
+            [lynxAccessibilityTraits]="{ header: true }"
+            (bindtouchstart)="pressTitle(true)"
+            (bindtouchend)="pressTitle(false)"
+            (bindtouchcancel)="pressTitle(false)"
+            (bindmousedown)="pressTitle(true)"
+            (bindmouseup)="pressTitle(false)"
+            (bindmouseleave)="pressTitle(false)"
+            (bindtap)="tapTitle()"
+          >
+            <text [text-maxline]="1" [class]="titleMenuTextClass()">{{
+              title
+            }}</text>
+            <svg
+              class="shrink-0"
+              [attr.content]="titleChevron()"
+              [style]="titleChevronStyle()"
+            />
+          </view>
+        } @else {
+          <text accessibility-traits="header" [class]="largeTitleTextClass()">{{
+            title
+          }}</text>
+        }
       </view>
     }
     <ng-content />
@@ -256,6 +366,10 @@ export class UiBarScroll {
   readonly #element = inject(ElementRef).nativeElement;
   readonly #design = injectGlassDesign();
   readonly #platform = platformOf(inject(Injector));
+  readonly #settings = inject(LynxAccessibilitySettings);
+
+  /** A finger (or the mouse) is down on a large title that opens a menu. */
+  protected readonly titlePressing = signal(false);
 
   /** The scroll view's own height and its spacers', from Lynx's layout. */
   protected readonly viewport = signal(0);
@@ -308,6 +422,14 @@ export class UiBarScroll {
     () => this.#state.topBar()?.largeTitle() ?? null,
   );
 
+  /**
+   * Whether the large title opens a menu. A bar of an app's own may leave
+   * `titleMenu` out, for a plain title.
+   */
+  protected readonly titleMenu = computed(
+    () => this.#state.topBar()?.titleMenu?.() ?? false,
+  );
+
   protected readonly topInset = computed(() => {
     const bar = this.#state.topBar();
     return bar ? `calc(env(safe-area-inset-top) + ${bar.height()}px)` : null;
@@ -329,6 +451,29 @@ export class UiBarScroll {
     this.#design() === 'material'
       ? 'text-[28px] leading-[36px] text-foreground'
       : 'text-[34px] font-bold leading-[41px] text-foreground',
+  );
+
+  /**
+   * The large title's type, on one line ([text-maxline]="1"): without the
+   * ellipsis, Android draws a long title's second line below its band.
+   */
+  protected readonly titleMenuTextClass = computed(() =>
+    cn(this.largeTitleTextClass(), 'text-ellipsis'),
+  );
+
+  protected readonly titleChevron = injectTitleMenuChevron();
+
+  protected readonly titleChevronStyle = computed(() => {
+    const size = `${LARGE_TITLE_CHEVRON[this.#design()]}px`;
+    return {
+      width: size,
+      height: size,
+      'margin-left': `${TITLE_CHEVRON_GAP}px`,
+    };
+  });
+
+  protected readonly titleButtonStyle = computed(() =>
+    titleMenuPressStyle(this.titlePressing(), !this.#settings.reduceMotion()),
   );
 
   /**
@@ -382,6 +527,17 @@ export class UiBarScroll {
 
   protected measureBottom({ detail }: LynxEvent<LayoutChangeDetail>): void {
     this.bottomSpace.set(detail.height);
+  }
+
+  protected pressTitle(down: boolean): void {
+    this.titlePressing.set(down);
+  }
+
+  /**
+   * Tells the bar, which opens its menu: the title is the bar's to act on.
+   */
+  protected tapTitle(): void {
+    this.#state.topBar()?.titlePressed?.();
   }
 
   #scrolled({ scrollTop, scrollHeight }: ScrollDetail): void {

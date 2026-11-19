@@ -1,5 +1,5 @@
 import type { RsbuildPluginAPI } from '@lynx-js/rspeedy';
-import type { AtRule, Container, PluginCreator, Root, Rule } from 'postcss';
+import type { AtRule, PluginCreator, Root, Rule } from 'postcss';
 import selectorParser, { type Selector } from 'postcss-selector-parser';
 
 /**
@@ -98,20 +98,22 @@ const SCOPE_PROCESSORS = {
   light: scopeProcessorFor('light'),
 };
 
+/** The conditional at-rules a query's style rules can move out in. */
+const CONDITIONAL = /^(media|supports)$/i;
+
 /**
- * Whether a rule sits in `@keyframes`, whose `from`/`to` aren't selectors.
+ * Whether `atRule` is a conditional block that holds nothing but style
+ * rules, at any depth, so it can move out of the query once they're scoped.
+ * One that also holds `@keyframes` or `@font-face` stays: moving it would
+ * take those out of the query, and they can't be scoped to the page.
  */
-const inKeyframes = (rule: Rule): boolean => {
-  for (
-    let node: Container | undefined = rule.parent;
-    node;
-    node = node.parent as Container | undefined
-  ) {
-    if (node.type === 'atrule' && /keyframes$/i.test((node as AtRule).name)) {
-      return true;
-    }
-  }
-  return false;
+const holdsOnlyRules = (atRule: AtRule): boolean => {
+  if (!CONDITIONAL.test(atRule.name)) return false;
+  let only = true;
+  atRule.walkAtRules((nested) => {
+    if (!CONDITIONAL.test(nested.name)) only = false;
+  });
+  return only;
 };
 
 /**
@@ -125,7 +127,7 @@ const scopeRules = (container: Rule | AtRule, scheme: ColorScheme): boolean => {
     rules.push(container);
   } else {
     container.walkRules((rule) => {
-      if (!inKeyframes(rule)) rules.push(rule);
+      rules.push(rule);
     });
   }
   let scoped: string[];
@@ -148,10 +150,10 @@ const scopeRules = (container: Rule | AtRule, scheme: ColorScheme): boolean => {
  * `page:not(.dark)`: `@media (prefers-color-scheme: dark) { .card { … } }`
  * becomes `page.dark .card { … }`.
  *
- * Only style rules move out, and conditional blocks holding them (`dark:md:`
- * puts a width query inside, which stays). Anything else, such as
- * `@keyframes`, stays in the media query, where it applied before: nowhere
- * on Lynx.
+ * Only style rules move out, and conditional blocks that hold nothing else
+ * (`dark:md:` puts a width query inside, which stays). Anything else, such
+ * as `@keyframes`, or a block holding one, stays in the media query, where
+ * it applied before: nowhere on Lynx.
  */
 export const lowerColorSchemeQueries = (root: Root): void => {
   root.walkAtRules(/^media$/i, (media) => {
@@ -163,7 +165,7 @@ export const lowerColorSchemeQueries = (root: Root): void => {
     for (const child of media.nodes.slice()) {
       const movable =
         child.type === 'rule' ||
-        (child.type === 'atrule' && /^(media|supports)$/i.test(child.name));
+        (child.type === 'atrule' && holdsOnlyRules(child));
       if (movable && scopeRules(child, scheme)) {
         media.before(child);
       }

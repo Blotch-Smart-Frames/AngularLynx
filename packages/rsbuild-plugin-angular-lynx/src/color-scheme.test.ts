@@ -154,14 +154,20 @@ page.dark .dark\\:text-white { color: #fff; }`),
     );
   });
 
-  it('leaves the keyframes in a query inside it alone', () => {
-    expect(
-      squash(
-        lower(
-          '@media (prefers-color-scheme: dark) { @supports (a: b) { @keyframes k { from { opacity: 0; } } } }',
-        ),
-      ),
-    ).toBe('@supports (a: b) { @keyframes k { from { opacity: 0; } } }');
+  it('leaves a query inside it that holds keyframes in the query', () => {
+    // Moving the @supports out would take the keyframes out of the dark
+    // query with it, and they can't be scoped to the page.
+    const css =
+      '@media (prefers-color-scheme: dark) { @supports (a: b) { @keyframes k { from { opacity: 0; } } } }';
+    expect(lower(css)).toBe(css);
+  });
+
+  it('leaves a query inside it that holds keyframes beside rules, rules and all', () => {
+    // Its rules stay in the dark query, unscoped, so they keep their
+    // meaning: Lynx drops the @supports anyway.
+    const css =
+      '@media (prefers-color-scheme: dark) { @media (min-width: 1px) { .a { color: #fff; } @supports (a: b) { @font-face { font-family: x; } } } }';
+    expect(lower(css)).toBe(css);
   });
 
   it('removes a query left with only comments', () => {

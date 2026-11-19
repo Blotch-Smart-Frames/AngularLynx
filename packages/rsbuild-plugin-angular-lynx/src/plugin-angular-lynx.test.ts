@@ -22,6 +22,9 @@ vi.mock('./type-selectors.js', () => ({ applyTypeSelectors: vi.fn() }));
 vi.mock('./unicode-property-regex.js', () => ({
   applyUnicodePropertyRegex: vi.fn(),
 }));
+vi.mock('./web-preview-isolation.js', () => ({
+  applyWebPreviewIsolation: vi.fn(),
+}));
 vi.mock('./utils/options.js', async (importOriginal) => ({
   deprecatedOptionsIn: (await importOriginal<typeof OptionsModule>())
     .deprecatedOptionsIn,
@@ -45,6 +48,7 @@ import { applyStrictEsm } from './strict-esm.js';
 import { applyTailwind } from './tailwind.js';
 import { applyTypeSelectors } from './type-selectors.js';
 import { applyUnicodePropertyRegex } from './unicode-property-regex.js';
+import { applyWebPreviewIsolation } from './web-preview-isolation.js';
 import { normalizeOptions } from './utils/options.js';
 import { pluginAngularLynx } from './plugin-angular-lynx';
 
@@ -271,6 +275,13 @@ describe('pluginAngularLynx', () => {
       plugin.setup(mockApi);
 
       expect(applyDevLogger).toHaveBeenCalledWith(mockApi);
+    });
+
+    it('calls applyWebPreviewIsolation with api', () => {
+      const plugin = pluginAngularLynx();
+      plugin.setup(mockApi);
+
+      expect(applyWebPreviewIsolation).toHaveBeenCalledWith(mockApi);
     });
 
     it('calls sub-plugins in the correct order', () => {

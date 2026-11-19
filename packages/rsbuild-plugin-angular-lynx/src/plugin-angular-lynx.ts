@@ -17,6 +17,7 @@ import { applyTailwind } from './tailwind.js';
 import { applyTextInheritance } from './text-inheritance.js';
 import { applyTypeSelectors } from './type-selectors.js';
 import { applyUnicodePropertyRegex } from './unicode-property-regex.js';
+import { applyWebPreviewIsolation } from './web-preview-isolation.js';
 import {
   deprecatedOptionsIn,
   normalizeOptions,
@@ -88,6 +89,7 @@ export const pluginAngularLynx = (
       applyGenerator(api);
       applySplitChunksRule(api, normalizedOptions);
       applyDevLogger(api);
+      applyWebPreviewIsolation(api);
       await angularRules;
     },
   };

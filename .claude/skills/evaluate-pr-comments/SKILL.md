@@ -2,7 +2,7 @@
 name: evaluate-pr-comments
 description: Critically evaluate PR review comments, then act on each one on GitHub. When a suggestion is right, reply on its thread and commit the fix on top of the PR. When it's wrong, reply on the thread saying why. Then resolve the thread. Be skeptical, because the reviewer (usually CodeRabbit or another LLM) lacks AngularLynx's context, history and intent. Use when the user pastes review feedback, gives a PR number or link, says CodeRabbit has reviewed a PR, or asks to work through the unresolved comments on recent PRs.
 allowed-tools: Bash, Read, Edit, Write, Agent
-argument-hint: "[PR number or link | merged]"
+argument-hint: "[PR number or link [thread ids] | merged]"
 metadata:
   internal: true
 ---
@@ -24,6 +24,7 @@ The input is `$ARGUMENTS`, or whatever the user gave:
 
 - **Pasted text or a screenshot.** Evaluate it (step 2) and fix what's valid (step 3). There are no threads to reply to unless the user also names the PR.
 - **A PR number or link.** Fetch that PR's unresolved review threads, and CodeRabbit's comments in its reviews' bodies.
+- **A PR number and thread ids** (`PRRT_…`), as `fix-issue` passes for the replies its watch found. Fetch those threads whether or not they're resolved, as well as everything a PR number fetches. A reply leaves its thread resolved, so the unresolved threads alone miss it. In each, answer the comments after your last reply. In the query below, select `.isResolved == false or (.id | IN("PRRT_…", "PRRT_…"))`.
 - **"merged", or "recent PRs".** Fetch the unresolved review threads, and CodeRabbit's comments in its reviews' bodies, on recently merged PRs. By default, go back to where activity picks up after a gap. Say what cut-off you used, and mention any older unresolved threads you left out. Renovate and Dependabot PRs aren't reviewed (`.coderabbit.yaml` skips them), so leave them out.
 
 ```bash
@@ -174,7 +175,7 @@ CodeRabbit answers replies in its threads (`chat.auto_reply`) and reviews each c
 gh pr checks <n> --json name,state --jq '.[] | select(.name | test("CodeRabbit"; "i"))'
 ```
 
-Then fetch the threads and the reviews' bodies again, and evaluate anything new the same way: a new thread on your commit, or an answer in a thread you resolved. Only answer a pushback once, and only if it brings a fact you hadn't weighed. Agreeing on the second round is fine when it does. Don't argue a point a third time; tell the user instead. Finish when none of those PRs has an unresolved thread or an unanswered comment in a review's body.
+Then fetch the threads and the reviews' bodies again, and evaluate anything new the same way: a new thread on your commit, or an answer in a thread you resolved. Only answer a pushback once, and only if it brings a fact you hadn't weighed. Agreeing on the second round is fine when it does. Don't argue a point a third time; tell the user instead. Finish when none of those PRs has an unresolved thread, a thread you were given that still waits on an answer, or an unanswered comment in a review's body.
 
 ## 6. Report
 

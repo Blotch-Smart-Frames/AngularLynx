@@ -1,4 +1,4 @@
-// cspell:words coderabbitai
+// cspell:words coderabbitai PRRT
 //
 // Watches a pull request for the fix-issue skill: waits for CodeRabbit to
 // finish with the head commit, and later for anything new on the PR (a review
@@ -20,7 +20,8 @@
 //           anything else that came in since the last wait or snapshot.
 // wait      Waits until the PR has a comment or review that isn't in <file>,
 //           saves them all to <file>, and prints one line for each new one:
-//           its kind, author, link and first line. Prints `merged` or
+//           its kind, its thread's id for a thread or a reply (marked if
+//           it's resolved), its author, link and first line. Prints `merged` or
 //           `closed` if the PR is, and `quiet` after <n> minutes (default 30)
 //           with nothing new.
 import { execFileSync } from 'node:child_process';
@@ -44,7 +45,7 @@ const QUERY = `query($owner: String!, $name: String!, $n: Int!) {
     state headRefOid
     commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) {
       nodes { ... on CheckRun { name status conclusion } } } } } } }
-    reviewThreads(first: 100) { pageInfo { hasNextPage } nodes { isResolved
+    reviewThreads(first: 100) { pageInfo { hasNextPage } nodes { id isResolved
       comments(first: 100) { pageInfo { hasNextPage }
         nodes { databaseId url body author { login } } } } }
     reviews(last: 100) { nodes { databaseId url body author { login } commit { oid } } }
@@ -66,6 +67,12 @@ type Item = {
   author: string;
   url: string;
   body: string;
+  /**
+   * The thread a `thread` or `reply` is in (`PRRT_…`), and whether it's
+   * resolved. evaluate-pr-comments fetches only unresolved threads by itself,
+   * and a reply leaves its thread resolved, so it needs the id handed over.
+   */
+  thread?: string;
   resolved?: boolean;
 };
 
@@ -132,6 +139,7 @@ const fetchPullRequest = (n: number): PullRequest => {
         author: login(c),
         url: c.url,
         body: c.body,
+        thread: thread.id,
         resolved: thread.isResolved,
       }),
     );
@@ -192,9 +200,17 @@ const firstLine = (body: string): string => {
   return (line ?? '').slice(0, 140);
 };
 
-/** One line for an item, as `wait` and `snapshot` print it. */
-const describe = (item: Item): string =>
-  `${item.kind}${item.resolved ? ' (resolved thread)' : ''} ${item.author} ${item.url} ${firstLine(item.body)}`;
+/**
+ * One line for an item, as `wait` and `snapshot` print it: its kind, its
+ * thread for a `thread` or `reply` (`PRRT_…`, marked if it's resolved), its
+ * author, link and first line.
+ */
+const describe = (item: Item): string => {
+  const thread = item.thread
+    ? ` ${item.thread}${item.resolved ? ' (resolved)' : ''}`
+    : '';
+  return `${item.kind}${thread} ${item.author} ${item.url} ${firstLine(item.body)}`;
+};
 
 /** The keys a `snapshot` or `wait` saved to `file`. */
 const readSeen = (file: string): Set<string> =>

@@ -176,11 +176,12 @@ node .claude/skills/fix-issue/scripts/pr-activity.mts wait <pr> <scratchpad>/pr-
 Run `wait` in the background, as in step 7. It prints:
 
 - **One line for each new item**: its kind (`thread` for a new review thread, `reply` for a reply
-  in one, marked when the thread is resolved, `review` or `comment`), its author, its link and its
-  first line. Read each one in full.
+  in one, `review` or `comment`), the thread's id for a thread or a reply (`PRRT_…`, marked
+  `(resolved)` if it is), its author, its link and its first line. Read each one in full.
   - If any brings a new finding, pushes back on an answer, asks a question, or asks for a change,
-    run another round of `evaluate-pr-comments`, giving it the items' links. It fetches the
-    unresolved threads, and a reply can come in a thread it resolved.
+    run another round of `evaluate-pr-comments`. Give it the PR number and the ids of the threads
+    to answer, resolved ones included. A reply leaves its thread resolved, and by itself the
+    evaluator fetches only the unresolved ones.
   - A request from the user or a teammate ("also handle X") is work to do, as in steps 4 and 5 if
     it's within the issue. Ask the user first if it widens the PR.
   - A reply that only accepts an answer, such as CodeRabbit's thanks or a note that it saved a
@@ -202,7 +203,9 @@ Fix it if this PR caused it, with a commit as for a review fix.
 
 **`listen <PR>`:** find the worktree that has the PR's branch (`git worktree list`), or make one as
 `evaluate-pr-comments` does. Answer anything unresolved with a round first, then take the snapshot
-and wait.
+and wait. A reply already sitting in a resolved thread won't show up after that: before the
+snapshot, read the last comment in each resolved thread, and hand the round any thread where it
+asks for something nobody has answered.
 
 ## 10. Report
 

@@ -165,8 +165,13 @@ First save what the PR has, so anything posted while the round runs shows up aft
 node .claude/skills/fix-issue/scripts/pr-activity.mts snapshot <pr> <scratchpad>/pr-<pr>-seen.json
 ```
 
+The first snapshot lists everything on the PR, as `wait` does (step 9). The round fetches the
+review threads and CodeRabbit's review bodies itself. Read the rest: a person's review or PR
+comment can come in while CodeRabbit reviews.
+
 Then run the `evaluate-pr-comments` skill with the PR number and the worktree's path, so its commits
-go on this branch. It replies on every comment, commits the fixes it agrees with, resolves each
+go on this branch. Add the link and text of each review or PR comment that asks for something, as
+in step 9. It replies on every comment, commits the fixes it agrees with, resolves each
 thread, and waits for CodeRabbit to review its own commits.
 
 ## 9. Keep listening
@@ -207,10 +212,9 @@ After each round, check CI with `gh pr checks <pr>`. Report a failing check with
 Fix it if this PR caused it, with a commit as for a review fix.
 
 **`listen <PR>`:** find the worktree that has the PR's branch (`git worktree list`), or make one as
-`evaluate-pr-comments` does, and take the snapshot. A reply that's already in a resolved thread
-won't show up after that, so read each resolved thread's comments after your last reply in it. Run
-a round for the unresolved threads and for any resolved one with a request nobody has answered.
-Then carry on as after any round.
+`evaluate-pr-comments` does, and take the snapshot. Run a round for what it lists that nobody has
+answered, as in step 9: the unresolved threads, the comments after your last reply in a resolved
+thread, and the reviews and PR comments that ask for something. Then carry on as after any round.
 
 ## 10. Report
 

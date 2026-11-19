@@ -15,9 +15,10 @@
 //           Prints `reviewed <sha> <conclusion>`, `merged` or `closed`, or
 //           `timeout` after <n> minutes (default 30).
 // snapshot  Writes the ids of every comment and review on the PR to <file>.
-//           If <file> was there already, first prints a line, as wait does,
-//           for each one it didn't have: the round's own replies, and
-//           anything else that came in since the last wait or snapshot.
+//           First prints a line, as wait does, for each one <file> doesn't
+//           have: after a round, its own replies and anything else that came
+//           in since the last wait or snapshot. With no <file> yet, that's
+//           everything on the PR.
 // wait      Waits until the PR has a comment or review that isn't in <file>,
 //           saves them all to <file>, and prints one line for each new one:
 //           its kind, its thread's id for a thread or a reply (marked if
@@ -291,18 +292,18 @@ if (command === 'review') {
     'timeout',
   );
 } else if (command === 'snapshot' && file) {
-  // A round takes minutes, and someone can post in them. Saving what the PR
-  // has then without a word would mark that as seen, so the next wait would
-  // never report it: list it, and leave it to the session to tell its own
-  // replies (it has their links) from the rest.
-  const seen = existsSync(file) ? readSeen(file) : null;
+  // Saving what the PR has without a word would mark it as seen, and the
+  // next wait would never report it: a comment posted during a round, or,
+  // the first time, one posted while CodeRabbit reviewed or before `listen`
+  // started. So it lists each one, and the session tells its own replies (it
+  // has their links) and what the round fetches itself from the rest.
+  const seen = existsSync(file) ? readSeen(file) : new Set<string>();
   const { items } = fetchPullRequest(n);
-  const fresh = seen ? items.filter(({ key }) => !seen.has(key)) : [];
+  const fresh = items.filter(({ key }) => !seen.has(key));
   for (const item of fresh) console.log(describe(item));
   save(file, items);
   console.log(
-    `${items.length} comments and reviews on #${n} saved to ${file}` +
-      (seen ? `, ${fresh.length} of them new since the last wait or snapshot` : ''),
+    `${items.length} comments and reviews on #${n} saved to ${file}, ${fresh.length} of them listed above`,
   );
 } else if (command === 'wait' && file) {
   const seen = readSeen(file);

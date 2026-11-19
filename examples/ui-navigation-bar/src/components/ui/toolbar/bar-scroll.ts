@@ -277,7 +277,16 @@ const stop = (alpha: number, at: string): string =>
  *   scrolls beneath them but rests clear of them.
  * - **The large title** sits at the top of the content and scrolls away with
  *   it, and the bar shows the title once it has gone under. It's a button,
- *   with a chevron after it, when the bar's title opens a menu.
+ *   with a chevron after it, when the bar's title opens a menu. An element
+ *   marked `largeTitleAccessory` sits at the end of the title's line, and
+ *   scrolls away with it:
+ *
+ *   ```html
+ *   <scroll-view ui-bar-scroll scroll-orientation="vertical" class="h-full">
+ *     <ui-avatar largeTitleAccessory [src]="account().picture" />
+ *     …
+ *   </scroll-view>
+ *   ```
  * - **The scroll edge effect:** under glass bars, content fades out as it
  *   passes under them, so their controls stay legible. It's a mask on the
  *   scroll view, so it fades to whatever is behind, the screen's background
@@ -311,19 +320,19 @@ const stop = (alpha: number, at: string): string =>
                it opens anything. It stays the screen's heading where the
                platform reads more than one trait.
 
-               It keeps to its text and chevron (self-start) rather than
-               the row's width, so only a tap on the title opens the menu,
-               and to the row at most (max-w-full): a long title stays on
-               one line and ends with "…", and the chevron keeps its width
-               after it. Wrapped, the title would leave its band, over the
-               bar and the content.
+               It keeps to its text and chevron rather than the row's
+               width, so only a tap on the title opens the menu, and to
+               what the row has left at most (shrink): a long title stays
+               on one line and ends with "…", and the chevron keeps its
+               width after it. Wrapped, the title would leave its band,
+               over the bar and the content.
 
                It dims under a finger from the touch's start. Touch events
                for native and mouse events for the web preview, which sends
                no touches for a cursor; a canceled touch (a scroll taking
                over) and a cursor leaving release too. -->
           <view
-            class="max-w-full flex-row items-center self-start flex"
+            class="min-w-0 shrink flex-row items-center flex"
             [style]="titleButtonStyle()"
             accessibility-element="true"
             accessibility-traits="button"
@@ -337,7 +346,7 @@ const stop = (alpha: number, at: string): string =>
             (bindmouseleave)="pressTitle(false)"
             (bindtap)="tapTitle()"
           >
-            <text [text-maxline]="1" [class]="titleMenuTextClass()">{{
+            <text [text-maxline]="1" [class]="largeTitleTextClass()">{{
               title
             }}</text>
             <svg
@@ -347,10 +356,22 @@ const stop = (alpha: number, at: string): string =>
             />
           </view>
         } @else {
-          <text accessibility-traits="header" [class]="largeTitleTextClass()">{{
-            title
-          }}</text>
+          <!-- One line, as a title that opens a menu is: an accessory
+               takes some of the row, and a title too long for the rest
+               would wrap out of its band. It ends with "…" instead. -->
+          <text
+            accessibility-traits="header"
+            [text-maxline]="1"
+            [class]="plainTitleClass()"
+            >{{ title }}</text
+          >
         }
+        <!-- What the app puts beside the title: as tall as the title's
+             line and centered on it, at the line's end. It keeps its
+             width, and the title gives way to it. -->
+        <view [class]="accessoryClass()">
+          <ng-content select="[largeTitleAccessory]" />
+        </view>
       </view>
     }
     <ng-content />
@@ -440,25 +461,50 @@ export class UiBarScroll {
     return bar ? `calc(env(safe-area-inset-bottom) + ${bar.height()}px)` : null;
   });
 
+  /**
+   * The large title's band: a row, the title at its start and the app's
+   * accessory at its end, both on the band's floor.
+   */
   protected readonly largeTitleClass = computed(() =>
     cn(
-      'flex-col px-[16px] flex justify-end',
+      'flex-row items-end px-[16px] flex justify-between',
       this.#design() === 'material' ? 'h-[48px] pb-[4px]' : 'h-[52px] pb-[8px]',
     ),
   );
 
+  /**
+   * The large title's type, on one line ([text-maxline]="1" on the text,
+   * plain or a menu's): without the ellipsis, Android draws a long title's
+   * second line below its band.
+   */
   protected readonly largeTitleTextClass = computed(() =>
-    this.#design() === 'material'
-      ? 'text-[28px] leading-[36px] text-foreground'
-      : 'text-[34px] font-bold leading-[41px] text-foreground',
+    cn(
+      this.#design() === 'material'
+        ? 'text-[28px] leading-[36px] text-foreground'
+        : 'text-[34px] font-bold leading-[41px] text-foreground',
+      'text-ellipsis',
+    ),
   );
 
   /**
-   * The large title's type, on one line ([text-maxline]="1"): without the
-   * ellipsis, Android draws a long title's second line below its band.
+   * A plain large title, which gives way to an accessory beside it rather
+   * than pushing it off the line: it ends with "…" where the accessory
+   * starts.
    */
-  protected readonly titleMenuTextClass = computed(() =>
-    cn(this.largeTitleTextClass(), 'text-ellipsis'),
+  protected readonly plainTitleClass = computed(() =>
+    cn(this.largeTitleTextClass(), 'min-w-0 shrink'),
+  );
+
+  /**
+   * The accessory's box: the height of the title's line, which is what
+   * centers the accessory on the title's letters whatever its own height,
+   * and clear of a title that reaches it.
+   */
+  protected readonly accessoryClass = computed(() =>
+    cn(
+      'ml-[12px] shrink-0 flex-row items-center flex',
+      this.#design() === 'material' ? 'h-[36px]' : 'h-[41px]',
+    ),
   );
 
   protected readonly titleChevron = injectTitleMenuChevron();

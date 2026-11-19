@@ -115,7 +115,27 @@ With `largeTitle`, the title starts large at the top of the content and scrolls 
 <ui-navigation-bar title="Notes" largeTitle />
 ```
 
-`ui-bar-scroll` draws the large title, so it needs a scroll view with it. On Android it's Material 3 Expressive's medium flexible app bar, which collapses into the small one the same way.
+`ui-bar-scroll` draws the large title, so it needs a scroll view with it. It's one line: a title too long for it ends with "…". On Android it's Material 3 Expressive's medium flexible app bar, which collapses into the small one the same way.
+
+#### Beside the large title
+
+An element marked `largeTitleAccessory` in the scroll view sits at the end of the large title's line, such as an account's picture or how something is doing:
+
+```angular-html
+<ui-navigation-bar title="Notes" largeTitle />
+<scroll-view ui-bar-scroll scroll-orientation="vertical" class="h-full">
+  <ui-avatar
+    largeTitleAccessory
+    [src]="account().picture"
+    [alt]="account().name"
+  />
+  …
+</scroll-view>
+```
+
+- **It's centered on the title's line**, whatever its own height, and keeps its width: a long title ends with "…" before it.
+- **It scrolls away with the large title.** The bar shows only the title once that has gone under it, so keep what must stay in reach in the bar itself.
+- **It's drawn only with a large title.** Without one there is no line to put it on.
 
 ### Title menu
 

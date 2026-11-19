@@ -115,13 +115,17 @@ has every version it would move to, and changes nothing if one is missing.
 Read the dry run's peer ranges. Every peer each published package has on Angular, and the testing
 library's on the runtime, should be listed and moving to `^X.Y.0`. If one is missing, or anything
 else is under "Left alone", find out why before going on. Then write the ranges, set the version
-and install. Run the npm commands here, and the lockfile fix in step 6, under the npm that
-`packageManager` pins, set up the way the `release` skill's step 4 describes. `set-version`
-rewrites the lockfile, and another npm major rewrites its flags too.
+and install.
+
+`set-version` rewrites the lockfile, and another npm major rewrites its flags too. So compare
+`npm --version` with the npm that `packageManager` pins, as the `release` skill's step 4 does. If
+they differ, install the pinned npm the way that step does, and put it first on `PATH` in each
+command that writes the lockfile: `set-version` below, and the lockfile fix in step 6. `npm ci`
+never writes the lockfile, so it doesn't need the prefix. If they match, leave the prefix out.
 
 ```bash
 node .claude/skills/release-minor/scripts/move-angular-ranges.mts X.Y
-npm run set-version X.Y.0
+PATH=<scratchpad>/npm-<pinned>/bin:$PATH npm run set-version X.Y.0
 node packages/release/src/check-version.ts X.Y.0
 npm ci
 jq -r '.packages | to_entries[] | select(.key | test("node_modules/(@angular|@angular-devkit|@schematics)/")) | "\(.key) \(.value.version)"' package-lock.json | grep -vE ' (X\.Y\.|0\.XXYY\.)'
@@ -268,8 +272,13 @@ which is what happened to 22.2.11's Windows leg.
 
 If master moves while the PR is open, merge it into the branch. Run the range script again: it's
 safe to rerun, and it catches any example added since. Then resolve a `package-lock.json`
-conflict by taking master's file and running `npm install --package-lock-only --ignore-scripts`,
-with the pinned npm.
+conflict by taking master's file and running this, with the `PATH` prefix from step 3 when the npm
+versions differ:
+
+```bash
+PATH=<scratchpad>/npm-<pinned>/bin:$PATH npm install --package-lock-only --ignore-scripts
+```
+
 If a Renovate or Dependabot PR is open for the Angular group, say in the description that this PR
 replaces it, and close it after the merge if it doesn't close itself.
 

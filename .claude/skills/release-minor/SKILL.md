@@ -115,7 +115,9 @@ has every version it would move to, and changes nothing if one is missing.
 Read the dry run's peer ranges. Every peer each published package has on Angular, and the testing
 library's on the runtime, should be listed and moving to `^X.Y.0`. If one is missing, or anything
 else is under "Left alone", find out why before going on. Then write the ranges, set the version
-and install:
+and install. Run the npm commands here, and the lockfile fix in step 6, under the npm that
+`packageManager` pins, set up the way the `release` skill's step 4 describes. `set-version`
+rewrites the lockfile, and another npm major rewrites its flags too.
 
 ```bash
 node .claude/skills/release-minor/scripts/move-angular-ranges.mts X.Y
@@ -266,7 +268,8 @@ which is what happened to 22.2.11's Windows leg.
 
 If master moves while the PR is open, merge it into the branch. Run the range script again: it's
 safe to rerun, and it catches any example added since. Then resolve a `package-lock.json`
-conflict by taking master's file and running `npm install --package-lock-only --ignore-scripts`.
+conflict by taking master's file and running `npm install --package-lock-only --ignore-scripts`,
+with the pinned npm.
 If a Renovate or Dependabot PR is open for the Angular group, say in the description that this PR
 replaces it, and close it after the merge if it doesn't close itself.
 

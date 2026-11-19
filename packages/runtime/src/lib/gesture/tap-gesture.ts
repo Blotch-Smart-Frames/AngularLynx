@@ -22,18 +22,19 @@ export class TapGesture extends BaseGesture<TapGestureEvent, TapGesture> {
   };
 
   /**
-   * For double/triple tap, pair with waitFor on the single-tap gesture so
-   * the single-tap handler doesn't fire prematurely before the count is met.
+   * How many taps in a row the gesture needs: `numberOfTaps(2)` is a double
+   * tap. Its `onStart` and `onEnd` run on the last tap only. The taps must
+   * each succeed and land within `maxDistance` of the first, and each touch
+   * must begin within 500 ms of the last one lifting.
    *
-   * ⚠️ NOT enforced by the Lynx native runtime — no platform handler implements
-   * multi-tap counting (a whole-tree search of the Lynx source turns up nothing
-   * that reads `numberOfTaps`), so setting this is currently a no-op on-device.
-   * To detect a double-tap, time successive taps yourself in the callback. Kept
-   * for API parity with Lynx's gesture-runtime.
+   * No Lynx platform counts taps (nothing in Lynx's source reads
+   * `numberOfTaps`), so the runtime does, from the single taps Lynx
+   * recognizes (see ./callback-gate.ts). Lynx still recognizes each tap on its
+   * own, so a single tap on the same element can't wait for this one to fail:
+   * `Gesture.Exclusive(doubleTap, singleTap)` doesn't work.
    */
   numberOfTaps(count: number): this {
-    this._config['numberOfTaps'] = count;
-    return this;
+    return this._option('numberOfTaps', count);
   }
 
   /**
@@ -41,8 +42,7 @@ export class TapGesture extends BaseGesture<TapGestureEvent, TapGesture> {
    * Touches held longer than this are treated as a long-press.
    */
   maxDuration(ms: number): this {
-    this._config['maxDuration'] = ms;
-    return this;
+    return this._option('maxDuration', ms);
   }
 
   /**
@@ -50,7 +50,6 @@ export class TapGesture extends BaseGesture<TapGestureEvent, TapGesture> {
    * Keeps a tap distinct from a small drag.
    */
   maxDistance(px: number): this {
-    this._config['maxDistance'] = px;
-    return this;
+    return this._option('maxDistance', px);
   }
 }

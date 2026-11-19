@@ -7,7 +7,13 @@ import {
   type SimpleChanges,
 } from '@angular/core';
 import type { BaseLynxElement } from '../lynx-element/types';
-import { type BaseGesture, ContinuousGesture } from './base-gesture';
+import type { ElementRef as NativeElementRef } from '../types/lynx';
+import {
+  type BaseGesture,
+  type GestureCallbackWithState,
+  ContinuousGesture,
+} from './base-gesture';
+import { createCallbackGate } from './callback-gate';
 import { ComposedGesture } from './composition';
 import { removeGestureDetector, setGestureDetector } from './gesture-papi';
 import {
@@ -16,7 +22,7 @@ import {
   mapGestureEvent,
 } from './event';
 import { GestureStateManager } from './state-manager';
-import { GestureType } from './types';
+import type { GestureEvent } from './types';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyGesture = BaseGesture<any, any>;
@@ -42,7 +48,11 @@ type GestureInput = AnyGesture | AnyGesture[] | ComposedGesture;
 })
 export class LynxGestureDetector implements OnChanges, OnDestroy {
   readonly #el: BaseLynxElement = inject(ElementRef).nativeElement;
-  #attachedIds: number[] = [];
+  /**
+   * Unbinds each bound gesture: stops following its options, and removes it
+   * from Lynx.
+   */
+  #unbinds: (() => void)[] = [];
 
   lynxGesture!: GestureInput;
 
@@ -72,7 +82,7 @@ export class LynxGestureDetector implements OnChanges, OnDestroy {
    * inter-gesture relationships (waitFor, simultaneousWith) stay valid.
    */
   ngOnChanges(_changes: SimpleChanges): void {
-    this.#detachAll();
+    this.#unbindAll();
     const gestures = this.#resolveGestures();
     if (gestures.length === 0) return;
 
@@ -81,48 +91,84 @@ export class LynxGestureDetector implements OnChanges, OnDestroy {
     const elementRef = (this.#el as any).element;
     if (!elementRef) return;
 
-    for (const g of gestures) {
+    for (const g of gestures) this.#bind(g, elementRef);
+  }
+
+  ngOnDestroy(): void {
+    this.#unbindAll();
+  }
+
+  /**
+   * Registers a gesture with Lynx, and again whenever one of its options
+   * changes (BaseGesture's `_option`): Lynx reads a gesture's options only when
+   * it's registered, and the runtime builds the checks for the options Lynx
+   * doesn't read from them then too (./callback-gate.ts).
+   *
+   * A disabled gesture isn't registered. Lynx's handlers don't read `enabled`
+   * (as of Lynx 4.1), and a registered gesture competes for every touch: even
+   * if its callbacks were skipped, a disabled pan would activate on the first
+   * move and fail its element's other gestures, or keep a scroll view from
+   * scrolling. Unregistered, it can't. Any relation to it (`waitFor`,
+   * `simultaneousWith`) then names a gesture Lynx doesn't have, which Lynx
+   * passes over, as if it had failed.
+   */
+  #bind(gesture: AnyGesture, elementRef: NativeElementRef): void {
+    let registered = false;
+    /**
+     * Whether the current registration's callbacks may run. Lynx may still
+     * deliver events it queued for a registration that's since been replaced
+     * (with a gate built from the old options) or removed.
+     */
+    let live = { current: false };
+    const register = (): void => {
+      live.current = false;
+      if (registered) {
+        detach(elementRef, gesture.id);
+        registered = false;
+      }
+      if (gesture._config['enabled'] === false) return;
       // GestureStateManager allows callbacks to programmatically fail/activate
       // the gesture (e.g. to implement conditional gesture recognition).
-      const stateManager = new GestureStateManager(elementRef, g.id);
+      const stateManager = new GestureStateManager(elementRef, gesture.id);
       // Per-gesture translation origin, shared across this gesture's callbacks
       // so mapGestureEvent can derive translationX/Y from the finger's absolute
       // position (Lynx reports position each event, never accumulated distance).
       const origin = createGestureOrigin();
+      live = { current: true };
       const config = {
-        callbacks: buildGestureCallbacks(g, origin, stateManager),
-        config: g._config,
+        callbacks: buildGestureCallbacks(gesture, origin, stateManager, live),
+        config: gesture._config,
       };
       // Relationship map tells the native gesture system how gestures interact:
       // - waitFor: this gesture waits for the dependency to fail before recognizing
       // - simultaneous: both gestures can be active at the same time
       // - continueWith: this gesture activates after the dependency ends
       const relationMap: Record<string, number[]> = {
-        waitFor: g._waitFor.map((dep) => dep.id),
-        simultaneous: g._simultaneousWith.map((dep) => dep.id),
-        continueWith: g._continueWith.map((dep) => dep.id),
+        waitFor: gesture._waitFor.map((dep) => dep.id),
+        simultaneous: gesture._simultaneousWith.map((dep) => dep.id),
+        continueWith: gesture._continueWith.map((dep) => dep.id),
       };
-
-      setGestureDetector(elementRef, g.id, g.type, config, relationMap);
-      this.#attachedIds.push(g.id);
-    }
+      setGestureDetector(
+        elementRef,
+        gesture.id,
+        gesture.type,
+        config,
+        relationMap,
+      );
+      registered = true;
+    };
+    register();
+    gesture._bindings.add(register);
+    this.#unbinds.push(() => {
+      live.current = false;
+      gesture._bindings.delete(register);
+      if (registered) detach(elementRef, gesture.id);
+    });
   }
 
-  ngOnDestroy(): void {
-    this.#detachAll();
-  }
-
-  #detachAll(): void {
-    const elementRef = (this.#el as any).element;
-    if (!elementRef) return;
-    for (const id of this.#attachedIds) {
-      try {
-        removeGestureDetector(elementRef, id);
-      } catch {
-        // Element may already be destroyed by the native engine.
-      }
-    }
-    this.#attachedIds = [];
+  #unbindAll(): void {
+    for (const unbind of this.#unbinds) unbind();
+    this.#unbinds = [];
   }
 
   #resolveGestures(): AnyGesture[] {
@@ -136,6 +182,14 @@ export class LynxGestureDetector implements OnChanges, OnDestroy {
     return [this.lynxGesture];
   }
 }
+
+const detach = (elementRef: NativeElementRef, id: number): void => {
+  try {
+    removeGestureDetector(elementRef, id);
+  } catch {
+    // Element may already be destroyed by the native engine.
+  }
+};
 
 /**
  * Native gesture callback entry expected by __SetGestureDetector. The callback
@@ -153,108 +207,65 @@ type NativeCallbackEntry = {
 };
 
 /**
- * Builds the native callback list for one gesture, wrapping each user callback
- * as `{ _fn }` and injecting the mapped event plus the stateManager (its second
- * argument, so callbacks can programmatically fail/activate the gesture).
+ * Builds the native callback list for one gesture, wrapping each callback as
+ * `{ _fn }`. Each one maps Lynx's event (mapGestureEvent), then asks the
+ * gesture's gate (./callback-gate.ts) which of the user's callbacks to run with
+ * it, and runs them with the stateManager as their second argument, so they
+ * can fail or end the gesture.
  *
- * Discrete gestures (tap, long-press) get a normalization pass. Lynx's native
- * engine fires `onEnd` on BOTH success and failure — the iOS `fail` path emits
- * it — whereas `onStart` fires only on recognition. To give React-Native-
- * Gesture-Handler-style semantics (where `onEnd` means "the gesture actually
- * happened"), we observe `onStart` — registering our own observer when the user
- * didn't — to learn whether the gesture was recognized, then drop the
- * failed-gesture `onEnd`.
+ * The gate enforces the options Lynx doesn't read, and makes a tap's or long
+ * press's `onEnd` mean it was recognized (Lynx also sends it on failure). It
+ * may need callbacks the user didn't register, such as a pan's `onUpdate` to
+ * see how far it has moved, so those are registered too, and Lynx's events
+ * for them are mapped and routed like the rest.
  *
- * Continuous gestures (pan, fling, pinch, rotation) always get an `onBegin`,
- * an empty one when the user didn't register theirs. Lynx's native fling
- * handler, and its pan handler before Lynx 3.9, fire `onStart` and `onEnd` only
- * after `onBegin` has fired, and fire `onBegin` only when one is registered
- * (LynxFlingGestureHandler.m / FlingGestureHandler.java), so without it those
- * two callbacks never ran, with no error. Running it also anchors the
- * gesture's translation where the touch began (see mapGestureEvent).
+ * Continuous gestures (pan, fling, pinch, rotation) always get an `onBegin`
+ * and an `onEnd`.
+ * Lynx's native fling handler, and its pan handler before Lynx 3.9, fire
+ * `onStart` and `onEnd` only after `onBegin` has fired, and fire `onBegin`
+ * only when one is registered (LynxFlingGestureHandler.m /
+ * FlingGestureHandler.java), so without it those two callbacks never ran,
+ * with no error. Running it also anchors the gesture's translation where the
+ * touch began (see mapGestureEvent), and `onEnd` clears it, so that the next
+ * touch anchors afresh even when it sends this gesture only `onTouchesDown`
+ * (on an outer element whose gesture didn't win the touch).
+ *
+ * A callback of a registration that's been replaced or removed (`live`)
+ * runs nothing. Disabling a gesture removes its registration, and changing
+ * an option replaces it, but Lynx may already have sent events for the old
+ * one from its own thread. `live` is checked before each of the user's
+ * callbacks, so one that disables the gesture stops the rest of the event's:
+ * a pan's `onStart` that disables it skips the `onUpdate` routed with it.
  */
 const buildGestureCallbacks = (
   gesture: AnyGesture,
   origin: GestureOrigin,
   stateManager: GestureStateManager,
+  live: { readonly current: boolean },
 ): NativeCallbackEntry[] => {
-  const wrap = (
-    name: string,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    cb: any,
-  ): NativeCallbackEntry => ({
+  const gate = createCallbackGate(gesture);
+  const names = new Set([...Object.keys(gesture._callbacks), ...gate.observes]);
+  if (gesture instanceof ContinuousGesture) {
+    names.add('onBegin');
+    names.add('onEnd');
+  }
+  return [...names].map((name) => ({
     name,
     callback: {
-      _fn: (event: any) =>
-        cb(mapGestureEvent(event, name, origin), stateManager),
-    },
-  });
-
-  const userEnd = gesture._callbacks['onEnd'];
-  const isDiscrete =
-    gesture.type === GestureType.TAP || gesture.type === GestureType.LONGPRESS;
-
-  // Only a discrete gesture with an onEnd handler needs success/failure
-  // disambiguation; everything else is a straight passthrough.
-  if (!isDiscrete || !userEnd) {
-    const callbacks = Object.entries(gesture._callbacks).map(([name, cb]) =>
-      wrap(name, cb),
-    );
-    if (
-      gesture instanceof ContinuousGesture &&
-      !gesture._callbacks['onBegin']
-    ) {
-      // wrap() maps the event, which is what anchors the translation.
-      callbacks.push(wrap('onBegin', () => {}));
-    }
-    return callbacks;
-  }
-
-  const userStart = gesture._callbacks['onStart'];
-  // Per-registration recognition flag: `started` flips true only when the native
-  // engine reports the gesture became active (onStart). A failed tap never does.
-  const lifecycle = { started: false };
-  const callbacks: NativeCallbackEntry[] = [
-    {
-      name: 'onStart',
-      callback: {
-        _fn: (event: any) => {
-          lifecycle.started = true;
-          // Forward only if the user registered onStart — this entry exists
-          // primarily as our recognition observer.
-          if (userStart) {
-            (userStart as (event: unknown, sm: GestureStateManager) => void)(
-              mapGestureEvent(event, 'onStart', origin),
-              stateManager,
-            );
-          }
-        },
+      _fn: (raw: unknown) => {
+        if (!live.current) return;
+        const event = mapGestureEvent(raw, name, origin);
+        for (const [target, routed] of gate.route(name, event, stateManager)) {
+          // A callback that disabled the gesture, or changed one of its
+          // options, replaced this registration.
+          if (!live.current) return;
+          (
+            gesture._callbacks[target] as
+              | GestureCallbackWithState<GestureEvent>
+              | undefined
+          )?.(routed, stateManager);
+        }
       },
     },
-    {
-      name: 'onEnd',
-      callback: {
-        _fn: (event: any) => {
-          const recognized = lifecycle.started;
-          lifecycle.started = false;
-          // Drop the native onEnd that fires when the tap/long-press failed.
-          if (recognized) {
-            (userEnd as (event: unknown, sm: GestureStateManager) => void)(
-              mapGestureEvent(event, 'onEnd', origin),
-              stateManager,
-            );
-          }
-        },
-      },
-    },
-  ];
-
-  // Pass through every other callback (onBegin, onTouchesDown/Up, …) as-is; only
-  // onStart (forced observer) and onEnd (suppressed on failure) are special.
-  for (const [name, cb] of Object.entries(gesture._callbacks)) {
-    if (name === 'onStart' || name === 'onEnd') continue;
-    callbacks.push(wrap(name, cb));
-  }
-
-  return callbacks;
+  }));
 };

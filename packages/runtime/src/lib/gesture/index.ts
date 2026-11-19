@@ -5,6 +5,7 @@ export { FlingGesture } from './fling-gesture';
 export { LynxGestureDetector } from './gesture-detector';
 export { LongPressGesture } from './long-press-gesture';
 export { PanGesture } from './pan-gesture';
+export type { PanOffset } from './pan-gesture';
 export { PinchGesture } from './pinch-gesture';
 export { RotationGesture } from './rotation-gesture';
 export { GestureStateManager } from './state-manager';

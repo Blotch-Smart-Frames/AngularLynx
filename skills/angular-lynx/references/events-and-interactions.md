@@ -131,7 +131,12 @@ export class Card {
 - **`onEnd` of a tap or long press means it happened**: the runtime drops the `onEnd` Lynx also sends when one fails. A pan's `onEnd` runs after every touch, a tap included, so don't take it as a completed drag.
 - **Gestures on one element race.** The first to activate fails the others, unless they're `simultaneousWith` it. `waitFor`, and so `Gesture.Exclusive`'s order, only takes effect between elements (a child's gesture waiting for its parent's). In the example, a drag past 10px wins and a tap is recognized when the finger lifts before that.
 - **State from code:** `fail()` and `end()` on the state manager work. `activate()` does nothing on any platform.
-- **Lynx reads few options:** a tap's `maxDuration` and `maxDistance`, a long press's `minDuration` and `maxDistance`, and a pan's `minDistance`. `enabled(false)`, `activeOffsetX`, a fling's `direction` and `numberOfTaps` do nothing; to turn a gesture off, bind `[lynxGesture]` to `[]`.
+- **Options:** Lynx reads a tap's `maxDuration` and `maxDistance`, a long press's `minDuration` and `maxDistance`, and a pan's `minDistance`. The runtime enforces the rest, on every platform:
+  - `enabled(false)` keeps the gesture from Lynx altogether, so it runs nothing and takes no touch. Call it any time, a callback included; any option set after binding re-registers the gesture.
+  - A pan's `activeOffsetX`/`Y` and `failOffsetX`/`Y` follow react-native-gesture-handler (`[-20, 20]` is a range; a single `20` is open to the left, so only moving right past 20 leaves it). The runtime holds `onStart`/`onUpdate` back until an active offset is passed, and calls `fail()` past a fail offset first: `activeOffsetX([-20, 20]).failOffsetY([-10, 10])` is a horizontal pan that lets a vertical scroll view have vertical drags. A fail offset counts only until the pan starts, so pair it with an active offset or `minDistance`. To Lynx the pan is active from `minDistance`, so while it waits it already holds the touch and fails its element's other gestures.
+  - A fling's `direction` (`FlingDirection.LEFT | FlingDirection.RIGHT`): a fling another way, or too slow to move, runs no callbacks, and `onBegin` waits for the first frame.
+  - `numberOfTaps(2)` is a double tap: `onStart`/`onEnd` run on the second tap. Each tap's touch must begin within 500 ms of the last one lifting, and land within `maxDistance` of the first. A single tap on the same element can't wait for it (`Gesture.Exclusive(doubleTap, singleTap)` doesn't work).
+  - `minPointers`, `maxPointers` and `numberOfPointers` do nothing: Lynx follows one finger at a time.
 - **The web preview recognizes gestures too**, by the same rules, from a mouse or a finger.
 
 ## Coming into view

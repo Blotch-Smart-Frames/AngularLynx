@@ -346,7 +346,7 @@ const stop = (alpha: number, at: string): string =>
             (bindmouseleave)="pressTitle(false)"
             (bindtap)="tapTitle()"
           >
-            <text [text-maxline]="1" [class]="titleMenuTextClass()">{{
+            <text [text-maxline]="1" [class]="largeTitleTextClass()">{{
               title
             }}</text>
             <svg
@@ -356,9 +356,15 @@ const stop = (alpha: number, at: string): string =>
             />
           </view>
         } @else {
-          <text accessibility-traits="header" [class]="plainTitleClass()">{{
-            title
-          }}</text>
+          <!-- One line, as a title that opens a menu is: an accessory
+               takes some of the row, and a title too long for the rest
+               would wrap out of its band. It ends with "…" instead. -->
+          <text
+            accessibility-traits="header"
+            [text-maxline]="1"
+            [class]="plainTitleClass()"
+            >{{ title }}</text
+          >
         }
         <!-- What the app puts beside the title: as tall as the title's
              line and centered on it, at the line's end. It keeps its
@@ -466,15 +472,24 @@ export class UiBarScroll {
     ),
   );
 
+  /**
+   * The large title's type, on one line ([text-maxline]="1" on the text,
+   * plain or a menu's): without the ellipsis, Android draws a long title's
+   * second line below its band.
+   */
   protected readonly largeTitleTextClass = computed(() =>
-    this.#design() === 'material'
-      ? 'text-[28px] leading-[36px] text-foreground'
-      : 'text-[34px] font-bold leading-[41px] text-foreground',
+    cn(
+      this.#design() === 'material'
+        ? 'text-[28px] leading-[36px] text-foreground'
+        : 'text-[34px] font-bold leading-[41px] text-foreground',
+      'text-ellipsis',
+    ),
   );
 
   /**
    * A plain large title, which gives way to an accessory beside it rather
-   * than pushing it off the line.
+   * than pushing it off the line: it ends with "…" where the accessory
+   * starts.
    */
   protected readonly plainTitleClass = computed(() =>
     cn(this.largeTitleTextClass(), 'min-w-0 shrink'),
@@ -490,14 +505,6 @@ export class UiBarScroll {
       'ml-[12px] shrink-0 flex-row items-center flex',
       this.#design() === 'material' ? 'h-[36px]' : 'h-[41px]',
     ),
-  );
-
-  /**
-   * The large title's type, on one line ([text-maxline]="1"): without the
-   * ellipsis, Android draws a long title's second line below its band.
-   */
-  protected readonly titleMenuTextClass = computed(() =>
-    cn(this.largeTitleTextClass(), 'text-ellipsis'),
   );
 
   protected readonly titleChevron = injectTitleMenuChevron();

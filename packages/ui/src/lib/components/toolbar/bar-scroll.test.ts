@@ -503,6 +503,22 @@ describe('UiBarScroll with an accessory beside the large title', () => {
     expect(getByText('The content').parentElement).not.toBe(band);
   });
 
+  it('ends a long plain title with "…" on its one line, before the accessory', async () => {
+    const { state, update, getByRole, getByText } = await renderAccessory();
+    const long = 'Everything that arrived while you were away';
+    await update(() => state.topBar.set(topBar(long)));
+    const title = getByRole('heading', { name: long });
+    // A <text> wraps unless it's told its lines, and a second line would
+    // leave the title's band: the accessory takes some of the row.
+    expect(title.getAttribute('text-maxline')).toBe('1');
+    expect(title.className).toContain('text-ellipsis');
+    // The title is what gives way, and the accessory stays on its line.
+    expect(title.className).toContain('shrink');
+    expect(getByText('3 unread').parentElement?.parentElement).toBe(
+      title.parentElement,
+    );
+  });
+
   it('keeps it beside a title that opens a menu', async () => {
     const { state, update, getByRole, getByText } = await renderAccessory();
     await update(() => state.topBar.set(menuBar('Inbox')));

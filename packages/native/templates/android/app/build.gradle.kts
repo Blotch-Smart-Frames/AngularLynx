@@ -37,7 +37,10 @@ android {
     // The namespace is the package of the shell's own Kotlin code and R class.
     // It's fixed; only the applicationId (the store identity) is configurable.
     namespace = "dev.angularlynx.shell"
-    compileSdk = 36
+    // The API level the app compiles against, which androidx.core 1.19
+    // requires to be 37 or later. It only makes newer APIs available to the
+    // code; targetSdk below is what opts the app in to new runtime behavior.
+    compileSdk = 37
 
     defaultConfig {
         applicationId = appConfig("applicationId")
@@ -127,7 +130,7 @@ android {
 
 dependencies {
     implementation("androidx.activity:activity-ktx:1.13.0")
-    implementation("androidx.core:core-ktx:1.16.0")
+    implementation("androidx.core:core-ktx:1.19.1")
     // The splash screen (MainActivity, themes.xml): Android 12's on every
     // version the app runs on, and kept up until the app's first screen is
     // ready.
@@ -179,5 +182,5 @@ dependencies {
     // the namespace androidx.vectordrawable, and AGP 9's manifest merger
     // fails the build on that; newer versions give them distinct namespaces.
     implementation("androidx.appcompat:appcompat:1.8.0")
-    implementation("com.google.android.material:material:1.12.0")
+    implementation("com.google.android.material:material:1.14.0")
 }

@@ -285,6 +285,16 @@ export class PointerEventSource {
   #stopListening(): void {
     for (const unlisten of this.#unlisten) unlisten();
     this.#unlisten = [];
+    // Without its touch listeners the source can't hear a finger lift, and
+    // the last listener can go while one is down: Angular's `@defer (on
+    // hover)` stops listening on the touch that fires it. Kept, that finger
+    // would stay down and primary for good, and a later touch with another
+    // pointerId would get no mouse events. So the source forgets its
+    // fingers and starts again as a new one does, which follows only the
+    // touches that start while it listens.
+    this.#down.clear();
+    this.#captured.clear();
+    this.#primary = null;
   }
 
   #offset(

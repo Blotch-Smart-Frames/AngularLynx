@@ -170,6 +170,27 @@ describe('PointerEventSource', () => {
     ]);
   });
 
+  // Angular's `@defer (on hover)` stops listening as the finger touches, so
+  // the source never hears that finger lift. Listening again later starts
+  // afresh, as a new source would, rather than with that finger still down.
+  it('forgets the fingers it was following when it stops listening', () => {
+    const { source, events, record, touch } = setup();
+    const stop = source.add('mouseover', record);
+    touch('touchstart', [finger(3, 0, 0)]);
+    stop();
+    source.add('mouseover', record);
+    source.add('pointerdown', record);
+    touch('touchstart', [finger(4, 0, 0)]);
+    expect(events.map((e) => [e.type, e.pointerId, e.isPrimary])).toEqual([
+      ['mouseover', 3, true],
+      ['mouseover', 4, true],
+      ['pointerdown', 4, true],
+    ]);
+    expect(source.hasPointerCapture(3)).toBe(false);
+    source.setPointerCapture(3);
+    expect(source.hasPointerCapture(3)).toBe(false);
+  });
+
   it('makes mouse events from the first finger only, as a browser does', () => {
     const { source, events, record, touch } = setup();
     source.add('mouseover', record);

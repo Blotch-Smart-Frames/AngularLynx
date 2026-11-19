@@ -516,14 +516,19 @@ describe('applyWebPreviewReload', () => {
       });
     });
 
-    it.each([false, { html: true }])(
-      'keeps %j, which the app set',
-      (liveReload) => {
-        const config = { dev: { liveReload } };
+    it('does the same when the app sets `{ html: true }`, which means the same as the default', () => {
+      const config = { dev: { liveReload: { html: true } } };
 
-        expect(modify()(config, { name: 'web' })).toBe(config);
-      },
-    );
+      expect(modify()(config, { name: 'web' })).toEqual({
+        dev: { liveReload: { html: false } },
+      });
+    });
+
+    it('keeps `false`, which turns the client off', () => {
+      const config = { dev: { liveReload: false } };
+
+      expect(modify()(config, { name: 'web' })).toBe(config);
+    });
 
     it('leaves the Lynx environment alone', () => {
       const config = { dev: { liveReload: true } };

@@ -196,10 +196,12 @@ export const applyWebPreviewReload = (api: RsbuildPluginAPI): void => {
   // state, though the build had nothing new to show. The edit reaches the
   // bundle and its hash like any other, so without the message it reloads
   // once the build works. `{ html: false }` turns off only that message: an
-  // object leaves live reload on wherever Rsbuild checks it. A value the app
-  // set other than `true` stays as it is.
+  // object leaves live reload on wherever Rsbuild checks it. It replaces an
+  // app's `{ html: true }` too, which means the same as the default: the web
+  // bundle has no HTML page for it to reload, so all it would add is the
+  // early reload. Only `false`, which turns the client off, stays.
   api.modifyEnvironmentConfig((config, { name }) =>
-    name === 'web' && (config.dev?.liveReload ?? true) === true
+    name === 'web' && config.dev?.liveReload !== false
       ? { ...config, dev: { ...config.dev, liveReload: { html: false } } }
       : config,
   );

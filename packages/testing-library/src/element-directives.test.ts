@@ -64,6 +64,35 @@ class ProfileCard {
   readonly avatar = signal('https://example.com/a.png');
 }
 
+/** Each Announce made. */
+const announcers: Announce[] = [];
+
+/**
+ * A directive of an app's own that takes the element's
+ * `accessibility-label` as its input.
+ */
+@Directive({ selector: '[announce]', inputs: ['accessibility-label'] })
+class Announce {
+  declare 'accessibility-label'?: string;
+
+  constructor() {
+    announcers.push(this);
+  }
+}
+
+@Component({
+  selector: 'announced-card',
+  imports: [LYNX_ELEMENTS, Announce],
+  template: `<view
+    announce
+    class="card"
+    [accessibility-label]="label()"
+  ></view>`,
+})
+class AnnouncedCard {
+  readonly label = signal('New message');
+}
+
 describe('element directives under the Lynx renderer', () => {
   it('makes no directive for an element whose directive only declares its attributes', async () => {
     probes.length = 0;
@@ -108,5 +137,19 @@ describe('element directives under the Lynx renderer', () => {
     componentRef.instance.label.set(undefined);
     await waitForUpdate();
     expect(text.hasAttribute('accessibility-label')).toBe(false);
+  });
+
+  // Angular gives a binding to the directives that declare it as an input,
+  // and to the element only when none does (setPropertyAndInputs), as on the
+  // web: `<div announce [id]="x">` doesn't set the div's id either. LynxView
+  // no longer declares it alongside, so the element doesn't get it.
+  it("gives a binding an app's own directive declares as an input to that directive alone", async () => {
+    announcers.length = 0;
+    const { container } = await render(AnnouncedCard);
+
+    expect(announcers[0]['accessibility-label']).toBe('New message');
+    expect(
+      container.querySelector('.card')!.hasAttribute('accessibility-label'),
+    ).toBe(false);
   });
 });

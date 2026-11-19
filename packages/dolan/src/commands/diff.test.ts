@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { join } from 'node:path';
 import { readdirSync } from 'node:fs';
+import { stripVTControlCharacters } from 'node:util';
 import { createFixture, DEFAULT_CONFIG, type Fixture } from '../test-utils';
 import { hashContent } from '../lockfile';
 
@@ -465,5 +466,104 @@ describe('diffCommand', () => {
 
       expect(p.log.warn).toHaveBeenCalledWith('No components installed.');
     });
+  });
+});
+
+// `update` deletes a file upstream no longer ships, as 22.2.3 did with the
+// `*-render.test.ts` specs, but `diff` only looked at the files upstream
+// ships now, so it said the component was up to date with upstream.
+describe('diffCommand — files upstream no longer ships', () => {
+  const card = 'export const Card = {};';
+  const stale = "import { setInputSignal } from '../../../test-utils/x';";
+  const STALE = 'card-render.test.ts';
+
+  /**
+   * card matches upstream, and it has STALE (as add copied it, unless
+   * `onDisk` says otherwise), which upstream no longer ships.
+   */
+  const setup = (onDisk: string | null = stale) => {
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: {
+        version: 1,
+        components: {
+          card: {
+            'card.ts': { hash: hashContent(card) },
+            [STALE]: { hash: hashContent(stale) },
+          },
+        },
+        theme: {},
+      },
+      components: {
+        card: {
+          'card.ts': card,
+          ...(onDisk === null ? {} : { [STALE]: onDisk }),
+        },
+      },
+      uiSource: { card: { 'card.ts': card } },
+    });
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+  };
+  /**
+   * The log messages, colors stripped.
+   */
+  const messages = async () => {
+    const p = await import('@clack/prompts');
+    return stripVTControlCharacters(
+      (p.log.message as ReturnType<typeof vi.fn>).mock.calls
+        .map(([m]) => m as string)
+        .join('\n'),
+    );
+  };
+
+  it('shows the whole file going, under the reason', async () => {
+    setup();
+
+    const { diffCommand } = await import('./diff');
+    await diffCommand('card');
+
+    const text = await messages();
+    expect(text).toContain(`── card/${STALE} (upstream no longer ships it) ──`);
+    expect(text).toContain(`- ${stale}`);
+    expect(text).not.toContain('All files up to date.');
+  });
+
+  it('calls one you edited a conflict, and shows your lines going too', async () => {
+    setup(`${stale}\n// mine\n`);
+
+    const { diffCommand } = await import('./diff');
+    await diffCommand('card');
+
+    const text = await messages();
+    expect(text).toContain(
+      `── card/${STALE} (conflict: upstream no longer ships it) ──`,
+    );
+    expect(text).toContain('- // mine');
+  });
+
+  it('lists the component among the changed ones in the summary', async () => {
+    setup();
+    interactive = false;
+    const p = await import('@clack/prompts');
+
+    const { diffCommand } = await import('./diff');
+    await diffCommand();
+
+    expect(p.log.success).not.toHaveBeenCalled();
+    const text = await messages();
+    expect(text).toContain('1 component(s) with changes');
+    expect(text).toContain(`card/${STALE}`);
+  });
+
+  it("has nothing to show when it's gone from disk: only a lockfile entry is left", async () => {
+    setup(null);
+    const p = await import('@clack/prompts');
+
+    const { diffCommand } = await import('./diff');
+    await diffCommand();
+
+    expect(p.log.success).toHaveBeenCalledWith(
+      'All components are up to date with upstream.',
+    );
   });
 });

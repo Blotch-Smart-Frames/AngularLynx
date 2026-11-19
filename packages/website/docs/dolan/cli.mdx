@@ -137,16 +137,24 @@ npx @blotch/dolan list
 
 Alias: `ls`. Prints each installed component with its status and file count. Only folders named after a known component count, so your own folders are ignored.
 
-| Status     | JSON value      | Meaning                                                                |
-| ---------- | --------------- | ---------------------------------------------------------------------- |
-| up to date | `up-to-date`    | Your copy matches the bundled source.                                  |
-| outdated   | `auto-update`   | You haven't edited it, and the bundled source changed or added a file. |
-| modified   | `user-modified` | You edited it, and the bundled source hasn't changed.                  |
-| conflict   | `conflict`      | Both changed, or dolan has no hash for a file that differs.            |
+| Status     | JSON value      | Meaning                                                                                                         |
+| ---------- | --------------- | --------------------------------------------------------------------------------------------------------------- |
+| up to date | `up-to-date`    | Your copy matches the bundled source.                                                                           |
+| outdated   | `auto-update`   | You haven't edited it, and the bundled source changed, added a file or no longer has one.                       |
+| modified   | `user-modified` | You edited it, and the bundled source hasn't changed.                                                           |
+| conflict   | `conflict`      | Both changed, you edited a file the bundled source no longer has, or dolan has no hash for a file that differs. |
 
-| Argument or option | Description                                                            |
-| ------------------ | ---------------------------------------------------------------------- |
-| `--json`           | Print `{ "components": [{ "name", "status", "fileCount" }] }` instead. |
+A file the bundled source no longer has is still in your app until [`update`](#update) deletes it, so it counts as a change, and `list` names it under its component:
+
+```text
+│    ↑ card  outdated  (3 files)
+│
+│      − card/card-render.test.ts — upstream no longer ships it → delete
+```
+
+| Argument or option | Description                                                                                                                                                     |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--json`           | Print `{ "components": [{ "name", "status", "fileCount" }] }` instead. A component with files the bundled source no longer has lists them as `removedUpstream`. |
 
 ## info
 
@@ -166,7 +174,7 @@ Prints a component's files, the components it depends on, and the components tha
 npx @blotch/dolan diff [component]
 ```
 
-With a name, it prints every file that differs from the bundled source. Lines starting with `-` are yours, and lines starting with `+` are upstream. Without a name, it lists the changed components and asks which to show. Without a terminal, it shows them all.
+With a name, it prints every file that differs from the bundled source. Lines starting with `-` are yours, and lines starting with `+` are upstream. A file the bundled source no longer has shows every line with `-`, since [`update`](#update) deletes it. Without a name, it lists the changed components and asks which to show. Without a terminal, it shows them all.
 
 | Argument or option | Description                         |
 | ------------------ | ----------------------------------- |
@@ -178,11 +186,11 @@ With a name, it prints every file that differs from the bundled source. Lines st
 npx @blotch/dolan outdated
 ```
 
-Lists the installed components that aren't up to date, using the [statuses](#list) above. It exits with code 1 when there are any, so a CI job can fail on it. Components you edited count as well.
+Lists the installed components that aren't up to date, using the [statuses](#list) above. It exits with code 1 when there are any, so a CI job can fail on it. Components you edited count as well, and so do components with a file the bundled source no longer has, which it names as [`list`](#list) does.
 
-| Argument or option | Description                                                    |
-| ------------------ | -------------------------------------------------------------- |
-| `--json`           | Print `{ "components": [...] }`, still exiting 1 if not empty. |
+| Argument or option | Description                                                                            |
+| ------------------ | -------------------------------------------------------------------------------------- |
+| `--json`           | Print `{ "components": [...] }` as [`list`](#list) does, still exiting 1 if not empty. |
 
 ## update
 
@@ -201,7 +209,7 @@ Merges the bundled source into every installed component, file by file:
 | Edited    | No longer has it     | Conflict. Asks: show the diff, keep yours, or delete it.                                      |
 
 - **No hash means conflict.** A file with no recorded hash that differs from upstream is a conflict. Theme files are the exception: `init` in 22.2.3 and earlier didn't record their hashes, so a theme file that's still exactly as one of those releases shipped it counts as unchanged.
-- **Files the bundled source no longer has are deleted**, along with their lockfile entries. 22.2.3 stopped copying the `*-render.test.ts` files, for example. If you keep one you edited, it's yours: dolan stops tracking it.
+- **Files the bundled source no longer has are deleted**, along with their lockfile entries. 22.2.3 stopped copying the `*-render.test.ts` files, for example. If you keep one you edited, it's yours: dolan stops tracking it. Until then, `list`, `diff` and `outdated` report the component as changed.
 - **Ejected components are left alone.** `update`, `list`, `diff` and `outdated` only look at the components in `dolan.lock.json`. See [`eject`](#eject).
 - **Theme files** (`default.css`, `dark.css`, and `tailwind.css` or `tailwind-plugin.ts`, with `tailwind-plugin.test.ts` when you have the testing library) are merged the same way. Themes you made with [`theme`](#theme) aren't.
 - **The theme follows a move between Tailwind versions.** After a [move to Tailwind 4](/guide/tailwindcss#move-to-tailwind-4), `update` copies `tailwind.css` and deletes `tailwind-plugin.ts` and its test, by the rules above: unchanged, they go with the other changes; edited, it asks. A move back to Tailwind 3 swaps them the other way. A plugin that an `init` from 22.2.3 or earlier copied counts as unchanged while it's exactly as that release shipped it. If you edited one of those, `update` can't tell it was dolan's and leaves it, and [`doctor`](#doctor) warns about it.

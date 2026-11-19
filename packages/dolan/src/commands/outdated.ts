@@ -1,25 +1,20 @@
 import * as p from '@clack/prompts';
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import pc from 'picocolors';
 import { configExists, readConfig } from '../config.js';
 import { trackedComponents } from '../utils/installed.js';
 import { copiesTests } from '../utils/packages.js';
+import { getOrCreateLockfile } from '../lockfile.js';
 import {
-  getComponentFiles,
-  getComponentSourceDir,
-  rewriteImports,
-} from '../utils/resolve-paths.js';
-import { formatContent } from '../utils/format.js';
-
-import { getOrCreateLockfile, hashContent } from '../lockfile.js';
-import {
-  analyzeFile,
-  summarizeComponent,
+  removalLine,
   STATUS_ICONS,
-  type FileAnalysis,
   type FileStatus,
 } from '../utils/analyze.js';
+import {
+  componentStatus,
+  componentStatusJson,
+} from '../utils/analyze-component.js';
 
 const STATUS_SHORT_LABELS: Record<FileStatus, string> = {
   'up-to-date': pc.dim('up to date'),
@@ -38,6 +33,9 @@ const STATUS_SHORT_LABELS: Record<FileStatus, string> = {
  *   - Exit code 1 when ANY components are outdated, 0 when fully up to date.
  *     This lets pipelines fail loudly without parsing output (mirrors
  *     `npm outdated` behavior).
+ *
+ * A component with a file upstream no longer ships is outdated as well: the
+ * file is still in the app until `update` deletes it (see analyzeComponent).
  */
 export const outdatedCommand = async (options: { json?: boolean }) => {
   const cwd = process.cwd();
@@ -87,55 +85,18 @@ export const outdatedCommand = async (options: { json?: boolean }) => {
 
   const tests = copiesTests(cwd);
 
-  const outdated: { name: string; status: FileStatus; fileCount: number }[] =
-    [];
-
-  for (const name of installed) {
-    const destDir = resolve(componentsDir, name);
-    const files = getComponentFiles(name, { tests });
-    // Only tracked components get here, and those have an entry.
-    const lockedComponent = lockfile.components[name]!;
-
-    const fileAnalyses: FileAnalysis[] = [];
-
-    for (const file of files) {
-      const srcContent = readFileSync(
-        join(getComponentSourceDir(name), file),
-        'utf-8',
-      );
-      const destPath = join(destDir, file);
-      // Canonicalize like add/update so drift detection compares apples to
-      // apples against the formatted hash stored in the lockfile.
-      const newContent = formatContent(rewriteImports(srcContent), destPath);
-
-      const currentContent = existsSync(destPath)
-        ? readFileSync(destPath, 'utf-8')
-        : null;
-
-      const storedHash = lockedComponent[file]?.hash ?? null;
-      const status = analyzeFile(
-        currentContent,
-        newContent,
-        storedHash,
-        hashContent,
-      );
-
-      fileAnalyses.push({
-        file,
-        status,
-        currentContent: currentContent ?? '',
-        newContent,
-      });
-    }
-
-    const overall = summarizeComponent({ name, files: fileAnalyses });
-    if (overall !== 'up-to-date') {
-      outdated.push({ name, status: overall, fileCount: files.length });
-    }
-  }
+  const outdated = installed
+    .map((name) => componentStatus(name, componentsDir, lockfile, tests))
+    .filter(({ status }) => status !== 'up-to-date');
 
   if (options.json) {
-    console.log(JSON.stringify({ components: outdated }, null, 2));
+    console.log(
+      JSON.stringify(
+        { components: outdated.map(componentStatusJson) },
+        null,
+        2,
+      ),
+    );
     // Exit 1 when outdated so CI pipelines can detect "updates available"
     // without parsing stdout (e.g., `dolan outdated --json || echo "Run dolan update"`).
     process.exit(outdated.length > 0 ? 1 : 0);
@@ -149,12 +110,17 @@ export const outdatedCommand = async (options: { json?: boolean }) => {
 
   const maxNameLen = Math.max(...outdated.map((r) => r.name.length));
 
-  for (const { name, status, fileCount } of outdated) {
+  for (const { name, status, fileCount, stale } of outdated) {
     const paddedName = name.padEnd(maxNameLen);
     const filesLabel = fileCount === 1 ? '1 file' : `${fileCount} files`;
     p.log.message(
       `  ${STATUS_ICONS[status]} ${pc.bold(paddedName)}  ${STATUS_SHORT_LABELS[status]}  ${pc.dim(`(${filesLabel})`)}`,
     );
+    // Name each file `update` would delete, since "outdated" alone reads
+    // like a change to the files upstream still ships.
+    for (const file of stale) {
+      p.log.message(`    ${removalLine(`${name}/${file.file}`, file)}`);
+    }
   }
 
   p.outro(

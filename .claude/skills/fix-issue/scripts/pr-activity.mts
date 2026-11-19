@@ -86,7 +86,10 @@ const fetchPullRequest = (n: number): PullRequest => {
       '-f',
       `name=${NAME}`,
     ],
-    { encoding: 'utf8' },
+    // Node's default buffer is 1 MiB, and a reply past it kills gh, which
+    // every poll would then repeat until the deadline. The busiest PR so far
+    // (#543: 7 threads, 11 reviews) came to 72 KB, full bodies and all.
+    { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 },
   );
   const pr = JSON.parse(out).data.repository.pullRequest;
   if (!pr) throw new Error(`No pull request #${n} in ${OWNER}/${NAME}`);

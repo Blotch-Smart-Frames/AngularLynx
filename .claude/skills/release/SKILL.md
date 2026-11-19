@@ -75,7 +75,25 @@ changed a method's signature. They go in the PR body.
 ```bash
 git -C <main> worktree add -b chore/release-<version> <scratchpad>/wt-release origin/master
 cd <scratchpad>/wt-release
-npm run set-version <version>
+node -p "require('./package.json').packageManager"
+npm --version
+```
+
+`set-version` ends by rewriting the lockfile with `npm install --package-lock-only`, so it has to
+run under the npm that `packageManager` pins, which is the one Renovate writes the lockfile with.
+Another major rewrites the lockfile's flags as well. For 22.2.27, npm 11 against the pinned npm 10
+turned 162 `"dev": true` lines into `"devOptional": true` and dropped 122 `"peer": true` lines. If
+the two versions differ, install the pinned npm in the scratchpad and put it first on `PATH` in the
+same command as `set-version`, since the shell may not keep `PATH` from one command to the next:
+
+```bash
+npm install -g --prefix <scratchpad>/npm-<pinned> npm@<pinned>
+PATH=<scratchpad>/npm-<pinned>/bin:$PATH npm run set-version <version>
+```
+
+Otherwise run `npm run set-version <version>` as it is. Then:
+
+```bash
 node packages/release/src/check-version.ts <version>
 git diff --stat
 git diff -U0 | grep '^[-+][^-+]'

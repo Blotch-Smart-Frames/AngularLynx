@@ -137,7 +137,7 @@ By default, `loadComponent()` routes and `@defer` blocks are built into the main
 - It needs Lynx 3.9 or later (`lynx.fetchBundle()`). The apps `ng build --platform` makes, and Lynx Explorer 4.1, have it.
 - A failed download rejects the `import()`: the navigation fails (`NavigationError`), or the `@defer` block shows its `@error`.
 - The main bundle's classes (Tailwind's utilities, the theme) apply inside a lazy component, and the lazy bundle's component styles are added to the page when it loads.
-- Lazy bundle URLs start with `output.assetPrefix`, `/` in any `ng build`. `ng serve` and the native apps resolve them; Lynx Explorer doesn't resolve a `/` URL, so to open an `ng build`'s bundle from a static server in Explorer, give the `lynx` environment an absolute prefix:
+- Lazy bundle URLs start with the build's `output.assetPrefix`, `/` by default, in a development `ng build` as in a production one. `ng serve` and the native apps resolve them; Lynx Explorer doesn't resolve a root-relative URL, so to open an `ng build`'s bundle from a static server in Explorer, give the `lynx` environment an absolute prefix:
 
 ```typescript
 export default defineConfig({

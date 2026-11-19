@@ -2,6 +2,7 @@ import {
   type BuilderContext,
   type BuilderOutput,
   createBuilder,
+  type Target,
 } from '@angular-devkit/architect';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -68,6 +69,29 @@ const withoutEmptyLists = <T>(value: T): T => {
 };
 
 /**
+ * The polyfills the test target names for itself (the `polyfills` option,
+ * new in Angular 22.3), which the tests load in place of the build target's.
+ * `undefined` when it names none, and the build target's apply.
+ *
+ * An empty list in `options` doesn't say which: Angular CLI fills one in
+ * when the option is left out (see `withoutEmptyLists`). angular.json does.
+ * An empty list written there means the tests load none of the app's
+ * polyfills, which is what Angular asks a zoneless project to write, to keep
+ * Zone.js out of its tests.
+ */
+const testTargetPolyfills = async (
+  options: UnitTestBuilderOptions,
+  context: BuilderContext,
+  target: Target,
+): Promise<readonly string[] | undefined> => {
+  if (options.polyfills?.length) {
+    return options.polyfills;
+  }
+  const configured = (await context.getTargetOptions(target))['polyfills'];
+  return Array.isArray(configured) ? [] : undefined;
+};
+
+/**
  * `ng test`: Angular's unit-test builder (`@angular/build:unit-test`), so the
  * options, test discovery (`*.spec.ts` and `*.test.ts`), TestBed, watch mode
  * and coverage are the ones Angular developers know, and the tests compile
@@ -88,12 +112,12 @@ export const runUnitTest = async function* (
   context: BuilderContext,
   deps: UnitTestBuilderDeps = defaultDeps,
 ): AsyncIterable<BuilderOutput> {
-  const projectName = context.target?.project;
-  if (!projectName) {
+  const target = context.target;
+  if (!target?.project) {
     yield { success: false, error: 'The builder needs a project target.' };
     return;
   }
-  const metadata = await context.getProjectMetadata(projectName);
+  const metadata = await context.getProjectMetadata(target.project);
   const projectRoot = path.join(
     context.workspaceRoot,
     (metadata['root'] as string | undefined) ?? '',
@@ -120,9 +144,17 @@ export const runUnitTest = async function* (
       ? ['@blotch/angular-lynx-testing-library/setup']
       : []),
   ];
+  // Angular takes the test target's own polyfills in place of the build
+  // target's, which would leave the Lynx setup out with them: every test
+  // would then fail on a missing `__DEV__`. So the setup follows whichever
+  // list Angular reads.
+  const ownPolyfills = await testTargetPolyfills(options, context, target);
   yield* angularBuild.executeUnitTestBuilder(
-    withoutEmptyLists(options),
-    asAngularBuildTargets(context, lynxPolyfills),
+    {
+      ...withoutEmptyLists(options),
+      ...(ownPolyfills && { polyfills: [...ownPolyfills, ...lynxPolyfills] }),
+    },
+    asAngularBuildTargets(context, lynxPolyfills, ownPolyfills),
   );
 };
 

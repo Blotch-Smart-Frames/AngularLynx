@@ -1,21 +1,15 @@
 import * as p from '@clack/prompts';
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import pc from 'picocolors';
 import { configExists, readConfig } from '../config.js';
 import { getComponentNames, getEntry } from '../registry.js';
-import {
-  getComponentFiles,
-  getComponentSourceDir,
-  rewriteImports,
-} from '../utils/resolve-paths.js';
-import { formatContent } from '../utils/format.js';
+import { analyzeComponent } from '../utils/analyze-component.js';
 import { trackedComponents, untrackedComponents } from '../utils/installed.js';
 import { isInteractive } from '../utils/interactive.js';
 import { copiesTests } from '../utils/packages.js';
-import { getOrCreateLockfile, hashContent } from '../lockfile.js';
+import { getOrCreateLockfile, type Lockfile } from '../lockfile.js';
 import {
-  analyzeFile,
   formatDiff,
   summarizeComponent,
   STATUS_ICONS,
@@ -41,8 +35,10 @@ const STATUS_SHORT_LABELS: Record<FileStatus, string> = {
  *     from upstream and prompt to pick which one's diff to display. Without a
  *     terminal to ask in, it shows them all, as `git diff` would.
  *
- * Uses the same analyzeFile + summarizeComponent pipeline as `list`/`update`
- * so what you see here matches what those commands will report.
+ * Uses the same analyzeComponent + summarizeComponent pipeline as
+ * `list`/`update` so what you see here matches what those commands will
+ * report. That includes a file upstream no longer ships, which `update`
+ * deletes: its diff is the whole file going.
  */
 export const diffCommand = async (component?: string) => {
   const cwd = process.cwd();
@@ -160,54 +156,22 @@ export const diffCommand = async (component?: string) => {
   p.outro('');
 };
 
-const analyzeComponent = (
-  name: string,
-  componentsDir: string,
-  lockfile: { components: Record<string, Record<string, { hash: string }>> },
-  tests: boolean,
-): FileAnalysis[] => {
-  const srcDir = getComponentSourceDir(name);
-  const files = getComponentFiles(name, { tests });
-  // Only tracked components get here, and those have an entry.
-  const lockedComponent = lockfile.components[name]!;
-  const destDir = resolve(componentsDir, name);
-
-  const analyses: FileAnalysis[] = [];
-
-  for (const file of files) {
-    const srcContent = readFileSync(join(srcDir, file), 'utf-8');
-    const destPath = join(destDir, file);
-    // Match how add/update canonicalize upstream content, or every file would
-    // read as drifted against the formatted hash recorded in the lockfile.
-    const newContent = formatContent(rewriteImports(srcContent), destPath);
-
-    const currentContent = existsSync(destPath)
-      ? readFileSync(destPath, 'utf-8')
-      : null;
-
-    const storedHash = lockedComponent[file]?.hash ?? null;
-    const status = analyzeFile(
-      currentContent,
-      newContent,
-      storedHash,
-      hashContent,
-    );
-
-    analyses.push({
-      file,
-      status,
-      currentContent: currentContent ?? '',
-      newContent,
-    });
-  }
-
-  return analyses;
-};
+/**
+ * The label in a file's header. A file upstream no longer ships gives that
+ * reason: "outdated" would read like a change to it, when the diff below is
+ * the whole file going.
+ */
+const fileLabel = (analysis: FileAnalysis): string =>
+  !analysis.removed
+    ? STATUS_SHORT_LABELS[analysis.status]
+    : analysis.status === 'conflict'
+      ? `${STATUS_SHORT_LABELS.conflict}: ${analysis.removed}`
+      : pc.blue(analysis.removed);
 
 const showComponentDiff = (
   name: string,
   componentsDir: string,
-  lockfile: { components: Record<string, Record<string, { hash: string }>> },
+  lockfile: Lockfile,
   tests: boolean,
 ) => {
   const analyses = analyzeComponent(name, componentsDir, lockfile, tests);
@@ -217,7 +181,7 @@ const showComponentDiff = (
   for (const analysis of analyses) {
     if (analysis.status === 'up-to-date') continue;
 
-    const header = `── ${name}/${analysis.file} (${STATUS_SHORT_LABELS[analysis.status]}) ──`;
+    const header = `── ${name}/${analysis.file} (${fileLabel(analysis)}) ──`;
     p.log.message(`\n${pc.dim(header)}`);
 
     if (analysis.status === 'new-upstream') {
@@ -225,6 +189,8 @@ const showComponentDiff = (
       // in green so it visually reads as "new content" rather than as a diff.
       p.log.message(pc.green(analysis.newContent));
     } else {
+      // For a file upstream no longer ships, upstream's side is empty, so
+      // every line of it shows as removed.
       const diff = formatDiff(analysis.currentContent, analysis.newContent);
       p.log.message(diff);
     }

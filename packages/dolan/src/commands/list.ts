@@ -1,24 +1,20 @@
 import * as p from '@clack/prompts';
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import pc from 'picocolors';
 import { configExists, readConfig } from '../config.js';
 import { trackedComponents, untrackedComponents } from '../utils/installed.js';
 import { copiesTests } from '../utils/packages.js';
+import { getOrCreateLockfile } from '../lockfile.js';
 import {
-  getComponentFiles,
-  getComponentSourceDir,
-  rewriteImports,
-} from '../utils/resolve-paths.js';
-import { formatContent } from '../utils/format.js';
-import { getOrCreateLockfile, hashContent } from '../lockfile.js';
-import {
-  analyzeFile,
-  summarizeComponent,
+  removalLine,
   STATUS_ICONS,
-  type FileAnalysis,
   type FileStatus,
 } from '../utils/analyze.js';
+import {
+  componentStatus,
+  componentStatusJson,
+} from '../utils/analyze-component.js';
 
 const STATUS_SHORT_LABELS: Record<FileStatus, string> = {
   'up-to-date': pc.dim('up to date'),
@@ -36,7 +32,8 @@ const STATUS_SHORT_LABELS: Record<FileStatus, string> = {
  * `summarizeComponent` rolls the per-file statuses up into a single component-
  * level status using a priority order (conflict > user-modified > outdated >
  * up-to-date) — so a component is flagged "modified" even if only one of its
- * files has user edits.
+ * files has user edits. A file upstream no longer ships counts as a change
+ * too, and is named under its component (see analyzeComponent).
  *
  * Supports --json for machine-readable output (used by CI/scripts), which
  * short-circuits the interactive prompts entirely.
@@ -92,56 +89,16 @@ export const listCommand = async (options: { json?: boolean }) => {
   }
 
   const tests = copiesTests(cwd);
-  const results: { name: string; status: FileStatus; fileCount: number }[] = [];
-
-  for (const name of installed) {
-    const destDir = resolve(componentsDir, name);
-    const files = getComponentFiles(name, { tests });
-    // Only tracked components get here, and those have an entry.
-    const lockedComponent = lockfile.components[name]!;
-
-    const fileAnalyses: FileAnalysis[] = [];
-
-    for (const file of files) {
-      const srcContent = readFileSync(
-        join(getComponentSourceDir(name), file),
-        'utf-8',
-      );
-      const destPath = join(destDir, file);
-      // Canonicalize like add/update so status compares apples to apples
-      // against the formatted hash stored in the lockfile.
-      const newContent = formatContent(rewriteImports(srcContent), destPath);
-
-      const currentContent = existsSync(destPath)
-        ? readFileSync(destPath, 'utf-8')
-        : null;
-
-      const storedHash = lockedComponent[file]?.hash ?? null;
-      const status = analyzeFile(
-        currentContent,
-        newContent,
-        storedHash,
-        hashContent,
-      );
-
-      fileAnalyses.push({
-        file,
-        status,
-        currentContent: currentContent ?? '',
-        newContent,
-      });
-    }
-
-    const overall = summarizeComponent({ name, files: fileAnalyses });
-    results.push({ name, status: overall, fileCount: files.length });
-  }
+  const results = installed.map((name) =>
+    componentStatus(name, componentsDir, lockfile, tests),
+  );
 
   if (options.json) {
     console.log(
       JSON.stringify(
         ejected.length > 0
-          ? { components: results, ejected }
-          : { components: results },
+          ? { components: results.map(componentStatusJson), ejected }
+          : { components: results.map(componentStatusJson) },
         null,
         2,
       ),
@@ -153,12 +110,17 @@ export const listCommand = async (options: { json?: boolean }) => {
     ...[...results.map((r) => r.name), ...ejected].map((name) => name.length),
   );
 
-  for (const { name, status, fileCount } of results) {
+  for (const { name, status, fileCount, stale } of results) {
     const paddedName = name.padEnd(maxNameLen);
     const filesLabel = fileCount === 1 ? '1 file' : `${fileCount} files`;
     p.log.message(
       `  ${STATUS_ICONS[status]} ${pc.bold(paddedName)}  ${STATUS_SHORT_LABELS[status]}  ${pc.dim(`(${filesLabel})`)}`,
     );
+    // Name each file `update` would delete, since "outdated" alone reads
+    // like a change to the files upstream still ships.
+    for (const file of stale) {
+      p.log.message(`    ${removalLine(`${name}/${file.file}`, file)}`);
+    }
   }
 
   for (const name of ejected) {

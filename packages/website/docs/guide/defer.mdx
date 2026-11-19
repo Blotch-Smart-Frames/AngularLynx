@@ -38,44 +38,54 @@ export class Feed {
 
 ## Triggers
 
-| Trigger           | Works on Lynx | Notes                                                                                    |
-| ----------------- | :-----------: | ---------------------------------------------------------------------------------------- |
-| `when condition`  |      Yes      | The most useful trigger on Lynx                                                          |
-| `on immediate`    |      Yes      | As soon as the template has rendered                                                     |
-| `on idle`         |      Yes      | When the app has a moment to spare. The default if you give no trigger                   |
-| `on timer(500ms)` |      Yes      | After a delay                                                                            |
-| `on viewport`     |      No       | Lynx has no `IntersectionObserver`. See [below](#load-when-an-element-scrolls-into-view) |
-| `on interaction`  |      No       | Angular never attaches its `click` and `keydown` listeners to a Lynx element             |
-| `on hover`        |      No       | Listens for mouse and focus events, which Lynx never fires                               |
-| `prefetch …`      |  Not useful   | The code is already in the bundle, so there's nothing to fetch early                     |
+| Trigger           | Works on Lynx | Notes                                                                  |
+| ----------------- | :-----------: | ---------------------------------------------------------------------- |
+| `when condition`  |      Yes      | When the condition becomes `true`                                      |
+| `on immediate`    |      Yes      | As soon as the template has rendered                                   |
+| `on idle`         |      Yes      | When the app has a moment to spare. The default if you give no trigger |
+| `on timer(500ms)` |      Yes      | After a delay                                                          |
+| `on viewport`     |      Yes      | When the trigger element comes on screen                               |
+| `on interaction`  |      Yes      | When the trigger element is tapped                                     |
+| `on hover`        |      Yes      | When a finger touches the trigger element, as in a phone's browser     |
+| `prefetch …`      |  Not useful   | The code is already in the bundle, so there's nothing to fetch early   |
 
-## Load when an element scrolls into view
-
-`on viewport` doesn't work, but the [`lynxExposure`](/guide/exposure) directive gives you the same signal. Put it on a wrapper and use `when`:
+## Load when an element is tapped or comes on screen
 
 ```typescript title="src/app/post.ts"
 import { Component } from '@angular/core';
-import { LYNX_ELEMENTS, LynxExposure } from '@blotch/angular-lynx';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { Comments } from './comments';
+import { RelatedPosts } from './related-posts';
 
 @Component({
   selector: 'app-post',
-  imports: [LYNX_ELEMENTS, LynxExposure, Comments],
+  imports: [LYNX_ELEMENTS, Comments, RelatedPosts],
   template: `
-    <view lynxExposure #area="lynxExposure" style="min-height: 200px">
-      @defer (when area.visible()) {
-        <app-comments />
-      } @placeholder {
-        <text>Comments</text>
-      }
-    </view>
+    @defer (on interaction) {
+      <app-comments />
+    } @placeholder {
+      <view class="p-4">
+        <text>Show comments</text>
+      </view>
+    }
+
+    @defer (on viewport) {
+      <app-related-posts />
+    } @placeholder {
+      <view class="h-[200px]">
+        <text>Related posts</text>
+      </view>
+    }
   `,
 })
 export class Post {}
 ```
 
-- `area.visible()` turns `true` when the wrapper first appears on screen, for example when the user scrolls to it.
-- Give the wrapper a size. An element with no width or height never counts as visible.
+- **The placeholder is the trigger element.** It needs exactly one root element, here the `<view>`. To use another element, give it a template reference variable and name it: `<view #more>…</view>` and `@defer (on interaction(more))`.
+- **`on interaction`** fires when the trigger, or anything inside it, is tapped. Angular also listens for `keydown`, which iOS and Android never send.
+- **`on hover`** fires when a finger touches the trigger, before it lifts. A phone's browser fires it for a tap too, since it sends mouse events for one. In the [web preview](/guide/glossary#web-preview), the mouse moving over the trigger fires it.
+- **`on viewport`** fires when the trigger first appears on screen, for example when the user scrolls to it. Give the trigger a size: an element with no width or height never counts as on screen.
+- **The [`lynxExposure`](/guide/exposure) directive** gives you the same signal as `on viewport` for any element, as `@defer (when area.visible())`.
 
 ## The other blocks
 

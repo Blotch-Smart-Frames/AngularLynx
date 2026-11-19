@@ -9,7 +9,7 @@ describe('normalizeOptions', () => {
     expect(result.enableA11y).toBe(true);
     expect(result.enableAccessibilityElement).toBe(false);
     expect(result.enableCSSInheritance).toBe(false);
-    expect(result.enableCSSInvalidation).toBe(false);
+    expect(result.enableCSSInvalidation).toBe(true);
     expect(result.enableCSSSelector).toBe(true);
     expect(result.enableNewGesture).toBe(true);
     expect(result.defaultDisplayLinear).toBe(true);

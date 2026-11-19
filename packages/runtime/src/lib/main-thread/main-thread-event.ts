@@ -7,6 +7,7 @@ import {
   type SimpleChanges,
 } from '@angular/core';
 import { removeNativeHandler } from '../lynx-element/remove-native-handler';
+import { addNativeEvent } from '../lynx-element/event-registration';
 import type { BaseLynxElement } from '../lynx-element/types';
 import { __workletMap } from '../worklet-bridge';
 import type { MainThreadFnHandle } from './main-thread-fn';
@@ -226,7 +227,7 @@ export class LynxMainThreadEvent implements OnChanges, OnDestroy {
       // call __AddInlineStyle, __SetAttribute, etc. for 60fps animations
       // without cross-thread latency.
       // A new handler for the same event replaces the old one natively.
-      __AddEvent(elementRef, eventType, eventName, {
+      addNativeEvent(elementRef, eventType, eventName, {
         type: 'worklet',
         value: { _wkltId: workletId, _workletType: 'main-thread' },
       });

@@ -1196,7 +1196,7 @@ describe('LynxElement', () => {
     element = new LynxElement(fakeRef);
     const cb = vi.fn();
 
-    const cleanup = element.addEventListener('mouseover', cb);
+    const cleanup = element.addEventListener('mousedown', cb);
 
     expect(globalThis.__AddEvent).not.toHaveBeenCalled();
     expect(typeof cleanup).toBe('function');
@@ -1284,7 +1284,7 @@ describe('LynxElement', () => {
 
     it('ignore a name a phone never sends, which the web preview would', () => {
       element = new LynxElement(fakeRef);
-      element.addEventListener('mouseover', vi.fn());
+      element.addEventListener('mousedown', vi.fn());
       element.addEventListener('keydown', vi.fn());
 
       expect(addEvent()).not.toHaveBeenCalled();

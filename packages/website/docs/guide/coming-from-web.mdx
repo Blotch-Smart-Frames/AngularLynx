@@ -80,7 +80,7 @@ Lynx events start with `bind` or `catch`:
 
 Event data is in `$event.detail`. A text input's value, for example, is `$event.detail.value`.
 
-DOM event names work where Lynx sends the same event. `(click)` runs on a tap, `(input)` when the text changes, and `(keyup.enter)` when the keyboard's return key is pressed. A text field's value is in `$event.target.value` too, as on the web. Names Lynx has no event for, such as `(mouseover)`, never run.
+DOM event names work where Lynx sends the same event. `(click)` runs on a tap, `(input)` when the text changes, and `(keyup.enter)` when the keyboard's return key is pressed. A text field's value is in `$event.target.value` too, as on the web. Pointer events, and the mouse events that say a pointer is over an element, such as `(mouseenter)`, come from touches. Names Lynx has no event for, such as `(keydown)`, never run.
 
 A handler can do anything it would on the web, such as navigate or open an overlay.
 
@@ -123,7 +123,7 @@ Libraries that touch the DOM, or depend on browser APIs, won't work. That includ
 | Event bindings                                                      |   ⚠️   | `bind*`/`catch*` names, and DOM names Lynx also sends. [Events](/guide/elements/event-handling)                                           |
 | Component styles                                                    |   ✅   | Scoped as on the web. `ShadowDom` falls back to `None`, and stylesheets must be plain CSS. [CSS on Lynx](/guide/styling#component-styles) |
 | Router                                                              |   ⚠️   | No URL bar. `routerLink` works on any element. [Routing](/guide/routing)                                                                  |
-| Lazy routes and `@defer`                                            |   ⚠️   | Code isn't split into separate files. Some `@defer` triggers don't work. [`@defer`](/guide/defer)                                         |
+| Lazy routes and `@defer`                                            |   ⚠️   | Code isn't split into separate files. Every `@defer` trigger works. [`@defer`](/guide/defer)                                              |
 | Reactive, template-driven and signal forms                          |   ⚠️   | On `<input>` and `<textarea>`. No native checkbox, radio or select. [Forms](/guide/forms)                                                 |
 | `@boundary` error boundaries (Angular 22.2)                         |   ✅   | [Handling errors](/guide/error-handling)                                                                                                  |
 | `i18n` attributes and `$localize`                                   |   ⚠️   | Translations load at runtime, not at build time. [Internationalization](/guide/i18n)                                                      |

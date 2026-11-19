@@ -396,6 +396,35 @@ describe('global-callbacks', () => {
       expect(result).toBe(42);
     });
 
+    // On Lynx for Web, a handler added or removed while an event runs waits
+    // for it to finish: web-core throws for a change meanwhile (#459).
+    it('runWorklet makes the web wait for the event before changing handlers', async () => {
+      const { addNativeEvent } =
+        await import('./lynx-element/event-registration');
+      globalThis.__AddEvent = vi.fn();
+      vi.stubGlobal('__WEB__', true);
+      const element = {} as never;
+      const result = (globalThis as any).runWorklet(() => {
+        addNativeEvent(element, 'bindEvent', 'tap', undefined);
+        return 'handled';
+      }, []);
+      expect(result).toBe('handled');
+      expect(__AddEvent).not.toHaveBeenCalled();
+      await Promise.resolve();
+      expect(__AddEvent).toHaveBeenCalledWith(
+        element,
+        'bindEvent',
+        'tap',
+        undefined,
+      );
+
+      vi.stubGlobal('__WEB__', false);
+      (globalThis as any).runWorklet(() => {
+        addNativeEvent(element, 'bindEvent', 'scroll', undefined);
+      }, []);
+      expect(__AddEvent).toHaveBeenCalledTimes(2);
+    });
+
     it('runWorklet unwraps a { _fn } gesture handle', () => {
       const fn = vi.fn().mockReturnValue('gestured');
       const result = (globalThis as any).runWorklet({ _fn: fn }, ['evt']);

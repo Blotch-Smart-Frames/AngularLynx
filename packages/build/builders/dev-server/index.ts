@@ -94,6 +94,7 @@ const startDevServer = async (
       ? await (deps.importNative ?? importNative)()
       : undefined;
     const rspeedy = await createRspeedy({
+      command: 'serve',
       rspeedy: await deps.importRspeedy(),
       plugin: await deps.importPlugin(),
       qrCode: await deps.importQRCodePlugin(),

@@ -78,6 +78,7 @@ export type {
   GestureEvent,
   LongPressGestureEvent,
   PanGestureEvent,
+  PanOffset,
   PinchGestureEvent,
   RotationGestureEvent,
   TapGestureEvent,

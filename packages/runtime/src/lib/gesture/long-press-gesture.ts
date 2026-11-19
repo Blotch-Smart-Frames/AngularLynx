@@ -29,8 +29,7 @@ export class LongPressGesture extends BaseGesture<
    * Shorter presses are treated as taps and ignored.
    */
   minDuration(ms: number): this {
-    this._config['minDuration'] = ms;
-    return this;
+    return this._option('minDuration', ms);
   }
 
   /**
@@ -38,7 +37,6 @@ export class LongPressGesture extends BaseGesture<
    * during the hold, the gesture fails — allowing a scroll to take over.
    */
   maxDistance(px: number): this {
-    this._config['maxDistance'] = px;
-    return this;
+    return this._option('maxDistance', px);
   }
 }

@@ -18,7 +18,7 @@ import { UiSeparator } from '../../components/ui/separator';
  * Two render modes so the same component can headline the interactive card and also
  * appear inline under the compact auto-trigger rows without doubling up chrome:
  *  - full (default) — a self-contained result panel with a stat readout.
- *  - compact        — a single row, for the tight timer/idle sections.
+ *  - compact        — a single row, for the tight trigger rows.
  *
  * `label` names how this instance was triggered ("manually", "on timer", …) so
  * every loaded state reads back the trigger that rendered it. Both inputs are

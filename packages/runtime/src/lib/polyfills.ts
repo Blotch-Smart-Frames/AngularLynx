@@ -20,6 +20,7 @@ import {
   installGlobalDocument,
   installGlobalWindow,
 } from './global-events';
+import { installElementGlobal } from './lynx-element/element-global';
 import { installIntersectionObserver } from './lynx-element/intersection-observer';
 import { installBase64Globals, installNetworkGlobals } from './network';
 import { installUrl } from './url';
@@ -367,6 +368,9 @@ if (
 // like. Last, since it adds to the `document` and `window` stand-ins above.
 // The main thread only: Angular, and the scene, run there.
 if (isMainThread()) {
+  // A template's elements are `instanceof Element`, which Angular's @defer
+  // triggers check before listening to one (issue #459).
+  installElementGlobal(globalThis as unknown as Record<string, any>);
   installCanvasGlobals(globalThis as unknown as Record<string, any>);
   // Lynx's main thread has no IntersectionObserver either, so code written
   // for the browser that watches whether an element is on screen threw as it

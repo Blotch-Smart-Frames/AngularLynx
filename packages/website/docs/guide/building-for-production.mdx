@@ -40,7 +40,7 @@ A bundle is like the JavaScript and CSS of a web app packed into one file. It do
 As in Angular, the `optimization` option decides which kind of build you get. There's no separate mode option:
 
 - `ng build` uses the build target's `defaultConfiguration`, which is `production` after `ng add`.
-- `ng build -c development` uses `ng new`'s development configuration (`"optimization": false`), with dev mode on.
+- `ng build -c development` uses `ng new`'s development configuration (`"optimization": false`), with dev mode on. Like a production build, it loads its images from the app, not from a dev server.
 - Flags override single options, e.g. `ng build --source-map`.
 - `ng serve -c production` serves a production build.
 

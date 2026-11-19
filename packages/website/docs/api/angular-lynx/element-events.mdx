@@ -95,6 +95,8 @@ A touch's events go to the element it started on, wherever the finger moves, as 
 
 A finger keeps its `pointerId` until it lifts, at the element and at the [document](#document-window-and-body-listeners). With multi-touch off, the LynxView's default, there's one touch at a time, and its `pointerId` is `0`.
 
+`(mouseover)`, `(mouseenter)`, `(mouseout)` and `(mouseleave)` come from the first finger too, as a phone's browser makes them from a tap: `mouseover` and `mouseenter` when it touches the element, after `pointerenter`, and `mouseout` and `mouseleave` when it lifts, after `pointerleave`. Code written for a mouse's hover, such as Angular's [`@defer (on hover)`](/guide/defer#triggers), runs when a finger touches the element. Only the element hears them: `document:mouseover` never runs on iOS or Android. In the web preview, they're the browser's own.
+
 ### `document:`, `window:` and `body:` listeners
 
 Host listeners on the document, the window and the body work as in a browser, and so do the libraries written for the browser that use them:

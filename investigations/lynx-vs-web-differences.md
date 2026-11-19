@@ -4993,6 +4993,32 @@ The `deadline` it receives is Lynx's empty `{}` — truthy, but with no `timeRem
 
 `runtime.ts` polyfills a matched `requestIdleCallback`/`cancelIdleCallback` pair (mapped to `setTimeout`/`clearTimeout`) that invokes the callback with a correctly-shaped `IdleDeadline` (`{ didTimeout: false, timeRemaining: () => 50 }`). This keeps Angular off the broken fallback entirely. **Both** must be defined, never just one: Angular reuses a single `typeof requestIdleCallback !== 'undefined'` guard to also select `cancelIdleCallback`, so a lone `requestIdleCallback` would make it bind an `undefined` cancel and crash the same way. Sits right after the existing `setTimeout`/`clearTimeout`/`requestAnimationFrame` polyfills so both are resolvable on either thread. React Lynx never hit this because it has no equivalent of Angular's `@defer (on idle)`.
 
+## `@defer (on interaction)`, `(on hover)` and `(on viewport)` need a template's element to be an `Element`, and hover needs mouse events
+
+### What you'd expect (web)
+
+`@defer (on interaction)` renders its block when the placeholder is clicked, `on hover` when the mouse moves over it (a phone's browser: when it's tapped), and `on viewport` when it scrolls into view.
+
+### What Lynx does
+
+All three kept their placeholders, in the web preview, the testing library and on a device (issue #459). Angular finds the trigger element after each render (`registerDomTrigger`'s `afterEveryRender` poll in `@angular/core`), and in development builds `getTriggerElement` asserts `element instanceof Element` before listening to it. A template's element is a LynxElement:
+
+- In the web preview's main-thread frame and in jsdom, `Element` is the DOM's, and a LynxElement only wraps a DOM element, so the assertion threw "The provided value must be an element".
+- On iOS and Android the main thread has no `Element` at all, so it threw a ReferenceError.
+
+Either way the throw happened inside the after-render hook, which reports it to the `ErrorHandler` and carries on, so no listener was ever added. Production builds skip the assertion.
+
+`on hover` had a second problem: it listens for `mouseover`, `mouseenter` and `focusin`. iOS and Android send no mouse events, and the renderer ignored those names.
+
+`on interaction` had a third, in the web preview only. Angular takes its `click` listener off the trigger as the trigger fires, from inside that listener. Lynx for Web keeps every element's handlers in one WebAssembly object and holds it while it runs a handler, so `__AddEvent` for the removal threw "recursive use of an object detected which would lead to unsafe aliasing in rust". web-core dropped the error without a word, and `triggerDeferBlock` stopped before it rendered anything. Any `__AddEvent` from a Lynx event's handler does the same there: an `IntersectionObserver` or `ResizeObserver` that starts observing from a tap, or a listener that removes itself. Checked with Playwright on web-core's own preview, wrapping the realm's `__AddEvent`. Production builds hit this one too.
+
+### The fix
+
+- `installElementGlobal()` (`packages/runtime/src/lib/lynx-element/element-global.ts`, run by `polyfills.ts` on the main thread) makes a template's elements, but not its text nodes or anchors, `instanceof Element`. On a device it installs an `Element` class with a `Symbol.hasInstance`. In the web preview and jsdom it gives the DOM's `Element` one, which accepts LynxElements as well as its own instances. The DOM's subclasses inherit that static method, so it checks `this === Element`, which leaves `HTMLDivElement` and the rest as they were.
+- A touch makes `mouseover`/`mouseenter` (after `pointerenter`) and `mouseout`/`mouseleave` (after `pointerleave`) at the element, from the first finger only, as `PointerEventSource` already made pointer events (`pointer-events.ts`). A phone's browser sends them for a tap, so `on hover` fires on a touch there too. The document's listeners don't get them.
+- On Lynx for Web, `runWorklet` (`global-callbacks.ts`), through which every Lynx event reaches main-thread code, counts the events running, and `addNativeEvent()` (`lynx-element/event-registration.ts`) holds an `__AddEvent` made meanwhile until a microtask, after web-core's handling has returned. The element's own listener list changes at once, so a removed listener doesn't run again. iOS and Android register at once.
+- `on interaction` then works as it is: `click` was already `tap`, and `keydown`, which phones never send, stays ignored. `on viewport` uses the main-thread `IntersectionObserver` from #233.
+
 ## `@font-face` fonts fail to load with "unsupported URL" — CSS `url()` assets get an unfetchable `webpack://` scheme
 
 ### What you'd expect (web)

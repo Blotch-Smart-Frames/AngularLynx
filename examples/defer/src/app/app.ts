@@ -60,6 +60,63 @@ import { Heavy } from './heavy';
             </view>
           }
         </view>
+
+        <view class="mb-4 rounded-xl border border-zinc-200 bg-white p-4">
+          <text
+            class="uppercase mb-3 text-[11px] font-bold tracking-[0.5px] text-zinc-400"
+          >
+            On interaction
+          </text>
+          <!-- The placeholder is the trigger: a tap on it loads the block. -->
+          @defer (on interaction) {
+            <app-heavy />
+          } @placeholder {
+            <view class="rounded-lg bg-zinc-100 p-3.5">
+              <text class="text-sm text-zinc-400">Tap here to load</text>
+            </view>
+          }
+        </view>
+
+        <view class="mb-4 rounded-xl border border-zinc-200 bg-white p-4">
+          <text
+            class="uppercase mb-3 text-[11px] font-bold tracking-[0.5px] text-zinc-400"
+          >
+            On hover
+          </text>
+          <!-- A finger touching the placeholder, or a mouse over it. -->
+          @defer (on hover) {
+            <app-heavy />
+          } @placeholder {
+            <view class="rounded-lg bg-zinc-100 p-3.5">
+              <text class="text-sm text-zinc-400">
+                Touch here, or hover with a mouse
+              </text>
+            </view>
+          }
+        </view>
+
+        <text class="mb-4 text-[13px] text-zinc-400 text-center">
+          Scroll down
+        </text>
+        <view class="h-[480px]"></view>
+
+        <view class="mb-4 rounded-xl border border-zinc-200 bg-white p-4">
+          <text
+            class="uppercase mb-3 text-[11px] font-bold tracking-[0.5px] text-zinc-400"
+          >
+            On viewport
+          </text>
+          <!-- Loads when the placeholder first comes on screen. -->
+          @defer (on viewport) {
+            <app-heavy />
+          } @placeholder {
+            <view class="rounded-lg bg-zinc-100 p-3.5">
+              <text class="text-sm text-zinc-400"
+                >Loads once it's on screen</text
+              >
+            </view>
+          }
+        </view>
       </view>
     </scroll-view>
   `,

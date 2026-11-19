@@ -63,6 +63,7 @@ import { setPendingClassWriter } from './class-writes';
 import { setScriptStyleWriter } from './script-styles';
 import { noteReleased, scheduleCollection } from './collect-garbage';
 import { removeNativeHandler } from './remove-native-handler';
+import { addNativeEvent } from './event-registration';
 import { dropsTap, WebLongPress } from './web-long-press';
 import { webVideoDetail } from './web-video';
 import {
@@ -2750,7 +2751,7 @@ export class LynxElement implements BaseLynxElement {
         eventName,
         dispatch,
       } of this.#nativeHandlers.values()) {
-        __AddEvent(fresh, eventType, eventName, {
+        addNativeEvent(fresh, eventType, eventName, {
           type: 'worklet',
           value: dispatch,
         });
@@ -3242,8 +3243,11 @@ export class LynxElement implements BaseLynxElement {
     // type: 'worklet' routes the callback through Lynx's worklet system
     // (runWorklet), which is the only way to receive events in the JS thread.
     // Direct function callbacks also work here (not just worklet handles) —
-    // the native engine checks the value type at runtime.
-    __AddEvent(this.element, eventType, entry.eventName, {
+    // the native engine checks the value type at runtime. On Lynx for Web,
+    // a handler added or removed while a Lynx event runs, as Angular's
+    // `@defer (on interaction)` removes its own as it fires, waits for the
+    // event to finish (see addNativeEvent).
+    addNativeEvent(this.element, eventType, entry.eventName, {
       type: 'worklet',
       value: handler.dispatch,
     });

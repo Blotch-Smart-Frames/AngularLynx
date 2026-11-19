@@ -46,8 +46,9 @@ A template written for the browser keeps working where Lynx sends the same event
 - **`(keyup.enter)` and `(keydown.enter)`** run when the keyboard's return key is pressed (`bindconfirm`).
 - **`(scroll)`, `(scrollend)`, `(load)` and `(error)`** run on the elements that send them, such as a `<scroll-view>` or an `<image>`.
 - **`(touchstart)`, `(touchmove)`, `(touchend)` and `(touchcancel)`**, and the animation and transition events, such as `(transitionend)`, run on any element.
+- **Pointer events, such as `(pointerdown)`, and `(mouseover)`, `(mouseenter)`, `(mouseout)` and `(mouseleave)`** come from touches on any element. A finger is over the element from the moment it touches until it lifts. See [Pointer events](/api/angular-lynx/element-events#pointer-events).
 
-Other DOM names, such as `(mouseover)`, `(keydown)` or `(submit)`, never run, and AngularLynx doesn't warn you. iOS and Android don't send them.
+Other DOM names, such as `(mousedown)`, `(keydown)` or `(submit)`, never run, and AngularLynx doesn't warn you. iOS and Android don't send them.
 
 `$event` is still Lynx's event, though Angular types it as the DOM's. Apart from `target.value`, read what it sends from `$event.detail`, as for the `bind` names.
 

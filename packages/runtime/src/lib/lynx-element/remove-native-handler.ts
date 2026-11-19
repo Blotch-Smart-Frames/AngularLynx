@@ -1,4 +1,5 @@
 import type { ElementRef } from '../types/lynx';
+import { addNativeEvent } from './event-registration';
 
 /**
  * A worklet with no `_fn` and no `_wkltId`, which runWorklet ignores (see
@@ -39,7 +40,7 @@ export const removeNativeHandler = (
   eventType: string,
   eventName: string,
 ): void => {
-  __AddEvent(
+  addNativeEvent(
     element,
     eventType,
     eventName,

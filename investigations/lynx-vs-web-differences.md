@@ -1194,7 +1194,7 @@ Measured for issue #113 (2026-10-27, Lynx Explorer 4.1 on the iOS 27 Simulator a
 
 So handlers call these directly now: `RouterLink` navigates inside its `click` listener, `LynxBackButton` calls `Location.back()` from its event, and the docs, skill and examples dropped the rule.
 
-`LynxPortal` did misbehave in that probe, but not because of the handler: `PortalRef.destroy()` left the overlay's content on screen (iOS also showed "LynxCreateUIException: page ui not found"), on master too, and just the same with `open()` and `destroy()` both deferred with `setTimeout`. That's a separate bug.
+`LynxPortal` did misbehave in that probe, but not because of the handler: `PortalRef.destroy()` left the overlay's content on screen (iOS also showed "LynxCreateUIException: page ui not found"), on master too, and just the same with `open()` and `destroy()` both deferred with `setTimeout`. That was a separate bug (issue #458): the portal asked `LynxDocument.createRootElement()` for the page each time it opened, expecting the page the app was bootstrapped into, but it called `__CreatePage()` again. A Lynx page has one page element, and each `__CreatePage()` makes the new page the engine's root (`PageElement`'s constructor calls the element manager's `SetRoot`), so the overlay went into a second page that iOS couldn't make a view for, and its removal never reached the screen. `createRootElement()` now returns the page it already made.
 
 ---
 

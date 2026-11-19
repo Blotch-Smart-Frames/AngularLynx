@@ -67,6 +67,14 @@ describe('LynxHydrateDocument', () => {
       expect(root.isRootPageElement).toBe(true);
     });
 
+    // LynxPortal asks for the page each time it opens an overlay (#458).
+    it('returns the same page when asked again', () => {
+      const doc = new LynxHydrateDocument(pageRef, []);
+      const root = doc.createRootElement();
+
+      expect(doc.createRootElement()).toBe(root);
+    });
+
     // As LynxDocument's does: env(safe-area-inset-*) reads the shell's
     // insets from the page (see page-safe-area.ts).
     it("gives the page the shell's safe-area insets", () => {

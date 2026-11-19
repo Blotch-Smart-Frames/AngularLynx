@@ -1,0 +1,36 @@
+# Layer 6, the app's own builds only (issue #458). The overlays page
+# (fixtures/overlays.ts) opens a dialog with LynxPortal and closes it with
+# PortalRef.destroy(): first from taps, then from timers. The portal used to
+# put its overlay in a second page, which took the screen's root from the
+# app's page: iOS logged "LynxCreateUIException: page ui not found", and on
+# iOS and Android the dialog stayed on screen after destroy(), its "Close
+# portal" with it.
+appId: ${APP_ID}
+---
+- runFlow: open-app.yaml
+- tapOn: Open storage
+- tapOn: Open canvas
+- tapOn: Open photo
+- tapOn: Open web view
+- tapOn: Open overlays
+- assertNotVisible: Close portal
+- tapOn: Open portal
+- extendedWaitUntil:
+    visible: Close portal
+    timeout: 10000
+- takeScreenshot: portal-open
+- tapOn: Close portal
+- extendedWaitUntil:
+    notVisible: Close portal
+    timeout: 10000
+- assertVisible: 'Portal: closed 1'
+- tapOn: Open portal later
+- extendedWaitUntil:
+    visible: Close portal
+    timeout: 10000
+- tapOn: Close portal
+- extendedWaitUntil:
+    notVisible: Close portal
+    timeout: 10000
+- assertVisible: 'Portal: closed 2'
+- takeScreenshot: portal-closed

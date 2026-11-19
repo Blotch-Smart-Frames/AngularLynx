@@ -166,12 +166,12 @@ node .claude/skills/fix-issue/scripts/pr-activity.mts snapshot <pr> <scratchpad>
 ```
 
 The first snapshot lists everything on the PR, as `wait` does (step 9). The round fetches the
-review threads and CodeRabbit's review bodies itself. Read the rest: a person's review or PR
-comment can come in while CodeRabbit reviews.
+unresolved threads and CodeRabbit's review bodies itself. Read the rest: a person's review or PR
+comment, or a reply in a resolved thread, can come in while CodeRabbit reviews.
 
 Then run the `evaluate-pr-comments` skill with the PR number and the worktree's path, so its commits
-go on this branch. Add the link and text of each review or PR comment that asks for something, as
-in step 9. It replies on every comment, commits the fixes it agrees with, resolves each
+go on this branch. Add what the rest holds that asks for something, as in step 9: the ids of the
+resolved threads, and the link and text of each review or PR comment. It replies on every comment, commits the fixes it agrees with, resolves each
 thread, and waits for CodeRabbit to review its own commits.
 
 ## 9. Keep listening

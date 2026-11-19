@@ -103,6 +103,20 @@ So the build rewrites the CSS Tailwind writes into CSS with the same meaning tha
 
 It also leaves out the properties and values Lynx doesn't have, such as `text-transform`, so the web preview doesn't show styles the device won't. There's nothing to configure: the build does this for every stylesheet Tailwind 4 compiles.
 
+## Dark mode
+
+`dark:` classes apply while the app is drawn dark, with Tailwind 3 and 4:
+
+```html
+<view class="bg-white dark:bg-zinc-900">
+  <text class="text-zinc-900 dark:text-white">Hello in either theme</text>
+</view>
+```
+
+- **They switch while the app is open**, when the phone changes appearance or the app calls `setColorScheme()`. See [Dark mode](/guide/dark-mode).
+- **Keep Tailwind's own `dark` variant.** It writes a `prefers-color-scheme` query, which the build turns into rules under `page.dark`. A `@custom-variant dark` copied from a web app, such as `(&:where(.dark, .dark *))`, writes selectors Lynx can't match. Delete it.
+- **With the [UI components](/dolan/), you rarely need `dark:`.** Their classes, such as `bg-background` and `text-foreground`, switch by themselves.
+
 ## Where Tailwind finds classes
 
 Tailwind 4 scans your project's files for classes itself, `.html` templates and `.ts` files alike, and skips what `.gitignore` lists. To scan a folder outside the project, such as a library in your workspace, add it with [`@source`](https://tailwindcss.com/docs/detecting-classes-in-source-files):
@@ -144,7 +158,7 @@ The component's own rules are scoped to its template, as on the web. See [Compon
 
 These are the gaps you'll notice first:
 
-- **The `hover:`, `focus:`, `sm:`, `md:` and `dark:` variants** don't work on a phone. Lynx has no `:hover` or `:focus`, and AngularLynx apps don't support `@media`. For dark mode, see [Dark mode](/guide/dark-mode).
+- **The `hover:`, `focus:`, `sm:` and `md:` variants** don't work on a phone. Lynx has no `:hover` or `:focus`, and AngularLynx apps don't support `@media`. `dark:` does work: see [Dark mode](#dark-mode).
 - **`inline` and `inline-block`** have no effect. Lynx has no flow layout.
 - **`overflow-auto` and `overflow-scroll`** don't scroll a `<view>`. Use `<scroll-view>`.
 - **`uppercase`, `lowercase` and `capitalize`** do nothing. Lynx has no `text-transform`.

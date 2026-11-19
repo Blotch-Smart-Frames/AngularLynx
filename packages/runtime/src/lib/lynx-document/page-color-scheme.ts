@@ -37,7 +37,10 @@ const windowOf = (page: LynxElement): Window | undefined => {
  * ```
  *
  * Lynx has no `prefers-color-scheme` media query, and Angular has no template
- * for `page`, so nothing an app writes could put a class there.
+ * for `page`, so nothing an app writes could put a class there. The build
+ * turns the queries an app does write, such as Tailwind's `dark:` classes,
+ * into rules under `page.dark` (the build plugin's color-scheme.ts), so they
+ * follow this class too.
  *
  * It starts before the app renders, so the first frame is already in the
  * theme the shell sent with the bundle: no flash of light. The shells send a

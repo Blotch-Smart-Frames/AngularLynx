@@ -1501,6 +1501,10 @@ React Lynx's `Animation` always passes its generated id, so on native its named 
 
 `@media` queries are **not supported**. Responsive layout must be done in JavaScript/TypeScript using Lynx's screen metrics APIs, or by conditionally applying classes based on runtime logic.
 
+### What we do about it
+
+A query for the color scheme alone is the exception (issue #460). The runtime gives `page` the `dark` class while the app is drawn dark, so the build plugin (`packages/rsbuild-plugin-angular-lynx/src/color-scheme.ts`) turns each `@media (prefers-color-scheme: dark)` block into rules under `page.dark`, and each `(prefers-color-scheme: light)` one into rules under `page:not(.dark)`, in every stylesheet. A selector for the page itself (`:root`, `page`) gains the condition (`page.dark`); any other becomes its descendant (`page.dark .card`). That's what Tailwind's `dark:` variant writes, with Tailwind 3 (Lynx's preset keeps the default `darkMode: 'media'`) and 4 alike. It needs `enableCSSInvalidation` (next section) to restyle when the class changes. Checked in Lynx Explorer on the iOS 27 Simulator, toggling `setColorScheme()`, and in Lynx for Web, which drops `@media` too.
+
 ---
 
 ## `rpx` is a Lynx-specific responsive unit
@@ -3925,6 +3929,10 @@ By default, CSS combinators (descendant ` `, child `>`, sibling `+`/`~`) **only 
 To fix this, enable `enableCSSInvalidation: true` in the build config. This tells the Lynx CSS engine to re-evaluate combinator matches when DOM classes change — matching web behavior, but with a performance cost (it must walk the subtree on every class change).
 
 Without this flag, use inline styles or CSS variables (which are inheritable by default) for dynamic theming instead of class-based descendant selectors.
+
+Without it, the failure looks intermittent rather than total. In a probe on the iOS Simulator (issue #460), after `page` gained `dark`, a `<view>` with `dark:bg-zinc-900` (`page.dark .dark\:bg-zinc-900`) kept its light background while the `<text>` inside it took `dark:text-white`, so the label turned white on white. Other elements that the class change restyles anyway, such as ones that read a variable it changes, re-match their combinators at the same time.
+
+Native invalidation works like Blink's: on a class change, Lynx looks up the invalidation sets for the classes added and removed (`Element::CheckHasInvalidationForClass` in `core/renderer/dom/fiber/fiber_element.cc`), and walks the subtree only when a rule depends on one of them. React Lynx turns it on by default, and since issue #460 AngularLynx does too: its default had been `false` since the first commit, with no reason recorded.
 
 ---
 

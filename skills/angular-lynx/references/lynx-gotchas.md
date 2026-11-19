@@ -130,7 +130,7 @@ Must handle uppercase/lowercase in JavaScript.
 `text-maxline` only sizes the box: iOS cuts the rest off without "…", and Android draws the extra lines over what follows. Pair it with `text-overflow: ellipsis` (Tailwind's `text-ellipsis`) on every platform.
 
 ```html
-<text class="text-sm text-ellipsis" [text-maxline]="2">{{ title }}</text>
+<text class="text-ellipsis text-sm" [text-maxline]="2">{{ title }}</text>
 ```
 
 The build warns about each element with `text-maxline` and no ellipsis (`[Lynx] Capped text without an ellipsis`). It accepts `text-ellipsis` or `truncate`, an inline `text-overflow: ellipsis`, `[class.text-ellipsis]` or `[style.text-overflow]`, or a class that the component's styles or a global stylesheet end with an ellipsis. It can't read a `[class]` expression, so it trusts one when the component mentions an ellipsis anywhere. `npx @blotch/dolan add typography` adds `<ui-text [maxLines]="2">`, which sets both.
@@ -145,7 +145,7 @@ iOS keeps the system's pale gray: its setter takes a color a string attribute ne
 
 ### No `@media` queries
 
-Use runtime logic with conditional classes. For `prefers-reduced-motion`, `prefers-reduced-transparency` and `prefers-contrast`, inject `LynxAccessibilitySettings`: its `reduceMotion()`, `reduceTransparency()` and `increaseContrast()` signals come from the host app's global props (the `ng build --platform` apps send them) and, in the web preview, from the browser's media queries.
+Use runtime logic with conditional classes. `prefers-color-scheme` on its own works: the build turns it into rules under `page.dark` (see "Dark Mode" in [styling-and-css.md](styling-and-css.md)). For `prefers-reduced-motion`, `prefers-reduced-transparency` and `prefers-contrast`, inject `LynxAccessibilitySettings`: its `reduceMotion()`, `reduceTransparency()` and `increaseContrast()` signals come from the host app's global props (the `ng build --platform` apps send them) and, in the web preview, from the browser's media queries.
 
 ### `SystemInfo.osVersion` is missing where Angular runs
 

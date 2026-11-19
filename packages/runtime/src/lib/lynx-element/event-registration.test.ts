@@ -58,6 +58,28 @@ describe('addNativeEvent', () => {
     expect(__AddEvent).toHaveBeenCalledTimes(4);
   });
 
+  // A microtask the event's code queued before its first change runs after
+  // the event, but ahead of the waiting changes: its own change must follow
+  // them, or an older removal would undo it.
+  it('keeps a change made after the event behind the ones still waiting', async () => {
+    vi.stubGlobal('__WEB__', true);
+    const removed = { type: 'worklet', value: {} };
+    runLynxEvent(() => {
+      queueMicrotask(() =>
+        addNativeEvent(element, 'bindEvent', 'tap', handler),
+      );
+      addNativeEvent(element, 'bindEvent', 'tap', removed);
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(vi.mocked(__AddEvent).mock.calls.map((call) => call[3])).toEqual([
+      removed,
+      handler,
+    ]);
+  });
+
   it('counts an event over when its code throws', () => {
     vi.stubGlobal('__WEB__', true);
     expect(() =>

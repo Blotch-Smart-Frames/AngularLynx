@@ -41,7 +41,10 @@ export const runLynxEvent = <T>(run: () => T): T => {
  *
  * The element's listeners change at once, so a listener removed doesn't run
  * again; only its native handler waits, for a microtask, which runs once
- * web-core's handling of the event has returned. iOS and Android take the
+ * web-core's handling of the event has returned. A change made after the
+ * event but before then, from a microtask the event's code queued earlier,
+ * waits behind the others, so they still reach web-core in the order they
+ * were made: an older removal can't undo it. iOS and Android take the
  * change at once.
  */
 export const addNativeEvent = (
@@ -50,7 +53,7 @@ export const addNativeEvent = (
   eventName: string,
   handler: Record<string, unknown> | undefined,
 ): void => {
-  if (!__WEB__ || runningEvents === 0) {
+  if (!__WEB__ || (runningEvents === 0 && !waiting)) {
     __AddEvent(element, eventType, eventName, handler);
     return;
   }

@@ -216,9 +216,11 @@ Copy and paste text with `LynxClipboard`: `await clipboard.setString(text)` and 
 
 An imported image (`import logo from './logo.png'`, typed through `/// <reference types="@blotch/angular-lynx-build/client" />`) becomes `static/image/logo.<hash>.png` next to the bundle. On iOS and Android, Lynx resolves it against the bundle, wherever that is. Lynx for Web puts it on an `<img>` in the page, so the browser resolves it against the page that shows the `<lynx-view>`: a bundle at `/apps/shop/main.web.bundle` on a page at `/` asks for `/static/image/…` and gets nothing. Build with `ng build --base-href=/apps/shop/`, which makes the web bundle ask for `/apps/shop/static/image/…` (see [build-configuration.md](build-configuration.md)). `ng serve` needs nothing: its page and bundle share a root. Fonts never have the problem: the build inlines `@font-face` files as data URLs.
 
-### `ng serve`'s web preview blocks images from servers without CORP
+### `ng serve`'s web preview shows other servers' images in Chrome and Firefox, not Safari
 
-The dev server's preview page (`/__web_preview`) is cross-origin isolated (`Cross-Origin-Embedder-Policy: require-corp`, from Lynx's preview middleware), so the browser drops an `<image>` from another origin whose server sends no `Cross-Origin-Resource-Policy` header, with no error. The apps, Lynx Explorer and a page that isn't isolated show it, so an app that loads pictures from a museum's or a CMS's image server looks empty only there.
+The dev server's preview page (`/__web_preview`) is cross-origin isolated, which Lynx for Web needs for `SharedArrayBuffer`. Chrome, Edge and Firefox get it with `Cross-Origin-Embedder-Policy: credentialless`, under which an `<image>` or `<video>` from another origin loads, asked for without cookies. Safari doesn't know that value and gets `require-corp`: it drops a file from another origin whose server sends no `Cross-Origin-Resource-Policy` header, with no error, so an app that loads pictures from a museum's or a CMS's image server looks empty there. Open the preview in Chrome, Edge or Firefox.
+
+A `<webview src>` loads only in Chrome and Edge there, without the cookies the site has in the browser (the runtime marks its frame `credentialless` in an isolated page). In Firefox and Safari it shows a blocked page while `bindload` still fires: check it with `html`, or on a device. The apps, Lynx Explorer and a page that isn't isolated have none of this.
 
 ### Don't scale a `<lynx-view>` with a CSS transform on the web
 

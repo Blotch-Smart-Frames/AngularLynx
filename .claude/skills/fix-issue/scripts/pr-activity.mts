@@ -18,7 +18,8 @@
 //           First prints a line, as wait does, for each one <file> doesn't
 //           have: after a round, its own replies and anything else that came
 //           in since the last wait or snapshot. With no <file> yet, that's
-//           everything on the PR.
+//           everything on the PR, and it says if there are reviews or PR
+//           comments older than the newest 100 it reads.
 // wait      Waits until the PR has a comment or review that isn't in <file>,
 //           saves them all to <file>, and prints one line for each new one:
 //           its kind, its thread's id for a thread or a reply (marked if
@@ -49,8 +50,10 @@ const QUERY = `query($owner: String!, $name: String!, $n: Int!) {
     reviewThreads(first: 100) { pageInfo { hasNextPage } nodes { id isResolved
       comments(first: 100) { pageInfo { hasNextPage }
         nodes { databaseId url body author { login } } } } }
-    reviews(last: 100) { nodes { databaseId url body author { login } commit { oid } } }
-    comments(last: 100) { nodes { databaseId url body author { login } } }
+    reviews(last: 100) { pageInfo { hasPreviousPage }
+      nodes { databaseId url body author { login } commit { oid } } }
+    comments(last: 100) { pageInfo { hasPreviousPage }
+      nodes { databaseId url body author { login } } }
   } }
 }`;
 
@@ -85,6 +88,12 @@ type PullRequest = {
   /** Whether CodeRabbit has posted a review of the head commit. */
   reviewedHead: boolean;
   items: Item[];
+  /**
+   * Whether the PR has reviews or PR comments older than the newest 100 of
+   * each, which `items` leaves out. A wait only needs the new ones, but a
+   * first snapshot lists everything, so it says so.
+   */
+  older: boolean;
 };
 
 /**
@@ -191,6 +200,9 @@ const fetchPullRequest = (n: number): PullRequest => {
         r.body.trim() !== '',
     ),
     items,
+    older:
+      pr.reviews.pageInfo.hasPreviousPage ||
+      pr.comments.pageInfo.hasPreviousPage,
   };
 };
 
@@ -298,8 +310,13 @@ if (command === 'review') {
   // started. So it lists each one, and the session tells its own replies (it
   // has their links) and what the round fetches itself from the rest.
   const seen = existsSync(file) ? readSeen(file) : new Set<string>();
-  const { items } = fetchPullRequest(n);
+  const { items, older } = fetchPullRequest(n);
   const fresh = items.filter(({ key }) => !seen.has(key));
+  if (older && seen.size === 0) {
+    console.log(
+      `#${n} has more than 100 reviews or PR comments, and only the newest 100 of each are listed: read the older ones with \`gh pr view ${n} --comments\`.`,
+    );
+  }
   for (const item of fresh) console.log(describe(item));
   save(file, items);
   console.log(

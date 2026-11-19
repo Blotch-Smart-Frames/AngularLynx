@@ -204,7 +204,7 @@ These work: type (`text`), class, ID, `*`, compound (`.a.b`), descendant, child 
 | `float`, `columns`                                          | Flexbox or grid                                                           |
 | `outline`                                                   | `border`                                                                  |
 
-**Combinators restyle when a class changes**, as on the web: `.selected .label` applies as soon as an ancestor gains `selected`. The `enableCSSInvalidation` [plugin option](/api/build/) turns this off, which saves Lynx some work when a class changes, but then a combinator only matches when the element's own classes are set.
+**Combinators restyle when a class changes**, as on the web: `.selected .label` applies as soon as an ancestor gains `selected`. To turn this off, set the `enableCSSInvalidation` [plugin option](/api/build/) to `false`. That saves Lynx some work when a class changes. A combinator then only matches when the element's own classes are set.
 
 ## Component styles
 

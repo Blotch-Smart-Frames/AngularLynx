@@ -67,6 +67,7 @@ The `unit-test` builder is Angular's `@angular/build:unit-test`, set up for Lynx
 
 - defines the compile-time flags the AngularLynx runtime reads (`__DEV__`, `__MAIN_THREAD__`, ...), through a polyfill (`@blotch/angular-lynx-build/unit-test/lynx-globals`) that loads before anything else;
 - loads `@blotch/angular-lynx-testing-library`'s setup when the project has the library, so its `render()` works with no setup file or Vitest config in the app;
+- loads both after the polyfills the tests take: the build target's, or the test target's own `polyfills` (an option Angular 22.3 added), which replace them. Both stay package imports that Vitest loads from `node_modules`, even when a local polyfill file (`src/polyfills.ts`) makes Angular bundle the rest;
 - hands Angular the build target as an Angular one, with only the options both builders share, so Angular neither warns about an unknown builder nor rejects the Lynx-only options;
 - loads imported images, fonts and media as file URLs, as rspeedy does in the app.
 

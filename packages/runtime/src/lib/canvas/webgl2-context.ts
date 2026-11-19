@@ -1016,8 +1016,23 @@ export class LynxWebGL2RenderingContext {
   }
 
   bindBuffer(target: number, buffer: LynxWebGLBuffer | null): void {
+    if (!this.#canBind(buffer)) return;
     this.#trackBuffer(target, buffer);
     this.#cmd(OP.bindBuffer, target, this.#idOf(buffer));
+  }
+
+  /**
+   * Whether a bind may name this buffer. WebGL fails a bind of another
+   * context's buffer, or of a deleted one, with INVALID_OPERATION and leaves
+   * the binding as it was. Recorded and sent, it left the two sides apart:
+   * the shell knows neither buffer, so it unbound what was there, while the
+   * binding kept here named the buffer. readPixels() then refused every
+   * array, for a pack buffer that wasn't bound.
+   */
+  #canBind(buffer: LynxWebGLBuffer | null): boolean {
+    if (!buffer || (this.#owns(buffer) && !buffer.deleted)) return true;
+    this.#fail(GL.INVALID_OPERATION);
+    return false;
   }
 
   #trackBuffer(target: number, buffer: LynxWebGLBuffer | null): void {
@@ -1055,6 +1070,7 @@ export class LynxWebGL2RenderingContext {
     index: number,
     buffer: LynxWebGLBuffer | null,
   ): void {
+    if (!this.#canBind(buffer)) return;
     this.#trackBuffer(target, buffer);
     this.#cmd(OP.bindBufferBase, target, index, this.#idOf(buffer));
   }
@@ -1066,6 +1082,7 @@ export class LynxWebGL2RenderingContext {
     offset: number,
     size: number,
   ): void {
+    if (!this.#canBind(buffer)) return;
     this.#trackBuffer(target, buffer);
     this.#cmd(
       OP.bindBufferRange,

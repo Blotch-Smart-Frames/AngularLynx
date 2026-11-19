@@ -5,9 +5,14 @@ import {
   effect,
   inject,
   input,
+  output,
   signal,
 } from '@angular/core';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import {
+  LYNX_ELEMENTS,
+  LynxPortal,
+  type PortalRef,
+} from '@blotch/angular-lynx';
 
 /** How many rows, each holding an overlay, the card has. */
 const ROWS = 12;
@@ -15,6 +20,8 @@ const ROWS = 12;
 const ROUNDS = 20;
 /** How long the card stays away, as while the next rows load. */
 const LOADING_MS = 100;
+/** How long "Open portal later" waits to open the portal, and to close it. */
+const PORTAL_DELAY_MS = 100;
 
 /**
  * The names of a round's rows.
@@ -85,6 +92,34 @@ class OverlaysRow {
 }
 
 /**
+ * What the page opens with `LynxPortal` (issue #458): a dialog over the whole
+ * screen with a button that closes it.
+ */
+@Component({
+  selector: 'app-overlays-portal',
+  imports: [LYNX_ELEMENTS],
+  host: {
+    style:
+      'width: 100%; height: 100%; align-items: center; justify-content: center; background-color: rgba(0, 0, 0, 0.4);',
+  },
+  template: `
+    <view
+      [flatten]="false"
+      [accessibility-element]="true"
+      accessibility-label="Close portal"
+      accessibility-traits="button"
+      style="padding: 12px; background-color: #ffffff;"
+      (bindtap)="closed.emit()"
+    >
+      <text>Close portal</text>
+    </view>
+  `,
+})
+class OverlaysPortal {
+  readonly closed = output();
+}
+
+/**
  * E2E fixture for issue #345, loaded through `loadComponent` like
  * linking.ts and opened from the web view page.
  *
@@ -96,6 +131,14 @@ class OverlaysRow {
  * page kept drawing overlays that were freed, and iOS crashed in Lynx's
  * layout within a few replacements. "Overlays: replaced 20 times" shows once
  * every replacement has been drawn.
+ *
+ * "Open portal" opens a dialog with `LynxPortal.open()` from the tap, and its
+ * "Close portal" calls `PortalRef.destroy()` from its own (issue #458). "Open
+ * portal later" does both from a timer instead. The portal used to put its
+ * overlay in a page of its own, which took the screen's root from the app's
+ * page, so on iOS and Android the dialog stayed on screen after destroy().
+ * "Portal: closed" and the count of portals closed show once destroy() has
+ * returned.
  */
 @Component({
   selector: 'app-overlays',
@@ -116,6 +159,31 @@ class OverlaysRow {
     <text flatten="false" style="margin-top: 8px;"
       >Overlays: {{ status() }}</text
     >
+    <view style="display: flex; flex-direction: row; margin-top: 8px;">
+      <view
+        [flatten]="false"
+        [accessibility-element]="true"
+        accessibility-label="Open portal"
+        accessibility-traits="button"
+        style="padding: 12px; background-color: #e0e0e0;"
+        (bindtap)="openPortal()"
+      >
+        <text>Open portal</text>
+      </view>
+      <view
+        [flatten]="false"
+        [accessibility-element]="true"
+        accessibility-label="Open portal later"
+        accessibility-traits="button"
+        style="margin-left: 8px; padding: 12px; background-color: #e0e0e0;"
+        (bindtap)="openPortalLater()"
+      >
+        <text>Open portal later</text>
+      </view>
+    </view>
+    <text flatten="false" style="margin-top: 8px;"
+      >Portal: {{ portalStatus() }}</text
+    >
     @if (!state.loading()) {
       <view style="margin-top: 8px;">
         @for (row of rows(); track row) {
@@ -127,10 +195,59 @@ class OverlaysRow {
 })
 export class OverlaysRoute implements OnDestroy {
   protected readonly state = inject(OverlaysState);
+  readonly #portal = inject(LynxPortal);
   readonly status = signal('ready');
   readonly menus = signal(true);
   readonly rows = signal(rowsOf(0));
+  readonly portalStatus = signal('ready');
   #timer: ReturnType<typeof setTimeout> | undefined;
+  #portalTimer: ReturnType<typeof setTimeout> | undefined;
+  #portalRef: PortalRef<OverlaysPortal> | null = null;
+  #portalsClosed = 0;
+
+  /**
+   * Opens the dialog now, and closes it as soon as its button is tapped.
+   */
+  openPortal(): void {
+    this.#openPortal(() => this.#closePortal());
+  }
+
+  /**
+   * Opens the dialog from a timer, and closes it from another once its
+   * button is tapped.
+   */
+  openPortalLater(): void {
+    this.#later(() =>
+      this.#openPortal(() => this.#later(() => this.#closePortal())),
+    );
+  }
+
+  /**
+   * Runs `fn` after PORTAL_DELAY_MS, in place of anything still waiting: a
+   * second tap within the delay would otherwise leave a timer ngOnDestroy
+   * can't cancel, which could open a portal after the page has gone.
+   */
+  #later(fn: () => void): void {
+    clearTimeout(this.#portalTimer);
+    this.#portalTimer = setTimeout(fn, PORTAL_DELAY_MS);
+  }
+
+  #openPortal(close: () => void): void {
+    // One portal at a time. "Open portal" tapped while "Open portal later"
+    // waits opens one before the timer does: the timer's replaces it, rather
+    // than leaving it open with nothing left to close it.
+    this.#portalRef?.destroy();
+    this.#portalRef = this.#portal.open(OverlaysPortal);
+    this.#portalRef.instance?.closed.subscribe(close);
+    this.portalStatus.set('open');
+  }
+
+  #closePortal(): void {
+    this.#portalRef?.destroy();
+    this.#portalRef = null;
+    this.#portalsClosed++;
+    this.portalStatus.set(`closed ${this.#portalsClosed}`);
+  }
 
   replace(round = 1): void {
     this.status.set(`replacing ${round}`);
@@ -149,5 +266,8 @@ export class OverlaysRoute implements OnDestroy {
 
   ngOnDestroy(): void {
     clearTimeout(this.#timer);
+    clearTimeout(this.#portalTimer);
+    // A portal stays open when its opener goes (see LynxPortal).
+    this.#portalRef?.destroy();
   }
 }

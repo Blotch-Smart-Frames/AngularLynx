@@ -14,6 +14,10 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
  * the build, which rewrites Tailwind's color-mix() (issue #116), so it also
  * shows Tailwind 4's CSS reached the app. It shares the element so the
  * page gets no taller: CI's small Android emulator has no room to spare.
+ *
+ * Its `dark:` color applies while the app is drawn dark. Tailwind writes the
+ * variant as a `prefers-color-scheme` query, which Lynx drops, and the build
+ * turns it into a rule under `page.dark` (issue #460).
  */
 @Component({
   selector: 'app-tailwind-card',

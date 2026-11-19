@@ -38,6 +38,7 @@ They work like Angular's builders:
 
 - **Configurations and flags override options**, so `-c development` and `--source-map` work.
 - **`optimization` picks the build.** A build that optimizes scripts is a production build. Any other build is a development build, with dev mode on. There's no `mode` option.
+- **`ng build`'s bundles load their images from where they're deployed**, in a development build too: from inside the app, or from your server with RSpeedy's `output.assetPrefix`. Only `ng serve` loads them from its dev server.
 
 ## application
 
@@ -129,6 +130,7 @@ For Lynx, it also:
 
 - defines the compile-time flags the AngularLynx runtime reads;
 - loads the setup of `@blotch/angular-lynx-testing-library` when your project has it, so `render()` works without a setup file;
+- loads both after your polyfills. Those are the build target's `polyfills`, unless the `test` target has its own `polyfills` (Angular 22.3 added the option): the tests then load that list in place of the app's, and `"polyfills": []` loads none of them;
 - loads imported images, fonts and media as file URLs, as RSpeedy does in the app.
 
 It runs your project's own `@angular/build`, which must match your Angular version. See [Testing](/guide/testing/) for writing tests.
@@ -183,16 +185,16 @@ The builders use the plugin you list instead of adding their own. Import from `@
 
 **CSS**
 
-| Option                          | Type       | Default | Description                                                                                                                                                          |
-| ------------------------------- | ---------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `enableCSSSelector`             | `boolean`  | `true`  | Match CSS selectors in the Lynx engine. Component styles need it                                                                                                     |
-| `enableCSSInheritance`          | `boolean`  | `false` | Let text properties (`color`, `font-size`, `line-height`, ...) inherit from parent elements, as on the web. Lynx doesn't inherit them by default                     |
-| `customCSSInheritanceList`      | `string[]` | —       | Inherit only these properties. Needs `enableCSSInheritance`                                                                                                          |
-| `enableCSSInvalidation`         | `boolean`  | `false` | Re-match combinator selectors such as `.dark .title` when a class changes at runtime. Without it, they only match when classes are first set. Costs some performance |
-| `defaultDisplayLinear`          | `boolean`  | `true`  | Give elements Lynx's `display: linear` unless they set `display`. With `false`, `flex` is the default                                                                |
-| `defaultOverflowVisible`        | `boolean`  | `true`  | Let elements draw outside their bounds unless they set `overflow`, as on the web. With `false`, elements clip their children by default, Lynx's older behavior       |
-| `enableRemoveCSSScope`          | `boolean`  | `false` | Stop scoping CSS to the components that import it, so every rule applies app-wide                                                                                    |
-| `removeDescendantSelectorScope` | `boolean`  | `false` | Let descendant selectors match across CSS scopes                                                                                                                     |
+| Option                          | Type       | Default | Description                                                                                                                                                                                                                                       |
+| ------------------------------- | ---------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enableCSSSelector`             | `boolean`  | `true`  | Match CSS selectors in the Lynx engine. Component styles need it                                                                                                                                                                                  |
+| `enableCSSInheritance`          | `boolean`  | `false` | Let text properties (`color`, `font-size`, `line-height`, ...) inherit from parent elements, as on the web. Lynx doesn't inherit them by default                                                                                                  |
+| `customCSSInheritanceList`      | `string[]` | —       | Inherit only these properties. Needs `enableCSSInheritance`                                                                                                                                                                                       |
+| `enableCSSInvalidation`         | `boolean`  | `true`  | Restyle what combinator selectors such as `.dark .title` match when a class changes, as on the web. With `false`, they only match when an element's classes are set, which saves some work, and `dark:` classes don't follow an appearance change |
+| `defaultDisplayLinear`          | `boolean`  | `true`  | Give elements Lynx's `display: linear` unless they set `display`. With `false`, `flex` is the default                                                                                                                                             |
+| `defaultOverflowVisible`        | `boolean`  | `true`  | Let elements draw outside their bounds unless they set `overflow`, as on the web. With `false`, elements clip their children by default, Lynx's older behavior                                                                                    |
+| `enableRemoveCSSScope`          | `boolean`  | `false` | Stop scoping CSS to the components that import it, so every rule applies app-wide                                                                                                                                                                 |
+| `removeDescendantSelectorScope` | `boolean`  | `false` | Let descendant selectors match across CSS scopes                                                                                                                                                                                                  |
 
 **Gestures and accessibility**
 

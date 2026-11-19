@@ -41,7 +41,7 @@ The dev server's connection and webpack's hot update client run on the backgroun
 
 The `.js`/`.cjs` wiring files are copied into `dist/client/` as they are, because the library build would compile away `import.meta.webpackHot` and `__webpack_hash__`. `angular-webpack-plugin.ts` keeps the main thread's hot update chunks out of the runtime wrapper and the thread-flag banner.
 
-`hot-updates.ts` makes modules take updates (via `buildTransformedCode`): an app entry self-accepts (re-running it re-bootstraps the app), and a component module calls the runtime's `ɵhmrAccept`, which swaps templates and styles in place when the source signature (the file without its templates and styles) is unchanged, and otherwise passes the update on. The background thread's modules pass theirs on to the generated background entry, which self-accepts. The web environment has no hot updates.
+`hot-updates.ts` makes modules take updates (via `buildTransformedCode`): an app entry self-accepts (re-running it re-bootstraps the app), and a component module calls the runtime's `ɵhmrAccept`, which swaps templates and styles in place when the source signature (the file without its templates and styles) is unchanged, and otherwise passes the update on. The background thread's modules pass theirs on to the generated background entry, which self-accepts. The web environment has no hot updates: web-core lacks what the main thread's updates use. `web-preview-reload.ts` adds a reload client to rspeedy's preview page (`/__web_preview`) instead, from a middleware ahead of rspeedy's, which reloads the page when the dev server's socket reports a new `web` build.
 
 ## Angular Integration (`angular.ts`)
 
@@ -64,6 +64,7 @@ src/
   cross-thread-transform.ts            # Cross-thread IDs for module-level backgroundFn/MainThreadRef
   hot-updates.ts                       # Hot update accept code for entries and component modules
   client/                              # Hot update clients the dev bundles run (see Hot Updates)
+  web-preview-reload.ts                # Reloads the web preview's page after each rebuild (see Hot Updates)
   budgets-plugin.ts                    # Checks angular.json budgets on the lynx environment's bundles and component styles
   file-replacements.ts                 # Swaps angular.json fileReplacements into the bundle (the compiler host swaps them in the program)
   resolve.ts                           # Resolves imports to a package's ES module build (no `require` condition)

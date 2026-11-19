@@ -129,6 +129,7 @@ For Lynx, it also:
 
 - defines the compile-time flags the AngularLynx runtime reads;
 - loads the setup of `@blotch/angular-lynx-testing-library` when your project has it, so `render()` works without a setup file;
+- loads both after your polyfills. Those are the build target's `polyfills`, unless the `test` target has its own `polyfills` (Angular 22.3 added the option): the tests then load that list in place of the app's, and `"polyfills": []` loads none of them;
 - loads imported images, fonts and media as file URLs, as RSpeedy does in the app.
 
 It runs your project's own `@angular/build`, which must match your Angular version. See [Testing](/guide/testing/) for writing tests.

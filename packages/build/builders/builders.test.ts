@@ -984,9 +984,19 @@ describe('unit-test builder', () => {
     return { angularBuild, calls };
   };
 
+  /**
+   * Runs the builder as `ng test` does. `options` are what Angular CLI hands
+   * it, and `configured` is the test target as angular.json has it, which
+   * the builder reads to tell an empty list the user wrote from one Angular
+   * CLI filled in.
+   */
   const test = async (
     options: Record<string, unknown> = {},
-    { testingLibrary = false } = {},
+    {
+      testingLibrary = false,
+      configured = {} as Record<string, unknown>,
+      appPolyfills = undefined as string[] | undefined,
+    } = {},
   ) => {
     const { angularBuild, calls } = fakeAngularBuild();
     const ctx = fakeContext('my-app', {
@@ -996,9 +1006,12 @@ describe('unit-test builder', () => {
         platform: 'ios',
         config: 'lynx.config.ts',
         environment: ['lynx'],
+        ...(appPolyfills && { polyfills: appPolyfills }),
       },
       'my-app:lib:development': { project: 'ng-package.json' },
+      'my-app:test': configured,
     });
+    ctx.raw.target = { project: 'my-app', target: 'test' };
     const result = await firstOutput(
       runUnitTest(options as never, ctx.context, {
         importAngularBuild: async () => angularBuild,
@@ -1067,6 +1080,63 @@ describe('unit-test builder', () => {
     ]);
   });
 
+  it("puts the Lynx setup after the test target's own polyfills, which replace the app's", async () => {
+    const { options, context } = await test(
+      { polyfills: ['zone.js'] },
+      { testingLibrary: true, appPolyfills: ['@angular/localize/init'] },
+    );
+    const polyfills = [
+      'zone.js',
+      LYNX_GLOBALS,
+      '@blotch/angular-lynx-testing-library/setup',
+    ];
+    // Angular 22.3 reads the option, and takes it over the build target's
+    // polyfills: without the Lynx setup in it, no test would have `__DEV__`.
+    expect(options['polyfills']).toEqual(polyfills);
+    // Angular 22.2 reads the build target's only.
+    expect((await context.getTargetOptions(buildTarget))['polyfills']).toEqual(
+      polyfills,
+    );
+  });
+
+  it("keeps the app's polyfills when Angular CLI fills in an empty list for a test target that names none", async () => {
+    const { options, context } = await test(
+      { polyfills: [] },
+      { appPolyfills: ['@angular/localize/init'] },
+    );
+    // Handed on, the empty list would replace the app's polyfills and the
+    // Lynx setup with nothing.
+    expect(options).toEqual({});
+    expect((await context.getTargetOptions(buildTarget))['polyfills']).toEqual([
+      '@angular/localize/init',
+      LYNX_GLOBALS,
+    ]);
+  });
+
+  it("loads only the Lynx setup when angular.json gives the test target an empty list, which drops the app's polyfills", async () => {
+    const { options, context } = await test(
+      { polyfills: [] },
+      { configured: { polyfills: [] }, appPolyfills: ['zone.js'] },
+    );
+    expect(options).toEqual({ polyfills: [LYNX_GLOBALS] });
+    expect((await context.getTargetOptions(buildTarget))['polyfills']).toEqual([
+      LYNX_GLOBALS,
+    ]);
+  });
+
+  it('keeps the Lynx setup out of the polyfills bundle Angular makes when a polyfill is a local file', async () => {
+    const { context } = await test(
+      {},
+      { testingLibrary: true, appPolyfills: ['src/polyfills.ts'] },
+    );
+    // A local file makes Angular bundle every polyfill's packages, for a
+    // browser, where the testing library's setup can't import `node:events`.
+    // External, it stays an import Vitest resolves in node_modules.
+    expect(
+      (await context.getTargetOptions(buildTarget))['externalDependencies'],
+    ).toEqual([LYNX_GLOBALS, '@blotch/angular-lynx-testing-library/setup']);
+  });
+
   it('hands Angular a Lynx build target as an Angular one, with the options both builders share', async () => {
     const { context, raw } = await test();
     expect(await context.getBuilderNameForTarget(buildTarget)).toBe(
@@ -1076,6 +1146,7 @@ describe('unit-test builder', () => {
       tsConfig: 'tsconfig.app.json',
       // Imported images, fonts and media load as file URLs, as in the app.
       loader: ASSET_LOADERS,
+      externalDependencies: [LYNX_GLOBALS],
       polyfills: [LYNX_GLOBALS],
     });
     expect(ASSET_LOADERS).toMatchObject({ '.png': 'file', '.ttf': 'file' });
@@ -1249,6 +1320,7 @@ describe('extract-i18n builder', () => {
       // Angular's build fails on an imported image without a loader.
       loader: ASSET_LOADERS,
       // Nothing runs the extracted code, so the Lynx globals aren't needed.
+      externalDependencies: [],
       polyfills: ['@angular/localize/init'],
     });
   });

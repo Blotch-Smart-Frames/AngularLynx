@@ -93,7 +93,13 @@ A **pointer** is one finger touching the screen. `minPointers(2)` means the gest
 | `minPointers(n)`        | `number`                     | —       | Does nothing: Lynx follows one finger at a time                               |
 | `maxPointers(n)`        | `number`                     | —       | Does nothing, as `minPointers`                                                |
 
-An offset is a range of movement from where the finger touched down, in pixels, as in react-native-gesture-handler. `[-20, 20]` is the range itself: `activeOffsetX([-20, 20])` starts the pan after 20 pixels left or right. A single number is open on one side: `20` means up to 20, so only moving right (or down) past 20 leaves it, and `-20` means from −20 on. With active offsets on both axes, leaving either range starts the pan.
+An offset is a range of movement from where the finger touched down, in pixels, as in react-native-gesture-handler:
+
+- **A pair is the range itself.** `activeOffsetX([-20, 20])` starts the pan after 20 pixels left or right.
+- **A positive number is open to the left (or up).** `activeOffsetX(20)` starts the pan only after 20 pixels right.
+- **A negative number is open to the right (or down).** `activeOffsetX(-20)` starts the pan only after 20 pixels left.
+
+With active offsets on both axes, leaving either range starts the pan.
 
 A horizontal pan inside a vertical scroll view, which lets the scroll view have the vertical drags:
 

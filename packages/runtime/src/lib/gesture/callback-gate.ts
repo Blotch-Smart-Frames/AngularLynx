@@ -184,6 +184,12 @@ const leaves = (
  * `onBegin` and `onEnd` pass, as they do for a pan that never reaches
  * `minDistance`.
  *
+ * Lynx sends no `onUpdate` before `minDistance`, so with a `minDistance`
+ * the gate also watches `onTouchesMove`, which Lynx sends on every move: a
+ * finger that passes a fail offset and comes back before `minDistance` still
+ * fails the pan. Without one, Lynx activates the pan on the first move, and
+ * `onStart` and `onUpdate` see every move.
+ *
  * Leaving a fail offset's range fails the pan with the state manager, and the
  * pan stays failed until the finger lifts:
  * - Lynx hears of the failure on its own thread, a few moves later, so the
@@ -204,6 +210,13 @@ const panGate = (gesture: AnyGesture): CallbackGate => {
   const failY = rangeOf(gesture._config['failOffsetY']);
   if (!activeX && !activeY && !failX && !failY) return PASSTHROUGH;
   const hasActive = activeX !== null || activeY !== null;
+  const failing = (event: GestureEvent): boolean => {
+    const { translationX = 0, translationY = 0 } = event as PanGestureEvent;
+    return leaves(translationX, failX) || leaves(translationY, failY);
+  };
+  const watchesMoves =
+    (failX !== null || failY !== null) &&
+    Number(gesture._config['minDistance']) > 0;
   let phase: 'waiting' | 'started' | 'failed' = 'waiting';
   /**
    * Whether the failed pan's `onEnd` has run.
@@ -228,6 +241,7 @@ const panGate = (gesture: AnyGesture): CallbackGate => {
       'onTouchesDown',
       'onTouchesUp',
       'onTouchesCancel',
+      ...(watchesMoves ? ['onTouchesMove'] : []),
     ],
     route(name, event, stateManager) {
       // A pan that begins after the finger lifted is a new touch, in case
@@ -245,17 +259,22 @@ const panGate = (gesture: AnyGesture): CallbackGate => {
         }
         return name.startsWith('onTouches') ? [[name, event]] : [];
       }
+      if (name === 'onTouchesMove' && phase === 'waiting' && failing(event)) {
+        phase = 'failed';
+        stateManager.fail();
+        return [[name, event]];
+      }
       if (name !== 'onStart' && name !== 'onUpdate') {
         if (name === 'onBegin' || name === 'onEnd') phase = 'waiting';
         return [[name, event]];
       }
       if (phase === 'started') return [[name, event]];
-      const { translationX = 0, translationY = 0 } = event as PanGestureEvent;
-      if (leaves(translationX, failX) || leaves(translationY, failY)) {
+      if (failing(event)) {
         phase = 'failed';
         stateManager.fail();
         return [];
       }
+      const { translationX = 0, translationY = 0 } = event as PanGestureEvent;
       if (
         hasActive &&
         !leaves(translationX, activeX) &&

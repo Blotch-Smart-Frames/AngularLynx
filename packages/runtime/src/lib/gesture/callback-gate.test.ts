@@ -296,6 +296,41 @@ describe('pan', () => {
     expect(stateManager.fail).toHaveBeenCalledOnce();
   });
 
+  it('fails on a move before minDistance that passes a fail offset and comes back', () => {
+    // Lynx sends no onUpdate before minDistance, so onTouchesMove is watched.
+    const { gate, send } = runner(
+      new PanGesture().minDistance(30).activeOffsetY(20).failOffsetX(10),
+    );
+
+    expect(gate.observes).toContain('onTouchesMove');
+    send('onTouchesDown');
+    send('onBegin', moved(0, 0));
+
+    expect(send('onTouchesMove', moved(5, 0))).toEqual(['onTouchesMove']);
+    expect(stateManager.fail).not.toHaveBeenCalled();
+    expect(send('onTouchesMove', moved(11, 0))).toEqual(['onTouchesMove']);
+    expect(stateManager.fail).toHaveBeenCalledOnce();
+    expect(send('onStart', moved(0, 31))).toEqual([]);
+    expect(send('onUpdate', moved(0, 32))).toEqual([]);
+  });
+
+  it("doesn't watch moves when Lynx starts the pan on the first one", () => {
+    const { gate } = runner(new PanGesture().failOffsetX(10));
+
+    expect(gate.observes).not.toContain('onTouchesMove');
+  });
+
+  it('ignores moves once the pan has started', () => {
+    const { send } = runner(new PanGesture().minDistance(5).failOffsetX(10));
+
+    send('onBegin', moved(0, 0));
+    send('onStart', moved(0, 6));
+
+    expect(send('onTouchesMove', moved(50, 6))).toEqual(['onTouchesMove']);
+    expect(send('onUpdate', moved(50, 6))).toEqual(['onUpdate']);
+    expect(stateManager.fail).not.toHaveBeenCalled();
+  });
+
   it('checks the fail offset first when both are passed at once', () => {
     const { send } = runner(
       new PanGesture().activeOffsetX([-20, 20]).failOffsetY([-10, 10]),

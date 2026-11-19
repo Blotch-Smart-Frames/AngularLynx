@@ -82,6 +82,36 @@ describe('mapGestureEvent', () => {
       expect(moved.translationY).toBe(-20);
     });
 
+    it('re-anchors on onTouchesDown, for a touch that sends no onBegin', () => {
+      // An outer element's gesture that didn't win the touch hears only its
+      // touch callbacks.
+      const origin = createGestureOrigin();
+      mapGestureEvent(
+        { params: { pageX: 10, pageY: 10 } },
+        'onTouchesDown',
+        origin,
+      );
+      mapGestureEvent(
+        { params: { pageX: 15, pageY: 10 } },
+        'onTouchesMove',
+        origin,
+      );
+
+      mapGestureEvent(
+        { params: { pageX: 110, pageY: 10 } },
+        'onTouchesDown',
+        origin,
+      );
+      const moved = mapGestureEvent(
+        { params: { pageX: 112, pageY: 14 } },
+        'onTouchesMove',
+        origin,
+      ) as { translationX: number; translationY: number };
+
+      expect(moved.translationX).toBe(2);
+      expect(moved.translationY).toBe(4);
+    });
+
     it('re-anchors on onBegin, even when the previous touch sent no onEnd', () => {
       const origin = createGestureOrigin();
       mapGestureEvent({ params: { pageX: 10, pageY: 10 } }, 'onBegin', origin);

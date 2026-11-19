@@ -163,7 +163,12 @@ export const mapGestureEvent = (
     // The directive registers an `onBegin` on every continuous gesture, so
     // each touch re-anchors even when the previous one sent no `onEnd`. Any
     // other gesture anchors on its first event, and resets at `onEnd`.
-    if (name === 'onBegin' || origin.x === null) {
+    // `onTouchesDown` anchors too: Lynx sends the touch callbacks to every
+    // element under the finger, so a gesture on an outer element that didn't
+    // win the touch gets `onTouchesDown` and `onTouchesMove` with no `onBegin`
+    // or `onEnd`, and would measure the moves (which the pan gate checks
+    // against fail offsets) from an earlier touch.
+    if (name === 'onBegin' || name === 'onTouchesDown' || origin.x === null) {
       origin.x = absoluteX ?? 0;
       origin.y = absoluteY ?? 0;
     }

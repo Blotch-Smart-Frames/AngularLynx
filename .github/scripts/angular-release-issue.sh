@@ -67,11 +67,7 @@ if ((latest_major > current_major)); then
 A major: run the \`update-angular\` skill, which carries the packages, the ~100 examples, the peer ranges, Dependabot's architect bound and the docs across together. Dependabot ignores Angular majors on purpose."
 else
   body+="
-What a minor takes, going by 22.2:
-
-- [ ] Move every \`@angular/*\` range in the published packages, the kitchen sink and the examples, and the published packages' peer ranges, to \`^$line.0\`. Dependabot's weekly group brings the bump itself, but leaves the peer ranges alone.
-- [ ] Check the rsbuild plugin against \`@angular/build\` $line: it imports and patches that package's internals, which 22.2 reshaped.
-- [ ] \`npm run set-version $line.0\`, then release."
+A minor: run the \`release-minor\` skill. It waits for Angular CLI $line.0 too, since new apps get the newest CLI. It offers to release what's on master as the last $current_major.$current_minor patch first, moves every Angular range and the published packages' peer ranges to \`^$line.0\`, checks the rsbuild plugin against \`@angular/build\` $line's internals (which 22.2 reshaped), and releases $line.0. Its PR closes this issue."
 fi
 
 if [[ -n "${DRY_RUN:-}" ]]; then

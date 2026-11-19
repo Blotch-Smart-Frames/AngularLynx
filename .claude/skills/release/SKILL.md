@@ -52,8 +52,11 @@ The convention so far: the version follows Angular's major and minor, and every 
 patch, even one that's mostly features. Check that the last release PR still says so.
 
 - **Same major and minor as Angular's `latest`:** the next patch of the current version.
-- **Angular has moved to a new minor or major:** that's an Angular update (the `update-angular`
-  skill) before a release, so ask the user.
+- **Angular has moved to a new minor:** the move is the `release-minor` skill, which releases
+  X.Y.0. A patch of the current minor can still go out first (that skill offers one), so ask the
+  user which they want.
+- **Angular has moved to a new major:** that's an Angular update (the `update-angular` skill)
+  before a release, so ask the user.
 - **The user named a version:** use it, but say so if it breaks the convention.
 
 ## 3. Check whether apps need a migration

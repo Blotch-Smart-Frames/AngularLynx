@@ -36,7 +36,7 @@ gh api graphql -F n=$PR -f query='
 query($n: Int!) { repository(owner: "Blotch-Smart-Frames", name: "AngularLynx") { pullRequest(number: $n) {
   headRefName state
   reviewThreads(first: 100) { nodes { id isResolved isOutdated path line originalLine
-    comments(first: 20) { nodes { databaseId author { login } body } } } } } } }' \
+    comments(first: 100) { nodes { databaseId author { login } body } } } } } } }' \
   --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)'
 ```
 

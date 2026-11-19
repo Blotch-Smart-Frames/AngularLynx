@@ -433,7 +433,10 @@ describe('applyWebPreviewReload', () => {
 
   const setUp = (environments: Record<string, unknown>) => {
     const onBeforeStartDevServer = vi.fn();
-    applyWebPreviewReload({ onBeforeStartDevServer } as never);
+    applyWebPreviewReload({
+      onBeforeStartDevServer,
+      modifyEnvironmentConfig: vi.fn(),
+    } as never);
     const { handler, order } = onBeforeStartDevServer.mock.calls[0][0] as {
       handler: Handler;
       order: string;
@@ -482,5 +485,50 @@ describe('applyWebPreviewReload', () => {
     expect(
       setUp({ web: webEnvironment({ liveReload: { html: false } }) }).use,
     ).toHaveBeenCalledOnce();
+  });
+
+  describe("the web environment's live reload", () => {
+    type Modify = (
+      config: { dev?: Record<string, unknown> },
+      utils: { name: string },
+    ) => unknown;
+
+    const modify = (): Modify => {
+      const modifyEnvironmentConfig = vi.fn();
+      applyWebPreviewReload({
+        onBeforeStartDevServer: vi.fn(),
+        modifyEnvironmentConfig,
+      } as never);
+      return modifyEnvironmentConfig.mock.calls[0][0] as Modify;
+    };
+
+    it("stops Rsbuild's reload when an .html file starts a rebuild, and keeps the rest", () => {
+      const config = { dev: { liveReload: true, hmr: true } };
+
+      expect(modify()(config, { name: 'web' })).toEqual({
+        dev: { liveReload: { html: false }, hmr: true },
+      });
+    });
+
+    it('does the same when the config leaves live reload unset', () => {
+      expect(modify()({}, { name: 'web' })).toEqual({
+        dev: { liveReload: { html: false } },
+      });
+    });
+
+    it.each([false, { html: true }])(
+      'keeps %j, which the app set',
+      (liveReload) => {
+        const config = { dev: { liveReload } };
+
+        expect(modify()(config, { name: 'web' })).toBe(config);
+      },
+    );
+
+    it('leaves the Lynx environment alone', () => {
+      const config = { dev: { liveReload: true } };
+
+      expect(modify()(config, { name: 'lynx' })).toBe(config);
+    });
   });
 });

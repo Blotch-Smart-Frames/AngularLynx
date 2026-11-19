@@ -117,9 +117,8 @@ export const reloadOnRebuild = (
           }
           break;
         // A change the build can't report as a hash: the entry's chunks
-        // changed, an HTML file changed (Angular's external templates; the
-        // bundle request then waits for the build), or a file
-        // `dev.watchFiles` watches.
+        // changed, or a file `dev.watchFiles` watches. (Not an HTML file
+        // starting a rebuild: applyWebPreviewReload turns that one off.)
         case 'full-reload':
         case 'static-changed':
           page.location.reload();
@@ -190,6 +189,20 @@ export const createWebPreviewReloadMiddleware =
  * generated apps take hot updates instead (see hot-updates.ts).
  */
 export const applyWebPreviewReload = (api: RsbuildPluginAPI): void => {
+  // Rsbuild sends `full-reload` as soon as a changed `.html` file starts a
+  // rebuild, for apps whose page is an HTML template. In an Angular app that
+  // file is a component's template, so the reload came before the build's
+  // result: a template that didn't compile reloaded the preview, and lost its
+  // state, though the build had nothing new to show. The edit reaches the
+  // bundle and its hash like any other, so without the message it reloads
+  // once the build works. `{ html: false }` turns off only that message: an
+  // object leaves live reload on wherever Rsbuild checks it. A value the app
+  // set other than `true` stays as it is.
+  api.modifyEnvironmentConfig((config, { name }) =>
+    name === 'web' && (config.dev?.liveReload ?? true) === true
+      ? { ...config, dev: { ...config.dev, liveReload: { html: false } } }
+      : config,
+  );
   api.onBeforeStartDevServer({
     // Ahead of rspeedy's own hook, whatever order the plugins are listed in:
     // middlewares run in the order they're added, and rspeedy's answers the

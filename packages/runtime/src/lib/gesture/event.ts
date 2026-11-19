@@ -24,6 +24,11 @@ export type GestureOrigin = {
    */
   flungX: number;
   flungY: number;
+  /**
+   * Whether the gesture is between its `onBegin` and `onEnd`: an
+   * `onTouchesDown` then is another finger landing, not a new touch.
+   */
+  begun: boolean;
 };
 
 export const createGestureOrigin = (): GestureOrigin => ({
@@ -32,6 +37,7 @@ export const createGestureOrigin = (): GestureOrigin => ({
   velocity: new VelocityTracker(),
   flungX: 0,
   flungY: 0,
+  begun: false,
 });
 
 const numberOr = (value: unknown, fallback: number): number =>
@@ -167,8 +173,15 @@ export const mapGestureEvent = (
     // element under the finger, so a gesture on an outer element that didn't
     // win the touch gets `onTouchesDown` and `onTouchesMove` with no `onBegin`
     // or `onEnd`, and would measure the moves (which the pan gate checks
-    // against fail offsets) from an earlier touch.
-    if (name === 'onBegin' || name === 'onTouchesDown' || origin.x === null) {
+    // against fail offsets) from an earlier touch. But not once the gesture
+    // has begun: with multi-touch on, that's a second finger landing, and
+    // the gesture still follows the first.
+    if (name === 'onBegin') origin.begun = true;
+    if (
+      name === 'onBegin' ||
+      (name === 'onTouchesDown' && !origin.begun) ||
+      origin.x === null
+    ) {
       origin.x = absoluteX ?? 0;
       origin.y = absoluteY ?? 0;
     }
@@ -191,6 +204,7 @@ export const mapGestureEvent = (
     if (name === 'onEnd') {
       origin.x = null;
       origin.y = null;
+      origin.begun = false;
     }
   }
 

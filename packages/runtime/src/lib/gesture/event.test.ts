@@ -112,6 +112,37 @@ describe('mapGestureEvent', () => {
       expect(moved.translationY).toBe(4);
     });
 
+    it("keeps a begun gesture's anchor when another finger lands", () => {
+      const origin = createGestureOrigin();
+      mapGestureEvent({ params: { pageX: 100, pageY: 0 } }, 'onBegin', origin);
+      mapGestureEvent(
+        { params: { pageX: 200, pageY: 0 } },
+        'onTouchesDown',
+        origin,
+      );
+
+      const moved = mapGestureEvent(
+        { params: { pageX: 125, pageY: 0 } },
+        'onUpdate',
+        origin,
+      ) as { translationX: number };
+      expect(moved.translationX).toBe(25);
+
+      // Once it ends, the next touch-down anchors again.
+      mapGestureEvent({ params: { pageX: 125, pageY: 0 } }, 'onEnd', origin);
+      mapGestureEvent(
+        { params: { pageX: 300, pageY: 0 } },
+        'onTouchesDown',
+        origin,
+      );
+      const next = mapGestureEvent(
+        { params: { pageX: 310, pageY: 0 } },
+        'onTouchesMove',
+        origin,
+      ) as { translationX: number };
+      expect(next.translationX).toBe(10);
+    });
+
     it('re-anchors on onBegin, even when the previous touch sent no onEnd', () => {
       const origin = createGestureOrigin();
       mapGestureEvent({ params: { pageX: 10, pageY: 10 } }, 'onBegin', origin);

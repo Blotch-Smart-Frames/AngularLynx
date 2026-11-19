@@ -197,14 +197,14 @@ These work: type (`text`), class, ID, `*`, compound (`.a.b`), descendant, child 
 | `:first-child`, `:nth-child()` and other structural classes | A class bound to `@for`'s `$first`, `$last` or `$index`                   |
 | Attribute selectors such as `[disabled]`                    | A class                                                                   |
 | `:is()`, `:where()`, `:has()`                               | Separate selectors                                                        |
-| `@media`, including `prefers-color-scheme`                  | Signals and class bindings. For themes, see [Dark mode](/guide/dark-mode) |
+| `@media`, except `prefers-color-scheme` alone               | Signals and class bindings. For themes, see [Dark mode](/guide/dark-mode) |
 | `@supports`, `@layer`, `@container`, `@property`            | Nothing                                                                   |
 | `!important`                                                | A more specific selector                                                  |
 | `pointer-events`                                            | Leave it out: the build fails on it. The last sibling gets the taps       |
 | `float`, `columns`                                          | Flexbox or grid                                                           |
 | `outline`                                                   | `border`                                                                  |
 
-**Descendant selectors don't re-match when a class changes.** By default, `.selected .label` applies only when classes are first set. Toggle a class on the element itself, or switch CSS variables, instead. The `enableCSSInvalidation` [plugin option](/api/build/) makes them re-match, at some cost in speed.
+**Combinators restyle when a class changes**, as on the web: `.selected .label` applies as soon as an ancestor gains `selected`. The `enableCSSInvalidation` [plugin option](/api/build/) turns this off, which saves Lynx some work when a class changes, but then a combinator only matches when the element's own classes are set.
 
 ## Component styles
 

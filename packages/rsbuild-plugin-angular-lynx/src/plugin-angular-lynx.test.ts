@@ -5,6 +5,7 @@ vi.mock('./angular.js', () => ({ applyAngularRules: vi.fn() }));
 vi.mock('./background-entry.js', () => ({
   createBackgroundEntries: vi.fn(() => ({ _backgroundEntries: true })),
 }));
+vi.mock('./color-scheme.js', () => ({ applyColorScheme: vi.fn() }));
 vi.mock('./css.js', () => ({ applyCSS: vi.fn() }));
 vi.mock('./display.js', () => ({ applyDisplay: vi.fn() }));
 vi.mock('./entry.js', () => ({ applyEntry: vi.fn() }));
@@ -33,6 +34,7 @@ vi.mock('./utils/options.js', async (importOriginal) => ({
 
 import { applyAngularRules } from './angular.js';
 import { createBackgroundEntries } from './background-entry.js';
+import { applyColorScheme } from './color-scheme.js';
 import { applyCSS } from './css.js';
 import { applyDisplay } from './display.js';
 import { applyEntry } from './entry.js';
@@ -143,6 +145,13 @@ describe('pluginAngularLynx', () => {
       plugin.setup(mockApi);
 
       expect(applyTailwind).toHaveBeenCalledWith(mockApi);
+    });
+
+    it('calls applyColorScheme with api', () => {
+      const plugin = pluginAngularLynx();
+      plugin.setup(mockApi);
+
+      expect(applyColorScheme).toHaveBeenCalledWith(mockApi);
     });
 
     it('calls applyTypeSelectors with api', () => {
@@ -306,6 +315,8 @@ describe('pluginAngularLynx', () => {
         vi.mocked(applyTextInheritance).mock.invocationCallOrder[0];
       const nestedCalcOrder =
         vi.mocked(applyNestedCalc).mock.invocationCallOrder[0];
+      const colorSchemeOrder =
+        vi.mocked(applyColorScheme).mock.invocationCallOrder[0];
 
       expect(cssOrder).toBeLessThan(tailwindOrder);
       // After Tailwind, so its PostCSS plugin runs on Tailwind's rules.
@@ -313,6 +324,9 @@ describe('pluginAngularLynx', () => {
       // After Tailwind, so its OnceExit runs after Tailwind 4's lowering.
       expect(tailwindOrder).toBeLessThan(inheritanceOrder!);
       expect(tailwindOrder).toBeLessThan(nestedCalcOrder!);
+      // After Tailwind, so it sees the queries Tailwind 4's lowering moves
+      // out of the rules they're nested in.
+      expect(tailwindOrder).toBeLessThan(colorSchemeOrder!);
       expect(typeSelectorsOrder).toBeLessThan(entryOrder);
       expect(entryOrder).toBeLessThan(layersOrder);
       expect(layersOrder).toBeLessThan(angularOrder);

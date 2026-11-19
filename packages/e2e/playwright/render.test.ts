@@ -386,5 +386,15 @@ test('Tailwind styles classes in .html templates', async ({ page }) => {
     'rgba(24, 24, 27, 0.1)',
   );
 
+  // Its `dark:text-[#5ce0b8]`, once the browser turns dark, which the web
+  // preview follows as a phone's shell does. Tailwind writes `dark:` as a
+  // prefers-color-scheme query, which Lynx and Lynx for Web drop, so the
+  // class never applied; the build turns it into a rule under `page.dark`
+  // (issue #460).
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await expect(words).toHaveCSS('color', 'rgb(92, 224, 184)');
+  await page.emulateMedia({ colorScheme: 'light' });
+  await expect(words).toHaveCSS('color', 'rgb(10, 123, 92)');
+
   expect(errors, 'the app logged errors while running').toEqual([]);
 });

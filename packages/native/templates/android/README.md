@@ -118,4 +118,4 @@ Pinned in `app/build.gradle.kts`, `build.gradle.kts` and `gradle/wrapper/gradle-
 - `androidx.exifinterface` 1.4.2, for the orientation `ImagePickerModule` turns a re-encoded photo by.
 - Lynx's XElement 4.1.0 (`<input>`, `<textarea>`, `<overlay>`, `<svg>`, `<blur-view>`, `<viewpager>`, `<refresh>`, the `<scroll-coordinator>` family, `<webview>`, `<video>`), without its AnimaX and Markdown modules, which the runtime doesn't support. `MainActivity` registers the elements with `XElementBehaviors`. XElement depends on appcompat and material 1.0.0, whose vectordrawable libraries share a namespace that AGP 9 rejects, so appcompat 1.8.0 and material 1.14.0 are pinned.
 - AGP 9.4.1 with its built-in Kotlin, Gradle 9.6.1 (AGP 9.4's minimum), JDK 17 or newer.
-- `compileSdk` and `targetSdk` 36, `minSdk` 24. Google Play raises its target API requirement every August; bump `targetSdk` with it.
+- `compileSdk` 37 (androidx.core 1.19's minimum), `targetSdk` 36, `minSdk` 24. Google Play raises its target API requirement every August; bump `targetSdk` with it.

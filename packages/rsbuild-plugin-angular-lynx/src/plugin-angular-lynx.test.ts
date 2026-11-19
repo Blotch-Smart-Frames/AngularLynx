@@ -22,6 +22,9 @@ vi.mock('./type-selectors.js', () => ({ applyTypeSelectors: vi.fn() }));
 vi.mock('./unicode-property-regex.js', () => ({
   applyUnicodePropertyRegex: vi.fn(),
 }));
+vi.mock('./web-preview-reload.js', () => ({
+  applyWebPreviewReload: vi.fn(),
+}));
 vi.mock('./utils/options.js', async (importOriginal) => ({
   deprecatedOptionsIn: (await importOriginal<typeof OptionsModule>())
     .deprecatedOptionsIn,
@@ -46,6 +49,7 @@ import { applyTailwind } from './tailwind.js';
 import { applyTypeSelectors } from './type-selectors.js';
 import { applyUnicodePropertyRegex } from './unicode-property-regex.js';
 import { normalizeOptions } from './utils/options.js';
+import { applyWebPreviewReload } from './web-preview-reload.js';
 import { pluginAngularLynx } from './plugin-angular-lynx';
 
 describe('pluginAngularLynx', () => {
@@ -271,6 +275,13 @@ describe('pluginAngularLynx', () => {
       plugin.setup(mockApi);
 
       expect(applyDevLogger).toHaveBeenCalledWith(mockApi);
+    });
+
+    it('calls applyWebPreviewReload with api', () => {
+      const plugin = pluginAngularLynx();
+      plugin.setup(mockApi);
+
+      expect(applyWebPreviewReload).toHaveBeenCalledWith(mockApi);
     });
 
     it('calls sub-plugins in the correct order', () => {

@@ -1028,8 +1028,12 @@ export class LynxWebGL2RenderingContext {
    * the shell knows neither buffer, so it unbound what was there, while the
    * binding kept here named the buffer. readPixels() then refused every
    * array, for a pack buffer that wasn't bound.
+   *
+   * A lost context binds nothing and raises nothing: its one error is
+   * CONTEXT_LOST_WEBGL, and getError() answers NO_ERROR after that.
    */
   #canBind(buffer: LynxWebGLBuffer | null): boolean {
+    if (this.#lost) return false;
     if (!buffer || (this.#owns(buffer) && !buffer.deleted)) return true;
     this.#fail(GL.INVALID_OPERATION);
     return false;

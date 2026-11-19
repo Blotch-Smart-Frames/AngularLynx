@@ -892,6 +892,23 @@ describe('extensions', () => {
     expect(bridge.batches).toHaveLength(before);
   });
 
+  it('raises nothing for a bind it would refuse, once the context is lost', () => {
+    const deleted = gl.createBuffer();
+    gl.deleteBuffer(deleted);
+    const foreign = makeContext().createBuffer();
+    (
+      gl.getExtension('WEBGL_lose_context') as { loseContext(): void }
+    ).loseContext();
+    expect(gl.getError()).toBe(GL.CONTEXT_LOST_WEBGL);
+    for (const refused of [deleted, foreign]) {
+      gl.bindBuffer(GL.ARRAY_BUFFER, refused);
+      gl.bindBufferBase(GL.UNIFORM_BUFFER, 0, refused);
+      gl.bindBufferRange(GL.TRANSFORM_FEEDBACK_BUFFER, 0, refused, 0, 4);
+    }
+    // A lost context's one error is CONTEXT_LOST_WEBGL, reported above.
+    expect(gl.getError()).toBe(GL.NO_ERROR);
+  });
+
   it('stops sending once destroyed, as at the end of a task', async () => {
     gl.clear(GL.COLOR_BUFFER_BIT);
     gl.destroy();

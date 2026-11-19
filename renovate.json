@@ -51,6 +51,14 @@
       "description": "The angular-lynx benchmark installs @blotch/* from tarballs that scripts/use-local-packages.mjs packs into .local-packages/, which is git-ignored, so Renovate never has them and every lockfile update there fails (#509). Its versions move by hand: copy the bumped entries from the root lockfile, or rerun the script after a root build.",
       "matchFileNames": ["benchmarks/apps/angular-lynx/**"],
       "enabled": false
+    },
+    {
+      "description": "The React Native benchmark apps keep their versions on purpose. apps/react-native is Software Mansion's app on the exact versions its original lockfile resolved, and apps/react-native-0.88 is that app moved to Expo SDK 58 with `npx expo install --fix`, which sets React Native and its libraries to the versions the SDK pins together: SDK 58 takes react-native-reanimated 4.7.1 with react-native-worklets 0.13.0, so 4.8.0 on its own fails the install (#566). CI doesn't build either app, so a bump's checks pass even when the app no longer installs. They move by redoing the Expo upgrade, as apps/react-native-0.88/README.md describes.",
+      "matchFileNames": [
+        "benchmarks/apps/react-native/**",
+        "benchmarks/apps/react-native-0.88/**"
+      ],
+      "enabled": false
     }
   ]
 }

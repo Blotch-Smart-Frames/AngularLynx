@@ -5,6 +5,10 @@ import type { BaseLynxElement } from '../lynx-element';
  * LynxHydrateDocument (reuses the elements of an SSR snapshot).
  */
 export type LynxDocumentBase = {
+  /**
+   * The app's page: made by the first call, and the same element on every
+   * call after it (a Lynx page has one page element).
+   */
   createRootElement(): BaseLynxElement;
   createElement(tag: string, value?: string): BaseLynxElement;
   createText(value: string): BaseLynxElement;

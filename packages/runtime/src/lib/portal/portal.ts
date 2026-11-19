@@ -151,9 +151,10 @@ export class LynxPortal {
     this.#appRef.attachView(componentRef.hostView);
     overlay.appendChild(componentRef.location.nativeElement);
 
-    // createRootElement() returns the existing singleton page element, NOT a new
-    // one. The overlay must be a direct child of the page so native Lynx renders
-    // it as a top-level overlay above all other content.
+    // createRootElement() gives back the page the app was bootstrapped into,
+    // which bootstrap made (see LynxDocument.createRootElement). The overlay
+    // must be a direct child of the page so native Lynx renders it as a
+    // top-level overlay above all other content.
     const page = this.#doc.createRootElement();
     page.appendChild(overlay);
 
@@ -161,11 +162,11 @@ export class LynxPortal {
   }
 
   /**
-   *   * Creates a native `<overlay>` and renders the given template into it.
-   *   *
-   *   * Use this when you have a `TemplateRef` (from `@ViewChild` or a
-   *   * template variable) rather than a component class.
-   * v8 ignore start -- reaching this path requires a real Angular component render that produces a live TemplateRef; the mocked LYNX_DOCUMENT in the spec doesn't drive one, and viewChild.required doesn't resolve without an appRef flush. Coverage is provided by the on-device examples that use openTemplate.
+   * Creates a native `<overlay>` and renders the given template into it.
+   *
+   * Use this when you have a `TemplateRef` (from `viewChild()` or a
+   * template variable) rather than a component class.
+   * v8 ignore start -- reaching this path requires a real Angular component render that produces a live TemplateRef; the mocked LYNX_DOCUMENT in the spec doesn't drive one, and viewChild.required doesn't resolve without an appRef flush. The testing library's portal.test.ts runs it on Lynx's element tree, which this package's coverage doesn't count.
    */
   openTemplate<C>(
     template: TemplateRef<C>,
@@ -184,7 +185,7 @@ export class LynxPortal {
       overlay.appendChild(node);
     }
 
-    // Same singleton page pattern as open() — overlay goes under the root page.
+    // The app's page, as in open(): the overlay goes under it.
     const page = this.#doc.createRootElement();
     page.appendChild(overlay);
 

@@ -109,6 +109,18 @@ describe('LynxDocument', () => {
       expect(asMock(globalThis.__CreatePage)).toHaveBeenCalledWith('0', 0);
     });
 
+    // Each __CreatePage() makes the new page Lynx's root, so a second one
+    // took the screen from the app's page. LynxPortal asks for the page each
+    // time it opens an overlay, and its overlays never left the screen
+    // (#458).
+    it('returns the page it made when asked again', () => {
+      const doc = new LynxDocument();
+      const root = doc.createRootElement();
+
+      expect(doc.createRootElement()).toBe(root);
+      expect(asMock(globalThis.__CreatePage)).toHaveBeenCalledOnce();
+    });
+
     // document: and window: listeners hear touches from the page, and the
     // window follows its size.
     it('is the page the document and window hear the screen from', () => {

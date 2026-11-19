@@ -173,15 +173,21 @@ const fetchPullRequest = (n: number): PullRequest => {
     codeRabbitCheck: check
       ? { status: check.status!, conclusion: check.conclusion ?? null }
       : null,
+    // Not the empty review GitHub wraps around each of CodeRabbit's replies
+    // in a thread: that one is tied to the head commit too, and a reply to an
+    // earlier round's answer would pass for a review of the new commit while
+    // the review is still running.
     reviewedHead: (
       pr.reviews.nodes as {
+        body: string;
         author: { login: string } | null;
         commit: { oid: string } | null;
       }[]
     ).some(
       (r) =>
         r.author?.login === CODE_RABBIT_LOGIN &&
-        r.commit?.oid === pr.headRefOid,
+        r.commit?.oid === pr.headRefOid &&
+        r.body.trim() !== '',
     ),
     items,
   };

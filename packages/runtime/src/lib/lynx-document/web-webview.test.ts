@@ -35,16 +35,17 @@ const newPage = (
 };
 
 /**
- * What the frame was given, in order: `src` with whether it was
- * credentialless by then.
+ * What the frame was given, in order: `src` or `srcdoc`, with whether it
+ * was credentialless by then.
  */
 type FrameLog = string[];
 
 /**
  * Defines `x-webview` the way web-elements does: the shadow root and its
- * frame in the constructor, and `src` passed on to the frame in a microtask,
- * or at once with `passSrc: 'at once'`, which stands in for a batch of
- * web-elements' microtasks that was queued before the definition arrived.
+ * frame in the constructor, and `src` passed on to the frame in a microtask
+ * (and `html`, as the frame's `srcdoc`), or at once with
+ * `passSrc: 'at once'`, which stands in for a batch of web-elements'
+ * microtasks that was queued before the definition arrived.
  */
 const defineXWebView = (
   page: Page,
@@ -55,7 +56,7 @@ const defineXWebView = (
   } = {},
 ): FrameLog => {
   class XWebView extends page.HTMLElement {
-    static observedAttributes = ['src'];
+    static observedAttributes = ['src', 'html'];
 
     constructor() {
       super();
@@ -64,13 +65,14 @@ const defineXWebView = (
         : '';
     }
 
-    attributeChangedCallback(_name: string, _old: string, value: string) {
+    attributeChangedCallback(name: string, _old: string, value: string) {
       const inner = this.shadowRoot!.querySelector('iframe')!;
+      const attribute = name === 'html' ? 'srcdoc' : 'src';
       const pass = () => {
         log.push(
-          `src ${value}, credentialless ${inner.hasAttribute('credentialless')}`,
+          `${attribute} ${value}, credentialless ${inner.hasAttribute('credentialless')}`,
         );
-        inner.setAttribute('src', value);
+        inner.setAttribute(attribute, value);
       };
       if (passSrc === 'at once') pass();
       else queueMicrotask(pass);
@@ -117,6 +119,18 @@ describe('loadWebViewInIsolatedPage', () => {
     await settle();
 
     expect(log).toEqual(['src https://angular.dev, credentialless true']);
+  });
+
+  it('marks the frame before it gets its html', async () => {
+    const page = newPage(true);
+    const log = defineXWebView(page);
+    const host = page.document.createElement('x-webview');
+
+    load(host);
+    host.setAttribute('html', '<p>Inline</p>');
+    await settle();
+
+    expect(log).toEqual(['srcdoc <p>Inline</p>, credentialless true']);
   });
 
   it("leaves the frame its cookies in a page that isn't isolated", () => {
@@ -193,42 +207,50 @@ describe('loadWebViewInIsolatedPage', () => {
       expect(log).toEqual(['src https://angular.dev, credentialless true']);
     });
 
-    it('starts the load again when the frame got its src first', async () => {
-      const page = newPage(true);
-      const host = page.document.createElement('x-webview');
-      host.setAttribute('src', 'https://angular.dev');
-      page.document.body.append(host);
+    // A page given as `html` loads either way, but only one loaded
+    // credentialless lets the frames inside it load, so it starts again too.
+    it.each([
+      ['src', 'src', 'https://angular.dev'],
+      ['html', 'srcdoc', '<iframe src="https://angular.dev"></iframe>'],
+    ])(
+      'starts the load again when the frame got its %s first',
+      async (attribute, onFrame, value) => {
+        const page = newPage(true);
+        const host = page.document.createElement('x-webview');
+        host.setAttribute(attribute, value);
+        page.document.body.append(host);
 
-      load(host);
-      const log = defineXWebView(page, [], { passSrc: 'at once' });
-      const frame = frameOf(host)!;
-      const style = page.document.createElement('style');
-      host.shadowRoot!.append(style);
-      // What happened to the frame, with whether it was credentialless by
-      // then: a browser starts a frame's load when it's put in the page.
-      const moves: string[] = [];
-      new page.MutationObserver((records) => {
-        for (const record of records) {
-          if ([...record.removedNodes].includes(frame)) moves.push('out');
-          if ([...record.addedNodes].includes(frame)) {
-            moves.push(
-              `back, credentialless ${frame.hasAttribute('credentialless')}`,
-            );
+        load(host);
+        const log = defineXWebView(page, [], { passSrc: 'at once' });
+        const frame = frameOf(host)!;
+        const style = page.document.createElement('style');
+        host.shadowRoot!.append(style);
+        // What happened to the frame, with whether it was credentialless by
+        // then: a browser starts a frame's load when it's put in the page.
+        const moves: string[] = [];
+        new page.MutationObserver((records) => {
+          for (const record of records) {
+            if ([...record.removedNodes].includes(frame)) moves.push('out');
+            if ([...record.addedNodes].includes(frame)) {
+              moves.push(
+                `back, credentialless ${frame.hasAttribute('credentialless')}`,
+              );
+            }
           }
-        }
-      }).observe(host.shadowRoot!, { childList: true });
-      await settle();
+        }).observe(host.shadowRoot!, { childList: true });
+        await settle();
 
-      // The definition passed `src` on before the frame was marked.
-      expect(log).toEqual(['src https://angular.dev, credentialless false']);
-      expect(moves).toEqual(['out', 'back, credentialless true']);
-      // The same frame, where it was, with the `src` it had.
-      expect(frameOf(host)).toBe(frame);
-      expect(frame.nextSibling).toBe(style);
-      expect(frame.getAttribute('src')).toBe('https://angular.dev');
-    });
+        // The definition passed it on before the frame was marked.
+        expect(log).toEqual([`${onFrame} ${value}, credentialless false`]);
+        expect(moves).toEqual(['out', 'back, credentialless true']);
+        // The same frame, where it was, with what it had.
+        expect(frameOf(host)).toBe(frame);
+        expect(frame.nextSibling).toBe(style);
+        expect(frame.getAttribute(onFrame)).toBe(value);
+      },
+    );
 
-    it('leaves a frame without a src, which has no load to start again, in place', async () => {
+    it('leaves a frame with no src or html, which has no load to start again, in place', async () => {
       const page = newPage(true);
       const host = page.document.createElement('x-webview');
       page.document.body.append(host);

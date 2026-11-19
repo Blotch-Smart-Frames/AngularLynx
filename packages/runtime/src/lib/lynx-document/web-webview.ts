@@ -46,8 +46,9 @@ const markFrame = (
  * loads frames as usual, so its frame is left alone and keeps its cookies.
  *
  * web-elements attaches the shadow root, frame included, in the element's
- * constructor, and passes `src` on to the frame in a microtask, so a frame
- * marked here is marked before it first loads. But web-core loads an
+ * constructor, and passes `src` on to the frame in a microtask (and `html`,
+ * as the frame's `srcdoc`), so a frame marked here is marked before it first
+ * loads. But web-core loads an
  * element's definition the first time one is created, and the element can
  * come first: it's then a plain element with no frame until the definition
  * arrives (the order is the network's to decide; both were seen). That frame
@@ -68,7 +69,7 @@ export const loadWebViewInIsolatedPage = (element: ElementRef): void => {
     // in it yet waits until it is, so it's upgraded here to get its frame.
     page.customElements.upgrade(host as HTMLElement);
     const frame = markFrame(host);
-    if (!frame?.hasAttribute('src')) return;
+    if (!frame) return;
     // The frame got its `src` before this ran (in Chromium the definition's
     // own microtasks run first), so its page is loading without the
     // attribute. Setting `src` again doesn't help: Chromium ignores a load
@@ -76,6 +77,11 @@ export const loadWebViewInIsolatedPage = (element: ElementRef): void => {
     // ends that load, and putting it back starts one that reads the
     // attribute. The frame is the same element, so web-elements' listeners
     // stay on it, and the load that was ended fires no event.
+    //
+    // The same goes for `html`, the frame's `srcdoc`. Its own page loads
+    // either way, but a frame inside that page is blocked like any other
+    // unless the page was loaded credentialless, which it passes down.
+    if (!frame.hasAttribute('src') && !frame.hasAttribute('srcdoc')) return;
     // Found inside the shadow root, so it has a parent.
     const parent = frame.parentNode as Node;
     const next = frame.nextSibling;

@@ -215,6 +215,8 @@ On a real iPhone, `--run` needs `"ios": { "teamId": "ABCDE12345" }` in the build
 
 Or `ng serve --platform ios|android` in place of steps 2–3, which opens your own app, native modules included, instead of Lynx Explorer.
 
+The web preview (the **Preview** link `ng serve` prints, `/__web_preview`) can't take hot updates. It reloads the page when a rebuild finishes, so the app starts over on its first screen with its state reset. A build that fails leaves the page as it was and logs the errors in the browser's console.
+
 ## Dependencies
 
 ```json

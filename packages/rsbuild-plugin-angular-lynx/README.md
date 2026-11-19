@@ -37,6 +37,7 @@ export default defineConfig({
 - Registers `CUSTOM_ELEMENTS_SCHEMA` so Angular accepts Lynx elements (`<view>`, `<text>`, etc.)
 - Enforces the build target's `budgets` with `ng build`'s units and messages: a warning is printed, an error fails the build
 - Applies the build target's `fileReplacements`, as Angular's builders do: both threads' bundles are built from each `with` file instead of its `replace` file, and a watch build rebuilds when it changes
+- Reloads the web preview (`/__web_preview`) when a rebuild finishes, as Angular's dev server reloads the browser. The `web` environment's `dev.liveReload: false` turns it off
 - Adds the `Intl` APIs the `intl` option lists, which Lynx lacks, to the Lynx bundle (see [Intl](#intl))
 - Lets the dev server's web preview show images and video from other servers: Chrome, Edge and desktop Firefox get the page with `Cross-Origin-Embedder-Policy: credentialless` instead of rspeedy's `require-corp`, which blocks every file whose server sends no `Cross-Origin-Resource-Policy`. Safari doesn't support that value and keeps `require-corp`
 

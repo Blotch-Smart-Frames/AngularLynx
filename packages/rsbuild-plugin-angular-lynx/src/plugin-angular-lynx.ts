@@ -19,6 +19,7 @@ import { applyTextInheritance } from './text-inheritance.js';
 import { applyTypeSelectors } from './type-selectors.js';
 import { applyUnicodePropertyRegex } from './unicode-property-regex.js';
 import { applyWebPreviewIsolation } from './web-preview-isolation.js';
+import { applyWebPreviewReload } from './web-preview-reload.js';
 import {
   deprecatedOptionsIn,
   normalizeOptions,
@@ -96,6 +97,9 @@ export const pluginAngularLynx = (
       applySplitChunksRule(api, normalizedOptions);
       applyDevLogger(api);
       applyWebPreviewIsolation(api);
+      // Reloads the web preview after each rebuild, which can't take hot
+      // updates (see web-preview-reload.ts).
+      applyWebPreviewReload(api);
       await angularRules;
     },
   };

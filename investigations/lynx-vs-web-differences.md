@@ -5421,7 +5421,16 @@ Modules take their updates like this (`hot-updates.ts`, and `ɵhmrAccept` in the
 
 Lynx DevTool is only needed for the reload fallback, when an update can't be applied (for example a module that throws while it loads).
 
-The web preview has no hot updates or reloads: web-core has neither `replaceStyleSheetByIdWithBase64()` nor a DevTool connection to reload with, and the preview page has no client of its own. Refresh the browser after a save.
+The web preview has no hot updates: web-core has neither `replaceStyleSheetByIdWithBase64()` nor a DevTool connection to reload with. It reloads the page instead, as Angular's dev server does without HMR (issue #454). Until then it had no client at all, and every save needed a browser refresh.
+
+The preview page is rspeedy's (`@lynx-js/web-rsbuild-server-middleware`, at `/__web_preview`), a fixed `index.html`. The plugin adds a middleware ahead of rspeedy's that puts a small reload client into that page as it's sent (`packages/rsbuild-plugin-angular-lynx/src/web-preview-reload.ts`). The client connects to Rsbuild's dev server socket (`dev.client.path`, `/rsbuild-hmr`) with the `web` environment's `webSocketToken`, so it hears only that environment's builds:
+
+- The first build hash the socket reports is the one the page shows. Rsbuild drops its stats when a build starts and reports nothing until it ends, so a page loaded mid-build isn't told an older hash.
+- A new hash followed by `ok` or `warnings` reloads the page. A new hash followed by `errors` keeps the page and logs the errors in the browser's console; the next good build reloads it.
+- `full-reload` (the entry's chunks changed, or a file `dev.watchFiles` watches) and `static-changed` reload at once.
+- Rsbuild also sends `full-reload` as soon as a changed `.html` file starts a rebuild, before it knows whether the build works. That's meant for apps whose page is an HTML template; in an Angular app it's a component's template. The preview reloaded on it, so a template that didn't compile reloaded the page and lost its state, though the failed build had nothing new to show (the page came back on the last good bundle). The plugin sets the `web` environment's `dev.liveReload` to `{ html: false }`, which turns off only that message: Rsbuild treats an object as live reload being on everywhere else. The edit reaches the bundle's hash anyway, so it reloads once the build works. It replaces an app's `{ html: true }` as well, which means the same as the default: the web bundle has no HTML page for it to reload, so all it adds is the early reload. Only `false`, which turns the client off, is left alone.
+
+Measured with `examples/hello-world` in Playwright's Chromium (November 2026): an edit to the component or to its external template showed in the preview about 4 to 5 seconds after the save, with one reload each, and `crossOriginIsolated` stayed `true`. A template that doesn't compile left the page as it was, with no reload. `dev.liveReload: false` on the `web` environment turns the client off.
 
 ### Still open
 

@@ -512,6 +512,31 @@ describe('the commands', () => {
     expect(gl.getError()).toBe(GL.INVALID_OPERATION);
   });
 
+  it('keeps a binding when a bind names another context’s buffer, or a deleted one', async () => {
+    const kept = gl.createBuffer();
+    const foreign = makeContext().createBuffer();
+    const deleted = gl.createBuffer();
+    gl.deleteBuffer(deleted);
+    gl.bindBuffer(GL.ARRAY_BUFFER, kept);
+    gl.bindBufferBase(GL.UNIFORM_BUFFER, 0, kept);
+    gl.bindBufferRange(GL.TRANSFORM_FEEDBACK_BUFFER, 0, kept, 0, 4);
+    await flushed();
+    for (const refused of [foreign, deleted]) {
+      gl.bindBuffer(GL.ARRAY_BUFFER, refused);
+      expect(gl.getError()).toBe(GL.INVALID_OPERATION);
+      gl.bindBufferBase(GL.UNIFORM_BUFFER, 0, refused);
+      expect(gl.getError()).toBe(GL.INVALID_OPERATION);
+      gl.bindBufferRange(GL.TRANSFORM_FEEDBACK_BUFFER, 0, refused, 0, 4);
+      expect(gl.getError()).toBe(GL.INVALID_OPERATION);
+    }
+    // Nothing is bound here, and nothing is sent to the shell, which would
+    // unbind `kept`: it knows neither buffer, so either's id is none to it.
+    expect(await flushed()).toEqual([]);
+    expect(gl.getParameter(GL.ARRAY_BUFFER_BINDING)).toBe(kept);
+    expect(gl.getParameter(GL.UNIFORM_BUFFER_BINDING)).toBe(kept);
+    expect(gl.getParameter(GL.TRANSFORM_FEEDBACK_BUFFER_BINDING)).toBe(kept);
+  });
+
   it('asks the driver for errors once its own are reported', () => {
     gl.createShader(0);
     gl.createShader(1);
@@ -865,6 +890,23 @@ describe('extensions', () => {
     });
     expect(bridge.encodeImage).not.toHaveBeenCalled();
     expect(bridge.batches).toHaveLength(before);
+  });
+
+  it('raises nothing for a bind it would refuse, once the context is lost', () => {
+    const deleted = gl.createBuffer();
+    gl.deleteBuffer(deleted);
+    const foreign = makeContext().createBuffer();
+    (
+      gl.getExtension('WEBGL_lose_context') as { loseContext(): void }
+    ).loseContext();
+    expect(gl.getError()).toBe(GL.CONTEXT_LOST_WEBGL);
+    for (const refused of [deleted, foreign]) {
+      gl.bindBuffer(GL.ARRAY_BUFFER, refused);
+      gl.bindBufferBase(GL.UNIFORM_BUFFER, 0, refused);
+      gl.bindBufferRange(GL.TRANSFORM_FEEDBACK_BUFFER, 0, refused, 0, 4);
+    }
+    // A lost context's one error is CONTEXT_LOST_WEBGL, reported above.
+    expect(gl.getError()).toBe(GL.NO_ERROR);
   });
 
   it('stops sending once destroyed, as at the end of a task', async () => {
@@ -1797,6 +1839,16 @@ describe('pixels', () => {
     // Deleting the buffer unbinds it, and arrays can be read into again.
     gl.deleteBuffer(pack);
     bridge.answers.push(words([1, 2, 3, 4]));
+    gl.readPixels(0, 0, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, destination);
+    expect(destination).toEqual(new Uint8Array([1, 2, 3, 4]));
+  });
+
+  it('reads into an array after a bind of a pack buffer that was refused', () => {
+    gl.bindBuffer(GL.PIXEL_PACK_BUFFER, makeContext().createBuffer());
+    expect(gl.getError()).toBe(GL.INVALID_OPERATION);
+    expect(gl.getParameter(GL.PIXEL_PACK_BUFFER_BINDING)).toBeNull();
+    bridge.answers.push(words([1, 2, 3, 4]));
+    const destination = new Uint8Array(4);
     gl.readPixels(0, 0, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, destination);
     expect(destination).toEqual(new Uint8Array([1, 2, 3, 4]));
   });

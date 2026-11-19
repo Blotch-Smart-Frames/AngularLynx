@@ -195,9 +195,10 @@ static NSUInteger componentsOf(GLenum format) {
   GLuint _readFramebuffer;
   GLuint _renderbuffer;
 
-  /// An error the app's earlier calls raised, which a read took off GL to
-  /// learn whether the read itself failed. getError reports it first.
-  GLenum _heldError;
+  /// The errors taken off GL, which a read does to learn whether the read
+  /// itself failed, in the order GL gave them. getError reports them. GL
+  /// keeps one flag for each code, and so does the set.
+  NSMutableOrderedSet<NSNumber *> *_heldErrors;
 
   // The runtime's object ids, to GL names (ids are never reused).
   GLuint *_names;
@@ -258,6 +259,7 @@ static NSUInteger componentsOf(GLenum format) {
   _stencil = [attributes[@"stencil"] isEqual:@YES];
   _preserveDrawingBuffer = [attributes[@"preserveDrawingBuffer"] isEqual:@YES];
   _syncs = [NSMutableDictionary dictionary];
+  _heldErrors = [NSMutableOrderedSet orderedSet];
   _namesCapacity = 256;
   _names = calloc(_namesCapacity, sizeof(GLuint));
 
@@ -669,6 +671,24 @@ static NSUInteger componentsOf(GLenum format) {
   CGImageRelease(image);
   if (!written) return @{@"error" : @"Could not encode the canvas's pixels"};
   return @{@"base64" : [file base64EncodedStringWithOptions:0], @"type" : type};
+}
+
+#pragma mark - Errors
+
+/// Moves every error GL has recorded into _heldErrors, and answers whether
+/// there were any. GL records several at once, one for each code, and
+/// glGetError takes one off a call, so only a loop leaves GL with none.
+- (BOOL)holdErrors {
+  BOOL any = NO;
+  // GL has eight error codes, so eight calls empty it. The count is there so
+  // a GL that answers an error to every call can't hang the engine thread.
+  for (int i = 0; i < 8; i++) {
+    GLenum error = glGetError();
+    if (error == GL_NO_ERROR) break;
+    [_heldErrors addObject:@(error)];
+    any = YES;
+  }
+  return any;
 }
 
 #pragma mark - Objects
@@ -2154,9 +2174,14 @@ static BOOL isUnsignedUniform(GLenum type) {
     case ALWebGLOpGetParameter:
       return [self parameter:nextEnum(r)];
     case ALWebGLOpGetError: {
-      GLenum error = _heldError != GL_NO_ERROR ? _heldError : glGetError();
-      _heldError = GL_NO_ERROR;
-      return @(error);
+      // The errors a read held come first, and GL's own after them. Taking
+      // GL's too reports a code once when a call raised it again after a
+      // read held it, as GL would have with its one flag.
+      [self holdErrors];
+      NSNumber *error = _heldErrors.firstObject;
+      if (!error) return @(GL_NO_ERROR);
+      [_heldErrors removeObjectAtIndex:0];
+      return error;
     }
     case ALWebGLOpShaderInfo: {
       GLuint shader = [self nameOf:nextUInt(r)];
@@ -2400,11 +2425,12 @@ static BOOL isUnsignedUniform(GLenum type) {
       //
       // A failed read writes nothing, and WebGL leaves the app's array alone
       // then. Into memory that was a zeroed array; a buffer holds whatever
-      // it was given. So GL's error tells: an error from before the read is
-      // held for getError, and one after it means the read failed and
-      // answers nil, which the runtime takes as nothing read.
-      GLenum earlier = glGetError();
-      if (_heldError == GL_NO_ERROR) _heldError = earlier;
+      // it was given. So GL's error tells: the errors from before the read
+      // are held for getError, and one after it means the read failed and
+      // answers nil, which the runtime takes as nothing read. Every earlier
+      // error is taken, not one: a second one left on GL would be found
+      // after the read, and a read that worked would answer nil.
+      [self holdErrors];
       // The runtime sends this only while no pack buffer is bound (an app
       // reading into one sends ReadPixelsToBuffer), but the binding is put
       // back whatever it was.
@@ -2417,13 +2443,13 @@ static BOOL isUnsignedUniform(GLenum type) {
       BOOL resolved = [self beginRead];
       glReadPixels(x, y, width, height, format, type, 0);
       [self endRead:resolved];
-      GLenum failed = glGetError();
+      // The read's own error is held with the rest, for getError, and
+      // leaves the answer nil.
+      BOOL read = ![self holdErrors];
       NSArray *result = nil;
-      if (failed != GL_NO_ERROR) {
-        if (_heldError == GL_NO_ERROR) _heldError = failed;
-      } else if (length == 0) {
+      if (read && length == 0) {
         result = wordsFromBytes(NULL, 0);
-      } else {
+      } else if (read) {
         const void *mapped =
             glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0, (GLsizeiptr)length, GL_MAP_READ_BIT);
         if (mapped) {

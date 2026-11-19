@@ -97,6 +97,7 @@ export const runApplication = async function* (
       });
     }
     rspeedy = await createRspeedy({
+      command: 'build',
       rspeedy: await deps.importRspeedy(),
       plugin: await deps.importPlugin(),
       projectRoot,

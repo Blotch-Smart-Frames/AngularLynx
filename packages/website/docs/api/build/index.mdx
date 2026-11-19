@@ -38,6 +38,7 @@ They work like Angular's builders:
 
 - **Configurations and flags override options**, so `-c development` and `--source-map` work.
 - **`optimization` picks the build.** A build that optimizes scripts is a production build. Any other build is a development build, with dev mode on. There's no `mode` option.
+- **`ng build`'s bundles load their images from where they're deployed**, in a development build too: from inside the app, or from your server with RSpeedy's `output.assetPrefix`. Only `ng serve` loads them from its dev server.
 
 ## application
 

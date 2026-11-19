@@ -192,6 +192,46 @@ const applyBaseHref = (
   output.assetPrefix ??= baseHref;
 };
 
+/**
+ * `ng build` addresses each environment's assets as a production build does,
+ * whatever `optimization` is: by its own `output.assetPrefix`, else the
+ * top-level one, else `server.base` (which Rsbuild makes the prefix when no
+ * prefix is set), else `/`.
+ *
+ * Rsbuild takes `dev.assetPrefix` instead in a development build, and
+ * rspeedy's Lynx plugin sets the top-level one, for any development build, to
+ * the dev server's address (it's meant for `rspeedy dev` and `rspeedy
+ * preview`, where a server answers there). `ng build` with `optimization` off
+ * is a development build, but no server runs for it: a native app carries its
+ * images inside it, and a web bundle is served from where it's deployed. So
+ * every imported image asked a server that wasn't there and never drew
+ * (#560). An environment's own `dev.assetPrefix` wins over the top-level
+ * one, so setting it here leaves the Lynx plugin's alone for `ng serve`.
+ */
+const applyBuildAssetPrefix = (content: Record<string, unknown>): void => {
+  type AssetPrefixed = {
+    output?: { assetPrefix?: unknown };
+    dev?: Record<string, unknown>;
+  };
+  const environments = content['environments'] as Record<
+    string,
+    AssetPrefixed | undefined
+  >;
+  const fallback =
+    (content as AssetPrefixed).output?.assetPrefix ??
+    (content['server'] as { base?: unknown } | undefined)?.base ??
+    '/';
+  for (const [name, environment] of Object.entries(environments)) {
+    environments[name] = {
+      ...environment,
+      dev: {
+        ...environment?.dev,
+        assetPrefix: environment?.output?.assetPrefix ?? fallback,
+      },
+    };
+  }
+};
+
 type WatchIgnored = string | readonly string[] | RegExp | undefined;
 
 /**
@@ -254,6 +294,8 @@ export const pluginIgnoreWatch = (dirs: readonly string[]) => ({
  *   preview).
  * - The mode follows the build target's `optimization` (see
  *   {@link modeFromOptimization}).
+ * - A build addresses its assets as a production build does, never at the
+ *   dev server (see {@link applyBuildAssetPrefix}).
  *
  * It also adds plugins, each unless lynx.config.ts lists it itself (to pass
  * it options): the AngularLynx plugin, which compiles Angular, and for the
@@ -264,6 +306,7 @@ export const pluginIgnoreWatch = (dirs: readonly string[]) => ({
  * the default configuration.
  */
 export const createRspeedy = async ({
+  command,
   rspeedy,
   plugin,
   qrCode,
@@ -274,6 +317,11 @@ export const createRspeedy = async ({
   server,
   watchIgnore = [],
 }: {
+  /**
+   * Which Angular CLI command runs: a build's bundle never asks the dev
+   * server for its assets (see {@link applyBuildAssetPrefix}).
+   */
+  command: 'build' | 'serve';
   rspeedy: RspeedyModule;
   plugin: RspeedyPluginModule;
   /** Given for the dev server, which prints the Lynx Explorer QR code. */
@@ -314,6 +362,9 @@ export const createRspeedy = async ({
   content.mode = mode;
   content['environments'] ??= { lynx: {}, web: {} };
   applyBaseHref(content, angularCli.buildOptions['baseHref']);
+  if (command === 'build') {
+    applyBuildAssetPrefix(content);
+  }
   const browser = angularCli.buildOptions['browser'];
   const source = (content['source'] ??= {}) as { entry?: unknown };
   if (source.entry === undefined && typeof browser === 'string') {

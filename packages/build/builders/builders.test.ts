@@ -26,8 +26,10 @@ import {
 import { importFromProject } from './project-import';
 import {
   addWatchIgnored,
+  importRspeedy,
   type pluginIgnoreWatch,
   type RspeedyBuildResult,
+  type RspeedyInstance,
   type RspeedyModule,
   type RspeedyPluginModule,
   modeFromOptimization,
@@ -226,7 +228,12 @@ describe('application builder', () => {
       cwd: root,
       rspeedyConfig: {
         mode: 'development',
-        environments: { lynx: {}, web: {} },
+        // Each environment's assets are the bundle's own, never the dev
+        // server's (see "a build's asset URLs" below).
+        environments: {
+          lynx: { dev: { assetPrefix: '/' } },
+          web: { dev: { assetPrefix: '/' } },
+        },
         source: { entry: path.join(root, 'src/main.ts') },
         plugins: [
           // The options as Angular CLI merged them reach the plugin as they
@@ -251,7 +258,10 @@ describe('application builder', () => {
     expect(rspeedy.loadConfig).not.toHaveBeenCalled();
     expect(passedConfig()).toEqual({
       mode: 'production',
-      environments: { lynx: {}, web: {} },
+      environments: {
+        lynx: { dev: { assetPrefix: '/' } },
+        web: { dev: { assetPrefix: '/' } },
+      },
       source: { entry: path.join(root, 'src/main.ts') },
       plugins: [expect.anything(), angularPlugin],
     });
@@ -277,7 +287,7 @@ describe('application builder', () => {
     expect(passedConfig()).toMatchObject({
       environments: { lynx: {}, web: { output: { assetPrefix: '/shop/' } } },
     });
-    expect(passedConfig().environments!['lynx']).toEqual({});
+    expect(passedConfig().environments!['lynx']).not.toHaveProperty('output');
   });
 
   it('keeps the asset prefix lynx.config.ts sets over baseHref, and adds none to an app without a web environment', async () => {
@@ -295,7 +305,21 @@ describe('application builder', () => {
     await firstOutput(
       build({ browser: 'src/main.ts', baseHref: '/shop/' }, lynxOnly.rspeedy),
     );
-    expect(lynxOnly.passedConfig().environments).toEqual({ lynx: {} });
+    expect(lynxOnly.passedConfig().environments).toEqual({
+      lynx: { dev: { assetPrefix: '/' } },
+    });
+  });
+
+  it("replaces an environment's dev.assetPrefix, which is the dev server's, and keeps its other dev settings", async () => {
+    const { passedConfig, rspeedy } = fakeRspeedy({
+      environments: {
+        lynx: { dev: { hmr: false, assetPrefix: 'http://192.168.1.20:3000/' } },
+      },
+    });
+    await firstOutput(build({ optimization: false }, rspeedy));
+    expect(passedConfig().environments).toEqual({
+      lynx: { dev: { hmr: false, assetPrefix: '/' } },
+    });
   });
 
   it('loads the config file the `config` option names, which rspeedy requires to exist', async () => {
@@ -540,6 +564,101 @@ describe('the mode', () => {
   });
 });
 
+describe("a build's asset URLs", () => {
+  /**
+   * The URL each environment's bundle asks for its images under (rspack's
+   * `output.publicPath`) after `ng build`. This runs rspeedy itself, with only
+   * the compile left out: the dev server's address comes from what rspeedy's
+   * Lynx plugin does to the config, which the stand-in can't show.
+   */
+  const publicPaths = async (
+    options: Record<string, unknown>,
+    config?: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> => {
+    if (config) {
+      writeFileSync(path.join(root, 'lynx.config.ts'), 'export default {};');
+    }
+    const real = await importRspeedy();
+    type Instance = RspeedyInstance & {
+      initConfigs: (options: {
+        action: 'build';
+      }) => Promise<{ name?: string; output?: { publicPath?: unknown } }[]>;
+    };
+    let instance: Instance | undefined;
+    const rspeedy: RspeedyModule = {
+      loadConfig: async () => ({
+        content: structuredClone(config ?? {}),
+        configPath: path.join(root, 'lynx.config.ts'),
+      }),
+      createRspeedy: async (createOptions) => {
+        instance = (await real.createRspeedy(createOptions)) as Instance;
+        return { ...instance, build: async () => ({ close: async () => {} }) };
+      },
+    };
+    /**
+     * Real Rsbuild plugins, which need a setup, standing in for the compiler.
+     */
+    const plugin = async (): Promise<RspeedyPluginModule> => ({
+      pluginAngularLynx: () => ({ name: 'lynx:angular', setup: () => {} }),
+      pluginAngularCliContext: () => ({
+        name: 'lynx:angular-cli-context',
+        setup: () => {},
+      }),
+    });
+    const result = await firstOutput(
+      runApplication(
+        { browser: 'src/main.ts', ...options } as never,
+        fakeContext().context,
+        { importRspeedy: async () => rspeedy, importPlugin: plugin },
+      ),
+    );
+    expect(result).toEqual({ success: true });
+    const configs = await instance!.initConfigs({ action: 'build' });
+    return Object.fromEntries(
+      configs.map(({ name, output }) => [name, output?.publicPath]),
+    );
+  };
+
+  it.each([
+    ['the defaults', {}, undefined, { lynx: '/', web: '/' }],
+    [
+      'baseHref',
+      { baseHref: '/shop/' },
+      undefined,
+      { lynx: '/', web: '/shop/' },
+    ],
+    [
+      "lynx.config.ts's prefixes",
+      {},
+      {
+        output: { assetPrefix: 'https://cdn.example.com/app/' },
+        environments: { lynx: {}, web: { output: { assetPrefix: '/web/' } } },
+      },
+      { lynx: 'https://cdn.example.com/app/', web: '/web/' },
+    ],
+    [
+      "lynx.config.ts's server.base",
+      {},
+      { server: { base: '/base' } },
+      { lynx: '/base/', web: '/base/' },
+    ],
+  ])(
+    "are the bundle's own with %s whatever optimization is, never the dev server's",
+    async (_, options, config, expected) => {
+      expect(
+        await publicPaths({ ...options, optimization: true }, config),
+      ).toEqual(expected);
+      // No server runs for an `ng build`, and a native app carries its
+      // images inside it, so a development build mustn't ask the dev server
+      // for them (#560).
+      expect(
+        await publicPaths({ ...options, optimization: false }, config),
+      ).toEqual(expected);
+    },
+    30_000,
+  );
+});
+
 describe('the AngularLynx plugin', () => {
   const pluginsPassed = async (plugins: unknown) => {
     const { rspeedy, passedConfig } = fakeRspeedy(
@@ -756,6 +875,11 @@ describe('dev-server builder', () => {
       host: '127.0.0.1',
       base: '/app',
     });
+  });
+
+  it("leaves the asset prefix to rspeedy, which points it at the server, unlike ng build's", async () => {
+    const { passedConfig } = await serve({});
+    expect(passedConfig()['environments']).toEqual({ lynx: {}, web: {} });
   });
 
   it("leaves lynx.config.ts's server settings alone without port or host", async () => {

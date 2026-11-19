@@ -28,6 +28,7 @@ import {
   setInsideChangeDetection,
   setRunComingTick,
 } from '../lynx-render-lifecycle';
+import { stopMatchingDeclarationOnlyElements } from '../lynx-elements/declaration-only';
 import { EmulatedLynxRenderer } from './emulated-lynx-renderer';
 import { LynxRenderer } from './renderer';
 import { LYNX_DOCUMENT } from './token';
@@ -49,6 +50,10 @@ export class LynxRendererFactory2 implements RendererFactory2 {
    * component.
    */
   createRenderer(hostElement: any, type: RendererType2 | null): Renderer2 {
+    // Angular passes the component's definition, before it first renders
+    // the component's template: none of that template's elements gets a
+    // directive that does what this renderer does itself.
+    if (type) stopMatchingDeclarationOnlyElements(type);
     if (!type || type.encapsulation !== ViewEncapsulation.Emulated) {
       // ShadowDom (and Angular's experimental isolated variant) needs a shadow
       // root, which Lynx elements don't have. Their styles compile unscoped,

@@ -7,6 +7,7 @@ import { globalEvents } from '../global-events';
 import type { LynxDocumentBase } from '../lynx-document';
 import { tagClassFor } from '../lynx-document/element-tags';
 import type { BaseLynxElement } from '../lynx-element';
+import { templateAttributeValue } from '../lynx-elements/base';
 
 /**
  * Collapse every run of whitespace to a single space — WITHOUT trimming the ends.
@@ -172,7 +173,9 @@ export class LynxRenderer implements Renderer2 {
     value: string,
     _namespace?: string | null,
   ): void {
-    el.setAttribute(name, value);
+    // A static attribute reaches here as a string: `flatten="false"` is
+    // read as false, as the element directive's input reads it.
+    el.setAttribute(name, templateAttributeValue(name, value));
   }
   removeAttribute(
     el: BaseLynxElement,
@@ -208,8 +211,15 @@ export class LynxRenderer implements Renderer2 {
   ): void {
     el.removeStyle(cssKeyFor(style, flags));
   }
+  /**
+   * Angular calls setProperty for a property binding no directive takes,
+   * which under this renderer is most of an element's: the element
+   * directives that only declare attributes match no element (see
+   * lynx-elements/declaration-only.ts). So it reads the value as their
+   * inputs did.
+   */
   setProperty(el: BaseLynxElement, name: string, value: any): void {
-    el.setProperty(name, value);
+    el.setProperty(name, templateAttributeValue(name, value));
   }
   /**
    * Angular calls setValue for text nodes created via createText(). In the

@@ -13,6 +13,8 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 `LYNX_ELEMENTS` is an array of directives providing type-checking and IDE support for all Lynx elements. Without it, elements work but produce no type errors for invalid attributes.
 
+At runtime, Angular makes no directive for an element whose directive only declares its attributes (every element's but `<input>`'s and `<textarea>`'s): the renderer sets the attributes itself, so a screen of many elements builds faster. So `viewChild(LynxView)`, `inject(LynxText)` and a test's `By.directive(LynxImage)` find nothing. Reach an element through a template reference instead: `viewChild('card', { read: ElementRef })`. A directive of your own that declares one of the element's attributes as an input (`accessibility-label`) takes that binding, and the element doesn't get it, as with a directive's input on the web; bind `[attr.accessibility-label]` in the directive's `host` if the element needs it too.
+
 ## Available Elements
 
 | Element         | Purpose                                      | Key Attributes                                                                           |

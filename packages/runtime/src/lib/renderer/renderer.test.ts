@@ -284,6 +284,24 @@ describe('LynxRenderer', () => {
 
       expect(spy).toHaveBeenCalledWith('id', 'main');
     });
+
+    // The element directives that read these match no element under this
+    // renderer (see lynx-elements/declaration-only.ts), so it reads them.
+    it('reads a static true/false or number attribute as the element directive did', () => {
+      const { renderer } = createRenderer();
+      const el = new InMemoryElement();
+      const spy = vi.spyOn(el, 'setAttribute');
+
+      renderer.setAttribute(el, 'flatten', 'false');
+      renderer.setAttribute(el, 'ignore-focus', '');
+      renderer.setAttribute(el, 'pan-intercept-scope', '5');
+
+      expect(spy.mock.calls).toEqual([
+        ['flatten', false],
+        ['ignore-focus', true],
+        ['pan-intercept-scope', 5],
+      ]);
+    });
   });
 
   describe('removeAttribute', () => {
@@ -438,6 +456,22 @@ describe('LynxRenderer', () => {
       renderer.setProperty(el, 'value', 42);
 
       expect(spy).toHaveBeenCalledWith('value', 42);
+    });
+
+    it('reads a bound true/false string as the element directive did, and keeps a boolean', () => {
+      const { renderer } = createRenderer();
+      const el = new InMemoryElement();
+      const spy = vi.spyOn(el, 'setProperty');
+
+      renderer.setProperty(el, 'event-through', 'true');
+      renderer.setProperty(el, 'flatten', false);
+      renderer.setProperty(el, 'user-interaction-enabled', undefined);
+
+      expect(spy.mock.calls).toEqual([
+        ['event-through', true],
+        ['flatten', false],
+        ['user-interaction-enabled', undefined],
+      ]);
     });
   });
 

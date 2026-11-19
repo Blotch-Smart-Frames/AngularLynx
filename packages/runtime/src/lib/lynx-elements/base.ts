@@ -54,6 +54,49 @@ function panInterceptScopeInput(
 }
 
 /**
+ * The inputs below that transform what a template gives them, by name, with
+ * the transform each declares. A test checks it against the declarations.
+ */
+const INPUT_TRANSFORMS: ReadonlyMap<string, (value: never) => unknown> =
+  new Map<string, (value: never) => unknown>([
+    ['accessibility-element', booleanInput],
+    ['accessibility-elements-hidden', booleanInput],
+    ['accessibility-exclusive-focus', booleanInput],
+    ['accessibility-heading', booleanInput],
+    ['accessibility-enable-tap', booleanInput],
+    ['accessibility-auto-scroll-if-focused', booleanInput],
+    ['android-accessibility-keep-focused', booleanInput],
+    ['user-interaction-enabled', booleanInput],
+    ['native-interaction-enabled', booleanInput],
+    ['event-through', booleanInput],
+    ['block-native-event', booleanInput],
+    ['ignore-focus', booleanInput],
+    ['ios-enable-simultaneous-touch', booleanInput],
+    ['flatten', booleanInput],
+    ['pan-intercept-direction', panInterceptDirectionInput],
+    ['pan-intercept-scope', panInterceptScopeInput],
+    ['enable-touch-pseudo-propagation', booleanInput],
+    ['enable-exposure-ui-margin', booleanInput],
+  ]);
+
+/**
+ * A template's value for an attribute, as the element directive's input
+ * reads it: `flatten="false"` is `false`, a bare `ignore-focus` is `true`,
+ * and `pan-intercept-scope="5"` is `5`. Under the Lynx renderer no
+ * declaration-only directive takes the value (see declaration-only.ts), so
+ * the renderer reads it with this as it sets the attribute. Without it, Lynx
+ * would get the string as it's written: `""` for a bare `ignore-focus`,
+ * which the directive read as true.
+ */
+export const templateAttributeValue = (
+  name: string,
+  value: unknown,
+): unknown => {
+  const transform = INPUT_TRANSFORMS.get(name);
+  return transform ? transform(value as never) : value;
+};
+
+/**
  * @Directive() is required so that ng-packagr's Angular partial compiler
  * recognizes this base class as an Angular artifact. The selector is left
  * empty — the class is never used directly as a directive.
@@ -74,7 +117,11 @@ function panInterceptScopeInput(
  *    intercepts these bindings and sets them on the directive instance. The
  *    ngOnChanges hook forwards every input change to the native Lynx element
  *    via BaseLynxElement.setAttribute(), which calls __SetAttribute — the same
- *    endpoint that renderer.setProperty() would reach.
+ *    endpoint that renderer.setProperty() would reach. So under the Lynx
+ *    renderer, most of them match no element, and the renderer takes their
+ *    bindings itself (see declaration-only.ts): this hook runs for the ones
+ *    that do more, LynxInput and LynxTextarea, and for every one in a test
+ *    that renders on the DOM before anything renders on Lynx.
  *
  * 3. Events (bindtap, catchtap, bindinput, bindscroll, …) are NOT declared as
  *    outputs. Angular would still add the native listener with

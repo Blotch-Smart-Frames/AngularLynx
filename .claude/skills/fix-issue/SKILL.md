@@ -165,16 +165,15 @@ thread, and waits for CodeRabbit to review its own commits.
 
 ## 9. Keep listening
 
-When a round has finished and its replies are posted, save what the PR has, then wait for anything
-new:
+When the first round (step 8) has finished and its replies are posted, save what the PR has, then
+wait for anything new:
 
 ```bash
 node .claude/skills/fix-issue/scripts/pr-activity.mts snapshot <pr> <scratchpad>/pr-<pr>-seen.json
 node .claude/skills/fix-issue/scripts/pr-activity.mts wait <pr> <scratchpad>/pr-<pr>-seen.json
 ```
 
-Take the snapshot after the round, so your own replies don't come back as new. Run `wait` in the
-background, as in step 7. It prints:
+Run `wait` in the background, as in step 7. It prints:
 
 - **One line for each new item**: its kind (`thread` for a new review thread, `reply` for a reply
   in one, marked when the thread is resolved, `review` or `comment`), its author, its link and its
@@ -187,7 +186,11 @@ background, as in step 7. It prints:
   - A reply that only accepts an answer, such as CodeRabbit's thanks or a note that it saved a
     learning, needs no answer and no round.
 
-  Then take a new snapshot and wait again.
+  `wait` saves what it saw to the file, so after the round take a snapshot again. It lists what
+  came in since `wait` returned: your own replies (the links the round posted), CodeRabbit's
+  answers to them, and anything else posted while the round ran. Answer what the round didn't, as
+  above, and take another snapshot after that round. Once a snapshot lists nothing left to answer,
+  wait again.
 - **`quiet`** after 30 minutes with nothing new. Wait again.
 - **`merged`** or **`closed`**. Stop and report. For a merged PR, offer to run `post-merge-cleanup`.
 

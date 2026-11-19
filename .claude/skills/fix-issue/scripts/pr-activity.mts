@@ -15,12 +15,16 @@
 //           Prints `reviewed <sha> <conclusion>`, `merged` or `closed`, or
 //           `timeout` after <n> minutes (default 30).
 // snapshot  Writes the ids of every comment and review on the PR to <file>.
+//           If <file> was there already, first prints a line, as wait does,
+//           for each one it didn't have: the round's own replies, and
+//           anything else that came in since the last wait or snapshot.
 // wait      Waits until the PR has a comment or review that isn't in <file>,
-//           and prints one line for each: its kind, author, link and first
-//           line. Prints `merged` or `closed` if the PR is, and `quiet` after
-//           <n> minutes (default 30) with nothing new.
+//           saves them all to <file>, and prints one line for each new one:
+//           its kind, author, link and first line. Prints `merged` or
+//           `closed` if the PR is, and `quiet` after <n> minutes (default 30)
+//           with nothing new.
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 
 const OWNER = 'Blotch-Smart-Frames';
@@ -188,6 +192,17 @@ const firstLine = (body: string): string => {
   return (line ?? '').slice(0, 140);
 };
 
+/** One line for an item, as `wait` and `snapshot` print it. */
+const describe = (item: Item): string =>
+  `${item.kind}${item.resolved ? ' (resolved thread)' : ''} ${item.author} ${item.url} ${firstLine(item.body)}`;
+
+/** The keys a `snapshot` or `wait` saved to `file`. */
+const readSeen = (file: string): Set<string> =>
+  new Set(JSON.parse(readFileSync(file, 'utf8')).keys);
+
+const save = (file: string, items: Item[]): void =>
+  writeFileSync(file, JSON.stringify({ keys: items.map(({ key }) => key) }));
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
@@ -254,21 +269,31 @@ if (command === 'review') {
     'timeout',
   );
 } else if (command === 'snapshot' && file) {
+  // A round takes minutes, and someone can post in them. Saving what the PR
+  // has then without a word would mark that as seen, so the next wait would
+  // never report it: list it, and leave it to the session to tell its own
+  // replies (it has their links) from the rest.
+  const seen = existsSync(file) ? readSeen(file) : null;
   const { items } = fetchPullRequest(n);
-  writeFileSync(file, JSON.stringify({ keys: items.map(({ key }) => key) }));
-  console.log(`${items.length} comments and reviews on #${n} saved to ${file}`);
+  const fresh = seen ? items.filter(({ key }) => !seen.has(key)) : [];
+  for (const item of fresh) console.log(describe(item));
+  save(file, items);
+  console.log(
+    `${items.length} comments and reviews on #${n} saved to ${file}` +
+      (seen ? `, ${fresh.length} of them new since the last wait or snapshot` : ''),
+  );
 } else if (command === 'wait' && file) {
-  const seen = new Set<string>(JSON.parse(readFileSync(file, 'utf8')).keys);
+  const seen = readSeen(file);
   await poll(
     n,
     minutes,
     (pr) => {
       const fresh = pr.items.filter(({ key }) => !seen.has(key));
       if (fresh.length === 0) return null;
-      return fresh.map(
-        (item) =>
-          `${item.kind}${item.resolved ? ' (resolved thread)' : ''} ${item.author} ${item.url} ${firstLine(item.body)}`,
-      );
+      // What this prints is what the round answers, so it counts as seen
+      // now. The snapshot after the round then lists only what came after.
+      save(file, pr.items);
+      return fresh.map(describe);
     },
     'quiet',
   );

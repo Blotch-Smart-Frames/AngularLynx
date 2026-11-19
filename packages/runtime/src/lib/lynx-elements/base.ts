@@ -120,7 +120,8 @@ export const templateAttributeValue = (
  *    endpoint that renderer.setProperty() would reach. So under the Lynx
  *    renderer, most of them match no element, and the renderer takes their
  *    bindings itself (see declaration-only.ts): this hook runs for the ones
- *    that do more, LynxInput and LynxTextarea, and under another renderer.
+ *    that do more, LynxInput and LynxTextarea, and for every one in a test
+ *    that renders on the DOM before anything renders on Lynx.
  *
  * 3. Events (bindtap, catchtap, bindinput, bindscroll, …) are NOT declared as
  *    outputs. Angular would still add the native listener with

@@ -82,6 +82,11 @@ const seen = new WeakSet<object>();
  * one of them in the app's bundle, where Angular keeps only those its
  * templates use. A directive of the app's own that selects `view` still
  * matches.
+ *
+ * It lasts for the process, whatever renders next. Angular has no matching
+ * per renderer: it keeps a component's matches with the component's
+ * definition (its TView), for every renderer. So a test that renders on the
+ * DOM after one that rendered on Lynx gets none of these directives either.
  */
 export const stopMatchingDeclarationOnlyElements = (
   component: RendererType2,

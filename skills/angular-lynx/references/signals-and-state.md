@@ -83,6 +83,14 @@ Use Angular's built-in control flow with signals:
 }
 ```
 
+Every `@defer` trigger works. The ones that watch an element use the placeholder's single root element, or the one a template reference names (`on interaction(more)`):
+
+- **`on interaction`** fires on a tap on it, or on anything inside it.
+- **`on hover`** fires when a finger touches it, as a phone's browser fires it for a tap (the mouse moving over it, in the web preview).
+- **`on viewport`** fires when it first comes on screen, through `IntersectionObserver` (see Coming into view in events-and-interactions.md). Give it a size: an element with no width or height never counts as on screen.
+
+By default the deferred code is in the main bundle, so `prefetch` gains nothing; with lazy bundles (`experimental_isLazyBundle`, see build-configuration.md) it starts the download early. In a spec, `fireEvent.tap()`, `fireEvent.touchstart(el, { changedTouches: [{ identifier: 0 }] })` and `fireEvent.uiappear()` on the placeholder fire the three.
+
 ## Event Handler Patterns
 
 ```typescript

@@ -36,8 +36,9 @@ const MANUAL_LOADING_MS = 900;
 /**
  * Defer demo — showcases Angular's @defer control-flow block on Lynx.
  *
- * The screen tells one story in three cards: explain the lifecycle, let you
- * drive it by hand, then show it firing automatically.
+ * The screen tells one story in four cards: explain the lifecycle, let you
+ * drive it by hand, show it firing automatically, then show it firing from
+ * the trigger element itself.
  *
  *  1. Lifecycle — the placeholder → loading → loaded states, and the core idea
  *     (@defer waits for a trigger before creating the component's views; on
@@ -48,14 +49,13 @@ const MANUAL_LOADING_MS = 900;
  *     loading entirely.
  *  3. Automatic (`on timer` / `on idle`) — two compact rows that load with no
  *     interaction, rendering the very same component.
+ *  4. Element triggers (`on interaction` / `on hover` / `on viewport`) — each
+ *     placeholder is its trigger: a tap, a finger touching it (a phone has no
+ *     mouse to hover with; the runtime makes the mouse events Angular listens
+ *     for from the touch) and scrolling it on screen.
  *
- * Only triggers that actually fire on Lynx are shown. Deliberately omitted:
- * `on interaction` and `on hover`. Angular adds their `click`/`keydown`/
- * `mouseenter` listeners to the trigger element itself once it has rendered,
- * but on Lynx it never gets that far, so those triggers never fire and their
- * placeholders would hang forever. (A tap does reach `click` listeners now,
- * so it isn't the event name.) `on idle` works because Angular backs it
- * with requestIdleCallback falling back to setTimeout, and Lynx has setTimeout.
+ * `on idle` works because Angular backs it with requestIdleCallback falling
+ * back to setTimeout, and Lynx has setTimeout.
  *
  * `Heavy` is imported normally (not lazily) here on purpose: because it is
  * referenced *only* inside @defer blocks, Angular's compiler is what turns it
@@ -300,6 +300,98 @@ const MANUAL_LOADING_MS = 900;
               >
                 <ui-spinner size="sm" />
                 <text class="text-sm text-muted-foreground"> Loading… </text>
+              </view>
+            }
+          </view>
+        </ui-card-content>
+      </ui-card>
+
+      <!-- ── 4. Element triggers: the placeholder is the trigger ── -->
+      <ui-card class="w-full">
+        <ui-card-header class="gap-1 p-4">
+          <view class="flex-row items-center gap-2 flex">
+            <ui-icon name="hand" size="sm" />
+            <ui-card-title class="text-lg">Element triggers</ui-card-title>
+          </view>
+          <ui-card-description>
+            These watch the placeholder itself: a tap, a finger touching it, or
+            scrolling it on screen.
+          </ui-card-description>
+        </ui-card-header>
+        <ui-card-content class="flex-col gap-4 p-4 pt-0 flex">
+          <!-- on interaction: a tap on the placeholder, or anything in it. -->
+          <view class="flex-col gap-2 flex">
+            <view class="flex-row items-center flex justify-between">
+              <view class="flex-row items-center gap-2 flex">
+                <ui-icon name="hand" size="sm" />
+                <text class="text-sm font-medium text-foreground">Tap</text>
+              </view>
+              <ui-badge variant="outline" [animated]="false">
+                on interaction
+              </ui-badge>
+            </view>
+            @defer (on interaction) {
+              <app-heavy [compact]="true" label="on interaction" />
+            } @placeholder {
+              <view
+                class="flex-row items-center gap-3 rounded-lg border border-dashed border-border bg-muted p-3 flex"
+              >
+                <ui-icon name="hand" size="sm" />
+                <text class="text-sm text-muted-foreground">
+                  Tap here to load
+                </text>
+              </view>
+            }
+          </view>
+
+          <ui-separator />
+
+          <!-- on hover: a finger touching the placeholder, before it lifts. -->
+          <view class="flex-col gap-2 flex">
+            <view class="flex-row items-center flex justify-between">
+              <view class="flex-row items-center gap-2 flex">
+                <ui-icon name="eye" size="sm" />
+                <text class="text-sm font-medium text-foreground">Touch</text>
+              </view>
+              <ui-badge variant="outline" [animated]="false">on hover</ui-badge>
+            </view>
+            @defer (on hover) {
+              <app-heavy [compact]="true" label="on hover" />
+            } @placeholder {
+              <view
+                class="flex-row items-center gap-3 rounded-lg border border-dashed border-border bg-muted p-3 flex"
+              >
+                <ui-icon name="eye" size="sm" />
+                <text class="text-sm text-muted-foreground">
+                  Touch here, or hover with a mouse
+                </text>
+              </view>
+            }
+          </view>
+
+          <ui-separator />
+
+          <!-- on viewport: the placeholder coming on screen. -->
+          <view class="flex-col gap-2 flex">
+            <view class="flex-row items-center flex justify-between">
+              <view class="flex-row items-center gap-2 flex">
+                <ui-icon name="arrow-down" size="sm" />
+                <text class="text-sm font-medium text-foreground">Scroll</text>
+              </view>
+              <ui-badge variant="outline" [animated]="false">
+                on viewport
+              </ui-badge>
+            </view>
+            @defer (on viewport) {
+              <app-heavy [compact]="true" label="on viewport" />
+            } @placeholder {
+              <view
+                class="flex-row items-center gap-3 rounded-lg border border-dashed border-border bg-muted p-3 flex"
+              >
+                <ui-icon name="arrow-down" size="sm" />
+                <text class="text-sm text-muted-foreground">
+                  Loads once it's on screen
+                </text>
               </view>
             }
           </view>

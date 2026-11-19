@@ -9,11 +9,22 @@
  * listens for its touches, and turns each into the pointer events a browser
  * fires for a touch, in a browser's order:
  *
- * - touchstart: pointerover, pointerenter, pointerdown
+ * - touchstart: pointerover, pointerenter, mouseover, mouseenter,
+ *   pointerdown
  * - touchmove: pointermove
  * - touchend: pointerup, then lostpointercapture if the pointer was captured,
- *   then pointerout and pointerleave (a touch leaves when it lifts)
- * - touchcancel: pointercancel, lostpointercapture, pointerout, pointerleave
+ *   then pointerout, pointerleave, mouseout and mouseleave (a touch leaves
+ *   when it lifts)
+ * - touchcancel: pointercancel, lostpointercapture, pointerout, pointerleave,
+ *   mouseout, mouseleave
+ *
+ * The mouse events are the ones that say a pointer is over the element, which
+ * code written for a mouse listens for to show something on hover: Angular's
+ * `@defer (on hover)` listens for `mouseover` and `mouseenter` (issue #459). A
+ * phone's browser fires them for a tap; here the first finger fires them, as
+ * it does the pointer events, while it's down. Lynx has no other mouse
+ * events to stand in for, so `mousedown`, `mousemove` and `mouseup` stay
+ * ignored.
  *
  * Each finger is a pointer, whose `pointerId` stays the same until it lifts
  * (see pointerIdOf), and `isPrimary` marks the first one down. `offsetX`/`offsetY` are relative to
@@ -30,7 +41,10 @@
  * (and a mouse's), so the listeners go straight to it.
  */
 
-/** The pointer events an element can listen for. */
+/**
+ * The pointer events an element can listen for, with the mouse events that
+ * say the pointer is over it.
+ */
 export const POINTER_EVENT_NAMES: ReadonlySet<string> = new Set([
   'pointerdown',
   'pointermove',
@@ -42,6 +56,18 @@ export const POINTER_EVENT_NAMES: ReadonlySet<string> = new Set([
   'pointerleave',
   'gotpointercapture',
   'lostpointercapture',
+  'mouseover',
+  'mouseout',
+  'mouseenter',
+  'mouseleave',
+]);
+
+/** The events that don't bubble, as the DOM's don't. */
+const NOT_BUBBLING: ReadonlySet<string> = new Set([
+  'pointerenter',
+  'pointerleave',
+  'mouseenter',
+  'mouseleave',
 ]);
 
 /** A Lynx touch, as its touch events carry it. */
@@ -154,10 +180,9 @@ export class LynxPointerEvent {
     readonly timeStamp: number,
     target: object,
   ) {
-    this.bubbles = type !== 'pointerenter' && type !== 'pointerleave';
+    this.bubbles = !NOT_BUBBLING.has(type);
     this.cancelable =
-      type !== 'pointerenter' &&
-      type !== 'pointerleave' &&
+      this.bubbles &&
       type !== 'pointercancel' &&
       type !== 'gotpointercapture' &&
       type !== 'lostpointercapture';
@@ -294,6 +319,11 @@ export class PointerEventSource {
       this.lastOffset = offset;
       this.#fire('pointerover', id, touch, event, offset);
       this.#fire('pointerenter', id, touch, event, offset);
+      // A browser makes mouse events from the primary pointer only.
+      if (this.#primary === id) {
+        this.#fire('mouseover', id, touch, event, offset);
+        this.#fire('mouseenter', id, touch, event, offset);
+      }
       this.#fire('pointerdown', id, touch, event, offset);
     }
   }
@@ -330,6 +360,10 @@ export class PointerEventSource {
       }
       this.#fire('pointerout', id, touch, event, offset);
       this.#fire('pointerleave', id, touch, event, offset);
+      if (this.#primary === id) {
+        this.#fire('mouseout', id, touch, event, offset);
+        this.#fire('mouseleave', id, touch, event, offset);
+      }
       this.#down.delete(id);
       if (this.#primary === id) this.#primary = null;
     }
@@ -386,8 +420,13 @@ export const pointerEventFor = (
   timeStamp: number | undefined,
   target: object,
 ): LynxPointerEvent => {
+  // The finger is down for the events a touch starts with, as a mouse's
+  // button is for a press that moves over an element.
   const pressed =
-    type === 'pointerdown' || type === 'pointermove' || type === 'pointerover'
+    type === 'pointerdown' ||
+    type === 'pointermove' ||
+    type === 'pointerover' ||
+    type === 'mouseover'
       ? 1
       : 0;
   return new LynxPointerEvent(

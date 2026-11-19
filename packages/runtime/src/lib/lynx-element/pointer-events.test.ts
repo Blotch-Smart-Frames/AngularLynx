@@ -95,13 +95,20 @@ describe('PointerEventSource', () => {
     expect(events.map((e) => e.type)).toEqual([
       'pointerover',
       'pointerenter',
+      'mouseover',
+      'mouseenter',
       'pointerdown',
       'pointermove',
       'pointerup',
       'pointerout',
       'pointerleave',
+      'mouseout',
+      'mouseleave',
     ]);
-    const [, , down, move, up] = events;
+    const of = (type: string) => events.find((e) => e.type === type)!;
+    const [down, move, up] = ['pointerdown', 'pointermove', 'pointerup'].map(
+      of,
+    );
     expect(down).toMatchObject({
       pointerId: 1,
       pointerType: 'touch',
@@ -130,6 +137,54 @@ describe('PointerEventSource', () => {
     expect(up).toMatchObject({ button: 0, buttons: 0, pressure: 0 });
     expect(events[1]).toMatchObject({ bubbles: false, cancelable: false });
     expect(source.lastOffset).toEqual({ offsetX: 14, offsetY: 24 });
+  });
+
+  // Angular's `@defer (on hover)` listens for mouseover and mouseenter, and a
+  // phone's browser fires them for a tap (issue #459).
+  it('says the finger is over the element with mouse events, as long as it’s down', () => {
+    const { source, events, record, touch } = setup();
+    for (const name of ['mouseover', 'mouseenter', 'mouseout', 'mouseleave']) {
+      source.add(name, record);
+    }
+    touch('touchstart', [finger(1, 10, 20)]);
+    expect(events.map((e) => e.type)).toEqual(['mouseover', 'mouseenter']);
+    const [over, enter] = events;
+    expect(over).toMatchObject({
+      offsetX: 10,
+      offsetY: 20,
+      buttons: 1,
+      bubbles: true,
+      cancelable: true,
+    });
+    // As the DOM's, mouseenter and mouseleave stay on the element.
+    expect(enter).toMatchObject({
+      buttons: 0,
+      bubbles: false,
+      cancelable: false,
+    });
+
+    touch('touchcancel', [finger(1, 10, 20)]);
+    expect(events.slice(2).map((e) => [e.type, e.bubbles])).toEqual([
+      ['mouseout', true],
+      ['mouseleave', false],
+    ]);
+  });
+
+  it('makes mouse events from the first finger only, as a browser does', () => {
+    const { source, events, record, touch } = setup();
+    source.add('mouseover', record);
+    source.add('mouseout', record);
+    source.add('pointerover', record);
+    touch('touchstart', [finger(1, 0, 0)]);
+    touch('touchstart', [finger(2, 5, 5)]);
+    touch('touchend', [finger(2, 5, 5)]);
+    touch('touchend', [finger(1, 0, 0)]);
+    expect(events.map((e) => [e.type, e.pointerId])).toEqual([
+      ['pointerover', 1],
+      ['mouseover', 1],
+      ['pointerover', 2],
+      ['mouseout', 1],
+    ]);
   });
 
   it('places a touch on a child from the element’s layout', () => {

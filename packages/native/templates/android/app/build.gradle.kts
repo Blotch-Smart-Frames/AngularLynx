@@ -37,7 +37,10 @@ android {
     // The namespace is the package of the shell's own Kotlin code and R class.
     // It's fixed; only the applicationId (the store identity) is configurable.
     namespace = "dev.angularlynx.shell"
-    compileSdk = 36
+    // The API level the app compiles against, which androidx.core 1.19
+    // requires to be 37 or later. It only makes newer APIs available to the
+    // code; targetSdk below is what opts the app in to new runtime behavior.
+    compileSdk = 37
 
     defaultConfig {
         applicationId = appConfig("applicationId")

@@ -114,7 +114,14 @@ export class LynxGestureDetector implements OnChanges, OnDestroy {
    */
   #bind(gesture: AnyGesture, elementRef: NativeElementRef): void {
     let registered = false;
+    /**
+     * Whether the current registration's callbacks may run. Lynx may still
+     * deliver events it queued for a registration that's since been replaced
+     * (with a gate built from the old options) or removed.
+     */
+    let live = { current: false };
     const register = (): void => {
+      live.current = false;
       if (registered) {
         detach(elementRef, gesture.id);
         registered = false;
@@ -127,8 +134,9 @@ export class LynxGestureDetector implements OnChanges, OnDestroy {
       // so mapGestureEvent can derive translationX/Y from the finger's absolute
       // position (Lynx reports position each event, never accumulated distance).
       const origin = createGestureOrigin();
+      live = { current: true };
       const config = {
-        callbacks: buildGestureCallbacks(gesture, origin, stateManager),
+        callbacks: buildGestureCallbacks(gesture, origin, stateManager, live),
         config: gesture._config,
       };
       // Relationship map tells the native gesture system how gestures interact:
@@ -152,6 +160,7 @@ export class LynxGestureDetector implements OnChanges, OnDestroy {
     register();
     gesture._bindings.add(register);
     this.#unbinds.push(() => {
+      live.current = false;
       gesture._bindings.delete(register);
       if (registered) detach(elementRef, gesture.id);
     });
@@ -218,14 +227,18 @@ type NativeCallbackEntry = {
  * with no error. Running it also anchors the gesture's translation where the
  * touch began (see mapGestureEvent).
  *
- * A callback of a disabled gesture runs nothing. The gesture is unregistered
- * as soon as it's disabled, but Lynx may already have sent events for it from
- * its own thread.
+ * A callback of a registration that's been replaced or removed (`live`)
+ * runs nothing. Disabling a gesture removes its registration, and changing
+ * an option replaces it, but Lynx may already have sent events for the old
+ * one from its own thread. `live` is checked before each of the user's
+ * callbacks, so one that disables the gesture stops the rest of the event's:
+ * a pan's `onStart` that disables it skips the `onUpdate` routed with it.
  */
 const buildGestureCallbacks = (
   gesture: AnyGesture,
   origin: GestureOrigin,
   stateManager: GestureStateManager,
+  live: { readonly current: boolean },
 ): NativeCallbackEntry[] => {
   const gate = createCallbackGate(gesture);
   const names = new Set([...Object.keys(gesture._callbacks), ...gate.observes]);
@@ -234,9 +247,12 @@ const buildGestureCallbacks = (
     name,
     callback: {
       _fn: (raw: unknown) => {
+        if (!live.current) return;
         const event = mapGestureEvent(raw, name, origin);
-        if (gesture._config['enabled'] === false) return;
         for (const [target, routed] of gate.route(name, event, stateManager)) {
+          // A callback that disabled the gesture, or changed one of its
+          // options, replaced this registration.
+          if (!live.current) return;
           (
             gesture._callbacks[target] as
               | GestureCallbackWithState<GestureEvent>

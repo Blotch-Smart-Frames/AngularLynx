@@ -598,6 +598,47 @@ describe('LynxGestureDetector', () => {
       });
     });
 
+    it('runs nothing for events Lynx sent to a registration an option change replaced', () => {
+      const onStart = vi.fn();
+      const tap = new TapGesture().onStart(onStart);
+      const directive = createDirective(nativeEl);
+      applyGesture(directive, tap);
+      const stale = fnFor('onStart');
+
+      tap.numberOfTaps(2);
+      stale({ params: {} });
+
+      expect(onStart).not.toHaveBeenCalled();
+    });
+
+    it("stops an event's remaining callbacks once one disables the gesture", () => {
+      const onUpdate = vi.fn();
+      const pan = new PanGesture().activeOffsetX(10).onUpdate(onUpdate);
+      pan.onStart(() => pan.enabled(false));
+      const directive = createDirective(nativeEl);
+      applyGesture(directive, pan);
+
+      fnFor('onBegin')({ params: { pageX: 0, pageY: 0 } });
+      // Passes the active offset: routes onStart, then onUpdate.
+      fnFor('onUpdate')({ params: { pageX: 11, pageY: 0 } });
+
+      expect(removeGestureDetector).toHaveBeenCalledWith(fakeRef, pan.id);
+      expect(onUpdate).not.toHaveBeenCalled();
+    });
+
+    it('runs nothing for events Lynx sent before the gesture was unbound', () => {
+      const onUpdate = vi.fn();
+      const pan = new PanGesture().onUpdate(onUpdate);
+      const directive = createDirective(nativeEl);
+      applyGesture(directive, pan);
+      const stale = fnFor('onUpdate');
+
+      directive.ngOnDestroy();
+      stale({ params: { pageX: 1, pageY: 1 } });
+
+      expect(onUpdate).not.toHaveBeenCalled();
+    });
+
     it('registers a gesture on every element it is bound to', () => {
       const pan = new PanGesture();
       const otherRef = { _isRef: 'other' };

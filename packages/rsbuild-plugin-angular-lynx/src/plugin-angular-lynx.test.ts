@@ -5,6 +5,7 @@ vi.mock('./angular.js', () => ({ applyAngularRules: vi.fn() }));
 vi.mock('./background-entry.js', () => ({
   createBackgroundEntries: vi.fn(() => ({ _backgroundEntries: true })),
 }));
+vi.mock('./color-scheme.js', () => ({ applyColorScheme: vi.fn() }));
 vi.mock('./css.js', () => ({ applyCSS: vi.fn() }));
 vi.mock('./display.js', () => ({ applyDisplay: vi.fn() }));
 vi.mock('./entry.js', () => ({ applyEntry: vi.fn() }));
@@ -22,6 +23,12 @@ vi.mock('./type-selectors.js', () => ({ applyTypeSelectors: vi.fn() }));
 vi.mock('./unicode-property-regex.js', () => ({
   applyUnicodePropertyRegex: vi.fn(),
 }));
+vi.mock('./web-preview-isolation.js', () => ({
+  applyWebPreviewIsolation: vi.fn(),
+}));
+vi.mock('./web-preview-reload.js', () => ({
+  applyWebPreviewReload: vi.fn(),
+}));
 vi.mock('./utils/options.js', async (importOriginal) => ({
   deprecatedOptionsIn: (await importOriginal<typeof OptionsModule>())
     .deprecatedOptionsIn,
@@ -30,6 +37,7 @@ vi.mock('./utils/options.js', async (importOriginal) => ({
 
 import { applyAngularRules } from './angular.js';
 import { createBackgroundEntries } from './background-entry.js';
+import { applyColorScheme } from './color-scheme.js';
 import { applyCSS } from './css.js';
 import { applyDisplay } from './display.js';
 import { applyEntry } from './entry.js';
@@ -45,6 +53,8 @@ import { applyStrictEsm } from './strict-esm.js';
 import { applyTailwind } from './tailwind.js';
 import { applyTypeSelectors } from './type-selectors.js';
 import { applyUnicodePropertyRegex } from './unicode-property-regex.js';
+import { applyWebPreviewIsolation } from './web-preview-isolation.js';
+import { applyWebPreviewReload } from './web-preview-reload.js';
 import { normalizeOptions } from './utils/options.js';
 import { pluginAngularLynx } from './plugin-angular-lynx';
 
@@ -139,6 +149,13 @@ describe('pluginAngularLynx', () => {
       plugin.setup(mockApi);
 
       expect(applyTailwind).toHaveBeenCalledWith(mockApi);
+    });
+
+    it('calls applyColorScheme with api', () => {
+      const plugin = pluginAngularLynx();
+      plugin.setup(mockApi);
+
+      expect(applyColorScheme).toHaveBeenCalledWith(mockApi);
     });
 
     it('calls applyTypeSelectors with api', () => {
@@ -273,6 +290,20 @@ describe('pluginAngularLynx', () => {
       expect(applyDevLogger).toHaveBeenCalledWith(mockApi);
     });
 
+    it('calls applyWebPreviewIsolation with api', () => {
+      const plugin = pluginAngularLynx();
+      plugin.setup(mockApi);
+
+      expect(applyWebPreviewIsolation).toHaveBeenCalledWith(mockApi);
+    });
+
+    it('calls applyWebPreviewReload with api', () => {
+      const plugin = pluginAngularLynx();
+      plugin.setup(mockApi);
+
+      expect(applyWebPreviewReload).toHaveBeenCalledWith(mockApi);
+    });
+
     it('calls sub-plugins in the correct order', () => {
       const plugin = pluginAngularLynx();
       plugin.setup(mockApi);
@@ -295,6 +326,8 @@ describe('pluginAngularLynx', () => {
         vi.mocked(applyTextInheritance).mock.invocationCallOrder[0];
       const nestedCalcOrder =
         vi.mocked(applyNestedCalc).mock.invocationCallOrder[0];
+      const colorSchemeOrder =
+        vi.mocked(applyColorScheme).mock.invocationCallOrder[0];
 
       expect(cssOrder).toBeLessThan(tailwindOrder);
       // After Tailwind, so its PostCSS plugin runs on Tailwind's rules.
@@ -302,6 +335,9 @@ describe('pluginAngularLynx', () => {
       // After Tailwind, so its OnceExit runs after Tailwind 4's lowering.
       expect(tailwindOrder).toBeLessThan(inheritanceOrder!);
       expect(tailwindOrder).toBeLessThan(nestedCalcOrder!);
+      // After Tailwind, so it sees the queries Tailwind 4's lowering moves
+      // out of the rules they're nested in.
+      expect(tailwindOrder).toBeLessThan(colorSchemeOrder!);
       expect(typeSelectorsOrder).toBeLessThan(entryOrder);
       expect(entryOrder).toBeLessThan(layersOrder);
       expect(layersOrder).toBeLessThan(angularOrder);

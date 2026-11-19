@@ -91,11 +91,18 @@ export const ASSET_LOADERS: Readonly<Record<string, 'file'>> =
  * Lynx build target therefore reaches them as an Angular one, with the
  * options both builders share, which Angular's schema validates and
  * completes with its defaults, the asset loaders rspeedy's defaults
- * correspond to, and `lynxPolyfills` after the app's own polyfills.
+ * correspond to, and `lynxPolyfills` after the app's own polyfills, as
+ * packages Angular leaves for the test runner to load.
+ *
+ * `appPolyfills` are the polyfills to load in place of the build target's:
+ * the ones a test target names for itself. Angular 22.3's unit-test builder
+ * has an option for those, but 22.2's reads the build target's only, so
+ * replacing them here makes the option work on both.
  */
 export const asAngularBuildTargets = (
   context: BuilderContext,
   lynxPolyfills: readonly string[] = [],
+  appPolyfills?: readonly string[],
 ): BuilderContext => {
   const isLynxApplication = async (target: Target): Promise<boolean> =>
     (await context.getBuilderNameForTarget(target)) ===
@@ -110,7 +117,7 @@ export const asAngularBuildTargets = (
       if (!(await isLynxApplication(target))) {
         return options;
       }
-      const polyfills = options['polyfills'];
+      const polyfills = appPolyfills ?? options['polyfills'];
       return {
         ...Object.fromEntries(
           Object.entries(options).filter(([key]) =>
@@ -118,6 +125,12 @@ export const asAngularBuildTargets = (
           ),
         ),
         loader: ASSET_LOADERS,
+        // Angular leaves packages for Vitest to load, except in the polyfills
+        // once one of them is a local file (`src/polyfills.ts`): then it
+        // bundles them all, for a browser. The testing library's setup runs
+        // on Node (it imports `node:events`), which fails that build. Kept
+        // external, the Lynx setup loads from node_modules either way.
+        externalDependencies: [...lynxPolyfills],
         polyfills: [
           ...(Array.isArray(polyfills)
             ? polyfills

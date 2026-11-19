@@ -41,8 +41,9 @@ void main() {
  * shell, on a phone), and the shader multiplies it by a magenta tint, so the
  * pixel is blue only if the shader compiled and linked, the uniforms and the
  * vertex buffer arrived, the image decoded and uploaded, and the pixels read
- * back. A texture that didn't upload reads black (0,0,0,255). Hosts without
- * WebGL (Lynx Explorer) show "WebGL: none".
+ * back. A texture that didn't upload reads black (0,0,0,255). The read is
+ * made with two GL errors pending, which it must leave for getError(). Hosts
+ * without WebGL (Lynx Explorer) show "WebGL: none".
  *
  * Below it, the prebuilt library fixture (fixtures/prebuilt-library), which
  * the counter page has no room for, and "Open linking" and "Open photo",
@@ -150,8 +151,17 @@ export class CanvasRoute {
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+    // Two calls GL rejects, with different errors, which nothing asks for
+    // before the read. The iOS shell takes the pending errors off GL to
+    // learn whether the read itself failed, and when it took only one, the
+    // other made a read that worked look failed: the pixel stayed 0,0,0,0.
+    gl.enable(0);
+    gl.lineWidth(0);
     const pixel = new Uint8Array(4);
     gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+    // The errors are still the app's to ask for. Which comes first, and
+    // whether GL kept the second, is up to the GL.
+    if (gl.getError() === gl.NO_ERROR) return 'errors lost';
     return Array.from(pixel).join(',');
   }
 }

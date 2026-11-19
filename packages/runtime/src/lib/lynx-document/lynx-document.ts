@@ -59,7 +59,22 @@ export class LynxDocument implements LynxDocumentBase {
   #pageElementRequested = false;
 
   constructor() {}
+  /**
+   * The app's page, which every element goes under. The first call makes it
+   * (Angular's bootstrap, through the renderer's `selectRootElement`), and
+   * every later call returns it again.
+   *
+   * A Lynx page has one page element. Each `__CreatePage()` makes the new
+   * page the engine's root (`PageElement`'s constructor calls the element
+   * manager's `SetRoot`), so a second one took the root from the page the
+   * app is drawn in: iOS couldn't make a view for it ("LynxCreateUIException:
+   * page ui not found"), and what went into it never left the screen.
+   * `LynxPortal` asks for the page each time it opens an overlay, and did
+   * exactly that (#458).
+   */
   createRootElement(): LynxElement {
+    // Declared with `!`, so it's undefined until the first call.
+    if (this.page) return this.page;
     const takenOver = takeOverPage();
     const pageElement = takenOver ?? __CreatePage('0', 0);
     this.page = new LynxElement(pageElement);

@@ -1,4 +1,4 @@
-import { Component, signal } from '@angular/core';
+import { Component, type Provider, signal } from '@angular/core';
 import {
   fireEvent,
   render,
@@ -6,6 +6,7 @@ import {
 } from '@blotch/angular-lynx-testing-library';
 import {
   LYNX_ELEMENTS,
+  LynxAccessibilitySettings,
   LynxStackPage,
   LynxTabPage,
 } from '@blotch/angular-lynx';
@@ -34,6 +35,21 @@ class ScrollHost {
   readonly second = signal(false);
 }
 
+/**
+ * A screen with something beside its large title, as an app would put an
+ * account's picture or a status there.
+ */
+@Component({
+  imports: [LYNX_ELEMENTS, UiBarScroll],
+  template: `
+    <scroll-view ui-bar-scroll id="first" scroll-orientation="vertical">
+      <text largeTitleAccessory>3 unread</text>
+      <text>The content</text>
+    </scroll-view>
+  `,
+})
+class AccessoryHost {}
+
 const IOS_26 = { platform: 'iOS', osVersion: '26.0' };
 const IOS_18 = { platform: 'iOS', osVersion: '18.5' };
 const ANDROID = { platform: 'Android', osVersion: '15' };
@@ -48,11 +64,31 @@ const topBar = (largeTitle: string | null = null) => ({
 });
 const bottomBar = () => ({ height: signal(52) });
 
+/**
+ * A bar whose title opens a menu, as a navigation bar with `titleMenu` says.
+ */
+const menuBar = (largeTitle: string) => ({
+  ...topBar(largeTitle),
+  titleMenu: signal(true),
+  titlePressed: vi.fn<() => void>(),
+});
+
+/** Accessibility settings a test can change, as the host app would. */
+const settings = {
+  reduceMotion: signal(false),
+  reduceTransparency: signal(false),
+  increaseContrast: signal(false),
+};
+
+/** The theme's light foreground, as icon-theme.ts resolves it for an SVG. */
+const FOREGROUND = 'rgba(9, 9, 11, 1)';
+
 const renderScroll = async (
   platform: { platform: string; osVersion: string } = IOS_26,
+  providers: Provider[] = [],
 ) => {
   vi.stubGlobal('SystemInfo', platform);
-  const result = await render(ScrollHost);
+  const result = await render(ScrollHost, { providers });
   const host = result.componentRef.instance as ScrollHost;
   const state = result.componentRef.injector.get(UiBarState);
   const scrollView = (id = 'first') =>
@@ -139,6 +175,7 @@ const asWritten = (stops: [number, string][]): [number, string][] => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  settings.reduceMotion.set(false);
 });
 
 /**
@@ -424,5 +461,184 @@ describe('UiBarScroll', () => {
     await update(() => host.second.set(false));
     expect(state.content()).toBeNull();
     expect(state.scrolledUnderTop()).toBe(false);
+  });
+});
+
+describe('UiBarScroll with an accessory beside the large title', () => {
+  const renderAccessory = async (
+    platform: { platform: string; osVersion: string } = IOS_26,
+  ) => {
+    vi.stubGlobal('SystemInfo', platform);
+    const result = await render(AccessoryHost);
+    const state = result.componentRef.injector.get(UiBarState);
+    const update = async (change: () => void) => {
+      change();
+      await waitForUpdate();
+    };
+    return { ...result, state, update };
+  };
+
+  it('puts it at the end of the title’s line, centered on the title, and lets the title give way', async () => {
+    const { state, update, getByRole, getByText } = await renderAccessory();
+    await update(() => state.topBar.set(topBar('Inbox')));
+    const title = getByRole('heading', { name: 'Inbox' });
+    const band = title.parentElement!;
+    const box = getByText('3 unread').parentElement!;
+    // On the title's line, after it, with the row's ends between them.
+    expect(box.parentElement).toBe(band);
+    expect(Array.from(band.children).indexOf(box)).toBeGreaterThan(
+      Array.from(band.children).indexOf(title),
+    );
+    expect(band.className).toContain('flex-row');
+    expect(band.className).toContain('justify-between');
+    expect(band.className).toContain('items-end');
+    // As tall as the title's line, so the accessory centers on it.
+    expect(box.className).toContain('h-[41px]');
+    expect(box.className).toContain('items-center');
+    // It keeps its width, and the title shortens before it.
+    expect(box.className).toContain('shrink-0');
+    expect(title.className).toContain('shrink');
+    expect(title.className).toContain('min-w-0');
+    // The rest of the content stays below the title's band.
+    expect(getByText('The content').parentElement).not.toBe(band);
+  });
+
+  it('ends a long plain title with "…" on its one line, before the accessory', async () => {
+    const { state, update, getByRole, getByText } = await renderAccessory();
+    const long = 'Everything that arrived while you were away';
+    await update(() => state.topBar.set(topBar(long)));
+    const title = getByRole('heading', { name: long });
+    // A <text> wraps unless it's told its lines, and a second line would
+    // leave the title's band: the accessory takes some of the row.
+    expect(title.getAttribute('text-maxline')).toBe('1');
+    expect(title.className).toContain('text-ellipsis');
+    // The title is what gives way, and the accessory stays on its line.
+    expect(title.className).toContain('shrink');
+    expect(getByText('3 unread').parentElement?.parentElement).toBe(
+      title.parentElement,
+    );
+  });
+
+  it('keeps it beside a title that opens a menu', async () => {
+    const { state, update, getByRole, getByText } = await renderAccessory();
+    await update(() => state.topBar.set(menuBar('Inbox')));
+    const band = getByRole('button', { name: 'Inbox' }).parentElement!;
+    expect(getByText('3 unread').parentElement?.parentElement).toBe(band);
+  });
+
+  it('sizes its box to Material’s title line', async () => {
+    const { state, update, getByText } = await renderAccessory(ANDROID);
+    await update(() => state.topBar.set(topBar('Inbox')));
+    expect(getByText('3 unread').parentElement?.className).toContain(
+      'h-[36px]',
+    );
+  });
+
+  it('draws it only with a large title, which it scrolls away with', async () => {
+    const { state, update, queryByText, getByText } = await renderAccessory();
+    // No bar, and a bar with no large title, have no line to put it on.
+    expect(queryByText('3 unread')).toBeNull();
+    await update(() => state.topBar.set(topBar()));
+    expect(queryByText('3 unread')).toBeNull();
+    expect(getByText('The content')).toBeTruthy();
+
+    await update(() => state.topBar.set(topBar('Inbox')));
+    expect(getByText('3 unread')).toBeTruthy();
+  });
+});
+
+describe('UiBarScroll under a bar whose title opens a menu', () => {
+  it('makes the large title a button with a chevron after it, and tells the bar when it’s tapped', async () => {
+    const { state, update, getByRole, queryByRole } = await renderScroll();
+    const bar = menuBar('Inbox');
+    await update(() => state.topBar.set(bar));
+    const button = getByRole('button', { name: 'Inbox' });
+    // One element for screen readers, still the screen's heading.
+    expect(getByRole('heading', { name: 'Inbox' })).toBe(button);
+    // It keeps the title's type and band, and to the title's own width.
+    const [text, chevron] = Array.from(button.children) as HTMLElement[];
+    expect(text?.textContent).toBe('Inbox');
+    expect(text?.className).toContain('text-[34px]');
+    expect(button.parentElement?.className).toContain('h-[52px]');
+    // A long title ends with "…" on its one line, inside the screen.
+    expect(text?.getAttribute('text-maxline')).toBe('1');
+    expect(text?.className).toContain('text-ellipsis');
+    expect(button.classList).toContain('shrink');
+    expect(button.classList).toContain('min-w-0');
+    // A chevron pointing down, in the title's color and to its size.
+    expect(chevron?.localName).toBe('svg');
+    expect(chevron?.classList).toContain('shrink-0');
+    expect(chevron?.getAttribute('content')).toContain('m6 9 6 6 6-6');
+    expect(chevron?.getAttribute('content')).toContain(FOREGROUND);
+    expect(chevron?.style.width).toBe('34px');
+    expect(chevron?.style.height).toBe('34px');
+
+    fireEvent.tap(button);
+    expect(bar.titlePressed).toHaveBeenCalledTimes(1);
+
+    // A plain title again once the bar's opens no menu.
+    await update(() => bar.titleMenu.set(false));
+    expect(queryByRole('button', { name: 'Inbox' })).toBeNull();
+    expect(getByRole('heading', { name: 'Inbox' }).localName).toBe('text');
+  });
+
+  it('sizes the chevron to Material’s large title', async () => {
+    const { state, update, getByRole } = await renderScroll(ANDROID);
+    await update(() => state.topBar.set(menuBar('Inbox')));
+    const button = getByRole('button', { name: 'Inbox' });
+    expect(button.querySelector('text')?.className).toContain('text-[28px]');
+    expect(button.querySelector('svg')?.style.width).toBe('28px');
+  });
+
+  it('dims the title under a finger, and fades it back when the finger lifts', async () => {
+    const { state, update, getByRole } = await renderScroll(IOS_26, [
+      { provide: LynxAccessibilitySettings, useValue: settings },
+    ]);
+    await update(() => state.topBar.set(menuBar('Inbox')));
+    const button = getByRole('button', { name: 'Inbox' });
+    const after = async (act: () => void) => {
+      act();
+      await waitForUpdate();
+      return [
+        button.style.getPropertyValue('opacity'),
+        button.style.getPropertyValue('transition'),
+      ];
+    };
+    // Dimmed at once, as a control answers the touch.
+    expect(await after(() => fireEvent.touchstart(button))).toEqual([
+      '0.4',
+      'none',
+    ]);
+    const [opacity, transition] = await after(() => fireEvent.touchend(button));
+    expect(opacity).toBe('1');
+    expect(transition).toContain('opacity');
+
+    // A touch the scroll took, and a mouse in the web preview, release it too.
+    await after(() => fireEvent.touchstart(button));
+    expect((await after(() => fireEvent.touchcancel(button)))[0]).toBe('1');
+    expect((await after(() => fireLynxEvent(button, 'mousedown')))[0]).toBe(
+      '0.4',
+    );
+    expect((await after(() => fireLynxEvent(button, 'mouseleave')))[0]).toBe(
+      '1',
+    );
+    await after(() => fireLynxEvent(button, 'mousedown'));
+    expect((await after(() => fireLynxEvent(button, 'mouseup')))[0]).toBe('1');
+
+    // Under Reduce Motion it comes back at once.
+    expect(await after(() => settings.reduceMotion.set(true))).toEqual([
+      '1',
+      'none',
+    ]);
+  });
+
+  it('leaves a tap alone under a bar of an app’s own that takes none', async () => {
+    const { state, update, getByRole } = await renderScroll();
+    await update(() =>
+      state.topBar.set({ ...topBar('Inbox'), titleMenu: signal(true) }),
+    );
+    const button = getByRole('button', { name: 'Inbox' });
+    expect(() => fireEvent.tap(button)).not.toThrow();
+    expect(button.querySelector('text')?.textContent).toBe('Inbox');
   });
 });

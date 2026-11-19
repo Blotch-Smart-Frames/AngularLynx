@@ -67,6 +67,28 @@ describe('pointer events on Lynx', () => {
     element.removeEventListener('pointermove', down);
   });
 
+  // Angular's `@defer (on hover)` adds its mouseenter and mouseover
+  // listeners to the trigger, and removes them once it fires (#459).
+  it('say a finger is over the element with mouse events', () => {
+    const element = new LynxElement({} as ElementRef);
+    const enter = vi.fn();
+    element.addEventListener('mouseenter', enter);
+    element.addEventListener('focusin', enter);
+    const touchstart = handler('touchstart');
+    touchstart({ changedTouches: [{ identifier: 0 }] });
+    expect(enter).toHaveBeenCalledTimes(1);
+    expect(enter.mock.calls[0][0]).toMatchObject({
+      type: 'mouseenter',
+      target: element,
+    });
+
+    // focusin, which Lynx has no event for, was never added.
+    element.removeEventListener('focusin', enter);
+    element.removeEventListener('mouseenter', enter);
+    touchstart({ changedTouches: [{ identifier: 0 }] });
+    expect(enter).toHaveBeenCalledTimes(1);
+  });
+
   it('are captured, as far as a Lynx touch can be', () => {
     const element = new LynxElement({} as ElementRef);
     element.setPointerCapture(1);

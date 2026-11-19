@@ -109,6 +109,18 @@ export const analyzeRemovedFile = (
     : 'conflict';
 };
 
+/**
+ * The line for a file that taking upstream's version deletes, with the reason
+ * (see FileAnalysis.removed). `update`, `list` and `outdated` print it under
+ * the component's own line, which reads like an ordinary update. An untouched
+ * file gets a minus, as a new file gets a plus: the auto-update arrow would
+ * read like an ordinary update too.
+ */
+export const removalLine = (path: string, file: FileAnalysis): string =>
+  file.status === 'conflict'
+    ? `${STATUS_ICONS.conflict} ${path} — ${pc.red(`${file.removed}, and you modified it`)}`
+    : `${pc.blue('−')} ${path} — ${pc.blue(`${file.removed} → delete`)}`;
+
 export const formatDiff = (
   currentContent: string,
   newContent: string,

@@ -107,6 +107,8 @@ Pad for the notch, the status bar and the home indicator with `env(safe-area-ins
 | `will-change`          | Lynx manages layer promotion natively  |
 | `currentColor`         | Explicit color values                  |
 
+A `prefers-color-scheme` query on its own is the exception: see "Dark Mode" below.
+
 ## CSS Property Restrictions
 
 - **`overflow`**: Only `visible` (default) and `hidden`. No `auto` or `scroll` (use `<scroll-view>`).
@@ -147,7 +149,7 @@ page {
 
 ## Dark Mode and Wallpaper Colors
 
-There's no `@media (prefers-color-scheme)`. The runtime follows the phone's appearance instead, from the host's `theme` global prop (the browser's `prefers-color-scheme` in the web preview): while the app is drawn dark, the `page` element has the `dark` class.
+The runtime follows the phone's appearance, from the host's `theme` global prop (the browser's `prefers-color-scheme` in the web preview): while the app is drawn dark, the `page` element has the `dark` class.
 
 ```css
 /* The global stylesheet. */
@@ -176,7 +178,8 @@ providers: [provideColorScheme('light')];
 
 - **Define the colors as variables twice:** light values on `page`, dark ones under `page.dark`. Because variables inherit, every element switches with the class, with no code in the app, and the first frame is already in the right theme.
 - **Give text a color.** A `<text>` with no color draws black, which vanishes on a dark background.
-- **Keep the theme in variables.** Lynx matches descendant selectors such as `page.dark .card` only when classes are first assigned, so a class that changes later doesn't restyle them. A rule on the element itself, such as `page.dark`, does update.
+- **`@media (prefers-color-scheme: dark)` and Tailwind's `dark:` work.** Lynx has no `@media`, so the build turns each query for the color scheme alone into rules under `page.dark` (`:root { … }` becomes `page.dark { … }`, `.card { … }` becomes `page.dark .card { … }`), and `(prefers-color-scheme: light)` into rules under `page:not(.dark)`, in global and component styles, with Tailwind 3 and 4. So `class="bg-white dark:bg-zinc-900"` follows the app's appearance, `setColorScheme()` included. A query with any other condition (`(prefers-color-scheme: dark) and (min-width: 640px)`) still doesn't apply. Keep Tailwind's own `dark` variant: a `@custom-variant dark (&:where(.dark, .dark *))` copied from a web app writes selectors Lynx can't match.
+- **Rules under `page.dark`, such as `page.dark .card`, restyle when the class changes**, because the build plugin's `enableCSSInvalidation` is on by default. Setting it to `false` saves Lynx some work on each class change, but then a combinator matches only when an element's own classes are set, and `dark:` classes keep the appearance the screen first rendered in.
 - **`setColorScheme()` lasts until the app closes.** Store the user's choice (`LynxLocalStorage`) and set it again at the next start.
 - **The dolan UI theme does all of this:** its `default.css` and `dark.css` (under `page.dark`) switch every component, icon and chart with the appearance, and give `page` a background and unstyled text the foreground color. Import both files.
 - **`theme.dynamicColors()`** gives the colors Android 12 and later take from the user's wallpaper (Material You), as Material 3's color roles (`primary`, `onPrimary`, `surface` and the rest, listed in `DYNAMIC_COLOR_ROLES`) for both `light` and `dark`. Each is a hex color, such as `#6750a4`. It's `null` where the host sends none: iOS, the web preview and Lynx Explorer. The Android app `ng build --platform android` makes sends them, and new ones when the wallpaper changes. Apply them with `[style.--x]` bindings on the root view. `npx @blotch/dolan add dynamic-color` does this for the dolan theme.

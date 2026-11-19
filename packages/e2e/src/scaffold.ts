@@ -1373,6 +1373,49 @@ const checkDevLogger = async (
   console.log(`✓ the dev server wrote a log entry from ${logUrl} to .dev-logs`);
 };
 
+const CHROME_USER_AGENT =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+const SAFARI_USER_AGENT =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Safari/605.1.15';
+
+/**
+ * The web preview page is cross-origin isolated, which web-core needs for
+ * `SharedArrayBuffer`, with the policy each browser can use: `credentialless`
+ * where the browser knows it, so images and video from other servers load,
+ * and `require-corp` for Safari, which reads `credentialless` as no policy
+ * and would lose the isolation. The plugin rewrites the header rspeedy's own
+ * middleware sets, so this also notices if rspeedy stops sending one, or the
+ * two middlewares end up in the wrong order.
+ */
+const checkWebPreviewIsolation = async (bundleUrl: string) => {
+  const previewUrl = `${new URL(bundleUrl).origin}/__web_preview`;
+  const embedderPolicy = async (userAgent: string) => {
+    const response = await fetch(previewUrl, {
+      headers: { 'User-Agent': userAgent },
+    });
+    // Read to the end, so the connection is free for the next request.
+    await response.arrayBuffer();
+    check(
+      response.ok,
+      `The dev server answered HTTP ${response.status} for the web preview at ${previewUrl}.`,
+    );
+    return response.headers.get('cross-origin-embedder-policy');
+  };
+  const forChrome = await embedderPolicy(CHROME_USER_AGENT);
+  check(
+    forChrome === 'credentialless',
+    `The web preview's Cross-Origin-Embedder-Policy for Chrome is ${JSON.stringify(forChrome)}, not "credentialless": images and video from other servers won't load there.`,
+  );
+  const forSafari = await embedderPolicy(SAFARI_USER_AGENT);
+  check(
+    forSafari === 'require-corp',
+    `The web preview's Cross-Origin-Embedder-Policy for Safari is ${JSON.stringify(forSafari)}, not "require-corp": Safari doesn't know another value that isolates the page.`,
+  );
+  console.log(
+    '✓ the web preview is isolated with credentialless for Chrome and require-corp for Safari',
+  );
+};
+
 const smokeTestDevServer = async (
   appDir: string,
   pm: PackageManagerCommands,
@@ -1445,6 +1488,7 @@ const smokeTestDevServer = async (
     );
     console.log('✓ the dev server built the lynx and web environments');
     await checkDevLogger(appDir, bundleUrl!, bundle);
+    await checkWebPreviewIsolation(bundleUrl!);
   } finally {
     stop(child);
   }

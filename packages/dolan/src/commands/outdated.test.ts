@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { join } from 'node:path';
 import { readdirSync } from 'node:fs';
+import { stripVTControlCharacters } from 'node:util';
 import { createFixture, DEFAULT_CONFIG, type Fixture } from '../test-utils';
 import { hashContent } from '../lockfile';
 
@@ -287,5 +288,117 @@ describe('outdatedCommand', () => {
     await outdatedCommand({});
 
     expect(p.log.success).toHaveBeenCalledWith('No components installed.');
+  });
+});
+
+// 22.2.3 stopped copying `*-render.test.ts`. `update` deletes such a file,
+// but `outdated` only looked at the files upstream ships now, so it exited 0
+// while the stale spec, importing a helper dolan doesn't copy, broke `ng test`.
+describe('outdatedCommand — files upstream no longer ships', () => {
+  const card = 'export const Card = {};';
+  const stale = "import { setInputSignal } from '../../../test-utils/x';";
+  const STALE = 'card-render.test.ts';
+
+  /**
+   * card matches upstream, and it has STALE (as add copied it, unless
+   * `onDisk` says otherwise), which upstream no longer ships.
+   */
+  const setup = (onDisk: string | null = stale) => {
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: {
+        version: 1,
+        components: {
+          card: {
+            'card.ts': { hash: hashContent(card) },
+            [STALE]: { hash: hashContent(stale) },
+          },
+        },
+        theme: {},
+      },
+      components: {
+        card: {
+          'card.ts': card,
+          ...(onDisk === null ? {} : { [STALE]: onDisk }),
+        },
+      },
+      uiSource: { card: { 'card.ts': card } },
+    });
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+  };
+  /**
+   * The log messages, colors stripped.
+   */
+  const messages = async () => {
+    const p = await import('@clack/prompts');
+    return stripVTControlCharacters(
+      (p.log.message as ReturnType<typeof vi.fn>).mock.calls
+        .map(([m]) => m as string)
+        .join('\n'),
+    );
+  };
+
+  beforeEach(() => {
+    // Each test sees only its own messages.
+    vi.clearAllMocks();
+  });
+
+  it('exits 1 for a component whose only change is such a file, and names it', async () => {
+    setup();
+
+    const { outdatedCommand } = await import('./outdated');
+    await expect(outdatedCommand({})).rejects.toThrow('process.exit(1)');
+
+    const text = await messages();
+    expect(text).toMatch(/card\s+outdated\s+\(2 files\)/);
+    expect(text).toContain(
+      `card/${STALE} — upstream no longer ships it → delete`,
+    );
+  });
+
+  it('names it in the JSON output too', async () => {
+    setup();
+
+    const { outdatedCommand } = await import('./outdated');
+    await expect(outdatedCommand({ json: true })).rejects.toThrow(
+      'process.exit(1)',
+    );
+
+    expect(JSON.parse(consoleSpy.mock.calls[0][0] as string)).toEqual({
+      components: [
+        {
+          name: 'card',
+          status: 'auto-update',
+          fileCount: 2,
+          removedUpstream: [STALE],
+        },
+      ],
+    });
+  });
+
+  it('reports one you edited as a conflict: update asks before deleting it', async () => {
+    setup(`${stale}\n// mine\n`);
+
+    const { outdatedCommand } = await import('./outdated');
+    await expect(outdatedCommand({})).rejects.toThrow('process.exit(1)');
+
+    const text = await messages();
+    expect(text).toMatch(/card\s+conflict/);
+    expect(text).toContain(
+      `card/${STALE} — upstream no longer ships it, and you modified it`,
+    );
+  });
+
+  it("is up to date when it's gone from disk: only a lockfile entry is left", async () => {
+    setup(null);
+
+    const { outdatedCommand } = await import('./outdated');
+    await expect(outdatedCommand({ json: true })).rejects.toThrow(
+      'process.exit(0)',
+    );
+
+    expect(JSON.parse(consoleSpy.mock.calls[0][0] as string)).toEqual({
+      components: [],
+    });
   });
 });

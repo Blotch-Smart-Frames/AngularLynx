@@ -11,15 +11,10 @@ import pc from 'picocolors';
 import { themeFilesFor, usesTailwind4 } from '../utils/tailwind.js';
 import { configExists, readConfig } from '../config.js';
 import { resolveDependencies } from '../registry.js';
-import {
-  getComponentFiles,
-  getComponentSourceDir,
-  getUiSourceDir,
-  rewriteImports,
-} from '../utils/resolve-paths.js';
+import { getUiSourceDir } from '../utils/resolve-paths.js';
 import { formatContent } from '../utils/format.js';
+import { analyzeComponent } from '../utils/analyze-component.js';
 import {
-  droppedFiles,
   droppedThemeFiles,
   trackedComponents,
   untrackedComponents,
@@ -41,6 +36,7 @@ import {
   formatHunk,
   getHunks,
   applySelectedHunks,
+  removalLine,
   summarizeComponent,
   STATUS_ICONS,
   STATUS_LABELS,
@@ -291,17 +287,6 @@ const reviewFile = async (
 };
 
 /**
- * The summary line for a file that taking upstream's version deletes, with
- * the reason (see FileAnalysis.removed). An untouched one gets a minus, as a
- * new file gets a plus: the auto-update arrow would read like an ordinary
- * update.
- */
-const removalLine = (path: string, file: FileAnalysis): string =>
-  file.status === 'conflict'
-    ? `${STATUS_ICONS.conflict} ${path} — ${pc.red(`${file.removed}, and you modified it`)}`
-    : `${pc.blue('−')} ${path} — ${pc.blue(`${file.removed} → delete`)}`;
-
-/**
  * Three-way merge update for installed components, modeled on the same flow
  * git/Mercurial use when applying upstream changes to a fork:
  *
@@ -396,65 +381,14 @@ export const updateCommand = async (options: {
 
   const componentAnalyses: ComponentAnalysis[] = [];
 
+  // A file dolan copied that upstream has since stopped shipping is analyzed
+  // too (see analyzeComponent): taking upstream's version deletes it, quietly
+  // when nobody edited it, after asking when someone did.
   for (const name of installed) {
-    const destDir = resolve(componentsDir, name);
-    const files = getComponentFiles(name, { tests });
-    const lockedComponent = lockfile.components[name] ?? {};
-
-    const fileAnalyses: FileAnalysis[] = [];
-
-    for (const file of files) {
-      const srcContent = readFileSync(
-        join(getComponentSourceDir(name), file),
-        'utf-8',
-      );
-      const destPath = join(destDir, file);
-      // Normalize to the consumer's oxfmt config before hashing/diffing so the
-      // lockfile base, the shown diff, and the written file all agree.
-      const newContent = formatContent(rewriteImports(srcContent), destPath);
-
-      const currentContent = existsSync(destPath)
-        ? readFileSync(destPath, 'utf-8')
-        : null;
-
-      const storedHash = lockedComponent[file]?.hash ?? null;
-      const status = analyzeFile(
-        currentContent,
-        newContent,
-        storedHash,
-        hashContent,
-      );
-
-      fileAnalyses.push({
-        file,
-        status,
-        currentContent: currentContent ?? '',
-        newContent,
-      });
-    }
-
-    // Files dolan copied that upstream has since stopped shipping. Taking
-    // upstream's version deletes them, by the same rules as a change: quietly
-    // when nobody edited them, after asking when someone did.
-    for (const file of droppedFiles(name, lockfile)) {
-      const destPath = join(destDir, file);
-      const currentContent = existsSync(destPath)
-        ? readFileSync(destPath, 'utf-8')
-        : null;
-      fileAnalyses.push({
-        file,
-        status: analyzeRemovedFile(
-          currentContent,
-          lockedComponent[file]!.hash,
-          hashContent,
-        ),
-        currentContent: currentContent ?? '',
-        newContent: '',
-        removed: 'upstream no longer ships it',
-      });
-    }
-
-    componentAnalyses.push({ name, files: fileAnalyses });
+    componentAnalyses.push({
+      name,
+      files: analyzeComponent(name, componentsDir, lockfile, tests),
+    });
   }
 
   // Analyze shared files (theme only — utils now come from @blotch/dolan)

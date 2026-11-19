@@ -26,8 +26,10 @@ import {
 import { importFromProject } from './project-import';
 import {
   addWatchIgnored,
+  importRspeedy,
   type pluginIgnoreWatch,
   type RspeedyBuildResult,
+  type RspeedyInstance,
   type RspeedyModule,
   type RspeedyPluginModule,
   modeFromOptimization,
@@ -226,7 +228,12 @@ describe('application builder', () => {
       cwd: root,
       rspeedyConfig: {
         mode: 'development',
-        environments: { lynx: {}, web: {} },
+        // Each environment's assets are the bundle's own, never the dev
+        // server's (see "a build's asset URLs" below).
+        environments: {
+          lynx: { dev: { assetPrefix: '/' } },
+          web: { dev: { assetPrefix: '/' } },
+        },
         source: { entry: path.join(root, 'src/main.ts') },
         plugins: [
           // The options as Angular CLI merged them reach the plugin as they
@@ -251,7 +258,10 @@ describe('application builder', () => {
     expect(rspeedy.loadConfig).not.toHaveBeenCalled();
     expect(passedConfig()).toEqual({
       mode: 'production',
-      environments: { lynx: {}, web: {} },
+      environments: {
+        lynx: { dev: { assetPrefix: '/' } },
+        web: { dev: { assetPrefix: '/' } },
+      },
       source: { entry: path.join(root, 'src/main.ts') },
       plugins: [expect.anything(), angularPlugin],
     });
@@ -277,7 +287,7 @@ describe('application builder', () => {
     expect(passedConfig()).toMatchObject({
       environments: { lynx: {}, web: { output: { assetPrefix: '/shop/' } } },
     });
-    expect(passedConfig().environments!['lynx']).toEqual({});
+    expect(passedConfig().environments!['lynx']).not.toHaveProperty('output');
   });
 
   it('keeps the asset prefix lynx.config.ts sets over baseHref, and adds none to an app without a web environment', async () => {
@@ -295,7 +305,21 @@ describe('application builder', () => {
     await firstOutput(
       build({ browser: 'src/main.ts', baseHref: '/shop/' }, lynxOnly.rspeedy),
     );
-    expect(lynxOnly.passedConfig().environments).toEqual({ lynx: {} });
+    expect(lynxOnly.passedConfig().environments).toEqual({
+      lynx: { dev: { assetPrefix: '/' } },
+    });
+  });
+
+  it("replaces an environment's dev.assetPrefix, which is the dev server's, and keeps its other dev settings", async () => {
+    const { passedConfig, rspeedy } = fakeRspeedy({
+      environments: {
+        lynx: { dev: { hmr: false, assetPrefix: 'http://192.168.1.20:3000/' } },
+      },
+    });
+    await firstOutput(build({ optimization: false }, rspeedy));
+    expect(passedConfig().environments).toEqual({
+      lynx: { dev: { hmr: false, assetPrefix: '/' } },
+    });
   });
 
   it('loads the config file the `config` option names, which rspeedy requires to exist', async () => {
@@ -540,6 +564,101 @@ describe('the mode', () => {
   });
 });
 
+describe("a build's asset URLs", () => {
+  /**
+   * The URL each environment's bundle asks for its images under (rspack's
+   * `output.publicPath`) after `ng build`. This runs rspeedy itself, with only
+   * the compile left out: the dev server's address comes from what rspeedy's
+   * Lynx plugin does to the config, which the stand-in can't show.
+   */
+  const publicPaths = async (
+    options: Record<string, unknown>,
+    config?: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> => {
+    if (config) {
+      writeFileSync(path.join(root, 'lynx.config.ts'), 'export default {};');
+    }
+    const real = await importRspeedy();
+    type Instance = RspeedyInstance & {
+      initConfigs: (options: {
+        action: 'build';
+      }) => Promise<{ name?: string; output?: { publicPath?: unknown } }[]>;
+    };
+    let instance: Instance | undefined;
+    const rspeedy: RspeedyModule = {
+      loadConfig: async () => ({
+        content: structuredClone(config ?? {}),
+        configPath: path.join(root, 'lynx.config.ts'),
+      }),
+      createRspeedy: async (createOptions) => {
+        instance = (await real.createRspeedy(createOptions)) as Instance;
+        return { ...instance, build: async () => ({ close: async () => {} }) };
+      },
+    };
+    /**
+     * Real Rsbuild plugins, which need a setup, standing in for the compiler.
+     */
+    const plugin = async (): Promise<RspeedyPluginModule> => ({
+      pluginAngularLynx: () => ({ name: 'lynx:angular', setup: () => {} }),
+      pluginAngularCliContext: () => ({
+        name: 'lynx:angular-cli-context',
+        setup: () => {},
+      }),
+    });
+    const result = await firstOutput(
+      runApplication(
+        { browser: 'src/main.ts', ...options } as never,
+        fakeContext().context,
+        { importRspeedy: async () => rspeedy, importPlugin: plugin },
+      ),
+    );
+    expect(result).toEqual({ success: true });
+    const configs = await instance!.initConfigs({ action: 'build' });
+    return Object.fromEntries(
+      configs.map(({ name, output }) => [name, output?.publicPath]),
+    );
+  };
+
+  it.each([
+    ['the defaults', {}, undefined, { lynx: '/', web: '/' }],
+    [
+      'baseHref',
+      { baseHref: '/shop/' },
+      undefined,
+      { lynx: '/', web: '/shop/' },
+    ],
+    [
+      "lynx.config.ts's prefixes",
+      {},
+      {
+        output: { assetPrefix: 'https://cdn.example.com/app/' },
+        environments: { lynx: {}, web: { output: { assetPrefix: '/web/' } } },
+      },
+      { lynx: 'https://cdn.example.com/app/', web: '/web/' },
+    ],
+    [
+      "lynx.config.ts's server.base",
+      {},
+      { server: { base: '/base' } },
+      { lynx: '/base/', web: '/base/' },
+    ],
+  ])(
+    "are the bundle's own with %s whatever optimization is, never the dev server's",
+    async (_, options, config, expected) => {
+      expect(
+        await publicPaths({ ...options, optimization: true }, config),
+      ).toEqual(expected);
+      // No server runs for an `ng build`, and a native app carries its
+      // images inside it, so a development build mustn't ask the dev server
+      // for them (#560).
+      expect(
+        await publicPaths({ ...options, optimization: false }, config),
+      ).toEqual(expected);
+    },
+    30_000,
+  );
+});
+
 describe('the AngularLynx plugin', () => {
   const pluginsPassed = async (plugins: unknown) => {
     const { rspeedy, passedConfig } = fakeRspeedy(
@@ -756,6 +875,11 @@ describe('dev-server builder', () => {
       host: '127.0.0.1',
       base: '/app',
     });
+  });
+
+  it("leaves the asset prefix to rspeedy, which points it at the server, unlike ng build's", async () => {
+    const { passedConfig } = await serve({});
+    expect(passedConfig()['environments']).toEqual({ lynx: {}, web: {} });
   });
 
   it("leaves lynx.config.ts's server settings alone without port or host", async () => {
@@ -984,9 +1108,19 @@ describe('unit-test builder', () => {
     return { angularBuild, calls };
   };
 
+  /**
+   * Runs the builder as `ng test` does. `options` are what Angular CLI hands
+   * it, and `configured` is the test target as angular.json has it, which
+   * the builder reads to tell an empty list the user wrote from one Angular
+   * CLI filled in.
+   */
   const test = async (
     options: Record<string, unknown> = {},
-    { testingLibrary = false } = {},
+    {
+      testingLibrary = false,
+      configured = {} as Record<string, unknown>,
+      appPolyfills = undefined as string[] | undefined,
+    } = {},
   ) => {
     const { angularBuild, calls } = fakeAngularBuild();
     const ctx = fakeContext('my-app', {
@@ -996,9 +1130,12 @@ describe('unit-test builder', () => {
         platform: 'ios',
         config: 'lynx.config.ts',
         environment: ['lynx'],
+        ...(appPolyfills && { polyfills: appPolyfills }),
       },
       'my-app:lib:development': { project: 'ng-package.json' },
+      'my-app:test': configured,
     });
+    ctx.raw.target = { project: 'my-app', target: 'test' };
     const result = await firstOutput(
       runUnitTest(options as never, ctx.context, {
         importAngularBuild: async () => angularBuild,
@@ -1067,6 +1204,63 @@ describe('unit-test builder', () => {
     ]);
   });
 
+  it("puts the Lynx setup after the test target's own polyfills, which replace the app's", async () => {
+    const { options, context } = await test(
+      { polyfills: ['zone.js'] },
+      { testingLibrary: true, appPolyfills: ['@angular/localize/init'] },
+    );
+    const polyfills = [
+      'zone.js',
+      LYNX_GLOBALS,
+      '@blotch/angular-lynx-testing-library/setup',
+    ];
+    // Angular 22.3 reads the option, and takes it over the build target's
+    // polyfills: without the Lynx setup in it, no test would have `__DEV__`.
+    expect(options['polyfills']).toEqual(polyfills);
+    // Angular 22.2 reads the build target's only.
+    expect((await context.getTargetOptions(buildTarget))['polyfills']).toEqual(
+      polyfills,
+    );
+  });
+
+  it("keeps the app's polyfills when Angular CLI fills in an empty list for a test target that names none", async () => {
+    const { options, context } = await test(
+      { polyfills: [] },
+      { appPolyfills: ['@angular/localize/init'] },
+    );
+    // Handed on, the empty list would replace the app's polyfills and the
+    // Lynx setup with nothing.
+    expect(options).toEqual({});
+    expect((await context.getTargetOptions(buildTarget))['polyfills']).toEqual([
+      '@angular/localize/init',
+      LYNX_GLOBALS,
+    ]);
+  });
+
+  it("loads only the Lynx setup when angular.json gives the test target an empty list, which drops the app's polyfills", async () => {
+    const { options, context } = await test(
+      { polyfills: [] },
+      { configured: { polyfills: [] }, appPolyfills: ['zone.js'] },
+    );
+    expect(options).toEqual({ polyfills: [LYNX_GLOBALS] });
+    expect((await context.getTargetOptions(buildTarget))['polyfills']).toEqual([
+      LYNX_GLOBALS,
+    ]);
+  });
+
+  it('keeps the Lynx setup out of the polyfills bundle Angular makes when a polyfill is a local file', async () => {
+    const { context } = await test(
+      {},
+      { testingLibrary: true, appPolyfills: ['src/polyfills.ts'] },
+    );
+    // A local file makes Angular bundle every polyfill's packages, for a
+    // browser, where the testing library's setup can't import `node:events`.
+    // External, it stays an import Vitest resolves in node_modules.
+    expect(
+      (await context.getTargetOptions(buildTarget))['externalDependencies'],
+    ).toEqual([LYNX_GLOBALS, '@blotch/angular-lynx-testing-library/setup']);
+  });
+
   it('hands Angular a Lynx build target as an Angular one, with the options both builders share', async () => {
     const { context, raw } = await test();
     expect(await context.getBuilderNameForTarget(buildTarget)).toBe(
@@ -1076,6 +1270,7 @@ describe('unit-test builder', () => {
       tsConfig: 'tsconfig.app.json',
       // Imported images, fonts and media load as file URLs, as in the app.
       loader: ASSET_LOADERS,
+      externalDependencies: [LYNX_GLOBALS],
       polyfills: [LYNX_GLOBALS],
     });
     expect(ASSET_LOADERS).toMatchObject({ '.png': 'file', '.ttf': 'file' });
@@ -1249,6 +1444,7 @@ describe('extract-i18n builder', () => {
       // Angular's build fails on an imported image without a loader.
       loader: ASSET_LOADERS,
       // Nothing runs the extracted code, so the Lynx globals aren't needed.
+      externalDependencies: [],
       polyfills: ['@angular/localize/init'],
     });
   });

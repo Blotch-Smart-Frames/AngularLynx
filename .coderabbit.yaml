@@ -19,6 +19,11 @@ reviews:
   auto_review:
     enabled: true
     drafts: false
+    # CodeRabbit stops reviewing a PR after 5 reviewed commits by default,
+    # until someone comments `@coderabbitai resume`. PRs here often pass
+    # that (the fixes for its own comments count), and the commits after
+    # the pause would merge unreviewed. 0 turns the pause off.
+    auto_pause_after_reviewed_commits: 0
     # Renovate and Dependabot open several version bumps a day, each tested
     # by CI and the E2E run. A review comment on a lockfile bump adds nothing
     # but noise, so those PRs are skipped. `@coderabbitai review` still

@@ -87,15 +87,15 @@ Three separate Lynx gesture facts break naive `TapGesture`/`LongPressGesture` ha
 
 **(1) `onEnd` fires on success AND failure.** The iOS `LynxTapGestureHandler` calls `onEnd` from its `fail` override (`LynxTapGestureHandler.m`), not only on a recognized tap. A drag past `maxDistance` fails the tap but still emits `onEnd`. So counting taps on `onEnd` counts every drag and long-hold as well. Only `onStart` fires exclusively on recognition: the success path is `activate → onStart → onEnd`, the failure path is just `fail → onEnd`. Long-press behaves the same way.
 
-**(2) `numberOfTaps` is a no-op on-device.** No native platform implements multi-tap counting — a whole-tree search of the Lynx source for `numberOfTaps` returns nothing. `TapGesture().numberOfTaps(2)` recognizes on the FIRST tap. A real native double-tap is impossible; time successive taps yourself.
+**(2) `numberOfTaps` is a no-op on-device.** No native platform implements multi-tap counting — a whole-tree search of the Lynx source for `numberOfTaps` returns nothing. Sent to Lynx, `TapGesture().numberOfTaps(2)` recognizes on the FIRST tap.
 
 **(3) A partial config zeroes every key you didn't set.** The iOS handlers read each option with `[[config objectForKey:@"maxDuration"] floatValue]`, and `[nil floatValue]` is `0`. The built-in defaults (`maxDistance = 10`, `maxDuration = 500`) apply only when the WHOLE config is absent — `handleConfigMap` early-returns on a nil map. Send `{ numberOfTaps: 2 }` and both `maxDuration` and `maxDistance` become `0`. `maxDuration = 0` then schedules the tap to fail on a 0 ms timer the instant a finger lands. That fires `onEnd` (see #1) before you lift — an instant, phantom "tap". `renderer_functions.cc InnerCreateGestureDetector` passes the JS config straight through to this handler.
 
 ### The fix
 
 1. **Always send a full default config.** `TapGesture` / `LongPressGesture` / `PanGesture` seed the complete default set into `_config` on construction (`gesture/const.ts`), so a partial config can never zero a native key. This mirrors Lynx's own gesture-runtime, which seeds defaults for the same reason. Every other gesture starts from `BaseGesture`'s `{ enabled: true }`, as in the gesture-runtime. Fling, pinch and rotation have nothing to zero today: Lynx 4.1's fling handlers ignore their config (iOS `handleConfigMap` is a TODO, Android's is empty), and pinch and rotation have no handler (see the next entry).
-2. **`onEnd` normalized for discrete gestures.** `LynxGestureDetector` (`gesture/gesture-detector.ts`) observes `onStart` — registering its own observer when you didn't — to learn whether a tap/long-press was recognized, then drops the failed-gesture `onEnd`. `onEnd` now means "the gesture happened", matching react-native-gesture-handler. Continuous gestures (pan/fling/rotation/pinch) pass through unchanged.
-3. **`numberOfTaps` documented as a no-op.** Kept on `TapGesture` for API parity, with a JSDoc warning. For a double-tap, time taps in your own callback.
+2. **`onEnd` normalized for discrete gestures.** The gate `LynxGestureDetector` puts in front of a tap's or long press's callbacks (`gesture/callback-gate.ts`) observes `onStart` — registering it when you didn't — to learn whether the gesture was recognized, then drops the failed-gesture `onEnd`. `onEnd` now means "the gesture happened", matching react-native-gesture-handler. Continuous gestures (pan/fling/rotation/pinch) pass through unchanged.
+3. **The runtime counts taps (#452).** The same gate counts the single taps Lynx recognizes and lets `onStart`/`onEnd` through on the `numberOfTaps`th. A run breaks when a tap fails (`onEnd` with no `onStart`), when the next touch's `onBegin` comes more than 500 ms after the last tap, or when a tap lands further than `maxDistance` from the first. Lynx still recognizes each tap, so a single tap on the same element can't wait for the double one: same-element gestures race (see the arena notes below).
 
 ---
 
@@ -116,13 +116,19 @@ Lynx passes the config object from `__SetGestureDetector` straight to the platfo
 | Pan        | `minDistance`                |
 | Fling      | none                         |
 
-Nothing reads `enabled`, so a gesture set to `enabled(false)` still fires: verified on the iOS Simulator and the Android emulator in Lynx Explorer 4.1, where a disabled pan's `onUpdate` ran on every move. A pan's `activeOffsetX/Y`, `failOffsetX/Y`, `minPointers` and `maxPointers`, a fling's `direction` and `numberOfPointers`, and a tap's `numberOfTaps` (see above) are all sent and ignored. React Lynx's gesture-runtime declares the same options and has the same gap.
+Nothing reads `enabled`, so a gesture registered with `enabled: false` still fires: verified on the iOS Simulator and the Android emulator in Lynx Explorer 4.1, where a disabled pan's `onUpdate` ran on every move. A pan's `activeOffsetX/Y`, `failOffsetX/Y`, `minPointers` and `maxPointers`, a fling's `direction` and `numberOfPointers`, and a tap's `numberOfTaps` (see above) are all sent and ignored. React Lynx's gesture-runtime declares the same options and has the same gap.
 
 The events carry no velocity. A pan's params are `clientX`, `clientY`, `pageX`, `pageY`, `x`, `y`, `scrollX`, `scrollY`, `isAtStart`, `isAtEnd` and `type`; a fling's are `deltaX`, `deltaY`, `scrollX`, `scrollY`, `isAtStart` and `isAtEnd` (both read from the events on both platforms). A touch's params also get a `timestamp` in ms (`CACurrentMediaTime()` on iOS, `System.currentTimeMillis()` on Android), which Lynx's C++ moves onto the event envelope (`GetCustomEventParam`); a fling's frames have none, so the envelope gets the time they were sent.
 
 ### The fix
 
-None in the runtime for the options yet: they're kept for API parity, with TSDoc warnings, and the gesture types docs list which ones work (`/api/gestures/gesture-types#options-lynx-doesnt-read-yet`). To turn a gesture off, unbind it from `[lynxGesture]`; to cede a drag to a scroll view, call `fail()` from `onUpdate`.
+The runtime enforces the options it can (#452), so they work on iOS, Android and the web preview alike (checked on all three with a probe app):
+
+- **`enabled(false)`**: `LynxGestureDetector` doesn't register a disabled gesture. Skipping its callbacks wouldn't be enough: a registered pan activates natively on the first move and fails its element's other gestures, or keeps a scroll view still, before a `fail()` from JS could reach Lynx's thread. Setting any option on a bound gesture re-registers it (`BaseGesture._option` → `_bindings`), so `enabled()` works at any time, and so do the options Lynx reads.
+- **Pan offsets, fling `direction`, `numberOfTaps`**: `gesture/callback-gate.ts` sits between Lynx's callbacks and the user's. It holds a pan's `onStart`/`onUpdate` back until the translation leaves an active offset's range, and calls `fail()` when it leaves a fail offset's first (react-native-gesture-handler's semantics, a single number included); it holds a fling's `onBegin` until the first frame that moves and fails one going another way; and it counts taps (above). It can't change what Lynx does with the touch meanwhile: a pan waiting for its active offset is already active natively.
+- **Not enforceable:** `minPointers`, `maxPointers`, `numberOfPointers`. Lynx follows one finger at a time and its events don't say how many are down.
+
+**A failed pan alone on its element restarts on iOS.** When the gate fails a pan whose element has no other gesture, iOS gives the touch back to it a few moves later and begins it again (`onBegin`, then `onEnd` once failed), every few moves until the finger lifts: one vertical drag ran `onEnd` eight times. The gate keeps the pan failed until `onTouchesDown` (a new touch), failing each restart at once and running only the first `onEnd`. Lynx sends no `onTouchesUp` to a failed pan on iOS (Android does, and doesn't restart it), so `onTouchesDown` is what ends the failure. A pan that calls `fail()` itself from `onUpdate` doesn't restart, for reasons not tracked down.
 
 The runtime derives velocity itself (#453). `mapGestureEvent()` keeps each gesture's positions over the last 100 ms with their timestamps (`VelocityTracker`, the one the web preview's arena uses to decide whether a release flings) and fills in `velocityX`/`velocityY` in px/s: a pan's from the finger's `pageX`/`pageY`, a fling's from its frames' `deltaX`/`deltaY` summed into a position. A fling's steps run against the swipe, as a scroll offset does, so they're negated and both gestures report velocity in the finger's direction.
 
@@ -1188,7 +1194,7 @@ Measured for issue #113 (2026-10-27, Lynx Explorer 4.1 on the iOS 27 Simulator a
 
 So handlers call these directly now: `RouterLink` navigates inside its `click` listener, `LynxBackButton` calls `Location.back()` from its event, and the docs, skill and examples dropped the rule.
 
-`LynxPortal` did misbehave in that probe, but not because of the handler: `PortalRef.destroy()` left the overlay's content on screen (iOS also showed "LynxCreateUIException: page ui not found"), on master too, and just the same with `open()` and `destroy()` both deferred with `setTimeout`. That's a separate bug.
+`LynxPortal` did misbehave in that probe, but not because of the handler: `PortalRef.destroy()` left the overlay's content on screen (iOS also showed "LynxCreateUIException: page ui not found"), on master too, and just the same with `open()` and `destroy()` both deferred with `setTimeout`. That was a separate bug (issue #458): the portal asked `LynxDocument.createRootElement()` for the page each time it opened, expecting the page the app was bootstrapped into, but it called `__CreatePage()` again. A Lynx page has one page element, and each `__CreatePage()` makes the new page the engine's root (`PageElement`'s constructor calls the element manager's `SetRoot`), so the overlay went into a second page that iOS couldn't make a view for, and its removal never reached the screen. `createRootElement()` now returns the page it already made.
 
 ---
 
@@ -1494,6 +1500,10 @@ React Lynx's `Animation` always passes its generated id, so on native its named 
 ### What Lynx does
 
 `@media` queries are **not supported**. Responsive layout must be done in JavaScript/TypeScript using Lynx's screen metrics APIs, or by conditionally applying classes based on runtime logic.
+
+### What we do about it
+
+A query for the color scheme alone is the exception (issue #460). The runtime gives `page` the `dark` class while the app is drawn dark, so the build plugin (`packages/rsbuild-plugin-angular-lynx/src/color-scheme.ts`) turns each `@media (prefers-color-scheme: dark)` block into rules under `page.dark`, and each `(prefers-color-scheme: light)` one into rules under `page:not(.dark)`, in every stylesheet. A selector for the page itself (`:root`, `page`) gains the condition (`page.dark`); any other becomes its descendant (`page.dark .card`). That's what Tailwind's `dark:` variant writes, with Tailwind 3 (Lynx's preset keeps the default `darkMode: 'media'`) and 4 alike. It needs `enableCSSInvalidation` (next section) to restyle when the class changes. Checked in Lynx Explorer on the iOS 27 Simulator, toggling `setColorScheme()`, and in Lynx for Web, which drops `@media` too.
 
 ---
 
@@ -3660,7 +3670,7 @@ Lynx has two ways to load a lazy bundle, and the main thread, where Angular rout
 
 `lynx.loadScript()` answers differently on each platform. Native Lynx evaluates the section as a script and returns its completion value, so a native lazy chunk's main-thread file is wrapped as a function expression (`(function (globDynamicComponentEntry) { … return module.exports })`). Lynx for Web starts the section with `var exports=(module.exports={});`, runs it, and returns `module.exports`, where that wrapper would be lost, so the web build leaves the chunk as plain CommonJS.
 
-Lynx Explorer fetches a lazy bundle by the URL the build wrote (`/lazy-bundle/…` with the default `output.assetPrefix` of a production build) and doesn't resolve a root-relative one against the page's bundle: nothing is requested. `ng serve` writes absolute URLs, and the app shells resolve `/` against their bundle folder (`BundleResourceFetcher.swift`, `ResourceFetchers.kt`). To open a production build in Explorer from a static server, set an absolute `output.assetPrefix` for the `lynx` environment.
+Lynx Explorer fetches a lazy bundle by the URL the build wrote, which starts with the build's asset prefix (`/lazy-bundle/…` with the default prefix, `/`, in a development `ng build` as in a production one), and doesn't resolve a root-relative one against the page's bundle: on iOS its fetcher reads a `/` URL as a file path on the device ("File not found: /lazy-bundle/…"), and a plain ReactLynx app fails the same way. Requested upstream as [lynx-family/lynx#11127](https://github.com/lynx-family/lynx/issues/11127). `ng serve` writes absolute URLs, and the app shells resolve `/` against their bundle folder (`BundleResourceFetcher.swift`, `ResourceFetchers.kt`). To open an `ng build`'s bundle in Explorer from a static server, set an absolute `output.assetPrefix` for the `lynx` environment.
 
 ---
 
@@ -3919,6 +3929,10 @@ By default, CSS combinators (descendant ` `, child `>`, sibling `+`/`~`) **only 
 To fix this, enable `enableCSSInvalidation: true` in the build config. This tells the Lynx CSS engine to re-evaluate combinator matches when DOM classes change — matching web behavior, but with a performance cost (it must walk the subtree on every class change).
 
 Without this flag, use inline styles or CSS variables (which are inheritable by default) for dynamic theming instead of class-based descendant selectors.
+
+Without it, the failure looks intermittent rather than total. In a probe on the iOS Simulator (issue #460), after `page` gained `dark`, a `<view>` with `dark:bg-zinc-900` (`page.dark .dark\:bg-zinc-900`) kept its light background while the `<text>` inside it took `dark:text-white`, so the label turned white on white. Other elements that the class change restyles anyway, such as ones that read a variable it changes, re-match their combinators at the same time.
+
+Native invalidation works like Blink's: on a class change, Lynx looks up the invalidation sets for the classes added and removed (`Element::CheckHasInvalidationForClass` in `core/renderer/dom/fiber/fiber_element.cc`), and walks the subtree only when a rule depends on one of them. React Lynx turns it on by default, and since issue #460 AngularLynx does too: its default had been `false` since the first commit, with no reason recorded.
 
 ---
 
@@ -4993,6 +5007,32 @@ The `deadline` it receives is Lynx's empty `{}` — truthy, but with no `timeRem
 
 `runtime.ts` polyfills a matched `requestIdleCallback`/`cancelIdleCallback` pair (mapped to `setTimeout`/`clearTimeout`) that invokes the callback with a correctly-shaped `IdleDeadline` (`{ didTimeout: false, timeRemaining: () => 50 }`). This keeps Angular off the broken fallback entirely. **Both** must be defined, never just one: Angular reuses a single `typeof requestIdleCallback !== 'undefined'` guard to also select `cancelIdleCallback`, so a lone `requestIdleCallback` would make it bind an `undefined` cancel and crash the same way. Sits right after the existing `setTimeout`/`clearTimeout`/`requestAnimationFrame` polyfills so both are resolvable on either thread. React Lynx never hit this because it has no equivalent of Angular's `@defer (on idle)`.
 
+## `@defer (on interaction)`, `(on hover)` and `(on viewport)` need a template's element to be an `Element`, and hover needs mouse events
+
+### What you'd expect (web)
+
+`@defer (on interaction)` renders its block when the placeholder is clicked, `on hover` when the mouse moves over it (a phone's browser: when it's tapped), and `on viewport` when it scrolls into view.
+
+### What Lynx does
+
+All three kept their placeholders, in the web preview, the testing library and on a device (issue #459). Angular finds the trigger element after each render (`registerDomTrigger`'s `afterEveryRender` poll in `@angular/core`), and in development builds `getTriggerElement` asserts `element instanceof Element` before listening to it. A template's element is a LynxElement:
+
+- In the web preview's main-thread frame and in jsdom, `Element` is the DOM's, and a LynxElement only wraps a DOM element, so the assertion threw "The provided value must be an element".
+- On iOS and Android the main thread has no `Element` at all, so it threw a ReferenceError.
+
+Either way the throw happened inside the after-render hook, which reports it to the `ErrorHandler` and carries on, so no listener was ever added. Production builds skip the assertion.
+
+`on hover` had a second problem: it listens for `mouseover`, `mouseenter` and `focusin`. iOS and Android send no mouse events, and the renderer ignored those names.
+
+`on interaction` had a third, in the web preview only. Angular takes its `click` listener off the trigger as the trigger fires, from inside that listener. Lynx for Web keeps every element's handlers in one WebAssembly object and holds it while it runs a handler, so `__AddEvent` for the removal threw "recursive use of an object detected which would lead to unsafe aliasing in rust". web-core dropped the error without a word, and `triggerDeferBlock` stopped before it rendered anything. Any `__AddEvent` from a Lynx event's handler does the same there: an `IntersectionObserver` or `ResizeObserver` that starts observing from a tap, or a listener that removes itself. Checked with Playwright on web-core's own preview, wrapping the realm's `__AddEvent`. Production builds hit this one too.
+
+### The fix
+
+- `installElementGlobal()` (`packages/runtime/src/lib/lynx-element/element-global.ts`, run by `polyfills.ts` on the main thread) makes a template's elements, but not its text nodes or anchors, `instanceof Element`. On a device it installs an `Element` class with a `Symbol.hasInstance`. In the web preview and jsdom it gives the DOM's `Element` one, which accepts LynxElements as well as its own instances. The DOM's subclasses inherit that static method, so it checks `this === Element`, which leaves `HTMLDivElement` and the rest as they were.
+- A touch makes `mouseover`/`mouseenter` (after `pointerenter`) and `mouseout`/`mouseleave` (after `pointerleave`) at the element, from the first finger only, as `PointerEventSource` already made pointer events (`pointer-events.ts`). A phone's browser sends them for a tap, so `on hover` fires on a touch there too. The document's listeners don't get them.
+- On Lynx for Web, `runWorklet` (`global-callbacks.ts`), through which every Lynx event reaches main-thread code, counts the events running, and `addNativeEvent()` (`lynx-element/event-registration.ts`) holds an `__AddEvent` made meanwhile until a microtask, after web-core's handling has returned. The element's own listener list changes at once, so a removed listener doesn't run again. iOS and Android register at once.
+- `on interaction` then works as it is: `click` was already `tap`, and `keydown`, which phones never send, stays ignored. `on viewport` uses the main-thread `IntersectionObserver` from #233.
+
 ## `@font-face` fonts fail to load with "unsupported URL" — CSS `url()` assets get an unfetchable `webpack://` scheme
 
 ### What you'd expect (web)
@@ -5381,7 +5421,16 @@ Modules take their updates like this (`hot-updates.ts`, and `ɵhmrAccept` in the
 
 Lynx DevTool is only needed for the reload fallback, when an update can't be applied (for example a module that throws while it loads).
 
-The web preview has no hot updates or reloads: web-core has neither `replaceStyleSheetByIdWithBase64()` nor a DevTool connection to reload with, and the preview page has no client of its own. Refresh the browser after a save.
+The web preview has no hot updates: web-core has neither `replaceStyleSheetByIdWithBase64()` nor a DevTool connection to reload with. It reloads the page instead, as Angular's dev server does without HMR (issue #454). Until then it had no client at all, and every save needed a browser refresh.
+
+The preview page is rspeedy's (`@lynx-js/web-rsbuild-server-middleware`, at `/__web_preview`), a fixed `index.html`. The plugin adds a middleware ahead of rspeedy's that puts a small reload client into that page as it's sent (`packages/rsbuild-plugin-angular-lynx/src/web-preview-reload.ts`). The client connects to Rsbuild's dev server socket (`dev.client.path`, `/rsbuild-hmr`) with the `web` environment's `webSocketToken`, so it hears only that environment's builds:
+
+- The first build hash the socket reports is the one the page shows. Rsbuild drops its stats when a build starts and reports nothing until it ends, so a page loaded mid-build isn't told an older hash.
+- A new hash followed by `ok` or `warnings` reloads the page. A new hash followed by `errors` keeps the page and logs the errors in the browser's console; the next good build reloads it.
+- `full-reload` (the entry's chunks changed, or a file `dev.watchFiles` watches) and `static-changed` reload at once.
+- Rsbuild also sends `full-reload` as soon as a changed `.html` file starts a rebuild, before it knows whether the build works. That's meant for apps whose page is an HTML template; in an Angular app it's a component's template. The preview reloaded on it, so a template that didn't compile reloaded the page and lost its state, though the failed build had nothing new to show (the page came back on the last good bundle). The plugin sets the `web` environment's `dev.liveReload` to `{ html: false }`, which turns off only that message: Rsbuild treats an object as live reload being on everywhere else. The edit reaches the bundle's hash anyway, so it reloads once the build works. It replaces an app's `{ html: true }` as well, which means the same as the default: the web bundle has no HTML page for it to reload, so all it adds is the early reload. Only `false`, which turns the client off, is left alone.
+
+Measured with `examples/hello-world` in Playwright's Chromium (November 2026): an edit to the component or to its external template showed in the preview about 4 to 5 seconds after the save, with one reload each, and `crossOriginIsolated` stayed `true`. A template that doesn't compile left the page as it was, with no reload. `dev.liveReload: false` on the `web` environment turns the client off.
 
 ### Still open
 
@@ -5396,7 +5445,7 @@ xcrun simctl spawn booted log show --last 5m --style compact \
 
 ---
 
-## `<webview src>` shows a broken-page icon in the rspeedy web preview, but works on device
+## `<webview src>` shows a broken-page icon in the web preview in Firefox and Safari, but works on device
 
 ### What you'd expect (web / native parity)
 
@@ -5411,18 +5460,32 @@ res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
 res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
 ```
 
-Under `require-corp`, Chrome refuses to load any cross-origin iframe whose response doesn't opt in with a `Cross-Origin-Resource-Policy` header. Almost no public site sends that, so the frame shows Chrome's broken-page icon. The DevTools Issues panel reports "Specify a Cross-Origin Resource Policy to stop a resource from being blocked." Two traps make this look like a renderer bug:
+In an isolated page, the browser refuses to load an iframe whose response doesn't opt in: it needs its own `Cross-Origin-Embedder-Policy` and, from another origin, a `Cross-Origin-Resource-Policy` header. That holds under `credentialless` too, the policy AngularLynx's dev server sends where it can (see "The dev server's web preview doesn't show images from servers without CORP" below): `credentialless` lets images and video through, not frames. Almost no public site sends both, so the frame shows the browser's "refused to connect" page. `angular.dev` sends the first header and not the second, and is blocked. Two traps make this look like a renderer bug:
 
 - `bindload` **still fires**, so the app reports a successful load over an empty frame.
 - The site's own headers are not the cause. `lynxjs.org` sends no `X-Frame-Options` and is still blocked.
 
-Native web views (WKWebView, `android.webkit.WebView`) are not iframes, so none of this applies on device. The docs site's `<Go>` preview doesn't send COEP either, so URLs that allow framing load there.
+Native web views (WKWebView, `android.webkit.WebView`) are not iframes, so none of this applies on device. The docs site's `<Go>` preview isn't isolated either, so URLs that allow framing load there.
 
 Separately, a URL that sends `X-Frame-Options: DENY` or a CSP `frame-ancestors` rule (MDN, for example) can never load in Lynx for Web, in any preview, because it is still an iframe.
 
 ### The fix
 
-Nothing to fix in the renderer: the element is created correctly and `src` reaches the iframe. To check `<webview>` in the local web preview, use the `html` attribute, which loads through `srcdoc` and isn't cross-origin. Check URL loading on a device, or in the docs-site preview with a URL that allows framing (`examples/element-webview` uses `https://angular.dev`).
+A frame with the `credentialless` attribute is exempt from the opt-in. The browser loads its page with cookies and storage of its own, apart from the ones the site has in the browser, and discards them when the page around the frame goes. The runtime sets the attribute on a `<webview>`'s frame when the page around it is cross-origin isolated (`packages/runtime/src/lib/lynx-document/web-webview.ts`), and leaves the frame alone in a page that isn't, where it loads as usual and keeps its cookies.
+
+Only Chromium knows the attribute (Chrome and Edge 110 and newer):
+
+| Browser         | `<webview src>` in the dev preview                           |
+| --------------- | ------------------------------------------------------------ |
+| Chrome, Edge    | Loads. A login the site has in the browser isn't carried in. |
+| Firefox, Safari | Still blocked, and `bindload` still fires.                   |
+
+In Firefox and Safari, check `<webview>` with the `html` attribute, which loads through `srcdoc` and isn't cross-origin, and check URL loading in Chrome or on a device.
+
+Two things the frame's timing depends on, found while fixing it:
+
+- **The element can exist before its definition.** web-core loads an element's definition the first time one is created, so an `<x-webview>` can be a plain element with no shadow root, and no frame, when the runtime creates it. Which comes first is up to the network: Firefox created the element 4 ms before the definition in one run and 66 ms after it in the next, and delaying web-core's lazy scripts gives the first order in Chrome. The runtime marks the frame at once when it's there, and otherwise when `customElements.whenDefined('x-webview')` resolves.
+- **Chromium ignores a `src` set again to the URL a frame is already loading.** By the time `whenDefined()` resolves, web-elements has given the frame its `src`, and the load has started without the attribute, which the browser reads when a load starts. Setting the same `src` again does nothing, in the same task or the next. Taking the frame out of its parent and putting it back ends the load and starts one that reads the attribute, with no `load` event for the one that ended. Removing `src` and setting it again works too. A page given as `html` (the frame's `srcdoc`) starts again the same way. It loads either way, but a frame inside it is blocked like any other unless the page was loaded credentialless, which it passes down: in Chromium 158, an `<iframe>` in the `html` stayed on the error page when the outer frame was marked after its `srcdoc`, and loaded once the outer frame was put back.
 
 ---
 
@@ -7381,9 +7444,28 @@ The museum example's viewer (`examples/museum/src/app/artwork/viewer.ts`) zooms 
 
 ### What Lynx does
 
-`ng serve`'s web preview page (`/__web_preview`, from `@lynx-js/web-rsbuild-server-middleware`) is cross-origin isolated, for `SharedArrayBuffer`: it sends `Cross-Origin-Embedder-Policy: require-corp`. The browser then refuses a cross-origin image whose server sends no `Cross-Origin-Resource-Policy` header (the Cleveland Museum of Art's image server, for one), and the `<image>` stays empty with no error in the app. The docs site's `<Go>` previews and the native apps aren't isolated and show the image.
+rspeedy's web preview page (`/__web_preview`, from `@lynx-js/web-rsbuild-server-middleware`) is cross-origin isolated, for `SharedArrayBuffer`: it sends `Cross-Origin-Embedder-Policy: require-corp`. The browser then refuses a cross-origin image, video or audio file whose server sends no `Cross-Origin-Resource-Policy` header (the Cleveland Museum of Art's image server, MDN's sample videos), and the `<image>` stays empty with no error in the app. The docs site's `<Go>` previews and the native apps aren't isolated and show the image.
 
-To check such an app in the dev preview, serve the images from a server that sends `Cross-Origin-Resource-Policy: cross-origin`, or, in an automated browser, add the header to their responses (Playwright's `page.route()`).
+### The fix
+
+`Cross-Origin-Embedder-Policy: credentialless` keeps the page isolated and lets those files load: the browser asks for them without cookies, so the response can't hold anything private to the user. The plugin adds a middleware ahead of rspeedy's that rewrites the header rspeedy sets (`packages/rsbuild-plugin-angular-lynx/src/web-preview-isolation.ts`), for a browser that supports the value:
+
+| Browser                              | Header           | Cross-origin images and video |
+| ------------------------------------ | ---------------- | ----------------------------- |
+| Chrome, Edge and other Chromium, 96+ | `credentialless` | Load                          |
+| Firefox 119+ on a computer           | `credentialless` | Load                          |
+| Safari, and anything else            | `require-corp`   | Blocked, as before            |
+
+The header depends on the request's `User-Agent` because a browser that doesn't know `credentialless` reads the header as if it weren't there: the page loses its isolation, `SharedArrayBuffer` is `undefined`, and the preview breaks. So Safari, and any client the middleware doesn't recognize, keeps `require-corp`. Firefox and Opera on Android don't support the value either, though their version numbers suggest it (MDN's compatibility data).
+
+Checked with the museum example in Playwright's builds: Chromium 158 and Firefox 159 load all 24 of its first pictures and the video example's MDN video, with `crossOriginIsolated` still `true`; WebKit 27.2 gets `require-corp` and loads none, as before.
+
+What `credentialless` doesn't cover:
+
+- **A file that needs the user's cookies on another origin** (a picture behind a login on a different host) arrives without them.
+- **Frames.** A `<webview>` needs the attribute of the same name on its `<iframe>` (see "`<webview src>` shows a broken-page icon in the web preview in Firefox and Safari" above).
+
+To check such an app in Safari's preview, serve the files from a server that sends `Cross-Origin-Resource-Policy: cross-origin`, or use Chrome or Firefox.
 
 ---
 

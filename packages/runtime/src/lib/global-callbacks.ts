@@ -3,6 +3,7 @@ import {
   applyGlobalDataUpdate,
   applyInitDataUpdate,
 } from './data-flow/host-updates';
+import { runLynxEvent } from './lynx-element/event-registration';
 import { ssrEncode, ssrHydrate } from './ssr/ssr-callbacks';
 import {
   __mainThreadRefMap,
@@ -182,8 +183,11 @@ globalThis.registerWorklet = (
 
 globalThis.__workletRefMap = __mainThreadRefMap;
 
-// @ts-expect-error
-globalThis.runWorklet = (ctx: unknown, params: unknown[]) => {
+/**
+ * Runs a worklet: how Lynx hands an event to main-thread code (see
+ * runWorklet below).
+ */
+const runWorklet = (ctx: unknown, params: unknown[]): unknown => {
   // Legacy path: direct function callbacks (existing event handlers registered
   // via __AddEvent with a raw function value).
   if (typeof ctx === 'function') {
@@ -218,7 +222,18 @@ globalThis.runWorklet = (ctx: unknown, params: unknown[]) => {
       );
     }
   }
+  return undefined;
 };
+
+// Lynx for Web counts the events it's running, so an event's code that
+// starts or stops listening to one doesn't change web-core's handlers in the
+// middle of it (see addNativeEvent). iOS and Android don't need it, and run
+// this for every frame of a scroll.
+// @ts-expect-error
+globalThis.runWorklet = (ctx: unknown, params: unknown[]) =>
+  __WEB__
+    ? runLynxEvent(() => runWorklet(ctx, params))
+    : runWorklet(ctx, params);
 
 const RUN_ON_BACKGROUND_EVENT = 'Lynx.Worklet.runOnBackground';
 const RETURN_EVENT = 'Lynx.Worklet.BgFunctionCallRet';

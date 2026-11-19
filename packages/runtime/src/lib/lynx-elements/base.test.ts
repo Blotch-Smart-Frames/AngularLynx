@@ -6,6 +6,7 @@ import {
   ElementRef,
   type SimpleChange,
   type SimpleChanges,
+  ɵgetDirectiveDef as getDirectiveDef,
 } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
@@ -14,7 +15,7 @@ import {
 } from '@angular/platform-browser/testing';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { By } from '@angular/platform-browser';
-import { LynxElementBase } from './base';
+import { LynxElementBase, templateAttributeValue } from './base';
 import { LynxText } from './text';
 
 describe('LynxElementBase', () => {
@@ -185,5 +186,48 @@ describe('LynxElementBase static attributes', () => {
 
     expect(text['pan-intercept-direction']).toBe(0);
     expect(text['pan-intercept-scope']).toBeUndefined();
+  });
+});
+
+describe('templateAttributeValue', () => {
+  const samples = [
+    'false',
+    'true',
+    '',
+    '0',
+    '1',
+    '5',
+    'x',
+    true,
+    false,
+    0,
+    5,
+    null,
+    undefined,
+  ];
+
+  // Under the Lynx renderer the renderer reads these values, in place of the
+  // directive (see declaration-only.ts), so it must read them the same way.
+  it('reads each input as LynxElementBase declares it, with its transform or as it is', () => {
+    const inputs = Object.entries(getDirectiveDef(LynxElementBase)!.inputs);
+    expect(inputs.length).toBeGreaterThan(30);
+    let transformed = 0;
+    for (const [name, [, , transform]] of inputs as [
+      string,
+      [string, number, ((value: unknown) => unknown) | null],
+    ][]) {
+      if (transform) transformed++;
+      for (const value of samples) {
+        expect(templateAttributeValue(name, value)).toBe(
+          transform ? transform(value) : value,
+        );
+      }
+    }
+    expect(transformed).toBe(18);
+  });
+
+  it('passes an attribute no element directive declares as it is', () => {
+    expect(templateAttributeValue('class', 'a b')).toBe('a b');
+    expect(templateAttributeValue('data-index', '0')).toBe('0');
   });
 });

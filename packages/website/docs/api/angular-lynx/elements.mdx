@@ -25,6 +25,7 @@ export class Greeting {
 
 - **When it's needed:** your editor's type checking and `ng test` need it. `ng build` and `ng serve` add `CUSTOM_ELEMENTS_SCHEMA` for you, so they pass without it.
 - **Attributes:** each directive declares its element's attributes as inputs, so `[src]="url()"` type-checks. Bind any other attribute with `[attr.name]`.
+- **At runtime**, Angular makes no directive for an element whose directive only declares its attributes (every element's but `input`'s and `textarea`'s): the renderer sets the attributes itself, which keeps a screen of many elements quick to build. So `viewChild(LynxView)` finds nothing. To reach an element, give it a template reference: `viewChild('card', { read: ElementRef })`.
 - **Events** aren't declared as outputs. Bind them by name, such as `(bindtap)`. Angular still types each one's `$event` (see [Element events](/api/angular-lynx/element-events)), and [Handling taps and events](/guide/elements/event-handling) shows how to bind them.
 
 ## API

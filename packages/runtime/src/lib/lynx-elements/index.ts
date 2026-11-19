@@ -29,6 +29,11 @@
  *   Angular intercepts these bindings and sets them on the directive instance.
  *   LynxElementBase.ngOnChanges forwards every input change to the native Lynx
  *   element via BaseLynxElement.setAttribute() → __SetAttribute().
+ * - Under the Lynx renderer, the directives that do no more than that match
+ *   no element (see declaration-only.ts): the template checker still reads
+ *   them, and the renderer sets their bindings itself, so Angular makes no
+ *   directive for each `<view>` and `<text>` of a screen. LynxInput,
+ *   LynxTextarea and the directives that add behavior still match.
  * - The properties are `declare`d: they give the inputs their types, for the
  *   template checker and the .d.ts, without a class field. Angular sets an
  *   input on the instance only when a template binds it. A field would define

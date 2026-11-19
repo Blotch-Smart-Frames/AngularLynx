@@ -24,7 +24,7 @@ The input is `$ARGUMENTS`, or whatever the user gave:
 
 - **Pasted text or a screenshot.** Evaluate it (step 2) and fix what's valid (step 3). There are no threads to reply to unless the user also names the PR.
 - **A PR number or link.** Fetch that PR's unresolved review threads, and CodeRabbit's comments in its reviews' bodies.
-- **A PR number and thread ids** (`PRRT_…`), as `fix-issue` passes for the replies its watch found. Fetch those threads whether or not they're resolved, as well as everything a PR number fetches. A reply leaves its thread resolved, so the unresolved threads alone miss it. In each, answer the comments after your last reply. In the query below, select `.isResolved == false or (.id | IN("PRRT_…", "PRRT_…"))`.
+- **A PR number with thread ids** (`PRRT_…`) **or the links of reviews and PR comments**, as `fix-issue` passes for what its watch found. Fetch everything a PR number fetches, and those threads whether or not they're resolved: a reply leaves its thread resolved, so the unresolved threads alone miss it. In the query below, select `.isResolved == false or (.id | IN("PRRT_…", "PRRT_…"))`. In each of those threads, answer the comments after your last reply. Answer a review or PR comment you're given, which has no thread, in the PR comment of step 4.
 - **"merged", or "recent PRs".** Fetch the unresolved review threads, and CodeRabbit's comments in its reviews' bodies, on recently merged PRs. By default, go back to where activity picks up after a gap. Say what cut-off you used, and mention any older unresolved threads you left out. Renovate and Dependabot PRs aren't reviewed (`.coderabbit.yaml` skips them), so leave them out.
 
 ```bash
@@ -165,7 +165,7 @@ while IFS= read -r line; do
 done < replies.jsonl
 ```
 
-A comment in a review's body has no thread to reply to or resolve. Answer those on each PR in one PR comment (`gh pr comment <n> --body-file <file>`), written the same way. Name each comment by its title, and link to the review's `html_url`.
+A comment in a review's body has no thread to reply to or resolve, and neither has a review or PR comment you were given (step 1). Answer those on each PR in one PR comment (`gh pr comment <n> --body-file <file>`), written the same way. Name each comment by its title, and link to the review's `html_url`.
 
 ## 5. Check what CodeRabbit says back
 
@@ -175,7 +175,7 @@ CodeRabbit answers replies in its threads (`chat.auto_reply`) and reviews each c
 gh pr checks <n> --json name,state --jq '.[] | select(.name | test("CodeRabbit"; "i"))'
 ```
 
-Then fetch the threads and the reviews' bodies again, and evaluate anything new the same way: a new thread on your commit, or an answer in a thread you resolved. Only answer a pushback once, and only if it brings a fact you hadn't weighed. Agreeing on the second round is fine when it does. Don't argue a point a third time; tell the user instead. Finish when none of those PRs has an unresolved thread, a thread you were given that still waits on an answer, or an unanswered comment in a review's body.
+Then fetch the threads and the reviews' bodies again, and evaluate anything new the same way: a new thread on your commit, or an answer in a thread you resolved. Only answer a pushback once, and only if it brings a fact you hadn't weighed. Agreeing on the second round is fine when it does. Don't argue a point a third time; tell the user instead. Finish when none of those PRs has an unresolved thread, a thread, review or PR comment you were given that still waits on an answer, or an unanswered comment in a review's body.
 
 ## 6. Report
 

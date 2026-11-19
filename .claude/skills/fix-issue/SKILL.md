@@ -159,39 +159,44 @@ told when it exits. It checks the PR once a minute and prints:
 
 ## 8. Answer the review
 
-Run the `evaluate-pr-comments` skill with the PR number and the worktree's path, so its commits go
-on this branch. It replies on every comment, commits the fixes it agrees with, resolves each
+First save what the PR has, so anything posted while the round runs shows up after it:
+
+```bash
+node .claude/skills/fix-issue/scripts/pr-activity.mts snapshot <pr> <scratchpad>/pr-<pr>-seen.json
+```
+
+Then run the `evaluate-pr-comments` skill with the PR number and the worktree's path, so its commits
+go on this branch. It replies on every comment, commits the fixes it agrees with, resolves each
 thread, and waits for CodeRabbit to review its own commits.
 
 ## 9. Keep listening
 
-When the first round (step 8) has finished and its replies are posted, save what the PR has, then
+After each round, take a snapshot again with the same command. It lists what came in since the
+last snapshot or `wait`: your own replies (the links the round posted), CodeRabbit's answers to
+them and its reviews of your commits, and anything else posted while the round ran. Answer what the
+round didn't, as below, then take another snapshot. Once a snapshot lists nothing left to answer,
 wait for anything new:
 
 ```bash
-node .claude/skills/fix-issue/scripts/pr-activity.mts snapshot <pr> <scratchpad>/pr-<pr>-seen.json
 node .claude/skills/fix-issue/scripts/pr-activity.mts wait <pr> <scratchpad>/pr-<pr>-seen.json
 ```
 
-Run `wait` in the background, as in step 7. It prints:
+Run it in the background, as in step 7. It saves what it saw to the file, and prints:
 
 - **One line for each new item**: its kind (`thread` for a new review thread, `reply` for a reply
   in one, `review` or `comment`), the thread's id for a thread or a reply (`PRRT_…`, marked
   `(resolved)` if it is), its author, its link and its first line. Read each one in full.
   - If any brings a new finding, pushes back on an answer, asks a question, or asks for a change,
-    run another round of `evaluate-pr-comments`. Give it the PR number and the ids of the threads
-    to answer, resolved ones included. A reply leaves its thread resolved, and by itself the
-    evaluator fetches only the unresolved ones.
+    run another round of `evaluate-pr-comments`. Give it the PR number, the ids of the threads to
+    answer (resolved ones included), and the link and text of each review or PR comment to answer.
+    By itself, the evaluator fetches only unresolved threads and CodeRabbit's review bodies. A
+    reply leaves its thread resolved, and a teammate's review or PR comment has no thread.
   - A request from the user or a teammate ("also handle X") is work to do, as in steps 4 and 5 if
     it's within the issue. Ask the user first if it widens the PR.
   - A reply that only accepts an answer, such as CodeRabbit's thanks or a note that it saved a
     learning, needs no answer and no round.
 
-  `wait` saves what it saw to the file, so after the round take a snapshot again. It lists what
-  came in since `wait` returned: your own replies (the links the round posted), CodeRabbit's
-  answers to them, and anything else posted while the round ran. Answer what the round didn't, as
-  above, and take another snapshot after that round. Once a snapshot lists nothing left to answer,
-  wait again.
+  Then take a snapshot, as after any round.
 - **`quiet`** after 30 minutes with nothing new. Wait again.
 - **`merged`** or **`closed`**. Stop and report. For a merged PR, offer to run `post-merge-cleanup`.
 
@@ -202,10 +207,10 @@ After each round, check CI with `gh pr checks <pr>`. Report a failing check with
 Fix it if this PR caused it, with a commit as for a review fix.
 
 **`listen <PR>`:** find the worktree that has the PR's branch (`git worktree list`), or make one as
-`evaluate-pr-comments` does. Answer anything unresolved with a round first, then take the snapshot
-and wait. A reply already sitting in a resolved thread won't show up after that: before the
-snapshot, read the last comment in each resolved thread, and hand the round any thread where it
-asks for something nobody has answered.
+`evaluate-pr-comments` does, and take the snapshot. A reply that's already in a resolved thread
+won't show up after that, so read each resolved thread's comments after your last reply in it. Run
+a round for the unresolved threads and for any resolved one with a request nobody has answered.
+Then carry on as after any round.
 
 ## 10. Report
 

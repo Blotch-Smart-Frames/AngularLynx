@@ -191,6 +191,64 @@ describe('PointerEventSource', () => {
     expect(source.hasPointerCapture(3)).toBe(false);
   });
 
+  // Angular's hover trigger stops listening from inside its mouseover
+  // listener, while the touch is still being dispatched.
+  it('stops following a touch event once it stops listening during it', () => {
+    const { source, events, record, touch } = setup();
+    const stop = source.add('mouseover', () => stop());
+    touch('touchstart', [finger(1, 0, 0), finger(2, 5, 5)]);
+    source.add('mouseover', record);
+    touch('touchstart', [finger(3, 0, 0)]);
+    expect(events.map((e) => [e.type, e.pointerId, e.isPrimary])).toEqual([
+      ['mouseover', 3, true],
+    ]);
+  });
+
+  it('stops following a move once it stops listening during it', () => {
+    const { source, events, record, touch } = setup();
+    const stop = source.add('pointermove', (event) => {
+      record(event);
+      stop();
+    });
+    touch('touchstart', [finger(1, 0, 0), finger(2, 5, 5)]);
+    touch('touchmove', [finger(1, 1, 1), finger(2, 6, 6)]);
+    expect(events.map((e) => [e.type, e.pointerId])).toEqual([
+      ['pointermove', 1],
+    ]);
+  });
+
+  it('stops following a lift once it stops listening during it', () => {
+    const { source, events, record, touch } = setup();
+    const stop = source.add('pointerup', (event) => {
+      record(event);
+      stop();
+      // A listener added now hears the next touch, not this one's end.
+      source.add('pointerout', record);
+    });
+    touch('touchstart', [finger(1, 0, 0), finger(2, 5, 5)]);
+    touch('touchend', [finger(1, 1, 1), finger(2, 6, 6)]);
+    expect(events.map((e) => [e.type, e.pointerId])).toEqual([
+      ['pointerup', 1],
+    ]);
+  });
+
+  it('gives a listener added during a touch none of that touch’s events', () => {
+    const { source, events, record, touch } = setup();
+    const stop = source.add('pointerover', () => {
+      stop();
+      source.add('pointerdown', record);
+      source.add('pointerup', record);
+    });
+    touch('touchstart', [finger(1, 0, 0)]);
+    touch('touchend', [finger(1, 0, 0)]);
+    expect(events).toEqual([]);
+
+    // The next touch is followed from its start.
+    touch('touchstart', [finger(1, 0, 0)]);
+    touch('touchend', [finger(1, 0, 0)]);
+    expect(events.map((e) => e.type)).toEqual(['pointerdown', 'pointerup']);
+  });
+
   it('makes mouse events from the first finger only, as a browser does', () => {
     const { source, events, record, touch } = setup();
     source.add('mouseover', record);

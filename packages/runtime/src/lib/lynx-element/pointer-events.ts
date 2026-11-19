@@ -233,6 +233,12 @@ export class PointerEventSource {
   readonly #down = new Map<number, { offsetX: number; offsetY: number }>();
   #primary: number | null = null;
   #unlisten: (() => void)[] = [];
+  /**
+   * The listening session: one more each time the source starts or stops
+   * listening. Each touch handler belongs to the session that added it (see
+   * #live).
+   */
+  #session = 0;
   /** Where the last pointer was on the element, for the click that follows. */
   lastOffset: { offsetX: number; offsetY: number } | null = null;
 
@@ -274,17 +280,39 @@ export class PointerEventSource {
 
   #listen(): void {
     if (this.#unlisten.length > 0) return;
+    const session = ++this.#session;
     this.#unlisten = [
-      this.#host.listen('bindtouchstart', (event) => this.#onStart(event)),
-      this.#host.listen('bindtouchmove', (event) => this.#onMove(event)),
-      this.#host.listen('bindtouchend', (event) => this.#onEnd(event, false)),
-      this.#host.listen('bindtouchcancel', (event) => this.#onEnd(event, true)),
+      this.#host.listen('bindtouchstart', (event) =>
+        this.#onStart(event, session),
+      ),
+      this.#host.listen('bindtouchmove', (event) =>
+        this.#onMove(event, session),
+      ),
+      this.#host.listen('bindtouchend', (event) =>
+        this.#onEnd(event, false, session),
+      ),
+      this.#host.listen('bindtouchcancel', (event) =>
+        this.#onEnd(event, true, session),
+      ),
     ];
+  }
+
+  /**
+   * Whether `session` is still listening. A listener can stop the source
+   * while a touch event is being dispatched to it: Angular's `@defer (on
+   * hover)` does, from its mouseover listener. The rest of that event then
+   * goes no further. It would give the stopped source fingers again, which
+   * it can't hear lift, or give a listener added meanwhile the end of a
+   * touch whose start it never got.
+   */
+  #live(session: number): boolean {
+    return this.#session === session;
   }
 
   #stopListening(): void {
     for (const unlisten of this.#unlisten) unlisten();
     this.#unlisten = [];
+    this.#session++;
     // Without its touch listeners the source can't hear a finger lift, and
     // the last listener can go while one is down: Angular's `@defer (on
     // hover)` stops listening on the touch that fires it. Kept, that finger
@@ -320,26 +348,31 @@ export class PointerEventSource {
     };
   }
 
-  #onStart(event: LynxTouchEvent): void {
+  #onStart(event: LynxTouchEvent, session: number): void {
     for (const touch of event.changedTouches ?? []) {
+      if (!this.#live(session)) return;
       const id = pointerIdOf(touch);
       const offset = this.#offset(event, touch);
       this.#down.set(id, offset);
       this.#primary ??= id;
       this.lastOffset = offset;
-      this.#fire('pointerover', id, touch, event, offset);
-      this.#fire('pointerenter', id, touch, event, offset);
+      const fire = (type: string) => {
+        if (this.#live(session)) this.#fire(type, id, touch, event, offset);
+      };
+      fire('pointerover');
+      fire('pointerenter');
       // A browser makes mouse events from the primary pointer only.
       if (this.#primary === id) {
-        this.#fire('mouseover', id, touch, event, offset);
-        this.#fire('mouseenter', id, touch, event, offset);
+        fire('mouseover');
+        fire('mouseenter');
       }
-      this.#fire('pointerdown', id, touch, event, offset);
+      fire('pointerdown');
     }
   }
 
-  #onMove(event: LynxTouchEvent): void {
+  #onMove(event: LynxTouchEvent, session: number): void {
     for (const touch of event.changedTouches ?? []) {
+      if (!this.#live(session)) return;
       const id = pointerIdOf(touch);
       if (!this.#down.has(id)) continue;
       const offset = this.#offset(event, touch);
@@ -349,30 +382,27 @@ export class PointerEventSource {
     }
   }
 
-  #onEnd(event: LynxTouchEvent, canceled: boolean): void {
+  #onEnd(event: LynxTouchEvent, canceled: boolean, session: number): void {
     for (const touch of event.changedTouches ?? []) {
+      if (!this.#live(session)) return;
       const id = pointerIdOf(touch);
       if (!this.#down.has(id)) continue;
       const offset = canceled
         ? this.#down.get(id)!
         : this.#offset(event, touch);
       this.lastOffset = offset;
-      this.#fire(
-        canceled ? 'pointercancel' : 'pointerup',
-        id,
-        touch,
-        event,
-        offset,
-      );
-      // A browser releases a touch's capture when it lifts.
-      if (this.#captured.delete(id)) {
-        this.#fire('lostpointercapture', id, touch, event, offset);
-      }
-      this.#fire('pointerout', id, touch, event, offset);
-      this.#fire('pointerleave', id, touch, event, offset);
+      const fire = (type: string) => {
+        if (this.#live(session)) this.#fire(type, id, touch, event, offset);
+      };
+      fire(canceled ? 'pointercancel' : 'pointerup');
+      // A browser releases a touch's capture when it lifts. Stopping cleared
+      // the captures, so this finds none once the session has ended.
+      if (this.#captured.delete(id)) fire('lostpointercapture');
+      fire('pointerout');
+      fire('pointerleave');
       if (this.#primary === id) {
-        this.#fire('mouseout', id, touch, event, offset);
-        this.#fire('mouseleave', id, touch, event, offset);
+        fire('mouseout');
+        fire('mouseleave');
       }
       this.#down.delete(id);
       if (this.#primary === id) this.#primary = null;

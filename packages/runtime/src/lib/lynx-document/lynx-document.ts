@@ -26,6 +26,8 @@ import {
 } from './element-creators';
 import type { ElementRef } from '../types/lynx';
 import type { LynxDocumentBase } from './types';
+import type { StaticBlock } from '../static-blocks/static-block';
+import { staticBlockOwner } from '../static-blocks/owner';
 
 /**
  * The page a previous app rendered into, emptied, when a hot update
@@ -92,7 +94,12 @@ export class LynxDocument implements LynxDocumentBase {
     this.#pageId = __GetElementUniqueID(pageElement);
     setPageElementRef(pageElement);
     // The document and window hear the screen's events from the page.
-    globalEvents().attach(this.page, (id) => LynxElement.byUniqueId(id));
+    globalEvents().attach(
+      this.page,
+      (id) =>
+        // A static block's element has no wrapper: its touches are its owner's.
+        LynxElement.byUniqueId(id) ?? staticBlockOwner(id),
+    );
     // Every env(safe-area-inset-*) reads the insets the shell sends from the
     // page's variables.
     followSafeAreaInsets(this.page);
@@ -187,5 +194,8 @@ export class LynxDocument implements LynxDocumentBase {
   }
   appendChild(newChild: LynxElement): void {
     this.page.appendChild(newChild);
+  }
+  buildStaticBlock(root: LynxElement, block: StaticBlock, scope: string): void {
+    root.setStaticBlock(block, scope);
   }
 }

@@ -15,6 +15,8 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 At runtime, Angular makes no directive for an element whose directive only declares its attributes (every element's but `<input>`'s and `<textarea>`'s): the renderer sets the attributes itself, so a screen of many elements builds faster. So `viewChild(LynxView)`, `inject(LynxText)` and a test's `By.directive(LynxImage)` find nothing. Reach an element through a template reference instead: `viewChild('card', { read: ElementRef })`. A directive of your own that declares one of the element's attributes as an input (`accessibility-label`) takes that binding, and the element doesn't get it, as with a directive's input on the web; bind `[attr.accessibility-label]` in the directive's `host` if the element needs it too.
 
+`ng build` and `ng serve` also build each static part of a template with Lynx's element calls directly, as ReactLynx's snapshots do: under an element, the `<view>`, `<text>` and `<image>` elements and plain text that have no binding, listener, template reference or directive, and nothing dynamic inside them, become plain native elements with no node of Angular's. Nothing in Angular can name them, so nothing changes for a component; they're there for `querySelector()`. `ng test` builds templates as Angular does, so a spec sees every element as before.
+
 ## Available Elements
 
 | Element         | Purpose                                      | Key Attributes                                                                           |

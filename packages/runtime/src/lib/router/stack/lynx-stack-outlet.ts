@@ -36,6 +36,7 @@ import { LynxAccessibilitySettings } from '../../accessibility/accessibility-set
 import { afterFrame } from '../../animation/after-frame';
 import { isAndroid } from '../../lynx-document/android-blur-capture';
 import { LynxElement } from '../../lynx-element/lynx-element';
+import { staticBlockOwner } from '../../static-blocks/owner';
 import { pointerIdOf } from '../../lynx-element/pointer-events';
 import {
   type HistoryEntry,
@@ -1701,7 +1702,11 @@ const elementOf = (target: unknown): TargetElement | null => {
   if (!target || typeof target !== 'object') return null;
   const uid = (target as { uid?: unknown }).uid;
   if (typeof uid === 'number') {
-    return (LynxElement.byUniqueId(uid) as TargetElement | undefined) ?? null;
+    return (
+      ((LynxElement.byUniqueId(uid) ?? staticBlockOwner(uid)) as
+        | TargetElement
+        | undefined) ?? null
+    );
   }
   return target as TargetElement;
 };

@@ -7,6 +7,11 @@ import { ANONYMOUS_TEXT_CLASS } from '../lynx-element/text-flow';
 import { followColorScheme } from '../lynx-document/page-color-scheme';
 import { followSafeAreaInsets } from '../lynx-document/page-safe-area';
 import type { ElementRef } from '../types/lynx';
+import { staticBlockOwner } from '../static-blocks/owner';
+import {
+  type StaticBlock,
+  staticBlockSize,
+} from '../static-blocks/static-block';
 
 /**
  * Hydration-aware document that reconnects Angular's element tree to
@@ -17,6 +22,8 @@ import type { ElementRef } from '../types/lynx';
 export class LynxHydrateDocument implements LynxDocumentBase {
   readonly #queue: ElementRef[];
   #cursor = 0;
+  /** The element the snapshot gave out last (see buildStaticBlock). */
+  #last: LynxElement | null = null;
   #fallback: LynxDocument | null = null;
   #page: LynxElement | null = null;
   readonly #pageElementRef: ElementRef;
@@ -69,7 +76,8 @@ export class LynxHydrateDocument implements LynxDocumentBase {
       new LynxElement(ref).markAnonymousText();
       ref = this.#queue[this.#cursor++]!;
     }
-    return new LynxElement(ref);
+    this.#last = new LynxElement(ref);
+    return this.#last;
   }
 
   createRootElement(): LynxElement {
@@ -84,7 +92,12 @@ export class LynxHydrateDocument implements LynxDocumentBase {
     page.isRootPageElement = true;
     this.#page = page;
     // The document and window hear the screen's events from the page.
-    globalEvents().attach(page, (id) => LynxElement.byUniqueId(id));
+    globalEvents().attach(
+      page,
+      (id) =>
+        // A static block's element has no wrapper: its touches are its owner's.
+        LynxElement.byUniqueId(id) ?? staticBlockOwner(id),
+    );
     // As LynxDocument does: env(safe-area-inset-*) reads the shell's insets.
     followSafeAreaInsets(page);
     // And `page.dark` follows the device's appearance.
@@ -150,5 +163,18 @@ export class LynxHydrateDocument implements LynxDocumentBase {
     // tests. Ignore the synthetic branch here.
     /* v8 ignore next */
     this.#page?.appendChild(newChild);
+  }
+
+  buildStaticBlock(root: LynxElement, block: StaticBlock, scope: string): void {
+    // The server render built the block's elements, which come right after
+    // the root in the snapshot: Angular never asks for them, so they're
+    // taken here. Angular sets the block's attribute as it creates the root,
+    // before it creates anything else.
+    if (root === this.#last && this.#isHydrating()) {
+      this.#cursor += staticBlockSize(block);
+      root.setStaticBlock(block, scope, false);
+      return;
+    }
+    root.setStaticBlock(block, scope);
   }
 }

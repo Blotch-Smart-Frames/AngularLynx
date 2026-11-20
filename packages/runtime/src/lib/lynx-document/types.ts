@@ -1,4 +1,5 @@
 import type { BaseLynxElement } from '../lynx-element';
+import type { StaticBlock } from '../static-blocks/static-block';
 
 /**
  * Contract implemented by LynxDocument (real PAPI calls) and
@@ -18,4 +19,15 @@ export type LynxDocumentBase = {
   // support the tree traversal APIs Angular needs.
   createComment(): BaseLynxElement;
   appendChild(newChild: BaseLynxElement): void;
+  /**
+   * Gives a static block's root its elements (see
+   * static-blocks/static-block.ts). A document without it (the testing
+   * doubles) builds none: only the build plugin makes static blocks, and
+   * tests aren't built with it.
+   */
+  buildStaticBlock?(
+    root: BaseLynxElement,
+    block: StaticBlock,
+    scope: string,
+  ): void;
 };

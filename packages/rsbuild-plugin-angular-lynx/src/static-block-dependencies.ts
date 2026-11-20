@@ -1,4 +1,5 @@
 // cspell:words ɵɵDirectiveDeclaration ɵɵComponentDeclaration ɵɵPipeDeclaration
+import path from 'node:path';
 import * as ts from 'typescript';
 import {
   type Dependency,
@@ -134,10 +135,14 @@ const declarationsOf = (sourceFile: ts.SourceFile): Map<string, Dependency> => {
  *
  * @param compiled - The app's compiled module code by file path, or
  *   undefined for a file Angular didn't compile.
+ * @param fileReplacements - angular.json's `fileReplacements`, `replace` path
+ *   to `with` path: the bundle has the `with` file wherever the `replace`
+ *   file is imported, so its directives are the ones that match.
  */
 export const createDependencyResolver = (
   compiled: (file: string) => string | undefined,
   compilerOptions: ts.CompilerOptions,
+  fileReplacements: Readonly<Record<string, string>> = {},
 ): ((containingFile: string) => ResolveDependency) => {
   const files = new Map<string, ts.SourceFile | null>();
   const sourceOf = (file: string): ts.SourceFile | null => {
@@ -164,9 +169,12 @@ export const createDependencyResolver = (
     }
     return found;
   };
-  const resolveModule = (specifier: string, from: string): string | null =>
-    ts.resolveModuleName(specifier, from, compilerOptions, ts.sys)
-      .resolvedModule?.resolvedFileName ?? null;
+  const resolveModule = (specifier: string, from: string): string | null => {
+    const file = ts.resolveModuleName(specifier, from, compilerOptions, ts.sys)
+      .resolvedModule?.resolvedFileName;
+    if (!file) return null;
+    return fileReplacements[path.normalize(file)] ?? file;
+  };
 
   const find = (file: string, name: string, depth: number): Dependency => {
     if (depth > 8) return null;

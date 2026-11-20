@@ -335,12 +335,16 @@ export const applyAngularRules = async (
       );
     }
     const { compilerOptions } = result;
-    resolveDependencies = createDependencyResolver((file) => {
-      const content = typeScriptFileCache.get(path.normalize(file));
-      return content === undefined || typeof content === 'string'
-        ? content
-        : Buffer.from(content).toString();
-    }, compilerOptions as ts.CompilerOptions);
+    resolveDependencies = createDependencyResolver(
+      (file) => {
+        const content = typeScriptFileCache.get(path.normalize(file));
+        return content === undefined || typeof content === 'string'
+          ? content
+          : Buffer.from(content).toString();
+      },
+      compilerOptions as ts.CompilerOptions,
+      buildOptions.fileReplacements,
+    );
     componentResourceDependencies = new Map(
       [...(result.componentResourcesDependencies ?? [])].map(
         ([file, dependencies]) => [

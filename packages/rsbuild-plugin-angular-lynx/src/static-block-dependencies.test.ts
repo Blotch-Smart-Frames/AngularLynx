@@ -101,10 +101,14 @@ describe('createDependencyResolver', () => {
       'export class UiButton { static ɵcmp = i0.ɵɵdefineComponent({ type: UiButton, selectors: [["button", "uiButton", ""]] }); }',
     [path.join(root, 'src/index.ts')]: "export * from './button';",
   };
-  const resolve = createDependencyResolver((file) => compiled[file], {
+  const options = {
     moduleResolution: ts.ModuleResolutionKind.Bundler,
     module: ts.ModuleKind.ESNext,
-  })(app);
+  };
+  const resolve = createDependencyResolver(
+    (file) => compiled[file],
+    options,
+  )(app);
 
   it('reads a library’s declarations through its re-exports', () => {
     expect(resolve('lib', 'Link')).toEqual([['', 'routerLink', '']]);
@@ -128,6 +132,22 @@ describe('createDependencyResolver', () => {
 
   it('reads a directive of the app’s own that selects a Lynx tag', () => {
     expect(resolve('lib', 'MyView')).toEqual([['view']]);
+  });
+
+  it('reads the file angular.json replaces an import’s with', () => {
+    write('src/button.prod.ts', '');
+    compiled[path.join(root, 'src/button.prod.ts')] =
+      'export class UiButton { static ɵcmp = i0.ɵɵdefineComponent({ type: UiButton, selectors: [["", "uiProdButton", ""]] }); }';
+    const replaced = createDependencyResolver(
+      (file) => compiled[file],
+      options,
+      {
+        [button]: path.join(root, 'src/button.prod.ts'),
+      },
+    )(app);
+    expect(replaced('./button', 'UiButton')).toEqual([
+      ['', 'uiProdButton', ''],
+    ]);
   });
 
   it('knows nothing of what it can’t find', () => {

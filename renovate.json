@@ -31,6 +31,18 @@
       "enabled": false
     },
     {
+      "description": "package.json's packageManager names the npm this repository's lockfile is written with. A major changes how npm writes package-lock.json, so moving to one is a change of its own rather than a version bump (#599). Majors move by hand; patches still come through.",
+      "matchPackageNames": ["npm"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
+      "description": "The Lynx iOS frameworks workflow runs CocoaPods on this Ruby, and it only runs when dispatched, so a Ruby major's checks on a pull request pass whether or not CocoaPods works on it (#596). Majors move by hand, the next time the frameworks are rebuilt.",
+      "matchDepNames": ["ruby"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
       "description": "The examples and packages/ui use Tailwind 3 on purpose: @lynx-js/tailwind-preset supports only Tailwind 3 (peer ^3.4.0), and with Tailwind 4 the build skips their tailwind.config.ts and they render unstyled though the build passes. examples/tailwind-4 covers Tailwind 4. Majors move by hand.",
       "matchPackageNames": ["tailwindcss"],
       "matchUpdateTypes": ["major"],
@@ -76,8 +88,12 @@
       "enabled": false
     },
     {
-      "description": "The Android template gets Lynx and PrimJS from Maven, but iOS gets them from our own XCFrameworks zip (packages/native/src/ios/frameworks.ts), which the Lynx iOS frameworks workflow builds and Renovate can't. An update on Android alone would put the two platforms on different Lynx versions, and 4.1.2 added list item animations (#590). So Lynx updates wait on the Dependency Dashboard: tick one to get the Android half, build the iOS zip for the same version as packages/native/README.md describes, and move both in that PR.",
-      "matchPackageNames": ["org.lynxsdk.lynx:*"],
+      "description": "The Android template gets Lynx and PrimJS from Maven, but iOS gets them from our own XCFrameworks zip (packages/native/src/ios/frameworks.ts), which the Lynx iOS frameworks workflow builds and Renovate can't. An update on Android alone would put the two platforms on different Lynx versions, and 4.1.2 added list item animations (#590). So Lynx updates wait on the Dependency Dashboard: tick one to get the Android half, build the iOS zip for the same version as packages/native/README.md describes, and move both in that PR. Fresco and OkHttp wait with them: Lynx's image and fetch services are compiled against Fresco 2.3 and OkHttp 4, so those move when Lynx's services do.",
+      "matchPackageNames": [
+        "org.lynxsdk.lynx:*",
+        "com.facebook.fresco:*",
+        "com.squareup.okhttp3:*"
+      ],
       "dependencyDashboardApproval": true
     }
   ]

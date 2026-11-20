@@ -1,5 +1,5 @@
 // AGP 9 compiles Kotlin itself (built-in Kotlin), so there is no separate
 // org.jetbrains.kotlin.android plugin to apply.
 plugins {
-    id("com.android.application") version "9.5.1" apply false
+    id("com.android.application") version "9.5.2" apply false
 }

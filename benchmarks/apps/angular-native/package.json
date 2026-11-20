@@ -33,7 +33,7 @@
   },
   "devDependencies": {
     "@angular/compiler-cli": "22.3.0",
-    "@babel/core": "7.29.13",
+    "@babel/core": "8.1.2",
     "@ng-native/testing": "0.23.0",
     "@types/react": "19.3.0",
     "typescript": "6.0.3",

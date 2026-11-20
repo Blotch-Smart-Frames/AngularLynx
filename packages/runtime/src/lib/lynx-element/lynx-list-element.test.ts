@@ -210,6 +210,21 @@ describe('LynxListElement', () => {
       expect(passes(list)).toBe(true);
     });
 
+    it('passes them through an item that moved in from a view, once text goes in', () => {
+      const view = makeChild();
+      const item = makeChild();
+      view.appendChild(item);
+      const list = makeList();
+      list.appendChild(item);
+      const p = makeChild();
+      p.tagName = 'text';
+      p.markWebText(false);
+
+      item.appendChild(p);
+
+      expect(passes(list)).toBe(true);
+    });
+
     it('passes none through an item with no HTML text inside', () => {
       const list = makeList();
 

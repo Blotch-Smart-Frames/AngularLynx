@@ -1795,8 +1795,11 @@ export class LynxElement implements BaseLynxElement {
       (this.#scopeClasses ??= []).push(INHERITANCE_CLASS);
       this.#addClassName(INHERITANCE_CLASS);
     }
-    // A list's item has the list as its parent (see LynxListElement).
-    const parent = this.#jsParent ?? this._virtualParent;
+    // A list's item has the list as its parent (see LynxListElement), as
+    // parentNode() says: an item that moved into a list from another
+    // element still has that element as its #jsParent, which the list
+    // doesn't set.
+    const parent = this._virtualParent ?? this.#jsParent;
     if (parent) parent.#passTextStyles();
   }
 

@@ -8,6 +8,11 @@ import type { LynxDocumentBase } from '../lynx-document';
 import { tagClassFor } from '../lynx-document/element-tags';
 import type { BaseLynxElement } from '../lynx-element';
 import { templateAttributeValue } from '../lynx-elements/base';
+import {
+  STATIC_BLOCK_ATTRIBUTE,
+  type StaticBlock,
+  isStaticBlock,
+} from '../static-blocks/static-block';
 
 /**
  * Collapse every run of whitespace to a single space — WITHOUT trimming the ends.
@@ -92,6 +97,15 @@ export class LynxRenderer implements Renderer2 {
     this.#document = document;
   }
 
+  /**
+   * The class the elements of this renderer's static blocks get, as the
+   * elements it creates do: none, unless the component's styles are scoped
+   * (see EmulatedLynxRenderer).
+   */
+  get staticBlockScope(): string {
+    return '';
+  }
+
   get data(): { [key: string]: any } {
     return this.#data;
   }
@@ -170,9 +184,15 @@ export class LynxRenderer implements Renderer2 {
   setAttribute(
     el: BaseLynxElement,
     name: string,
-    value: string,
+    value: string | StaticBlock,
     _namespace?: string | null,
   ): void {
+    // The build plugin's static blocks: the root's elements come from the
+    // block, which Angular hands over as a static attribute of the root.
+    if (name === STATIC_BLOCK_ATTRIBUTE && isStaticBlock(value)) {
+      this.#document.buildStaticBlock?.(el, value, this.staticBlockScope);
+      return;
+    }
     // A static attribute reaches here as a string: `flatten="false"` is
     // read as false, as the element directive's input reads it.
     el.setAttribute(name, templateAttributeValue(name, value));

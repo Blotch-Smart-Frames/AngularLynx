@@ -68,7 +68,7 @@ export class Tilt {
 - **`document:` and `window:`** hear a touch anywhere on screen: `pointerdown`, `pointermove`, `pointerup`, `pointercancel`, `pointerover`, `pointerout`, `touchstart`, `touchmove`, `touchend`, `touchcancel` and `click`. **`window:resize`** fires when the LynxView changes size, as when the device rotates. **`body:`** is the page element: the events that bubble up to it.
 - **They run after the touched element's listeners and the body's**, as in a browser; `{ capture: true }` runs before them.
 - **They hear a touch a `catch` handler stopped**, unlike the web's `stopPropagation()`, on the next timer, after every listener of that touch.
-- **A pointer event's `target`** is the element touched (its `ElementRef`'s `nativeElement`), with `offsetX`/`offsetY` relative to it. Touch events and `click` are Lynx's own event objects.
+- **A pointer event's `target`** is the element touched (its `ElementRef`'s `nativeElement`), with `offsetX`/`offsetY` relative to it. On a device, a touch on an element of a template's static part (see lynx-elements.md) targets the nearest element Angular made, its container. Touch events and `click` are Lynx's own event objects.
 - **`window.innerWidth` / `innerHeight`** are the LynxView's size in CSS pixels; until its first layout, the screen's.
 - **iOS and Android send no mouse events:** `document:mousemove` never runs there, so listen for `pointermove`.
 - **In the web preview** they're the browser's own events inside the `<lynx-view>`, mouse included, and the size is the `<lynx-view>`'s.

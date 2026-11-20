@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import type * as ts from 'typescript';
 import type { RsbuildPluginAPI } from '@lynx-js/rspeedy';
 import type { Compiler } from '@rspack/core';
 import {
@@ -39,6 +40,8 @@ import {
   transformCrossThread,
 } from './cross-thread-transform.js';
 import { transformWorklets } from './worklet-transform.js';
+import { foldStaticBlocks } from './static-blocks.js';
+import { createDependencyResolver } from './static-block-dependencies.js';
 import { getAngularCliContext } from './angular-cli-context.js';
 import {
   applyAngularConfig,
@@ -216,6 +219,13 @@ export const applyAngularRules = async (
   // Lynx diagnostics (HTML elements, unsupported CSS, ...) wait here for
   // rspack's module graph, so only files that end up in the bundle report.
   const lynxDiagnostics = createLynxDiagnosticsReporter();
+  /**
+   * What the directives, components and pipes each template uses are, for
+   * the static blocks (static-blocks.ts), from the latest compile's output.
+   */
+  let resolveDependencies: ReturnType<typeof createDependencyResolver> =
+    () => () =>
+      null;
 
   const transformStylesheet = createTransformStylesheet({
     basePath,
@@ -324,6 +334,17 @@ export const applyAngularRules = async (
           }`,
       );
     }
+    const { compilerOptions } = result;
+    resolveDependencies = createDependencyResolver(
+      (file) => {
+        const content = typeScriptFileCache.get(path.normalize(file));
+        return content === undefined || typeof content === 'string'
+          ? content
+          : Buffer.from(content).toString();
+      },
+      compilerOptions as ts.CompilerOptions,
+      buildOptions.fileReplacements,
+    );
     componentResourceDependencies = new Map(
       [...(result.componentResourcesDependencies ?? [])].map(
         ([file, dependencies]) => [
@@ -646,9 +667,18 @@ export const applyAngularRules = async (
     ) ?? []) {
       context.addDependency(dependency);
     }
+    const compiled =
+      typeof content === 'string' ? content : Buffer.from(content).toString();
     const code = buildTransformedCode({
-      code:
-        typeof content === 'string' ? content : Buffer.from(content).toString(),
+      // The main thread builds each template's static blocks with Lynx's
+      // element calls (static-blocks.ts). The background thread never renders.
+      code: background
+        ? compiled
+        : foldStaticBlocks(
+            compiled,
+            context.resourcePath,
+            resolveDependencies(context.resourcePath),
+          ),
       resourcePath: context.resourcePath,
       stylesheets: moduleStylesheets.get(context.resourcePath),
       root: api.context.rootPath,

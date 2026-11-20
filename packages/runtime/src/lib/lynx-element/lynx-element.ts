@@ -68,6 +68,10 @@ import { addNativeEvent } from './event-registration';
 import { dropsTap, WebLongPress } from './web-long-press';
 import { webVideoDetail } from './web-video';
 import {
+  type StaticBlock,
+  buildStaticBlock,
+} from '../static-blocks/static-block';
+import {
   type BaseLynxElement,
   DOM_EVENT_ALIASES,
   EVENT_PREFIXES,
@@ -549,6 +553,12 @@ export class LynxElement implements BaseLynxElement {
   // live as long as its screen, as work for PrimJS's collector. #children is
   // the exception, made with the element: nearly every path walks it.
   #attrs: Map<string, unknown> | null = null;
+  /**
+   * The static block built under this element, and its scope class, which
+   * recreation builds again: its elements are native only (see
+   * static-blocks/static-block.ts).
+   */
+  #staticBlock: { block: StaticBlock; scope: string } | null = null;
   #id: string | null = null;
   #dataset: Record<string, unknown> | null = null;
   /** Full space-separated class string, mirroring __SetClasses semantics. */
@@ -1104,6 +1114,19 @@ export class LynxElement implements BaseLynxElement {
     __InvokeUIMethod(element, 'setValue', { value }, () => {});
     // Both reach native with the element's next flush (see invoke()).
     scheduleSettleFlush();
+  }
+
+  /**
+   * Builds a static block's elements under this element (see
+   * static-blocks/static-block.ts), or, when `build` is false, takes the ones
+   * a server render already put there (LynxHydrateDocument). Kept so a
+   * recreated element gets them again (see #recreateSubtree).
+   */
+  setStaticBlock(block: StaticBlock, scope: string, build = true): void {
+    this.#staticBlock = { block, scope };
+    // The root's own creation asked for the flush that sends them (see
+    // LynxDocument.createElement).
+    if (build) buildStaticBlock(this.element, block, scope);
   }
 
   /**
@@ -2818,6 +2841,11 @@ export class LynxElement implements BaseLynxElement {
     for (const child of this.#children) {
       child.#recreateSubtree();
       __AppendElement(fresh, child.element);
+    }
+    // A static block's elements went with the old element: they have no
+    // wrappers to rebuild them, so the block builds them again.
+    if (this.#staticBlock) {
+      buildStaticBlock(fresh, this.#staticBlock.block, this.#staticBlock.scope);
     }
     // Its loose text changed while it was out (see commitPendingFlow).
     if (this.#regroupWhenRecreated) {

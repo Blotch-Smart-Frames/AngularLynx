@@ -35,6 +35,10 @@ export class EmulatedLynxRenderer extends LynxRenderer {
     element.addScopeClass(this.#hostClass);
   }
 
+  override get staticBlockScope(): string {
+    return this.#contentClass;
+  }
+
   override createElement(
     name: string,
     namespace?: string | null,

@@ -222,12 +222,12 @@ The web preview (the **Preview** link `ng serve` prints, `/__web_preview`) can't
 ```json
 {
   "dependencies": {
-    "@angular/core": "^22.2.0",
-    "@angular/router": "^22.2.0",
-    "@blotch/angular-lynx": "^22.2.0"
+    "@angular/core": "^22.3.0",
+    "@angular/router": "^22.3.0",
+    "@blotch/angular-lynx": "^22.3.0"
   },
   "devDependencies": {
-    "@blotch/angular-lynx-build": "^22.2.0"
+    "@blotch/angular-lynx-build": "^22.3.0"
   }
 }
 ```

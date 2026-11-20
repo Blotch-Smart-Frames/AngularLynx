@@ -171,7 +171,7 @@ export const startLocalRegistry = async (
   const url = `http://127.0.0.1:${port}/`;
   const { child, output } = start(
     // Verdaccio 7 refuses to start on Node 22, which CI's Node 22 job runs
-    // the harness on, so that job names a Node 24 for it (see e2e.yml).
+    // the harness on, so that job names a newer Node for it (see e2e.yml).
     process.env['E2E_VERDACCIO_NODE'] || process.execPath,
     [verdaccioBin(), '--config', config, '--listen', `127.0.0.1:${port}`],
     {

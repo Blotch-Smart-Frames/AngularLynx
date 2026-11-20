@@ -20,7 +20,7 @@ jobs:
       dry-run: ${{ steps.version.outputs.dry-run }}
     steps:
       - uses: actions/checkout@v7
-      # Node 24 runs check-version.ts directly (type stripping).
+      # Node 26 runs check-version.ts directly (type stripping).
       - uses: actions/setup-node@v7
         with:
           node-version: 26

@@ -149,9 +149,10 @@ const inNonSelectorAtRule = (container: Container): boolean => {
  * It runs at `OnceExit`, after Tailwind 4's lowering, which converts the
  * values Lynx can't read (`oklch()` colors, nesting), so the variables get
  * values Lynx can read. A rule that sets the variable itself keeps its own,
- * and it moves to the copies' rule: left where it was, it would lose to
- * another rule's copy, which the class makes more specific, where it used
- * to win by coming later.
+ * and the copies' rule sets it too: only there does it win over an earlier
+ * rule's copy, which the class makes more specific than the rule itself, as
+ * it did by coming later. It stays in the rule for a declaration there that
+ * reads it, on an element without the class.
  */
 export const textInheritanceForLynx: PluginCreator<void> = () => ({
   postcssPlugin: 'angular-lynx-text-inheritance',
@@ -189,10 +190,9 @@ export const textInheritanceForLynx: PluginCreator<void> = () => ({
       if (!selector) return;
       const copiesRule = rule.clone({ selector, nodes: [] });
       copiesRule.append(copies);
-      copiesRule.append(explicit.map((declaration) => declaration.remove()));
+      copiesRule.append(explicit.map((declaration) => declaration.clone()));
       narrowed.add(copiesRule);
       rule.after(copiesRule);
-      if (!rule.nodes.length) rule.remove();
     });
   },
 });

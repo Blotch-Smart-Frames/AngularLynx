@@ -62,6 +62,11 @@ class OverlaysLoader {
  * A row with a closed menu: an `<overlay>` styled `position: fixed` for the
  * web, as `ui-menu`'s and the dialogs' are, which Lynx draws from the page
  * rather than from the row.
+ *
+ * Exported, though only this file uses it: Angular 22.2.0 to 22.2.2 can't
+ * type-check a template that binds the inputs of a component its file
+ * doesn't export (NG3004, "Unable to import symbol", fixed in 22.2.3). The
+ * full E2E matrix builds this fixture on the lowest Angular the peers allow.
  */
 @Component({
   selector: 'app-overlays-row',
@@ -86,7 +91,7 @@ class OverlaysLoader {
     </view>
   `,
 })
-class OverlaysRow {
+export class OverlaysRow {
   readonly name = input.required<string>();
   readonly menu = input.required<boolean>();
 }

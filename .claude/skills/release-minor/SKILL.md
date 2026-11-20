@@ -190,11 +190,10 @@ git grep -nE "\^X\.(Y-1)\.|X\.(Y-1)\.0" -- ':!**/package-lock.json' ':!**/packag
 
 Change the lines that state the current minimum or give ranges to copy. Leave history alone, such
 as "since Angular 22.2 the router…", "how 22.2.1 was published…", or "`@boundary` needs Angular
-22.2 or newer". So far, the lines that needed changing have been:
+22.2 or newer". The full E2E matrix's leg for the lowest Angular the peers allow
+(`--angular lowest` in `.github/workflows/e2e.yml`) reads the peers itself, so it moves to X.Y.0
+with them. So far, the lines that needed changing have been:
 
-- the full E2E matrix's leg for the lowest Angular the peers allow, in
-  `.github/workflows/e2e.yml` (`"Angular X.(Y-1).0"`, `--angular X.(Y-1).0`), and the row of
-  `E2E_TESTING_PLAN.md`'s version table that describes it
 - the `package.json` template in `.claude/skills/create-example/SKILL.md`
 - the dependencies example in `skills/angular-lynx/references/build-configuration.md`
 
@@ -231,7 +230,8 @@ Moves AngularLynx to Angular X.Y and sets every published package to X.Y.0, read
 - **Angular X.Y.** Every Angular range in the packages and the <n> examples is `^X.Y.0`. The
   lockfile has Angular X.Y.<p> and Angular CLI X.Y.<p>.
 - **Peer ranges.** The published packages now need Angular X.Y (`^X.Y.0`), and the testing library
-  needs AngularLynx X.Y. The full E2E matrix's lowest-Angular leg moves up to X.Y.0 with them.
+  needs AngularLynx X.Y. The full E2E matrix's lowest-Angular leg (`--angular lowest`) follows
+  them to X.Y.0.
 - **Versions.** All <n> published packages are at X.Y.0, and so are the exact pins between them.
 - **`@angular/build`'s internals.** <What step 4's diff showed for the files the plugin loads, and
   what the plugin changed to match, or that they're unchanged.>

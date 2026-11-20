@@ -139,6 +139,7 @@ type WorkspacePackageJson = {
   version: string;
   private?: boolean;
   dependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
 };
 
 const readJson = <T>(file: string): T =>
@@ -212,6 +213,96 @@ export const findPackageGroupMismatches = (): string[] =>
         ) !== JSON.stringify(NG_UPDATE_PACKAGE_GROUP),
     )
     .map((pkg) => pkg.name);
+
+/**
+ * Whether a package is one of Angular's or Angular CLI's, which Angular
+ * releases together under one version number.
+ */
+export const isAngularPackage = (name: string) =>
+  name.startsWith('@angular/') ||
+  name.startsWith('@angular-devkit/') ||
+  name === '@schematics/angular';
+
+/**
+ * A published package's peer range on an Angular package, and the Angular
+ * version the range starts at.
+ */
+export type AngularPeer = {
+  /** Who peers on what, e.g. "@blotch/angular-lynx's peer @angular/forms". */
+  readonly name: string;
+  readonly range: string;
+  /** The version the range starts at, as Angular numbers it, e.g. 22.2.0. */
+  readonly floor: readonly [major: number, minor: number, patch: number];
+};
+
+/**
+ * Each caret peer range the published packages have on Angular. A
+ * `0.MMmm.p` floor (`@angular-devkit/architect`'s numbering, where 0.2202 is
+ * Angular CLI 22.2) is read as the Angular version it stands for. Other
+ * ranges are left out: the build's `>=0.2200.0 <0.2300.0` architect peer
+ * covers the whole major, and moves with the update-angular skill.
+ */
+export const readAngularPeers = (): AngularPeer[] =>
+  PUBLISHABLE_PACKAGES.flatMap((pkg) =>
+    Object.entries(readPackageJson(pkg).peerDependencies ?? {})
+      .filter(([name]) => isAngularPackage(name))
+      .flatMap(([name, range]) => {
+        const match = /^\^(\d+)\.(\d+)\.(\d+)$/.exec(range);
+        if (!match) {
+          return [];
+        }
+        const [first, second, patch] = match.slice(1).map(Number) as [
+          number,
+          number,
+          number,
+        ];
+        return [
+          {
+            name: `${pkg.name}'s peer ${name}`,
+            range,
+            floor:
+              first === 0
+                ? [Math.floor(second / 100), second % 100, patch]
+                : [first, second, patch],
+          },
+        ];
+      }),
+  );
+
+const compareFloors = (a: AngularPeer['floor'], b: AngularPeer['floor']) =>
+  a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+
+/**
+ * The lowest Angular the published packages' peer ranges allow, e.g.
+ * `22.2.0`. The E2E tests install exactly this version (`--angular lowest`),
+ * so the floor every peer range promises is tested.
+ */
+export const lowestAngular = (peers = readAngularPeers()) => {
+  const [lowest] = peers.map((peer) => peer.floor).sort(compareFloors);
+  if (!lowest) {
+    throw new Error('No published package has a caret peer range on Angular.');
+  }
+  return lowest.join('.');
+};
+
+/**
+ * The Angular peer ranges that start above the others. An app on the lowest
+ * Angular the others allow can't install a package with one (npm refuses
+ * the install), so the ranges promise a floor no app gets. Every peer moves
+ * together, with the release-minor and update-angular skills; a bot raising
+ * one is how `@angular/forms` came to need 22.2.5 (#571). The
+ * `consistent-package-versions` lint rule reports them.
+ */
+export const findAngularPeerFloorMismatches = (): string[] => {
+  const peers = readAngularPeers();
+  if (peers.length === 0) {
+    return [];
+  }
+  const lowest = lowestAngular(peers);
+  return peers
+    .filter((peer) => peer.floor.join('.') !== lowest)
+    .map((peer) => `${peer.name} ${peer.range}`);
+};
 
 /**
  * Finds workspace packages that npm would publish (no `"private": true`) but

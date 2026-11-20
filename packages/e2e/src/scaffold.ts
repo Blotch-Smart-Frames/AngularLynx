@@ -3,6 +3,7 @@ import {
   cpSync,
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -15,7 +16,7 @@ import { stripVTControlCharacters } from 'node:util';
 
 import type { RunContext } from './context.ts';
 import { getComponentNames } from '../../dolan/src/registry.ts';
-import { REPO_ROOT } from '../../release/src/packages.ts';
+import { isAngularPackage, REPO_ROOT } from '../../release/src/packages.ts';
 import type { Registry } from './registry.ts';
 import { check, run, start, step, stop, waitFor } from './process.ts';
 
@@ -31,7 +32,11 @@ export type ScaffoldOptions = {
    * options such as `--tailwind=false`.
    */
   readonly scaffolder: 'create' | 'ng-add';
-  /** Angular CLI version for `ng-add`, e.g. `22.2.0`, `22` or `next`. */
+  /**
+   * The Angular for `ng-add`, e.g. `22.2.0`, `22` or `next`. It picks the
+   * Angular CLI that runs `ng new`, and an exact version is also the one the
+   * app installs: see {@link pinAngular}.
+   */
   readonly angular?: string;
   readonly packageManager: PackageManager;
   readonly tailwind: boolean;
@@ -103,6 +108,15 @@ export const scaffoldApp = async (
   // Step 3: check what got installed.
   step('Layer 2: check the installed packages');
   checkInstalledPackages(appDir, options, registry, scaffoldOutput);
+  const pinnedAngular =
+    options.scaffolder === 'ng-add' &&
+    options.angular &&
+    isExactVersion(options.angular)
+      ? options.angular
+      : undefined;
+  if (pinnedAngular) {
+    checkPinnedAngular(appDir, pinnedAngular);
+  }
 
   if (options.rspeedy) {
     await overrideRspeedy(appDir, options, pm, exec);
@@ -166,6 +180,13 @@ export const scaffoldApp = async (
     // Layers 3 and 6 must not test.
     step('Layer 2: dev server smoke test');
     await smokeTestDevServer(appDir, pm, registry, context);
+  }
+
+  // Every install is done by now, so nothing after this can bring in a newer
+  // Angular.
+  if (pinnedAngular) {
+    step(`Layer 2: check the app is still on Angular ${pinnedAngular}`);
+    checkPinnedAngular(appDir, pinnedAngular);
   }
 
   // Step 4: the final build, covering both environments.
@@ -476,6 +497,9 @@ const scaffoldWithNgAdd = async (
     context.workDir,
   );
   configurePackageManager(appDir, options.packageManager, registry);
+  if (isExactVersion(angular)) {
+    pinAngular(appDir, angular);
+  }
   // An Angular prerelease (`--angular next`) never satisfies our `^22.x.0`
   // peer range, so npm refuses to install @blotch/angular-lynx at all and the
   // job never gets as far as testing anything. The job is there to catch the
@@ -507,6 +531,111 @@ const scaffoldWithNgAdd = async (
     logFile: context.logFile,
   });
   return output + install.output;
+};
+
+/**
+ * Whether `spec` is one version, such as 22.2.0, rather than a tag or a
+ * major.
+ */
+const isExactVersion = (spec: string) =>
+  /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(spec);
+
+/**
+ * Sets every Angular package in the app's package.json to exactly `version`,
+ * as an app on that release has them. `ng new` writes caret ranges, so
+ * without this the app would install the newest Angular of that major, and
+ * the run would test Angular CLI `version`'s scaffolding but never Angular
+ * `version` (#571).
+ *
+ * The app's own ranges, and not the package managers' overrides, which the
+ * rspeedy option uses: npm lets an override beat a peer range, so an app
+ * pinned that way installs our packages even when their peers exclude the
+ * version, as no real app on it could. The CLI and `@angular/build` depend
+ * on exact versions of the rest of Angular CLI's packages, so those follow.
+ * checkPinnedAngular checks what got installed.
+ */
+const pinAngular = (appDir: string, version: string) => {
+  const manifestPath = path.join(appDir, 'package.json');
+  const manifest = readJson<PackageJson>(manifestPath);
+  for (const dependencies of [
+    manifest.dependencies,
+    manifest.devDependencies,
+  ]) {
+    for (const name of Object.keys(dependencies ?? {})) {
+      if (isAngularPackage(name)) {
+        dependencies![name] = version;
+      }
+    }
+  }
+  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
+};
+
+/**
+ * Every installed copy of an Angular package under `nodeModules`, nested
+ * copies included. It walks the folders rather than reading a lockfile, so it
+ * works for each package manager: pnpm keeps the real folders in
+ * `node_modules/.pnpm` and links to them, and links are skipped, so each copy
+ * is counted once.
+ */
+const findAngularCopies = (
+  nodeModules: string,
+): { location: string; version: string }[] => {
+  if (!existsSync(nodeModules)) {
+    return [];
+  }
+  const folders = (dir: string) =>
+    readdirSync(dir, { withFileTypes: true }).filter((entry) =>
+      entry.isDirectory(),
+    );
+  const visit = (dir: string, name: string) => [
+    ...(isAngularPackage(name)
+      ? [
+          {
+            location: path.relative(nodeModules, dir),
+            version: readJson<PackageJson>(path.join(dir, 'package.json'))
+              .version!,
+          },
+        ]
+      : []),
+    ...findAngularCopies(path.join(dir, 'node_modules')),
+  ];
+  return folders(nodeModules).flatMap((entry) => {
+    const dir = path.join(nodeModules, entry.name);
+    if (entry.name === '.pnpm') {
+      return folders(dir).flatMap((store) =>
+        findAngularCopies(path.join(dir, store.name, 'node_modules')),
+      );
+    }
+    if (entry.name.startsWith('@')) {
+      return folders(dir).flatMap((scoped) =>
+        visit(path.join(dir, scoped.name), `${entry.name}/${scoped.name}`),
+      );
+    }
+    // .bin and the package managers' own folders hold no packages.
+    return entry.name.startsWith('.') ? [] : visit(dir, entry.name);
+  });
+};
+
+/**
+ * Checks that every Angular package the app installed is at `version`, the
+ * release {@link pinAngular} pinned. `@angular-devkit/architect` numbers its
+ * releases 0.MMmm.p, so Angular CLI 22.2.0's is 0.2202.0.
+ */
+const checkPinnedAngular = (appDir: string, version: string) => {
+  const [, major, minor, rest] = /^(\d+)\.(\d+)\.(.+)$/.exec(version)!;
+  const zeroVersion = `0.${Number(major) * 100 + Number(minor)}.${rest}`;
+  const copies = findAngularCopies(path.join(appDir, 'node_modules'));
+  const others = copies.filter(
+    (copy) =>
+      copy.version !== (copy.version.startsWith('0.') ? zeroVersion : version),
+  );
+  check(
+    copies.length > 0 && others.length === 0,
+    `The app was pinned to Angular ${version}, but installed ${others.map((copy) => `${copy.location}@${copy.version}`).join(', ') || 'no Angular packages'}. Something added an Angular package without the app's exact version, or depends on a newer one.`,
+  );
+  console.log(
+    `✓ all ${copies.length} installed Angular packages are at ${version}`,
+  );
 };
 
 /**

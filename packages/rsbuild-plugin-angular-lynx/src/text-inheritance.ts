@@ -1,5 +1,11 @@
 import type { RsbuildPluginAPI } from '@lynx-js/rspeedy';
-import type { AtRule, Container, Declaration, PluginCreator } from 'postcss';
+import type {
+  AtRule,
+  Container,
+  Declaration,
+  PluginCreator,
+  Rule,
+} from 'postcss';
 import selectorParser from 'postcss-selector-parser';
 
 /**
@@ -31,6 +37,8 @@ const INHERITED = new Set(INHERITED_TEXT_PROPERTIES);
  */
 export const inheritanceVariable = (property: string): string =>
   `--angular-lynx-${property}`;
+
+const VARIABLES = new Set(INHERITED_TEXT_PROPERTIES.map(inheritanceVariable));
 
 /**
  * The class the runtime gives each element that has an HTML text tag or
@@ -147,15 +155,18 @@ const inNonSelectorAtRule = (container: Container): boolean => {
  *
  * It runs at `OnceExit`, after Tailwind 4's lowering, which converts the
  * values Lynx can't read (`oklch()` colors, nesting), so the variables get
- * values Lynx can read. A rule that sets the variable itself keeps its own.
+ * values Lynx can read. A rule that sets the variable itself keeps its own,
+ * and it moves to the copies' rule: left where it was, it would lose to
+ * another rule's copy, which the class makes more specific, where it used
+ * to win by coming later.
  */
 export const textInheritanceForLynx: PluginCreator<void> = () => ({
   postcssPlugin: 'angular-lynx-text-inheritance',
   OnceExit(root) {
+    // The walk reaches the copies' rules too, which are left as they are.
+    const narrowed = new WeakSet<Rule>();
     root.walkRules((rule) => {
-      // The walk reaches the copies' rules too, which set custom properties
-      // only, so copy nothing.
-      if (inNonSelectorAtRule(rule)) return;
+      if (narrowed.has(rule) || inNonSelectorAtRule(rule)) return;
       const own = new Set<string>();
       rule.each((node) => {
         if (node.type === 'decl' && node.prop.startsWith('--')) {
@@ -163,8 +174,14 @@ export const textInheritanceForLynx: PluginCreator<void> = () => ({
         }
       });
       const copies: Declaration[] = [];
+      // The variables the rule sets itself.
+      const explicit: Declaration[] = [];
       rule.each((node) => {
         if (node.type !== 'decl') return;
+        if (VARIABLES.has(node.prop)) {
+          explicit.push(node);
+          return;
+        }
         const property = node.prop.toLowerCase();
         if (!INHERITED.has(property)) return;
         const variable = inheritanceVariable(property);
@@ -174,10 +191,15 @@ export const textInheritanceForLynx: PluginCreator<void> = () => ({
         delete copy.raws.important;
         copies.push(copy);
       });
-      if (copies.length === 0) return;
+      if (copies.length === 0 && explicit.length === 0) return;
       const selector = scopedSelector(rule.selector);
       if (!selector) return;
-      rule.after(rule.clone({ selector, nodes: [] }).append(copies));
+      const copiesRule = rule.clone({ selector, nodes: [] });
+      copiesRule.append(copies);
+      copiesRule.append(explicit.map((declaration) => declaration.remove()));
+      narrowed.add(copiesRule);
+      rule.after(copiesRule);
+      if (!rule.nodes.length) rule.remove();
     });
   },
 });

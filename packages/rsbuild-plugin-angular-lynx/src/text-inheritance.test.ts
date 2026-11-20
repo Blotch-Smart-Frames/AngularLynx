@@ -108,12 +108,28 @@ describe('textInheritanceForLynx', () => {
       '.a { color: red } .b { color: blue }',
       '.a { color: red }.a._nginherit { --angular-lynx-color: red } .b { color: blue } .b._nginherit { --angular-lynx-color: blue }',
     ],
-    // A rule that sets one variable itself keeps it, and gets the others.
-    // (The space before its `}` was the custom property's, as PostCSS reads
-    // it.)
+    // A rule that sets one variable itself keeps it, and gets the others,
+    // and it goes with them, so it competes with the other rules' copies
+    // as it did. (The space before the `}`s was the custom property's, as
+    // PostCSS reads it.)
     [
       '.a { color: red; font-size: 1px; --angular-lynx-color: blue }',
-      '.a { color: red; font-size: 1px; --angular-lynx-color: blue }.a._nginherit { --angular-lynx-font-size: 1px}',
+      '.a { color: red; font-size: 1px}.a._nginherit { --angular-lynx-font-size: 1px; --angular-lynx-color: blue }',
+    ],
+    [
+      '.a { color: red; --angular-lynx-color: blue }',
+      '.a { color: red}.a._nginherit { --angular-lynx-color: blue }',
+    ],
+    // One that comes later wins over another rule's copy on an element with
+    // both classes, as before.
+    [
+      '.a { color: red } .b { --angular-lynx-color: blue }',
+      '.a { color: red }.a._nginherit { --angular-lynx-color: red } .b._nginherit { --angular-lynx-color: blue }',
+    ],
+    // Other variables stay where they are.
+    [
+      '.a { --x: 1; --angular-lynx-color: blue }',
+      '.a { --x: 1}.a._nginherit { --angular-lynx-color: blue }',
     ],
   ])('copies %s', (css, expected) => {
     expect(process(css)).toBe(expected);
@@ -121,10 +137,9 @@ describe('textInheritanceForLynx', () => {
 
   it.each([
     '.a { margin: 0 }',
-    // A rule that sets the variable itself keeps its own value.
-    '.a { color: red; --angular-lynx-color: blue }',
     // Nothing is inside a pseudo-element to read them.
     '.a::placeholder { color: gray }',
+    '.a::placeholder { --angular-lynx-color: gray }',
     '@font-face { font-family: Inter; src: url(a.ttf) }',
     '@keyframes fade { from { color: red } to { color: blue } }',
   ])('leaves %s alone', (css) => {

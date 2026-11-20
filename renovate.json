@@ -59,6 +59,20 @@
         "benchmarks/apps/react-native-0.88/**"
       ],
       "enabled": false
+    },
+    {
+      "description": "The angular-native benchmark is an Expo SDK 58 app too, and its React Native side is the set the SDK pins: react 19.3.0, react-native 0.88.1 and react-native-svg 15.16.0 exactly, with the expo modules and the other native libraries on their SDK 58 lines. It's measured against apps/react-native-0.88, which the rule above holds still, so a bump here alone (#582, #583) would compare library versions as well as frameworks. These move with that app, by redoing the Expo upgrade (`npx expo install --fix`). Angular, @ng-native and the app's other dependencies still come through.",
+      "matchFileNames": ["benchmarks/apps/angular-native/**"],
+      "matchPackageNames": [
+        "react",
+        "react-native",
+        "react-native-*",
+        "@react-native-async-storage/**",
+        "expo",
+        "expo-*",
+        "@types/react"
+      ],
+      "enabled": false
     }
   ]
 }

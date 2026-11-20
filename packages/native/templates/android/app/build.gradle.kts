@@ -27,7 +27,7 @@ val releaseSigning = listOf("StoreFile", "StorePassword", "KeyAlias", "KeyPasswo
 val hasReleaseSigning = releaseSigning.values.all { !it.isNullOrEmpty() }
 
 // One place for the Lynx version, so a Lynx upgrade is a one-line change.
-val lynxVersion = "4.1.0"
+val lynxVersion = "4.1.2"
 val primjsVersion = "4.2.1"
 // Lynx's image service is written against Fresco 2.3, and Lynx Explorer ships
 // the same version, so stay on it until Lynx moves.

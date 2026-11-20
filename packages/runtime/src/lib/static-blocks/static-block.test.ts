@@ -27,7 +27,7 @@ import {
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { globalEvents } from '../global-events';
 import { LynxDocument } from '../lynx-document';
-import { setPageElementRef } from '../lynx-document/page-ref';
+import { getPageId, setPageElementRef } from '../lynx-document/page-ref';
 import { LynxElement } from '../lynx-element';
 import { markFirstRenderComplete } from '../lynx-render-lifecycle';
 import { LynxRendererFactory2 } from '../renderer/lynx-renderer-factory2';
@@ -339,6 +339,8 @@ describe('static blocks', () => {
       [root, dot, text, raw, image, next] as never,
     );
     document.createRootElement();
+    // A block built after hydration names the hydrated page.
+    expect(getPageId()).toBe(page.id);
     const first = document.createElement('view') as LynxElement;
     document.buildStaticBlock(first, BLOCK, '');
     expect(first.element).toBe(root);

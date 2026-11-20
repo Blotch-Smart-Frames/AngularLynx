@@ -6,6 +6,7 @@ import { INLINE_FLOW_TAGS, WEB_TEXT_TAGS } from '../lynx-document/web-tags';
 import { ANONYMOUS_TEXT_CLASS } from '../lynx-element/text-flow';
 import { followColorScheme } from '../lynx-document/page-color-scheme';
 import { followSafeAreaInsets } from '../lynx-document/page-safe-area';
+import { setPageElementRef } from '../lynx-document/page-ref';
 import type { ElementRef } from '../types/lynx';
 import { staticBlockOwner } from '../static-blocks/owner';
 import {
@@ -91,6 +92,10 @@ export class LynxHydrateDocument implements LynxDocumentBase {
     page.tagName = 'page';
     page.isRootPageElement = true;
     this.#page = page;
+    // Every element made after hydration (a static block's, a recreated
+    // one's) names the page's id, as LynxDocument.createRootElement makes
+    // sure for a page it creates (see getPageId).
+    setPageElementRef(this.#pageElementRef);
     // The document and window hear the screen's events from the page.
     globalEvents().attach(
       page,

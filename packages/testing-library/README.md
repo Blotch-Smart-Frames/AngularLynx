@@ -8,7 +8,7 @@ Testing utilities for [AngularLynx](https://github.com/Blotch-Smart-Frames/Angul
 ng generate @blotch/angular-lynx:add-testing
 ```
 
-It installs this package (and Vitest and jsdom, if the project doesn't have them; `ng new` adds both) and makes sure `ng test` runs through AngularLynx's unit-test builder. To install it by hand: `npm install --save-dev @blotch/angular-lynx-testing-library`.
+It installs this package (and Vitest and jsdom, if the project doesn't have them; `ng new` adds both) and makes sure `ng test` runs through AngularLynx's unit-test builder. To install it by hand: `npm install --save-dev @blotch/angular-lynx-testing-library`. It needs Vitest 5, the version `ng new` and the schematic install, because the `@testing-library/jest-dom` matchers it brings don't support Vitest 4.
 
 ## Setup
 

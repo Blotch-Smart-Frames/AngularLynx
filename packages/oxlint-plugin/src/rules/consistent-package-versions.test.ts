@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../../../release/src/packages.ts', () => ({
   readVersions: vi.fn(),
   findPackageGroupMismatches: vi.fn(() => []),
+  findAngularPeerFloorMismatches: vi.fn(() => []),
 }));
 
 const createContext = () => ({ report: vi.fn() });
@@ -18,9 +19,10 @@ describe('consistent-package-versions', () => {
   beforeEach(async () => {
     vi.resetModules();
     vi.resetAllMocks();
-    const { findPackageGroupMismatches } =
+    const { findPackageGroupMismatches, findAngularPeerFloorMismatches } =
       await import('../../../release/src/packages.ts');
     vi.mocked(findPackageGroupMismatches).mockReturnValue([]);
+    vi.mocked(findAngularPeerFloorMismatches).mockReturnValue([]);
   });
 
   it('reports nothing when every published package has the same version', async () => {
@@ -89,5 +91,26 @@ describe('consistent-package-versions', () => {
     const report = context.report.mock.calls[0][0];
     expect(report.messageId).toBe('packageGroupMismatch');
     expect(report.data.detail).toBe('@blotch/angular-lynx-build');
+  });
+
+  it('reports Angular peer ranges that start above the others', async () => {
+    const { readVersions, findAngularPeerFloorMismatches } =
+      await import('../../../release/src/packages.ts');
+    vi.mocked(readVersions).mockReturnValue(versionsOf('1.2.3', '1.2.3'));
+    vi.mocked(findAngularPeerFloorMismatches).mockReturnValue([
+      "@blotch/angular-lynx's peer @angular/forms ^22.2.5",
+      "@blotch/angular-lynx's peer @angular/localize ^22.2.4",
+    ]);
+    const { default: rule } = await import('./consistent-package-versions.mjs');
+    const context = createContext();
+
+    rule.create(context as never).Program();
+
+    expect(context.report).toHaveBeenCalledTimes(1);
+    const report = context.report.mock.calls[0][0];
+    expect(report.messageId).toBe('angularPeerFloorMismatch');
+    expect(report.data.detail).toBe(
+      "@blotch/angular-lynx's peer @angular/forms ^22.2.5, @blotch/angular-lynx's peer @angular/localize ^22.2.4",
+    );
   });
 });

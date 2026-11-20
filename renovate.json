@@ -61,7 +61,7 @@
       "enabled": false
     },
     {
-      "description": "The angular-native benchmark is an Expo SDK 58 app too, and its React Native side is the set the SDK pins: react 19.3.0, react-native 0.88.1 and react-native-svg 15.16.0 exactly, with the expo modules and the other native libraries on their SDK 58 lines. It's measured against apps/react-native-0.88, which the rule above holds still, so a bump here alone (#582, #583) would compare library versions as well as frameworks. These move with that app, by redoing the Expo upgrade (`npx expo install --fix`). Angular, @ng-native and the app's other dependencies still come through.",
+      "description": "The angular-native benchmark is an Expo SDK 58 app too, and its React Native side is the set the SDK pins: react 19.3.0, react-native 0.88.1 and react-native-svg 15.16.0 exactly, with the expo modules and the other native libraries on their SDK 58 lines. Babel comes with the SDK too: Metro transforms the app with @expo/metro-config's own Babel 7, so @babel/core 8 at the root left the bundle byte for byte the same while the Babel 7 plugins hoisted beside it lost the core they peer on (#593). It's measured against apps/react-native-0.88, which the rule above holds still, so a bump here alone (#582, #583) would compare library versions as well as frameworks. These move with that app, by redoing the Expo upgrade (`npx expo install --fix`). Angular, @ng-native and the app's other dependencies still come through.",
       "matchFileNames": ["benchmarks/apps/angular-native/**"],
       "matchPackageNames": [
         "react",
@@ -70,9 +70,15 @@
         "@react-native-async-storage/**",
         "expo",
         "expo-*",
-        "@types/react"
+        "@types/react",
+        "@babel/core"
       ],
       "enabled": false
+    },
+    {
+      "description": "The Android template gets Lynx and PrimJS from Maven, but iOS gets them from our own XCFrameworks zip (packages/native/src/ios/frameworks.ts), which the Lynx iOS frameworks workflow builds and Renovate can't. An update on Android alone would put the two platforms on different Lynx versions, and 4.1.2 added list item animations (#590). So Lynx updates wait on the Dependency Dashboard: tick one to get the Android half, build the iOS zip for the same version as packages/native/README.md describes, and move both in that PR.",
+      "matchPackageNames": ["org.lynxsdk.lynx:*"],
+      "dependencyDashboardApproval": true
     }
   ]
 }

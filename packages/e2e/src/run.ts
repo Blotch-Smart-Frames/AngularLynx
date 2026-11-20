@@ -2,6 +2,7 @@ import { cpSync, existsSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 
+import { lowestAngular } from '../../release/src/packages.ts';
 import { checkPackages, loadTarballs, packAll } from './check-packages.ts';
 import { createRunContext, type RunContext } from './context.ts';
 import { publishLocal } from './publish-local.ts';
@@ -30,7 +31,10 @@ Options:
   --version <version>    With --registry public, the version to test
                          (default: the latest create-angular-lynx)
   --pm <name>            npm (default), pnpm or yarn
-  --angular <version>    Angular CLI version for ng new, e.g. 22.2.0 or next
+  --angular <version>    The Angular to make the app with: 22.2.0 (the app
+                         installs exactly that), 22 or next (ng new's caret
+                         ranges take the newest), or lowest (the lowest the
+                         published packages' peer ranges allow, exactly)
   --no-tailwind          Run ng add with --tailwind=false
   --tailwind-version <n> Run ng add with --tailwind-version=<n>, 3 or 4
                          (default: ng add's own default, 4)
@@ -108,6 +112,9 @@ if (
 ) {
   throw new Error(`--tailwind-version must be 3 or 4, not ${tailwindVersion}`);
 }
+// `lowest` is the floor the peer ranges promise, read from the packages'
+// package.json files, so the CI leg testing it moves with them.
+const angular = args.angular === 'lowest' ? lowestAngular() : args.angular;
 const buildNative = args['build-native'];
 if (
   buildNative !== undefined &&
@@ -207,12 +214,12 @@ try {
         // ng add's options.
         scaffolder:
           packageManager === 'npm' &&
-          !args.angular &&
+          !angular &&
           !args['no-tailwind'] &&
           !tailwindVersion
             ? 'create'
             : 'ng-add',
-        angular: args.angular,
+        angular,
         packageManager,
         tailwind: !args['no-tailwind'],
         tailwindVersion,

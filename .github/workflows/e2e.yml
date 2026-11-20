@@ -110,11 +110,12 @@ jobs:
                 // The lowest Node that Angular 22 supports.
                 { ...base, name: "Node 22.22.3", node: "22.22.3" },
                 { ...base, name: "npm latest", npm: "latest" },
-                // Exactly the lowest Angular the published packages' peer
-                // ranges allow (X.Y.0), read from their package.json files,
-                // so the leg moves with the peers. The app pins it, as an app
-                // on that release has it, and fails as one would if any peer
-                // starts higher.
+                // Exactly the lowest Angular the peer ranges of the published
+                // packages allow, read from their package.json files, so the
+                // leg moves with the peers. The app pins it, as an app on that
+                // release has it, and fails as one would if any peer starts
+                // higher. (No apostrophes in here: this script is inside a
+                // single-quoted shell string.)
                 { ...base, name: "lowest Angular the peers allow", args: "--angular lowest" },
                 { ...base, name: "no Tailwind", args: "--no-tailwind" },
                 // New apps get Tailwind 4; apps made before keep Tailwind 3.

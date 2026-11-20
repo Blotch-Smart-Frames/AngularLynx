@@ -239,9 +239,11 @@ export class LynxListElement extends LynxElement {
     // the directive; the parent link is all that's kept, for parentNode().
     if (newChild._ownedByListSource) {
       newChild._virtualParent = this;
+      this.adoptVirtualChild(newChild);
       return;
     }
     newChild._virtualParent = this;
+    this.adoptVirtualChild(newChild);
     newChild._virtualPrev = this.#lastVirtualChild;
     newChild._virtualNext = null;
 
@@ -267,6 +269,7 @@ export class LynxListElement extends LynxElement {
     }
 
     newChild._virtualParent = this;
+    this.adoptVirtualChild(newChild);
     newChild._virtualNext = refChild;
     newChild._virtualPrev = refChild._virtualPrev;
 

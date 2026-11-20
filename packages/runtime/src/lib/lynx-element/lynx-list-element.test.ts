@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ElementRef } from '../types/lynx';
 import { LynxElement } from './lynx-element';
+import { INHERITANCE_CLASS } from './text-flow';
 import { processPendingListUpdates } from './list-updates';
 import {
   type ListItemAttributes,
@@ -131,6 +132,90 @@ describe('LynxListElement', () => {
       expect(b._virtualNext).toBe(c);
       expect(c._virtualPrev).toBe(b);
       expect(c._virtualNext).toBeNull();
+    });
+  });
+
+  // ─── Passing text styles down ─────────────────────────────────────────────
+
+  describe('text styles for the HTML text inside', () => {
+    // What an item's own appendChild reads of the native tree: nothing yet.
+    beforeEach(() => {
+      vi.stubGlobal('__FirstElement', () => null);
+      vi.stubGlobal('__NextElement', () => null);
+      vi.stubGlobal('__GetTag', () => 'view');
+    });
+    afterEach(() => vi.unstubAllGlobals());
+
+    /**
+     * Whether `el` was given the class the build's copies of text styles to
+     * variables apply to (see LynxElement's #passTextStyles).
+     */
+    const passes = (el: LynxElement): boolean =>
+      vi
+        .mocked(globalThis.__AddClass)
+        .mock.calls.some(
+          ([ref, name]) => ref === el.element && name === INHERITANCE_CLASS,
+        );
+
+    /**
+     * An item with an HTML text tag (a `<p>`) inside.
+     */
+    const itemWithText = (): LynxElement => {
+      const item = makeChild();
+      const p = makeChild();
+      p.tagName = 'text';
+      p.markWebText(false);
+      item.appendChild(p);
+      return item;
+    };
+
+    it('passes them through an appended item', () => {
+      const list = makeList();
+      const item = itemWithText();
+
+      list.appendChild(item);
+
+      expect(passes(item)).toBe(true);
+      expect(passes(list)).toBe(true);
+    });
+
+    it('passes them through an item inserted before another', () => {
+      const list = makeList();
+      const ref = makeChild();
+      list.appendChild(ref);
+      const item = itemWithText();
+
+      list.insertBefore(item, ref);
+
+      expect(passes(list)).toBe(true);
+    });
+
+    it('passes them through an HTML text tag that is an item itself', () => {
+      const list = makeList();
+      const p = makeChild();
+      p.markWebText(false);
+
+      list.appendChild(p);
+
+      expect(passes(list)).toBe(true);
+    });
+
+    it("passes them through a list source's item", () => {
+      const list = makeList();
+      const item = itemWithText();
+      item._ownedByListSource = true;
+
+      list.appendChild(item);
+
+      expect(passes(list)).toBe(true);
+    });
+
+    it('passes none through an item with no HTML text inside', () => {
+      const list = makeList();
+
+      list.appendChild(makeChild());
+
+      expect(passes(list)).toBe(false);
     });
   });
 

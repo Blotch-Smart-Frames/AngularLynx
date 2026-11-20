@@ -12,7 +12,12 @@ updates:
     # Change a package.json range only when the new version falls outside
     # it. The default raised every range to the new version, peer ranges of
     # the published packages included (@angular/forms ^22.2.0 became
-    # ^22.2.4), which narrows what apps may install for no reason.
+    # ^22.2.4), which narrows what apps may install for no reason. It still
+    # raised the peer ranges that no devDependency repeats in #388:
+    # @angular/forms to ^22.2.5, @angular/localize to ^22.2.4 and
+    # @lynx-js/rspeedy to ^0.18.5. For Angular's, the
+    # consistent-package-versions lint rule fails such a PR, since every
+    # Angular peer must start at the same version; set them back by hand.
     versioning-strategy: 'increase-if-necessary'
     ignore:
       # Angular majors go through the update-angular skill: ng update's

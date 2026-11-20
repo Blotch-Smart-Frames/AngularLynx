@@ -225,7 +225,7 @@ Pull requests run one configuration: ubuntu-latest, Node 24 with its bundled npm
 | OS              | ubuntu, windows, macos                                              | The scaffolder builds shell commands, and `cmd.exe` treats `^` as an escape character. Path separators also differ. |
 | Package manager | npm, pnpm, Yarn (node-modules linker)                               | pnpm's strict `node_modules` breaks undeclared dependencies, and install-script rules differ between them           |
 | Node            | Lowest version Angular 22 supports, and 24                          | Make sure the versions we claim to support actually work                                                            |
-| Angular         | 22.2.0 exactly (our minimum), newest 22.x, `next` (allowed to fail) | Keeps the `^22.2.0` peer range honest, and warns early about the next Angular release                               |
+| Angular         | Exactly the lowest the peers accept, newest 22.x, `next` (may fail) | Keeps the peer ranges' floor honest, by installing it as an app on it does, and warns early about the next Angular  |
 | npm             | Bundled with Node, and `npm@latest`                                 | npm 11's install-script blocking was exactly this kind of change                                                    |
 | rspeedy         | Version pinned in `ng-add/versions.ts`, and latest                  | Warns early about Lynx toolchain changes                                                                            |
 
@@ -396,6 +396,7 @@ npx playwright install chromium        # Once
 npm run e2e                            # Layers 1–3, default configuration
 npm run e2e -- --keep                  # Keep the generated app for debugging
 npm run e2e -- --pm pnpm --angular next
+npm run e2e -- --angular lowest        # An app on exactly the lowest Angular the peers allow
 npm run e2e -- --registry public       # Test what is published on npm now
 npm run e2e -- --ios                   # Also run Layer 6 on the iOS Simulator (needs Xcode)
 ```

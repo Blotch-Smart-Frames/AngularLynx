@@ -3,7 +3,7 @@ name: E2E
 # Installs and runs AngularLynx the way a user does: packs every publishable
 # package, publishes them to a throwaway registry, scaffolds a fresh app with
 # `npm create angular-lynx`, builds it, and renders it in a browser. See
-# E2E_TESTING_PLAN.md and packages/e2e/README.md.
+# packages/e2e/README.md, and packages/e2e/CLAUDE.md for the reasons behind it.
 #
 # The same workflow is the PR check, the nightly drift check, the release gate
 # (publish.yml calls it before publishing) and the post-publish check.
@@ -567,7 +567,7 @@ jobs:
     # Usually 6 to 8 minutes. The slowest of the last 60 took 25, most of it
     # Maestro waiting in launchApp (see native/open-app.yaml).
     timeout-minutes: 30
-    # Until the Android flow has run reliably for a while (rollout phase 7).
+    # Until the Android flow has run reliably for a while.
     continue-on-error: true
     steps:
       - uses: actions/checkout@v7

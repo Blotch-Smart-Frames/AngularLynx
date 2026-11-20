@@ -149,6 +149,17 @@ describe('foldStaticBlocks', () => {
     ]);
   });
 
+  it('names a block with a name the module doesn’t use', () => {
+    const folded = fold(
+      CARD.replace(
+        'export class Card {',
+        'const ɵngLynxStatic0 = 1;\nexport class Card {',
+      ),
+    );
+    expect(folded).toMatch(/^const ɵngLynxStatic1 = /);
+    expect(folded).toContain('ɵngLynxStatic1, 1, "row"');
+  });
+
   it('leaves a module without components, or with nothing static', () => {
     const code = 'export const a = 1;';
     expect(fold(code)).toBe(code);

@@ -214,7 +214,9 @@ export const foldStaticBlocks = (
             return consts.elements.length + newConsts.length - 1;
           },
           addBlock: (description) => {
-            const name = `ɵngLynxStatic${blockCount++}`;
+            // A name the module doesn't use already.
+            let name = `ɵngLynxStatic${blockCount++}`;
+            while (code.includes(name)) name = `ɵngLynxStatic${blockCount++}`;
             declarations.push(
               `const ${name} = ${JSON.stringify(description)};`,
             );

@@ -15,7 +15,7 @@
     "cspell": "cspell ."
   },
   "devDependencies": {
-    "@angular-devkit/schematics": "^22.2.5",
+    "@angular-devkit/schematics": "^22.3.0",
     "@arethetypeswrong/cli": "^0.18.5",
     "@blotch/angular-lynx": "*",
     "@blotch/angular-lynx-build": "*",

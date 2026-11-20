@@ -35,15 +35,15 @@ Create `examples/<name>/` with this file structure:
     "build": "ng build"
   },
   "dependencies": {
-    "@angular/common": "^22.2.1",
-    "@angular/compiler": "^22.2.1",
-    "@angular/core": "^22.2.1",
-    "@angular/platform-browser": "^22.2.1",
+    "@angular/common": "^22.3.0",
+    "@angular/compiler": "^22.3.0",
+    "@angular/core": "^22.3.0",
+    "@angular/platform-browser": "^22.3.0",
     "@blotch/angular-lynx": "*"
   },
   "devDependencies": {
-    "@angular/cli": "^22.2.2",
-    "@angular/compiler-cli": "^22.2.1",
+    "@angular/cli": "^22.3.0",
+    "@angular/compiler-cli": "^22.3.0",
     "@blotch/angular-lynx-build": "*",
     "@lynx-js/types": "^4.3.0",
     "typescript": "~6.0.0"

@@ -30,9 +30,9 @@
     "tailwind-merge": "^3.7.0"
   },
   "devDependencies": {
-    "@angular/build": "^22.2.5",
-    "@angular/cli": "^22.2.5",
-    "@angular/compiler-cli": "^22.2.5",
+    "@angular/build": "^22.3.0",
+    "@angular/cli": "^22.3.0",
+    "@angular/compiler-cli": "^22.3.0",
     "@blotch/angular-lynx": "*",
     "@blotch/angular-lynx-build": "*",
     "@blotch/angular-lynx-testing-library": "*",

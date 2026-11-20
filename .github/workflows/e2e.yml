@@ -469,6 +469,15 @@ jobs:
       # in a run that tests native, since publish.yml's post-publish check
       # doesn't. An artifact of the same name from an earlier attempt of this
       # run is the same commit's app, so a re-run uses it.
+      #
+      # A call that fails is asked again on the next poll rather than read as
+      # an answer. The wait runs while the simulator's boot starves this
+      # runner (see the job's comment), and in the nightly run of 2026-11-20
+      # GitHub's hosts stopped resolving for at least a minute and a half
+      # (#601). The failed artifacts query printed nothing, which isn't 0, so
+      # the wait ended 43 seconds before build-app had uploaded the app. A
+      # failed jobs query would have ended the step instead, since bash -e
+      # exits on a failed assignment. The step's timeout still bounds the wait.
       - name: Wait for build-app's app
         timeout-minutes: 25
         env:
@@ -476,13 +485,23 @@ jobs:
           ARTIFACT: e2e-app-${{ needs.setup.outputs.registry }}
         run: |
           runs="repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-          until [ "$(gh api "$runs/artifacts?name=$ARTIFACT" --jq .total_count)" != 0 ]; do
-            conclusion=$(gh api --paginate "$runs/jobs" --jq '.jobs[]
+          while :; do
+            if count=$(gh api "$runs/artifacts?name=$ARTIFACT" --jq .total_count); then
+              if [ "${count:-0}" != 0 ]; then
+                break
+              fi
+            else
+              echo "Couldn't list the run's artifacts, so asking again."
+            fi
+            if conclusion=$(gh api --paginate "$runs/jobs" --jq '.jobs[]
               | select(.name == "build-app" or (.name | endswith(" / build-app")))
-              | select(.status == "completed") | .conclusion')
-            if [ -n "$conclusion" ] && [ "$conclusion" != success ]; then
-              echo "::error::build-app ended with $conclusion, so there's no app to test."
-              exit 1
+              | select(.status == "completed") | .conclusion'); then
+              if [ -n "$conclusion" ] && [ "$conclusion" != success ]; then
+                echo "::error::build-app ended with $conclusion, so there's no app to test."
+                exit 1
+              fi
+            else
+              echo "Couldn't list the run's jobs, so asking again."
             fi
             sleep 10
           done

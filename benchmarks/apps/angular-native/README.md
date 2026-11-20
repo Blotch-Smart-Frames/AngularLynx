@@ -19,10 +19,10 @@ the rest. The ones that matter:
 
 | Package | Version |
 | --- | --- |
-| `@ng-native/*` (components, device, expo, fabric, icons, metro, platform, router) | 0.22.2 |
-| `@angular/core`, `@angular/common`, `@angular/router`, `@angular/compiler-cli` | 22.2.6 |
-| `@tanstack/angular-query-experimental` | 5.107.1 |
-| `expo` | 58.0.25 |
+| `@ng-native/*` (components, device, expo, fabric, icons, metro, platform, router) | 0.25.0 |
+| `@angular/core`, `@angular/common`, `@angular/router`, `@angular/compiler-cli` | 22.3.0 |
+| `@tanstack/angular-query-experimental` | 5.107.2 |
+| `expo` | 58.0.26 |
 | `react-native` | 0.88.1 |
 | `react-native-safe-area-context` | 5.11.1 |
 | `react` | 19.3.0 |

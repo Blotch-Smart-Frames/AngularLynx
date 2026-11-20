@@ -43,7 +43,7 @@ jobs:
           sparse-checkout-cone-mode: false
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 26
           package-manager-cache: false
       - id: newest
         run: node .github/scripts/newest-angular.mts

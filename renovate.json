@@ -73,6 +73,11 @@
         "@types/react"
       ],
       "enabled": false
+    },
+    {
+      "description": "The Android template gets Lynx and PrimJS from Maven, but iOS gets them from our own XCFrameworks zip (packages/native/src/ios/frameworks.ts), which the Lynx iOS frameworks workflow builds and Renovate can't. An update on Android alone would put the two platforms on different Lynx versions, and 4.1.2 added list item animations (#590). So Lynx updates wait on the Dependency Dashboard: tick one to get the Android half, build the iOS zip for the same version as packages/native/README.md describes, and move both in that PR.",
+      "matchPackageNames": ["org.lynxsdk.lynx:*"],
+      "dependencyDashboardApproval": true
     }
   ]
 }

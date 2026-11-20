@@ -37,7 +37,7 @@ jobs:
       # macOS ships Ruby 2.6, which current CocoaPods rejects.
       - uses: ruby/setup-ruby@v1
         with:
-          ruby-version: '3.4'
+          ruby-version: '4.0'
       # The script generates its host Xcode project with the repository's own
       # TypeScript generator (packages/native/scripts/generate-ios-project.ts).
       - uses: actions/setup-node@v7

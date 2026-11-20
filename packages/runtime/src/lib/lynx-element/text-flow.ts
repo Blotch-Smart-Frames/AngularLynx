@@ -42,6 +42,17 @@ export const INHERITED_TEXT_PROPERTIES: readonly string[] = [
 export const inheritanceVariable = (property: string): string =>
   `--angular-lynx-${property}`;
 
+/**
+ * The class of every element with an HTML text tag or an anonymous `<text>`
+ * inside it (see LynxElement's #passTextStyles). The build puts its copies of
+ * text styles to variables in rules narrowed to it, so the elements with
+ * nothing inside to read them, such as a screen of `<text>`s, don't pay for
+ * them: an element that sets custom properties has its whole set copied and
+ * resolved by Lynx, where one that sets none shares its parent's. The build
+ * plugin keeps its own copy, kept the same by a test.
+ */
+export const INHERITANCE_CLASS = '_nginherit';
+
 /** Every inheritable property, as a bitmask (see INHERITED_TEXT_PROPERTIES). */
 export const ALL_TEXT_PROPERTIES = (1 << INHERITED_TEXT_PROPERTIES.length) - 1;
 
@@ -134,7 +145,8 @@ const isRendererClass = (name: string): boolean =>
   name.startsWith('_ngcontent-') ||
   name.startsWith('_nghost-') ||
   name.startsWith('_ngtag-') ||
-  name === ANONYMOUS_TEXT_CLASS;
+  name === ANONYMOUS_TEXT_CLASS ||
+  name === INHERITANCE_CLASS;
 
 /**
  * The flags of every rule in the app's CSS that may apply to an element with

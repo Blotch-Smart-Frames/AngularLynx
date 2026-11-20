@@ -40,6 +40,7 @@ import { sanitizeSvgContent } from './svg-content';
 import {
   ALL_TEXT_PROPERTIES,
   ANONYMOUS_TEXT_CLASS,
+  INHERITANCE_CLASS,
   LAYOUT_FLAG,
   NOT_BLOCK_CONTAINERS,
   TAKES_RAW_TEXT,
@@ -724,6 +725,14 @@ export class LynxElement implements BaseLynxElement {
    * Ahead of the app's own inline style, which wins over them.
    */
   #inheritStyle = '';
+  /**
+   * Set once a #webText element has been inside it: it has INHERITANCE_CLASS,
+   * which gives it the variables its rules copy text styles to, for the
+   * #webText elements inside to read (see #passTextStyles). Its ancestors
+   * have it too. Never cleared: an element the text left keeps passing
+   * styles down, which is what every element did before.
+   */
+  #passesTextStyles = false;
   /**
    * Set once loose text or an inline tag has been a child: the element's
    * children are regrouped when they change, or when its classes do, as
@@ -1759,6 +1768,47 @@ export class LynxElement implements BaseLynxElement {
     } else {
       this.#children.push(newChild);
     }
+    if (newChild.#webText || newChild.#passesTextStyles) {
+      this.#passTextStyles();
+    }
+  }
+
+  /**
+   * Gives this element and its ancestors INHERITANCE_CLASS, which the build
+   * narrows the variables its rules copy text styles to (see text-flow.ts),
+   * as a #webText element is now inside it. An ancestor that has it already
+   * has every ancestor of its own with it: that's how each one got it, and
+   * an element that moves passes it to its new ancestors here.
+   */
+  #passTextStyles(): void {
+    if (this.#passesTextStyles) return;
+    this.#passesTextStyles = true;
+    // An anonymous <text> passes on its parent's, as it takes them: it has
+    // no rules of its own (see #applyInheritance). A rule for every <text>
+    // in a <view>, such as the theme's `view > text`, still matches it, and
+    // its copies would hide the parent's from the inline tags inside.
+    if (!this.#anonymous) {
+      // Kept with the scope classes, so an app's class binding keeps it, as
+      // setRuntimeClass does. Unlike there, its rules change nothing the
+      // runtime reads, so there's nothing to regroup or inherit again, and
+      // it goes with the insert's own flush.
+      (this.#scopeClasses ??= []).push(INHERITANCE_CLASS);
+      this.#addClassName(INHERITANCE_CLASS);
+    }
+    // A list's item has the list as its parent (see LynxListElement), as
+    // parentNode() says: an item that moved into a list from another
+    // element still has that element as its #jsParent, which the list
+    // doesn't set.
+    const parent = this._virtualParent ?? this.#jsParent;
+    if (parent) parent.#passTextStyles();
+  }
+
+  /**
+   * @internal A list took `child` as a virtual child (see LynxListElement):
+   * as #adoptChild, it passes text styles down to the #webText inside.
+   */
+  adoptVirtualChild(child: LynxElement): void {
+    if (child.#webText || child.#passesTextStyles) this.#passTextStyles();
   }
 
   /**
@@ -1998,6 +2048,16 @@ export class LynxElement implements BaseLynxElement {
   }
 
   addClass(name: string): void {
+    this.#addClassName(name);
+    this.#rulesChanged();
+    scheduleSettleFlush();
+  }
+
+  /**
+   * addClass without what a class change means for the runtime's own
+   * reading of the app's rules (see #rulesChanged), or a flush of its own.
+   */
+  #addClassName(name: string): void {
     const before = this.#classes;
     // Keep the cached class string in sync (deduped) so recreation replays the
     // full class list in one __SetClasses.
@@ -2033,8 +2093,6 @@ export class LynxElement implements BaseLynxElement {
       // list may differ from #classes from here.
       if (!added) this.#nativeClasses = false;
     }
-    this.#rulesChanged();
-    scheduleSettleFlush();
   }
 
   addScopeClass(name: string): void {

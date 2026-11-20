@@ -1,5 +1,12 @@
 import type { RsbuildPluginAPI } from '@lynx-js/rspeedy';
-import type { AtRule, Container, PluginCreator } from 'postcss';
+import type {
+  AtRule,
+  Container,
+  Declaration,
+  PluginCreator,
+  Rule,
+} from 'postcss';
+import selectorParser from 'postcss-selector-parser';
 
 /**
  * The text properties an element takes from its parent, as on the web: the
@@ -31,6 +38,68 @@ const INHERITED = new Set(INHERITED_TEXT_PROPERTIES);
 export const inheritanceVariable = (property: string): string =>
   `--angular-lynx-${property}`;
 
+const VARIABLES = new Set(INHERITED_TEXT_PROPERTIES.map(inheritanceVariable));
+
+/**
+ * The class the runtime gives each element that has an HTML text tag or
+ * loose text inside it, the only elements whose copies anything reads. A copy
+ * of `INHERITANCE_CLASS` in the runtime's lynx-element/text-flow.ts, kept the
+ * same by a test.
+ */
+export const INHERITANCE_CLASS = '_nginherit';
+
+/**
+ * Narrows each selector in a list to the elements with INHERITANCE_CLASS:
+ * `.a:active` becomes `.a._nginherit:active`, `*` becomes `._nginherit`. A
+ * selector that styles a pseudo-element (`::placeholder`) goes, since nothing
+ * is inside one to read the copies. `:root` is narrowed too, though it's one
+ * element, so its copies stay one class below the others', as they were:
+ * Lynx matches `._nginherit:root` on the page, and Lynx for Web moves the
+ * `:root` it turns into `[part="page"]` to the front.
+ */
+const narrower = selectorParser((selectors) => {
+  selectors.each((selector) => {
+    const nodes = selector.nodes;
+    let start = nodes.length;
+    while (start > 0 && nodes[start - 1]!.type !== 'combinator') start--;
+    const compound = nodes.slice(start);
+    if (
+      compound.some(
+        (node) => node.type === 'pseudo' && node.value.startsWith('::'),
+      )
+    ) {
+      selector.remove();
+      return;
+    }
+    const scope = selectorParser.className({ value: INHERITANCE_CLASS });
+    // `*` alone: `svg|*` never reaches Lynx's CSS as an element.
+    const universal = compound.find(
+      (node) => node.type === 'universal' && node.toString().trim() === '*',
+    );
+    if (universal) {
+      universal.replaceWith(scope);
+      return;
+    }
+    // Ahead of the pseudo-classes, after the tag, classes and id.
+    const firstPseudo = compound.find((node) => node.type === 'pseudo');
+    if (firstPseudo) selector.insertBefore(firstPseudo, scope);
+    else selector.append(scope);
+  });
+});
+
+/**
+ * The selector list of a rule's copies (see textInheritanceForLynx), or ''
+ * if none of its selectors needs them. One PostCSS can't parse is kept as it
+ * is: its copies cost what they did, but stay correct.
+ */
+export const scopedSelector = (selector: string): string => {
+  try {
+    return narrower.processSync(selector).trim();
+  } catch {
+    return selector;
+  }
+};
+
 /**
  * Whether `container` is inside an at-rule whose rules aren't selectors.
  */
@@ -52,8 +121,9 @@ const inNonSelectorAtRule = (container: Container): boolean => {
 
 /**
  * A PostCSS plugin that copies each inheritable text declaration to a CSS
- * variable of its own: `.title { color: red }` also sets
- * `--angular-lynx-color: red`.
+ * variable of its own, for the elements with INHERITANCE_CLASS:
+ * `.title { color: red }` is followed by
+ * `.title._nginherit { --angular-lynx-color: red }`.
  *
  * Lynx inherits no text style: a `<text>` doesn't take its parent's `color`
  * or `font-size`. It does pass CSS variables down, and keeps them up to date
@@ -64,30 +134,65 @@ const inNonSelectorAtRule = (container: Container): boolean => {
  * ancestor's value, as on the web. Elements written as Lynx elements don't
  * read them, so they look as they always have.
  *
+ * Only an element with one of those inside it needs the copies, and the
+ * runtime gives each such element INHERITANCE_CLASS, so the copies go in a
+ * rule of their own narrowed to it. In the rule itself, they cost every
+ * element it styled: an element that sets custom properties of its own has
+ * its whole set (the theme's colors included) copied, parsed and resolved
+ * when the tree is flushed, where one that sets none shares its parent's.
+ * For a screen of 5,000 `<text class="text">` that was 61 ms on an iPhone 14
+ * Pro, though no `<text>` there has anything inside to read them.
+ *
+ * The copies' rule follows the rule it copies, and every selector gains the
+ * same class, so the copies win over each other as the declarations do.
+ *
  * It runs at `OnceExit`, after Tailwind 4's lowering, which converts the
  * values Lynx can't read (`oklch()` colors, nesting), so the variables get
- * values Lynx can read. A rule that sets the variable itself keeps its own.
+ * values Lynx can read. A rule that sets the variable itself keeps its own,
+ * and the copies' rule sets it too: only there does it win over an earlier
+ * rule's copy, which the class makes more specific than the rule itself, as
+ * it did by coming later. It stays in the rule for a declaration there that
+ * reads it, on an element without the class.
  */
 export const textInheritanceForLynx: PluginCreator<void> = () => ({
   postcssPlugin: 'angular-lynx-text-inheritance',
   OnceExit(root) {
+    // The walk reaches the copies' rules too, which are left as they are.
+    const narrowed = new WeakSet<Rule>();
     root.walkRules((rule) => {
-      if (inNonSelectorAtRule(rule)) return;
+      if (narrowed.has(rule) || inNonSelectorAtRule(rule)) return;
       const own = new Set<string>();
       rule.each((node) => {
         if (node.type === 'decl' && node.prop.startsWith('--')) {
           own.add(node.prop);
         }
       });
+      const copies: Declaration[] = [];
+      // The variables the rule sets itself.
+      const explicit: Declaration[] = [];
       rule.each((node) => {
         if (node.type !== 'decl') return;
+        if (VARIABLES.has(node.prop)) {
+          explicit.push(node);
+          return;
+        }
         const property = node.prop.toLowerCase();
         if (!INHERITED.has(property)) return;
         const variable = inheritanceVariable(property);
         if (own.has(variable)) return;
         own.add(variable);
-        node.cloneAfter({ prop: variable, important: false });
+        const copy = node.clone({ prop: variable, important: false });
+        delete copy.raws.important;
+        copies.push(copy);
       });
+      if (copies.length === 0 && explicit.length === 0) return;
+      const selector = scopedSelector(rule.selector);
+      if (!selector) return;
+      const copiesRule = rule.clone({ selector, nodes: [] });
+      copiesRule.append(copies);
+      copiesRule.append(explicit.map((declaration) => declaration.clone()));
+      narrowed.add(copiesRule);
+      rule.after(copiesRule);
     });
   },
 });

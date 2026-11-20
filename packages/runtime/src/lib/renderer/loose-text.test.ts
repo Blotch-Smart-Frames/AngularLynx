@@ -32,6 +32,7 @@ import {
 import { LynxDocument } from '../lynx-document';
 import { setPageElementRef } from '../lynx-document/page-ref';
 import {
+  INHERITANCE_CLASS,
   NOT_BLOCK_CONTAINERS,
   resetStyleIndex,
 } from '../lynx-element/text-flow';
@@ -1054,6 +1055,130 @@ describe('loose text, element by element', () => {
 
     expect(native(anchor).tag).toBe('view');
     expect(native(anchor).parent).toBe(viewRef);
+  });
+
+  /**
+   * Whether an element has the class the build's copies of text styles to
+   * variables apply to (see #passTextStyles).
+   */
+  const passes = (el: LynxElement): boolean =>
+    native(el).classes.has(INHERITANCE_CLASS);
+
+  it('gives the elements around loose text the class the copies of text styles need', () => {
+    const outer = doc.createElement('view');
+    page.appendChild(outer);
+    const view = doc.createElement('view');
+    outer.appendChild(view);
+    const sibling = doc.createElement('view');
+    outer.appendChild(sibling);
+    view.appendChild(doc.createText('Hello'));
+    commit();
+
+    expect(passes(view)).toBe(true);
+    expect(passes(outer)).toBe(true);
+    expect(passes(page)).toBe(true);
+    // Nothing inside it reads them.
+    expect(passes(sibling)).toBe(false);
+    expect(native(view).children[0]!.classes.has(INHERITANCE_CLASS)).toBe(
+      false,
+    );
+  });
+
+  it('leaves a Lynx <text> with only its text without it', () => {
+    // A screen of `<text class="…">{{ i }}</text>` pays for no copies.
+    const view = doc.createElement('view');
+    page.appendChild(view);
+    const text = doc.createElement('text');
+    view.appendChild(text);
+    text.appendChild(doc.createText('1'));
+    commit();
+
+    expect(passes(text)).toBe(false);
+    expect(passes(view)).toBe(false);
+    expect(passes(page)).toBe(false);
+  });
+
+  it('gives it to a Lynx <text> with an HTML inline tag in it', () => {
+    const text = doc.createElement('text');
+    page.appendChild(text);
+    const bold = doc.createElement('b');
+    text.appendChild(bold);
+    commit();
+
+    expect(passes(text)).toBe(true);
+    expect(passes(page)).toBe(true);
+    // An HTML text tag with nothing inside reads the copies, needing none.
+    expect(passes(bold)).toBe(false);
+  });
+
+  it('leaves it off the anonymous <text> an inline tag is in, which passes on its parent’s', () => {
+    const view = doc.createElement('view');
+    page.appendChild(view);
+    view.appendChild(doc.createText('Hi '));
+    const bold = doc.createElement('b');
+    view.appendChild(bold);
+    commit();
+
+    const wrapper = native(bold).parent!;
+    expect(wrapper.classes.has('_ngtext')).toBe(true);
+    // A `view > text` rule matches it, and its copies would hide the view's.
+    expect(wrapper.classes.has(INHERITANCE_CLASS)).toBe(false);
+    expect(passes(view)).toBe(true);
+    expect(passes(page)).toBe(true);
+  });
+
+  it('gives it to the HTML text tag an inline tag is in', () => {
+    const p = doc.createElement('p');
+    page.appendChild(p);
+    const bold = doc.createElement('b');
+    p.appendChild(bold);
+    commit();
+
+    expect(passes(p)).toBe(true);
+  });
+
+  it('keeps it through a class binding', () => {
+    const view = doc.createElement('view');
+    page.appendChild(view);
+    view.appendChild(doc.createElement('p'));
+    commit();
+
+    view.setAttribute('class', 'card');
+
+    expect([...native(view).classes]).toEqual(['card', INHERITANCE_CLASS]);
+  });
+
+  it('gives it to the new ancestors of an element that moves with text inside', () => {
+    const from = doc.createElement('view');
+    const to = doc.createElement('view');
+    const toParent = doc.createElement('view');
+    toParent.appendChild(to);
+    const card = doc.createElement('view');
+    from.appendChild(card);
+    card.appendChild(doc.createElement('span'));
+    commit();
+    expect(passes(from)).toBe(true);
+    expect(passes(to)).toBe(false);
+
+    to.appendChild(card);
+    commit();
+
+    expect(passes(to)).toBe(true);
+    expect(passes(toParent)).toBe(true);
+  });
+
+  it('gives it to the ancestors of an element whose text goes in later', () => {
+    // Angular builds an embedded view's elements before it inserts them.
+    const view = doc.createElement('view');
+    page.appendChild(view);
+    const card = doc.createElement('view');
+    const label = doc.createElement('label');
+    card.appendChild(label);
+    view.insertBefore(card, null);
+    commit();
+
+    expect(passes(card)).toBe(true);
+    expect(passes(view)).toBe(true);
   });
 
   it('gives a touch on an anonymous <text> out of the tree no element', () => {

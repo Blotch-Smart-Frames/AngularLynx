@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@lynx-js/react": "0.129.3",
-    "@tanstack/react-query": "5.108.1",
+    "@tanstack/react-query": "5.108.2",
     "zustand": "5.1.0"
   },
   "devDependencies": {

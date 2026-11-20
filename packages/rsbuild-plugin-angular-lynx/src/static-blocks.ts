@@ -433,7 +433,10 @@ const couldMatch = (
       continue;
     }
     if (inClasses) {
-      if (!classes.includes(part)) return false;
+      // Angular matches class names whatever their case (its
+      // isCssClassMatching).
+      const name = part.toLowerCase();
+      if (!classes.some((own) => own.toLowerCase() === name)) return false;
     } else {
       if (!attributes.has(part)) return false;
       i++;

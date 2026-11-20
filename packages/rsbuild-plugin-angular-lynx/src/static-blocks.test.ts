@@ -394,6 +394,16 @@ describe('foldStaticBlocks', () => {
       ).toEqual([]);
     });
 
+    it('keeps an element a class selector matches in another case', () => {
+      expect(
+        blocks(
+          fold(code('[i1.Styled]'), {
+            '@blotch/angular-lynx#Styled': [['', 8, 'B']],
+          }),
+        ),
+      ).toEqual([]);
+    });
+
     it('keeps an element a :not() selector could match', () => {
       expect(
         blocks(

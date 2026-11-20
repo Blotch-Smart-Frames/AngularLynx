@@ -31,7 +31,7 @@ val lynxVersion = "4.1.0"
 val primjsVersion = "4.2.1"
 // Lynx's image service is written against Fresco 2.3, and Lynx Explorer ships
 // the same version, so stay on it until Lynx moves.
-val frescoVersion = "2.3.0"
+val frescoVersion = "3.9.0"
 
 android {
     // The namespace is the package of the shell's own Kotlin code and R class.

@@ -49,19 +49,13 @@ const VARIABLES = new Set(INHERITED_TEXT_PROPERTIES.map(inheritanceVariable));
 export const INHERITANCE_CLASS = '_nginherit';
 
 /**
- * Whether a compound selector part only ever matches the page: its copies
- * cost one element, and `:root` with a class before it is a selector Lynx
- * may not read.
- */
-const isRoot = (node: selectorParser.Node): boolean =>
-  node.type === 'pseudo' && node.value.toLowerCase() === ':root';
-
-/**
  * Narrows each selector in a list to the elements with INHERITANCE_CLASS:
  * `.a:active` becomes `.a._nginherit:active`, `*` becomes `._nginherit`. A
  * selector that styles a pseudo-element (`::placeholder`) goes, since nothing
- * is inside one to read the copies, and one of `:root`, the page, stays as
- * it is.
+ * is inside one to read the copies. `:root` is narrowed too, though it's one
+ * element, so its copies stay one class below the others', as they were:
+ * Lynx matches `._nginherit:root` on the page, and Lynx for Web moves the
+ * `:root` it turns into `[part="page"]` to the front.
  */
 const narrower = selectorParser((selectors) => {
   selectors.each((selector) => {
@@ -77,7 +71,6 @@ const narrower = selectorParser((selectors) => {
       selector.remove();
       return;
     }
-    if (compound.some(isRoot)) return;
     const scope = selectorParser.className({ value: INHERITANCE_CLASS });
     // `*` alone: `svg|*` never reaches Lynx's CSS as an element.
     const universal = compound.find(

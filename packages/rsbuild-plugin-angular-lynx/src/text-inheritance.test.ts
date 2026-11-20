@@ -61,9 +61,9 @@ describe('scopedSelector', () => {
     ['.a > *', '.a > ._nginherit'],
     ['svg|*', 'svg|*._nginherit'],
     ['.a, .b', '.a._nginherit, .b._nginherit'],
-    // The page, whose copies cost one element.
-    [':root', ':root'],
-    [':root, .a', ':root, .a._nginherit'],
+    // The page, which keeps its copies one class below the others'.
+    [':root', '._nginherit:root'],
+    [':root, .a', '._nginherit:root, .a._nginherit'],
     // Nothing is inside a pseudo-element to read them.
     ['.a::placeholder', ''],
     ['.a, .b::placeholder', '.a._nginherit'],

@@ -1,5 +1,13 @@
+// Wide enough for the longest command, `$ npm create angular-lynx my-app`
+// (33 characters), on one line in any monospace font. At 13px the widest
+// common ones (Menlo, DejaVu Sans Mono, Courier New) are 0.6em a character:
+// 258px, plus 16px of padding a side. At 280px it was 2px too wide even in SF
+// Mono, so the card scrolled. Three cards and their gaps still fit the
+// narrowest desktop layout (1016px, less a 15px page scrollbar).
+$command-card-width: 292px;
+
 .code-preview-frame {
-  width: 280px;
+  width: $command-card-width;
   background: linear-gradient(160deg, #1e1e2e 0%, #14141e 100%);
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.1),
@@ -29,7 +37,14 @@
     line-height: 1.6;
     color: #e0e0e0;
     font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    // Scrolls sideways only if a command still doesn't fit, such as with a
+    // larger minimum font size. Never up and down: with `overflow-y` left
+    // visible it computes to auto, and where scrollbars always show (Windows,
+    // or macOS with a mouse) the horizontal bar's own height made the one
+    // line overflow, so a vertical bar appeared too. The bar sits in the
+    // bottom padding instead.
     overflow-x: auto;
+    overflow-y: hidden;
     white-space: pre;
   }
 }
@@ -220,7 +235,7 @@
         font-weight: 400;
         line-height: 24px;
         margin-bottom: 12px;
-        max-width: 280px;
+        max-width: $command-card-width;
       }
 
       .item-link {

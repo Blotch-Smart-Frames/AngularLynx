@@ -67,9 +67,13 @@ describe('TabBarDemo', () => {
     await until(() => selected('Feed'));
     expect(router.url).toBe('/tab-bar-demo/feed');
 
+    // A tapped tab shows selected from the tap, before its screen is built
+    // (UiTabBar.markTapped), so wait for the navigation as well: the tab
+    // stays selected once RouterLinkActive takes over from the tap.
     fireEvent.tap(tab('Alerts'));
-    await until(() => selected('Alerts'));
-    expect(router.url).toBe('/tab-bar-demo/alerts');
+    await until(
+      () => router.url === '/tab-bar-demo/alerts' && selected('Alerts'),
+    );
     expect(selected('Feed')).toBe(false);
     expect(tab('Alerts').getAttribute('accessibility-label')).toBe('Alerts, 3');
 

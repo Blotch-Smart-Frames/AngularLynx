@@ -304,7 +304,10 @@ jobs:
       # THE GATE: each package enforces 100% via vitest `thresholds`, so this
       # step exits non-zero (failing the job) if any package drops below 100% on
       # any metric — with or without Codecov. The uploads below are visualization
-      # only. turbo caches each package's coverage/** as a task output.
+      # only. turbo caches each package's coverage/** as a task output. The
+      # kitchen sink, the one example with specs, runs them here too, without
+      # a coverage gate: its `test:ci:coverage` is a plain `ng test`, since a
+      # spec of its that only `npm test` ran stayed broken for weeks.
       - run: npm run test:ci:coverage
       - name: Prune turbo cache
         if: github.ref == 'refs/heads/master' && !inputs.newest-angular

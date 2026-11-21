@@ -95,6 +95,20 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
+            // A build signed with the upload key is for Google Play, which
+            // rejects an app whose 64-bit native libraries can't load on a
+            // device with 16 KB memory pages. Fresco's x86_64 libraries, at
+            // the version Lynx's image service is written against, are
+            // aligned for 4 KB pages only (its arm64 ones are fine), so the
+            // Play build ships the ARM ABIs alone. That leaves out only x86
+            // devices (emulators and a few Chromebooks); 32-bit x86 goes
+            // too, as no phone needs it. Builds signed with the debug key
+            // keep every ABI, so their APK still runs on an x86_64 emulator.
+            if (hasReleaseSigning) {
+                ndk {
+                    abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+                }
+            }
         }
     }
 
@@ -161,6 +175,12 @@ dependencies {
     implementation("com.facebook.fresco:animated-webp:$frescoVersion")
     implementation("com.facebook.fresco:webpsupport:$frescoVersion")
     implementation("com.facebook.fresco:animated-base:$frescoVersion")
+    // Fresco 2.3 loads its native libraries with SoLoader 0.9, which can
+    // crash on devices that run 64-bit code only, and Google Play holds back
+    // an app that ships it. 0.10.5 fixes that and keeps the API Fresco 2.x
+    // calls (React Native ships the two together), so Gradle's conflict
+    // resolution moves Fresco onto it.
+    implementation("com.facebook.soloader:soloader:0.10.5")
     implementation("com.squareup.okhttp3:okhttp:4.12.1")
 
     // XElement: <input>, <textarea>, <overlay>, <svg>, <blur-view>,

@@ -4,6 +4,16 @@
 
     <!-- fetch() and XMLHttpRequest go through Lynx's HTTP service. -->
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!--
+      A fixed screenOrientation makes Android imply that the device needs a
+      screen in that orientation, and Google Play then hides the app from
+      devices that don't report one (some Chromebooks, TVs and headsets).
+      The app runs on them anyway, letterboxed or rotated, so neither
+      orientation is a requirement.
+    -->
+    <uses-feature android:name="android.hardware.screen.portrait" android:required="false" />
+    <uses-feature android:name="android.hardware.screen.landscape" android:required="false" />
     <!-- angular-lynx:permissions -->
 
     <!--

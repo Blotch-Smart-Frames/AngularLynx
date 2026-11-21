@@ -24,11 +24,11 @@
     "@blotch/dolan": "*",
     "@blotch/rsbuild-plugin-angular-lynx": "*",
     "@lynx-js/web-core": "0.26.9",
-    "@playwright/test": "^1.65.0",
+    "@playwright/test": "^1.65.1",
     "@types/node": "^22.0.0",
     "create-angular-lynx": "*",
     "publint": "^0.3.25",
     "typescript": "~6.0.0",
-    "verdaccio": "^7.1.0"
+    "verdaccio": "^7.1.1"
   }
 }

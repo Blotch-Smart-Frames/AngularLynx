@@ -61,7 +61,7 @@ Each full-matrix leg exists for a reason:
 
 - **The tag must match the repository's version** (`check-version.ts`). The workflow used to stamp the tag's version on instead.
 - **Publishing waits for the full matrix and the native platforms on the tagged commit**, then publishes the exact tarballs the gate tested. What users install is byte-for-byte what passed.
-- **No `npm publish --dry-run` on pull requests.** A PR must never be able to start a publish, and npm rejects a dry run whenever the repository's version is already on the registry, which it is between releases. A manual dispatch of `publish.yml` from a branch runs the gate without publishing.
+- **No `npm publish --dry-run` on pull requests.** A PR must never be able to start a publish, and npm rejects a dry run whenever the repository's version is already on the registry, which it is between releases. A manual dispatch of `publish.yml` from a branch is a dry run: it checks that the packages agree on a version and runs Layer 1, without publishing. To run the whole gate on a branch, dispatch `e2e.yml` with `matrix: full` and `native: true`.
 - **`wait-for-npm.ts` waits for every tarball, not just the listing.** npm lists a version before its CDN serves the tarball, and 22.2.5's post-publish check 404ed on one.
 - **The post-publish check never deprecates by itself.** A failure opens an issue with the `npm deprecate` commands filled in, and a maintainer decides.
 

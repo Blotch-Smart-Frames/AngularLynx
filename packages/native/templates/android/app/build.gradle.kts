@@ -175,6 +175,12 @@ dependencies {
     implementation("com.facebook.fresco:animated-webp:$frescoVersion")
     implementation("com.facebook.fresco:webpsupport:$frescoVersion")
     implementation("com.facebook.fresco:animated-base:$frescoVersion")
+    // Fresco 2.3 loads its native libraries with SoLoader 0.9, which can
+    // crash on devices that run 64-bit code only, and Google Play holds back
+    // an app that ships it. 0.10.5 fixes that and keeps the API Fresco 2.x
+    // calls (React Native ships the two together), so Gradle's conflict
+    // resolution moves Fresco onto it.
+    implementation("com.facebook.soloader:soloader:0.10.5")
     implementation("com.squareup.okhttp3:okhttp:4.12.1")
 
     // XElement: <input>, <textarea>, <overlay>, <svg>, <blur-view>,

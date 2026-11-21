@@ -180,7 +180,7 @@ dependencies {
     // an app that ships it. 0.10.5 fixes that and keeps the API Fresco 2.x
     // calls (React Native ships the two together), so Gradle's conflict
     // resolution moves Fresco onto it.
-    implementation("com.facebook.soloader:soloader:0.10.5")
+    implementation("com.facebook.soloader:soloader:0.13.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.1")
 
     // XElement: <input>, <textarea>, <overlay>, <svg>, <blur-view>,

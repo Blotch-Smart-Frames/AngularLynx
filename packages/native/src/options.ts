@@ -228,7 +228,9 @@ export type IosOptions = {
 export type AndroidOptions = {
   /**
    * The upload key for Google Play. The `*Env` fields name environment
-   * variables, so no secret is ever written to angular.json.
+   * variables, so no secret is ever written to angular.json. A release
+   * build signed with it holds only the ARM ABIs, which pass Play's 16 KB
+   * page-size check; the Android shell template's README says why.
    */
   readonly signing?: {
     readonly storeFileEnv?: string;

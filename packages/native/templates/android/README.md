@@ -27,6 +27,8 @@ Build commands and outputs (no flavors, so the names are fixed):
 
 The release build runs R8 and the resource shrinker (`isMinifyEnabled`, `isShrinkResources`), and writes the mapping that turns the renamed classes back to `app/build/outputs/mapping/release/mapping.txt`, which also goes in the `.aab` for Google Play. Lynx's AAR ships keep rules for its own classes; `app/proguard-rules.pro` adds the ones they miss, each with what broke without it (the app aborting on launch, for one). Any class Lynx or the shell reaches only by name needs a rule there. How they were found, and the sizes, are in `investigations/native-app-builds.md` ("R8 in the Android release build").
 
+A release build signed with the upload key holds only `arm64-v8a` and `armeabi-v7a` (`ndk.abiFilters`). Google Play rejects an app whose 64-bit native libraries aren't aligned for 16 KB memory pages, and Fresco's `x86_64` libraries, at the version Lynx's image service is written against, are aligned for 4 KB only; its `arm64-v8a` ones, and all of Lynx's, are fine. So Play doesn't offer the app to x86 devices (emulators and a few Chromebooks). A release build signed with the debug key keeps all four ABIs, so its APK still installs on an `x86_64` emulator. Drop the filter once the image service moves to a Fresco whose `x86_64` libraries are 16 KB aligned.
+
 ## How the shell loads the app
 
 - **Bundles** come from `assets/` (`ResourceFetchers.kt`, `BundleAssets.kt`). A URL without a scheme (`/static/…`, `static/…`), `asset:///…` and `file:///android_asset/…` all mean "the file at that path in `assets/`", so the bundle works with Rspeedy's default asset prefix (`/`) and doesn't need a platform-specific one. Absolute `http(s)` URLs are fetched with OkHttp.

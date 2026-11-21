@@ -95,6 +95,20 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
+            // A build signed with the upload key is for Google Play, which
+            // rejects an app whose 64-bit native libraries can't load on a
+            // device with 16 KB memory pages. Fresco's x86_64 libraries, at
+            // the version Lynx's image service is written against, are
+            // aligned for 4 KB pages only (its arm64 ones are fine), so the
+            // Play build ships the ARM ABIs alone. That leaves out only x86
+            // devices (emulators and a few Chromebooks); 32-bit x86 goes
+            // too, as no phone needs it. Builds signed with the debug key
+            // keep every ABI, so their APK still runs on an x86_64 emulator.
+            if (hasReleaseSigning) {
+                ndk {
+                    abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+                }
+            }
         }
     }
 

@@ -1,6 +1,6 @@
 # @blotch/angular-lynx-e2e
 
-End-to-end tests that install and run AngularLynx the way a user does. They catch broken releases before users do: 22.2.0 and 22.2.1 passed every unit test and still couldn't produce a working app. The full design is in [`E2E_TESTING_PLAN.md`](../../E2E_TESTING_PLAN.md).
+End-to-end tests that install and run AngularLynx the way a user does. They catch broken releases before users do: 22.2.0 and 22.2.1 passed every unit test and still couldn't produce a working app. Why it works the way it does is in [`CLAUDE.md`](CLAUDE.md).
 
 ## Run it
 

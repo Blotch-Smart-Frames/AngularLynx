@@ -54,7 +54,7 @@
     "@blotch/angular-lynx-native": "22.3.1",
     "@blotch/rsbuild-plugin-angular-lynx": "22.3.1",
     "@lynx-js/qrcode-rsbuild-plugin": "^0.7.3",
-    "@lynx-js/rspeedy": "^0.18.5"
+    "@lynx-js/rspeedy": "^0.18.6"
   },
   "devDependencies": {
     "@angular-devkit/architect": "^0.2203.0",

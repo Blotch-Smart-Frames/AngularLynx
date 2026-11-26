@@ -124,11 +124,18 @@ const mayBeInlineTag = (compound: readonly SelectorNode[]): boolean => {
  * <b>12</b></div>` the `<b>`'s parent is that `<text>`, not the `<div>`, and
  * Lynx's CSS matched `.row > b` to nothing there, where a browser draws the
  * `<b>` red (issue #692). A lone inline tag in a row has no anonymous
- * `<text>`, so the selector stays as well. An inline tag goes in one
- * anonymous `<text>` at most, and only straight under the element around the
- * text, so each new selector has it at one combinator.
+ * `<text>`, so the selector stays as well.
  *
- * The style index reads the new selector too (see style-index.ts), with the
+ * A path can pass through more than one anonymous `<text>`, when a block
+ * sits in an inline tag: in `<div class="outer">Lead <a><div
+ * class="inner">Total: <b>12</b></div></a></div>`, the `<a>` is in the outer
+ * `<div>`'s and the `<b>` in the inner one's, so `.outer > a .inner > b`
+ * needs both. So each combination of the combinators gets a selector, but
+ * for one with two child combinators in a row: the compound between them
+ * would be an inline tag, a `<text>`, holding an anonymous `<text>`, which
+ * the runtime never makes. `.a > .b > b` gains two selectors, not three.
+ *
+ * The style index reads the new selectors too (see style-index.ts), with the
  * anonymous `<text>` as the tag's parent, which is where the runtime finds it
  * (its matchedStyleFlagsFor): the runtime counts the rule as the tag's own
  * only where Lynx applies it. Combinators inside `:is()` or `:not()` are left
@@ -138,29 +145,57 @@ const throughAnonymousText = (selectors: selectorParser.Root): void => {
   // The selectors as they were: the new ones need no more of their own.
   for (const selector of selectors.nodes.slice()) {
     const nodes = selector.nodes;
-    const extra: selectorParser.Selector[] = [];
-    nodes.forEach((node, at) => {
+    // The child combinators an anonymous <text> may sit at, by position.
+    const at: number[] = [];
+    nodes.forEach((node, index) => {
       if (node.type !== 'combinator' || node.value.trim() !== '>') return;
       // A relative selector (`> b` in a nested rule) has no parent to match.
-      if (!nodes.slice(0, at).some((before) => before.type !== 'combinator')) {
+      if (
+        !nodes.slice(0, index).some((before) => before.type !== 'combinator')
+      ) {
         return;
       }
-      let end = at + 1;
+      let end = index + 1;
       while (end < nodes.length && nodes[end]!.type !== 'combinator') end++;
-      if (!mayBeInlineTag(nodes.slice(at + 1, end))) return;
+      if (mayBeInlineTag(nodes.slice(index + 1, end))) at.push(index);
+    });
+    /**
+     * Whether two combinators have one compound between them.
+     */
+    const inARow = (left: number, right: number): boolean =>
+      !nodes.slice(left + 1, right).some((node) => node.type === 'combinator');
+    // Each combination, by the positions in it, but for two child
+    // combinators in a row (see above).
+    let combinations: number[][] = [[]];
+    for (const index of at) {
+      combinations = [
+        ...combinations,
+        ...combinations
+          .filter((chosen) => {
+            const last = chosen[chosen.length - 1];
+            return last === undefined || !inARow(last, index);
+          })
+          .map((chosen) => [...chosen, index]),
+      ];
+    }
+    // The selector itself is the empty combination; the others follow it,
+    // shortest first.
+    combinations.shift();
+    combinations.sort((a, b) => a.length - b.length);
+    let after: selectorParser.Selector = selector;
+    for (const chosen of combinations) {
       const copy = selector.clone();
-      const combinator = copy.nodes[at]!;
-      copy.insertBefore(combinator, combinator.clone());
-      copy.insertBefore(
-        combinator,
-        selectorParser.className({ value: ANONYMOUS_TEXT_CLASS }),
-      );
+      // From the right, so the positions to their left stay where they were.
+      for (const index of [...chosen].reverse()) {
+        const combinator = copy.nodes[index]!;
+        copy.insertBefore(combinator, combinator.clone());
+        copy.insertBefore(
+          combinator,
+          selectorParser.className({ value: ANONYMOUS_TEXT_CLASS }),
+        );
+      }
       // Spaced from the selector before it, as a list's selectors are.
       copy.nodes[0]!.spaces.before = ' ';
-      extra.push(copy);
-    });
-    let after: selectorParser.Selector = selector;
-    for (const copy of extra) {
       selectors.insertAfter(after, copy);
       after = copy;
     }

@@ -149,10 +149,21 @@ describe('rewriteTypeSelectors', () => {
         '.row > b + i',
         '.row > ._ngtag-b + ._ngtag-i, .row > ._ngtext > ._ngtag-b + ._ngtag-i',
       ],
-      // One anonymous <text> at each child combinator in turn.
+      // Two child combinators in a row never both cross one: `.b` would be
+      // an inline tag, a <text>, holding an anonymous <text>.
       [
         '.a > .b > b',
         '.a > .b > ._ngtag-b, .a > ._ngtext > .b > ._ngtag-b, .a > .b > ._ngtext > ._ngtag-b',
+      ],
+      // A block in an inline tag has an anonymous <text> of its own, so a
+      // path can cross two.
+      [
+        '.outer > a .inner > b',
+        '.outer > ._ngtag-a .inner > ._ngtag-b, .outer > ._ngtext > ._ngtag-a .inner > ._ngtag-b, .outer > ._ngtag-a .inner > ._ngtext > ._ngtag-b, .outer > ._ngtext > ._ngtag-a .inner > ._ngtext > ._ngtag-b',
+      ],
+      [
+        '.a > .b > .c > .d',
+        '.a > .b > .c > .d, .a > ._ngtext > .b > .c > .d, .a > .b > ._ngtext > .c > .d, .a > .b > .c > ._ngtext > .d, .a > ._ngtext > .b > .c > ._ngtext > .d',
       ],
       [
         '.row > b, .other',

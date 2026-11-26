@@ -52,6 +52,8 @@
 	</array>
 	<key>AngularLynxEdgeToEdge</key>
 	<true/>
+	<key>AngularLynxTextScaling</key>
+	<true/>
 	<!-- /angular-lynx:info -->
 </dict>
 </plist>

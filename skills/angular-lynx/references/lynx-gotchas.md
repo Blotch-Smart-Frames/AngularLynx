@@ -109,6 +109,10 @@ Lynx draws text only inside `<text>`, so the runtime draws raw text whose parent
 
 Every `rem` size is an eighth smaller than in a browser: Tailwind's `h-12` is 42px, not 48px. `page { font-size: 16px; }` makes `1rem` and the default text size 16px (the dolan UI theme sets it). No keyword sizes (`small`, `medium`, `large`).
 
+### Text follows the phone's text size through `rem`, not `px`
+
+The `ng build --platform` apps follow Dynamic Type (iOS) and the font size (Android), at launch and when it changes: the native build writes a `page` rule's px `font-size` in `sp` (adding `page { font-size: 14px }` for an app without one), and only `sp` takes the phone's scale, so `1rem`, and everything sized in `rem` (Tailwind's `text-base`, `h-12`, `p-4`, the dolan components), grows by it. A size in `px` stays as written: use it only for what mustn't grow. A `<text>` with no font size of its own stays at Lynx's 14px, so give text a size class. Lay out for growth: a fixed `px` height around `rem` text overflows at the large sizes, which reach about 3.1 on iOS. `inject(LynxAccessibilitySettings).textScale()` is the scale (1 at the default) for a layout that has to change. `"textScaling": false` in the build target's options keeps the default size, and `{ "max": 1.6 }` caps it. The web preview and Lynx Explorer stay at 1.
+
 ### `line-height` only works on `<text>` elements
 
 Setting it on a container `<view>` has no effect.
@@ -145,7 +149,7 @@ iOS keeps the system's pale gray: its setter takes a color a string attribute ne
 
 ### No `@media` queries
 
-Use runtime logic with conditional classes. `prefers-color-scheme` on its own works: the build turns it into rules under `page.dark` (see "Dark Mode" in [styling-and-css.md](styling-and-css.md)). For `prefers-reduced-motion`, `prefers-reduced-transparency` and `prefers-contrast`, inject `LynxAccessibilitySettings`: its `reduceMotion()`, `reduceTransparency()` and `increaseContrast()` signals come from the host app's global props (the `ng build --platform` apps send them) and, in the web preview, from the browser's media queries.
+Use runtime logic with conditional classes. `prefers-color-scheme` on its own works: the build turns it into rules under `page.dark` (see "Dark Mode" in [styling-and-css.md](styling-and-css.md)). For `prefers-reduced-motion`, `prefers-reduced-transparency` and `prefers-contrast`, inject `LynxAccessibilitySettings`: its `reduceMotion()`, `reduceTransparency()` and `increaseContrast()` signals (and `textScale()`, the phone's text size) come from the host app's global props (the `ng build --platform` apps send them) and, in the web preview, from the browser's media queries.
 
 ### `SystemInfo.osVersion` is missing where Angular runs
 

@@ -14,6 +14,15 @@ final class LynxViewController: UIViewController {
   private let edgeToEdge =
     Bundle.main.object(forInfoDictionaryKey: "AngularLynxEdgeToEdge") as? Bool ?? true
 
+  /// Whether the app's text follows Dynamic Type, and the largest scale it
+  /// takes: angular.json's `textScaling`, which the generator writes into
+  /// Info.plist. A project generated before the option existed follows it,
+  /// without a cap.
+  private let textScaling =
+    Bundle.main.object(forInfoDictionaryKey: "AngularLynxTextScaling") as? Bool ?? true
+  private let maxTextScale =
+    (Bundle.main.object(forInfoDictionaryKey: "AngularLynxMaxTextScale") as? NSNumber)?.doubleValue
+
   override func viewDidLoad() {
     super.viewDidLoad()
     // The launch screen's color (angular.json's splash.backgroundColor),
@@ -69,7 +78,10 @@ final class LynxViewController: UIViewController {
       // them on its engine thread, not the UI thread (see AngularLynxWebGL.h).
       builder.enableMTSModule = true
       builder.screenSize = screenSize
-      builder.fontScale = 1.0
+      // The user's text size (see textScale()). The build tells Lynx to
+      // scale only `sp` lengths by it, which the page's root font size is
+      // written in, so every rem grows with it and a px size doesn't.
+      builder.fontScale = self.textScale()
       builder.enableGenericResourceFetcher = .true
       builder.genericResourceFetcher = fetcher
       builder.templateResourceFetcher = fetcher
@@ -117,10 +129,39 @@ final class LynxViewController: UIViewController {
       NotificationCenter.default.addObserver(
         self, selector: #selector(accessibilitySettingsDidChange), name: name, object: nil)
     }
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(contentSizeCategoryDidChange),
+      name: UIContentSizeCategory.didChangeNotification, object: nil)
   }
 
   @objc private func accessibilitySettingsDidChange() {
     lynxView?.updateGlobalProps(with: globalProps())
+  }
+
+  /// The user chose another text size while the app was open: the page's
+  /// root font size, and with it every rem, takes the new scale at once, as
+  /// UIKit's own text does, and LynxAccessibilitySettings.textScale() hears it.
+  @objc private func contentSizeCategoryDidChange() {
+    lynxView?.updateFontScale(textScale())
+    lynxView?.updateGlobalProps(with: globalProps())
+  }
+
+  /// How much larger than the default the user's Dynamic Type size draws body
+  /// text: 1 at the default (Large), about 1.24 at the largest of the
+  /// standard sizes and 3.1 at the largest accessibility size, and below 1 at
+  /// the smaller sizes. Capped at angular.json's `textScaling.max`, and 1
+  /// with `"textScaling": false`.
+  ///
+  /// Read from the app's content size category rather than the view's
+  /// traits, which may not have changed yet when the notification arrives.
+  private func textScale() -> CGFloat {
+    guard textScaling else { return 1 }
+    let traits = UITraitCollection(
+      preferredContentSizeCategory: UIApplication.shared.preferredContentSizeCategory)
+    let body: CGFloat = 17
+    let scale = UIFontMetrics(forTextStyle: .body).scaledValue(for: body, compatibleWith: traits) / body
+    guard let maxTextScale else { return scale }
+    return min(scale, CGFloat(maxTextScale))
   }
 
   @available(iOS, deprecated: 17.0, message: "registerForTraitChanges in viewDidLoad replaces it")
@@ -177,7 +218,7 @@ final class LynxViewController: UIViewController {
   /// The global props the runtime reads: `theme` (LynxTheme), `isNotchScreen`
   /// (LynxSafeArea), `appLocale` (LynxLocale), `appTimeZone` (the `intl`
   /// build option's Intl.DateTimeFormat), the accessibility settings
-  /// (LynxAccessibilitySettings), `osVersion` (LynxSystemInfo) and
+  /// and text scale (LynxAccessibilitySettings), `osVersion` (LynxSystemInfo) and
   /// `initialURL` (LynxLinking and the router), plus the safe-area insets and
   /// `edgeToEdge`, which env(safe-area-inset-*) reads. The Android shell
   /// sends the same keys, and Lynx Explorer sends theme and isNotchScreen too.
@@ -203,6 +244,9 @@ final class LynxViewController: UIViewController {
       "reduceTransparency": UIAccessibility.isReduceTransparencyEnabled,
       // Increase Contrast.
       "increaseContrast": UIAccessibility.isDarkerSystemColorsEnabled,
+      // The text size, as the LynxView's font scale has it
+      // (LynxAccessibilitySettings.textScale).
+      "textScale": textScale(),
       // Lynx builds the main thread's SystemInfo, where Angular runs, without
       // the OS version, so LynxSystemInfo reads it from here. The glass
       // components need it: blur-view draws Liquid Glass only from iOS 26.

@@ -93,6 +93,48 @@ describe('LynxAccessibilitySettings', () => {
     });
   });
 
+  describe('textScale', () => {
+    it('is 1, the system default, when the host sends none', () => {
+      vi.stubGlobal('__WEB__', false);
+      expect(create().settings.textScale()).toBe(1);
+    });
+
+    // The shells send it again when the user changes the text size while
+    // the app is open.
+    it("follows the host's textScale as it changes", () => {
+      vi.stubGlobal('__WEB__', false);
+      const { settings, globalData } = create(signal({ textScale: 1.35 }));
+
+      expect(settings.textScale()).toBe(1.35);
+
+      globalData.set({ textScale: 0.82 });
+
+      expect(settings.textScale()).toBe(0.82);
+    });
+
+    it("takes a number's text, as Lynx Explorer passes a bundle URL's query parameters", () => {
+      vi.stubGlobal('__WEB__', false);
+      expect(create(signal({ textScale: '1.5' })).settings.textScale()).toBe(
+        1.5,
+      );
+    });
+
+    it.each([
+      0,
+      -1,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      '',
+      ' ',
+      'large',
+      true,
+      null,
+    ])('is 1 for %s, which is no scale', (textScale) => {
+      vi.stubGlobal('__WEB__', false);
+      expect(create(signal({ textScale })).settings.textScale()).toBe(1);
+    });
+  });
+
   describe('in the web preview', () => {
     it("follows the page's media queries, and stops listening when destroyed", () => {
       const motion = fakeQuery(true);

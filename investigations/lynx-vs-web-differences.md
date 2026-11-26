@@ -7619,3 +7619,19 @@ For each element with custom properties of its own, the flush collects them and 
 ### The fix
 
 The build plugin sets the starting values only on the elements that read them (`startingValueRules` in `packages/rsbuild-plugin-angular-lynx/src/tailwind-v4/starting-values.ts`): each rule that reads a variable without setting it gets them on its subject's class, before every utility.
+
+## Lynx's font scale grows every `px` font size, not `rem`, unless the page says otherwise
+
+### What you'd expect (web)
+
+A browser's text size setting changes the root font size: everything in `rem` grows with it, and a size in `px` stays as written. iOS's Dynamic Type and Android's `sp` follow the same idea, a scale the person sets that the app's text sizes are written against.
+
+### What Lynx does
+
+A LynxView has a font scale (`LynxViewBuilder.fontScale`, `LynxView.updateFontScale()`), 1 unless the host sets it. By default Lynx multiplies every font-relevant length by it: `font-size`, `line-height` and `letter-spacing` in `px`, `rpx` and `ppx` (`CSSStyleUtils::ToLength` in `core/renderer/css/css_style_utils.cc`, `non_sp_font_scale`). So a label sized in `px` grows, and a box sized in `rem` grows only through the root's px font size. With the page config `fontScaleEffectiveOnlyOnSp: true`, only an `sp` length is multiplied (`font_scale_sp_only_`), which no browser has.
+
+A `<text>` with no `font-size` of its own draws at Lynx's default, 14px, whatever the page's font size, and isn't multiplied with `fontScaleEffectiveOnlyOnSp`.
+
+### The fix
+
+The generated apps set the font scale from Dynamic Type or Android's font scale (`textScale` in the global props too), and the build turns on `fontScaleEffectiveOnlyOnSp` (`angular-webpack-plugin.ts`) and writes a `page` rule's `px` font size in `sp` in the native bundle (`text-scale.ts`), adding `page { font-size: 14px }` before the app's styles for an app without one. The root grows by the scale, every `rem` with it, and `px` stays as written, as on the web. Measured in a generated app on the iOS 27 Simulator (2026-11-27): at the largest accessibility size the scale is 2.82, an `h-12` box 135pt and `text-base` 45pt, a 48px box and 16px text unchanged, and the page followed a change made while the app was open, both ways. A `<text>` with no size class stayed at 14px.

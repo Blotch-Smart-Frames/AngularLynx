@@ -19,6 +19,7 @@ import { getAngularCliContext } from './angular-cli-context.js';
 import { AngularWebpackPlugin } from './angular-webpack-plugin.js';
 import type { BackgroundEntries } from './background-entry.js';
 import { LAYERS } from './layers.js';
+import { TEXT_SCALE_STYLESHEET } from './text-scale.js';
 import type { NormalizedPluginAngularLynxOptions } from './utils/options.js';
 import { ZeroBigIntLiteralsPlugin } from './zero-bigint-literals.js';
 
@@ -171,8 +172,12 @@ export const applyEntry = (
       // only that half needs the native bundle's blur-view rule, or the web
       // bundle's font, and the bold of `<b>` both bundles draw. (Rspeedy
       // builds only these two environments.)
+      // The native bundle's default root font size follows the phone's text
+      // size (see text-scale.ts).
       const mainThreadImports = [
-        isLynx ? BLUR_VIEW_STYLESHEET : WEB_SYSTEM_FONT_STYLESHEET,
+        ...(isLynx
+          ? [BLUR_VIEW_STYLESHEET, TEXT_SCALE_STYLESHEET]
+          : [WEB_SYSTEM_FONT_STYLESHEET]),
         HTML_TEXT_TAGS_STYLESHEET,
         ...entryImports,
       ];

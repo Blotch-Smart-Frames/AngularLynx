@@ -305,6 +305,7 @@ export default defineConfig({
             { text: 'LynxSafeArea', link: '/api/angular-lynx/safe-area' },
             { text: 'LynxLocale', link: '/api/angular-lynx/locale' },
             { text: 'LynxSystemInfo', link: '/api/angular-lynx/system-info' },
+            { text: 'LynxAppState', link: '/api/angular-lynx/app-state' },
             { text: 'LynxClipboard', link: '/api/angular-lynx/clipboard' },
             { text: 'LynxHaptics', link: '/api/angular-lynx/haptics' },
             { text: 'Host Data', link: '/api/angular-lynx/host-data' },

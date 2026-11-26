@@ -6286,6 +6286,22 @@ The build plugin (`packages/rsbuild-plugin-angular-lynx/src/tailwind-v4/`) rewri
 
 ---
 
+## Lynx tells the app's code nothing when the app leaves the screen or comes back
+
+### What you'd expect (web)
+
+The Page Visibility API: `document.visibilityState` turns `hidden` when the tab or the app goes out of sight, and a `visibilitychange` event says so, so a page can read again what isn't live when it comes back. React Native's `AppState` does the same for an app, with `active`, `inactive` and `background`.
+
+### What Lynx does
+
+Nothing reaches the app's code. The host app has to tell the LynxView itself (`LynxView.onEnterForeground()` and `onEnterBackground()` on Android, which the Android shell calls from `onResume` and `onPause`), and Lynx then pauses timers and animations. lynx-core's `App` hears `ON_APP_ENTER_FOREGROUND` and `ON_APP_ENTER_BACKGROUND` (`js_libraries/lynx-core/src/app/app.ts`), but only to call its own `onAppEnterForeground()` and `onAppEnterBackground()`, which are empty and not exposed: there's no global event, no `lynx` API, and nothing on the main thread. Nothing says how soon a paused timer fires once the app wakes either, so a clock that moves on with `setTimeout` can show the moment the app went to sleep.
+
+### The fix
+
+`LynxAppState` (`packages/runtime/src/lib/app-state/app-state.ts`, issue #577) reads `appState` (`'active'`, `'inactive'` or `'background'`) from the host's global props, and on the web the page's visibility. The shells send it with the other global props, and again as it changes: iOS from the scene's activation (`UIScene.didActivateNotification`, `willDeactivateNotification`, `didEnterBackgroundNotification` and `willEnterForegroundNotification`), Android from `onStart`, `onResume`, `onPause` and `onStop`, and from `onTopResumedActivityChanged`: from Android 10, both apps in split screen stay resumed, so `onPause` doesn't run when the other one takes the focus. A global prop rather than a global event, as the accessibility settings are: the app reads the right state from its first line, and a change that comes before anything listens isn't lost. Lynx Explorer sends none, so the app is always `active` there.
+
+---
+
 ## Lynx has no API for the user's accessibility display settings
 
 ### What you'd expect (web)

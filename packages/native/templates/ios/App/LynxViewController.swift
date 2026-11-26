@@ -14,6 +14,17 @@ final class LynxViewController: UIViewController {
   /// scene becomes active just after.
   private var appState = LynxViewController.appState(of: UIApplication.shared.applicationState)
 
+  /// The block observers observeAppState() adds. NotificationCenter keeps a
+  /// block observer until it's removed, and iOS can disconnect the scene and
+  /// build a new controller, so deinit removes them.
+  private var appStateObservers: [NSObjectProtocol] = []
+
+  deinit {
+    for observer in appStateObservers {
+      NotificationCenter.default.removeObserver(observer)
+    }
+  }
+
   /// Whether the page fills the screen, under the status bar and the home
   /// indicator: angular.json's `edgeToEdge`, which the generator writes into
   /// Info.plist. A project generated before the option existed has no key,
@@ -154,7 +165,7 @@ final class LynxViewController: UIViewController {
   }
 
   private func observeAppState() {
-    for (name, state) in Self.appStateNotifications {
+    appStateObservers = Self.appStateNotifications.map { name, state in
       NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) {
         [weak self] _ in
         guard let self, self.appState != state else { return }

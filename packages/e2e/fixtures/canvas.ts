@@ -178,9 +178,11 @@ export class CanvasRoute {
    * back.
    */
   drawVideo(tries = 20): void {
-    // The first frame's event can come a moment before the shell has the
-    // frame for a canvas: it tries again for up to 2 seconds.
-    if (this.video().nativeElement.videoWidth === 0 && tries > 0) {
+    // The check needs the frame and the WebGL context, which the page makes
+    // after an async decode: the first frame can come before either is
+    // there, so it tries again for up to 2 seconds.
+    const ready = this.video().nativeElement.videoWidth > 0 && this.#gl;
+    if (!ready && tries > 0) {
       setTimeout(() => this.drawVideo(tries - 1), 100);
       return;
     }

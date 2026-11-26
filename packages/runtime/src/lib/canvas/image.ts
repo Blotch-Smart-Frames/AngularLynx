@@ -178,6 +178,17 @@ export const createImageBitmap = async (
     throw new Error('createImageBitmap() cropping is not supported on Lynx');
   }
   const options = (rest[0] ?? {}) as DecodeOptions;
+  // A resize to no pixels is refused, as a browser does, before an omitted
+  // size becomes 0 ("keep the source's") on its way to the shell.
+  for (const member of ['resizeWidth', 'resizeHeight'] as const) {
+    if (options[member] !== undefined && Number(options[member]) === 0) {
+      const error = new Error(
+        `Failed to execute 'createImageBitmap' on 'Window': The ${member} is equal to 0.`,
+      );
+      error.name = 'InvalidStateError';
+      throw error;
+    }
+  }
   const canvas = canvasSourceOf(source);
   if (canvas) {
     // Read before anything is awaited, so the bitmap is of the canvas as it

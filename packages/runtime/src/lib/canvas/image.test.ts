@@ -95,6 +95,22 @@ describe('createImageBitmap', () => {
     expect(fromWords(bridge.decodeImage.mock.calls.at(-1)![1])).toEqual(PNG);
   });
 
+  it('refuses a resize to no pixels, as a browser does', async () => {
+    for (const options of [
+      { resizeWidth: 0 },
+      { resizeHeight: 0, resizeWidth: 4 },
+    ]) {
+      await expect(
+        createImageBitmap(new LynxBlob([PNG]), options),
+      ).rejects.toMatchObject({ name: 'InvalidStateError' });
+      await expect(
+        createImageBitmap(new LynxOffscreenCanvas(4, 3), options),
+      ).rejects.toThrow(/is equal to 0/);
+    }
+    expect(bridge.decodeImage).not.toHaveBeenCalled();
+    expect(bridge.imageFromCanvas).not.toHaveBeenCalled();
+  });
+
   it('refuses other sources, and cropping', async () => {
     await expect(createImageBitmap('nope')).rejects.toThrow(TypeError);
     await expect(createImageBitmap(null)).rejects.toThrow(TypeError);

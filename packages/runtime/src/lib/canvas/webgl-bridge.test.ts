@@ -167,6 +167,7 @@ describe('getCanvas2DBridge', () => {
     expect(bridge.create2D(1, 'c-1', { alpha: true })).toEqual({ ok: true });
     expect(bridge.run2D(1, [5])).toEqual([true]);
     bridge.destroy2D(1);
+    bridge.release2D(4);
     expect(bridge.encode2D(1, { type: 'image/png', quality: 1 })).toEqual({
       base64: 'AQI=',
       type: 'image/png',
@@ -175,6 +176,7 @@ describe('getCanvas2DBridge', () => {
       ['create2D', 1, 'c-1', { alpha: true }],
       ['run2D', 1, [5]],
       ['destroy2D', 1],
+      ['release2D', 4],
       ['encode2D', 1, { type: 'image/png', quality: 1 }],
     ]);
   });

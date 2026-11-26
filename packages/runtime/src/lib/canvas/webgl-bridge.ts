@@ -194,6 +194,11 @@ export type Canvas2DBridge = {
   ): WebGLCreateResult;
   run2D(contextId: number, commands: unknown[]): unknown[];
   destroy2D(contextId: number): void;
+  /**
+   * Frees a gradient or pattern, which every context in the LynxView shares,
+   * whether or not the context that made it is still there.
+   */
+  release2D(objectId: number): void;
   /** The canvas's pixels as a PNG or JPEG file, as `encodeImage`. */
   encode2D(
     contextId: number,
@@ -259,6 +264,7 @@ const lookUpCanvas2DBridge = (): Canvas2DBridge | null => {
     run2D: (contextId, commands) =>
       (invoke('run2D', contextId, commands) as unknown[] | undefined) ?? [],
     destroy2D: (contextId) => void invoke('destroy2D', contextId),
+    release2D: (objectId) => void invoke('release2D', objectId),
     encode2D: (contextId, options) =>
       (invoke('encode2D', contextId, options) as EncodedImage | undefined) ?? {
         error: `This app's shell can't encode a canvas: build it again with \`ng build --platform\``,

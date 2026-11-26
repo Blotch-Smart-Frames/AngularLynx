@@ -409,6 +409,8 @@ export class LynxWebGL2RenderingContext {
   #premultiplyAlpha = false;
   #colorspaceConversion: number = GL.BROWSER_DEFAULT_WEBGL;
   #unpackAlignment = 4;
+  /** Where an upload of part of an image starts, which the shell crops at. */
+  readonly #unpackSkip = { pixels: 0, rows: 0 };
   readonly #pack = { alignment: 4, rowLength: 0, skipPixels: 0, skipRows: 0 };
 
   constructor(
@@ -888,6 +890,12 @@ export class LynxWebGL2RenderingContext {
         return;
       case GL.UNPACK_ALIGNMENT:
         this.#unpackAlignment = Number(param);
+        break;
+      case GL.UNPACK_SKIP_PIXELS:
+        this.#unpackSkip.pixels = Number(param);
+        break;
+      case GL.UNPACK_SKIP_ROWS:
+        this.#unpackSkip.rows = Number(param);
         break;
       case GL.PACK_ALIGNMENT:
         this.#pack.alignment = Number(param);
@@ -2282,12 +2290,23 @@ export class LynxWebGL2RenderingContext {
       return REFUSED;
     }
     const canvas = canvasSourceOf(source);
-    if (canvas) {
-      // A canvas is one image: it can't fill a 3D upload's layers here.
-      if (depth > 1) {
+    const image = canvas ? null : nativeImageOf(source);
+    if (canvas || image) {
+      // A canvas or an image is one picture: it can't fill a 3D upload's
+      // layers here, and the rectangle the unpack skips and the size name
+      // must lie inside it, as WebGL2 has it.
+      const sourceWidth = (canvas ?? image)!.width;
+      const sourceHeight = (canvas ?? image)!.height;
+      if (
+        depth > 1 ||
+        this.#unpackSkip.pixels + width > sourceWidth ||
+        this.#unpackSkip.rows + height > sourceHeight
+      ) {
         this.#fail(GL.INVALID_OPERATION);
         return REFUSED;
       }
+    }
+    if (canvas) {
       // The shell reads the canvas's own pixels, by its id: its 2D bitmap or
       // its drawing buffer. Its calls go first.
       canvas.flush();
@@ -2303,7 +2322,6 @@ export class LynxWebGL2RenderingContext {
         'texImage: a <video> can not be a texture source on Lynx yet; use an ImageBitmap, an image, a canvas or a typed array',
       );
     }
-    const image = nativeImageOf(source);
     if (image) {
       return {
         image: image.id,

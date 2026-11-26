@@ -337,18 +337,18 @@ export class PathBuilder {
     if (!inverse) return;
     const x0 = inverse[0] * this.#lastX + inverse[2] * this.#lastY + inverse[4];
     const y0 = inverse[1] * this.#lastX + inverse[3] * this.#lastY + inverse[5];
-    // The tests are relative to the lines' lengths, so they hold at any
-    // scale: a corner a millionth of a pixel across, scaled up by 1e8, is a
-    // corner.
+    // Points that are the same, as the spec has it, and lines in line,
+    // judged by their directions alone, so the test holds at any scale and
+    // anywhere: a corner a millionth of a pixel across, scaled up by 1e8, is
+    // a corner.
     const l1 = Math.hypot(x1 - x0, y1 - y0);
     const l2 = Math.hypot(x2 - x1, y2 - y1);
     const cross = (x1 - x0) * (y2 - y1) - (y1 - y0) * (x2 - x1);
-    const tiny = 1e-12 * Math.max(1, Math.abs(x1), Math.abs(y1));
     if (
-      l1 <= tiny ||
-      l2 <= tiny ||
+      l1 === 0 ||
+      l2 === 0 ||
       radius === 0 ||
-      Math.abs(cross) <= 1e-12 * l1 * l2
+      Math.abs(cross / l1 / l2) <= 1e-12
     ) {
       this.lineTo(x1, y1);
       return;
@@ -386,11 +386,16 @@ export class PathBuilder {
     radii: number | RadiusInit | Iterable<number | RadiusInit> = 0,
   ): void {
     if (!finite(x, y, w, h)) return;
-    // A sequence of radii is any iterable; a DOMPointInit is one radius.
+    // A sequence of radii is any iterable; a DOMPointInit is one radius, as
+    // Web IDL tells them apart: by whether its iterator method is there.
+    const iterator =
+      typeof radii === 'object' && radii !== null
+        ? (radii as { [Symbol.iterator]?: unknown })[Symbol.iterator]
+        : undefined;
     const list =
-      typeof radii === 'object' && radii !== null && Symbol.iterator in radii
-        ? Array.from(radii as Iterable<number | RadiusInit>)
-        : [radii as number | RadiusInit];
+      iterator === undefined || iterator === null
+        ? [radii as number | RadiusInit]
+        : Array.from(radii as Iterable<number | RadiusInit>);
     if (list.length < 1 || list.length > 4) {
       throw new RangeError(
         `Failed to execute 'roundRect' on 'CanvasRenderingContext2D': ${list.length} radii provided. Between one and four radii are necessary.`,
@@ -725,17 +730,27 @@ export class LynxPath2D {
  * before it.
  */
 export const parseSvgPath = (data: string, builder: PathBuilder): void => {
-  // Commands and numbers, between separators: the data ends at the first
-  // thing that's neither, as SVG's does.
+  // Commands and numbers, between whitespace and, between two numbers only,
+  // one comma: the data ends at the first thing that's neither, as SVG's
+  // does.
   const tokens: string[] = [];
   const tokenPattern =
-    /[\s,]*([MmZzLlHhVvCcSsQqTtAa]|[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)/y;
+    /\s*(,?)\s*([MmZzLlHhVvCcSsQqTtAa]|[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)/y;
+  const isLetter = (token: string | undefined) =>
+    token !== undefined && /^[a-z]$/i.test(token);
   for (
     let match = tokenPattern.exec(data);
     match;
     match = tokenPattern.exec(data)
   ) {
-    tokens.push(match[1]);
+    const comma = match[1] === ',';
+    if (
+      comma &&
+      (tokens.length === 0 || isLetter(tokens.at(-1)) || isLetter(match[2]))
+    ) {
+      break;
+    }
+    tokens.push(match[2]);
   }
   // Path data starts with a move.
   if (tokens[0] !== 'M' && tokens[0] !== 'm') return;

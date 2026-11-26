@@ -87,6 +87,21 @@ describe('parseFont', () => {
     ]);
   });
 
+  it('reads line breaks round the families, and escapes in quoted ones', () => {
+    expect(parseFont('16px\n"Arial",\n serif')?.families).toEqual([
+      'Arial',
+      'serif',
+    ]);
+    const quoted = parseFont('16px "A\\"B", serif');
+    expect(quoted?.families).toEqual(['A"B', 'serif']);
+    expect(quoted?.text).toBe('16px "A\\"B", serif');
+    expect(parseFont(quoted!.text)?.families).toEqual(['A"B', 'serif']);
+    expect(parseFont("16px 'A\\\\B'")?.text).toBe('16px "A\\\\B"');
+    expect(parseFont('16px "\\41 rial"')?.families).toEqual(['Arial']);
+    expect(parseFont('16px "\\0"')?.families).toEqual(['\ufffd']);
+    expect(parseFont('16px "A\\')).toBeNull();
+  });
+
   it('keeps a quoted keyword a family name, and refuses one unquoted', () => {
     expect(parseFont('16px inherit')).toBeNull();
     expect(parseFont('16px Arial, initial')).toBeNull();

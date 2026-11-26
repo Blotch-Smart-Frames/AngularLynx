@@ -1725,14 +1725,86 @@ describe('textures', () => {
       new Uint8Array(4),
     );
     expect(gl.getError()).toBe(GL.INVALID_OPERATION);
-    // Neither upload was sent, nor the canvas read.
+    // None of them was sent, nor the canvas read.
+    gl.flush();
     expect(canvas[CANVAS_SOURCE].flush).not.toHaveBeenCalled();
     expect(
       bridge.batches
         .slice(before)
         .flat()
-        .filter((item) => item === OP.texImage2D || item === OP.texSubImage2D),
+        .filter(
+          (item) =>
+            item === OP.texImage2D ||
+            item === OP.texSubImage2D ||
+            item === OP.texImage3D,
+        ),
     ).toEqual([]);
+  });
+
+  it('refuses part of an image outside it, and an image in 3D', () => {
+    const picture = {
+      [NATIVE_IMAGE]: { id: 5, width: 4, height: 2, bakedOptions: false },
+    };
+    const before = bridge.batches.length;
+    // The unpack skips and the size name a rectangle past the image's edge.
+    gl.pixelStorei(GL.UNPACK_SKIP_PIXELS, 2);
+    gl.pixelStorei(GL.UNPACK_SKIP_ROWS, 1);
+    gl.texImage2D(
+      GL.TEXTURE_2D,
+      0,
+      GL.RGBA,
+      3,
+      1,
+      0,
+      GL.RGBA,
+      GL.UNSIGNED_BYTE,
+      picture,
+    );
+    expect(gl.getError()).toBe(GL.INVALID_OPERATION);
+    gl.texImage2D(
+      GL.TEXTURE_2D,
+      0,
+      GL.RGBA,
+      2,
+      2,
+      0,
+      GL.RGBA,
+      GL.UNSIGNED_BYTE,
+      picture,
+    );
+    expect(gl.getError()).toBe(GL.INVALID_OPERATION);
+    gl.texImage3D(
+      GL.TEXTURE_3D,
+      0,
+      GL.RGBA,
+      1,
+      1,
+      2,
+      0,
+      GL.RGBA,
+      GL.UNSIGNED_BYTE,
+      picture,
+    );
+    expect(gl.getError()).toBe(GL.INVALID_OPERATION);
+    // Inside it, it goes.
+    gl.texImage2D(
+      GL.TEXTURE_2D,
+      0,
+      GL.RGBA,
+      2,
+      1,
+      0,
+      GL.RGBA,
+      GL.UNSIGNED_BYTE,
+      picture,
+    );
+    gl.flush();
+    expect(
+      bridge.batches
+        .slice(before)
+        .flat()
+        .filter((item) => item === OP.texImage2D || item === OP.texImage3D),
+    ).toEqual([OP.texImage2D]);
   });
 
   it('says a video can’t be uploaded yet', () => {

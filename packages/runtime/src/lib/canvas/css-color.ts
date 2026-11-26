@@ -168,6 +168,8 @@ const fromFunction = (name: string, body: string): RGBA | null => {
     }
     case 'hsl':
     case 'hsla':
+      // The legacy syntax has no `none`, the hue's included.
+      if (legacy && args[0] === 'none') return null;
       rgb = hslToRgb(
         hueOf(args[0]),
         fractionOf(args[1], legacy),

@@ -111,6 +111,12 @@ const GENERIC_FAMILIES = new Set([
 type Family = { readonly name: string; readonly quoted: boolean };
 
 /**
+ * CSS's whitespace: spaces, tabs and line breaks.
+ */
+const isSpace = (char: string | undefined): boolean =>
+  char !== undefined && /\s/.test(char);
+
+/**
  * The families after the size, split at the commas outside quotes, or null
  * if the list is malformed.
  */
@@ -118,13 +124,32 @@ const familiesOf = (text: string): Family[] | null => {
   const families: Family[] = [];
   let index = 0;
   while (true) {
-    while (text[index] === ' ' || text[index] === '\t') index++;
+    while (isSpace(text[index])) index++;
     const quote = text[index];
     if (quote === '"' || quote === "'") {
-      const end = text.indexOf(quote, index + 1);
-      if (end < 0) return null;
-      families.push({ name: text.slice(index + 1, end), quoted: true });
-      index = end + 1;
+      // A CSS string: up to the quote that isn't escaped, with its escapes
+      // read (`\"`, `\\`, and hex code points like `\41 `).
+      let name = '';
+      index++;
+      while (index < text.length && text[index] !== quote) {
+        if (text[index] === '\\') {
+          const hex = /^[0-9a-f]{1,6}\s?/i.exec(text.slice(index + 1));
+          if (hex) {
+            name += String.fromCodePoint(
+              Math.min(0x10ffff, parseInt(hex[0], 16)) || 0xfffd,
+            );
+            index += 1 + hex[0].length;
+          } else {
+            name += text[index + 1] ?? '';
+            index += 2;
+          }
+        } else {
+          name += text[index++];
+        }
+      }
+      if (index >= text.length) return null;
+      families.push({ name, quoted: true });
+      index++;
     } else {
       // Identifiers separated by spaces, up to the next comma.
       const comma = text.indexOf(',', index);
@@ -140,7 +165,7 @@ const familiesOf = (text: string): Family[] | null => {
       families.push({ name: part.replace(/\s+/g, ' '), quoted: false });
       index = comma < 0 ? text.length : comma;
     }
-    while (text[index] === ' ' || text[index] === '\t') index++;
+    while (isSpace(text[index])) index++;
     if (index >= text.length) return families;
     if (text[index] !== ',') return null;
     index++;
@@ -158,7 +183,7 @@ const serializeFamily = ({ name, quoted }: Family): string => {
     ) ||
     / /.test(name) ||
     (quoted && (RESERVED_FAMILIES.has(lower) || GENERIC_FAMILIES.has(lower)));
-  return needsQuotes ? `"${name}"` : name;
+  return needsQuotes ? `"${name.replace(/["\\]/g, '\\$&')}"` : name;
 };
 
 /**

@@ -252,6 +252,12 @@ describe('PathBuilder', () => {
     path.moveTo(0, 0);
     path.arcTo(1e-6, 0, 1e-6, 1e-6, 5e-7);
     expect(ends(path.segments).at(-1)).toEqual([C, 100, 50]);
+    // And anywhere: a corner far from the origin, moved into view.
+    const far = new PathBuilder();
+    far.matrix = [2 ** 26, 0, 0, 2 ** 26, -(2 ** 46), 0];
+    far.moveTo(2 ** 20 - 2 ** -21, 0);
+    far.arcTo(2 ** 20, 0, 2 ** 20, 2 ** -21, 2 ** -22);
+    expect(ends(far.segments).at(-1)).toEqual([C, 0, 16]);
     const tiny = new PathBuilder();
     tiny.arc(-1e9, 0, 1e9, 0, 1e-9);
     expect(tiny.segments.filter((value) => value === C).length).toBe(1);
@@ -322,6 +328,17 @@ describe('PathBuilder', () => {
   });
 
   it('takes any iterable of radii', () => {
+    // A point with no iterator method is one radius.
+    const point = new PathBuilder();
+    point.roundRect(0, 0, 10, 10, {
+      x: 2,
+      y: 3,
+      [Symbol.iterator]: undefined,
+    } as never);
+    expect(ends(point.segments).slice(0, 2)).toEqual([
+      [M, 2, 0],
+      [L, 8, 0],
+    ]);
     const path = new PathBuilder();
     path.roundRect(0, 0, 10, 10, new Set([2, 4]));
     expect(ends(path.segments).slice(0, 3)).toEqual([
@@ -524,6 +541,18 @@ describe('LynxPath2D', () => {
     expect(
       ends(new LynxPath2D('M0 0 L10 ! 20 L30 40').builder.segments),
     ).toEqual([[M, 0, 0]]);
+    // A comma goes between two numbers only.
+    expect(
+      ends(new LynxPath2D('M0 0 L10 10 L,20 20').builder.segments),
+    ).toEqual([
+      [M, 0, 0],
+      [L, 10, 10],
+    ]);
+    expect(new LynxPath2D(',M0 0 L1 1').builder.segments).toEqual([]);
+    expect(ends(new LynxPath2D('M0 0 L1 1, L2 2').builder.segments)).toEqual([
+      [M, 0, 0],
+      [L, 1, 1],
+    ]);
     expect(ends(new LynxPath2D('m1,1 l2,2').builder.segments)).toEqual([
       [M, 1, 1],
       [L, 3, 3],

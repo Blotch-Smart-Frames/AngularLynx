@@ -163,20 +163,18 @@ type ObjectOwner = {
 };
 
 /**
- * Frees a gradient's or pattern's native side when it's garbage-collected,
- * through the context that made it. The held value reaches the context only
- * weakly: a context whose state holds the gradient would otherwise be held
- * by the registry through it, and never be collected. Null where the engine
- * has no FinalizationRegistry.
+ * Frees a gradient's or pattern's native side when it's garbage-collected.
+ * The shells keep every context's objects together, so it goes to the
+ * module straight, not through the context that made it, which may be gone.
+ * The held value holds no context, which would keep it alive. Null where the
+ * engine has no FinalizationRegistry.
  */
 const objectFinalizer: FinalizationRegistry<{
-  owner: WeakRef<ObjectOwner>;
+  bridge: Canvas2DBridge;
   id: number;
 }> | null =
-  typeof FinalizationRegistry === 'function' && typeof WeakRef === 'function'
-    ? new FinalizationRegistry(({ owner, id }) =>
-        owner.deref()?.record(OP.releaseObject, id),
-      )
+  typeof FinalizationRegistry === 'function'
+    ? new FinalizationRegistry(({ bridge, id }) => bridge.release2D(id))
     : null;
 
 /**
@@ -535,6 +533,13 @@ export class LynxCanvasRenderingContext2D {
   }
 
   #draw(...items: unknown[]): void {
+    // A gradient or pattern another context made may have changed since it
+    // was set (a color stop, a transform), recorded on that context: those
+    // go first.
+    for (const style of [this.#state.fillStyle, this.#state.strokeStyle]) {
+      if (style.kind === 'gradient') style.gradient.flushOwner(this.#owner);
+      else if (style.kind === 'pattern') style.pattern.flushOwner(this.#owner);
+    }
     this.#dirty = true;
     this.#cmd(...items);
   }
@@ -845,10 +850,7 @@ export class LynxCanvasRenderingContext2D {
   }
 
   #track(object: object, id: number): void {
-    objectFinalizer?.register(object, {
-      owner: new WeakRef(this.#owner),
-      id,
-    });
+    objectFinalizer?.register(object, { bridge: this.#bridge, id });
   }
 
   createLinearGradient(
@@ -1648,11 +1650,11 @@ export class LynxCanvasRenderingContext2D {
     imageData: LynxImageData,
     dx: number,
     dy: number,
-    dirtyX?: number,
-    dirtyY?: number,
-    dirtyWidth?: number,
-    dirtyHeight?: number,
+    ...dirty: [number?, number?, number?, number?]
   ): void {
+    // The overload is chosen by how many arguments there are, so an
+    // undefined dirty rectangle is an error, not the whole image.
+    const [dirtyX, dirtyY, dirtyWidth, dirtyHeight] = dirty;
     if (!imageData || !(imageData.data instanceof Uint8ClampedArray)) {
       throw new TypeError(
         "Failed to execute 'putImageData' on 'CanvasRenderingContext2D': parameter 1 is not of type 'ImageData'.",
@@ -1664,7 +1666,7 @@ export class LynxCanvasRenderingContext2D {
     let ry = 0;
     let rw = imageData.width;
     let rh = imageData.height;
-    if (dirtyX !== undefined) {
+    if (dirty.length > 0) {
       rx = enforceLong(dirtyX, 'putImageData');
       ry = enforceLong(dirtyY, 'putImageData');
       rw = enforceLong(dirtyWidth, 'putImageData');

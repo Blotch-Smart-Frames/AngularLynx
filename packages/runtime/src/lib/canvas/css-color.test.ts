@@ -50,6 +50,8 @@ describe('parseColor', () => {
     expect(parseColor('rgb(10%, 20%, 30%)')).toEqual([26, 51, 77, 1]);
     expect(parseColor('hsl(0, 50, 50)')).toBeNull();
     expect(parseColor('hsl(0, none, 50%)')).toBeNull();
+    expect(parseColor('hsl(none, 100%, 50%)')).toBeNull();
+    expect(parseColor('hsl(none 100% 50%)')).toEqual([255, 0, 0, 1]);
     expect(parseColor('rgb(a b c)')).toBeNull();
     expect(parseColor('hwb(0, 0%, 0%)')).toBeNull();
     expect(parseColor('hwb(bogus 60% 60%)')).toBeNull();

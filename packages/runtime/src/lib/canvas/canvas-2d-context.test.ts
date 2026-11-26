@@ -24,8 +24,8 @@ const { moveTo: M, lineTo: L, close: Z } = PATH_OP;
 let bridge: FakeCanvas2DBridge;
 const canvas = { width: 300, height: 150 };
 
-const make = (attributes = canvas2DAttributesFrom(undefined)) =>
-  new LynxCanvasRenderingContext2D(bridge, 7, canvas, attributes);
+const make = (attributes = canvas2DAttributesFrom(undefined), contextId = 7) =>
+  new LynxCanvasRenderingContext2D(bridge, contextId, canvas, attributes);
 
 /**
  * The commands sent so far, after the end of the task.
@@ -691,9 +691,10 @@ describe('LynxCanvasRenderingContext2D', () => {
       3,
       OP.setStrokeGradient,
       3,
-      OP.releaseObject,
-      3,
     ]);
+    // Freed through the module, which every context's objects share, so it
+    // goes whether or not the context that made it is still there.
+    expect(bridge.release2D).toHaveBeenCalledWith(3);
     expect(radial).toBeInstanceOf(module.LynxCanvasGradient);
   });
 
@@ -722,10 +723,10 @@ describe('LynxCanvasRenderingContext2D', () => {
   });
 
   it('paints with another context’s gradients and patterns, made in the shell first', () => {
-    const context = make();
+    const context = make(undefined, 7);
     const gradient = context.createLinearGradient(0, 0, 1, 1);
     const pattern = context.createPattern(image(3), null)!;
-    const other = make();
+    const other = make(undefined, 8);
     other.fillStyle = gradient;
     expect(other.fillStyle).toBe(gradient);
     // The context that made them sent their calls before the other used them.
@@ -743,9 +744,24 @@ describe('LynxCanvasRenderingContext2D', () => {
     ]);
     other.strokeStyle = pattern;
     expect(other.strokeStyle).toBe(pattern);
+    // A change to one after it was set goes first too, when the other draws
+    // with it.
+    pattern.setTransform({ e: 4 });
+    other.fillRect(0, 0, 1, 1);
+    expect(bridge.batches.length).toBe(2);
+    expect(bridge.batches[1].slice(0, 2)).toEqual([
+      OP.setPatternTransform,
+      pattern.id,
+    ]);
+    other.flush();
+    // Each context's calls went to its own context in the shell.
+    expect(bridge.batchContexts).toEqual([7, 7, 8]);
+    expect(bridge.batches[2]).toContain(OP.fill);
     // Its own needn't be sent first.
     other.fillStyle = other.createLinearGradient(0, 0, 1, 1);
-    expect(bridge.batches.length).toBe(1);
+    other.strokeStyle = other.createPattern(image(3), null)!;
+    other.fillRect(0, 0, 1, 1);
+    expect(bridge.batches.length).toBe(3);
   });
 
   it('makes patterns of images and canvases, with a transform', async () => {
@@ -957,6 +973,11 @@ describe('LynxCanvasRenderingContext2D', () => {
       TypeError,
     );
     expect(() => context.putImageData(data, 2 ** 31, 0)).toThrow(/'long'/);
+    // An undefined dirty rectangle is the seven-argument form's error, not
+    // the whole image.
+    expect(() => context.putImageData(data, 0, 0, undefined, 0, 1, 1)).toThrow(
+      TypeError,
+    );
     expect(await sent()).toEqual([
       OP.putImageData,
       toWords(new Uint8Array(data.data)),

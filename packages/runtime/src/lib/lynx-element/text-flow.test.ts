@@ -244,6 +244,8 @@ describe('baselineShiftFor', () => {
     ['a <sup> in a <sup>', [sup, sup], 0.88],
     ['a <b> in a <sup> in a <sup>', [0, sup, sup], 0.88],
     ['a <sup> in a <sub>', [sup, sub], 0.112],
+    // A size of its own above the tags that move it changes nothing.
+    ['a <b> in a <sup> in a sized tag', [0, sup, FONT_SIZE_FLAG], 0.4],
     // Past MAX_SMALLER_LEVELS the text stays the same size.
     [
       'a <b> in a <sup> in five <small>s',
@@ -262,6 +264,12 @@ describe('baselineShiftFor', () => {
     ['an app’s vertical-align above it', [0, VERTICAL_ALIGN_FLAG | sup]],
     ['a size of its own', [FONT_SIZE_FLAG, sup]],
     ['no flags at all', []],
+    // An app's rule for the tag sets the other distance too (review of #714).
+    ['both distances on a tag above it', [0, sup | LOWERED_FLAG]],
+    // A tag between with a size of its own: the outer <sup>'s em is of a
+    // size the runtime doesn't know.
+    ['a size of its own between them', [0, FONT_SIZE_FLAG, sup]],
+    ['a size of its own on the tag that moves it', [0, FONT_SIZE_FLAG | sup]],
   ])('leaves the text alone with %s', (_, chain) => {
     expect(baselineShiftFor(chain)).toBeNull();
   });

@@ -128,27 +128,39 @@ const LOWERED_EM = -0.24;
  * each `<small>`, `<sub>` or `<sup>` between them (see smallerClassFor),
  * past which MAX_SMALLER_LEVELS keeps the text the same size.
  *
- * It can't tell when a rule of the app's sets a `vertical-align` of its own
- * on one of them (VERTICAL_ALIGN_FLAG), or the tag's own rules set its size,
- * which the outer tags' offsets would then need to be measured against.
+ * It can't tell when the app sets a `vertical-align` of its own on one of
+ * them (VERTICAL_ALIGN_FLAG, or both RAISED_FLAG and LOWERED_FLAG), or a size
+ * of its own (FONT_SIZE_FLAG) on the tag or one between it and a tag that
+ * moves it, whose distance would then need measuring against that size. The
+ * caller adds those flags for the tags' inline styles, which the index
+ * doesn't see.
  */
 export const baselineShiftFor = (chain: readonly number[]): number | null => {
-  if (!chain.length || chain[0]! & FONT_SIZE_FLAG) return null;
   const levels = chain.filter((flags) => flags & SMALLER_FLAG).length;
   const ownLevel = Math.min(levels, MAX_SMALLER_LEVELS);
   let shift = 0;
   // Whether a tag above moves it: a tag that moves alone has its own rule,
   // which draws it where a browser does.
   let moved = false;
+  // Whether a tag from here down sets its own size, so the distances from
+  // here up can't be measured in the first tag's em.
+  let sized = false;
   let below = 0;
   for (const [index, flags] of chain.entries()) {
     if (flags & VERTICAL_ALIGN_FLAG) return null;
+    // Both distances: an app's rule for the tag sets the other one, and the
+    // index can't tell which wins.
+    if (flags & RAISED_FLAG && flags & LOWERED_FLAG) return null;
+    if (flags & FONT_SIZE_FLAG) sized = true;
     const em =
       flags & RAISED_FLAG ? RAISED_EM : flags & LOWERED_FLAG ? LOWERED_EM : 0;
+    if (em && index > 0) {
+      if (sized) return null;
+      moved = true;
+    }
     if (em) {
       const level = Math.min(levels - below, MAX_SMALLER_LEVELS);
       shift += em * 1.2 ** (ownLevel - level);
-      if (index > 0) moved = true;
     }
     if (flags & SMALLER_FLAG) below++;
   }

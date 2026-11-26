@@ -308,6 +308,26 @@ describe('LynxBackButton', () => {
       expect(setBackHandlerEnabled).toHaveBeenLastCalledWith(false);
     });
 
+    it('lets go of the DestroyRef callback when the handler is removed by hand', () => {
+      stubHost();
+      TestBed.configureTestingModule({
+        providers: [provideZonelessChangeDetection()],
+      });
+      const backButton = TestBed.inject(LynxBackButton);
+      const unregister = vi.fn();
+      const onDestroy = vi.fn(() => unregister);
+      const injector = {
+        get: () => ({ onDestroy }),
+      } as unknown as EnvironmentInjector;
+
+      const remove = backButton.on(() => {}, { injector });
+      expect(onDestroy).toHaveBeenCalledTimes(1);
+      remove();
+      remove();
+
+      expect(unregister).toHaveBeenCalledTimes(2);
+    });
+
     it("reports a handler's error to the ErrorHandler", () => {
       stubHost();
       const handleError = vi.fn();

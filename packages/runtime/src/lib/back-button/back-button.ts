@@ -156,12 +156,19 @@ export class LynxBackButton {
      */
     const entry: LynxBackHandler = () => handler();
     this.#handlers.update((handlers) => [...handlers, entry]);
-    const remove = () =>
+    const drop = () =>
       this.#handlers.update((handlers) => handlers.filter((h) => h !== entry));
-    (options?.injector?.get(DestroyRef) ?? currentDestroyRef())?.onDestroy(
-      remove,
-    );
-    return remove;
+    const unregister = (
+      options?.injector?.get(DestroyRef) ?? currentDestroyRef()
+    )?.onDestroy(drop);
+    // Removed by hand, the handler also leaves the DestroyRef, which would
+    // otherwise keep it, and what it holds, until a long-lived injector
+    // goes. Angular's unregister ignores a callback that's already gone, so
+    // removing twice is harmless.
+    return () => {
+      unregister?.();
+      drop();
+    };
   }
 
   #press(): void {

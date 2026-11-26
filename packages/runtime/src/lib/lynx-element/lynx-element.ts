@@ -53,6 +53,7 @@ import {
   NOT_BLOCK_CONTAINERS,
   SMALLER_FLAG,
   TAKES_RAW_TEXT,
+  hasAncestorSmallerRules,
   hasAncestorTextRules,
   inheritanceStyleFor,
   isBlankText,
@@ -1572,10 +1573,15 @@ export class LynxElement implements BaseLynxElement {
    * outside its #children (see virtualChildren).
    */
   #ancestorsChanged(): void {
-    if (!this.#passesTextStyles || !hasAncestorTextRules()) return;
+    if (!this.#passesTextStyles && !this.#webText) return;
+    const smaller = hasAncestorSmallerRules();
+    if (!smaller && !hasAncestorTextRules()) return;
     if (this.tagName === 'text' && !this.#anonymous && !this.#webText) {
       this.#inheritAgain();
     }
+    // An HTML text tag's levels of <small> are checked against the elements
+    // above it too (see #smallerLevels), when a rule for them needs one.
+    if (smaller && this.#webText) this.#inheritAgain();
     for (const child of this.#children) child.#ancestorsChanged();
     for (const item of this.virtualChildren()) item.#ancestorsChanged();
   }
@@ -1663,7 +1669,7 @@ export class LynxElement implements BaseLynxElement {
     // it, or a second <small>, needs a class that divides it more (see
     // #smallerLevels). The class sets the size, so it reads no variable.
     const levels = this.#smallerLevels();
-    const ownLevel = this.#ruleFlags() & SMALLER_FLAG ? 1 : 0;
+    const ownLevel = this.#ruleFlags(true) & SMALLER_FLAG ? 1 : 0;
     const smaller = levels > ownLevel ? smallerClassFor(levels) : null;
     this.#setSmallerClass(smaller);
     const style = inheritanceStyleFor(
@@ -1746,12 +1752,15 @@ export class LynxElement implements BaseLynxElement {
    * `<small>` in a `<small>` at the outer one's (issue #663). Each level
    * divides again, as in a browser.
    *
-   * It stops at an element that isn't an HTML text tag, as #drawnAtDefault
-   * does: a Lynx `<text>` or a view sizes its own text. Moving the element or
-   * changing an ancestor's classes works it out again (see #inheritAgain).
+   * Each element's rules are checked against the elements above it (see
+   * #matchedStyleFlags): `.compact .label` with the build's smaller size
+   * makes no level for a `.label` outside `.compact`. It stops at an element
+   * that isn't an HTML text tag, as #drawnAtDefault does: a Lynx `<text>` or
+   * a view sizes its own text. Moving the element or changing an ancestor's
+   * classes works it out again (see #inheritAgain and #ancestorsChanged).
    */
   #smallerLevels(): number {
-    const own = this.#ruleFlags();
+    const own = this.#ruleFlags(true);
     if (own & FONT_SIZE_FLAG) return 0;
     let levels = own & SMALLER_FLAG ? 1 : 0;
     for (
@@ -1759,7 +1768,7 @@ export class LynxElement implements BaseLynxElement {
       parent && parent.#webText;
       parent = parent.#jsParent
     ) {
-      const flags = parent.#ruleFlags();
+      const flags = parent.#ruleFlags(true);
       if (flags & FONT_SIZE_FLAG) break;
       if (flags & SMALLER_FLAG) levels++;
     }

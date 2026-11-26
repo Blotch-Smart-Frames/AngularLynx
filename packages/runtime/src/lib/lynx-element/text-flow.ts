@@ -177,6 +177,12 @@ type IndexedRules = {
    * text styles can change when its ancestors' classes do.
    */
   readonly hasAncestorRules: boolean;
+  /**
+   * Whether a rule with SMALLER_FLAG requires an ancestor, so the levels of
+   * `<small>` an HTML text tag is in can change when its ancestors' classes
+   * do (see LynxElement's #smallerLevels).
+   */
+  readonly hasAncestorSmallerRules: boolean;
 };
 
 let indexed: IndexedRules | null | undefined;
@@ -188,6 +194,7 @@ const readIndex = (): IndexedRules | null => {
   if (!index) return (indexed = null);
   let any = 0;
   let hasAncestorRules = false;
+  let hasAncestorSmallerRules = false;
   const anyRules: IndexedRule[] = [];
   const byToken = new Map<string, IndexedRule[]>();
   for (const [tokens, flags, ancestors = [], inState] of index.rules) {
@@ -195,6 +202,9 @@ const readIndex = (): IndexedRules | null => {
     const rule = { rest, flags, ancestors, inState: inState === 1 };
     if (ancestors.length && flags & ALL_TEXT_PROPERTIES) {
       hasAncestorRules = true;
+    }
+    if (ancestors.length && flags & SMALLER_FLAG) {
+      hasAncestorSmallerRules = true;
     }
     if (first === undefined) {
       any |= flags;
@@ -205,7 +215,13 @@ const readIndex = (): IndexedRules | null => {
       byToken.set(first, list);
     }
   }
-  return (indexed = { any, anyRules, byToken, hasAncestorRules });
+  return (indexed = {
+    any,
+    anyRules,
+    byToken,
+    hasAncestorRules,
+    hasAncestorSmallerRules,
+  });
 };
 
 /**
@@ -330,6 +346,14 @@ const ancestorsMatch = (
  */
 export const hasAncestorTextRules = (): boolean =>
   readIndex()?.hasAncestorRules ?? false;
+
+/**
+ * Whether a rule that makes text smaller, as the build's `<small>` rule does
+ * (SMALLER_FLAG), requires an ancestor: then the size of the text in an HTML
+ * text tag can change when the classes of an element above it do.
+ */
+export const hasAncestorSmallerRules = (): boolean =>
+  readIndex()?.hasAncestorSmallerRules ?? false;
 
 const fallbackFlags = (tokens: ReadonlySet<string>): number => {
   let flags = 0;

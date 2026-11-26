@@ -440,6 +440,20 @@ class SmallerHost {
 }
 
 @Component({
+  selector: 'compact-host',
+  encapsulation: ViewEncapsulation.None,
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: `<view [class.compact]="compact()"
+    ><p class="big">
+      <span class="label">l <b class="in-label">b</b></span>
+    </p></view
+  >`,
+})
+class CompactHost {
+  readonly compact = signal(false);
+}
+
+@Component({
   selector: 'link-host',
   encapsulation: ViewEncapsulation.None,
   schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -908,6 +922,39 @@ describe('loose text', () => {
     expect(smaller('in-small')).toEqual(['_ngsmaller-1']);
     expect(smaller('inner')).toEqual(['_ngsmaller-2']);
     expect(smaller('in-inner')).toEqual(['_ngsmaller-2']);
+  });
+
+  // A rule with the build's smaller size can require an ancestor, as
+  // `.compact .label` does: outside `.compact` the label isn't smaller, and
+  // nor is the text inside it.
+  it('counts a smaller size only where its selector matches the elements above', () => {
+    const fontSize = 1 << INHERITED_TEXT_PROPERTIES.indexOf('font-size');
+    (
+      globalThis as { __angularLynxStyleIndex?: unknown }
+    ).__angularLynxStyleIndex = {
+      rules: [
+        [['big'], fontSize],
+        [['label'], SMALLER_FLAG, [[' ', ['compact']]]],
+      ],
+    };
+    const fixture = TestBed.createComponent(CompactHost);
+    fixture.detectChanges();
+    const smaller = (cls: string): string[] =>
+      [...byClass(cls).classes].filter((name) =>
+        name.startsWith('_ngsmaller-'),
+      );
+
+    expect(smaller('in-label')).toEqual([]);
+
+    // The ancestor's class makes the label smaller, and the text inside it.
+    fixture.componentInstance.compact.set(true);
+    fixture.detectChanges();
+    expect(smaller('label')).toEqual([]);
+    expect(smaller('in-label')).toEqual(['_ngsmaller-1']);
+
+    fixture.componentInstance.compact.set(false);
+    fixture.detectChanges();
+    expect(smaller('in-label')).toEqual([]);
   });
 
   // Issue #643: the build gives `<em>`, `<u>`, `<s>` and their kin the

@@ -107,6 +107,15 @@ describe('LynxHaptics', () => {
 
       expect(module.impact).not.toHaveBeenCalled();
     });
+
+    it('does nothing in a spec that renders as the web preview', () => {
+      vi.stubGlobal('lynxTestingEnv', {});
+      const page = stubPage(() => true);
+
+      createHaptics().selection();
+
+      expect(page.navigator.vibrate).not.toHaveBeenCalled();
+    });
   });
 
   describe('in the web preview', () => {

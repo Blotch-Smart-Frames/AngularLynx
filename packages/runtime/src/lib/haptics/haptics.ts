@@ -153,6 +153,9 @@ export class LynxHaptics {
     method: 'impact' | 'selection' | 'notification',
     kind?: HapticImpactStyle | HapticNotificationType,
   ): void {
+    // Under the testing library first: a spec that renders as the web
+    // preview (SystemInfo's platform 'web') plays nothing either.
+    if (inTestingEnvironment()) return;
     const page = pageWindow();
     if (page) {
       try {
@@ -163,7 +166,7 @@ export class LynxHaptics {
       }
       return;
     }
-    if (this.#unavailable || inTestingEnvironment()) return;
+    if (this.#unavailable) return;
     callOnBackground(
       'callNativeModuleAsync',
       HAPTICS_MODULE,

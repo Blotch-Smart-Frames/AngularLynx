@@ -182,6 +182,26 @@ describe('wrapPureClasses', () => {
     },
   );
 
+  // Moved into the IIFE, the assignment would run before what's between them:
+  // here `initial` would hold the class instead of `undefined`.
+  it('leaves an alias alone that is assigned after other statements', () => {
+    const code = [
+      'var _a;',
+      'var Element = class { static #x; static get() { return _a; } };',
+      'var initial = Element.get();',
+      '_a = Element;',
+    ].join('\n');
+    expect(wrap(code)).toBe(
+      [
+        'var _a;',
+        'var Element = /*#__PURE__*/ (() => class { static #x; static get() { return _a; } })();',
+        'var initial = Element.get();',
+        '_a = Element;',
+      ].join('\n'),
+    );
+    expect(new Function(`${wrap(code)}; return initial;`)()).toBeUndefined();
+  });
+
   it('leaves an alias alone that is assigned more than once', () => {
     const code = [
       'var _a;',

@@ -70,17 +70,24 @@ export const wrapPureClasses = (code: string, filename: string): string => {
 
   const edits: Edit[] = [];
   const aliases = findClassAliases(sourceFile);
-  const wrap = (classNode: ts.ClassLikeDeclaration, name: string): void => {
+  const wrap = (
+    classNode: ts.ClassLikeDeclaration,
+    name: string,
+    next: ts.Statement | undefined,
+  ): void => {
     // A class that names itself inside its body can come with an alias the
     // package's build added: `var _a;` above it and `_a = X;` after it, for
     // the body to use. That assignment is a statement of its own, which kept
     // the class (the runtime's LynxElement, and everything it uses) in the
     // background bundle. Made inside the pure IIFE, it goes with the class,
-    // so only when nothing outside the class reads the alias: dropped with
-    // an unused class, it would leave that reader `undefined`.
+    // so only when nothing outside the class reads the alias (dropped with
+    // an unused class, it would leave that reader `undefined`), and only from
+    // the statement right after the class's, so the alias holds the class
+    // from the same point on: code between the two would see it set earlier.
     const candidate = aliases.get(name);
     const alias =
       candidate &&
+      candidate.statement === next &&
       candidate.reads.every(
         (read) =>
           read >= classNode.getStart(sourceFile) && read < classNode.end,
@@ -107,7 +114,7 @@ export const wrapPureClasses = (code: string, filename: string): string => {
     }
   };
 
-  for (const statement of sourceFile.statements) {
+  for (const [index, statement] of sourceFile.statements.entries()) {
     if (ts.isVariableStatement(statement)) {
       const [declaration, ...rest] = statement.declarationList.declarations;
       const value = declaration?.initializer;
@@ -117,7 +124,11 @@ export const wrapPureClasses = (code: string, filename: string): string => {
         ts.isClassExpression(value) &&
         isLoweredPureClass(value)
       ) {
-        wrap(value, declaration.name.getText(sourceFile));
+        wrap(
+          value,
+          declaration.name.getText(sourceFile),
+          sourceFile.statements[index + 1],
+        );
       }
       continue;
     }

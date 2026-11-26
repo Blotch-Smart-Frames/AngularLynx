@@ -41,6 +41,7 @@ At runtime, Angular makes no directive for an element whose directive only decla
 
 - **Put visible text in `<text>`** — raw text straight in a `<view>` is drawn in an anonymous `<text>`, which inherits text styles (see "Raw text in `<view>` gets an anonymous `<text>`" in [lynx-gotchas.md](lynx-gotchas.md))
 - **Common HTML tags render as Lynx elements** (see [HTML tags](#html-tags)). Other unknown tags become `<view>`, with a console warning (invisible on device) when the tag has no hyphen, since that's likely a misspelled element. A component's host becomes a `<view>` too, without a warning (as does `<router-outlet>`), unless the component calls `registerHostElement()` (see "A component's host is a real `<view>`" in [lynx-gotchas.md](lynx-gotchas.md))
+- **The desktop-only elements are `<view>`s on iOS, Android and the web.** `<title-bar-view>` (drags the window) and `<cover-view>` (draws above a `<webview>`) exist only in Lynx's Windows and macOS apps. Elsewhere the runtime creates a `<view>`, which keeps their content and layout, but a CSS rule naming the tag (`title-bar-view { … }`) doesn't match it: style them with classes
 - **`<page>` is implicit** — one per app, created by the runtime as the root element
 - **Images default to `scaleToFill`** (stretched, like the web's `object-fit: fill`). Set `mode` for `aspectFit` or `aspectFill`: CSS `object-fit` doesn't work
 - **`<input>` and `<textarea>` have no border and are one line of text tall.** Size and outline them with classes (`h-10 border border-zinc-200`)

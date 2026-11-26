@@ -80,6 +80,19 @@ describe('MenuRows taps', () => {
     expect(rows.ownsTap()).toBe(false);
     vi.useRealTimers();
   });
+
+  it('owns no tap after the system takes the press over', () => {
+    const rows = new MenuRows();
+    rows.pressStarted();
+    rows.pressCanceled();
+    expect(rows.ownsTap()).toBe(false);
+
+    // A cancel with no press leaves a lift's tap the press's.
+    rows.pressStarted();
+    rows.pressEnded();
+    rows.pressCanceled();
+    expect(rows.ownsTap()).toBe(true);
+  });
 });
 
 describe('MenuPress', () => {
@@ -109,6 +122,24 @@ describe('MenuPress', () => {
     expect(press.end(lift(100, 100))).toBe(true);
     expect(target.dropAt).not.toHaveBeenCalled();
     expect(target.dragTo).not.toHaveBeenCalled();
+  });
+
+  it('drops where the lifting finger is, while another stays down', () => {
+    const { target, press } = renderPress();
+    press.start(touch(100, 100));
+    press.move(touch(100, 150));
+
+    press.end({
+      touches: [{ clientX: 300, clientY: 300 }],
+      changedTouches: [{ clientX: 100, clientY: 160 }],
+    });
+    expect(target.dropAt).toHaveBeenCalledWith({ x: 100, y: 160 });
+
+    // A lift that reports only the fingers still down drops at the first.
+    press.start(touch(100, 100));
+    press.move(touch(100, 150));
+    press.end(touch(100, 170));
+    expect(target.dropAt).toHaveBeenLastCalledWith({ x: 100, y: 170 });
   });
 
   it('turns the highlight off for a lift it has no point for', () => {

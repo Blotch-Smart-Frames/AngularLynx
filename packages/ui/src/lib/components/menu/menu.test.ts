@@ -725,6 +725,26 @@ describe('dragging across the menu', () => {
     await waitForUpdate();
     expect(highlight(rendered, 'Share')).toBe('0');
     expect(rendered.host.open()).toBe(true);
+
+    // No tap follows a canceled touch, so the next tap is one of its own.
+    fireEvent.tap(row(rendered, 'Share'));
+    expect(rendered.host.shared).toHaveBeenCalledTimes(1);
+  });
+
+  it('chooses the row the lifting finger is on, not one another finger rests on', async () => {
+    const rendered = await pressTrigger();
+    await waitForOpen(rendered);
+    await moveTo(rendered, rowAt(SHARE));
+
+    const share = rowAt(SHARE);
+    const name = rowAt(NAME);
+    fireLynxEvent(rendered.trigger(), 'touchend', {
+      touches: [{ clientX: name.x, clientY: name.y }],
+      changedTouches: [{ clientX: share.x, clientY: share.y }],
+    });
+    await waitForUpdate();
+    expect(rendered.host.shared).toHaveBeenCalledTimes(1);
+    expect(rendered.host.sort()).toBe('date');
   });
 
   it('chooses nothing while the menu is still growing', async () => {
@@ -787,6 +807,10 @@ describe('dragging across the menu', () => {
     );
     await waitForUpdate();
     expect(highlight(rendered, 'Share')).toBe('0');
+
+    // Its press can't lift any more, so the next tap is one of its own.
+    fireEvent.tap(row(rendered, 'Share'));
+    expect(rendered.host.shared).toHaveBeenCalledTimes(1);
   });
 });
 

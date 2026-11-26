@@ -160,7 +160,7 @@ export class UiContextMenu implements UiMenuHost {
 
   protected onTouchCancel(): void {
     this.#press.cancel();
-    this.rows.pressEnded();
+    this.rows.pressCanceled();
   }
 
   /**

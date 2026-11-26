@@ -55,12 +55,22 @@ export class MenuRows {
   }
 
   /**
-   * That finger lifted, or the system took its touch over.
+   * That finger lifted: the tap Lynx sends after it is the press's.
    */
   pressEnded(): void {
     if (!this.#pressing) return;
     this.#pressing = false;
     this.#liftedAt = Date.now();
+  }
+
+  /**
+   * The system took that finger's touch over, as a scroll does, or what it
+   * pressed went away: no tap follows, so the next one is a tap of its own.
+   */
+  pressCanceled(): void {
+    if (!this.#pressing) return;
+    this.#pressing = false;
+    this.#liftedAt = -Infinity;
   }
 
   /**
@@ -119,13 +129,16 @@ type TouchLike = { readonly clientX?: number; readonly clientY?: number };
 
 /**
  * Where a touch event's finger is, in the window's coordinates: the first
- * touch still down, or the one that lifted for a `touchend`. Lynx reports
- * `clientX` and `clientY` in the window, which is how the menu measures its
- * elements (see measureMenuElement).
+ * touch still down, or, for a `touchend` (`lifted`), the one that lifted,
+ * which is in `changedTouches` while `touches` holds any finger still down.
+ * Lynx reports `clientX` and `clientY` in the window, which is how the menu
+ * measures its elements (see measureMenuElement).
  */
-const touchPoint = (event: unknown): MenuPoint | null => {
+const touchPoint = (event: unknown, lifted = false): MenuPoint | null => {
   const touch = event as TouchEventLike | null;
-  const point = touch?.touches?.[0] ?? touch?.changedTouches?.[0];
+  const point = lifted
+    ? (touch?.changedTouches?.[0] ?? touch?.touches?.[0])
+    : (touch?.touches?.[0] ?? touch?.changedTouches?.[0]);
   return typeof point?.clientX === 'number' && typeof point.clientY === 'number'
     ? { x: point.clientX, y: point.clientY }
     : null;
@@ -192,7 +205,7 @@ export class MenuPress {
    */
   end(event: unknown): boolean {
     const start = this.#start;
-    const point = touchPoint(event);
+    const point = touchPoint(event, true);
     const dragging = this.#dragging;
     this.#start = null;
     this.#dragging = false;

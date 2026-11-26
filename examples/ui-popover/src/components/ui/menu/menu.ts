@@ -530,7 +530,7 @@ export class UiMenu implements UiMenuHost {
    */
   cancelTriggerPress(): void {
     this.#press.cancel();
-    this.rows.pressEnded();
+    this.rows.pressCanceled();
   }
 
   /**
@@ -591,6 +591,15 @@ export class UiMenuTrigger {
     inject(Renderer2).listen(this.#host, 'bindtouchmove', (event: unknown) =>
       this.menu.moveOnTrigger(event),
     ),
+  );
+
+  /**
+   * Ends a press this trigger opened the menu with when the trigger goes:
+   * its lift or cancel can't come any more, and the menu would otherwise
+   * take every later tap for the press's (see MenuRows' ownsTap).
+   */
+  protected readonly endPress = inject(DestroyRef).onDestroy(() =>
+    this.menu.cancelTriggerPress(),
   );
 
   /**

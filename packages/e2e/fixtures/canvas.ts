@@ -15,9 +15,11 @@ const CYAN_PNG =
 
 /**
  * What the Bitmap check reads: green, red, blue, the cleared OffscreenCanvas,
- * then red through WebGL.
+ * red through WebGL, then the WebGL OffscreenCanvas's transferred red, the
+ * canvas cleared, and its draw buffer kept.
  */
-const BITMAP_READS = '0,128,0,255 255,0,0,255 0,0,255,255 0,0,0,0 255,0,0,255';
+const BITMAP_READS =
+  '0,128,0,255 255,0,0,255 0,0,255,255 0,0,0,0 255,0,0,255 255,0,0,255 0,0,0,0 none';
 
 const VERTEX = `#version 300 es
 in vec2 position;
@@ -64,7 +66,10 @@ void main() {
  * (green), one of an OffscreenCanvas filled red, one
  * `transferToImageBitmap()` took of it once filled blue, then the
  * OffscreenCanvas itself, which the transfer cleared, and the red bitmap
- * uploaded as the WebGL texture, drawn and read back. When a read is wrong,
+ * uploaded as the WebGL texture, drawn and read back; then a WebGL2
+ * OffscreenCanvas cleared red and transferred while it draws to no color
+ * buffer (`drawBuffers([NONE])`): its bitmap, the canvas the transfer
+ * cleared, and its draw buffer, still NONE. When a read is wrong,
  * the line shows them all. It's in the canvas's row, and short, so the page
  * is no taller: the links under it stay on the Android emulator's screen,
  * where the flows tap them.
@@ -213,6 +218,35 @@ export class CanvasRoute {
     const pixel = new Uint8Array(4);
     gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
     reads.push(Array.from(pixel).join(','));
+
+    // A WebGL2 OffscreenCanvas, transferred while it draws to no color
+    // buffer: the bitmap has its red, the canvas is cleared all the same,
+    // and its draw buffer is still the app's NONE.
+    const glSource = new OffscreenCanvas(1, 1);
+    const glSourceContext = glSource.getContext('webgl2');
+    if (!glSourceContext) return 'no WebGL2 OffscreenCanvas';
+    glSourceContext.clearColor(1, 0, 0, 1);
+    glSourceContext.clear(glSourceContext.COLOR_BUFFER_BIT);
+    glSourceContext.drawBuffers([glSourceContext.NONE]);
+    const transferred = glSource.transferToImageBitmap();
+    const after = new Uint8Array(4);
+    glSourceContext.readPixels(
+      0,
+      0,
+      1,
+      1,
+      glSourceContext.RGBA,
+      glSourceContext.UNSIGNED_BYTE,
+      after,
+    );
+    const drawBuffer = glSourceContext.getParameter(
+      glSourceContext.DRAW_BUFFER0,
+    );
+    reads.push(
+      read(transferred),
+      Array.from(after).join(','),
+      drawBuffer === glSourceContext.NONE ? 'none' : `${drawBuffer}`,
+    );
     const all = reads.join(' ');
     return all === BITMAP_READS ? 'ok' : all;
   }

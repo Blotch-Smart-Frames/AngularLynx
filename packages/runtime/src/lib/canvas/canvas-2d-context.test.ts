@@ -695,6 +695,11 @@ describe('LynxCanvasRenderingContext2D', () => {
     // Freed through the module, which every context's objects share, so it
     // goes whether or not the context that made it is still there.
     expect(bridge.release2D).toHaveBeenCalledWith(3);
+    // Even after the context that made it is gone.
+    context.destroy();
+    bridge.release2D.mockClear();
+    free!();
+    expect(bridge.release2D).toHaveBeenCalledWith(3);
     expect(radial).toBeInstanceOf(module.LynxCanvasGradient);
   });
 

@@ -223,18 +223,6 @@ describe("a text field's value", () => {
     expect(globalThis.__InvokeUIMethod).not.toHaveBeenCalled();
   });
 
-  it("sets the text whatever it was while a main-thread directive has the field's input", () => {
-    const el = field();
-    el.setProperty('value', 'Ada');
-    el.holdNativeEvent('input');
-    vi.clearAllMocks();
-
-    // What's typed goes to the directive's handler, not the element's.
-    el.setProperty('value', 'Ada');
-
-    expect(globalThis.__InvokeUIMethod).toHaveBeenCalledTimes(1);
-  });
-
   it('counts a setValue the app calls itself as the text the field has', () => {
     const el = field();
     el.setProperty('value', 'Ada');

@@ -66,7 +66,8 @@ export const FLOWS: readonly Flow[] = [
   },
   {
     file: 'main-thread.yaml',
-    description: 'removes a main-thread handler set to null',
+    description:
+      'runs a main-thread handler beside a template one, and removes it set to null',
   },
   {
     file: 'background.yaml',

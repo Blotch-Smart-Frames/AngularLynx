@@ -60,7 +60,7 @@ Other DOM names, such as `(mousedown)`, `(keydown)` or `(submit)`, never run, an
 </view>
 ```
 
-An element can have as many handlers for an event as you like, as on the web: here `routerLink` navigates and `track()` runs too, in the order Angular added them. Lynx itself keeps one handler per event on an element, so AngularLynx registers one that runs them all. If any of them uses `catch`, the event stops at the element once they've all run.
+An element can have as many handlers for an event as you like, as on the web: here `routerLink` navigates and `track()` runs too, in the order Angular added them. Lynx itself keeps one handler per event on an element, so AngularLynx registers one that runs them all, [main-thread scripts](/guide/main-thread/) included. If any of them uses `catch`, the event stops at the element once they've all run.
 
 ## Stop an event from bubbling
 

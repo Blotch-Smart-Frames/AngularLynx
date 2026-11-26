@@ -131,18 +131,19 @@ test('router links navigate on tap and mark the active link', async ({
 // Setting a [mainThreadBind*] input to null must remove its handler. The lazy
 // page's first tap counts and turns the handler off, so a second tap must leave
 // the count at 1 (issue #55). Native Lynx is where removal broke; this checks
-// the same fixture on the web.
-test('a main-thread handler set to null stops running', async ({ page }) => {
+// the same fixture on the web. The number after the slash counts the text's
+// own (bindtap), which runs beside the script (issue #471).
+test('a main-thread handler runs beside a template one, and stops once set to null', async ({
+  page,
+}) => {
   const errors = collectErrors(page);
   await page.goto('/');
   await page.getByText('Open lazy page', { exact: true }).click();
 
-  await page.getByText('Main taps: 0').click();
-  await expect(page.getByText('Main taps: 1')).toBeVisible();
-  await page.getByText('Main taps: 1').click();
-  // A second count would render within a frame or two of the tap.
-  await page.waitForTimeout(500);
-  await expect(page.getByText('Main taps: 1')).toBeVisible();
+  await page.getByText('Main taps: 0/0').click();
+  await expect(page.getByText('Main taps: 1/1')).toBeVisible();
+  await page.getByText('Main taps: 1/1').click();
+  await expect(page.getByText('Main taps: 1/2')).toBeVisible();
 
   expect(errors, 'the app logged errors while running').toEqual([]);
 });

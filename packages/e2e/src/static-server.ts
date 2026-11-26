@@ -28,9 +28,11 @@ export const byteRange = (
   const match = /^bytes=(\d*)-(\d*)$/.exec(header ?? '');
   if (!match || (match[1] === '' && match[2] === '')) return undefined;
   if (match[1] === '') {
-    // The last n bytes.
-    const start = Math.max(0, size - Number(match[2]));
-    return { start, end: size - 1 };
+    // The last n bytes: none of them for `bytes=-0` or an empty file, which
+    // is no range to serve.
+    const length = Number(match[2]);
+    if (length === 0 || size === 0) return undefined;
+    return { start: Math.max(0, size - length), end: size - 1 };
   }
   const start = Number(match[1]);
   const end = match[2] === '' ? size - 1 : Math.min(Number(match[2]), size - 1);

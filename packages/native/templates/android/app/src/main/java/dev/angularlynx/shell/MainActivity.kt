@@ -189,6 +189,9 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
             registerModule(SecureStorageModule.NAME, SecureStorageModule::class.java, null)
             // LynxClipboard's text (ClipboardModule.kt).
             registerModule(ClipboardModule.NAME, ClipboardModule::class.java, null)
+            // LynxHaptics' taps (HapticsModule.kt), which play on this
+            // activity's window.
+            registerModule(HapticsModule.NAME, HapticsModule::class.java, this@MainActivity)
             // Links out of the app (LinkingModule.kt), which it opens from this
             // activity.
             registerModule(LinkingModule.NAME, LinkingModule::class.java, this@MainActivity)

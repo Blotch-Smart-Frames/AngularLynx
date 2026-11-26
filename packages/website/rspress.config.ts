@@ -307,6 +307,7 @@ export default defineConfig({
             { text: 'LynxSystemInfo', link: '/api/angular-lynx/system-info' },
             { text: 'LynxAppState', link: '/api/angular-lynx/app-state' },
             { text: 'LynxClipboard', link: '/api/angular-lynx/clipboard' },
+            { text: 'LynxHaptics', link: '/api/angular-lynx/haptics' },
             { text: 'Host Data', link: '/api/angular-lynx/host-data' },
             {
               text: 'LynxNativeModule',
@@ -317,6 +318,7 @@ export default defineConfig({
               link: '/api/angular-lynx/web-auth-session',
             },
             { text: 'LynxLinking', link: '/api/angular-lynx/linking' },
+            { text: 'LynxBackButton', link: '/api/angular-lynx/back-button' },
             { text: 'LynxShortcuts', link: '/api/angular-lynx/shortcuts' },
             {
               text: 'LynxSplashScreen',

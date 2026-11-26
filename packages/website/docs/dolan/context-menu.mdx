@@ -58,6 +58,7 @@ export class TripCard {
 
 - **The items are the menu**, and everything else inside `<ui-context-menu>` is the element it opens from: here, the card.
 - **A long press opens it.** A tap still reaches the element: Lynx tells a tap from a long press.
+- **The phone taps as it opens** from a long press, with [`LynxHaptics`](/api/angular-lynx/haptics). Opening it from code doesn't.
 - **Choosing an item emits its `pressed`, then closes the menu.** A tap outside the menu, or Android's back button, closes it without choosing.
 - **The menu opens below the element,** or above it near the bottom of the screen. When it fits on neither side, the element moves up to make room, as on iOS.
 - **`[(open)]` opens and closes it from code.** `disabled` turns the long press off.

@@ -35,7 +35,13 @@ import { cn } from '../../utils/cn';
   // `class="p-8"` padded the page there too. The host drops it.
   host: { '[attr.class]': 'null' },
   template: `
-    <overlay [attr.visible]="overlayVisible()" [style]="overlayStyle()">
+    <!-- Android's back button asks the overlay to close (requestclose),
+         which closes the dialog as a tap on the backdrop does. -->
+    <overlay
+      [attr.visible]="overlayVisible()"
+      [style]="overlayStyle()"
+      (bindrequestclose)="open.set(false)"
+    >
       <view #backdrop [class]="backdropClass()" (bindtap)="onBackdropTap()">
         <view
           #panel

@@ -225,6 +225,10 @@ Copy and paste text with `LynxClipboard`: `await clipboard.setString(text)` and 
 - **Android 13+ confirms every copy itself,** in a panel TalkBack reads. Check `clipboard.confirmsCopies` before showing or announcing your own "Copied".
 - For a ready-made button, `npx @blotch/dolan add copy-button` adds `<ui-copy-button [value]="code()">Copy code</ui-copy-button>`, which does both.
 
+### No `navigator.vibrate()`
+
+Tap the phone with `LynxHaptics`: `haptics.impact('light' | 'medium' | 'heavy' | 'soft' | 'rigid')`, `haptics.selection()` for a selection or a value moving one place, and `haptics.notification('success' | 'warning' | 'error')`. It uses UIKit's feedback generators on iOS and `View.performHapticFeedback()` on Android (no permission, and it follows the touch feedback setting), and the page's `navigator.vibrate()` in the web preview. The methods return nothing and never throw: Lynx Explorer and the testing library play nothing. To check feedback in a spec, provide a stand-in: `{ provide: LynxHaptics, useValue: { impact: vi.fn(), selection: vi.fn(), notification: vi.fn() } }`. The dolan slider, switch, context menu and segmented controls give their own.
+
 ### Bundled images need `baseHref` on the web
 
 An imported image (`import logo from './logo.png'`, typed through `/// <reference types="@blotch/angular-lynx-build/client" />`) becomes `static/image/logo.<hash>.png` next to the bundle. On iOS and Android, Lynx resolves it against the bundle, wherever that is. Lynx for Web puts it on an `<img>` in the page, so the browser resolves it against the page that shows the `<lynx-view>`: a bundle at `/apps/shop/main.web.bundle` on a page at `/` asks for `/static/image/…` and gets nothing. Build with `ng build --base-href=/apps/shop/`, which makes the web bundle ask for `/apps/shop/static/image/…` (see [build-configuration.md](build-configuration.md)). `ng serve` needs nothing: its page and bundle share a root. Fonts never have the problem: the build inlines `@font-face` files as data URLs.
@@ -377,7 +381,7 @@ If both are registered, `longpress` takes priority — `tap` won't fire on long 
 
 ### `<overlay>` takes every touch
 
-While an `<overlay>` is shown, nothing else on screen gets touches: right for a modal, wrong for a popover or a toast. Float those in a `position: fixed` view instead, and close a popover on a touch anywhere else with `(global-bindtouchstart)`, which runs for a touch on any element, before that element's own listeners. `npx @blotch/dolan add popover` adds one that does this.
+While an `<overlay>` is shown, nothing else on screen gets touches: right for a modal, wrong for a popover or a toast. Float those in a `position: fixed` view instead, and close a popover on a touch anywhere else with `(global-bindtouchstart)`, which runs for a touch on any element, before that element's own listeners. Android's back button doesn't reach it either, since only an overlay gets `requestclose`: take back with `LynxBackButton.on()` while it's open (see [routing.md](routing.md)). `npx @blotch/dolan add popover` adds one that does both.
 
 ### Android dims the whole page after a key press (ejected projects)
 

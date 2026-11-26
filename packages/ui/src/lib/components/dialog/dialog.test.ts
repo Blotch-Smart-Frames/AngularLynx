@@ -15,6 +15,7 @@ import {
   vi,
 } from 'vitest';
 import { DURATION } from '../../utils/animate';
+import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
 import {
   type LynxMainThread,
   lynxMainThread,
@@ -273,6 +274,16 @@ describe('UiDialog', () => {
     host.open.set(true);
     await after(OPENED);
     fireEvent.tap(backdrop());
+    expect(host.open()).toBe(false);
+    await after(CLOSED);
+    expect(host.closes()).toBe(1);
+  });
+
+  it("closes on Android's back button, which asks the overlay to close", async () => {
+    const { host, overlay } = await renderDialog();
+    host.open.set(true);
+    await after(OPENED);
+    fireLynxEvent(overlay(), 'requestclose');
     expect(host.open()).toBe(false);
     await after(CLOSED);
     expect(host.closes()).toBe(1);

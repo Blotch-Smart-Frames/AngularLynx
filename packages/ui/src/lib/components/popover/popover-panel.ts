@@ -13,7 +13,11 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
-import { LYNX_ELEMENTS, LynxAccessibilitySettings } from '@blotch/angular-lynx';
+import {
+  LYNX_ELEMENTS,
+  LynxAccessibilitySettings,
+  LynxBackButton,
+} from '@blotch/angular-lynx';
 
 import { DURATION, EASING } from '../../utils/animate';
 import { UiGlass } from '../glass/glass';
@@ -163,6 +167,10 @@ export const popoverArrow = (
  *   Glass, as on iOS 26, with `provideGlass({ android: 'glass' })`.
  *
  * Under Reduce Motion it appears in place and only its content fades.
+ *
+ * Android's back button closes it too, as a touch outside does. Android
+ * gives back to an overlay, as its `requestclose`, but the panel isn't one,
+ * so it takes back through LynxBackButton while it's open instead.
  */
 @Component({
   selector: 'ui-popover-panel',
@@ -270,12 +278,16 @@ export class UiPopoverPanel implements OnDestroy {
    */
   readonly glassId = input<string | undefined>(undefined);
 
-  /** A touch landed outside the panel (and outside its anchor). */
+  /**
+   * A touch landed outside the panel (and outside its anchor), or Android's
+   * back button was pressed while it was open.
+   */
   readonly dismissed = output<void>();
   /** The panel has closed and its close animation has finished. */
   readonly closed = output<void>();
 
   readonly #settings = inject(LynxAccessibilitySettings);
+  readonly #backButton = inject(LynxBackButton);
 
   readonly design = injectGlassDesign();
   readonly phase = signal<PopoverPhase>('closed');
@@ -438,6 +450,19 @@ export class UiPopoverPanel implements OnDestroy {
       if (open) void this.#show();
       else this.#hide();
     });
+  });
+
+  /**
+   * Takes Android's back button while the panel is open, so back closes it
+   * rather than going past it to the router or out of the app. The handler
+   * goes as the panel starts closing, or is destroyed, and back goes on to
+   * whatever is under it.
+   */
+  protected readonly takeBack = effect((onCleanup) => {
+    if (!this.open()) return;
+    onCleanup(
+      untracked(() => this.#backButton.on(() => this.dismissed.emit())),
+    );
   });
 
   /**

@@ -152,7 +152,10 @@ const isRendererClass = (name: string): boolean =>
  * The flags of every rule in the app's CSS that may apply to an element with
  * these tokens (classes, `#id`, `<tag>`). It can say a rule applies when its
  * selector needs an ancestor or a state the element hasn't: it only ever errs
- * towards the element setting a style itself.
+ * towards the element setting a style itself. For the element's own styles
+ * that leaves it at what it sets, rather than inheriting; for a Lynx `<text>`
+ * around an inline tag (LynxElement's #drawnAtDefault) it lets the tag read
+ * the variable, as before issue #646, where the rule doesn't apply.
  */
 export const styleFlagsFor = (tokens: ReadonlySet<string>): number => {
   const index = readIndex();

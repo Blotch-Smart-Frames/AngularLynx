@@ -1,4 +1,4 @@
-import { LocationStrategy, PlatformLocation } from '@angular/common';
+import { Location, LocationStrategy, PlatformLocation } from '@angular/common';
 import {
   type EnvironmentProviders,
   inject,
@@ -14,9 +14,9 @@ import {
   type Routes,
   withRouterConfig,
 } from '@angular/router';
+import { BACK_NAVIGATION, LynxBackButton } from '../back-button';
 import { LynxShortcuts, SHORTCUT_NAVIGATE } from '../shortcuts';
 import { startDeepLinks } from './deep-links';
-import { LynxBackButton } from './lynx-back-button';
 import { LynxLocationStrategy } from './lynx-location-strategy';
 import { LynxPlatformLocation } from './lynx-platform-location';
 import { ROUTER_LINK_ACTIVE_CHANGE } from './lynx-router-link-active';
@@ -58,7 +58,20 @@ export const provideRouter = (
       ...features,
     ),
     // The Android back button goes back through this router's history, like
-    // the browser's back button on the web (see lynx-back-button.ts).
+    // the browser's back button on the web, once nothing open on top takes
+    // it (see back-button.ts). Only LynxLocationStrategy says whether there's
+    // a screen to go back to, so an app with its own strategy keeps
+    // Android's back, which leaves the app. Location.back() rather than the
+    // strategy's, so the router navigates and runs guards and resolvers.
+    {
+      provide: BACK_NAVIGATION,
+      useFactory: () => {
+        const strategy = inject(LocationStrategy);
+        if (!(strategy instanceof LynxLocationStrategy)) return null;
+        const location = inject(Location);
+        return { canGoBack: strategy.canGoBack, back: () => location.back() };
+      },
+    },
     provideEnvironmentInitializer(() => inject(LynxBackButton)),
     // A shortcut with a `route` in angular.json's `shortcuts` navigates
     // there when the person runs it, from Siri or the app icon's menu. The

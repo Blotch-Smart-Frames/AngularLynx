@@ -164,6 +164,25 @@ await waitForUpdate();
 expect(screen.getByText('Refreshed')).toBeInTheDocument();
 ```
 
+### `pressBackButton()`
+
+```typescript
+function pressBackButton(): boolean;
+```
+
+Presses Android's back button, so a spec can check what the app does with it: close what's open on top (a handler registered with [`LynxBackButton.on()`](/api/angular-lynx/back-button#lynxbackbuttonon)), or go back a screen through the router. As on Android, the press reaches the app only while the app takes back; otherwise Android would leave the app, and it returns `false`. The press reaches the app as it does on a phone, through the background thread, so wait for it with `waitForUpdate()`. Each test starts with back left to Android. An `<overlay>` takes back before the app on a phone: fire its `requestclose` event for that instead.
+
+```typescript
+await render(Search);
+fireEvent.tap(screen.getByText('Search'));
+await waitForUpdate();
+
+expect(pressBackButton()).toBe(true);
+await waitForUpdate();
+
+expect(screen.queryByText('Results')).toBeNull();
+```
+
 ### `openLink()`
 
 ```typescript

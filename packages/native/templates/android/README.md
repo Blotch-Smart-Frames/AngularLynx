@@ -38,7 +38,7 @@ A release build signed with the upload key holds only `arm64-v8a` and `armeabi-v
 
 ## Back button
 
-Back is off by default, so it leaves the app like any root screen. The runtime turns it on while the Router has history by calling `NativeModules.AngularLynxShell.setBackHandlerEnabled(true)`, and off again on the first screen (`LynxBackButton` in `packages/runtime/src/lib/router/lynx-back-button.ts`, which `provideRouter()` starts; the call goes through the background thread, where `NativeModules` lives). While it's on, a back press sends the global event `angularLynxBack` instead, which the runtime turns into `Location.back()`. The app has to say beforehand because Android decides synchronously, at the start of the gesture, whether an app handles back (predictive back animates differently). Layer 6's `native/back-button.yaml` checks both ends.
+Back is off by default, so it leaves the app like any root screen. The runtime turns it on while the Router has history or something open on top takes back (a handler registered with `LynxBackButton.on()`, such as a popover's) by calling `NativeModules.AngularLynxShell.setBackHandlerEnabled(true)`, and off again otherwise (`LynxBackButton` in `packages/runtime/src/lib/back-button/back-button.ts`, which `provideRouter()` starts; the call goes through the background thread, where `NativeModules` lives). While it's on, a back press sends the global event `angularLynxBack` instead, which the runtime gives to the handler registered last, or turns into `Location.back()`. The app has to say beforehand because Android decides synchronously, at the start of the gesture, whether an app handles back (predictive back animates differently). Layer 6's `native/back-button.yaml` checks both ends.
 
 ## Splash screen
 
@@ -86,6 +86,10 @@ iOS's `LocalStorageModule.swift` uses a `UserDefaults` suite and `SecureStorageM
 ## Clipboard
 
 `NativeModules.AngularLynxClipboard` (`ClipboardModule.kt`, behind the runtime's `LynxClipboard`) copies text to `ClipboardManager` as a plain-text clip and reads the first item back as text, both on the main thread. `setString` calls back once with `{}` or `{ error }`, `getString` with `{ value }`, `""` when the clipboard holds no text. Android 13 and later show the copied text in a panel of their own and have TalkBack say "Text copied", so the runtime's `LynxClipboard.confirmsCopies` tells the app not to confirm it again. Android 10 and later let only the app in front read the clipboard, and Android 12 and later tell the person when it does. iOS's `ClipboardModule.swift` uses `UIPasteboard.general`.
+
+## Haptics
+
+`NativeModules.AngularLynxHaptics` (`HapticsModule.kt`, behind the runtime's `LynxHaptics`) plays feedback with `View.performHapticFeedback()` on the activity's window, which `MainActivity` passes as the module's param. Unlike `Vibrator`, it needs no `VIBRATE` permission and plays nothing when the person has turned touch feedback off. `impact` plays `KEYBOARD_TAP` for `light` and `soft`, `VIRTUAL_KEY` for `medium` and `rigid` and `LONG_PRESS` for `heavy`; `selection` plays `CLOCK_TICK`; `notification` plays `CONFIRM` for `success` and `REJECT` for `warning` and `error` from Android 11, and `VIRTUAL_KEY` and `LONG_PRESS` before. Each calls back once with `{}`. iOS's `HapticsModule.swift` uses UIKit's feedback generators.
 
 ## Photo picker
 

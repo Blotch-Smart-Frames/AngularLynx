@@ -234,4 +234,15 @@ providers: [
 
 - **No URL bar** — users can't type URLs. All navigation goes through `routerLink` or the `Router`, or a [deep link](#deep-links-links-that-open-the-app) that opens the app.
 - **No browser back button** — use `Location.back()`. In the Android app `ng build --platform android` makes, the system back button goes back a screen through the router (and leaves the app from the first one).
+- **Back closes what's open on top first.** An `<overlay>` gets Android's back as `(bindrequestclose)`: close it there (`@blotch/ui`'s sheets, dialogs, drawers and alert dialogs do; an alert dialog runs its `cancel` action, unless `[cancelable]="false"`). Anything else back should close, such as a `position: fixed` panel or a search mode, registers a handler with `LynxBackButton` while it's open; the last registered gets each press, ahead of the router, and back stays the app's while one is registered, even on the first screen. `on()` returns a remover and goes with the injection context that called it (or pass `{ injector }`):
+
+```typescript
+const backButton = inject(LynxBackButton);
+effect((onCleanup) => {
+  if (this.searching())
+    onCleanup(backButton.on(() => this.searching.set(false)));
+});
+```
+
+- **Specs:** `pressBackButton()` from the testing library presses back as Android does and returns whether the app took it (`false`: Android would have left the app); `await waitForUpdate()` before checking. For an overlay, `fireEvent.requestclose(overlay)`.
 - **In-memory only** — the URL state exists only in `LynxLocationStrategy`'s internal signal. There's no `window.location` or `history.pushState`.

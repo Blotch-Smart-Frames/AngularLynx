@@ -33,12 +33,50 @@ describe('lowerSelectors', () => {
     );
   });
 
-  it('leaves a :where() or :is() inside a longer selector', () => {
+  it('inlines a :where() or :is() that holds one compound selector', () => {
+    // What Tailwind writes for `group-*`, `peer-*` and `in-*` over a custom
+    // variant such as the `ui-open` of @blotch/angular-lynx/tailwind.css.
+    const cases: [string, string][] = [
+      [
+        ':is(:where(.group).ui-open .group-ui-open\\:flex)',
+        '.group.ui-open .group-ui-open\\:flex',
+      ],
+      [
+        ':is(:where(.group\\/menu).ui-open .group-ui-open\\/menu\\:flex)',
+        '.group\\/menu.ui-open .group-ui-open\\/menu\\:flex',
+      ],
+      [
+        ':is(:where(.peer).ui-checked ~ .peer-ui-checked\\:hidden)',
+        '.peer.ui-checked ~ .peer-ui-checked\\:hidden',
+      ],
+      // An arbitrary group variant, with an :is() of its own.
+      [
+        ':is(:where(.group):is(.is-open) .group-\\[\\.is-open\\]\\:flex)',
+        '.group.is-open .group-\\[\\.is-open\\]\\:flex',
+      ],
+      [':where(.ui-open) .in-ui-open\\:flex', '.ui-open .in-ui-open\\:flex'],
+      // A type selector can go first in its compound.
+      [':where(view).a > :is(*)', 'view.a > *'],
+      ['.a:not(:where(.b))', '.a:not(.b)'],
+    ];
+    for (const [selector, lowered] of cases) {
+      expect((lower(`${selector} { color: red; }`) as Rule).selector).toBe(
+        lowered,
+      );
+    }
+  });
+
+  it('leaves a :where() or :is() it cannot inline', () => {
     for (const selector of [
-      '.group-hover\\:x:is(:where(.group):hover *)',
-      ':where(.a) .b',
+      // A complex selector, a list, and a type selector after a class.
+      '.group-hover\\:x:is(.group:hover *)',
+      '.ltr\\:x:where(:dir(ltr), [dir="ltr"])',
+      '.a:is(view)',
+      // An escaped colon is part of a class name.
+      '.a\\:where\\(b\\)',
       // Unbalanced, which PostCSS wouldn't parse, but a rule can hold.
       ':is(.a',
+      '.b:is(.a',
     ]) {
       const rule = postcss.rule({ selector });
       rule.append({ prop: 'color', value: 'red' });

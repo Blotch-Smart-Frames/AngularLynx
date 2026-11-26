@@ -6,6 +6,8 @@
 @layer theme, base, components, utilities;
 @import 'tailwindcss/theme.css' layer(theme);
 @import 'tailwindcss/utilities.css' layer(utilities);
+/* Lynx's own utilities and variants, such as linear and ui-open:. */
+@import '@blotch/angular-lynx/tailwind.css';
 
 /* The @blotch/ui theme, which `dolan init` copied into src/styles. */
 @import './styles/default.css';

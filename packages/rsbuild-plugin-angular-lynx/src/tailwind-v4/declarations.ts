@@ -207,6 +207,14 @@ const lowerValue = (declaration: Declaration): void => {
     case 'transition-property':
       declaration.value = lowerTransitionProperty(declaration.value);
       break;
+    case 'transform':
+      // A transform written as functions, such as the `solo-rotate-45` of
+      // @blotch/angular-lynx/tailwind.css, with `calc(45 * 1deg)`: Lynx
+      // doesn't evaluate calc() everywhere a transform function takes a value
+      // (see calc.ts). Tailwind's own transforms compose through variables,
+      // which lowerTransformVariables folds.
+      declaration.value = foldCalc(declaration.value);
+      break;
     case '--tw-gradient-position':
       declaration.value = lowerGradientPosition(declaration);
       break;

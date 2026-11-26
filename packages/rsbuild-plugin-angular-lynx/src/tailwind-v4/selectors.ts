@@ -10,7 +10,8 @@ export const lowerSelectors = (rule: Rule): boolean => {
     // host, and an unknown pseudo-class drops the whole selector list, so the
     // theme would be lost. `:root` matches the page on Lynx and on the web.
     .filter((selector) => !/(?<!\\):host\b/.test(selector))
-    .flatMap(unwrapWhereAndIs);
+    .flatMap(unwrapWhereAndIs)
+    .map(inlineCompounds);
   if (selectors.length === 0) {
     return false;
   }
@@ -42,6 +43,73 @@ const unwrapWhereAndIs = (selector: string): string[] => {
   return splitTopLevel(selector.slice(match[0].length, -1)).flatMap(
     unwrapWhereAndIs,
   );
+};
+
+/**
+ * Inlines each `:where(…)` and `:is(…)` inside a selector that holds one
+ * compound selector, such as the `:where(.group)` of Tailwind's `group-*`
+ * variants: `:where(.group).ui-open .x` becomes `.group.ui-open .x`, the
+ * selector Lynx's Tailwind 3 preset writes. Lynx drops a rule with either
+ * pseudo-class anywhere in it, so `group-*`, `peer-*` and `in-*` never
+ * applied. A complex selector or a list inside one (`:is(.group:hover *)`)
+ * has no inline form and stays, as does a type selector that would land
+ * after a class. As with {@link unwrapWhereAndIs}, the selector gains the
+ * specificity `:where()` hid.
+ */
+const inlineCompounds = (selector: string): string => {
+  let lowered = '';
+  for (let index = 0; index < selector.length; index++) {
+    const character = selector[index]!;
+    if (character === '\\') {
+      lowered += selector.slice(index, index + 2);
+      index++;
+      continue;
+    }
+    const match =
+      character === ':'
+        ? /^:(?:where|is)\(/i.exec(selector.slice(index))
+        : null;
+    if (match) {
+      const start = index + match[0].length;
+      const end = closingParenthesis(selector, start);
+      const inner =
+        end === -1 ? '' : inlineCompounds(selector.slice(start, end).trim());
+      // A type selector or `*` has to start its compound.
+      const placeable =
+        !/^[^.#[:]/.test(inner) || lowered === '' || /[\s>+~(,]$/.test(lowered);
+      if (isCompound(inner) && placeable) {
+        lowered += inner;
+        index = end;
+        continue;
+      }
+    }
+    lowered += character;
+  }
+  return lowered;
+};
+
+/**
+ * Whether a selector is one compound selector: no combinator and no list at
+ * its top level.
+ */
+const isCompound = (selector: string): boolean => {
+  if (selector === '') {
+    return false;
+  }
+  let depth = 0;
+  for (let index = 0; index < selector.length; index++) {
+    const character = selector[index]!;
+    if (character === '\\') {
+      index++;
+    } else if (character === '(') {
+      depth++;
+    } else if (character === ')') {
+      depth--;
+    } else if (depth === 0 && /[\s>+~,]/.test(character)) {
+      return false;
+    }
+  }
+  return true;
 };
 
 /**

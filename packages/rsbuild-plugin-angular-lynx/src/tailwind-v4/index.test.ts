@@ -168,6 +168,62 @@ describe('tailwindForLynx', () => {
     expect(supports.map(String).join()).toContain('color-mix(');
   });
 
+  it("gives the Lynx preset's utilities and variants through @blotch/angular-lynx/tailwind.css", async () => {
+    fs.writeFileSync(
+      path.join(sourceDir, 'lynx.html'),
+      `<view class="linear display-relative lynx-rtl solo-translate-x-4
+        -solo-translate-y-1/2 solo-rotate-45 -solo-skew-x-[3deg] solo-scale-50
+        ui-open:bg-red-500 parent-ui-checked:flex group-ui-open:flex
+        group-ui-side-left/menu:flex peer-ui-disabled:hidden in-ui-busy:flex"></view>`,
+    );
+    const stylesheet = path.resolve('../runtime/tailwind.css');
+    const root = await compile(`${STYLESHEET}\n@import '${stylesheet}';`);
+
+    expect(declarationsOf(root, '.linear')).toEqual(['display: linear']);
+    expect(declarationsOf(root, '.display-relative')).toEqual([
+      'display: relative',
+    ]);
+    expect(declarationsOf(root, '.lynx-rtl')).toEqual(['direction: lynx-rtl']);
+    // One transform function each, with its calc() folded.
+    expect(declarationsOf(root, '.solo-translate-x-4')).toEqual([
+      'transform: translateX(1rem)',
+    ]);
+    expect(declarationsOf(root, '.-solo-translate-y-1\\/2')).toEqual([
+      'transform: translateY(-50%)',
+    ]);
+    expect(declarationsOf(root, '.solo-rotate-45')).toEqual([
+      'transform: rotate(45deg)',
+    ]);
+    expect(declarationsOf(root, '.-solo-skew-x-\\[3deg\\]')).toEqual([
+      'transform: skewX(-3deg)',
+    ]);
+    expect(declarationsOf(root, '.solo-scale-50')).toEqual([
+      'transform: scale(0.5)',
+    ]);
+    // The selectors the preset writes, which Lynx matches.
+    expect(declarationsOf(root, '.ui-open\\:bg-red-500.ui-open')).toEqual([
+      'background-color: var(--color-red-500)',
+    ]);
+    expect(
+      declarationsOf(root, '.ui-checked > .parent-ui-checked\\:flex'),
+    ).toEqual(['display: flex']);
+    expect(
+      declarationsOf(root, '.group.ui-open .group-ui-open\\:flex'),
+    ).toEqual(['display: flex']);
+    expect(
+      declarationsOf(
+        root,
+        '.group\\/menu.ui-side-left .group-ui-side-left\\/menu\\:flex',
+      ),
+    ).toEqual(['display: flex']);
+    expect(
+      declarationsOf(root, '.peer.ui-disabled ~ .peer-ui-disabled\\:hidden'),
+    ).toEqual(['display: none']);
+    expect(declarationsOf(root, '.ui-busy .in-ui-busy\\:flex')).toEqual([
+      'display: flex',
+    ]);
+  });
+
   it('leaves a stylesheet that Tailwind 4 did not compile alone', async () => {
     const css = '@layer x { .a { padding-inline: 1px; } }';
     expect((await compile(css, [tailwindForLynx()])).toString()).toContain(css);

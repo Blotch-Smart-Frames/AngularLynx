@@ -7,7 +7,8 @@ import { UiCard } from '../components/ui/card';
  * Tailwind CSS 4 on Lynx: utilities whose Tailwind 4 CSS Lynx can't read as
  * written (oklch() colors, opacity modifiers, logical padding, the
  * translate/rotate/scale properties, @property variables), which the build
- * rewrites, next to the @blotch/ui theme loaded with @plugin.
+ * rewrites, next to the @blotch/ui theme loaded with @plugin, and Lynx's
+ * own variants from @blotch/angular-lynx/tailwind.css.
  */
 @Component({
   selector: 'app-root',
@@ -87,6 +88,29 @@ import { UiCard } from '../components/ui/card';
             class="h-2 rounded-full bg-primary transition-transform duration-300 ease-out"
             [class.scale-x-50]="!grown()"
           ></view>
+        </ui-card>
+
+        <ui-card class="flex flex-col gap-3 p-4">
+          <text class="text-xs font-semibold text-muted-foreground uppercase">
+            Lynx utilities and variants
+          </text>
+          <!--
+            From @blotch/angular-lynx/tailwind.css: a class-based state the
+            button below toggles, which group-ui-open: reads from the row.
+          -->
+          <view
+            class="group flex flex-row items-center gap-3"
+            [class.ui-open]="grown()"
+          >
+            <view
+              class="size-8 rounded-full bg-muted group-ui-open:bg-emerald-500"
+            ></view>
+            <text
+              class="text-sm text-muted-foreground group-ui-open:text-foreground"
+            >
+              group-ui-open: while the bar is grown
+            </text>
+          </view>
         </ui-card>
 
         <ui-button size="lg" (pressed)="grown.update((value) => !value)">

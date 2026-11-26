@@ -20,6 +20,10 @@
     ".": {
       "types": "./dist/types/blotch-angular-lynx.d.ts",
       "default": "./dist/fesm2022/blotch-angular-lynx.mjs"
+    },
+    "./tailwind.css": {
+      "style": "./tailwind.css",
+      "default": "./tailwind.css"
     }
   },
   "scripts": {

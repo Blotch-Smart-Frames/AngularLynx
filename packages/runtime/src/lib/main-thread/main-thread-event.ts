@@ -6,16 +6,14 @@ import {
   type OnDestroy,
   type SimpleChanges,
 } from '@angular/core';
-import { removeNativeHandler } from '../lynx-element/remove-native-handler';
-import { addNativeEvent } from '../lynx-element/event-registration';
 import type { BaseLynxElement } from '../lynx-element/types';
-import { __workletMap } from '../worklet-bridge';
+import { __workletMap, transformParams } from '../worklet-bridge';
 import type { MainThreadFnHandle } from './main-thread-fn';
 
 /**
  * Plain functions are also accepted: the worklet build plugin turns one with
  * the 'main thread' directive into a MainThreadFnHandle at compile time, so
- * TypeScript only sees the function, and the directive registers any other
+ * TypeScript only sees the function, and the directive runs any other
  * function itself.
  */
 type MaybeHandle =
@@ -25,36 +23,48 @@ type MaybeHandle =
   | null;
 
 /**
- * Maps directive input names to [eventType, eventName] for Lynx's __AddEvent PAPI.
- * eventType is 'bindEvent' (bubbles) or 'catchEvent' (stops propagation) —
- * these map to Lynx's bind* / catch* event model, not DOM addEventListener.
+ * The directive's inputs. Each is `mainThread` followed by the Lynx listener
+ * name it binds, capitalized: `mainThreadBindtap` listens as `(bindtap)`
+ * does, and `mainThreadCatchscroll` as `(catchscroll)`, so the element's
+ * `bind`/`catch` handling (see LynxElement.addEventListener) applies to a
+ * script as to any listener.
  */
-const INPUT_TO_EVENT: Record<string, [string, string]> = {
-  mainThreadBindtap: ['bindEvent', 'tap'],
-  mainThreadCatchtap: ['catchEvent', 'tap'],
-  mainThreadBindtouchstart: ['bindEvent', 'touchstart'],
-  mainThreadCatchtouchstart: ['catchEvent', 'touchstart'],
-  mainThreadBindtouchmove: ['bindEvent', 'touchmove'],
-  mainThreadCatchtouchmove: ['catchEvent', 'touchmove'],
-  mainThreadBindtouchend: ['bindEvent', 'touchend'],
-  mainThreadCatchtouchend: ['catchEvent', 'touchend'],
+const INPUTS = [
+  'mainThreadBindtap',
+  'mainThreadCatchtap',
+  'mainThreadBindtouchstart',
+  'mainThreadCatchtouchstart',
+  'mainThreadBindtouchmove',
+  'mainThreadCatchtouchmove',
+  'mainThreadBindtouchend',
+  'mainThreadCatchtouchend',
   // A desktop browser never fires touch events, so on Lynx for Web a mouse
   // drag needs these. Native Lynx on a phone never fires them, and a mobile
   // browser only fires them after a tap, so binding both is safe.
-  mainThreadBindmousedown: ['bindEvent', 'mousedown'],
-  mainThreadCatchmousedown: ['catchEvent', 'mousedown'],
-  mainThreadBindmousemove: ['bindEvent', 'mousemove'],
-  mainThreadCatchmousemove: ['catchEvent', 'mousemove'],
-  mainThreadBindmouseup: ['bindEvent', 'mouseup'],
-  mainThreadCatchmouseup: ['catchEvent', 'mouseup'],
-  mainThreadBindlongpress: ['bindEvent', 'longpress'],
-  mainThreadCatchlongpress: ['catchEvent', 'longpress'],
-  mainThreadBindscroll: ['bindEvent', 'scroll'],
-  mainThreadCatchscroll: ['catchEvent', 'scroll'],
-  mainThreadBindanimationstart: ['bindEvent', 'animationstart'],
-  mainThreadBindanimationend: ['bindEvent', 'animationend'],
-  mainThreadBindtransitionend: ['bindEvent', 'transitionend'],
-  mainThreadBindlayoutchange: ['bindEvent', 'layoutchange'],
+  'mainThreadBindmousedown',
+  'mainThreadCatchmousedown',
+  'mainThreadBindmousemove',
+  'mainThreadCatchmousemove',
+  'mainThreadBindmouseup',
+  'mainThreadCatchmouseup',
+  'mainThreadBindlongpress',
+  'mainThreadCatchlongpress',
+  'mainThreadBindscroll',
+  'mainThreadCatchscroll',
+  'mainThreadBindanimationstart',
+  'mainThreadBindanimationend',
+  'mainThreadBindtransitionend',
+  'mainThreadBindlayoutchange',
+] as const;
+
+const INPUT_SET: ReadonlySet<string> = new Set(INPUTS);
+
+/**
+ * The listener name an input binds: `bindtap` for `mainThreadBindtap`.
+ */
+const listenerNameOf = (inputName: string): string => {
+  const name = inputName.slice('mainThread'.length);
+  return name.charAt(0).toLowerCase() + name.slice(1);
 };
 
 const isMainThreadHandle = (h: MaybeHandle): h is MainThreadFnHandle =>
@@ -62,42 +72,44 @@ const isMainThreadHandle = (h: MaybeHandle): h is MainThreadFnHandle =>
   '__isMainThreadFn' in h &&
   !!(h as MainThreadFnHandle).__isMainThreadFn;
 
-// IDs for the plain functions the directive registers itself. They have their
-// own prefix so they never collide with the IDs mainThreadFn() gives.
-let nextHandlerId = 0;
-
-/** A handler the directive has passed to __AddEvent for one of its inputs. */
-type Registration = {
-  eventType: string;
-  eventName: string;
-  /** The ID the directive registered a plain function under, and releases. */
-  ownId?: string;
-};
-
 /**
  * Bridges Angular template bindings like `(mainThreadBindtap)="handler"` to
  * Lynx's main-thread (Lepus) event dispatch.
  *
  * Why a dedicated directive and not the renderer's listen() path:
- * - Normal `(bindtap)` handlers run on the main thread too (listen() registers
- *   them as worklets), but each one goes through Angular's listener wrapper,
- *   which marks the view for change detection on every dispatch: too much for
- *   gesture-driven UI (scroll-tracking, drag, pinch) that mutates styles at
- *   native frame rate. Their event's targets are also plain data.
- * - The `mainThreadBind*` / `mainThreadCatch*` family registers the function
- *   itself as a *worklet* with `_workletType: 'main-thread'`, so Lynx invokes
- *   it directly, and runWorklet hands it MainThreadElement targets, whose
- *   __AddInlineStyle / __SetAttribute calls are synchronous. Angular does no
- *   work per event.
+ * - Normal `(bindtap)` handlers run on the main thread too, but each one goes
+ *   through Angular's listener wrapper, which marks the view for change
+ *   detection on every dispatch: too much for gesture-driven UI
+ *   (scroll-tracking, drag, pinch) that mutates styles at native frame rate.
+ *   Their event's targets are also plain data.
+ * - The `mainThreadBind*` / `mainThreadCatch*` family runs the function
+ *   itself, with no Angular wrapper, and hands it MainThreadElement targets
+ *   (see transformParams), whose __AddInlineStyle / __SetAttribute calls are
+ *   synchronous. Angular does no work per event.
  * - These inputs cannot be expressed as @Output() because Angular would route
- *   them through its own event subscription system and the underlying
- *   worklet handle would never be passed to __AddEvent.
+ *   them through its own event subscription system and the function would
+ *   never be run as a script.
  *
  * The worklet plugin (in rsbuild-plugin-angular-lynx) rewrites any function
  * annotated with `'main thread'` directive into a `MainThreadFnHandle`
- * carrying a stable `_wkltId`. That ID is what we hand to __AddEvent here.
+ * carrying a stable `_wkltId`, registered in __workletMap. A handle is looked
+ * up there as the event fires, as runWorklet looks up a worklet.
+ *
+ * Each script is a listener on the element (see LynxElement.addEventListener),
+ * beside the template's `(bindtap)` and anything added later, such as an
+ * IntersectionObserver's scroll listener: Lynx keeps one native handler per
+ * event name on an element, and the element's handler runs every listener for
+ * the event. The directive used to register its script with `__AddEvent`
+ * itself and keep the element's own listeners off the event, so a `(bindtap)`
+ * beside a `[mainThreadBindtap]` never ran, and an observer inside a
+ * `[mainThreadBindscroll]` scroll-view never heard it scroll (issue #471).
+ * Sharing the handler also keeps the script registered when the element's
+ * native ref is rebuilt, and removes it the way the element's own listeners
+ * are removed.
  */
 @Directive({
+  // The selector and inputs are INPUTS spelled out: Angular's compiler reads
+  // them as literals.
   selector:
     '[mainThreadBindtap],[mainThreadCatchtap],' +
     '[mainThreadBindtouchstart],[mainThreadCatchtouchstart],' +
@@ -137,18 +149,8 @@ type Registration = {
 })
 export class LynxMainThreadEvent implements OnChanges, OnDestroy {
   readonly #el: BaseLynxElement = inject(ElementRef).nativeElement;
-
-  /**
-   * The element, as a LynxElement, which keeps its own listeners off the
-   * events this directive has handlers for. A test's stand-in may not.
-   */
-  get #host(): {
-    holdNativeEvent?(eventName: string): void;
-    releaseNativeEvent?(eventName: string): void;
-  } {
-    return this.#el as never;
-  }
-  readonly #registrations = new Map<string, Registration>();
+  /** Stops the listener each input has on the element. */
+  readonly #listening = new Map<string, () => void>();
 
   mainThreadBindtap?: MaybeHandle;
   mainThreadCatchtap?: MaybeHandle;
@@ -174,93 +176,64 @@ export class LynxMainThreadEvent implements OnChanges, OnDestroy {
   mainThreadBindlayoutchange?: MaybeHandle;
 
   ngOnChanges(changes: SimpleChanges): void {
-    // ElementRef.nativeElement is our BaseLynxElement wrapper; the underlying
-    // native handle that __AddEvent expects lives on its `.element` property.
-    // We reach in via `any` rather than widening the public type because this
-    // back-channel exists only for PAPI calls and shouldn't be part of the
-    // public BaseLynxElement contract used elsewhere.
-    const elementRef = (this.#el as any).element;
-    if (!elementRef) return;
-
     for (const inputName of Object.keys(changes)) {
-      const mapping = INPUT_TO_EVENT[inputName];
-      if (!mapping) continue;
+      if (!INPUT_SET.has(inputName)) continue;
+      // The old script stops listening first, whether or not a new one takes
+      // its place: null or undefined removes the handler, as unbinding a DOM
+      // listener would, and leaving it would keep the old script firing.
+      this.#listening.get(inputName)?.();
+      this.#listening.delete(inputName);
 
-      const [eventType, eventName] = mapping;
-      const handle = (this as any)[inputName] as MaybeHandle;
-      this.#release(inputName);
-
-      const registration: Registration = { eventType, eventName };
-      let workletId: string | undefined;
-      if (isMainThreadHandle(handle)) {
-        workletId = handle._wkltId;
-      } else if (typeof handle === 'function') {
-        // A function the build didn't wrap, such as a method without the
-        // directive. This copy of the app runs on the main thread, where the
-        // function already lives, so registering it is all a handle would do.
-        // Skipping it would leave the element silently without a handler.
-        workletId = '__angular_mts_handler_' + nextHandlerId++;
-        registration.ownId = workletId;
-        __workletMap[workletId] = handle;
-      }
-
-      if (workletId === undefined) {
-        // null or undefined removes the handler, as unbinding a DOM listener
-        // would. Leaving it registered would keep the old handler firing.
-        if (this.#registrations.delete(inputName)) {
-          removeNativeHandler(elementRef, eventType, eventName);
-          this.#host.releaseNativeEvent?.(eventName);
-        }
-        continue;
-      }
-
-      // Lynx keeps one handler per event name: the element mustn't register
-      // its own over this one (see LynxElement.holdNativeEvent).
-      if (!this.#registrations.has(inputName)) {
-        this.#host.holdNativeEvent?.(eventName);
-      }
-
-      // type: 'worklet' tells the Lynx engine to invoke this handler via the
-      // worklet system (runWorklet) on the main thread, NOT via the
-      // background-thread event dispatch Lynx defaults to. _workletType:
-      // 'main-thread' ensures the handler runs on the Lepus thread where it can
-      // call __AddInlineStyle, __SetAttribute, etc. for 60fps animations
-      // without cross-thread latency.
-      // A new handler for the same event replaces the old one natively.
-      addNativeEvent(elementRef, eventType, eventName, {
-        type: 'worklet',
-        value: { _wkltId: workletId, _workletType: 'main-thread' },
-      });
-      this.#registrations.set(inputName, registration);
+      const handle = (this as Record<string, unknown>)[
+        inputName
+      ] as MaybeHandle;
+      if (!isMainThreadHandle(handle) && typeof handle !== 'function') continue;
+      this.#listening.set(
+        inputName,
+        this.#el.addEventListener(listenerNameOf(inputName), (event) =>
+          runScript(handle, event),
+        ),
+      );
     }
   }
 
   ngOnDestroy(): void {
-    const elementRef = (this.#el as any).element;
-    if (!elementRef) return;
-
-    // Lynx's PAPI has no __RemoveEvent: __AddEvent replaces the handler, here
-    // with one that does nothing (see removeNativeHandler). Without this
-    // cleanup, the worklet handle would keep its registration pointing at a
-    // destroyed component, and any subsequent native dispatch would invoke a
-    // stale closure (or, worse, leak a reference that pins the component
-    // graph).
-    for (const [inputName, { eventType, eventName }] of this.#registrations) {
-      removeNativeHandler(elementRef, eventType, eventName);
-      this.#host.releaseNativeEvent?.(eventName);
-      this.#release(inputName);
-    }
-    this.#registrations.clear();
-  }
-
-  /**
-   * Unregisters the plain function the directive registered for an input, if
-   * any, so replacing or removing it doesn't leave the old one in the registry.
-   */
-  #release(inputName: string): void {
-    const ownId = this.#registrations.get(inputName)?.ownId;
-    if (ownId !== undefined) {
-      delete __workletMap[ownId];
-    }
+    // A script left listening would keep running for a destroyed component,
+    // and hold it through the element's listeners.
+    for (const stop of this.#listening.values()) stop();
+    this.#listening.clear();
   }
 }
+
+/**
+ * Runs a script for an event the element dispatched to it. The script gets
+ * what runWorklet gives a worklet: a copy of the event whose targets are
+ * MainThreadElements (see transformParams). The element's other listeners get
+ * the event itself, as `$event`, so the copy keeps the script's element
+ * handles out of the plain data they see.
+ *
+ * A handle's function is looked up as the event fires, as runWorklet does:
+ * a component's 'main thread' method is released when the component is
+ * destroyed (see mainThreadFn), which may come before this directive's own
+ * destroy.
+ *
+ * It returns what the script returns, as runWorklet did when the script had
+ * the native handler: native reads an `eventReturnResult` from it
+ * (TouchEventHandler::FireElementWorklet), and the element's handler returns
+ * what its last listener returned.
+ */
+const runScript = (
+  handle: MainThreadFnHandle | ((...args: any[]) => any),
+  event: unknown,
+): unknown => {
+  const fn = isMainThreadHandle(handle) ? __workletMap[handle._wkltId] : handle;
+  if (!fn) {
+    if (__DEV__) {
+      console.warn(
+        `[angular-lynx] Worklet not found: ${(handle as MainThreadFnHandle)._wkltId}`,
+      );
+    }
+    return undefined;
+  }
+  return fn(transformParams(event));
+};

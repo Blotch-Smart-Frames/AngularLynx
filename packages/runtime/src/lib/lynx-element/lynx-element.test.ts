@@ -1351,50 +1351,46 @@ describe('LynxElement', () => {
       expect(calls).toEqual(['template', 'routerLink']);
     });
 
-    it('leaves an event to a main-thread directive’s handler while it holds it', () => {
-      // Lynx keeps one handler per event name: registering the element's own
-      // over a [mainThreadBindscroll]'s would stop the app's scroll handler.
+    it('runs the other listeners when one throws, then throws its error to native', () => {
       element = new LynxElement(fakeRef);
-      const before = vi.fn();
-      element.addEventListener('bindscroll', before);
-      expect(addEvent()).toHaveBeenCalledTimes(1);
-      // Bound and caught by the directive: counted.
-      element.holdNativeEvent('scroll');
-      element.holdNativeEvent('scroll');
+      const ran: string[] = [];
+      element.addEventListener('bindscroll', () => {
+        throw new Error('script failed');
+      });
+      element.addEventListener('bindscroll', () => ran.push('template'));
+      element.addEventListener('bindscroll', () => {
+        throw new Error('observer failed');
+      });
+      element.addEventListener('bindscroll', () => ran.push('observer'));
 
-      const after = vi.fn();
-      const removeAfter = element.addEventListener('catchscroll', after);
-      removeAfter();
-      element.addEventListener('global-bindscroll', vi.fn());
-      // Only the global listener, which has a handler of its own.
-      expect(addEvent()).toHaveBeenCalledTimes(2);
-      expect(addEvent()).toHaveBeenLastCalledWith(
-        fakeRef,
-        'global-bindEvent',
-        'scroll',
-        expect.anything(),
+      // The first error, as when it was the only handler.
+      expect(() => nativeHandler()({ type: 'scroll' })).toThrow(
+        'script failed',
       );
+      expect(ran).toEqual(['template', 'observer']);
+    });
 
-      element.releaseNativeEvent('scroll');
-      expect(addEvent()).toHaveBeenCalledTimes(2);
-      element.releaseNativeEvent('scroll');
-      expect(addEvent()).toHaveBeenCalledTimes(3);
-      expect(addEvent()).toHaveBeenLastCalledWith(
-        fakeRef,
-        'bindEvent',
-        'scroll',
-        expect.anything(),
-      );
-      nativeHandler()({ type: 'scroll' });
-      expect(before).toHaveBeenCalledOnce();
-      expect(after).not.toHaveBeenCalled();
+    it('keeps the stop bits a listener returns for native, whatever the listeners after it return', () => {
+      element = new LynxElement(fakeRef);
+      // A main-thread script stopping the event (Lynx's EventResult bits),
+      // then the template's listener and an observer's.
+      element.addEventListener('bindtap', () => ({ eventReturnResult: 1 }));
+      element.addEventListener('bindtap', () => undefined);
+      element.addEventListener('bindtap', () => ({ eventReturnResult: 2 }));
+      element.addEventListener('bindtap', () => 'last');
 
-      // Nothing to register again for an event it has no listener for, nor
-      // for one that was never held.
-      element.holdNativeEvent('tap');
-      element.releaseNativeEvent('tap');
-      element.releaseNativeEvent('scroll');
-      expect(addEvent()).toHaveBeenCalledTimes(3);
+      expect(nativeHandler()({ type: 'tap' })).toEqual({
+        eventReturnResult: 3,
+      });
+    });
+
+    it("returns the last listener's result when it already has every stop bit", () => {
+      element = new LynxElement(fakeRef);
+      const last = { eventReturnResult: 1 };
+      element.addEventListener('bindtap', () => ({ eventReturnResult: 1 }));
+      element.addEventListener('bindtap', () => last);
+
+      expect(nativeHandler()({ type: 'tap' })).toBe(last);
     });
 
     it('keeps the handler while a listener is left, and removes it after the last', () => {

@@ -6942,7 +6942,7 @@ Until #261, that listener also kept every screen with a scroll-view alive after 
 
 ---
 
-## An element's listener replaced a main-thread directive's handler for the same event
+## A main-thread directive's handler and the element's own listeners fought over one native handler
 
 ### What you'd expect (web)
 
@@ -6950,13 +6950,15 @@ Any number of listeners for an event on one element all run.
 
 ### What Lynx does
 
-Lynx keeps one main-thread handler per event name on an element (`AttributeHolder::SetWorkletEvent` assigns into `lepus_events_` by name, whatever the bind/catch type). `LynxElement` registers its listeners as one such handler, and so does `LynxMainThreadEvent` (`[mainThreadBindscroll]` and the rest), each with `__AddEvent`, so whichever registers last wins. The directive registers in `ngOnChanges`, after the template's own listeners, so it always won. But a listener added later, such as an `IntersectionObserver` with options listening for its scroll-view's scroll events, replaced the app's main-thread scroll handler.
+Lynx keeps one main-thread handler per event name on an element (`AttributeHolder::SetWorkletEvent` assigns into `lepus_events_` by name, whatever the bind/catch type). `LynxElement` registers its listeners as one such handler, and `LynxMainThreadEvent` (`[mainThreadBindscroll]` and the rest) used to register its own, each with `__AddEvent`, so whichever registered last won. The directive registers in `ngOnChanges`, after the template's own listeners, so a `(bindtap)` beside a `[mainThreadBindtap]` never ran. A listener added later, such as an `IntersectionObserver` with options listening for its scroll-view's scroll events, replaced the app's main-thread scroll handler.
+
+A first fix (#239) kept the element's listeners off an event while the directive had a handler for it. The script kept running, but the element's own listeners went deaf: the observers inside a `[mainThreadBindscroll]` scroll-view measured only on layout and exposure (issue #471).
 
 ### The fix
 
-The directive holds the event on its element while it has a handler for it (`LynxElement.holdNativeEvent`, counted for `bind` and `catch`). Meanwhile, the element registers none of its own for that event, and hands it back once the directive's handler has gone (`releaseNativeEvent`), registering its own for the listeners it has. The element's listeners for a held event don't hear it, as they didn't before when the directive registered after them.
+The directive adds each script to the element as a listener (`LynxElement.addEventListener`, with the input's `bind…`/`catch…` name), so the one native handler the element registers runs it beside every other listener for the event, in the order they were added. The script still gets `MainThreadElement` targets: the directive passes it the event through `transformParams`, as `runWorklet` did, and the other listeners get the event itself. Native puts an `elementRefptr` in the targets of any event a worklet handler gets, whatever the worklet's value (`TouchEventHandler::GetTargetInfo` leaves it out only for a background-thread event), so the element's function handler gets them as the directive's `_wkltId` worklet did. A `catch` script makes the element's handler a `catch` one, so the event stops at the element after all its listeners have run.
 
-Checked on the iOS 27 Simulator and the Android API 34 emulator with a `[mainThreadBindscroll]` on a scroll-view whose cards had observers with thresholds. The main-thread handler kept running through every scroll. The observers there reported only what layout and exposure told them.
+The E2E fixture's "Main taps" text has a `[mainThreadBindtap]` and a `(bindtap)`, and the iOS flow checks both counts.
 
 ---
 

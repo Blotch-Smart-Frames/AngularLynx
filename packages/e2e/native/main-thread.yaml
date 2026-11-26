@@ -2,20 +2,23 @@
 # page (fixtures/lazy-route.ts). The first tap counts and also sets the
 # binding to null, so the second must leave the count at 1. Native Lynx kept a
 # main-thread handler the directive tried to remove with `undefined`, which
-# the web removed (issue #55), so only this layer can catch it.
+# the web removed (issue #55), so only this layer can catch it. The number
+# after the slash is the text's own (bindtap), which runs beside the script:
+# the directive used to take the element's one native tap handler, so it
+# stayed at 0 (issue #471).
 appId: ${APP_ID}
 ---
 - runFlow: open-app.yaml
 - tapOn: Open lazy page
 - extendedWaitUntil:
-    visible: 'Main taps: 0'
+    visible: 'Main taps: 0/0'
     timeout: 15000
-- tapOn: 'Main taps: 0'
+- tapOn: 'Main taps: 0/0'
 - extendedWaitUntil:
-    visible: 'Main taps: 1'
+    visible: 'Main taps: 1/1'
     timeout: 10000
-- tapOn: 'Main taps: 1'
-# Gives a second count time to render before checking it didn't happen.
-- waitForAnimationToEnd
-- assertNotVisible: 'Main taps: 2'
+- tapOn: 'Main taps: 1/1'
+- extendedWaitUntil:
+    visible: 'Main taps: 1/2'
+    timeout: 10000
 - takeScreenshot: main-thread

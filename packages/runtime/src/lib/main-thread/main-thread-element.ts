@@ -7,6 +7,7 @@ import type { MainThread } from './types';
 import { writePendingClasses } from '../lynx-element/class-writes';
 import { withSafeAreaInsets } from '../lynx-element/safe-area-insets';
 import { writeScriptStyles } from '../lynx-element/script-styles';
+import { noteScriptFieldText } from '../lynx-element/script-field-text';
 
 /**
  * Batched flush — coalesces multiple style/attribute mutations into a single
@@ -114,6 +115,11 @@ export class MainThreadElement {
     methodName: string,
     params?: Record<string, unknown>,
   ): Promise<unknown> {
+    // The field's text, which its LynxElement keeps track of (see
+    // script-field-text.ts).
+    if (methodName === 'setValue') {
+      noteScriptFieldText(this.#element, String(params?.['value'] ?? ''));
+    }
     return new Promise((resolve, reject) => {
       __InvokeUIMethod(
         this.#element,

@@ -244,7 +244,15 @@ const FIXTURES: Record<string, string> = {
       #own() { return Registry.#key(2); }
       get own() { return this.#own(); }
     }
-    [Registry.add(1, 'a'), new Registry().own];
+    // A spread copies an enumerable symbol-keyed property, but no private one.
+    [Registry.add(1, 'a'), new Registry().own, Object.getOwnPropertySymbols({ ...Registry })];
+  `,
+  'a static private field without a semicolon': `
+    class Counter {
+      static #count = 0
+      static next() { return ++Counter.#count; }
+    }
+    [Counter.next(), Counter.next(), Object.getOwnPropertySymbols({ ...Counter })];
   `,
   'async and generator methods': `
     class Source {
@@ -954,7 +962,7 @@ describe('renamePrivateMethods', () => {
     const [s] = renamed(code, 's');
     const [t] = renamed(code, 't');
     expect(code).toBe(
-      `var ${t} = Symbol("t"); class A { static ${s}() { return 1; } static [${t}] = 2; static f() { return A.${s}() + this[${t}]; } }`,
+      `var ${t} = Symbol("t"); class A { static ${s}() { return 1; } static [${t}] = 2;; static { Object.defineProperty(this, ${t}, { enumerable: false }); } static f() { return A.${s}() + this[${t}]; } }`,
     );
   });
 

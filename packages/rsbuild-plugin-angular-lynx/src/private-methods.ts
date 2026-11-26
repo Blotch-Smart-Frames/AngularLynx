@@ -161,9 +161,12 @@ export const transformPrivateMethods = (
  * `a[__x_<key><n>]` and `a?.#x` becomes `a?.[__x_<key><n>]`, and the module
  * declares the symbols, `var __x_<key><n> = Symbol("x")`, at the start of its
  * first line, before any class that needs them. A symbol-keyed property is
- * left out of `Object.keys()`, `JSON.stringify()`, spreads and `for…in`, as
- * a private field is (and as SWC's non-enumerable one was), and is collected
- * as an ordinary property is. Code that misuses a field sees a difference,
+ * left out of `Object.keys()`, `JSON.stringify()` and `for…in`, as a private
+ * field is (and as SWC's non-enumerable one was), and is collected as an
+ * ordinary property is. An instance's is enumerable, though, so spreading
+ * the instance copies it, under its symbol: making it non-enumerable would
+ * take an `Object.defineProperty()` for each field of each instance, what
+ * this saves. Code that misuses a field sees a difference,
  * as for methods: reading one on an object that isn't an instance gives
  * `undefined` rather than a TypeError. An auto-accessor (`accessor #x`) and
  * a decorated field stay private.
@@ -178,7 +181,11 @@ export const transformPrivateMethods = (
  * class, so a subclass inherits it and `Object.getOwnPropertyNames()` of the
  * class lists it, and a subclass reads its base's static fields through its
  * prototype chain: only code that reaches a static private member through a
- * subclass, which natively throws a TypeError, sees that.
+ * subclass, which natively throws a TypeError, sees that. A static field is
+ * made non-enumerable right after it's initialized (`; static {
+ * Object.defineProperty(this, __x_<key><n>, { enumerable: false }); }`, on
+ * the same line), so spreading the class doesn't copy it: once per class,
+ * unlike an instance's.
  *
  * Left as they are:
  *
@@ -247,6 +254,16 @@ export const renamePrivateMethods = (
         : null;
       if (!fieldEdits) continue;
       edits.push(...fieldEdits);
+      const [field] = declarations;
+      if (isStatic(field!)) {
+        // An empty `;` is a class element of its own, so this follows a
+        // field with or without its semicolon (see above).
+        edits.push({
+          start: field!.end,
+          end: field!.end,
+          text: `; static { Object.defineProperty(this, ${text}, { enumerable: false }); }`,
+        });
+      }
       symbols.push(`${text} = Symbol(${JSON.stringify(name.slice(1))})`);
     }
   }

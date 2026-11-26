@@ -183,6 +183,7 @@ The main component demonstrating the feature. Must use:
 - `LYNX_ELEMENTS` import
 - Signal-based state
 - `(bindtap)` for tap events (not `(click)`)
+- Safe-area padding on the first and last rows (`pt-safe-4` / `pb-safe-4` from the `@blotch/ui` plugin, or `padding-top: calc(16px + env(safe-area-inset-top))` without it). The native shells draw edge to edge, so without it the top row sits under the status bar, where taps go to the system; the website preview has no status bar and won't show this
 
 #### If using Tailwind: `tailwind.config.ts`
 

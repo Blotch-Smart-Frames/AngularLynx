@@ -12,7 +12,7 @@ import { UiSlider } from '../components/ui/slider';
   imports: [LYNX_ELEMENTS, UiSlider],
   template: `
     <scroll-view scroll-orientation="vertical" class="h-full">
-      <view class="flex-col gap-6 p-4 flex">
+      <view class="flex-col gap-6 px-4 flex pt-safe-4 pb-safe-4">
         <text class="text-2xl font-bold text-foreground">Slider</text>
         <text class="text-sm text-muted-foreground">
           Pick a value in a range: drag the thumb, or tap the track.

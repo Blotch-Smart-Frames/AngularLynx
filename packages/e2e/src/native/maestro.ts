@@ -47,6 +47,48 @@ export type Flow = {
     readonly platform?: Platform;
     readonly host?: NativeHost['kind'];
   };
+  /**
+   * For a flow the device itself can hold up: reads the app's log after the
+   * flow failed, and says what in it shows the device was at fault, or
+   * returns undefined. The flow then runs once more in a new session (see
+   * {@link runFlows}), and fails the run only if it fails again.
+   */
+  readonly deviceFault?: (appLog: string) => string | undefined;
+};
+
+/**
+ * A WebKit process that took this long to start was held up by the
+ * simulator rather than the app. They start in about a second (1.0 to 1.4s
+ * on GitHub's macOS runners), and the slowest seen on a passing run was over
+ * 10s on a busy Mac.
+ */
+const SLOW_WEBKIT_LAUNCH_SECONDS = 30;
+
+/**
+ * What WebKit logs once one of a web view's processes has started, with how
+ * long it took: "WebContent process (0x1136080c0) took 62.843029 seconds to
+ * launch".
+ */
+const WEBKIT_LAUNCH_LINE =
+  /\b(WebContent|GPU|Networking) process \(0x[0-9a-f]+\) took (\d+(?:\.\d+)?) seconds to launch/g;
+
+/**
+ * The first WebKit process in `appLog` the simulator took over
+ * {@link SLOW_WEBKIT_LAUNCH_SECONDS} to start, or undefined. On GitHub's
+ * macOS runners, about one iOS job in fifteen has the simulator stall
+ * starting one of them for a minute or two (issue #633: WebContent and GPU
+ * for 63s on the nightly of 2026-11-24, Networking for 124s on a PR the day
+ * after), and the web view loads nothing until then. The other web views in
+ * the same jobs, opened by later flows in new app processes, started theirs
+ * in about a second.
+ */
+export const slowWebKitLaunch = (appLog: string): string | undefined => {
+  for (const [, process, seconds] of appLog.matchAll(WEBKIT_LAUNCH_LINE)) {
+    if (Number(seconds) >= SLOW_WEBKIT_LAUNCH_SECONDS) {
+      return `the simulator took ${Math.round(Number(seconds))}s to start WebKit's ${process} process`;
+    }
+  }
+  return undefined;
 };
 
 // No flow is a known failure on any platform. Android used to fail both flows
@@ -130,6 +172,7 @@ export const FLOWS: readonly Flow[] = [
     // navigation bar sits above the app, the canvas page's links are below
     // the bottom of CI's 320x640 Android emulator.
     only: { host: 'shell' },
+    deviceFault: slowWebKitLaunch,
   },
   {
     file: 'overlays.yaml',
@@ -217,6 +260,11 @@ export type FlowRunOptions = {
   readonly logFile: string;
   /** Saves a screenshot of the device to `file`, for a run that hung. */
   readonly screenshot: (file: string) => Promise<void>;
+  /**
+   * The app's log so far, for the flows' {@link Flow.deviceFault}. Without
+   * it, a flow that failed isn't run again.
+   */
+  readonly appLog?: () => string;
 };
 
 /**
@@ -232,8 +280,9 @@ const DRIVER_STARTUP_TIMEOUT_MS = Number(
 /**
  * The longest one flow may take. The slowest to pass in ten iOS and Android
  * CI jobs' logs took 97s. One that fails stops at the wait it failed on, the
- * longest of which (open-app.yaml's for Explorer, tried three times) takes
- * about 90s.
+ * longest of which is webview.yaml's 120s for WebKit's processes to start
+ * (issue #633), after about 15s of opening the app and its pages; the next
+ * is open-app.yaml's for Explorer, tried three times, at about 90s.
  */
 const FLOW_TIMEOUT_MS = 4 * 60_000;
 
@@ -294,6 +343,14 @@ const DRIVER_RETRIES = 2;
  * such a hang; one that comes back fails the host.
  */
 const STALL_RETRIES = 1;
+
+/**
+ * How many times a flow that failed runs again when its
+ * {@link Flow.deviceFault} finds the device at fault. Once: a stall like
+ * issue #633's was over by the next session, and a second failure is more
+ * likely the app's.
+ */
+const DEVICE_FAULT_RETRIES = 1;
 
 /**
  * Runs `flows` against a booted simulator or emulator in one Maestro session.
@@ -448,8 +505,10 @@ const reportStall = async (
  * - up to {@link STALL_RETRIES} times when it hung, after saving what it was
  *   doing (see {@link reportStall}).
  *
- * Only these infrastructure errors are retried: a flow that ran and failed
- * an assertion fails the run as before.
+ * A flow that ran and failed an assertion also runs again, up to
+ * {@link DEVICE_FAULT_RETRIES} times, when its {@link Flow.deviceFault}
+ * finds the device at fault in the app's log. Only these infrastructure
+ * errors are retried: any other failed flow fails the run as before.
  */
 export const runFlows = async (
   flows: readonly Flow[],
@@ -458,10 +517,20 @@ export const runFlows = async (
   const outcomes = new Map<Flow, FlowOutcome>();
   let driverRetries = 0;
   let stallRetries = 0;
+  const deviceFaultRetries = new Map<Flow, number>();
+  // The failure each flow running again for a device fault had, which stands
+  // if the session ends before it runs.
+  const deviceFaultFailures = new Map<Flow, FlowOutcome>();
   for (let run = 1; ; run++) {
     const pending = flows.filter((flow) => !outcomes.has(flow));
+    // Only this session's part of the app's log counts as a device fault:
+    // the log runs for the whole host, so a slow launch an earlier session
+    // logged would otherwise rerun a flow that failed this time with WebKit
+    // starting normally.
+    const appLogStart = options.appLog?.().length ?? 0;
     const result = await runMaestro(pending, options, run);
     const output = result.timedOut?.output ?? result.output;
+    const deviceFaulted: Flow[] = [];
     for (const [flow, outcome] of parseResults(output, pending)) {
       // Failed before touching the app, so it runs again.
       if (
@@ -470,10 +539,30 @@ export const runFlows = async (
       ) {
         continue;
       }
+      const retries = deviceFaultRetries.get(flow) ?? 0;
+      if (outcome.status === 'failed' && retries < DEVICE_FAULT_RETRIES) {
+        const fault = flow.deviceFault?.(
+          options.appLog?.().slice(appLogStart) ?? '',
+        );
+        if (fault) {
+          deviceFaultRetries.set(flow, retries + 1);
+          deviceFaultFailures.set(flow, outcome);
+          console.warn(
+            `! native/${flow.file} failed (${outcome.reason}), and ${fault}; running it again (${retries + 1} of ${DEVICE_FAULT_RETRIES}).`,
+          );
+          deviceFaulted.push(flow);
+          continue;
+        }
+      }
       outcomes.set(flow, outcome);
     }
-    const unfinished = pending.filter((flow) => !outcomes.has(flow));
+    const unfinished = pending.filter(
+      (flow) => !outcomes.has(flow) && !deviceFaulted.includes(flow),
+    );
     if (unfinished.length === 0) {
+      if (deviceFaulted.length > 0) {
+        continue;
+      }
       break;
     }
     const names = unfinished.map((flow) => `native/${flow.file}`).join(', ');
@@ -507,7 +596,16 @@ export const runFlows = async (
         `Maestro exited with code ${result.code} without reporting on it (its output is above)`;
     }
     for (const flow of unfinished) {
-      outcomes.set(flow, { status: 'not-run', reason: reason(flow) });
+      outcomes.set(
+        flow,
+        deviceFaultFailures.get(flow) ?? {
+          status: 'not-run',
+          reason: reason(flow),
+        },
+      );
+    }
+    for (const flow of deviceFaulted) {
+      outcomes.set(flow, deviceFaultFailures.get(flow)!);
     }
     break;
   }

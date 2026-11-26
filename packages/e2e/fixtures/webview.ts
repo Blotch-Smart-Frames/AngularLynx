@@ -23,8 +23,9 @@ const PAGE =
  *
  * A web view's first page in an app takes a moment: the platform starts the
  * web engine's processes for it then (on the iOS Simulator, 1 to 3 seconds,
- * and over 10 on a busy Mac). The box stays empty until then, which issue
- * #338 took for a web view that never draws.
+ * over 10 on a busy Mac, and 63 on GitHub's macOS runner once, issue #633).
+ * The box stays empty until then, which issue #338 took for a web view that
+ * never draws.
  *
  * "Open overlays", below the status, opens overlays.ts.
  */

@@ -8,10 +8,19 @@
 #
 # The waits are long because a web view starts the web engine's processes
 # before it draws (WebKit's on iOS, the WebView's renderer on Android), which
-# on a busy machine took over 10 seconds. The page's line is waited for too,
-# not asserted: on iOS it reaches the accessibility tree a moment after
-# bindload, and on a busy Mac one look at the tree took 40 seconds, so a
-# single look missed it.
+# on a busy machine took over 10 seconds, and on GitHub's macOS runner in the
+# nightly of 2026-11-24 (issue #633) 63 seconds: the app's log has "WebContent
+# process took 62.8 seconds to launch", and the page loaded right after, two
+# seconds past the 60-second wait this flow had then. The wait is now twice
+# that launch, and well inside the harness's 4-minute limit on a flow
+# (FLOW_TIMEOUT_MS in src/native/maestro.ts) with the page's line's wait
+# after it. A stall can last longer (124 seconds for the Networking process
+# on a PR the next day), so when this flow fails and the app's log shows a
+# WebKit process took over 30 seconds to start, the harness runs it once more
+# in a new session (slowWebKitLaunch in src/native/maestro.ts). The page's
+# line is waited for too, not asserted: on iOS it reaches the accessibility
+# tree a moment after bindload, and on a busy Mac one look at the tree took
+# 40 seconds, so a single look missed it.
 appId: ${APP_ID}
 ---
 - runFlow: open-app.yaml
@@ -21,7 +30,7 @@ appId: ${APP_ID}
 - tapOn: Open web view
 - extendedWaitUntil:
     visible: 'Web view: loaded'
-    timeout: 60000
+    timeout: 120000
 - extendedWaitUntil:
     visible: Web page text
     timeout: 60000

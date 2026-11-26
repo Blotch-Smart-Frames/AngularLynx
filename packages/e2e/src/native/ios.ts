@@ -240,6 +240,7 @@ export const runOnIosSimulator = async ({
       outputDir: path.join(artifactsDir, `ios-${host.kind}`),
       logFile,
       screenshot,
+      appLog: logStream.output,
     });
     for (const [flow, outcome] of outcomes) {
       const failure = judgeFlow(flow, 'ios', outcome);

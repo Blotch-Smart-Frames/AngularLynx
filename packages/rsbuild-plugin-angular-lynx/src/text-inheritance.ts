@@ -44,7 +44,7 @@ const VARIABLES = new Set(INHERITED_TEXT_PROPERTIES.map(inheritanceVariable));
  * Whether a declaration's value reads `variable`: `var(--x)` or
  * `var( --x, 14px)`, not `var(--x-y)`.
  */
-const readsVariable = (value: string, variable: string): boolean =>
+export const readsVariable = (value: string, variable: string): boolean =>
   new RegExp(`var\\(\\s*${variable}\\s*[,)]`, 'i').test(value);
 
 /**

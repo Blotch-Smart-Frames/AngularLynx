@@ -77,6 +77,49 @@ export const ALL_TEXT_PROPERTIES = (1 << INHERITED_TEXT_PROPERTIES.length) - 1;
 export const LAYOUT_FLAG = 1 << INHERITED_TEXT_PROPERTIES.length;
 
 /**
+ * The bit in a style index entry for a rule whose `font-size` makes the size
+ * around the element smaller, reading it from the parent's variable: the
+ * build's `<small>`, `<sub>` and `<sup>` rule, `calc(var(--angular-lynx-
+ * font-size, 14px) / 1.2)`. Such a rule has no copy to pass its size to the
+ * text inside (a copy would refer to itself), so the index gives it this bit
+ * instead of the `font-size` one, which says a copy passes the size on, and
+ * the runtime gives the text inside a class that divides it again (see
+ * smallerClassFor). Above LAYOUT_FLAG, as in the build plugin's
+ * style-index.ts.
+ */
+export const SMALLER_FLAG = LAYOUT_FLAG << 1;
+
+/** The `font-size` bit in the style index. */
+export const FONT_SIZE_FLAG =
+  1 << INHERITED_TEXT_PROPERTIES.indexOf('font-size');
+
+/**
+ * The most levels of `<small>`, `<sub>` and `<sup>` the build has a class
+ * for (see smallerClassFor). Text deeper than that draws at this level's
+ * size, already under half the size around the first tag.
+ */
+export const MAX_SMALLER_LEVELS = 5;
+
+/** The prefix of the classes smallerClassFor names. */
+export const SMALLER_CLASS_PREFIX = '_ngsmaller-';
+
+/**
+ * The class that draws text inside `levels` `<small>`, `<sub>` or `<sup>`
+ * tags below the nearest ancestor that passes its size on: the build's
+ * `._ngsmaller-2 { font-size: calc(var(--angular-lynx-font-size, 14px) /
+ * 1.44) }` and the like (styles/html-text-tags.css in the build plugin),
+ * which divides the size from that ancestor's variable by 1.2 for each, as
+ * Chrome draws nested `smaller` text.
+ *
+ * A class, not an inline `font-size`: Lynx resolves a `var()` inside a
+ * `calc()` in a stylesheet, but not in an inline style, where the text drew
+ * at a few pixels (iOS 27 Simulator, Lynx Explorer, November 2026), though an
+ * inline `var()` alone, or a `calc()` of lengths, works.
+ */
+export const smallerClassFor = (levels: number): string =>
+  `${SMALLER_CLASS_PREFIX}${Math.min(levels, MAX_SMALLER_LEVELS)}`;
+
+/**
  * The inline declarations that give an element the inherited value of each
  * text property not in `ownProperties`, the ones its own rules may set. They
  * go ahead of the app's own inline style, which wins over them. A variable no
@@ -159,6 +202,7 @@ const isRendererClass = (name: string): boolean =>
   name.startsWith('_nghost-') ||
   name.startsWith('_ngtag-') ||
   name.startsWith('_ngattr-') ||
+  name.startsWith(SMALLER_CLASS_PREFIX) ||
   name === ANONYMOUS_TEXT_CLASS ||
   name === INHERITANCE_CLASS ||
   name === LYNX_TEXT_INHERITANCE_CLASS;

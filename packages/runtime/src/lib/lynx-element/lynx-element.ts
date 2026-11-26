@@ -46,15 +46,18 @@ import { sanitizeSvgContent } from './svg-content';
 import {
   ALL_TEXT_PROPERTIES,
   ANONYMOUS_TEXT_CLASS,
+  FONT_SIZE_FLAG,
   INHERITANCE_CLASS,
   LYNX_TEXT_INHERITANCE_CLASS,
   LAYOUT_FLAG,
   NOT_BLOCK_CONTAINERS,
+  SMALLER_FLAG,
   TAKES_RAW_TEXT,
   inheritanceStyleFor,
   isBlankText,
   isBlockDisplay,
   isRowOrientation,
+  smallerClassFor,
   styleFlagsFor,
 } from './text-flow';
 import {
@@ -771,6 +774,10 @@ export class LynxElement implements BaseLynxElement {
    * text-flow.ts). An element written as a Lynx `<text>` doesn't.
    */
   #webText = false;
+  /**
+   * The class for its level of `<small>`s it has (see #setSmallerClass).
+   */
+  #smallerClass: string | null = null;
   /**
    * The inline declarations that give a #webText element the text styles
    * it inherits: one `var()` for each property its own rules don't set.
@@ -1618,8 +1625,17 @@ export class LynxElement implements BaseLynxElement {
    * in the web preview), which is again what the web draws.
    */
   #applyInheritance(): void {
+    // A <small>'s own rule divides the size around it once: the text inside
+    // it, or a second <small>, needs a class that divides it more (see
+    // #smallerLevels). The class sets the size, so it reads no variable.
+    const levels = this.#smallerLevels();
+    const ownLevel = this.#ruleFlags() & SMALLER_FLAG ? 1 : 0;
+    const smaller = levels > ownLevel ? smallerClassFor(levels) : null;
+    this.#setSmallerClass(smaller);
     const style = inheritanceStyleFor(
-      this.#ownTextStyles() | this.#drawnAtDefault(),
+      this.#ownTextStyles() |
+        this.#drawnAtDefault() |
+        (smaller ? FONT_SIZE_FLAG : 0),
     );
     if (style === this.#inheritStyle) return;
     this.#inheritStyle = style;
@@ -1636,10 +1652,81 @@ export class LynxElement implements BaseLynxElement {
    * it (see LYNX_TEXT_INHERITANCE_CLASS).
    */
   #ownTextStyles(): number {
+    const flags = this.#ruleFlags();
+    // A <small>'s rule sets its size too, from the size around it.
+    return (
+      (flags & ALL_TEXT_PROPERTIES) |
+      (flags & SMALLER_FLAG ? FONT_SIZE_FLAG : 0)
+    );
+  }
+
+  /**
+   * The style index flags of this element's own rules (see #ownTextStyles):
+   * none for an anonymous `<text>`, and an HTML text tag's leave out the
+   * rules whose selector names `text`.
+   */
+  #ruleFlags(): number {
     if (this.#anonymous) return 0;
     const tokens = this.#styleTokens();
     if (this.#webText) tokens.delete('<text>');
-    return styleFlagsFor(tokens) & ALL_TEXT_PROPERTIES;
+    // The runtime's own class for nested <small>s follows from these flags
+    // (see #setSmallerClass), so it can't count among them.
+    if (this.#smallerClass) tokens.delete(this.#smallerClass);
+    return styleFlagsFor(tokens);
+  }
+
+  /**
+   * Gives this element the class for its level of `<small>`s (see
+   * smallerClassFor), or none, in place of the one it had. It's kept with the
+   * scope classes, so an app's class binding keeps it, as setRuntimeClass
+   * does. Unlike there, it changes nothing the runtime reads, so it skips
+   * #rulesChanged, which would work this element's inheritance out again.
+   */
+  #setSmallerClass(name: string | null): void {
+    const current = this.#smallerClass;
+    if (current === name) return;
+    this.#smallerClass = name;
+    if (current) {
+      const index = this.#scopeClasses!.indexOf(current);
+      this.#scopeClasses!.splice(index, 1);
+      this.#removeClassName(current);
+    }
+    if (name) {
+      (this.#scopeClasses ??= []).push(name);
+      this.#addClassName(name);
+    }
+  }
+
+  /**
+   * How many `<small>`, `<sub>` and `<sup>` tags make this #webText
+   * element's text smaller, itself included: those up to the nearest
+   * ancestor whose rules set the size with a copy, which the variable holds.
+   *
+   * The build's rule for the tags divides the parent's variable by 1.2 and,
+   * reading the variable it would be copied to, has no copy (see
+   * SMALLER_FLAG). So the text inside a `<small>` read the size around it:
+   * `<small>a <b>b</b></small>` drew the `<b>` at the full size, and a
+   * `<small>` in a `<small>` at the outer one's (issue #663). Each level
+   * divides again, as in a browser.
+   *
+   * It stops at an element that isn't an HTML text tag, as #drawnAtDefault
+   * does: a Lynx `<text>` or a view sizes its own text. Moving the element or
+   * changing an ancestor's classes works it out again (see #inheritAgain).
+   */
+  #smallerLevels(): number {
+    const own = this.#ruleFlags();
+    if (own & FONT_SIZE_FLAG) return 0;
+    let levels = own & SMALLER_FLAG ? 1 : 0;
+    for (
+      let parent = this.#jsParent;
+      parent && parent.#webText;
+      parent = parent.#jsParent
+    ) {
+      const flags = parent.#ruleFlags();
+      if (flags & FONT_SIZE_FLAG) break;
+      if (flags & SMALLER_FLAG) levels++;
+    }
+    return levels;
   }
 
   /**
@@ -2316,6 +2403,16 @@ export class LynxElement implements BaseLynxElement {
    * as it always was.
    */
   removeClass(name: string): void {
+    this.#removeClassName(name);
+    this.#rulesChanged();
+    scheduleSettleFlush();
+  }
+
+  /**
+   * removeClass without what a class change means for the runtime's own
+   * reading of the app's rules (see #rulesChanged), or a flush of its own.
+   */
+  #removeClassName(name: string): void {
     const before = this.#classes;
     if (
       this.#nativeClasses !== false &&
@@ -2349,8 +2446,6 @@ export class LynxElement implements BaseLynxElement {
       // once, it has what #classes says from here.
       this.#nativeClasses = isWholeClassList(joined);
     }
-    this.#rulesChanged();
-    scheduleSettleFlush();
   }
 
   /**

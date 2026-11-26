@@ -36,7 +36,7 @@ import {
   HMR_MAIN_THREAD_CLIENT,
 } from './entry';
 import { LAYERS } from './layers';
-import { styleIndexOf } from './style-index';
+import { SMALLER_FLAG, styleIndexOf } from './style-index';
 import {
   INHERITED_TEXT_PROPERTIES,
   textInheritanceForLynx,
@@ -607,6 +607,12 @@ describe('applyEntry', () => {
         tags('small', 'sub', 'sup'),
         'font-size: calc(var(--angular-lynx-font-size, 14px) / 1.2)',
       ],
+      // The runtime's classes for the text inside them, smaller again at
+      // each level (issue #663), also without copies.
+      ...[1.2, 1.44, 1.728, 2.0736, 2.48832].map((divisor, i) => [
+        `._ngsmaller-${i + 1}`,
+        `font-size: calc(var(--angular-lynx-font-size, 14px) / ${divisor})`,
+      ]),
       [tags('sub'), 'vertical-align: -0.24em'],
       [tags('sup'), 'vertical-align: 0.4em'],
       [tags('mark'), 'background-color: #ffff00; color: #000000'],
@@ -656,9 +662,10 @@ describe('applyEntry', () => {
           [`_ngtag-${tag}`],
           bit('font-family'),
         ]),
+        // Read from the parent's variable, with no copy (issue #663).
         ...['small', 'sub', 'sup'].map((tag) => [
           [`_ngtag-${tag}`],
-          bit('font-size'),
+          SMALLER_FLAG,
         ]),
         [['_ngtag-mark'], bit('color')],
         [['_ngattr-a-href'], bit('color') | bit('text-decoration')],

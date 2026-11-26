@@ -1,6 +1,10 @@
 import postcss, { type AtRule, type Container } from 'postcss';
 import selectorParser from 'postcss-selector-parser';
-import { INHERITED_TEXT_PROPERTIES } from './text-inheritance.js';
+import {
+  INHERITED_TEXT_PROPERTIES,
+  inheritanceVariable,
+  readsVariable,
+} from './text-inheritance.js';
 
 /**
  * The bit for a rule that can change how an element lays its children out:
@@ -8,6 +12,31 @@ import { INHERITED_TEXT_PROPERTIES } from './text-inheritance.js';
  * Above the text properties' bits, as in the runtime's text-flow.ts.
  */
 export const LAYOUT_FLAG = 1 << INHERITED_TEXT_PROPERTIES.length;
+
+/**
+ * The bit for a rule whose `font-size` is the size around the element divided
+ * by 1.2, read from the parent's variable: the build's `<small>`, `<sub>`
+ * and `<sup>` rule, `calc(var(--angular-lynx-font-size, 14px) / 1.2)` (see
+ * styles/html-text-tags.css). It stands in for the `font-size` bit, which
+ * tells the runtime that a rule sets the size and that its copy passes the
+ * size to the text inside. This one has no copy (see text-inheritance.ts),
+ * so the runtime divides the size for the text inside itself, once for each
+ * such tag around it (issue #663). Above LAYOUT_FLAG, as in the runtime's
+ * text-flow.ts.
+ */
+export const SMALLER_FLAG = LAYOUT_FLAG << 1;
+
+/**
+ * Whether a `font-size` is the build's smaller size, the parent's variable
+ * divided by 1.2, which the runtime divides again for each level (see
+ * SMALLER_FLAG). An app's own rule that reads the variable with another
+ * divisor keeps the `font-size` bit: it has no copy either, so the text
+ * inside it takes the size around it, but the runtime can't give it the
+ * rule's size.
+ */
+const isSmallerSize = (value: string): boolean =>
+  readsVariable(value, inheritanceVariable('font-size')) &&
+  /\/\s*1\.2\s*\)\s*$/.test(value);
 
 /** The `display` values that lay children out in a column, as a block. */
 const BLOCK_DISPLAYS = new Set(['linear', 'block', 'flow-root', 'none']);
@@ -28,6 +57,7 @@ export type StyleIndex = {
  */
 const flagsOf = (property: string, value: string): number => {
   const name = property.toLowerCase();
+  if (name === 'font-size' && isSmallerSize(value)) return SMALLER_FLAG;
   const bit = INHERITED_TEXT_PROPERTIES.indexOf(name);
   if (bit >= 0) return 1 << bit;
   const keyword = value.trim().toLowerCase();

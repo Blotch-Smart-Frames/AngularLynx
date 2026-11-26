@@ -53,6 +53,7 @@ import {
   NOT_BLOCK_CONTAINERS,
   SMALLER_FLAG,
   TAKES_RAW_TEXT,
+  baselineShiftFor,
   hasAncestorTextRules,
   inheritanceStyleFor,
   isBlankText,
@@ -489,6 +490,21 @@ const flushesBefore = (first: ElementRef, second: ElementRef): boolean => {
     );
   }
   return false;
+};
+
+/**
+ * The inline `vertical-align` that moves an HTML text tag inside a `<sub>`
+ * or `<sup>` off the baseline as far as the tags around it do together,
+ * which Lynx doesn't do for it (see baselineShiftFor), from the flags of its
+ * rules and theirs. None where nothing above moves it, and none in the web
+ * preview, whose browser moves it already, so it would move twice. An `em`
+ * inline resolves against the tag's own size (iOS 27 Simulator and Android
+ * API 34 emulator, November 2026).
+ */
+const baselineShiftStyle = (chain: readonly number[]): string => {
+  if (__WEB__) return '';
+  const shift = baselineShiftFor(chain);
+  return shift === null ? '' : `vertical-align: ${shift}em`;
 };
 
 /**
@@ -1756,16 +1772,21 @@ export class LynxElement implements BaseLynxElement {
   #applyInheritance(): void {
     // A <small>'s own rule divides the size around it once: the text inside
     // it, or a second <small>, needs a class that divides it more (see
-    // #smallerLevels). The class sets the size, so it reads no variable.
-    const levels = this.#smallerLevels();
+    // #sizeChain). The class sets the size, so it reads no variable.
+    const chain = this.#sizeChain();
+    const levels = chain.filter((flags) => flags & SMALLER_FLAG).length;
     const ownLevel = this.#ruleFlags(false) & SMALLER_FLAG ? 1 : 0;
     const smaller = levels > ownLevel ? smallerClassFor(levels) : null;
     this.#setSmallerClass(smaller);
-    const style = inheritanceStyleFor(
+    const inherited = inheritanceStyleFor(
       this.#ownTextStyles(true) |
         this.#drawnAtDefault() |
         (smaller ? FONT_SIZE_FLAG : 0),
     );
+    const shift = baselineShiftStyle(chain);
+    const style = shift
+      ? [inherited, shift].filter(Boolean).join('; ')
+      : inherited;
     if (style === this.#inheritStyle) return;
     this.#inheritStyle = style;
     // One removed this cycle gets it when it's rebuilt (see #recreateSubtree).
@@ -1835,9 +1856,13 @@ export class LynxElement implements BaseLynxElement {
   }
 
   /**
-   * How many `<small>`, `<sub>` and `<sup>` tags make this #webText
-   * element's text smaller, itself included: those up to the nearest
-   * ancestor whose rules set the size with a copy, which the variable holds.
+   * The style index flags of this #webText element's rules and those of the
+   * HTML text tags above it, nearest first: up to the nearest ancestor whose
+   * rules set the size with a copy, which the variable holds. Those with
+   * SMALLER_FLAG are the `<small>`, `<sub>` and `<sup>` tags that make its
+   * text smaller, itself included, and those with RAISED_FLAG or
+   * LOWERED_FLAG the ones that move it off the baseline (see
+   * baselineShiftFor).
    *
    * The build's rule for the tags divides the parent's variable by 1.2 and,
    * reading the variable it would be copied to, has no copy (see
@@ -1853,12 +1878,12 @@ export class LynxElement implements BaseLynxElement {
    * a view sizes its own text. Moving the element or changing an ancestor's
    * classes works it out again (see #inheritAgain and #ancestorsChanged).
    */
-  #smallerLevels(): number {
+  #sizeChain(): number[] {
     // A state's rule counts for none of them, as in #drawnAtDefault: the
     // levels are those of the tags as they usually draw.
     const own = this.#ruleFlags(false);
-    if (own & FONT_SIZE_FLAG) return 0;
-    let levels = own & SMALLER_FLAG ? 1 : 0;
+    const chain = [own];
+    if (own & FONT_SIZE_FLAG) return chain;
     for (
       let parent = this.#jsParent;
       parent && parent.#webText;
@@ -1866,9 +1891,9 @@ export class LynxElement implements BaseLynxElement {
     ) {
       const flags = parent.#ruleFlags(false);
       if (flags & FONT_SIZE_FLAG) break;
-      if (flags & SMALLER_FLAG) levels++;
+      chain.push(flags);
     }
-    return levels;
+    return chain;
   }
 
   /**

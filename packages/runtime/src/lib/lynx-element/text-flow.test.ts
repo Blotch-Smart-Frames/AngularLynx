@@ -2,6 +2,12 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   ALL_TEXT_PROPERTIES,
   ancestorTextRulesRead,
+  baselineShiftFor,
+  FONT_SIZE_FLAG,
+  LOWERED_FLAG,
+  RAISED_FLAG,
+  SMALLER_FLAG,
+  VERTICAL_ALIGN_FLAG,
   hasAncestorTextRules,
   inheritanceStyleFor,
   isBlankText,
@@ -216,6 +222,48 @@ describe('smallerClassFor', () => {
     [9, '_ngsmaller-5'],
   ])('names the class for %s levels', (levels, name) => {
     expect(smallerClassFor(levels)).toBe(name);
+  });
+});
+
+describe('baselineShiftFor', () => {
+  // Issue #682: the build's <sup> and <sub> rules, as the index flags them.
+  const sup = SMALLER_FLAG | RAISED_FLAG;
+  const sub = SMALLER_FLAG | LOWERED_FLAG;
+
+  it.each([
+    // A tag that moves alone draws where its own rule puts it.
+    ['a <sup> alone', [sup], null],
+    ['text in nothing that moves', [0, 0], null],
+    // A <b> in a <sup> is as small as it, so its em is the <sup>'s.
+    ['a <b> in a <sup>', [0, sup], 0.4],
+    ['an <i> in a <sub>', [0, sub], -0.24],
+    // A <small> in a <sup> is 1.2 times smaller, so the <sup>'s distance is
+    // 1.2 times as many of its em.
+    ['a <small> in a <sup>', [SMALLER_FLAG, sup], 0.48],
+    // A <sup> in a <sup> rises by both, as in a browser.
+    ['a <sup> in a <sup>', [sup, sup], 0.88],
+    ['a <b> in a <sup> in a <sup>', [0, sup, sup], 0.88],
+    ['a <sup> in a <sub>', [sup, sub], 0.112],
+    // Past MAX_SMALLER_LEVELS the text stays the same size.
+    [
+      'a <b> in a <sup> in five <small>s',
+      [0, sup, ...Array<number>(5).fill(SMALLER_FLAG)],
+      0.4,
+    ],
+  ])('moves %s by %s em', (_, chain, shift) => {
+    expect(baselineShiftFor(chain)).toBe(shift);
+  });
+
+  // An app's own vertical-align moves the text by a distance the runtime
+  // doesn't know, and a size of the tag's own isn't one it can measure the
+  // outer tags' em against.
+  it.each([
+    ['an app’s vertical-align on the tag', [VERTICAL_ALIGN_FLAG, sup]],
+    ['an app’s vertical-align above it', [0, VERTICAL_ALIGN_FLAG | sup]],
+    ['a size of its own', [FONT_SIZE_FLAG, sup]],
+    ['no flags at all', []],
+  ])('leaves the text alone with %s', (_, chain) => {
+    expect(baselineShiftFor(chain)).toBeNull();
   });
 });
 

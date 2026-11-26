@@ -37,8 +37,11 @@ import {
   LYNX_TEXT_INHERITANCE_CLASS,
   NOT_BLOCK_CONTAINERS,
   INHERITED_TEXT_PROPERTIES,
+  LOWERED_FLAG,
+  RAISED_FLAG,
   resetStyleIndex,
   SMALLER_FLAG,
+  VERTICAL_ALIGN_FLAG,
 } from '../lynx-element/text-flow';
 import {
   LynxElement,
@@ -468,6 +471,22 @@ class CompactHost {
 })
 class ResetHost {
   readonly compact = signal(false);
+}
+
+@Component({
+  selector: 'raised-host',
+  encapsulation: ViewEncapsulation.None,
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: `<p class="big">
+    x<sup class="sup"
+      >n<b class="in-sup">2</b><small class="small-in-sup">s</small
+      ><sup class="sup-in-sup" [class.own]="own()">m</sup></sup
+    >
+    H<sub>2<i class="in-sub">O</i></sub>
+  </p>`,
+})
+class RaisedHost {
+  readonly own = signal(false);
 }
 
 @Component({
@@ -1004,6 +1023,65 @@ describe('loose text', () => {
     fixture.componentInstance.compact.set(false);
     fixture.detectChanges();
     expect(smaller('in-reset')).toEqual(['_ngsmaller-1']);
+  });
+
+  // Issue #682: on iOS, Lynx moves only the text of the <text> that has the
+  // vertical-align, so the tags inside a <sup> or <sub> get the distance
+  // inline, in their own em, and a <sup> in a <sup> the sum of both.
+  it('moves the tags inside a <sup> or <sub> with it', () => {
+    const fontSize = 1 << INHERITED_TEXT_PROPERTIES.indexOf('font-size');
+    (
+      globalThis as { __angularLynxStyleIndex?: unknown }
+    ).__angularLynxStyleIndex = {
+      rules: [
+        [['big'], fontSize],
+        [['_ngtag-small'], SMALLER_FLAG],
+        [['_ngtag-sub'], SMALLER_FLAG | LOWERED_FLAG],
+        [['_ngtag-sup'], SMALLER_FLAG | RAISED_FLAG],
+        [['own'], VERTICAL_ALIGN_FLAG],
+      ],
+    };
+    const fixture = TestBed.createComponent(RaisedHost);
+    fixture.detectChanges();
+    const style = (cls: string): string =>
+      String(byClass(cls).attrs.get('style') ?? '');
+
+    // The <sup>'s own rule moves it.
+    expect(style('sup')).not.toContain('vertical-align');
+    expect(style('in-sup')).toContain('vertical-align: 0.4em');
+    expect(style('in-sub')).toContain('vertical-align: -0.24em');
+    // A <small> is smaller, so the same distance is more of its em.
+    expect(style('small-in-sup')).toContain('vertical-align: 0.48em');
+    expect(style('sup-in-sup')).toContain('vertical-align: 0.88em');
+
+    // An app's own vertical-align wins, as it would in a browser.
+    fixture.componentInstance.own.set(true);
+    fixture.detectChanges();
+    expect(style('sup-in-sup')).not.toContain('vertical-align');
+
+    fixture.componentInstance.own.set(false);
+    fixture.detectChanges();
+    expect(style('sup-in-sup')).toContain('vertical-align: 0.88em');
+  });
+
+  // The web preview's browser moves an inline element with its parent
+  // already, so an offset of the runtime's would move it twice.
+  it('leaves the tags inside a <sup> to the browser in the web preview', () => {
+    vi.stubGlobal('__WEB__', true);
+    try {
+      (
+        globalThis as { __angularLynxStyleIndex?: unknown }
+      ).__angularLynxStyleIndex = {
+        rules: [[['_ngtag-sup'], SMALLER_FLAG | RAISED_FLAG]],
+      };
+      const fixture = TestBed.createComponent(RaisedHost);
+      fixture.detectChanges();
+      expect(String(byClass('in-sup').attrs.get('style') ?? '')).not.toContain(
+        'vertical-align',
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   // Issue #643: the build gives `<em>`, `<u>`, `<s>` and their kin the

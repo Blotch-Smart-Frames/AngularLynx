@@ -1351,6 +1351,48 @@ describe('LynxElement', () => {
       expect(calls).toEqual(['template', 'routerLink']);
     });
 
+    it('runs the other listeners when one throws, then throws its error to native', () => {
+      element = new LynxElement(fakeRef);
+      const ran: string[] = [];
+      element.addEventListener('bindscroll', () => {
+        throw new Error('script failed');
+      });
+      element.addEventListener('bindscroll', () => ran.push('template'));
+      element.addEventListener('bindscroll', () => {
+        throw new Error('observer failed');
+      });
+      element.addEventListener('bindscroll', () => ran.push('observer'));
+
+      // The first error, as when it was the only handler.
+      expect(() => nativeHandler()({ type: 'scroll' })).toThrow(
+        'script failed',
+      );
+      expect(ran).toEqual(['template', 'observer']);
+    });
+
+    it('keeps the stop bits a listener returns for native, whatever the listeners after it return', () => {
+      element = new LynxElement(fakeRef);
+      // A main-thread script stopping the event (Lynx's EventResult bits),
+      // then the template's listener and an observer's.
+      element.addEventListener('bindtap', () => ({ eventReturnResult: 1 }));
+      element.addEventListener('bindtap', () => undefined);
+      element.addEventListener('bindtap', () => ({ eventReturnResult: 2 }));
+      element.addEventListener('bindtap', () => 'last');
+
+      expect(nativeHandler()({ type: 'tap' })).toEqual({
+        eventReturnResult: 3,
+      });
+    });
+
+    it("returns the last listener's result when it already has every stop bit", () => {
+      element = new LynxElement(fakeRef);
+      const last = { eventReturnResult: 1 };
+      element.addEventListener('bindtap', () => ({ eventReturnResult: 1 }));
+      element.addEventListener('bindtap', () => last);
+
+      expect(nativeHandler()({ type: 'tap' })).toBe(last);
+    });
+
     it('keeps the handler while a listener is left, and removes it after the last', () => {
       element = new LynxElement(fakeRef);
       const first = vi.fn();

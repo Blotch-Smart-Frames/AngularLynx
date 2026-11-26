@@ -3443,12 +3443,26 @@ export class LynxElement implements BaseLynxElement {
       this.#fieldText = event.detail.value;
     }
     let result: unknown;
+    // The stop-propagation bits any listener asked for (see eventResultBits).
+    let stopBits = 0;
+    // The first error a listener threw, rethrown once the others have run.
+    let failure: { error: unknown } | null = null;
     // As a DOM event does: the listeners are those registered when the event
     // fires, so one that removes itself doesn't make the next one skip, and a
     // listener an earlier one removed (an @if hiding part of the element, say)
-    // doesn't run.
+    // doesn't run. A listener that throws doesn't stop the others either, as
+    // a browser reports a listener's error and goes on: a main-thread script
+    // that throws would otherwise silence the template's listener and an
+    // IntersectionObserver's after it. Angular's own listener wrapper catches
+    // what a template listener throws, so this matters for the rest.
     for (const other of this.#listenersLike(entry)) {
-      if (this.#listeners!.includes(other)) result = other.listener(event);
+      if (!this.#listeners!.includes(other)) continue;
+      try {
+        result = other.listener(event);
+        stopBits |= eventResultBits(result);
+      } catch (error) {
+        failure ??= { error };
+      }
     }
     // Native events are delivered straight to this callback by the Lynx SDK —
     // OUTSIDE Angular's begin()/end() change-detection cycle. So a handler that
@@ -3481,9 +3495,29 @@ export class LynxElement implements BaseLynxElement {
       // still does.
       queueMicrotask(checkDispatchWrites);
     }
+    // To native, as when the listener had the handler to itself: Lynx
+    // reports an error a handler throws.
+    if (failure) throw failure.error;
+    // A main-thread script can return the bits native stops the event with.
+    // A later listener's result mustn't drop them.
+    if (stopBits && eventResultBits(result) !== stopBits) {
+      return { eventReturnResult: stopBits };
+    }
     return result;
   }
 }
+
+/**
+ * The bits of Lynx's `EventResult` a handler's result asks for: native reads
+ * `eventReturnResult` from what a worklet handler returns, 1 to stop the
+ * event's propagation and 2 to stop it immediately
+ * (TouchEventHandler::FireElementWorklet). 0 for any other result.
+ */
+const eventResultBits = (result: unknown): number => {
+  const bits = (result as { eventReturnResult?: unknown } | null | undefined)
+    ?.eventReturnResult;
+  return typeof bits === 'number' ? bits : 0;
+};
 
 /**
  * Commits all queued genuine element removals — a free-function wrapper over

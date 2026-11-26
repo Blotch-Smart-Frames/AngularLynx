@@ -158,7 +158,7 @@ effect(() => {
 });
 ```
 
-In a spec, `setAppState('background')` and `setAppState('active')` from the testing library move it; `await waitForUpdate()` before checking.
+In a spec, `setAppState('background')` and `setAppState('active')` from the testing library move it; `await waitForUpdate()` after each, or an `effect()` never sees the app leave.
 
 ### `SystemInfo.osVersion` is missing where Angular runs
 

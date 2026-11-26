@@ -29,12 +29,14 @@ type TestingEnvironment = {
  *
  * It reaches the app as it does on a phone, as a change to the host's global
  * props: change detection runs on its own, so wait for it with
- * `waitForUpdate()`. Each test starts `active`.
+ * `waitForUpdate()`. Wait between two states too: an `effect()` runs once
+ * for both otherwise, and never sees the app leave. Each test starts `active`.
  *
  * @example
  * ```ts
  * await render(Schedule);
  * setAppState('background');
+ * await waitForUpdate();
  * vi.setSystemTime(new Date('2026-01-02T09:00'));
  * setAppState('active');
  * await waitForUpdate();

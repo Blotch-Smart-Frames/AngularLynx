@@ -1878,6 +1878,14 @@ describe('loose text, element by element', () => {
       view.removeStyle('color');
       commit();
       expect(style(view)).not.toContain('color');
+      // A property's name matches in any case, as the copy reads it.
+      view.setAttribute('style', 'Color: green; height: 10px');
+      commit();
+      expect(style(view)).toContain('--angular-lynx-color: green');
+      view.removeStyle('color');
+      commit();
+      expect(style(view)).not.toContain('green');
+      expect(style(view)).toContain('height: 10px');
       // One the string doesn't declare leaves it as it is.
       view.setAttribute('style', 'color: blue');
       view.removeStyle('width');

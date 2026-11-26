@@ -204,6 +204,20 @@ const LAYOUT_STYLES: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Whether a declaration in an inline style string (`Color: red`) declares
+ * `property`, a CSS property's name in lower case. The name is matched in
+ * any case, as CSS matches it and inlineTextStyles reads it. Never given a
+ * variable's (`--x`), whose case counts: removeStyle and setStyle keep
+ * those apart (see #customProperties).
+ */
+const declares = (declaration: string, property: string): boolean => {
+  const colon = declaration.indexOf(':');
+  return (
+    colon > 0 && declaration.slice(0, colon).trim().toLowerCase() === property
+  );
+};
+
+/**
  * An inline style string without its declarations of `property`, as the
  * DOM's `style.removeProperty()` leaves the `style` attribute. The string as
  * it was when it declares none.
@@ -215,10 +229,7 @@ const withoutDeclaration = (
   if (inlineDeclaration(style, property) === undefined) return style;
   return style!
     .split(';')
-    .filter((declaration) => {
-      const colon = declaration.indexOf(':');
-      return colon <= 0 || declaration.slice(0, colon).trim() !== property;
-    })
+    .filter((declaration) => !declares(declaration, property))
     .join(';');
 };
 
@@ -231,9 +242,8 @@ const inlineDeclaration = (
 ): string | undefined => {
   let value: string | undefined;
   for (const declaration of (style ?? '').split(';')) {
-    const colon = declaration.indexOf(':');
-    if (colon > 0 && declaration.slice(0, colon).trim() === property) {
-      value = declaration.slice(colon + 1).trim();
+    if (declares(declaration, property)) {
+      value = declaration.slice(declaration.indexOf(':') + 1).trim();
     }
   }
   return value;

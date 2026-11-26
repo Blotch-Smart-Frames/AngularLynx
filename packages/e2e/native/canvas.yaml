@@ -24,6 +24,6 @@ appId: ${APP_ID}
 # canvas and of an OffscreenCanvas, transferToImageBitmap(), which clears the
 # OffscreenCanvas, and a bitmap uploaded as a texture.
 - extendedWaitUntil:
-    visible: 'Bitmap: 0,128,0,255 255,0,0,255 0,0,255,255 0,0,0,0 255,0,0,255'
+    visible: 'Bitmap: ok'
     timeout: 15000
 - takeScreenshot: canvas

@@ -13,6 +13,12 @@ import { LibraryFrame } from 'e2e-prebuilt-library';
 const CYAN_PNG =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNg+P//PwAF/wL+Xg47rQAAAABJRU5ErkJggg==';
 
+/**
+ * What the Bitmap check reads: green, red, blue, the cleared OffscreenCanvas,
+ * then red through WebGL.
+ */
+const BITMAP_READS = '0,128,0,255 255,0,0,255 0,0,255,255 0,0,0,0 255,0,0,255';
+
 const VERTEX = `#version 300 es
 in vec2 position;
 out vec2 uv;
@@ -52,13 +58,16 @@ void main() {
  * and read back. Both reads have to give the green; when they don't, the line
  * shows each.
  *
- * Under that, "Bitmap: 0,128,0,255 255,0,0,255 0,0,255,255 0,0,0,0
- * 255,0,0,255" checks ImageBitmaps of canvases (issue #697), each drawn on a
- * 2D canvas and read back: one `createImageBitmap()` made of the WebGL
- * canvas as the 2D check left it (green), one of an OffscreenCanvas filled
- * red, one `transferToImageBitmap()` took of it once filled blue, then the
+ * Beside the canvas, under the WebGL line, "Bitmap: ok" checks ImageBitmaps
+ * of canvases (issue #697), each drawn on a 2D canvas and read back: one
+ * `createImageBitmap()` made of the WebGL canvas as the 2D check left it
+ * (green), one of an OffscreenCanvas filled red, one
+ * `transferToImageBitmap()` took of it once filled blue, then the
  * OffscreenCanvas itself, which the transfer cleared, and the red bitmap
- * uploaded as the WebGL texture, drawn and read back.
+ * uploaded as the WebGL texture, drawn and read back. When a read is wrong,
+ * the line shows them all. It's in the canvas's row, and short, so the page
+ * is no taller: the links under it stay on the Android emulator's screen,
+ * where the flows tap them.
  *
  * Below it, the prebuilt library fixture (fixtures/prebuilt-library), which
  * the counter page has no room for, and "Open linking" and "Open photo",
@@ -77,12 +86,12 @@ void main() {
         height="2"
         style="width: 40px; height: 40px;"
       ></canvas>
-      <text flatten="false" style="margin-left: 12px;"
-        >WebGL: {{ result() }}</text
-      >
+      <view style="margin-left: 12px;">
+        <text flatten="false">WebGL: {{ result() }}</text>
+        <text flatten="false">Bitmap: {{ resultBitmap() }}</text>
+      </view>
     </view>
     <text flatten="false">2D: {{ result2D() }}</text>
-    <text flatten="false">Bitmap: {{ resultBitmap() }}</text>
     <e2e-library-frame />
     <view style="display: flex; flex-direction: row; margin-top: 8px;">
       <view
@@ -204,7 +213,8 @@ export class CanvasRoute {
     const pixel = new Uint8Array(4);
     gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
     reads.push(Array.from(pixel).join(','));
-    return reads.join(' ');
+    const all = reads.join(' ');
+    return all === BITMAP_READS ? 'ok' : all;
   }
 
   async #draw(): Promise<string> {

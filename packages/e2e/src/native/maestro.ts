@@ -523,6 +523,11 @@ export const runFlows = async (
   const deviceFaultFailures = new Map<Flow, FlowOutcome>();
   for (let run = 1; ; run++) {
     const pending = flows.filter((flow) => !outcomes.has(flow));
+    // Only this session's part of the app's log counts as a device fault:
+    // the log runs for the whole host, so a slow launch an earlier session
+    // logged would otherwise rerun a flow that failed this time with WebKit
+    // starting normally.
+    const appLogStart = options.appLog?.().length ?? 0;
     const result = await runMaestro(pending, options, run);
     const output = result.timedOut?.output ?? result.output;
     const deviceFaulted: Flow[] = [];
@@ -536,7 +541,9 @@ export const runFlows = async (
       }
       const retries = deviceFaultRetries.get(flow) ?? 0;
       if (outcome.status === 'failed' && retries < DEVICE_FAULT_RETRIES) {
-        const fault = flow.deviceFault?.(options.appLog?.() ?? '');
+        const fault = flow.deviceFault?.(
+          options.appLog?.().slice(appLogStart) ?? '',
+        );
         if (fault) {
           deviceFaultRetries.set(flow, retries + 1);
           deviceFaultFailures.set(flow, outcome);

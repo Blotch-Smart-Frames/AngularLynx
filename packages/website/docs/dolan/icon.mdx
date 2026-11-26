@@ -94,7 +94,7 @@ export class SignIn {
 - **Colors written out stay,** so a multi-color mark, such as Google's, keeps them.
 - **`xmlns` is optional.** The icon adds it to the root `<svg>`: without it, the web preview draws nothing.
 - **Draw lines with `<path>`.** The [`<svg>` element](/api/elements/svg) has the same limits here: no `<line>` on iOS and Android, and no CSS.
-- **Tab bar and dock items take one too:** `[svg]` in place of `icon`, drawn in the item's color for its state (see [Tab Bar](/dolan/tab-bar#your-own-mark) and [Dock](/dolan/dock#your-own-mark)).
+- **Components that show an icon take one too:** `[svg]` in place of `icon`, drawn in their own row, at their size and in their color for their state. That's the items of a [Tab Bar](/dolan/tab-bar#your-own-mark), a [Dock](/dolan/dock#your-own-mark), a [Menu](/dolan/menu#items) and a [Toolbar](/dolan/toolbar#your-own-icon), and an [Empty State](/dolan/empty-state). Pass it to them rather than putting a `<ui-icon>` beside them.
 - **Give an icon `name` or `svg`, not both.** With neither or both, it throws an error.
 
 The example at the top of this page draws Google's and GitHub's marks, and [Button](/dolan/button)'s example puts them in sign-in buttons.

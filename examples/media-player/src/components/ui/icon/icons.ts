@@ -585,7 +585,9 @@ const withSvgNamespace = (markup: string): string =>
  * The markup to draw for an icon given either way: by name from the set, or
  * as the app's own SVG, such as its logo or a sign-in provider's mark, which
  * the set can't hold. For the components that take both, `<ui-icon>` and the
- * dock's and tab bar's items, so an app's mark draws the same in each.
+ * dock's and tab bar's items (and, through `optionalIconMarkup`, the menu's
+ * and toolbar's items and the empty state), so an app's mark draws the same
+ * in each.
  *
  * Neither, or both, is a mistake in the template that the compiler can't
  * catch, since neither input can be required, so it throws `mistake` rather
@@ -600,6 +602,20 @@ export const iconMarkup = (
   if (name !== undefined && svg === undefined) return ICONS[name];
   throw new Error(mistake);
 };
+
+/**
+ * As `iconMarkup`, for a component whose icon is optional, such as a menu
+ * item, a toolbar item or an empty state: neither is no icon (`undefined`),
+ * and both is still a mistake that throws.
+ */
+export const optionalIconMarkup = (
+  name: IconName | undefined,
+  svg: string | undefined,
+  mistake: string,
+): string | undefined =>
+  name === undefined && svg === undefined
+    ? undefined
+    : iconMarkup(name, svg, mistake);
 
 /**
  * Markup with each `currentColor` in it drawn in `color`, a concrete color

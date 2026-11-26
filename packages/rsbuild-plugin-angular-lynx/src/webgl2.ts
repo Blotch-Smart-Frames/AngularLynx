@@ -13,6 +13,9 @@ const ENABLE = 'ɵenableWebGL2';
  */
 const LOCAL = '__angularLynxEnableWebGL2';
 
+/** A JavaScript line terminator: LF, CR, LS or PS. */
+const LINE_TERMINATOR = /[\n\r\u2028\u2029]/;
+
 /**
  * The name a module asks for the context by. The runtime's `<canvas>` has no
  * other 3D context (`'webgl'` is null), so code that draws 3D with it names it:
@@ -63,7 +66,9 @@ export const enableWebGL2WhereNamed = (
   // A hashbang must stay first, and the call goes on the line after it. The
   // call never adds a line, so a source map the module carries still fits.
   // A module that is only a hashbang has no code to ask for a context.
-  const head = code.startsWith('#!') ? code.indexOf('\n') + 1 : 0;
+  // Any of JavaScript's line terminators ends the hashbang (`\r\n` at its
+  // `\r`, so the `\n` keeps the line count with the call after it).
+  const head = code.startsWith('#!') ? code.search(LINE_TERMINATOR) + 1 : 0;
   if (code.startsWith('#!') && head === 0) {
     return code;
   }

@@ -66,6 +66,17 @@ describe('enableWebGL2WhereNamed', () => {
     expect(enableWebGL2WhereNamed(bare, '/app/node_modules/cli/z.js')).toBe(
       `#!/usr/bin/env node\n;require("@blotch/angular-lynx").ɵenableWebGL2(); module.exports = 'webgl2';`,
     );
+    // Ended by another line terminator: CR, LS or PS.
+    for (const terminator of ['\r', '\u2028', '\u2029']) {
+      expect(
+        enableWebGL2WhereNamed(
+          `#!/usr/bin/env node${terminator}export const name = 'webgl2';`,
+          '/app/node_modules/cli/v.js',
+        ),
+      ).toBe(
+        `#!/usr/bin/env node${terminator}${CALL}export const name = 'webgl2';`,
+      );
+    }
     // A hashbang alone, which only names it in a comment.
     expect(
       enableWebGL2WhereNamed('#!webgl2', '/app/node_modules/cli/w.js'),

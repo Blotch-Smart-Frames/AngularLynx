@@ -54,6 +54,7 @@ import { keepsRightwardSlides, LynxStackOutlet } from './lynx-stack-outlet';
 import { LynxStackBottomBar } from './stack-bottom-bar';
 import { LynxStackChrome, STILL } from './stack-chrome';
 import { LynxStackPage } from './stack-page';
+import { BackGestures } from '../../back-button/back-gesture';
 
 /** Every page made, so a test can find a page's instance and its fate. */
 const made: Page[] = [];
@@ -1334,6 +1335,190 @@ describe('LynxStackOutlet', () => {
       const top = harness.frames()[1]!;
       await drag(top.firstElementChild!, 100, 300);
       expect(top.style.borderRadius).toBe('0px 0px 62px 62px');
+    });
+  });
+
+  describe("Android's back gesture", () => {
+    /**
+     * Starts the gesture as Android does, from `edge`.
+     */
+    const backGesture = (edge: 'left' | 'right' = 'left') =>
+      TestBed.inject(BackGestures).start(edge);
+
+    it('moves the top page with the gesture, as predictive back does', async () => {
+      vi.stubGlobal('SystemInfo', { platform: 'Android' });
+      const { frames, shown } = await pushed();
+      const [under, top] = frames();
+      const follower = backGesture()!;
+      expect(top!.style.borderRadius).toBe('28px');
+      follower.progress(0.5);
+      expect(top!.style.transform).toBe('translateX(10px) scale(0.95)');
+      expect(under!.style.transform).toBe('translateX(-20px)');
+      expect(shown()).toHaveLength(2);
+      // Android's progress stays within 0 to 1, and so does the page.
+      follower.progress(2);
+      expect(top!.style.transform).toBe('translateX(20px) scale(0.9)');
+    });
+
+    it('edges the page left for a gesture from the right edge', async () => {
+      vi.stubGlobal('SystemInfo', { platform: 'Android' });
+      const { frames, settle } = await pushed();
+      const top = frames()[1]!;
+      const follower = backGesture('right')!;
+      follower.progress(0.5);
+      expect(top.style.transform).toBe('translateX(-10px) scale(0.95)');
+      follower.commit();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(top.style.transform).toBe('translateX(-40px) scale(0.9)');
+      await settle();
+    });
+
+    it('finishes going back from where the gesture left the page as it ends in back', async () => {
+      vi.stubGlobal('SystemInfo', { platform: 'Android' });
+      const { frames, location, settle } = await pushed();
+      const back = vi.spyOn(location, 'historyGo');
+      const top = frames()[1]!;
+      const follower = backGesture()!;
+      follower.progress(0.5);
+      expect(follower.commit()).toBe(true);
+      await vi.advanceTimersByTimeAsync(0);
+      // Half the way left takes half a transition.
+      expect(top.style.transition).toBe(transitionOf(175));
+      expect(top.style.opacity).toBe('0');
+      await settle();
+      expect(back).toHaveBeenCalledWith(-1);
+      expect(frames()).toHaveLength(1);
+      expect(made[1]!.destroyed).toBe(true);
+    });
+
+    it('brings the page back when the gesture is canceled', async () => {
+      const { frames, shown, settle } = await pushed();
+      const top = frames()[1]!;
+      const follower = backGesture()!;
+      follower.progress(0.02);
+      follower.cancel();
+      await vi.advanceTimersByTimeAsync(0);
+      // Android eased the progress back already: the rest is quick.
+      expect(top.style.transition).toBe(transitionOf(150));
+      await settle();
+      expect(frames()).toHaveLength(2);
+      expect(shown()).toEqual([top]);
+      expect(top.style.transform).toBe('translateX(0px)');
+      // Over: the follower moves nothing more.
+      follower.progress(0.5);
+      follower.cancel();
+      expect(follower.commit()).toBe(false);
+      expect(top.style.transform).toBe('translateX(0px)');
+    });
+
+    it('follows with swipeBack off, which only turns off the finger in the app', async () => {
+      const { fixture } = await pushed();
+      setInput(outletOf(fixture), 'swipeBack', false);
+      expect(backGesture()).not.toBeNull();
+    });
+
+    it("doesn't follow with one page, animation 'none', mid-transition, or before layout", async () => {
+      const harness = await setup();
+      expect(backGesture()).toBeNull();
+      await harness.go('/notes/1');
+      await harness.settle();
+      // Not laid out yet.
+      expect(backGesture()).toBeNull();
+      layOut(harness.host);
+      await harness.go('/notes/1/edit');
+      expect(backGesture()).toBeNull();
+      await harness.settle();
+      setInput(outletOf(harness.fixture), 'animation', 'none');
+      expect(backGesture()).toBeNull();
+    });
+
+    it("doesn't follow while a finger drags the page, nor take the finger while it follows", async () => {
+      const { frames, settle } = await pushed();
+      const top = frames()[1]!;
+      await drag(top.firstElementChild!, 100, 160, 100);
+      expect(backGesture()).toBeNull();
+      touch(top.firstElementChild!, 'touchend', 160);
+      await settle();
+
+      const follower = backGesture()!;
+      follower.progress(0.25);
+      await drag(top.firstElementChild!, 100, 300);
+      touch(top.firstElementChild!, 'touchend', 300);
+      touch(top.firstElementChild!, 'touchcancel', 300);
+      expect(top.style.transform).toBe('translateX(100px)');
+      follower.cancel();
+      await settle();
+    });
+
+    it("doesn't take the mouse while it follows, in the web preview", async () => {
+      vi.stubGlobal('__WEB__', true);
+      const { frames, settle } = await pushed();
+      const top = frames()[1]!;
+      const follower = backGesture()!;
+      follower.progress(0.25);
+      const event = new Event('bindmouseup', { bubbles: true });
+      top.firstElementChild!.dispatchEvent(event);
+      expect(top.style.transform).toBe('translateX(100px)');
+      expect(follower.commit()).toBe(true);
+      await settle();
+      expect(frames()).toHaveLength(1);
+    });
+
+    it('lets go of the gesture when a navigation comes, and leaves back to the button', async () => {
+      const { frames, shown, go, settle } = await pushed();
+      const top = frames()[1]!;
+      const follower = backGesture()!;
+      follower.progress(0.5);
+      await go('/notes/1/edit');
+      await settle();
+      expect(shown()).toEqual([frames()[2]]);
+      expect(follower.commit()).toBe(false);
+      expect(top.style.borderRadius).toBe('');
+    });
+
+    it('leaves the gesture to the stack back goes back in, inside the top page', async () => {
+      const harness = await setup();
+      layOut(harness.host);
+      await harness.go('/notes/1/nest');
+      await harness.settle();
+      // Back goes to the outer stack's first page: the outer stack follows.
+      const outer = backGesture()!;
+      outer.cancel();
+      await harness.settle();
+
+      await harness.go('/notes/1/nest/item');
+      await harness.settle();
+      const inner = harness.host.querySelector(
+        'lynx-stack-outlet',
+      ) as HTMLElement;
+      layOut(inner);
+      const innerFrames = Array.from(inner.children).filter(
+        (child) => child.children.length > 0,
+      ) as HTMLElement[];
+      const follower = backGesture()!;
+      follower.progress(0.5);
+      expect(innerFrames[1]!.style.transform).toBe('translateX(200px)');
+      expect(harness.frames()[1]!.style.transform).toBe('translateX(0px)');
+      follower.commit();
+      await harness.settle();
+      expect(harness.router.url).toBe('/notes/1/nest');
+    });
+
+    it("doesn't follow without the Lynx history, which can't say where back goes", async () => {
+      const harness = await setup([], '/notes', [
+        provideAngularRouter(ROUTES),
+        { provide: LocationStrategy, useClass: MockLocationStrategy },
+      ]);
+      layOut(harness.host);
+      await harness.go('/notes/1');
+      await harness.settle();
+      expect(backGesture()).toBeNull();
+    });
+
+    it('stops following once destroyed', async () => {
+      const { fixture } = await pushed();
+      fixture.destroy();
+      expect(backGesture()).toBeNull();
     });
   });
 

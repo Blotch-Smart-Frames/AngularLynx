@@ -189,6 +189,8 @@ export const transformPrivateMethods = (
  *
  * Left as they are:
  *
+ * - The private fields of a module that binds the name `Symbol` (its
+ *   methods are still renamed), as the symbols are made from it.
  * - Any class that uses `#name in object`: a public name can't answer it.
  * - A class with `extends` that can be made more than once: one inside a
  *   function that isn't called at once, or is but has a name or uses
@@ -233,6 +235,9 @@ export const renamePrivateMethods = (
   // The static block that hides a static field calls `Object.defineProperty`
   // where the field is, so it needs `Object` to be the global there.
   const globalObject = !bindsName(sourceFile, 'Object');
+  // The symbols are made at the top of the module, from `Symbol`, so a module
+  // that binds the name keeps its private fields as SWC compiles them.
+  const globalSymbol = !bindsName(sourceFile, 'Symbol');
   for (const info of analyzeClasses(sourceFile)) {
     // Every class it makes would share these names, and one made from
     // another would override its base's methods (see above).
@@ -252,9 +257,10 @@ export const renamePrivateMethods = (
         }
         continue;
       }
-      const fieldEdits = isPlainField(declarations)
-        ? symbolKeyEdits(uses, text, code, sourceFile)
-        : null;
+      const fieldEdits =
+        globalSymbol && isPlainField(declarations)
+          ? symbolKeyEdits(uses, text, code, sourceFile)
+          : null;
       if (!fieldEdits) continue;
       edits.push(...fieldEdits);
       const [field] = declarations;

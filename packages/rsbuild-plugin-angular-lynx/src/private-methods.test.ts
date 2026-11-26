@@ -977,6 +977,16 @@ describe('renamePrivateMethods', () => {
     );
   });
 
+  it('leaves private fields in a module that binds Symbol, and renames its methods', () => {
+    const code = rename(
+      'const Symbol = globalThis.Symbol; class A { #f = 1; static #t = 2; #m() { return this.#f + A.#t; } g() { return this.#m(); } }',
+    );
+    const [m] = renamed(code, 'm');
+    expect(code).toBe(
+      `const Symbol = globalThis.Symbol; class A { #f = 1; static #t = 2; ${m}() { return this.#f + A.#t; } g() { return this.${m}(); } }`,
+    );
+  });
+
   it('leaves a static field enumerable in a module that binds Object', () => {
     for (const binding of [
       'class Object {}',

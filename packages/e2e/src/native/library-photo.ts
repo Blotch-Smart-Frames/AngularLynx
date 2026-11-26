@@ -3,6 +3,7 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -29,7 +30,12 @@ const jobFile = (udid: string) =>
 const writeJob = (udid: string, job: PhotoJob) => {
   const file = jobFile(udid);
   mkdirSync(path.dirname(file), { recursive: true });
-  writeFileSync(file, JSON.stringify(job));
+  // Through a rename, which replaces the file in one step: Layer 6 reads it
+  // from another process, and could catch a file writeFileSync had only
+  // truncated, which reads as no job and would add the photo a second time.
+  const temp = `${file}.tmp`;
+  writeFileSync(temp, JSON.stringify(job));
+  renameSync(temp, file);
 };
 
 const readJob = (udid: string): PhotoJob | undefined => {

@@ -1,8 +1,11 @@
 /*
  * The browser's text styles for the HTML text tags that have one, which Lynx
  * doesn't give them: bold `<b>` and `<strong>`, italic `<em>`, `<i>`,
- * `<cite>`, `<dfn>` and `<var>`, underlined `<u>` and `<ins>`, and struck
- * through `<s>` and `<del>`. A browser draws them so because its user agent
+ * `<cite>`, `<dfn>` and `<var>`, underlined `<u>` and `<ins>`, struck
+ * through `<s>` and `<del>`, monospace `<code>`, `<kbd>` and `<samp>`,
+ * smaller `<small>`, lowered `<sub>` and raised `<sup>`, highlighted
+ * `<mark>`, and the link `<a href>` and the dotted `<abbr title>` (issue
+ * #649). A browser draws them so because its user agent
  * style sheet says so, and a template that uses them expects it. On Lynx the
  * runtime renders each as a `<text>` (see the runtime's web-tags.ts), which
  * draws its text as the text around it, so `<text>blue <b>bold blue</b></text>`
@@ -51,6 +54,100 @@ del {
 }
 
 /*
+ * `font-family: monospace` in a browser. Lynx takes the first family in the
+ * list it finds (LynxFontFaceManager on iOS): iOS has no font named
+ * `monospace` and draws its system font for it, so Menlo, which every iOS
+ * has, comes first. The web preview's browser finds `monospace`. Lynx on
+ * Android finds only `@font-face` families and the ones its host registers
+ * (TypefaceCache), so it draws neither, and the text stays in the system
+ * font there.
+ */
+code,
+kbd,
+samp {
+  font-family: Menlo, monospace;
+}
+
+/*
+ * `font-size: smaller` in a browser, which Chrome draws at the parent's size
+ * divided by 1.2. Lynx has no `smaller`, and sizes a percentage or an `em`
+ * by its default 14px, not by the parent's size (see
+ * investigations/lynx-vs-web-differences.md). The parent's size is in its
+ * inheritance variable, though, so the rule divides that, and 14px stands for
+ * text whose size nothing sets.
+ *
+ * The rule reads the variable it would be copied to, so the text inheritance
+ * step makes no copy (text-inheritance.ts), and text inside a `<small>` takes
+ * the size around the `<small>`: `<small><b>bold</b></small>` draws the
+ * `<b>` at the full size. A copy can't hold the smaller size: Lynx doesn't
+ * resolve a `var()` inside a `calc()` in a custom property.
+ */
+small,
+sub,
+sup {
+  font-size: calc(var(--angular-lynx-font-size, 14px) / 1.2);
+}
+
+/*
+ * `vertical-align: sub` and `super` in a browser, which Chrome moves by about
+ * a fifth and a third of the parent's size. Lynx's own `sub` and `super` move
+ * by a tenth of the element's height, which is barely seen, and Lynx drops a
+ * `vertical-align` with a `var()` in it, so these give the browser's distance
+ * in the element's own `em`, which is the parent's size divided by 1.2 (see
+ * above). A length raises the text by that much, as on the web.
+ * `vertical-align` isn't inherited, so it has no copy.
+ */
+sub {
+  vertical-align: -0.24em;
+}
+
+sup {
+  vertical-align: 0.4em;
+}
+
+/*
+ * The browser's `Mark` and `MarkText` system colors, which stay yellow and
+ * black in a dark page too. On iOS and Android the background is drawn
+ * behind the letters only (see "An inline tag in a line draws no box" in the
+ * elements guide), as a highlighter would.
+ */
+mark {
+  background-color: #ffff00;
+  color: #000000;
+}
+
+/*
+ * `a:any-link` in a browser: only an `<a>` with an `href` is a link, and
+ * only a link is underlined and colored. Lynx can't match `[href]`, so the
+ * runtime gives such an `<a>` this class while it has one
+ * (ATTRIBUTE_STYLED_TAGS in its web-tags.ts). `RouterLink` writes no `href`
+ * on Lynx, so an `<a routerLink>` stays as the app styles it.
+ *
+ * Chrome's link color, and its color for a dark page (`color-scheme: dark`),
+ * which `page.dark` stands for here (the runtime's followColorScheme). Both go
+ * through a variable, so the link's own rule stays one class, which an app's
+ * class beats. There are no visited links to color.
+ */
+._ngattr-a-href {
+  color: var(--angular-lynx-link-color, #0000ee);
+  text-decoration: underline;
+}
+
+page.dark {
+  --angular-lynx-link-color: #9e9eff;
+}
+
+/*
+ * `abbr[title] { text-decoration: dotted underline }` in a browser. The
+ * runtime marks an `<abbr>` with a `title` as it does an `<a href>`. iOS and
+ * the web preview draw the dotted line; Lynx on Android draws no line at all
+ * for any style but solid.
+ */
+._ngattr-abbr-title {
+  text-decoration: underline dotted;
+}
+
+/*
  * In a browser a decoration isn't inherited but drawn across everything
  * inside, so a `<u>` inside an `<s>` keeps the line through and adds the line
  * under. Here `text-decoration` is one inherited value, which the inner tag's
@@ -58,6 +155,8 @@ del {
  * draws both from one value, though its docs say it supports one line: its
  * parser collects every line keyword (CSSStringParser::ParseTextDecoration)
  * and ComputedCSSStyle::SetTextDecoration sets a flag for each.
+ *
+ * A link (`<a href>`) underlines as a `<u>` does, so it pairs the same way.
  *
  * Two classes are more specific than an app's one, so an app's class that
  * sets the decoration of a `<u>` inside an `<s>` loses here, where it would
@@ -75,6 +174,10 @@ ins del,
 s u,
 s ins,
 del u,
-del ins {
+del ins,
+._ngattr-a-href s,
+._ngattr-a-href del,
+s ._ngattr-a-href,
+del ._ngattr-a-href {
   text-decoration: underline line-through;
 }

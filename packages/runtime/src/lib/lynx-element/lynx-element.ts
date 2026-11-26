@@ -17,6 +17,11 @@ import {
   usesAndroidBlurMaterials,
 } from '../lynx-document/android-blur-material';
 import { getPageId } from '../lynx-document/page-ref';
+import { tagClassOf } from '../lynx-document/element-tags';
+import {
+  ATTRIBUTE_STYLED_TAGS,
+  attributeClassOf,
+} from '../lynx-document/web-tags';
 import { globalEvents, type LynxGlobalDocument } from '../global-events';
 import {
   isBindingListItem,
@@ -1171,6 +1176,13 @@ export class LynxElement implements BaseLynxElement {
     // An `<image>` is an accessibility element already, so it's read.
     if (name === 'alt' && this.tagName === 'image') {
       name = 'accessibility-label';
+    }
+    // An `<a href>` or `<abbr title>` gets the class the build's browser
+    // styles for it match, as Lynx can't match `a[href]` (see
+    // ATTRIBUTE_STYLED_TAGS). The attribute still goes to native below.
+    const styledTag = ATTRIBUTE_STYLED_TAGS.get(name);
+    if (styledTag && this.#scopeClasses?.includes(tagClassOf(styledTag))) {
+      this.setRuntimeClass(attributeClassOf(styledTag, name), value != null);
     }
     if (name === 'class') {
       // Use __SetClasses (not __AddClass) because setAttribute replaces the

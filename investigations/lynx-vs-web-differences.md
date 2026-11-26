@@ -1618,6 +1618,54 @@ Only `normal`, `bold`, and numeric values `100`–`1000` (integers only) are sup
 
 ---
 
+## A percentage or `em` font size ignores the parent's size
+
+### What you'd expect (web)
+
+`font-size: 80%` and `font-size: 0.8em` are 80% of the parent's font size: 14.4px inside 18px text.
+
+### What Lynx does
+
+Lynx's docs say a percentage is relative to the parent's size, but a nested `<text>` with `font-size: 83.333%` inside a `<text>` of 18px drew at about 11.7px, 83% of Lynx's default 14px, and the same inside 24px text (Lynx Explorer 4.1, Android API 34 emulator, November 2026). Lynx inherits no text style without `enableCSSInheritance`, so the parent's size isn't what the unit resolves against. A `<small>` gets its smaller size from the parent's inheritance variable instead: `calc(var(--angular-lynx-font-size, 14px) / 1.2)` (issue #649). An `em` in another property, such as `vertical-align: 0.4em`, is the element's own size, as on the web.
+
+---
+
+## `vertical-align` drops a value with a `var()` in it
+
+### What you'd expect (web)
+
+`vertical-align: calc(var(--size) / 3)` raises the text by a third of `--size`.
+
+### What Lynx does
+
+On Android (Lynx Explorer 4.1, API 34 emulator, November 2026), `vertical-align: 6px` and `calc(18px / 3)` raised the text, but `calc(var(--angular-lynx-font-size, 14px) / 3)` left it on the baseline, as if the declaration weren't there. Lynx's keywords move it little: `super` and `sub` move by a tenth of the element's height, and `40%` (of the line height) moved nothing visible. Use a length or an `em`, which is the element's own size: the `<sup>` rule is `vertical-align: 0.4em` (issue #649).
+
+---
+
+## Android draws no line for a dotted, dashed or wavy `text-decoration`
+
+### What you'd expect (web)
+
+`text-decoration: underline dotted` draws a dotted line under the text.
+
+### What Lynx does
+
+On iOS it does, and so does the web preview. On Android (Lynx Explorer 4.1, API 34 emulator, November 2026), `underline dotted`, `dotted underline`, `underline dashed`, `underline wavy` and `text-decoration-style: dotted` drew no line at all; `underline` and `underline solid` drew a solid one. So an `<abbr title>`'s dotted underline (issue #649) shows on iOS and the web only.
+
+---
+
+## Android doesn't find generic or system font families
+
+### What you'd expect (web)
+
+`font-family: Menlo, monospace` draws Menlo where it's installed and the platform's monospace font elsewhere.
+
+### What Lynx does
+
+Both platforms take the first family in the list they find. iOS looks each name up as a font family or font name (`LynxFontFaceManager`), so `Menlo` is found and `monospace`, which isn't a font there, falls through to the system font. Android only finds families from `@font-face` rules and from providers the host app registers (`TypefaceCache.addLazyProvider`, `FontFaceManager.getTypeface` returns null for anything else), never Android's own `monospace`, `serif` or `sans-serif`, so it draws the default font (Lynx Explorer 4.1, API 34 emulator, November 2026). `<code>` is monospace on iOS and the web, but not on Android (issue #649).
+
+---
+
 ## `letter-spacing` does not accept the `normal` keyword
 
 ### What you'd expect (web)
@@ -7152,7 +7200,7 @@ The copies go in a rule of their own, right after the rule they copy, narrowed t
 
 ---
 
-## `<b>`, `<em>`, `<u>` and `<s>` have no text styles: Lynx has no user agent stylesheet
+## `<b>`, `<em>`, `<code>`, `<a href>` and the other inline text tags have no text styles: Lynx has no user agent stylesheet
 
 ### What you'd expect (web)
 
@@ -7168,7 +7216,13 @@ The build plugin adds a stylesheet of its own to both bundles, ahead of the app'
 
 A browser draws a decoration across everything inside the element rather than inheriting it, so a `<u>` inside an `<s>` has both lines. Here `text-decoration` is one inherited value, which the inner tag's own rule would replace, so the stylesheet gives each such pair (`u s`, `s u`, `ins del`…) `text-decoration: underline line-through`, which Lynx draws as both lines (see "`text-decoration` supports only one layer" above). Its two classes beat an app's single class for that pair alone. Measured the same way as the bold, on the iOS 27 Simulator, the Android API 34 emulator and the web preview.
 
-Other tags with a browser style (`<a>`'s underline, `<code>`'s monospace font, `<small>`, `<mark>`, `<sub>`, `<sup>`, `<h1>`…) still have none.
+The rest of the inline text tags with a browser style followed (issue #649): `code, kbd, samp { font-family: Menlo, monospace }`, `small, sub, sup { font-size: calc(var(--angular-lynx-font-size, 14px) / 1.2) }` with `vertical-align: -0.24em` for `sub` and `0.4em` for `sup`, and `mark { background-color: #ffff00; color: #000000 }`. Each works around a Lynx difference recorded below: a percentage or `em` font size ignores the parent's size, a `vertical-align` with a `var()` is dropped, and Android finds no `monospace` font. The `<small>` rule reads the variable it would be copied to, so the text inheritance step makes no copy (a copy would refer to itself), and text inside a `<small>` takes the size around it.
+
+A browser styles `<a>` only as a link (`a:any-link`, with an `href`) and `<abbr>` only with a `title` (`abbr[title]`). Lynx matches no attribute selector (see "Lynx can't match attribute selectors" above), so the runtime gives such an element a class while it has the attribute (`_ngattr-a-href`, `_ngattr-abbr-title`, from `ATTRIBUTE_STYLED_TAGS` in `web-tags.ts`), and the stylesheet styles the class: `color: var(--angular-lynx-link-color, #0000ee); text-decoration: underline`, with `page.dark { --angular-lynx-link-color: #9e9eff }` for Chrome's dark link color, and `text-decoration: underline dotted`. One class, not the tag's class and another, so an app's own class beats it, as an author style beats a browser's. `RouterLink` writes no `href` on Lynx (it treats the `<a>` as a plain element), so an `<a routerLink>` isn't styled as a link, unlike in a browser. A `<q>` still gets no quotation marks: Lynx has no `::before`/`::after` content on a `<text>`.
+
+Measured with Lynx Explorer 4.1 on the iOS 27 Simulator (iPhone 18 Pro) and the Android API 34 emulator, and in the web preview, November 2026. All three drew the smaller sizes, the lowered and raised text, the highlight and the link (and its dark color, on Android and the web), and an app's class beat the link color. Menlo and the dotted underline showed on iOS and the web only (see below).
+
+`<h1>`…`<h6>` and `<button>` still have no browser styles.
 
 ---
 

@@ -90,6 +90,11 @@ describe('textInheritanceForLynx', () => {
       '.a { color: red !important }',
       '.a { color: red !important }.a._nginherit { --angular-lynx-color: red }',
     ],
+    // Another variable whose name starts the same is no reason to skip it.
+    [
+      '.a { color: var(--angular-lynx-color-strong) }',
+      '.a { color: var(--angular-lynx-color-strong) }.a._nginherit { --angular-lynx-color: var(--angular-lynx-color-strong) }',
+    ],
     [
       '.a { COLOR: var(--primary) }',
       '.a { COLOR: var(--primary) }.a._nginherit { --angular-lynx-color: var(--primary) }',
@@ -143,6 +148,10 @@ describe('textInheritanceForLynx', () => {
     '.a::placeholder { --angular-lynx-color: gray }',
     '@font-face { font-family: Inter; src: url(a.ttf) }',
     '@keyframes fade { from { color: red } to { color: blue } }',
+    // A copy of a value that reads its own variable would refer to itself
+    // (issue #649's `<small>`), so the text inside keeps the value above.
+    '.a { font-size: calc(var(--angular-lynx-font-size, 14px) / 1.2) }',
+    '.a { color: VAR( --angular-lynx-color) }',
   ])('leaves %s alone', (css) => {
     expect(process(css)).toBe(css);
   });

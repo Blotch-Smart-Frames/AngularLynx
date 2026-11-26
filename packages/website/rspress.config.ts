@@ -316,6 +316,7 @@ export default defineConfig({
               link: '/api/angular-lynx/web-auth-session',
             },
             { text: 'LynxLinking', link: '/api/angular-lynx/linking' },
+            { text: 'LynxBackButton', link: '/api/angular-lynx/back-button' },
             { text: 'LynxShortcuts', link: '/api/angular-lynx/shortcuts' },
             {
               text: 'LynxSplashScreen',

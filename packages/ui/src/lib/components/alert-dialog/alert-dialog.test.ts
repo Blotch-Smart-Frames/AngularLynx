@@ -357,6 +357,7 @@ describe('UiAlertDialog', () => {
   template: `
     <ui-alert-dialog
       [variant]="variant()"
+      [cancelable]="cancelable()"
       [(open)]="open"
       class="tall"
       (closed)="closes.set(closes() + 1)"
@@ -397,6 +398,7 @@ describe('UiAlertDialog', () => {
 })
 class GlassAlertHost {
   readonly variant = signal<AlertDialogVariant>('glass');
+  readonly cancelable = signal(true);
   readonly open = signal(false);
   readonly orientation = signal<AlertDialogFooterOrientation>('auto');
   readonly withSave = signal(false);
@@ -767,6 +769,46 @@ describe('UiAlertDialog with variant="glass"', () => {
     expect(host.open()).toBe(false);
     await after(CLOSED);
     expect(host.closes()).toBe(1);
+  });
+
+  describe("on Android's back button", () => {
+    it('runs the cancel action and closes, once', async () => {
+      const { host, container, update } = await renderGlassAlert(null);
+      await update(() => host.open.set(true));
+      await after(OPENED);
+      const overlay = container.querySelector('overlay')!;
+      await update(() => fireLynxEvent(overlay, 'requestclose'));
+      // A second press while it closes does nothing.
+      await update(() => fireLynxEvent(overlay, 'requestclose'));
+      expect(host.choices).toEqual(['cancel']);
+      expect(host.open()).toBe(false);
+      await after(CLOSED);
+      expect(host.closes()).toBe(1);
+    });
+
+    it('stays open when it is not cancelable', async () => {
+      const { host, container, update } = await renderGlassAlert(null);
+      await update(() => {
+        host.cancelable.set(false);
+        host.open.set(true);
+      });
+      await after(OPENED);
+      await update(() =>
+        fireLynxEvent(container.querySelector('overlay')!, 'requestclose'),
+      );
+      expect(host.choices).toEqual([]);
+      expect(host.open()).toBe(true);
+    });
+
+    it('only closes an alert without a cancel action', async () => {
+      const { host, overlay } = await renderAlertDialog();
+      host.open.set(true);
+      await after(OPENED);
+      fireLynxEvent(overlay(), 'requestclose');
+      expect(host.open()).toBe(false);
+      await after(CLOSED);
+      expect(host.closes()).toBe(1);
+    });
   });
 
   it('makes an action one element that says its accessibility label', async () => {

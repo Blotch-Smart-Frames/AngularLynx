@@ -99,9 +99,9 @@ Before you serve updates this way:
 
 In the Android app `ng build --platform android` generates, the back button goes back a screen through Angular's Router, and leaves the app from the first screen. Your own Android app can do the same in three steps:
 
-1. **Register a native module named `AngularLynxShell`**, with a `setBackHandlerEnabled(enabled: Boolean)` method. The runtime calls it with `true` while the router has a screen to go back to, and with `false` back on the first screen.
+1. **Register a native module named `AngularLynxShell`**, with a `setBackHandlerEnabled(enabled: Boolean)` method. The runtime calls it with `true` while the router has a screen to go back to or something open on top takes back (see [`LynxBackButton`](/api/angular-lynx/back-button)), and with `false` otherwise.
 2. **Handle back while it's enabled**, with an `OnBackPressedCallback` that starts disabled. Android decides whether your app handles back as soon as the gesture starts, too early to ask JavaScript, so the runtime tells your app ahead of time.
-3. **Send the `angularLynxBack` global event** to the LynxView when the callback runs. The runtime calls `Location.back()`.
+3. **Send the `angularLynxBack` global event** to the LynxView when the callback runs. The runtime closes what's open on top, or calls `Location.back()`.
 
 ```kotlin
 class MainActivity : ComponentActivity() {

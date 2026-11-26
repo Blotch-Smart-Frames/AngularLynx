@@ -373,6 +373,16 @@ describe('UiNavDrawer', () => {
     expect(host.closes()).toBe(1);
   });
 
+  it("closes on Android's back button, which asks the overlay to close", async () => {
+    const { host, overlay } = await renderDrawer();
+    host.open.set(true);
+    await after(OPENED);
+    fireLynxEvent(overlay(), 'requestclose');
+    expect(host.open()).toBe(false);
+    await after(CLOSED);
+    expect(host.closes()).toBe(1);
+  });
+
   it('stays open when the panel is tapped', async () => {
     const { host, panel } = await renderDrawer();
     host.open.set(true);

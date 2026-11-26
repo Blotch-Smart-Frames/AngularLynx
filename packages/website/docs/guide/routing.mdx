@@ -125,7 +125,7 @@ export class Details {
 
 - **`Location.back()` and `Location.forward()`** move through the router's in-memory history.
 - **`history.back()` does nothing** on a device, because there's no browser history.
-- **The Android back button goes back a screen** in an app built with `ng build --platform android`. The router handles it like the browser's back button on the web, so guards such as `canDeactivate` still run. On the first screen, it leaves the app.
+- **The Android back button goes back a screen** in an app built with `ng build --platform android`. The router handles it like the browser's back button on the web, so guards such as `canDeactivate` still run. On the first screen, it leaves the app. A popover or dialog open on top closes first, and your own code can take back with [`LynxBackButton`](/api/angular-lynx/back-button).
 - **For a Back button in a top bar**, use the [Navigation Bar](/dolan/navigation-bar): it shows its Back button only while there's a screen to go back to, and calls `Location.back()`.
 
 ## Slide screens in and out, as a native app does

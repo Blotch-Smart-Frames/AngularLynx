@@ -213,6 +213,8 @@ export { LynxSessionStorage } from './lib/session-storage';
 export type { SessionStorageSubscription } from './lib/session-storage';
 export { LynxShare, ShareError } from './lib/share';
 export type { ShareData, ShareErrorCode, ShareFile } from './lib/share';
+export { LynxBackButton } from './lib/back-button';
+export type { LynxBackHandler } from './lib/back-button';
 export { LynxShortcuts } from './lib/shortcuts';
 export type { LynxShortcut, LynxShortcutHandler } from './lib/shortcuts';
 export {

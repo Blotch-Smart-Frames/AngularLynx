@@ -68,7 +68,7 @@ export class EditProfile {
 ```
 
 - `[(open)]` two-way binds a signal. Set it to `true` to open the dialog and `false` to close it.
-- A backdrop tap sets `open` back to `false`. Taps inside the panel don't reach the backdrop.
+- A backdrop tap, or Android's back button, sets `open` back to `false`. Taps inside the panel don't reach the backdrop.
 - The backdrop fades in and the panel scales up. Closing plays the reverse.
 - The dialog draws in an [`<overlay>`](/api/elements/overlay), so it covers the whole screen wherever it sits in your template.
 - When it opens, a screen reader moves into the panel and stays inside it until the dialog closes.
@@ -114,7 +114,7 @@ Put any elements between the header and footer, such as a form. Import `LYNX_ELE
 
 ### Make the user choose
 
-A backdrop tap lets the user leave without choosing. When they must pick an action, such as confirming a delete, use [Alert Dialog](/dolan/alert-dialog) instead.
+A backdrop tap or Android's back button lets the user leave without choosing. When they must pick an action, such as confirming a delete, use [Alert Dialog](/dolan/alert-dialog) instead.
 
 ## API
 
@@ -125,10 +125,10 @@ A backdrop tap lets the user leave without choosing. When they must pick an acti
 | `open`  | `boolean` | `false` | Whether the dialog is shown. Supports `[(open)]`. |
 | `class` | `string`  | `''`    | Extra Tailwind classes for the panel.             |
 
-| Output       | Type      | Description                                                              |
-| ------------ | --------- | ------------------------------------------------------------------------ |
-| `openChange` | `boolean` | Emits `false` when a backdrop tap closes the dialog. Part of `[(open)]`. |
-| `closed`     | `void`    | Emits after the close animation finishes.                                |
+| Output       | Type      | Description                                                                                       |
+| ------------ | --------- | ------------------------------------------------------------------------------------------------- |
+| `openChange` | `boolean` | Emits `false` when a backdrop tap or Android's back button closes the dialog. Part of `[(open)]`. |
+| `closed`     | `void`    | Emits after the close animation finishes.                                                         |
 
 All sub-components (`UiDialogHeader`, `UiDialogTitle`, `UiDialogDescription`, `UiDialogFooter`) accept `class`.
 

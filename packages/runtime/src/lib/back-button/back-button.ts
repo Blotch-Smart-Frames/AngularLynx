@@ -1,0 +1,178 @@
+import {
+  type Injector,
+  type Signal,
+  DestroyRef,
+  effect,
+  ErrorHandler,
+  inject,
+  Injectable,
+  InjectionToken,
+  signal,
+} from '@angular/core';
+import { LynxNativeModule } from '../native-module/native-module';
+
+/**
+ * The native module and global event of the Android app that
+ * `ng build --platform android` makes (`ShellModule.kt` in
+ * `packages/native/templates/android`).
+ */
+const SHELL_MODULE = 'AngularLynxShell';
+const BACK_EVENT = 'angularLynxBack';
+
+type ShellModule = {
+  setBackHandlerEnabled(enabled: boolean): unknown;
+};
+
+type GlobalEventEmitter = {
+  addListener(name: string, listener: () => void): unknown;
+};
+
+/** What a handler registered with {@link LynxBackButton.on} is. */
+export type LynxBackHandler = () => void;
+
+/**
+ * Where back goes once no handler takes it: the router's history.
+ * `provideRouter()` provides it, rather than LynxBackButton importing the
+ * router, so an app without routes doesn't bundle one. Null when the app has
+ * a `LocationStrategy` of its own, which can't say whether there's a screen
+ * to go back to; without `provideRouter()` the token is missing.
+ */
+export const BACK_NAVIGATION = new InjectionToken<{
+  /** Whether there's a screen to go back to. */
+  readonly canGoBack: Signal<boolean>;
+  /** Goes back a screen. */
+  back(): void;
+} | null>('back-navigation');
+
+/**
+ * The DestroyRef of whatever is being constructed, or null outside an
+ * injection context. Angular has no public check for one, and `inject()`
+ * throws outside it.
+ */
+const currentDestroyRef = (): DestroyRef | null => {
+  try {
+    return inject(DestroyRef);
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Hears the Android back button (and the back gesture), so that back closes
+ * what's open on top, and otherwise goes back a screen, as the browser's back
+ * button does in a web app.
+ *
+ * A press goes to the handler registered last with {@link on}, such as a
+ * popover's while it's open. With none, the router goes back a screen
+ * (`Location.back()`, so guards and resolvers run). On the router's first
+ * screen, or without `provideRouter()`, back is Android's: it leaves the app.
+ *
+ * Android decides whether an app handles back when the gesture starts, before
+ * JavaScript could answer, so the shell can't ask the app each time. Instead
+ * back is Android's until the app enables the shell's handler, and while it's
+ * enabled each press arrives as the `angularLynxBack` global event. This keeps
+ * the handler enabled while a handler is registered or the router has a
+ * screen to go back to.
+ *
+ * While an `<overlay>` shows, Android gives back to it instead, as its
+ * `requestclose` event: a sheet or dialog in one closes on that.
+ *
+ * Other hosts (the iOS app, Lynx Explorer, the web preview) have no
+ * `AngularLynxShell` module and never send the event, so nothing reaches the
+ * handlers there.
+ *
+ * @usageNotes
+ * ```typescript
+ * export class SearchScreen {
+ *   readonly searching = signal(false);
+ *
+ *   constructor() {
+ *     const backButton = inject(LynxBackButton);
+ *     effect((onCleanup) => {
+ *       if (this.searching()) {
+ *         onCleanup(backButton.on(() => this.searching.set(false)));
+ *       }
+ *     });
+ *   }
+ * }
+ * ```
+ */
+@Injectable({ providedIn: 'root' })
+export class LynxBackButton {
+  /** The handlers, last registered last. */
+  readonly #handlers = signal<readonly LynxBackHandler[]>([]);
+  readonly #navigation = inject(BACK_NAVIGATION, { optional: true });
+  readonly #errorHandler = inject(ErrorHandler);
+
+  constructor() {
+    const modules = inject(LynxNativeModule);
+
+    // On the main thread, where Angular runs, both are proxies whose calls go
+    // through the background thread and return promises. A host without the
+    // module rejects the call, and then never gets another.
+    const shell = modules.getNativeModule(SHELL_MODULE) as
+      | ShellModule
+      | undefined;
+    let hasShell = true;
+    effect(() => {
+      const enabled =
+        this.#handlers().length > 0 || (this.#navigation?.canGoBack() ?? false);
+      if (!hasShell) return;
+      Promise.resolve()
+        .then(() => shell?.setBackHandlerEnabled(enabled))
+        .catch(() => (hasShell = false));
+    });
+
+    const emitter =
+      modules.getJSModule<GlobalEventEmitter>('GlobalEventEmitter');
+    Promise.resolve()
+      .then(() => emitter?.addListener(BACK_EVENT, () => this.#press()))
+      .catch(() => {
+        // Without a background thread there are no global events to hear.
+      });
+  }
+
+  /**
+   * Gives the back button's presses to `handler` until the function it
+   * returns is called. Register one while something that back should close
+   * is open, and remove it as that closes: while it's registered, back
+   * doesn't leave the app or go back a screen.
+   *
+   * The handler registered last gets each press, so the one on top closes
+   * first. Called from an injection context, such as a constructor, the
+   * handler is removed when the component or service is destroyed; pass an
+   * `injector` to tie it to another one.
+   *
+   * @param handler - Called on each press while it's the last registered.
+   * @returns A function that removes the handler.
+   */
+  on(
+    handler: LynxBackHandler,
+    options?: { readonly injector?: Injector },
+  ): () => void {
+    /**
+     * A function of its own each time, so registering one handler twice
+     * makes two entries that each removal takes away separately.
+     */
+    const entry: LynxBackHandler = () => handler();
+    this.#handlers.update((handlers) => [...handlers, entry]);
+    const remove = () =>
+      this.#handlers.update((handlers) => handlers.filter((h) => h !== entry));
+    (options?.injector?.get(DestroyRef) ?? currentDestroyRef())?.onDestroy(
+      remove,
+    );
+    return remove;
+  }
+
+  #press(): void {
+    const handlers = this.#handlers();
+    try {
+      if (handlers.length > 0) handlers[handlers.length - 1]();
+      // The press can come just after the router's last screen went, while
+      // the shell's handler is still enabled: there's nowhere to go then.
+      else if (this.#navigation?.canGoBack()) this.#navigation.back();
+    } catch (error) {
+      this.#errorHandler.handleError(error);
+    }
+  }
+}

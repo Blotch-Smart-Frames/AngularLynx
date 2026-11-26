@@ -6,6 +6,7 @@ import {
   viewChild,
 } from '@angular/core';
 import {
+  pressBackButton,
   render,
   waitForUpdate as nextUpdate,
 } from '@blotch/angular-lynx-testing-library';
@@ -637,6 +638,33 @@ describe('UiPopoverPanel', () => {
       fireLynxEvent(rendered.panel()!, 'touchstart', {}, 'global-bindEvent');
       await nextTimer();
       expect(rendered.host.dismissed).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("on Android's back button", () => {
+    it('closes on back while it is open, which then goes on to Android', async () => {
+      const rendered = await renderPanel();
+      await waitForUpdate();
+      // Closed, it leaves back to whatever is under it.
+      expect(pressBackButton()).toBe(false);
+
+      await openPanel(rendered);
+      expect(pressBackButton()).toBe(true);
+      await waitForUpdate();
+      expect(rendered.host.dismissed).toHaveBeenCalledTimes(1);
+
+      await closePanel(rendered);
+      expect(pressBackButton()).toBe(false);
+    });
+
+    it('gives back up when it is destroyed while open', async () => {
+      const rendered = await renderPanel();
+      await openPanel(rendered);
+
+      rendered.unmount();
+      pressBackButton();
+      await waitForUpdate();
+      expect(rendered.host.dismissed).not.toHaveBeenCalled();
     });
   });
 

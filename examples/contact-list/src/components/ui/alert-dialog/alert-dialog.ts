@@ -144,6 +144,15 @@ const METRICS: Readonly<Record<GlassDesign, AlertMetrics>> = {
 };
 
 /**
+ * `UiAlertDialogAction`, for `contentChildren()`. A call rather than the
+ * class itself: the query's metadata keeps an arrow function of its own for
+ * a class, which nothing calls, so an app's coverage report would show it as
+ * uncovered. Above UiAlertDialog, whose compiled query refers to it: below
+ * it, `ng test`'s build read it before it was defined.
+ */
+const actionType = () => UiAlertDialogAction;
+
+/**
  * An alert dialog: a panel that asks the user to confirm or cancel an
  * important action, and closes only when they choose one.
  *
@@ -172,6 +181,11 @@ const METRICS: Readonly<Record<GlassDesign, AlertMetrics>> = {
  *
  * Under Reduce Motion nothing scales, in either variant: the dimming and the
  * panel only fade.
+ *
+ * Android's back button cancels it, as it cancels Material's dialogs: it
+ * runs the `cancel` action's `pressed`, if there is one, and closes. An alert
+ * that must be answered sets `[cancelable]="false"`, and then back does
+ * nothing while it's open. Taps on the dimmed screen never close it.
  */
 @Component({
   selector: 'ui-alert-dialog',
@@ -186,7 +200,13 @@ const METRICS: Readonly<Record<GlassDesign, AlertMetrics>> = {
   // same class applied it twice.
   host: { '[attr.class]': 'null' },
   template: `
-    <overlay [attr.visible]="overlayVisible()" [style]="overlayStyle()">
+    <!-- Android's back button asks the overlay to close (requestclose),
+         which cancels the alert unless it's not cancelable. -->
+    <overlay
+      [attr.visible]="overlayVisible()"
+      [style]="overlayStyle()"
+      (bindrequestclose)="onRequestClose()"
+    >
       <!-- The overlay sizes only its first child, to the screen. With the
            @if straight inside it, the glass panel drew in the top-left
            corner on iOS (see investigations/lynx-vs-web-differences.md). -->
@@ -242,9 +262,21 @@ export class UiAlertDialog implements OnDestroy {
   readonly open = model(false);
   /** `'default'` or `'glass'`; see AlertDialogVariant. */
   readonly variant = input<AlertDialogVariant>('default');
+  /**
+   * Whether Android's back button cancels the alert, as it does Material's
+   * dialogs unless they're made not cancelable (`setCancelable(false)`).
+   * Make it `false` for an alert that must be answered.
+   */
+  readonly cancelable = input(true, { transform: booleanAttribute });
   readonly userClass = input<string>('', { alias: 'class' });
 
   readonly closed = output<void>();
+
+  /**
+   * The alert's actions, wherever they are in its content, so back can run
+   * the cancel action.
+   */
+  readonly actions = contentChildren(actionType(), { descendants: true });
 
   protected readonly overlayVisible = signal(false);
 
@@ -374,6 +406,22 @@ export class UiAlertDialog implements OnDestroy {
    * as a no-op so DOM-style handlers don't crash, but it has no effect here.)
    */
   protected onPanelTap(): void {}
+
+  /**
+   * Android's back button, through the overlay: cancels the alert as its
+   * `cancel` action does, emitting that action's `pressed` so the app's
+   * handler for it runs, unless it's not `cancelable`. Without a cancel
+   * action, it only closes, as back does a Material dialog with no Cancel
+   * button. Once, as a second tap on an action does nothing while the alert
+   * closes.
+   */
+  protected onRequestClose(): void {
+    if (!this.cancelable() || !this.open()) return;
+    this.actions()
+      .find((action) => action.variant() === 'cancel')
+      ?.pressed.emit();
+    this.open.set(false);
+  }
 
   /**
    * The alert dialog can be destroyed while its open or close sequence is still
@@ -581,14 +629,6 @@ export class UiAlertDialogDescription {
 }
 
 registerHostElement(UiAlertDialogDescription, 'text');
-
-/**
- * `UiAlertDialogAction`, for `contentChildren()`. A call rather than the
- * class itself: the query's metadata keeps an arrow function of its own for
- * a class, which nothing calls, so an app's coverage report would show it as
- * uncovered.
- */
-const actionType = () => UiAlertDialogAction;
 
 @Component({
   selector: 'ui-alert-dialog-footer',

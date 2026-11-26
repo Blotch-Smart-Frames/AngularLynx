@@ -45,7 +45,13 @@ import { UI_ICON_COLOR } from '../icon/icon-theme';
   // applied it twice.
   host: { '[attr.class]': 'null' },
   template: `
-    <overlay [attr.visible]="overlayVisible()" [style]="overlayStyle()">
+    <!-- Android's back button asks the overlay to close (requestclose),
+         which closes the drawer as a tap on the backdrop does. -->
+    <overlay
+      [attr.visible]="overlayVisible()"
+      [style]="overlayStyle()"
+      (bindrequestclose)="close()"
+    >
       <!-- bg-black/50 dims the content behind the drawer. The fadeIn/fadeOut in
            #animateIn/#animateOut already tween this element's opacity over
            DURATION.normal, so the dim animates in lockstep with the panel slide —

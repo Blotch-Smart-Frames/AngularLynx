@@ -226,7 +226,7 @@ export class LynxLocationStrategy extends LocationStrategy {
 
   /**
    * Whether there's an entry before the current one, so `back()` goes
-   * somewhere. The Android back button follows it (see lynx-back-button.ts):
+   * somewhere. The Android back button follows it (see back-button.ts):
    * while it's false, back leaves the app, as on any root screen.
    */
   readonly canGoBack = this.#canGoBack.asReadonly();

@@ -364,7 +364,7 @@ If both are registered, `longpress` takes priority — `tap` won't fire on long 
 
 ### `<overlay>` takes every touch
 
-While an `<overlay>` is shown, nothing else on screen gets touches: right for a modal, wrong for a popover or a toast. Float those in a `position: fixed` view instead, and close a popover on a touch anywhere else with `(global-bindtouchstart)`, which runs for a touch on any element, before that element's own listeners. `npx @blotch/dolan add popover` adds one that does this.
+While an `<overlay>` is shown, nothing else on screen gets touches: right for a modal, wrong for a popover or a toast. Float those in a `position: fixed` view instead, and close a popover on a touch anywhere else with `(global-bindtouchstart)`, which runs for a touch on any element, before that element's own listeners. Android's back button doesn't reach it either, since only an overlay gets `requestclose`: take back with `LynxBackButton.on()` while it's open (see [routing.md](routing.md)). `npx @blotch/dolan add popover` adds one that does both.
 
 ### Android dims the whole page after a key press (ejected projects)
 

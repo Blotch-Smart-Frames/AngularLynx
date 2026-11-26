@@ -327,8 +327,11 @@ export const splitPrivateChains = (code: string, filename: string): string => {
   // A scope's opening edit goes before, and its closing edit after, the
   // edits at the same place inside it (`(__receiver0 = ` where an arrow
   // function's body starts, `)` where it ends): edits at one place are made
-  // in the order they're pushed.
+  // in the order they're pushed. Two scopes can end at one place (a field
+  // whose initializer ends with an arrow function), so the one that starts
+  // later, inside the other, closes first.
   const opening: Edit[] = [];
+  const closing: Array<Edit & { scopeStart: number }> = [];
   for (const [scope, names] of receivers) {
     const declaration = `var ${names.join(', ')};`;
     if (ts.isSourceFile(scope)) {
@@ -358,34 +361,48 @@ export const splitPrivateChains = (code: string, filename: string): string => {
             : ` ${declaration}`,
       });
     } else {
-      // An arrow function's expression body, or a field's initializer,
-      // becomes a block that declares them, with the expression on the line
-      // it was on (so `return` can't end before it).
-      const field = ts.isPropertyDeclaration(scope.parent);
+      // An arrow function's expression body becomes a block that declares
+      // them, and an initializer (a field's, or a default value's) an arrow
+      // function called at once, which keeps its `this` and `arguments`.
+      // The expression stays on the line it was on, so `return` can't end
+      // before it.
+      const wrapped = !ts.isArrowFunction(scope.parent);
       const start = scope.getStart(sourceFile);
       opening.push({
         start,
         end: start,
-        text: `${field ? '(() => ' : ''}{ ${declaration} return `,
+        text: `${wrapped ? '(() => ' : ''}{ ${declaration} return `,
       });
-      edits.push({
+      closing.push({
         start: scope.end,
         end: scope.end,
-        text: field ? ' })()' : ' }',
+        text: wrapped ? ' })()' : ' }',
+        scopeStart: start,
       });
     }
   }
-  return applyEdits(code, [...opening, ...edits], sourceFile);
+  closing.sort((a, b) => b.scopeStart - a.scopeStart);
+  return applyEdits(
+    code,
+    [
+      ...opening,
+      ...edits,
+      ...closing.map(({ start, end, text }) => ({ start, end, text })),
+    ],
+    sourceFile,
+  );
 };
 
 /**
  * Where the variable for a receiver the call reads (see
  * {@link splitPrivateChains}) is declared: the body of the function, method
  * or static block the call is in, so each run of it has its own. An arrow
- * function's expression body or a field's initializer, which run once per
- * call or instance, are given one. A call in a parameter's default value, a
- * computed key, `extends` or a decorator is in the scope around them, and
- * one at the module's top level, which runs once, in the module.
+ * function's expression body, a field's initializer and a default value
+ * (a parameter's or a destructuring's), which run once per call or
+ * instance, are given one: a default value can't see the function body's
+ * variables. A call in a computed key, `extends` or a decorator is in the
+ * scope around them, and one outside any function, which runs once, in the
+ * module.
  */
 const receiverScope = (call: ts.Node): ts.Node => {
   let child = call;
@@ -394,7 +411,10 @@ const receiverScope = (call: ts.Node): ts.Node => {
       ((ts.isFunctionLike(parent) ||
         ts.isClassStaticBlockDeclaration(parent)) &&
         (parent as { body?: ts.Node }).body === child) ||
-      (ts.isPropertyDeclaration(parent) && parent.initializer === child)
+      ((ts.isPropertyDeclaration(parent) ||
+        ts.isParameter(parent) ||
+        ts.isBindingElement(parent)) &&
+        parent.initializer === child)
     ) {
       return child;
     }

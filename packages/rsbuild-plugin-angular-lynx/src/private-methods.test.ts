@@ -1646,6 +1646,24 @@ const CHAIN_FIXTURES: Record<string, string> = {
     const first = new Node('a');
     [Node.invoke(first), Node.reenter, Node.current()];
   `,
+  'a call in a default value, and in a field that ends with an arrow function': `
+    let peer;
+    class Node {
+      #name;
+      constructor(name) { this.#name = name; }
+      get #fn() {
+        if (this.#name === 'a') Node.reenter = Node.run(Node.other);
+        return function () { return this.#name; };
+      }
+      static run(node, value = node?.#fn()) { return value; }
+      label = peer?.#fn() ? () => 1 : () => peer?.#fn();
+    }
+    Node.other = new Node('b');
+    const first = Node.run(new Node('a'));
+    peer = new Node('p');
+    const field = new Node('q').label;
+    [first, Node.reenter, Node.run(null), field(), new Node('r').label()];
+  `,
 };
 
 describe('splitPrivateChains', () => {
@@ -1780,11 +1798,17 @@ describe('splitPrivateChains', () => {
     expect(call('f(x, y) { return [x?.#m(), y?.#m()]; }')).toBe(
       'f(x, y) { var __receiver0, __receiver1; return [(__receiver0 = x)?.#m?.call(__receiver0), (__receiver1 = y)?.#m?.call(__receiver1)]; }',
     );
-    // A default value is evaluated outside the function's body.
-    expect(
-      split('class A { #m() {} static f(x) { return (y = x?.#m()) => y; } }'),
-    ).toBe(
-      'class A { #m() {} static f(x) { var __receiver0; return (y = (__receiver0 = x)?.#m?.call(__receiver0)) => y; } }',
+    // A default value can't see the function body's variables, and runs
+    // once per call, as does a destructuring's.
+    expect(call('f(x, y = x?.#m()) { return y; }')).toBe(
+      'f(x, y = (() => { var __receiver0; return (__receiver0 = x)?.#m?.call(__receiver0) })()) { return y; }',
+    );
+    expect(call('f(x, { y = x?.#m() }) { return y; }')).toBe(
+      'f(x, { y = (() => { var __receiver0; return (__receiver0 = x)?.#m?.call(__receiver0) })() }) { return y; }',
+    );
+    // Scopes that end at one place close from the inside out.
+    expect(call('f = g()?.#m() ? 1 : () => h()?.#m();')).toBe(
+      'f = (() => { var __receiver0; return (__receiver0 = g())?.#m?.call(__receiver0) ? 1 : () => { var __receiver1; return (__receiver1 = h())?.#m?.call(__receiver1) } })();',
     );
     // Outside any function, in a computed key, the module's top level runs
     // once.

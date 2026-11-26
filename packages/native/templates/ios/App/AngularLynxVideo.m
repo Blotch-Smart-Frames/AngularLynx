@@ -182,6 +182,35 @@ LYNX_PROP_SETTER("video-id", setVideoId, NSString *) {
   [self attachOutputTo:[self currentItem]];
 }
 
+/// How many times, a frame apart, `bindfirstframe` waits for the output's
+/// first frame: half a second at most.
+static const NSInteger kFirstFrameTries = 30;
+
+/// XElement's view says it has a first frame when its layer can show one,
+/// which is before the output added to the same item hands that frame over:
+/// a canvas drawing the video from `bindfirstframe` read nothing, which the
+/// E2E canvas flow caught. So the event waits for the output's frame, a
+/// frame at a time and for half a second at most, then goes as XElement's
+/// would. Android's frame is there first already (VideoUI.onFirstFrame).
+- (void)playableDidLoadFirstFrame:(id<LynxVideoPlayable>)playable
+                         duration:(NSTimeInterval)duration {
+  [self sendFirstFrame:playable duration:duration triesLeft:kFirstFrameTries];
+}
+
+- (void)sendFirstFrame:(id<LynxVideoPlayable>)playable
+              duration:(NSTimeInterval)duration
+             triesLeft:(NSInteger)triesLeft {
+  if (!_frames || triesLeft <= 0 || [_frames frameSize].width > 0) {
+    [super playableDidLoadFirstFrame:playable duration:duration];
+    return;
+  }
+  __weak typeof(self) weakSelf = self;
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(NSEC_PER_SEC / 60)),
+                 dispatch_get_main_queue(), ^{
+                   [weakSelf sendFirstFrame:playable duration:duration triesLeft:triesLeft - 1];
+                 });
+}
+
 /// Watches the player's item while the video has an id, so each item, the
 /// first and each new `src`'s, gets an output. XElement's view makes its
 /// player with the first source, and replaces the item on the UI thread.

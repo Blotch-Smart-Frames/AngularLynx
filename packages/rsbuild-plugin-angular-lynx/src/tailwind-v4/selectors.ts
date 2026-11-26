@@ -58,11 +58,16 @@ const unwrapWhereAndIs = (selector: string): string[] => {
  */
 const inlineCompounds = (selector: string): string => {
   let lowered = '';
+  // Whether what's lowered so far ends where a compound starts: at the
+  // start, or after a combinator, a list's comma or a `(`. An escaped
+  // character is part of a name, so `.a\+` doesn't end at a combinator.
+  let compoundStart = true;
   for (let index = 0; index < selector.length; index++) {
     const character = selector[index]!;
     if (character === '\\') {
       lowered += selector.slice(index, index + 2);
       index++;
+      compoundStart = false;
       continue;
     }
     const match =
@@ -75,15 +80,15 @@ const inlineCompounds = (selector: string): string => {
       const inner =
         end === -1 ? '' : inlineCompounds(selector.slice(start, end).trim());
       // A type selector or `*` has to start its compound.
-      const placeable =
-        !/^[^.#[:]/.test(inner) || lowered === '' || /[\s>+~(,]$/.test(lowered);
-      if (isCompound(inner) && placeable) {
+      if (isCompound(inner) && (compoundStart || /^[.#[:]/.test(inner))) {
         lowered += inner;
         index = end;
+        compoundStart = false;
         continue;
       }
     }
     lowered += character;
+    compoundStart = /[\s>+~(,]/.test(character);
   }
   return lowered;
 };

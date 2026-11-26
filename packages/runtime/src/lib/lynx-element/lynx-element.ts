@@ -1535,10 +1535,17 @@ export class LynxElement implements BaseLynxElement {
   /**
    * The tokens a style index rule's selector can require of this element
    * (see styleFlagsFor): its classes, its id and its tag.
+   *
+   * Native's class list, while #classes may not hold all of it (see
+   * #nativeClasses): an element a server render's snapshot made has classes
+   * only native knows, and a `.card` there must still count for the `.card
+   * .total` of a `<text>` rendered inside it (see #matchedStyleFlags).
    */
   #styleTokens(): Set<string> {
     const tokens = new Set(
-      this.#classNames ?? this.#classes.split(/\s+/).filter(Boolean),
+      this.#nativeClasses === false
+        ? __GetClasses(this.element)
+        : (this.#classNames ?? this.#classes.split(/\s+/).filter(Boolean)),
     );
     if (this.#id) tokens.add(`#${this.#id}`);
     tokens.add(`<${this.tagName}>`);

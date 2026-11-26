@@ -1661,6 +1661,20 @@ describe('loose text, element by element', () => {
         expect(style(bold)).toContain(FONT_SIZE);
       });
 
+      it('matches an ancestor whose classes only native knows', () => {
+        // As LynxHydrateDocument wraps a server render's element: its
+        // classes are in the snapshot, which only native read.
+        const g = globalThis as unknown as FakeNativeGlobal<FakeEl>;
+        const ref = g.__CreateView();
+        ref.classes.add('card');
+        const card = new LynxElement(ref as never);
+        card.tagName = 'view';
+        page.appendChild(card);
+        const { bold } = total(card, 'total');
+        commit();
+        expect(style(bold)).toContain(FONT_SIZE);
+      });
+
       it('inherits again when the element around the <text> moves', () => {
         const card = doc.createElement('view');
         card.setAttribute('class', 'card');

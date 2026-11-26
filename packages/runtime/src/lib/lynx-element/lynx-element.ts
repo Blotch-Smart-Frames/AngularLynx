@@ -1653,13 +1653,17 @@ export class LynxElement implements BaseLynxElement {
       // Its env(safe-area-inset-*) get the insets as in setStyle.
       if (readsSafeAreaInsets(inlineStyle)) this.#readsSafeArea = true;
     }
-    const whole = this.#inlineStyleFor(inlineStyle);
-    // A style="--x: …" makes the [style.x] styles that come after it go into
-    // the string as well (see #setsVariables).
-    if (whole && VARIABLE_DECLARATION.test(whole)) this.#setsVariables = true;
-    __SetInlineStyles(this.element, whole);
     const before = this.#inlineStyleWhole;
     this.#inlineStyleWhole = inlineStyle;
+    // __SetInlineStyles replaces the [style.x] styles natively too, which
+    // stay in #inlineStyleKeys: #rewriteInlineStyle writes them again after
+    // the string, so a binding wins over the attribute, as in Angular's
+    // styling, and #inlineStyle reads what's drawn. A `[style.vertical-align]`
+    // of 8px under a new `style="vertical-align: 4px"` was read as 8px but
+    // drawn at 4px, and moved the tags inside by 8px (review of #735). A
+    // style="--x: …" makes the [style.x] styles that come after it go into
+    // the string as well (see #setsVariables).
+    this.#rewriteInlineStyle();
     this.#layoutChanged();
     for (const property of SHIFT_STYLES) {
       if (

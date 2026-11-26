@@ -302,6 +302,30 @@ describe('LynxElement', () => {
       );
     });
 
+    // Review of #735: __SetInlineStyles replaces them natively, while the
+    // runtime still read them, as for how far the tags inside move.
+    it('writes the [style.x] styles again after the string', () => {
+      const calls: string[] = [];
+      globalThis.__SetInlineStyles = vi.fn((_: unknown, style: unknown) => {
+        calls.push(`set ${String(style)}`);
+      });
+      globalThis.__AddInlineStyle = vi.fn(
+        (_: unknown, key: string | number, value: unknown) => {
+          calls.push(`add ${key}: ${String(value)}`);
+        },
+      );
+      element = new LynxElement(fakeRef);
+      element.setStyle('vertical-align', '8px');
+      calls.length = 0;
+
+      element.setInlineStyles('vertical-align: 4px; color: red');
+
+      expect(calls).toEqual([
+        'set vertical-align: 4px; color: red',
+        'add vertical-align: 8px',
+      ]);
+    });
+
     it("gives display: block Lynx's linear, which lays out as a block does", () => {
       globalThis.__SetInlineStyles = vi.fn();
       element = new LynxElement(fakeRef);

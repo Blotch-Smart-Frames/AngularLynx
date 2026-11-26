@@ -53,7 +53,9 @@ export const enableWebGL2WhereNamed = (
     false,
     /\.[cm]?tsx?$/.test(filename) ? ts.ScriptKind.TS : ts.ScriptKind.JS,
   );
-  if (ts.isExternalModule(sourceFile)) {
+  // An `.mjs` or `.mts` file is an ES module even with no import or export,
+  // and has no `require` (strict-esm.ts builds it as one).
+  if (ts.isExternalModule(sourceFile) || /\.m[jt]s$/.test(filename)) {
     // Imports are hoisted, so the import can go anywhere; the call goes after
     // the module's own imports, which run first whatever their place.
     return `import { ${ENABLE} } from ${specifier};\n${ENABLE}();\n${code}`;

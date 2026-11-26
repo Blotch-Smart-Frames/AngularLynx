@@ -37,6 +37,13 @@ describe('enableWebGL2WhereNamed', () => {
     );
   });
 
+  it('imports in an .mjs module with no import or export, which has no require', () => {
+    const code = `globalThis.name = 'webgl2';`;
+    expect(
+      enableWebGL2WhereNamed(code, '/app/node_modules/lib/index.mjs'),
+    ).toBe(CALL + code);
+  });
+
   it('requires the runtime in a CommonJS module, after its directives', () => {
     const code = `'use strict';\n"another";\nmodule.exports = 'webgl2';`;
     expect(

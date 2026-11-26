@@ -75,8 +75,18 @@ export const wrapPureClasses = (code: string, filename: string): string => {
     // package's build added: `var _a;` above it and `_a = X;` after it, for
     // the body to use. That assignment is a statement of its own, which kept
     // the class (the runtime's LynxElement, and everything it uses) in the
-    // background bundle. Made inside the pure IIFE, it goes with the class.
-    const alias = aliases.get(name);
+    // background bundle. Made inside the pure IIFE, it goes with the class,
+    // so only when nothing outside the class reads the alias: dropped with
+    // an unused class, it would leave that reader `undefined`.
+    const candidate = aliases.get(name);
+    const alias =
+      candidate &&
+      candidate.reads.every(
+        (read) =>
+          read >= classNode.getStart(sourceFile) && read < classNode.end,
+      )
+        ? candidate
+        : undefined;
     edits.push(
       {
         start: classNode.getStart(sourceFile),
@@ -159,6 +169,18 @@ export const wrapPureClasses = (code: string, filename: string): string => {
   return result;
 };
 
+type ClassAlias = {
+  /** The alias's name. */
+  name: string;
+  /** The `alias = X;` statement. */
+  statement: ts.Statement;
+  /**
+   * Where the alias's name appears, other than in its `var` and that
+   * statement: each read of it.
+   */
+  reads: number[];
+};
+
 /**
  * The aliases a package's build gives a class that names itself in its body,
  * keyed by the class's variable: each `alias = X;` statement at the top level
@@ -166,8 +188,8 @@ export const wrapPureClasses = (code: string, filename: string): string => {
  */
 const findClassAliases = (
   sourceFile: ts.SourceFile,
-): Map<string, { name: string; statement: ts.Statement }> => {
-  const declared = new Set<string>();
+): Map<string, ClassAlias> => {
+  const declared = new Map<string, ts.Identifier>();
   const assignments = new Map<
     string,
     { target: string; statement: ts.Statement }[]
@@ -176,7 +198,7 @@ const findClassAliases = (
     if (ts.isVariableStatement(statement)) {
       for (const declaration of statement.declarationList.declarations) {
         if (ts.isIdentifier(declaration.name) && !declaration.initializer) {
-          declared.add(declaration.name.text);
+          declared.set(declaration.name.text, declaration.name);
         }
       }
       continue;
@@ -195,13 +217,37 @@ const findClassAliases = (
       ]);
     }
   }
-  const aliases = new Map<string, { name: string; statement: ts.Statement }>();
+  const aliases = new Map<string, ClassAlias>();
   for (const [name, assigned] of assignments) {
     const [only, ...others] = assigned;
-    if (declared.has(name) && only && others.length === 0) {
-      aliases.set(only.target, { name, statement: only.statement });
+    const declaration = declared.get(name);
+    if (declaration && only && others.length === 0) {
+      aliases.set(only.target, { name, statement: only.statement, reads: [] });
     }
   }
+  if (aliases.size === 0) {
+    return aliases;
+  }
+  // Every identifier spelled like an alias counts as a read of it, even a
+  // property name or another scope's variable: at worst, a class keeps its
+  // alias statement and stays in the bundle, as it did before.
+  const byName = new Map(
+    [...aliases.values()].map((alias) => [alias.name, alias]),
+  );
+  const visit = (node: ts.Node): void => {
+    if (ts.isIdentifier(node)) {
+      const alias = byName.get(node.text);
+      if (
+        alias &&
+        node !== declared.get(alias.name) &&
+        !(node.pos >= alias.statement.pos && node.end <= alias.statement.end)
+      ) {
+        alias.reads.push(node.getStart(sourceFile));
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
   return aliases;
 };
 

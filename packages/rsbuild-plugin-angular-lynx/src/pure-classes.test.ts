@@ -157,6 +157,31 @@ describe('wrapPureClasses', () => {
     expect(new Element().get()).toBe(Element);
   });
 
+  // The class's IIFE goes when nothing reads the class, and the assignment
+  // with it, which would leave this reader with `undefined`.
+  it.each([
+    ['a function', 'var read = () => _a;'],
+    ['a top-level statement', 'console.log(_a);'],
+  ])(
+    'leaves an alias alone that %s outside the class reads',
+    (_label, reader) => {
+      const code = [
+        'var _a;',
+        'var Element = class { #x; };',
+        '_a = Element;',
+        reader,
+      ].join('\n');
+      expect(wrap(code)).toBe(
+        [
+          'var _a;',
+          'var Element = /*#__PURE__*/ (() => class { #x; })();',
+          '_a = Element;',
+          reader,
+        ].join('\n'),
+      );
+    },
+  );
+
   it('leaves an alias alone that is assigned more than once', () => {
     const code = [
       'var _a;',

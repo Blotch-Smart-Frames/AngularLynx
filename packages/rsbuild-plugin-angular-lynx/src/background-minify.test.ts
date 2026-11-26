@@ -11,18 +11,18 @@ class SwcJsMinimizerRspackPlugin {}
  * A chain with the minimizers rspack-chain would hold, as plugin
  * descriptors of a name, a plugin class and its arguments.
  */
-const createChain = (minimizers: Record<string, unknown[] | undefined>) => {
+const createChain = (
+  minimizers: Record<string, unknown[] | undefined>,
+  plugin: unknown = SwcJsMinimizerRspackPlugin,
+) => {
   const registered = new Map<string, { plugin?: unknown; args?: unknown[] }>(
-    Object.entries(minimizers).map(([id, args]) => [
-      id,
-      { plugin: SwcJsMinimizerRspackPlugin, args },
-    ]),
+    Object.entries(minimizers).map(([id, args]) => [id, { plugin, args }]),
   );
   const minimizer = (id: string) => {
     const entry = registered.get(id) ?? {};
     registered.set(id, entry);
     return {
-      get: (key: 'args') => entry[key],
+      get: (key: 'args' | 'plugin') => entry[key],
       tap: (fn: (args: unknown[]) => unknown[]) => {
         entry.args = fn(entry.args ?? []);
       },
@@ -48,7 +48,10 @@ const createChain = (minimizers: Record<string, unknown[] | undefined>) => {
  * Runs the plugin's handler on `minimizers`, and returns what it registered
  * and the order it asked for.
  */
-const run = (minimizers: Record<string, unknown[] | undefined>) => {
+const run = (
+  minimizers: Record<string, unknown[] | undefined>,
+  plugin?: unknown,
+) => {
   let hook: { order: string; handler: (...args: unknown[]) => void };
   const api = {
     modifyBundlerChain: vi.fn((descriptor) => {
@@ -56,7 +59,7 @@ const run = (minimizers: Record<string, unknown[] | undefined>) => {
     }),
   };
   applyBackgroundMinify(api as never);
-  const { chain, registered } = createChain(minimizers);
+  const { chain, registered } = createChain(minimizers, plugin);
   hook!.handler(chain, {
     CHAIN_ID: { MINIMIZER: { JS: 'js', CSS: 'css' } },
     rspack: { SwcJsMinimizerRspackPlugin },
@@ -166,6 +169,14 @@ describe('applyBackgroundMinify', () => {
     const { registered } = run({ js: [options] });
 
     expect(registered.get('js')?.args).toEqual([options]);
+    expect(registered.has('js-background')).toBe(false);
+  });
+
+  it('leaves alone a minimizer the app replaced with another tool', () => {
+    class TerserPlugin {}
+    const { registered } = run({ js: [{}] }, TerserPlugin);
+
+    expect(registered.get('js')).toEqual({ plugin: TerserPlugin, args: [{}] });
     expect(registered.has('js-background')).toBe(false);
   });
 

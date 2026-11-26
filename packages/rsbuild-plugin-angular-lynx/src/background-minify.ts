@@ -53,8 +53,15 @@ export const applyBackgroundMinify = (api: RsbuildPluginAPI): void => {
           MinimizerOptions?,
         ];
         // A minimizer an app's config gave files of its own is left as it
-        // is: which of those are background scripts is the app's to say.
-        if (options.test !== undefined) continue;
+        // is: which of those are background scripts is the app's to say. So
+        // is one it replaced with another tool (Terser, esbuild), whose
+        // options this can't copy and whose work an SWC copy wouldn't do.
+        if (
+          minimizer.get('plugin') !== rspack.SwcJsMinimizerRspackPlugin ||
+          options.test !== undefined
+        ) {
+          continue;
+        }
         minimizer.tap(() => [
           {
             ...options,

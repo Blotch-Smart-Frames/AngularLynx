@@ -35,6 +35,17 @@ export class LynxHydrateDocument implements LynxDocumentBase {
   }
 
   #isHydrating(): boolean {
+    // A <q>'s quotation marks are in the snapshot too, taken by its wrapper
+    // (see LynxElement.markQuote), and Angular never asks for them: they're
+    // skipped here, before every element is taken. So a closing mark left at
+    // the end of the snapshot doesn't keep hydration going, which would give
+    // the next element made the mark.
+    while (
+      this.#cursor < this.#queue.length &&
+      LynxElement.isQuoteMark(this.#queue[this.#cursor]!)
+    ) {
+      this.#cursor++;
+    }
     return this.#cursor < this.#queue.length;
   }
 
@@ -69,15 +80,13 @@ export class LynxHydrateDocument implements LynxDocumentBase {
     // Loose text that the server render drew in an anonymous <text> (see
     // LynxElement's #regroup) has the <text> just before it in the snapshot.
     // Angular never asks for it, so it's taken here, and marked for what it
-    // is. It's always followed by what it holds.
-    // A <q>'s quotation marks are in the snapshot too, taken by its wrapper
-    // (see LynxElement.markQuote), and Angular never asks for them either.
-    while (this.#cursor < this.#queue.length) {
-      if (__GetClasses(ref).includes(ANONYMOUS_TEXT_CLASS)) {
-        new LynxElement(ref).markAnonymousText();
-      } else if (!LynxElement.isQuoteMark(ref)) {
-        break;
-      }
+    // is. It's always followed by what it holds. (A <q>'s quotation marks
+    // were skipped already, by #isHydrating.)
+    while (
+      __GetClasses(ref).includes(ANONYMOUS_TEXT_CLASS) &&
+      this.#cursor < this.#queue.length
+    ) {
+      new LynxElement(ref).markAnonymousText();
       ref = this.#queue[this.#cursor++]!;
     }
     this.#last = new LynxElement(ref);

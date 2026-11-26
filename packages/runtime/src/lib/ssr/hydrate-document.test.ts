@@ -234,6 +234,27 @@ describe('LynxHydrateDocument', () => {
     vi.mocked(LynxElement.isQuoteMark).mockImplementation(() => false);
   });
 
+  // The snapshot's last node is a <q>'s closing mark, which nothing asks for:
+  // what's made after the <q> is new, not the mark.
+  it('ends hydration when only a closing mark is left', () => {
+    const qRef = { _q: true } as any as ElementRef;
+    const openRef = { _open: true } as any as ElementRef;
+    const closeRef = { _close: true } as any as ElementRef;
+    globalThis.__FirstElement = vi.fn(() => openRef);
+    globalThis.__LastElement = vi.fn(() => closeRef);
+    vi.mocked(LynxElement.isQuoteMark).mockImplementation(
+      (ref: ElementRef) => ref === openRef || ref === closeRef,
+    );
+    const doc = new LynxHydrateDocument(pageRef, [qRef, openRef, closeRef]);
+    doc.createRootElement();
+
+    doc.createElement('q');
+    const view = doc.createElement('view') as any;
+
+    expect(view._mock).toBe('fallback-element');
+    vi.mocked(LynxElement.isQuoteMark).mockImplementation(() => false);
+  });
+
   describe('createComment — during hydration', () => {
     it('returns elements from the queue', () => {
       const commentRef = { _comment: true } as any as ElementRef;

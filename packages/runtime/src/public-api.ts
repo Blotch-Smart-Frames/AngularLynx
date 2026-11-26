@@ -10,6 +10,8 @@ export type {
   AccessibilityTrait,
   AccessibilityTraitStates,
 } from './lib/accessibility/accessibility-traits';
+export { LynxAppState } from './lib/app-state';
+export type { LynxAppStateValue } from './lib/app-state';
 export { afterFrame } from './lib/animation/after-frame';
 export { LynxAnimation } from './lib/animation/animation';
 export { ClipboardError, LynxClipboard } from './lib/clipboard';

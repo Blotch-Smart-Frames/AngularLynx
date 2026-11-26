@@ -10,6 +10,24 @@ final class LynxViewController: UIViewController, LynxViewLifecycle {
   private var builtFontScale: CGFloat = 1
   private var lastViewport: CGRect = .zero
 
+  /// Where the app is, for LynxAppState: "active", "inactive" or
+  /// "background". Sent in the global props, and again as the scene's
+  /// activation changes (appStateDidChange). It starts from the app's state
+  /// when the view loads, which is "inactive" while the app launches: the
+  /// scene becomes active just after.
+  private var appState = LynxViewController.appState(of: UIApplication.shared.applicationState)
+
+  /// The block observers observeAppState() adds. NotificationCenter keeps a
+  /// block observer until it's removed, and iOS can disconnect the scene and
+  /// build a new controller, so deinit removes them.
+  private var appStateObservers: [NSObjectProtocol] = []
+
+  deinit {
+    for observer in appStateObservers {
+      NotificationCenter.default.removeObserver(observer)
+    }
+  }
+
   /// Whether the page fills the screen, under the status bar and the home
   /// indicator: angular.json's `edgeToEdge`, which the generator writes into
   /// Info.plist. A project generated before the option existed has no key,
@@ -137,10 +155,44 @@ final class LynxViewController: UIViewController, LynxViewLifecycle {
     NotificationCenter.default.addObserver(
       self, selector: #selector(contentSizeCategoryDidChange),
       name: UIContentSizeCategory.didChangeNotification, object: nil)
+
+    // Send the app's state again each time the scene's activation changes.
+    observeAppState()
   }
 
   @objc private func accessibilitySettingsDidChange() {
     lynxView?.updateGlobalProps(with: globalProps())
+  }
+
+  /// The scene's activation changes, as the state each one leads to. Lynx
+  /// tells the app's code nothing when it leaves the screen or comes back,
+  /// so the shell sends the state itself (LynxAppState). Resigning active,
+  /// for Control Center, Notification Center, the app switcher or a call,
+  /// is "inactive", and leaving the screen is "background".
+  private static let appStateNotifications: [(Notification.Name, String)] = [
+    (UIScene.didActivateNotification, "active"),
+    (UIScene.willDeactivateNotification, "inactive"),
+    (UIScene.didEnterBackgroundNotification, "background"),
+    (UIScene.willEnterForegroundNotification, "inactive"),
+  ]
+
+  private static func appState(of state: UIApplication.State) -> String {
+    switch state {
+    case .active: return "active"
+    case .background: return "background"
+    default: return "inactive"
+    }
+  }
+
+  private func observeAppState() {
+    appStateObservers = Self.appStateNotifications.map { name, state in
+      NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) {
+        [weak self] _ in
+        guard let self, self.appState != state else { return }
+        self.appState = state
+        self.lynxView?.updateGlobalProps(with: self.globalProps())
+      }
+    }
   }
 
   /// The user chose another text size while the app was open: the page's
@@ -234,10 +286,11 @@ final class LynxViewController: UIViewController, LynxViewLifecycle {
   /// The global props the runtime reads: `theme` (LynxTheme), `isNotchScreen`
   /// (LynxSafeArea), `appLocale` (LynxLocale), `appTimeZone` (the `intl`
   /// build option's Intl.DateTimeFormat), the accessibility settings
-  /// and text scale (LynxAccessibilitySettings), `osVersion` (LynxSystemInfo) and
-  /// `initialURL` (LynxLinking and the router), plus the safe-area insets and
-  /// `edgeToEdge`, which env(safe-area-inset-*) reads. The Android shell
-  /// sends the same keys, and Lynx Explorer sends theme and isNotchScreen too.
+  /// and text scale (LynxAccessibilitySettings), `appState` (LynxAppState),
+  /// `osVersion` (LynxSystemInfo) and `initialURL` (LynxLinking and the
+  /// router), plus the safe-area insets and `edgeToEdge`, which
+  /// env(safe-area-inset-*) reads. The Android shell sends the same keys, and
+  /// Lynx Explorer sends theme and isNotchScreen too.
   private func globalProps() -> LynxTemplateData {
     let insets = view.safeAreaInsets
     var props: [String: Any] = [
@@ -263,6 +316,8 @@ final class LynxViewController: UIViewController, LynxViewLifecycle {
       // The text size, as the LynxView's font scale has it
       // (LynxAccessibilitySettings.textScale).
       "textScale": textScale(),
+      // Whether the app is in the foreground, taking touches.
+      "appState": appState,
       // Lynx builds the main thread's SystemInfo, where Angular runs, without
       // the OS version, so LynxSystemInfo reads it from here. The glass
       // components need it: blur-view draws Liquid Glass only from iOS 26.

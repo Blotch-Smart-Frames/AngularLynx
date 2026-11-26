@@ -1864,6 +1864,206 @@ describe('loose text, element by element', () => {
     });
   });
 
+  // Issue #667: an HTML text tag's own rules came from the last part of each
+  // selector alone, so `.card b { font-size: 24px }` counted for a <b>
+  // outside .card too. The <b> then didn't read the variable, and drew at
+  // Lynx's default size, not that of the text around it.
+  describe('an HTML text tag with a rule that requires an ancestor', () => {
+    const bit = (property: string): number =>
+      1 << INHERITED_TEXT_PROPERTIES.indexOf(property);
+    const style = (el: LynxElement): string =>
+      String(native(el).attrs.get('style') ?? '');
+    const FONT_SIZE = 'font-size: var(--angular-lynx-font-size)';
+    const COLOR = 'color: var(--angular-lynx-color)';
+
+    beforeEach(() => {
+      // As the build plugin writes it, for `.big { font-size: 20px }`,
+      // `.card b { font-size: 24px }`, `.row > i { font-size: 24px }` and
+      // `.pressed b:active { color: red }` and `#totals b { font-size: 24px
+      // }`. A <b> is a <text>, so the build
+      // writes `b` as the class the renderer gives it (see tagClassOf).
+      (
+        globalThis as { __angularLynxStyleIndex?: unknown }
+      ).__angularLynxStyleIndex = {
+        rules: [
+          [['big'], bit('font-size')],
+          [['_ngtag-b'], bit('font-size'), [[' ', ['card']]]],
+          [['_ngtag-i'], bit('font-size'), [['>', ['row']]]],
+          [['_ngtag-b'], bit('color'), [[' ', ['pressed']]], 1],
+          [['_ngtag-b'], bit('font-size'), [[' ', ['#totals']]]],
+        ],
+      };
+      resetStyleIndex();
+    });
+
+    afterEach(() => {
+      delete (globalThis as { __angularLynxStyleIndex?: unknown })
+        .__angularLynxStyleIndex;
+      resetStyleIndex();
+    });
+
+    /**
+     * A `<b>` (or another tag) holding "12" after "Total: " in `parent`,
+     * with its tag's class, as the renderer creates it.
+     */
+    const bold = (parent: LynxElement, tag = 'b'): LynxElement => {
+      parent.appendChild(doc.createText('Total: '));
+      const el = doc.createElement(tag);
+      el.addScopeClass(`_ngtag-${tag}`);
+      parent.appendChild(el);
+      el.appendChild(doc.createText('12'));
+      return el;
+    };
+
+    it('inherits outside the ancestor the rule requires', () => {
+      const view = doc.createElement('view');
+      view.setAttribute('class', 'big');
+      page.appendChild(view);
+      const b = bold(view);
+      commit();
+      expect(style(b)).toContain(FONT_SIZE);
+    });
+
+    it('keeps the rule’s size inside the ancestor', () => {
+      const card = doc.createElement('view');
+      card.setAttribute('class', 'card big');
+      page.appendChild(card);
+      const view = doc.createElement('view');
+      card.appendChild(view);
+      const b = bold(view);
+      commit();
+      expect(style(b)).not.toContain(FONT_SIZE);
+      expect(style(b)).toContain(COLOR);
+    });
+
+    it('requires a child’s parent to be the next one up', () => {
+      const row = doc.createElement('view');
+      row.setAttribute('class', 'row');
+      page.appendChild(row);
+      const p = doc.createElement('p');
+      row.appendChild(p);
+      const inP = bold(p, 'i');
+      commit();
+      expect(style(inP)).toContain(FONT_SIZE);
+    });
+
+    it('counts a rule that applies only in a state as its own', () => {
+      // The runtime can't see the state, and an inherited color would win
+      // over the rule's while it applies.
+      const view = doc.createElement('view');
+      view.setAttribute('class', 'pressed');
+      page.appendChild(view);
+      const b = bold(view);
+      commit();
+      expect(style(b)).not.toContain(COLOR);
+      expect(style(b)).toContain(FONT_SIZE);
+    });
+
+    it('inherits again when an ancestor’s classes change', () => {
+      const outer = doc.createElement('view');
+      page.appendChild(outer);
+      const view = doc.createElement('view');
+      view.setAttribute('class', 'big');
+      outer.appendChild(view);
+      const b = bold(view);
+      commit();
+      expect(style(b)).toContain(FONT_SIZE);
+
+      outer.setAttribute('class', 'card');
+      commit();
+      expect(style(b)).not.toContain(FONT_SIZE);
+
+      outer.removeClass('card');
+      commit();
+      expect(style(b)).toContain(FONT_SIZE);
+
+      outer.addClass('card');
+      commit();
+      expect(style(b)).not.toContain(FONT_SIZE);
+    });
+
+    it('inherits again when an ancestor’s id changes', () => {
+      const outer = doc.createElement('view');
+      page.appendChild(outer);
+      const b = bold(outer);
+      commit();
+      expect(style(b)).toContain(FONT_SIZE);
+
+      outer.setAttribute('id', 'totals');
+      commit();
+      expect(style(b)).not.toContain(FONT_SIZE);
+
+      outer.setAttribute('id', null);
+      commit();
+      expect(style(b)).toContain(FONT_SIZE);
+    });
+
+    it('inherits again when an ancestor whose classes only native knows changes them', () => {
+      // As LynxHydrateDocument wraps a server render's element: its
+      // classes are in the snapshot, so which changed isn't known.
+      const g = globalThis as unknown as FakeNativeGlobal<FakeEl>;
+      const ref = g.__CreateView();
+      ref.classes.add('card');
+      const card = new LynxElement(ref as never);
+      card.tagName = 'view';
+      page.appendChild(card);
+      const b = bold(card);
+      commit();
+      expect(style(b)).not.toContain(FONT_SIZE);
+
+      card.setAttribute('class', 'other');
+      commit();
+      expect(style(b)).toContain(FONT_SIZE);
+    });
+
+    it('inherits again inside an HTML tag when an ancestor’s classes change', () => {
+      const outer = doc.createElement('view');
+      page.appendChild(outer);
+      const p = doc.createElement('p');
+      outer.appendChild(p);
+      const span = doc.createElement('span');
+      p.appendChild(span);
+      const b = bold(span);
+      commit();
+      expect(style(b)).toContain(FONT_SIZE);
+
+      outer.setAttribute('class', 'card');
+      commit();
+      expect(style(b)).not.toContain(FONT_SIZE);
+    });
+
+    it('inherits again when it moves under the ancestor', () => {
+      const card = doc.createElement('view');
+      card.setAttribute('class', 'card');
+      page.appendChild(card);
+      const view = doc.createElement('view');
+      page.appendChild(view);
+      const b = bold(view);
+      commit();
+      expect(style(b)).toContain(FONT_SIZE);
+
+      card.appendChild(view);
+      commit();
+      expect(style(b)).not.toContain(FONT_SIZE);
+    });
+
+    it('inherits again in a list’s items when an ancestor’s classes change', () => {
+      const outer = doc.createElement('view');
+      page.appendChild(outer);
+      const list = doc.createElement('list');
+      outer.appendChild(list);
+      const item = doc.createElement('list-item');
+      list.appendChild(item);
+      const b = bold(item);
+      commit();
+      expect(style(b)).toContain(FONT_SIZE);
+
+      outer.setAttribute('class', 'card');
+      commit();
+      expect(style(b)).not.toContain(FONT_SIZE);
+    });
+  });
+
   it('gives a touch on an anonymous <text> out of the tree no element', () => {
     const g = globalThis as unknown as FakeNativeGlobal<FakeEl>;
     const wrapperRef = g.__CreateText();

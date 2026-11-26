@@ -222,7 +222,7 @@ If a screen isn't ready for the largest sizes, cap the scale, or turn it off, wi
 
 Check a screen at the largest sizes: in the iOS Simulator, with Xcode's **Environment Overrides** or `xcrun simctl ui booted content_size accessibility-extra-extra-extra-large`, and on Android with `adb shell settings put system font_scale 2.0`. Look for anything with a fixed height in `px` that the text now overflows.
 
-A `<text>` with no font size of its own draws at Lynx's default, 14px, whatever the page's size, so it doesn't grow: give it a size class, such as `text-base`.
+A `<text>` with no font size of its own draws at the page's size, `1rem`, so it grows too. Give a `<text>` a size in `px` only when it mustn't grow.
 
 ## Test with a screen reader
 

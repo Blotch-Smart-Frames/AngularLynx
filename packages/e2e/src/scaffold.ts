@@ -1107,6 +1107,23 @@ export const routes: Routes = [
  * - Tailwind 3: copies default.css and tailwind-plugin.ts, adds the plugin to
  *   tailwind.config.ts and imports default.css in styles.css.
  */
+/**
+ * Keeps the fixtures' text at Lynx's 14px, which their layout was made for.
+ * The theme makes the page's font size 16px, and the native build gives a
+ * `<text>` with no size of its own the page's (issue #673), so the fixtures'
+ * buttons and lines grew. Each "Open …" button shows another page below the
+ * first, and on CI's 320x640 Android emulator the later buttons ended up
+ * below the screen, where Maestro couldn't find them. An app's own `text`
+ * rule wins over the build's, as it does here. The text's size isn't what
+ * the fixtures check.
+ */
+const FIXTURE_TEXT_SIZE = `
+/* The E2E fixtures are laid out for 14px text (see scaffold.ts). */
+text {
+  font-size: 14px;
+}
+`;
+
 const addUiTheme = (appDir: string, tailwind: '3' | '4') => {
   const themeDir = path.join(appDir, 'src/styles');
   mkdirSync(themeDir, { recursive: true });
@@ -1122,7 +1139,7 @@ const addUiTheme = (appDir: string, tailwind: '3' | '4') => {
     }
     writeFileSync(
       stylesPath,
-      `${styles}@import './styles/default.css';\n@import './styles/tailwind.css';\n`,
+      `${styles}@import './styles/default.css';\n@import './styles/tailwind.css';\n${FIXTURE_TEXT_SIZE}`,
     );
     return;
   }
@@ -1148,7 +1165,10 @@ const addUiTheme = (appDir: string, tailwind: '3' | '4') => {
   writeFileSync(configPath, config);
 
   // @import has to come before Tailwind's directives.
-  writeFileSync(stylesPath, `@import './styles/default.css';\n${styles}`);
+  writeFileSync(
+    stylesPath,
+    `@import './styles/default.css';\n${styles}${FIXTURE_TEXT_SIZE}`,
+  );
 };
 
 /**

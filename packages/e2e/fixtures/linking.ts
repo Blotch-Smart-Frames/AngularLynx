@@ -1,5 +1,12 @@
-import { Component, inject, signal, type OnInit } from '@angular/core';
-import { LYNX_ELEMENTS, LynxLinking } from '@blotch/angular-lynx';
+import {
+  Component,
+  effect,
+  inject,
+  signal,
+  untracked,
+  type OnInit,
+} from '@angular/core';
+import { LYNX_ELEMENTS, LynxAppState, LynxLinking } from '@blotch/angular-lynx';
 
 /** A scheme no app declares or handles, for canOpenURL's "no". */
 const UNDECLARED_URL = 'angularlynx-e2e-undeclared://x';
@@ -18,6 +25,14 @@ const UNDECLARED_URL = 'angularlynx-e2e-undeclared://x';
  *
  * "Open sheet" opens a page with openInApp(): "Sheet: open" while it's open,
  * "Sheet: closed" once the person is back, or why it failed.
+ *
+ * "Returns" counts the times LynxAppState saw the app come back to the front
+ * from the background (issue #577): the shells send its state in the global
+ * props as the scene or activity moves. Only from the background: a tap
+ * near the bottom of a small Android screen can start the system's app-switcher
+ * gesture, which makes the app inactive for a moment without leaving it. It's
+ * on this page because only the app's own builds open it: Lynx Explorer sends
+ * no state, so it would stay at 0.
  */
 @Component({
   selector: 'app-linking',
@@ -39,12 +54,29 @@ const UNDECLARED_URL = 'angularlynx-e2e-undeclared://x';
       </view>
     </view>
     <text flatten="false" style="margin-top: 8px;">Sheet: {{ sheet() }}</text>
+    <text flatten="false" style="margin-top: 8px;"
+      >Returns: {{ returns() }}</text
+    >
   `,
 })
 export class LinkingRoute implements OnInit {
   readonly #linking = inject(LynxLinking);
   readonly canOpen = signal('…');
   readonly sheet = signal('none');
+  readonly returns = signal(0);
+
+  constructor() {
+    const appState = inject(LynxAppState);
+    let wentAway = false;
+    effect(() => {
+      const state = appState.state();
+      if (state === 'background') wentAway = true;
+      if (state === 'active' && wentAway) {
+        wentAway = false;
+        untracked(() => this.returns.update((n) => n + 1));
+      }
+    });
+  }
 
   ngOnInit(): void {
     Promise.all([

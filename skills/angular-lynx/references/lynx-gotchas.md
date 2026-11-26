@@ -107,11 +107,11 @@ Lynx draws text only inside `<text>`, so the runtime draws raw text whose parent
 
 ### Default `font-size` is 14px (not 16px), and so is `1rem`
 
-Every `rem` size is an eighth smaller than in a browser: Tailwind's `h-12` is 42px, not 48px. `page { font-size: 16px; }` makes `1rem` 16px (the dolan UI theme sets it), and so the text of HTML text tags and loose text, but a `<text>` with no font size of its own stays at 14px: give it one (`text-base`). No keyword sizes (`small`, `medium`, `large`).
+Every `rem` size is an eighth smaller than in a browser: Tailwind's `h-12` is 42px, not 48px. `page { font-size: 16px; }` makes `1rem` 16px (the dolan UI theme sets it), and so the text of HTML text tags, loose text and a `<text>` with no font size of its own (in the native bundle the build gives `<text>` `font-size: 1rem`, which any class or `text` rule of the app's replaces). No keyword sizes (`small`, `medium`, `large`).
 
 ### Text follows the phone's text size through `rem`, not `px`
 
-The `ng build --platform` apps follow Dynamic Type (iOS) and the font size (Android), at launch and when it changes: the native build writes a `page` rule's px `font-size` in `sp` (adding `page { font-size: 14px }` for an app without one), and only `sp` takes the phone's scale, so `1rem`, and everything sized in `rem` (Tailwind's `text-base`, `h-12`, `p-4`, the dolan components), grows by it. A size in `px` stays as written: use it only for what mustn't grow. A `<text>` with no font size of its own stays at Lynx's 14px, so give text a size class. Lay out for growth: a fixed `px` height around `rem` text overflows at the large sizes, which reach about 3.1 on iOS. `inject(LynxAccessibilitySettings).textScale()` is the scale (1 at the default) for a layout that has to change. `"textScaling": false` in the build target's options keeps the default size, and `{ "max": 1.6 }` caps it. The web preview and Lynx Explorer stay at 1.
+The `ng build --platform` apps follow Dynamic Type (iOS) and the font size (Android), at launch and when it changes: the native build writes a `page` rule's px `font-size` in `sp` (adding `page { font-size: 14px }` for an app without one), and only `sp` takes the phone's scale, so `1rem`, and everything sized in `rem` (Tailwind's `text-base`, `h-12`, `p-4`, the dolan components), grows by it. A size in `px` stays as written: use it only for what mustn't grow. A `<text>` with no font size of its own is `1rem`, so it grows too. Lay out for growth: a fixed `px` height around `rem` text overflows at the large sizes, which reach about 3.1 on iOS. `inject(LynxAccessibilitySettings).textScale()` is the scale (1 at the default) for a layout that has to change. `"textScaling": false` in the build target's options keeps the default size, and `{ "max": 1.6 }` caps it. The web preview and Lynx Explorer stay at 1.
 
 ### `line-height` only works on `<text>` elements
 
@@ -150,6 +150,19 @@ iOS keeps the system's pale gray: its setter takes a color a string attribute ne
 ### No `@media` queries
 
 Use runtime logic with conditional classes. `prefers-color-scheme` on its own works: the build turns it into rules under `page.dark` (see "Dark Mode" in [styling-and-css.md](styling-and-css.md)). For `prefers-reduced-motion`, `prefers-reduced-transparency` and `prefers-contrast`, inject `LynxAccessibilitySettings`: its `reduceMotion()`, `reduceTransparency()` and `increaseContrast()` signals come from the host app's global props (the `ng build --platform` apps send them) and, in the web preview, from the browser's media queries. Its `textScale()`, the phone's text size, comes from the global props only, and is 1 in the web preview.
+
+### No visibility event when the app leaves the screen or comes back
+
+Lynx pauses timers in the background and tells the app's code nothing, and a paused `setTimeout` can fire late once the app wakes. Inject `LynxAppState` instead: `state()` is `'active'`, `'inactive'` (on screen but not taking touches: Control Center, a call, split screen) or `'background'`, and `active()` is `state() === 'active'`. The `ng build --platform` apps send it in the `appState` global prop, the web preview follows the page's visibility, and Lynx Explorer stays `'active'`. Catch up on the way back:
+
+```typescript
+const appState = inject(LynxAppState);
+effect(() => {
+  if (appState.active()) untracked(() => this.#now.set(new Date()));
+});
+```
+
+In a spec, `setAppState('background')` and `setAppState('active')` from the testing library move it; `await waitForUpdate()` after each, or an `effect()` never sees the app leave.
 
 ### `SystemInfo.osVersion` is missing where Angular runs
 

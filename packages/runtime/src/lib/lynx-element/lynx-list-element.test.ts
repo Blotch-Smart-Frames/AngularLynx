@@ -578,10 +578,20 @@ describe('LynxListElement', () => {
       expect(after!.updateAction[0]).not.toHaveProperty('full-span');
     });
 
-    it('notes the attributes of an item before it joins a list', () => {
+    it('sends the attributes an item had before it joined the list, a bare one as true', () => {
       const item = makeItem();
+      // A bare `sticky-bottom` in a template arrives as an empty string.
       item.setAttribute('sticky-bottom', '');
-      expect(item._listItemAttributes).toEqual({ 'sticky-bottom': true });
+      const list = makeList();
+      list.appendChild(item);
+      vi.clearAllMocks();
+
+      list._processUpdate();
+
+      const [info] = sentInfo() as {
+        insertAction: Record<string, unknown>[];
+      }[];
+      expect(info!.insertAction[0]).toMatchObject({ 'sticky-bottom': true });
     });
 
     it('sends removeAction for children removed since last commit', () => {

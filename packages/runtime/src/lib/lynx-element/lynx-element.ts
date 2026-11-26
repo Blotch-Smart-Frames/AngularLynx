@@ -1535,9 +1535,12 @@ export class LynxElement implements BaseLynxElement {
    * web, so a rule whose selector names `text` isn't one. Lynx matches it,
    * since the `<p>` is a `<text>`, so the theme's `view > text` gave every
    * `<p>` in a `<view>` the color `--foreground`, whatever color the view
-   * set (issue #610). Read the variable instead, and the parent's color wins
-   * over that rule. Where no ancestor sets the variable, the rule still
-   * applies, as the page's color does on the web.
+   * set (issue #610). Read the variable instead, and the nearest ancestor's
+   * color wins over that rule. The theme sets the page's color, which the
+   * page passes down too, so a `<p>` no other ancestor colors takes that,
+   * as on the web. Where no ancestor sets the variable, the `var()` makes
+   * the declaration unset, so the rule doesn't apply either (seen on iOS and
+   * in the web preview), which is again what the web draws.
    */
   #applyInheritance(): void {
     const style = inheritanceStyleFor(

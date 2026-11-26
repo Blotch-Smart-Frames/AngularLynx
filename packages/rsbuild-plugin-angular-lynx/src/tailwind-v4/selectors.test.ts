@@ -79,6 +79,10 @@ describe('lowerSelectors', () => {
       '.a:is(view)',
       // The `+` is part of the class name, not a combinator.
       '.a\\+:is(view) .x',
+      // The space ends the `\\31` escape, so it can't be trimmed away.
+      '.a:is(.b\\31 ) .x',
+      // Nor can one be written after it.
+      '.a:is(.b\\31) .x',
       // A no-break space is part of a name too: CSS whitespace is only
       // space, tab, newline, form feed and carriage return.
       '.a\u00a0:is(view) .x',

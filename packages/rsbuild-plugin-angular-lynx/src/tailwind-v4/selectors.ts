@@ -82,7 +82,14 @@ const inlineCompounds = (selector: string): string => {
       const inner =
         end === -1 ? '' : inlineCompounds(trimCss(selector.slice(start, end)));
       // A type selector or `*` has to start its compound.
-      if (isCompound(inner) && (compoundStart || /^[.#[:]/.test(inner))) {
+      // Inlined, an argument ending in a hex escape would run into what
+      // follows: `.a:is(.b\31) .x` would become `.a.b\31 .x`, where the
+      // space ends the escape instead of separating the compounds.
+      if (
+        isCompound(inner) &&
+        !endsInHexEscape(inner) &&
+        (compoundStart || /^[.#[:]/.test(inner))
+      ) {
         lowered += inner;
         index = end;
         compoundStart = false;
@@ -140,10 +147,23 @@ const closingParenthesis = (text: string, start: number): number => {
 /**
  * Trims CSS whitespace (space, tab, newline, form feed, carriage return)
  * from both ends. `String.prototype.trim()` also takes a no-break space,
- * which can end a class name.
+ * which can end a class name. One whitespace character after a hex escape
+ * (`\31 `) ends the escape, so it stays.
  */
-const trimCss = (text: string): string =>
-  text.replace(/^[ \t\n\f\r]+|[ \t\n\f\r]+$/g, '');
+const trimCss = (text: string): string => {
+  const trimmed = text.replace(/^[ \t\n\f\r]+|[ \t\n\f\r]+$/g, '');
+  const trailing = /[ \t\n\f\r]+$/.exec(text);
+  return endsInHexEscape(trimmed) && trailing
+    ? trimmed + trailing[0][0]
+    : trimmed;
+};
+
+/**
+ * Whether a selector ends in a hex escape such as `\31`, which whitespace
+ * written after it would end, rather than separate compounds.
+ */
+const endsInHexEscape = (text: string): boolean =>
+  /(?:^|[^\\])(?:\\\\)*\\[0-9a-f]{1,6}$/i.test(text);
 
 /**
  * Splits a selector list on its top-level commas.

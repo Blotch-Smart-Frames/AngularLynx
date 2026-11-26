@@ -1,4 +1,4 @@
-import { Component, signal } from '@angular/core';
+import { Component, ErrorHandler, type Provider, signal } from '@angular/core';
 import {
   fireEvent,
   render,
@@ -14,6 +14,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
 import { DURATION } from '../../utils/animate';
 import { UiGlass } from '../glass/glass';
+import { ICON_LIGHT_COLORS } from '../icon/icon-theme';
+import type { IconName } from '../icon/icons';
 import {
   UiMenu,
   UiMenuItem,
@@ -21,6 +23,12 @@ import {
   UiMenuSeparator,
   UiMenuTrigger,
 } from './menu';
+
+/**
+ * An app's own one-color mark, with no SVG namespace, as an app writes one.
+ */
+const MARK =
+  '<svg viewBox="0 0 16 16"><path fill="currentColor" d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0Z"/></svg>';
 
 @Component({
   imports: [
@@ -87,6 +95,12 @@ import {
           disabled
           (pressed)="archived()"
         />
+        <ui-menu-item
+          label="Open in Acme"
+          [icon]="markIcon()"
+          [svg]="mark()"
+          [variant]="markVariant()"
+        />
         <ui-menu-item label="Bold" checked />
         <ui-menu-item label="Pin" [checked]="pinned()" />
       </ui-menu-section>
@@ -99,6 +113,9 @@ class MenuHost {
   readonly glassTrigger = signal(false);
   readonly sort = signal<'name' | 'date'>('date');
   readonly pinned = signal<boolean | undefined>(undefined);
+  readonly mark = signal<string | undefined>(MARK);
+  readonly markIcon = signal<IconName | undefined>(undefined);
+  readonly markVariant = signal<'default' | 'destructive'>('default');
   readonly closed = vi.fn();
   readonly shared = vi.fn();
   readonly deleted = vi.fn();
@@ -144,6 +161,7 @@ const ROW_HEIGHT = 44;
 const renderMenu = async (
   platform: { platform: string; osVersion: string } | null = IOS_26,
   trigger = TRIGGER,
+  providers: Provider[] = [],
 ) => {
   vi.stubGlobal('SystemInfo', platform ?? undefined);
   const invoke = vi
@@ -172,7 +190,10 @@ const renderMenu = async (
       callback({ code: 0, data });
     });
   const result = await render(MenuHost, {
-    providers: [{ provide: LynxAccessibilitySettings, useValue: settings }],
+    providers: [
+      { provide: LynxAccessibilitySettings, useValue: settings },
+      ...providers,
+    ],
   });
   const host = result.componentRef.instance as MenuHost;
   const overlay = result.container.querySelector('overlay')!;
@@ -811,6 +832,80 @@ describe('a menu that opens upward', () => {
     const rendered = await renderOpenMenu();
 
     expect(direction(content(rendered))).toBe('column');
+  });
+});
+
+describe("UiMenuItem's own svg", () => {
+  /**
+   * The markup the item's icon draws.
+   */
+  const iconOf = (rendered: Rendered, name: string) =>
+    row(rendered, name).querySelector('svg')!.getAttribute('content') ?? '';
+
+  it("draws the app's own svg in the item's color, where the set's icon goes", async () => {
+    const rendered = await renderOpenMenu();
+    const item = row(rendered, 'Open in Acme');
+    const icon = iconOf(rendered, 'Open in Acme');
+
+    // The namespace the web preview needs to draw it, and the glass's
+    // foreground in place of currentColor, at the row's icon size.
+    expect(icon).toMatch(/^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
+    expect(icon).toContain(`fill="${ICON_LIGHT_COLORS['glass-foreground']}"`);
+    expect(icon).not.toContain('currentColor');
+    expect(item.querySelector<HTMLElement>('svg')!.style.width).toBe('20px');
+    expect(
+      precedes(
+        item.querySelector('svg')!,
+        within(item).getByText('Open in Acme'),
+      ),
+    ).toBe(true);
+
+    // A destructive item draws it in the destructive color, as it does the
+    // set's icons.
+    rendered.host.markVariant.set('destructive');
+    await waitForUpdate();
+    expect(iconOf(rendered, 'Open in Acme, destructive')).toContain(
+      `fill="${ICON_LIGHT_COLORS['destructive']}"`,
+    );
+  });
+
+  it('puts it after the label before iOS 26, as the set’s icons', async () => {
+    const rendered = await renderOpenMenu(IOS_18);
+    const item = row(rendered, 'Open in Acme');
+
+    expect(
+      precedes(
+        within(item).getByText('Open in Acme'),
+        item.querySelector('svg')!,
+      ),
+    ).toBe(true);
+  });
+
+  it('reports an error with both an icon and an svg', async () => {
+    const handleError = vi.fn();
+    const rendered = await renderMenu(IOS_26, TRIGGER, [
+      { provide: ErrorHandler, useValue: { handleError } },
+    ]);
+    rendered.host.open.set(true);
+    await waitForOpen(rendered);
+    expect(handleError).not.toHaveBeenCalled();
+
+    rendered.host.markIcon.set('star');
+    await waitForUpdate();
+    expect(handleError.mock.calls.map(([error]) => error)).toContainEqual(
+      new Error('<ui-menu-item> takes an icon or an svg, not both.'),
+    );
+
+    // The icon alone is right, and so is neither.
+    handleError.mockClear();
+    rendered.host.mark.set(undefined);
+    await waitForUpdate();
+    expect(handleError).not.toHaveBeenCalled();
+    expect(iconOf(rendered, 'Open in Acme')).toContain('<svg');
+    rendered.host.markIcon.set(undefined);
+    await waitForUpdate();
+    expect(handleError).not.toHaveBeenCalled();
+    expect(row(rendered, 'Open in Acme').querySelector('svg')).toBeNull();
   });
 });
 

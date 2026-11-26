@@ -43,6 +43,7 @@ A press goes to the handler registered last with [`on()`](#lynxbackbuttonon). Wi
 
 - **While an `<overlay>` shows,** Android gives back to it, as its `requestclose` event, and not to these handlers.
 - **Android decides whether the app takes back when the gesture starts,** before JavaScript could answer. So the app tells the shell beforehand: it takes back while a handler is registered or the router has a screen to go back to, and Android has it the rest of the time.
+- **Android's back gesture follows the finger** in a [`<lynx-stack-outlet>`](/guide/routing): while no handler takes back, the stack back goes back in moves its top screen with the gesture, and finishes going back as the finger lets go, or brings the screen back if the gesture is canceled. A handler hears back only once the gesture is done, as a press.
 - **With a `LocationStrategy` of your own,** only the handlers take back: the router's history doesn't.
 
 ### `LynxBackButton.on()`

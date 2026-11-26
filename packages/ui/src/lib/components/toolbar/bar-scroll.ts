@@ -13,8 +13,10 @@ import {
   type Signal,
   type WritableSignal,
 } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import {
   type LayoutChangeDetail,
+  type ListLayoutCompleteDetail,
   LYNX_ELEMENTS,
   LynxAccessibilitySettings,
   type LynxEvent,
@@ -261,7 +263,27 @@ const stop = (alpha: number, at: string): string =>
   `rgba(0, 0, 0, ${alpha}) ${at}`;
 
 /**
- * Makes a `<scroll-view>` the content under a screen's bars
+ * The list items a `list[ui-bar-scroll]` adds for the bars, by `item-key`:
+ * the room above the content and below it, and the large title. Lynx's list
+ * needs every item to have a key, unique in the list, so these are named for
+ * the component, away from an app's own.
+ */
+export const BAR_SCROLL_ITEM_KEYS = {
+  top: 'ui-bar-scroll-top',
+  largeTitle: 'ui-bar-scroll-large-title',
+  bottom: 'ui-bar-scroll-bottom',
+} as const;
+
+/**
+ * How often a `<list>` under the bars sends `scroll`, in ms, unless the app
+ * sets `scroll-event-throttle` itself: about each frame, as a scroll view
+ * sends it. Lynx's list sends it every 200 ms by default, so the large title
+ * would reach the bar and the bars change a fifth of a second late.
+ */
+const LIST_SCROLL_THROTTLE = 16;
+
+/**
+ * Makes a `<scroll-view>` or a `<list>` the content under a screen's bars
  * (`ui-navigation-bar` and `ui-toolbar`), as UIKit adjusts a scroll view for
  * the bars over it:
  *
@@ -295,90 +317,135 @@ const stop = (alpha: number, at: string): string =>
  *   turn opaque, and Material's top app bar changes color, once content
  *   scrolls under them.
  *
+ * On a `<list>`, for a long feed, the room for the bars and the large title
+ * are list items of their own, before the list's items and after them, each
+ * a whole row in a list of columns (`full-span`). Their keys are in
+ * {@link BAR_SCROLL_ITEM_KEYS}. The list sends `scroll` about every frame
+ * rather than Lynx's 200 ms, unless it sets `scroll-event-throttle` itself:
+ *
+ * ```html
+ * <list ui-bar-scroll scroll-orientation="vertical" class="h-full">
+ *   <ui-avatar largeTitleAccessory [src]="account().picture" />
+ *   @for (note of notes(); track note.id) {
+ *     <list-item [item-key]="note.id">…</list-item>
+ *   }
+ * </list>
+ * ```
+ *
  * It listens to the scroll view's events itself, as `ui-dock-scroll` does,
  * so it updates the bars only when they should change, rather than running
  * change detection on every event.
  */
 @Component({
-  selector: 'scroll-view[ui-bar-scroll]',
-  imports: [LYNX_ELEMENTS],
+  selector: 'scroll-view[ui-bar-scroll], list[ui-bar-scroll]',
+  imports: [LYNX_ELEMENTS, NgTemplateOutlet],
   encapsulation: ViewEncapsulation.None,
   host: { '[style.mask-image]': 'edgeMask()' },
   // The spacers measure themselves, for the edge effect: their height counts
-  // the safe area, which only CSS knows.
+  // the safe area, which only CSS knows. In a <list>, each is a list item, as
+  // everything a list holds has to be; the list's own items go between them.
   template: `
-    <view
-      [style.height]="topInset()"
-      (bindlayoutchange)="measureTop($event)"
-    ></view>
+    @if (inList) {
+      <list-item [attr.item-key]="itemKeys.top" [full-span]="true">
+        <view
+          [style.height]="topInset()"
+          (bindlayoutchange)="measureTop($event)"
+        ></view>
+      </list-item>
+    } @else {
+      <view
+        [style.height]="topInset()"
+        (bindlayoutchange)="measureTop($event)"
+      ></view>
+    }
     @if (largeTitle(); as title) {
-      <view [class]="largeTitleClass()">
-        @if (titleMenu()) {
-          <!-- A title that opens a menu is one accessibility element, a
-               button named by the title: a <view> isn't one by default, so
-               screen readers would read only the text, with nothing to say
-               it opens anything. It stays the screen's heading where the
-               platform reads more than one trait.
+      <!-- The large title's band, which a scroll view holds as it is and a
+           list in an item of its own. -->
+      <ng-template #largeTitleBand>
+        <view [class]="largeTitleClass()">
+          @if (titleMenu()) {
+            <!-- A title that opens a menu is one accessibility element, a
+                 button named by the title: a <view> isn't one by default, so
+                 screen readers would read only the text, with nothing to say
+                 it opens anything. It stays the screen's heading where the
+                 platform reads more than one trait.
 
-               It keeps to its text and chevron rather than the row's
-               width, so only a tap on the title opens the menu, and to
-               what the row has left at most (shrink): a long title stays
-               on one line and ends with "…", and the chevron keeps its
-               width after it. Wrapped, the title would leave its band,
-               over the bar and the content.
+                 It keeps to its text and chevron rather than the row's
+                 width, so only a tap on the title opens the menu, and to
+                 what the row has left at most (shrink): a long title stays
+                 on one line and ends with "…", and the chevron keeps its
+                 width after it. Wrapped, the title would leave its band,
+                 over the bar and the content.
 
-               It dims under a finger from the touch's start. Touch events
-               for native and mouse events for the web preview, which sends
-               no touches for a cursor; a canceled touch (a scroll taking
-               over) and a cursor leaving release too. -->
-          <view
-            class="min-w-0 shrink flex-row items-center flex"
-            [style]="titleButtonStyle()"
-            accessibility-element="true"
-            accessibility-traits="button"
-            [accessibility-label]="title"
-            [lynxAccessibilityTraits]="{ header: true }"
-            (bindtouchstart)="pressTitle(true)"
-            (bindtouchend)="pressTitle(false)"
-            (bindtouchcancel)="pressTitle(false)"
-            (bindmousedown)="pressTitle(true)"
-            (bindmouseup)="pressTitle(false)"
-            (bindmouseleave)="pressTitle(false)"
-            (bindtap)="tapTitle()"
-          >
-            <text [text-maxline]="1" [class]="largeTitleTextClass()">{{
-              title
-            }}</text>
-            <svg
-              class="shrink-0"
-              [attr.content]="titleChevron()"
-              [style]="titleChevronStyle()"
-            />
+                 It dims under a finger from the touch's start. Touch events
+                 for native and mouse events for the web preview, which sends
+                 no touches for a cursor; a canceled touch (a scroll taking
+                 over) and a cursor leaving release too. -->
+            <view
+              class="min-w-0 shrink flex-row items-center flex"
+              [style]="titleButtonStyle()"
+              accessibility-element="true"
+              accessibility-traits="button"
+              [accessibility-label]="title"
+              [lynxAccessibilityTraits]="{ header: true }"
+              (bindtouchstart)="pressTitle(true)"
+              (bindtouchend)="pressTitle(false)"
+              (bindtouchcancel)="pressTitle(false)"
+              (bindmousedown)="pressTitle(true)"
+              (bindmouseup)="pressTitle(false)"
+              (bindmouseleave)="pressTitle(false)"
+              (bindtap)="tapTitle()"
+            >
+              <text [text-maxline]="1" [class]="largeTitleTextClass()">{{
+                title
+              }}</text>
+              <svg
+                class="shrink-0"
+                [attr.content]="titleChevron()"
+                [style]="titleChevronStyle()"
+              />
+            </view>
+          } @else {
+            <!-- One line, as a title that opens a menu is: an accessory
+                 takes some of the row, and a title too long for the rest
+                 would wrap out of its band. It ends with "…" instead. -->
+            <text
+              accessibility-traits="header"
+              [text-maxline]="1"
+              [class]="plainTitleClass()"
+              >{{ title }}</text
+            >
+          }
+          <!-- What the app puts beside the title: as tall as the title's
+               line and centered on it, at the line's end. It keeps its
+               width, and the title gives way to it. -->
+          <view [class]="accessoryClass()">
+            <ng-content select="[largeTitleAccessory]" />
           </view>
-        } @else {
-          <!-- One line, as a title that opens a menu is: an accessory
-               takes some of the row, and a title too long for the rest
-               would wrap out of its band. It ends with "…" instead. -->
-          <text
-            accessibility-traits="header"
-            [text-maxline]="1"
-            [class]="plainTitleClass()"
-            >{{ title }}</text
-          >
-        }
-        <!-- What the app puts beside the title: as tall as the title's
-             line and centered on it, at the line's end. It keeps its
-             width, and the title gives way to it. -->
-        <view [class]="accessoryClass()">
-          <ng-content select="[largeTitleAccessory]" />
         </view>
-      </view>
+      </ng-template>
+      @if (inList) {
+        <list-item [attr.item-key]="itemKeys.largeTitle" [full-span]="true">
+          <ng-container *ngTemplateOutlet="largeTitleBand" />
+        </list-item>
+      } @else {
+        <ng-container *ngTemplateOutlet="largeTitleBand" />
+      }
     }
     <ng-content />
-    <view
-      [style.height]="bottomInset()"
-      (bindlayoutchange)="measureBottom($event)"
-    ></view>
+    @if (inList) {
+      <list-item [attr.item-key]="itemKeys.bottom" [full-span]="true">
+        <view
+          [style.height]="bottomInset()"
+          (bindlayoutchange)="measureBottom($event)"
+        ></view>
+      </list-item>
+    } @else {
+      <view
+        [style.height]="bottomInset()"
+        (bindlayoutchange)="measureBottom($event)"
+      ></view>
+    }
   `,
 })
 export class UiBarScroll {
@@ -388,6 +455,14 @@ export class UiBarScroll {
   readonly #design = injectGlassDesign();
   readonly #platform = platformOf(inject(Injector));
   readonly #settings = inject(LynxAccessibilitySettings);
+
+  /**
+   * Whether the content is a `<list>`, whose children are all list items, so
+   * the spacers and the large title go in items of their own.
+   */
+  protected readonly inList = this.#element.tagName === 'list';
+
+  protected readonly itemKeys = BAR_SCROLL_ITEM_KEYS;
 
   /** A finger (or the mouse) is down on a large title that opens a menu. */
   protected readonly titlePressing = signal(false);
@@ -428,7 +503,32 @@ export class UiBarScroll {
         this.#update();
       },
     ),
+    // A list sends no contentsizechanged. It says how tall its content is
+    // once it has laid its items out, with need-layout-complete-info (see
+    // listOptions), which is what a frosted toolbar needs before anything
+    // scrolls.
+    ...(this.inList
+      ? [
+          this.#renderer.listen(
+            this.#element,
+            'bindlayoutcomplete',
+            (event: LynxEvent<ListLayoutCompleteDetail>) => {
+              const info = event.detail.scrollInfo;
+              if (info) this.#scrolled(info);
+            },
+          ),
+        ]
+      : []),
   ];
+
+  /**
+   * What a `<list>` needs to tell the bars where its content is, as it
+   * starts: `scroll` about every frame (see LIST_SCROLL_THROTTLE), unless
+   * the app has chosen how often, and its content's height with
+   * `layoutcomplete`. Set here rather than as host attributes, which would
+   * reach a `<scroll-view>` too.
+   */
+  protected readonly listOptions = this.inList && this.#setListOptions();
 
   protected readonly cleanup = inject(DestroyRef).onDestroy(() => {
     for (const remove of this.listeners) remove();
@@ -584,6 +684,22 @@ export class UiBarScroll {
    */
   protected tapTitle(): void {
     this.#state.topBar()?.titlePressed?.();
+  }
+
+  #setListOptions(): true {
+    // Before the template's bindings, so a list's own [scroll-event-throttle]
+    // replaces it.
+    this.#renderer.setAttribute(
+      this.#element,
+      'scroll-event-throttle',
+      String(LIST_SCROLL_THROTTLE),
+    );
+    this.#renderer.setAttribute(
+      this.#element,
+      'need-layout-complete-info',
+      'true',
+    );
+    return true;
   }
 
   #scrolled({ scrollTop, scrollHeight }: ScrollDetail): void {

@@ -42,7 +42,7 @@ import { UiSeparator } from '../components/ui/separator';
   ],
   template: `
     <scroll-view scroll-orientation="vertical" class="h-screen bg-background">
-      <view class="flex-col items-center gap-5 px-6 py-8 flex">
+      <view class="flex-col items-center gap-5 px-6 flex pt-safe-8 pb-safe-8">
         <view class="flex-col items-center gap-2 flex">
           <ui-avatar size="xl" src="" [fallback]="initials()" />
           <text class="text-[24px] font-bold text-foreground">{{

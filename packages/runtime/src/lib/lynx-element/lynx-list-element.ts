@@ -105,7 +105,7 @@ export type ListSlot = {
   readonly key: string;
   /** The reuse type, for a run's item. */
   readonly type: string;
-  /** The layout attributes, for a run's item. */
+  /** The layout attributes: a run's item's, or those set on an element. */
   readonly attributes: ListItemAttributes | undefined;
 };
 
@@ -345,6 +345,14 @@ export class LynxListElement extends LynxElement {
   }
 
   /**
+   * @internal An element child's layout attributes changed (see
+   * LynxElement._listItemAttributes): tells native on the next update.
+   */
+  listItemChanged(): void {
+    this.#scheduleUpdate();
+  }
+
+  /**
    * Returns ElementRefs of real UI children, excluding NoneElement comment
    * markers — the invisible <view>s LynxDocument.createComment() creates as
    * Angular's @for/@if insertion anchors, each tagged tagName === 'comment'.
@@ -497,7 +505,7 @@ export class LynxListElement extends LynxElement {
           index: -1,
           key: '',
           type: 'list-item',
-          attributes: undefined,
+          attributes: child._listItemAttributes,
         });
         continue;
       }
@@ -529,12 +537,16 @@ export class LynxListElement extends LynxElement {
     if (slot.ref) {
       // Minimal insertAction format matching Vue Lynx: only position, type,
       // item-key.
+      // Its layout attributes too, which native reads only from here: a
+      // `<list-item full-span>` that leaves them out takes one column of a
+      // flow list, as React Lynx's would without them in its platform info.
       return {
         position,
         type: 'list-item',
         'item-key':
           (__GetAttributeByName(slot.ref, 'item-key') as string | null) ??
           slot.id.slice(1),
+        ...slot.attributes,
       };
     }
     return {
@@ -546,9 +558,10 @@ export class LynxListElement extends LynxElement {
   }
 
   /**
-   * Adds an updateAction for a run's item that stays at `position` when its
+   * Adds an updateAction for an item that stays at `position` when its
    * layout attributes changed since `old`, the same item as last told to
-   * native. An element child's attributes are its own, set on its element.
+   * native: a run's, from its data, or an element child's, set on it (see
+   * LynxElement._listItemAttributes).
    */
   #updateIfChanged(
     updateAction: UpdateAction[],
@@ -556,7 +569,7 @@ export class LynxListElement extends LynxElement {
     slot: ListSlot,
     position: number,
   ): void {
-    if (!slot.source || !attributesDiffer(old.attributes, slot.attributes)) {
+    if (!attributesDiffer(old.attributes, slot.attributes)) {
       return;
     }
     updateAction.push({

@@ -1,4 +1,4 @@
-import { Component, type Provider, signal } from '@angular/core';
+import { Component, ErrorHandler, type Provider, signal } from '@angular/core';
 import {
   fireEvent,
   render,
@@ -39,6 +39,7 @@ import {
       <ui-toolbar-item
         label="Compose"
         [icon]="icon()"
+        [svg]="svg()"
         [prominent]="prominent()"
         [back]="back()"
         [disabled]="disabled()"
@@ -51,6 +52,7 @@ class ToolbarHost {
   readonly toolbarClass = signal('');
   readonly groupClass = signal('');
   readonly icon = signal<IconName | undefined>('pencil');
+  readonly svg = signal<string | undefined>(undefined);
   readonly prominent = signal(false);
   readonly back = signal(false);
   readonly disabled = signal(false);
@@ -72,6 +74,12 @@ const IOS_26 = { platform: 'iOS', osVersion: '26.0' };
 const IOS_18 = { platform: 'iOS', osVersion: '18.5' };
 const ANDROID = { platform: 'Android', osVersion: '15' };
 const WEB = { platform: 'web', osVersion: '' };
+
+/**
+ * An app's own one-color mark, with no SVG namespace, as an app writes one.
+ */
+const MARK =
+  '<svg viewBox="0 0 16 16"><path fill="currentColor" d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0Z"/></svg>';
 
 /** The theme's light colors, as icon-theme.ts resolves them for an SVG. */
 const PRIMARY = 'rgba(24, 24, 27, 1)';
@@ -434,5 +442,60 @@ describe('UiToolbar with glass on Android and the web', () => {
     fireLynxEvent(item('Compose'), 'mouseup');
     await waitForUpdate();
     expect(highlightOf(button('Compose'))).toBeUndefined();
+  });
+});
+
+describe("UiToolbarItem's own svg", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("shows the app's own svg as its icon, in the item's color", async () => {
+    const { host, update, iconOf, labelOf, ownGlass, item, button } =
+      await renderToolbar(IOS_26);
+    await update(() => {
+      host.icon.set(undefined);
+      host.svg.set(MARK);
+    });
+
+    // An icon-only item, a glass circle, with the namespace the web preview
+    // needs and the glass's foreground in place of currentColor.
+    expect(iconOf('Compose')).toMatch(
+      /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/,
+    );
+    expect(iconOf('Compose')).toContain(`fill="${FOREGROUND}"`);
+    expect(labelOf('Compose')).toBeNull();
+    expect(ownGlass('Compose')?.classList).toContain('rounded-full');
+    expect(button('Compose').className).toContain('w-[44px]');
+    expect(item('Compose').querySelector<HTMLElement>('svg')!.style.width).toBe(
+      '22px',
+    );
+
+    // Prominent, it takes the tint's foreground, as the set's icons do.
+    await update(() => host.prominent.set(true));
+    expect(iconOf('Compose')).toContain(`fill="${PRIMARY_FOREGROUND}"`);
+  });
+
+  it('shows the chevron for a Back item, whatever its svg', async () => {
+    const { host, update, iconOf } = await renderToolbar(IOS_26);
+    await update(() => {
+      host.icon.set(undefined);
+      host.svg.set(MARK);
+      host.back.set(true);
+    });
+    expect(iconOf('Compose')).toContain('m15 18-6-6 6-6');
+  });
+
+  it('reports an error with both an icon and an svg', async () => {
+    const handleError = vi.fn();
+    const { host, update } = await renderToolbar(IOS_26, [
+      { provide: ErrorHandler, useValue: { handleError } },
+    ]);
+    expect(handleError).not.toHaveBeenCalled();
+
+    await update(() => host.svg.set(MARK));
+    expect(handleError.mock.calls.map(([error]) => error)).toContainEqual(
+      new Error('<ui-toolbar-item> takes an icon or an svg, not both.'),
+    );
   });
 });

@@ -152,12 +152,22 @@ export class LynxShortcuts {
       this.#handlers.set(id, handlers);
     }
     handlers.add(handler);
-    const remove = () => {
+    const drop = () => {
       handlers.delete(handler);
     };
-    (options?.injector?.get(DestroyRef) ?? currentDestroyRef())?.onDestroy(
-      remove,
-    );
+    const unregister = (
+      options?.injector?.get(DestroyRef) ?? currentDestroyRef()
+    )?.onDestroy(drop);
+    /**
+     * Removed by hand, the handler also leaves the DestroyRef, which would
+     * otherwise keep it, and what it holds, until a long-lived injector
+     * goes. Angular's unregister ignores a callback that's already gone, so
+     * removing twice is harmless.
+     */
+    const remove = () => {
+      unregister?.();
+      drop();
+    };
 
     const unhandled = this.#unhandled.get(id);
     if (unhandled) {

@@ -60,6 +60,11 @@ android {
         // its insets listener). A properties file written before the option
         // existed has no line for it, and gets the default.
         resValue("bool", "edge_to_edge", appConfig.getProperty("edgeToEdge") ?: "true")
+        // Whether MainActivity sets the LynxView's font scale from the
+        // system's font size, and the largest it takes (0 for no cap). Read
+        // with the same default for a properties file written before them.
+        resValue("bool", "text_scaling", appConfig.getProperty("textScaling") ?: "true")
+        resValue("string", "max_text_scale", appConfig.getProperty("maxTextScale") ?: "0")
     }
 
     signingConfigs {

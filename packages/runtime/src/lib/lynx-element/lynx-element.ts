@@ -17,6 +17,11 @@ import {
   usesAndroidBlurMaterials,
 } from '../lynx-document/android-blur-material';
 import { getPageId } from '../lynx-document/page-ref';
+import { tagClassOf } from '../lynx-document/element-tags';
+import {
+  ATTRIBUTE_STYLED_TAGS,
+  attributeClassOf,
+} from '../lynx-document/web-tags';
 import { globalEvents, type LynxGlobalDocument } from '../global-events';
 import {
   isBindingListItem,
@@ -27,6 +32,7 @@ import {
   runAfterFirstRender,
 } from '../lynx-render-lifecycle';
 import type { ElementRef } from '../types/lynx';
+import type { ListItemAttributes } from './lynx-list-element';
 import { toLynxDisplay, withLynxDisplay } from './display';
 import { flushTreeWithListUpdates } from './list-updates';
 import { withFlatCalc } from './nested-calc';
@@ -41,6 +47,7 @@ import {
   ALL_TEXT_PROPERTIES,
   ANONYMOUS_TEXT_CLASS,
   INHERITANCE_CLASS,
+  LYNX_TEXT_INHERITANCE_CLASS,
   LAYOUT_FLAG,
   NOT_BLOCK_CONTAINERS,
   TAKES_RAW_TEXT,
@@ -140,6 +147,32 @@ const parseEventName = (
  * corner; `overflow: hidden` clips them (see "A `display: none` element still
  * draws its text on iOS" in investigations/lynx-vs-web-differences.md).
  */
+/**
+ * A flag attribute as native reads it from update-list-info: a boolean. A
+ * template's `full-span="true"`, or a bare `full-span` (`''`), arrives as a
+ * string, and only `false` or `"false"` turn one off.
+ */
+const listItemFlag = (value: unknown): boolean =>
+  value !== false && value !== 'false';
+
+/**
+ * The `<list-item>` attributes native lays a list out with, which it reads
+ * from the list's update-list-info rather than from the item (see
+ * LynxElement._listItemAttributes), each with how its value is sent.
+ * `reuse-identifier` isn't one: an element item's type is `list-item`.
+ */
+const LIST_ITEM_LAYOUT: {
+  readonly [
+    K in keyof Required<Omit<ListItemAttributes, 'reuse-identifier'>>
+  ]: (value: unknown) => ListItemAttributes[K];
+} = {
+  'estimated-main-axis-size-px': Number,
+  'full-span': listItemFlag,
+  'sticky-top': listItemFlag,
+  'sticky-bottom': listItemFlag,
+  recyclable: listItemFlag,
+};
+
 const HIDDEN_STYLE = 'display: none; overflow: hidden';
 
 /**
@@ -516,6 +549,16 @@ export class LynxElement implements BaseLynxElement {
   _virtualParent: LynxElement | null = null;
   _virtualPrev: LynxElement | null = null;
   _virtualNext: LynxElement | null = null;
+
+  /**
+   * @internal A `<list-item>`'s layout attributes (`full-span`, `sticky-top`
+   * and the rest, see LIST_ITEM_LAYOUT), as they've been set on it. Native
+   * reads them from the list's update-list-info, not from the item, so the
+   * list sends them from here (see LynxListElement.#collectSlots). A new
+   * object for each change, so the list can tell one by identity. Undefined
+   * until one is set, as on most items.
+   */
+  _listItemAttributes: ListItemAttributes | undefined = undefined;
 
   /**
    * @internal Set on the `<list-item>` of a `*lynxListFor` item. Its list
@@ -1172,6 +1215,16 @@ export class LynxElement implements BaseLynxElement {
     if (name === 'alt' && this.tagName === 'image') {
       name = 'accessibility-label';
     }
+    // An `<a href>` or `<abbr title>` gets the class the build's browser
+    // styles for it match, as Lynx can't match `a[href]` (see
+    // ATTRIBUTE_STYLED_TAGS). The attribute still goes to native below.
+    const styledTag = ATTRIBUTE_STYLED_TAGS.get(name);
+    if (styledTag && this.#scopeClasses?.includes(tagClassOf(styledTag))) {
+      this.setRuntimeClass(attributeClassOf(styledTag, name), value != null);
+    }
+    if (this.tagName === 'list-item' && name in LIST_ITEM_LAYOUT) {
+      this.#noteListItemLayout(name as keyof typeof LIST_ITEM_LAYOUT, value);
+    }
     if (name === 'class') {
       // Use __SetClasses (not __AddClass) because setAttribute replaces the
       // entire class attribute with a space-separated list. __AddClass treats
@@ -1369,6 +1422,29 @@ export class LynxElement implements BaseLynxElement {
     this.setAttribute('accessibility-traits', this.#ownTraits);
   }
 
+  /**
+   * Records one of a `<list-item>`'s layout attributes, as native reads it
+   * from update-list-info, and tells the list it's in, which sends it with
+   * its next update. It's set on the element all the same.
+   */
+  #noteListItemLayout(
+    name: keyof typeof LIST_ITEM_LAYOUT,
+    value: unknown,
+  ): void {
+    const attributes: Record<string, unknown> = {
+      ...this._listItemAttributes,
+    };
+    if (value == null) {
+      delete attributes[name];
+    } else {
+      attributes[name] = LIST_ITEM_LAYOUT[name](value);
+    }
+    this._listItemAttributes = attributes as ListItemAttributes;
+    (
+      this._virtualParent as { listItemChanged?(): void } | null
+    )?.listItemChanged?.();
+  }
+
   getAttribute(name: string) {
     // The testing library's DOM, which runs the native code paths, reads
     // `class` from the DOM element, which has the classes this cycle changed
@@ -1461,10 +1537,28 @@ export class LynxElement implements BaseLynxElement {
    * itself, which it doesn't inherit, and whether it lays out lines.
    */
   #rulesChanged(): void {
-    if (this.#webText && !this.#anonymous) {
-      LynxElement.#pendingInheritance.add(this);
+    // A Lynx <text>'s rules decide which styles the HTML text tags inside it
+    // inherit, and an HTML text tag's decide its own and those of the tags
+    // inside it (see #drawnAtDefault).
+    if (!this.#anonymous && (this.#webText || this.tagName === 'text')) {
+      this.#inheritAgain();
     }
     this.#layoutChanged();
+  }
+
+  /**
+   * Gives this element, if it's a #webText element, and each #webText
+   * element inside it through other #webText elements, their inherited
+   * styles again at the end of the cycle: what they inherit depends on the
+   * elements around them (see #drawnAtDefault). An element of another kind
+   * in between ends that, since the styles inside it don't depend on what's
+   * above it.
+   */
+  #inheritAgain(): void {
+    if (this.#webText) LynxElement.#pendingInheritance.add(this);
+    for (const child of this.#children) {
+      if (child.#webText) child.#inheritAgain();
+    }
   }
 
   /**
@@ -1511,16 +1605,77 @@ export class LynxElement implements BaseLynxElement {
    * Gives a #webText element the inherited value of each text style its own
    * rules don't set (see #inheritStyle). An anonymous `<text>` has no rules
    * of its own, and takes them all.
+   *
+   * An HTML text tag's own rules are the ones that would match it on the
+   * web, so a rule whose selector names `text` isn't one. Lynx matches it,
+   * since the `<p>` is a `<text>`, so the theme's `view > text` gave every
+   * `<p>` in a `<view>` the color `--foreground`, whatever color the view
+   * set (issue #610). Read the variable instead, and the nearest ancestor's
+   * color wins over that rule. The theme sets the page's color, which the
+   * page passes down too, so a `<p>` no other ancestor colors takes that,
+   * as on the web. Where no ancestor sets the variable, the `var()` makes
+   * the declaration unset, so the rule doesn't apply either (seen on iOS and
+   * in the web preview), which is again what the web draws.
    */
   #applyInheritance(): void {
-    const own = this.#anonymous
-      ? 0
-      : styleFlagsFor(this.#styleTokens()) & ALL_TEXT_PROPERTIES;
-    const style = inheritanceStyleFor(own);
+    const style = inheritanceStyleFor(
+      this.#ownTextStyles() | this.#drawnAtDefault(),
+    );
     if (style === this.#inheritStyle) return;
     this.#inheritStyle = style;
     // One removed this cycle gets it when it's rebuilt (see #recreateSubtree).
     if (!this.#paintingDead) this.#rewriteInlineStyle();
+  }
+
+  /**
+   * The text properties this element's own rules set, as a bitmask (see
+   * INHERITED_TEXT_PROPERTIES). An anonymous `<text>` has none. An HTML text
+   * tag's leave out the rules whose selector names `text`, which match it on
+   * Lynx, as it's a `<text>`, but not on the web (see #applyInheritance): it
+   * reads the variable for those, and has no copy of them for the tags inside
+   * it (see LYNX_TEXT_INHERITANCE_CLASS).
+   */
+  #ownTextStyles(): number {
+    if (this.#anonymous) return 0;
+    const tokens = this.#styleTokens();
+    if (this.#webText) tokens.delete('<text>');
+    return styleFlagsFor(tokens) & ALL_TEXT_PROPERTIES;
+  }
+
+  /**
+   * The text properties this #webText element should leave at Lynx's
+   * default, as a bitmask (see INHERITED_TEXT_PROPERTIES): in a Lynx
+   * `<text>`, those the `<text>` draws at its own default, which no rule of
+   * its or of an HTML text tag between them sets.
+   *
+   * A Lynx `<text>` reads none of the variables (see text-flow.ts), so it
+   * draws a property its rules don't set at Lynx's default, whatever its
+   * ancestors set: `font-size` at 14px under the theme's 16px page. The
+   * variable an inline tag in it reads comes from those ancestors, so
+   * `<text>Total: <b>12</b></text>` drew the `<b>` larger than the text
+   * beside it (issue #646). Left out, the tag draws at the default too, or
+   * at the `<text>`'s `color` and `font-family`, which Lynx passes to a
+   * `<text>` inside a `<text>`; the web preview inherits through the DOM
+   * either way. A property one of them does set has its copy in the variable
+   * (each gets INHERITANCE_CLASS, see #passTextStyles), which the tag reads,
+   * as before.
+   *
+   * The style index knows only the last part of a rule's selector (see
+   * styleFlagsFor), so a rule such as `.card .total { font-size: 24px }`
+   * counts for a `<text class="total">` outside `.card` too. There the tag
+   * still reads the variable, and takes its ancestors' value, as every inline
+   * tag in a Lynx `<text>` did before.
+   */
+  #drawnAtDefault(): number {
+    let set = 0;
+    for (let parent = this.#jsParent; parent; parent = parent.#jsParent) {
+      // The rules that give each one a copy of the property (see
+      // #ownTextStyles): an HTML text tag's leave out those naming `text`.
+      set |= parent.#ownTextStyles();
+      if (parent.#webText) continue;
+      return parent.tagName === 'text' ? ALL_TEXT_PROPERTIES & ~set : 0;
+    }
+    return 0;
   }
 
   /**
@@ -1796,6 +1951,8 @@ export class LynxElement implements BaseLynxElement {
     if (newChild.#webText || newChild.#passesTextStyles) {
       this.#passTextStyles();
     }
+    // What it inherits depends on its new parent (see #drawnAtDefault).
+    if (newChild.#webText) newChild.#inheritAgain();
   }
 
   /**
@@ -1819,6 +1976,12 @@ export class LynxElement implements BaseLynxElement {
       // it goes with the insert's own flush.
       (this.#scopeClasses ??= []).push(INHERITANCE_CLASS);
       this.#addClassName(INHERITANCE_CLASS);
+      // A Lynx <text> takes the copies of the rules naming `text` too, which
+      // an HTML text tag mustn't (see LYNX_TEXT_INHERITANCE_CLASS).
+      if (this.tagName === 'text' && !this.#webText) {
+        this.#scopeClasses.push(LYNX_TEXT_INHERITANCE_CLASS);
+        this.#addClassName(LYNX_TEXT_INHERITANCE_CLASS);
+      }
     }
     // A list's item has the list as its parent (see LynxListElement), as
     // parentNode() says: an item that moved into a list from another

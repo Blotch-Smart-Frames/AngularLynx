@@ -1,0 +1,14 @@
+/*
+ * The root font size of an app that sets none, which is what `1rem` and
+ * text with no size of its own resolve against: Lynx's default, 14px, written
+ * out so the build makes it follow the phone's text size (text-scale.ts turns
+ * it into 14sp). Without a rule, Lynx's default root stays at 14px whatever
+ * the phone's setting.
+ *
+ * Only the native bundle gets this file, before every other import, so an
+ * app's own `page { font-size }` (the @blotch/ui theme's 16px) comes later and
+ * wins. The web preview keeps the browser's size.
+ */
+page {
+  font-size: 14px;
+}

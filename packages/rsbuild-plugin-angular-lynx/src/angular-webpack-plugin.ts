@@ -480,6 +480,13 @@ class AngularWebpackPlugin {
           // not. Android reads its own option for this,
           // enableDisexposureWhenLynxHidden, which this leaves on.
           enableDisexposureWhenBackground: false,
+          // The shells set the LynxView's font scale from the phone's text
+          // size (Dynamic Type on iOS, the font size on Android). Lynx would
+          // multiply every px font-size, line-height and letter-spacing by
+          // it; with this, only `sp` lengths grow, which the page's root font
+          // size is written in (text-scale.ts). Everything in `rem` grows
+          // with the root, and a px size stays as written, as on the web.
+          fontScaleEffectiveOnlyOnSp: true,
         };
 
         return args;

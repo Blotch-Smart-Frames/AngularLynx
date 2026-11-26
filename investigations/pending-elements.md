@@ -184,7 +184,7 @@ Sources:
 
 **Priority:** Very Low — desktop-only, not relevant for mobile Lynx apps.
 
-**Implementation:** `__CreateElement('title-bar-view', pageId)`. Only if targeting desktop.
+**Implementation:** `__CreateElement('title-bar-view', pageId)` on Windows and macOS, and `__CreateView(pageId)` elsewhere (`create-desktop-only-element.ts`): iOS draws nothing for a tag it has no UI for, children included (#678).
 
 ---
 

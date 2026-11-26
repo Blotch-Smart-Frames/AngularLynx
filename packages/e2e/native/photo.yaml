@@ -21,11 +21,17 @@ appId: ${APP_ID}
 # src/native/maestro.ts), and the newest photo comes first in both pickers.
 # iOS labels a photo "Photo, <date>", Android "Photo taken on <date>".
 #
+# A picker that shows no photo in 30 seconds is closed and opened again, up
+# to twice more, which finds a photo the library got late (#624). The first
+# try finds the photo page, where only the picker has a Cancel button.
+#
 # On CI's iOS simulators, PHPickerViewController sometimes shows only a
-# spinner and "Loading..." for as long as the flow waits (#624). A picker
-# that shows no photo in 30 seconds is closed and opened again, up to twice
-# more. The first try finds the photo page, where only the picker has a
-# Cancel button.
+# spinner and "Loading..." for minutes: the simulator stalls starting the
+# picker's process (132 seconds on a PR the day #624 was fixed, issue #672).
+# Reopening doesn't help, as the app asks for that process once and every
+# picker waits for it, so when the app's log shows it took over 30 seconds to
+# start, the harness runs this flow once more in a new session
+# (slowPhotosPickerLaunch in src/native/maestro.ts).
 - retry:
     maxRetries: 2
     commands:

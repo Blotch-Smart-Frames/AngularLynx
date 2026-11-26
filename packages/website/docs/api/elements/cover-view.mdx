@@ -34,8 +34,8 @@ export class Browser {}
 
 Import `LYNX_ELEMENTS` in your component (see [Elements](/api/angular-lynx/elements)).
 
-:::warning
-iOS and Android have no `<cover-view>`. Like any element the [host app](/guide/glossary#host-app) doesn't register, iOS leaves an empty box in its place and Android can drop the elements after it. Don't render it on iOS or Android.
+:::note
+iOS, Android and the web have no `<cover-view>`, so AngularLynx creates a [`<view>`](/api/elements/view) in its place there. Its content and layout stay the same, but it draws below a `<webview>` or `<video>` rather than above it. A CSS rule that selects the element by its tag name (`cover-view { … }`) doesn't apply there: style it with a class instead.
 :::
 
 ## Attributes
@@ -52,8 +52,8 @@ None, apart from the [common events](/api/elements/view#events), such as `bindta
 | --------------- | ----------------------------------------------------------------------------------------------- |
 | Windows (Clay)  | Yes. It covers native views inside the app window, but not separate pop-up windows.             |
 | macOS (Clay)    | Yes. It covers native controls inside the Lynx view, but not other windows or views outside it. |
-| iOS and Android | No. See the warning above.                                                                      |
-| Web             | No.                                                                                             |
+| iOS and Android | No. It's a `<view>` there.                                                                      |
+| Web             | No. It's a `<view>` there.                                                                      |
 
 ## Related
 

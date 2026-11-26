@@ -26,6 +26,7 @@ import {
 } from 'vitest';
 import { provideRouter } from '../router/lynx-router';
 import { LynxBackButton } from './back-button';
+import { type BackGestureFollower, BackGestures } from './back-gesture';
 
 @Component({ template: '' })
 class Screen {}
@@ -37,7 +38,7 @@ const routes = [
 ];
 
 /** The global events the shell would send, by name. */
-let listeners: Record<string, () => void>;
+let listeners: Record<string, (...args: any[]) => void>;
 let setBackHandlerEnabled: ReturnType<typeof vi.fn>;
 
 const stubHost = (opts: { shell?: object; emitter?: object } = {}) => {
@@ -48,7 +49,7 @@ const stubHost = (opts: { shell?: object; emitter?: object } = {}) => {
     getJSModule: (name: string) =>
       name === 'GlobalEventEmitter'
         ? (opts.emitter ?? {
-            addListener: (event: string, fn: () => void) =>
+            addListener: (event: string, fn: (...args: any[]) => void) =>
               (listeners[event] = fn),
           })
         : undefined,
@@ -357,6 +358,140 @@ describe('LynxBackButton', () => {
       await settle();
 
       expect(() => listeners['angularLynxBack']()).not.toThrow();
+    });
+  });
+
+  describe('the predictive back gesture', () => {
+    /**
+     * A follower that records what it's told.
+     */
+    const follower = (commits = true) => {
+      const calls: unknown[][] = [];
+      const value: BackGestureFollower = {
+        progress: (p) => void calls.push(['progress', p]),
+        cancel: () => void calls.push(['cancel']),
+        commit: () => {
+          calls.push(['commit']);
+          return commits;
+        },
+      };
+      return { value, calls };
+    };
+
+    const gesture = (phase: string, progress?: number, edge?: string) =>
+      listeners['angularLynxBackGesture']!({ phase, progress, edge });
+
+    /**
+     * Two screens, a follower registered, and the gesture's listener on.
+     */
+    const twoScreens = async (commits = true) => {
+      stubHost();
+      const router = start();
+      await router.navigateByUrl('/a');
+      await settle();
+      const followed = follower(commits);
+      const target = vi.fn(() => followed.value);
+      TestBed.inject(BackGestures).register(target);
+      return { router, target, calls: followed.calls };
+    };
+
+    it('has a follower follow the gesture, and finish going back as it ends in back', async () => {
+      const { router, target, calls } = await twoScreens();
+
+      gesture('started', 0, 'right');
+      gesture('progressed', 0.4);
+      listeners['angularLynxBack']!();
+      await settle();
+
+      expect(target).toHaveBeenCalledWith('right');
+      expect(calls).toEqual([['progress', 0.4], ['commit']]);
+      // The follower goes back: the button doesn't go back as well.
+      expect(router.url).toBe('/a');
+    });
+
+    it('tells the follower when the gesture is canceled, and sends it nothing after', async () => {
+      const { target, calls } = await twoScreens();
+
+      gesture('started', 0.1);
+      // A step without its progress is at the start.
+      gesture('progressed');
+      gesture('canceled');
+      gesture('progressed', 0.5);
+
+      expect(target).toHaveBeenCalledWith('left');
+      expect(calls).toEqual([['progress', 0.1], ['progress', 0], ['cancel']]);
+    });
+
+    it('goes back as a press does when the follower no longer can', async () => {
+      const { router, calls } = await twoScreens(false);
+
+      gesture('started', 0);
+      listeners['angularLynxBack']!();
+
+      expect(calls).toEqual([['commit'], ['cancel']]);
+      await vi.waitFor(() => expect(router.url).toBe('/'));
+    });
+
+    it('ends a gesture that never ended when another starts', async () => {
+      const { calls } = await twoScreens();
+
+      gesture('started', 0);
+      gesture('started', 0);
+
+      expect(calls).toEqual([['cancel']]);
+    });
+
+    it("leaves the gesture to a handler, which hears back as it's done", async () => {
+      const { target } = await twoScreens();
+      const handler = vi.fn();
+      TestBed.inject(LynxBackButton).on(handler);
+
+      gesture('started', 0);
+      listeners['angularLynxBack']!();
+
+      expect(target).not.toHaveBeenCalled();
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it('gives back to a handler registered while a follower follows', async () => {
+      const { calls } = await twoScreens();
+      gesture('started', 0);
+      const handler = vi.fn();
+      TestBed.inject(LynxBackButton).on(handler);
+
+      listeners['angularLynxBack']!();
+
+      expect(calls).toEqual([['cancel']]);
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it('asks no follower on the first screen, or of an odd event', async () => {
+      stubHost();
+      start();
+      await settle();
+      const target = vi.fn(() => null);
+      TestBed.inject(BackGestures).register(target);
+
+      gesture('started', 0);
+      listeners['angularLynxBackGesture']!();
+      gesture('progressed');
+
+      expect(target).not.toHaveBeenCalled();
+    });
+
+    it("reports a follower's error to the ErrorHandler", async () => {
+      const handleError = vi.fn();
+      const { target } = await twoScreens();
+      TestBed.inject(ErrorHandler).handleError = handleError;
+      const error = new Error('follower failed');
+      target.mockImplementation(() => {
+        throw error;
+      });
+
+      gesture('started', 0);
+      gesture('progressed', 0.5);
+
+      expect(handleError).toHaveBeenCalledWith(error);
     });
   });
 });

@@ -106,6 +106,8 @@ describe('infoPlistEntries', () => {
         '</array>',
         '<key>AngularLynxEdgeToEdge</key>',
         '<true/>',
+        '<key>AngularLynxTextScaling</key>',
+        '<true/>',
         '<key>NSPhotoLibraryAddUsageDescription</key>',
         '<string>Saves the images you choose to your photo library.</string>',
         '<key>LSApplicationQueriesSchemes</key>',
@@ -177,6 +179,18 @@ describe('infoPlistEntries', () => {
   it('tells the shell to keep the page inside the safe area', () => {
     expect(infoPlistEntries(app({ edgeToEdge: false }))).toContain(
       '<key>AngularLynxEdgeToEdge</key>\n<false/>',
+    );
+  });
+
+  it("tells the shell whether text follows Dynamic Type, and the scale's cap", () => {
+    const defaults = infoPlistEntries(app());
+    expect(defaults).toContain('<key>AngularLynxTextScaling</key>\n<true/>');
+    expect(defaults).not.toContain('AngularLynxMaxTextScale');
+    expect(infoPlistEntries(app({ textScaling: { max: 1.6 } }))).toContain(
+      '<key>AngularLynxTextScaling</key>\n<true/>\n<key>AngularLynxMaxTextScale</key>\n<real>1.6</real>',
+    );
+    expect(infoPlistEntries(app({ textScaling: false }))).toContain(
+      '<key>AngularLynxTextScaling</key>\n<false/>',
     );
   });
 

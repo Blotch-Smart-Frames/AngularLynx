@@ -49,7 +49,7 @@ type FaqCategory = { title: string; items: FaqItem[] };
   ],
   template: `
     <scroll-view scroll-orientation="vertical" class="h-screen bg-background">
-      <view class="flex-col gap-5 p-4 flex">
+      <view class="flex-col gap-5 px-4 flex pt-safe-4 pb-safe-4">
         <view class="flex-col gap-1 flex">
           <text class="text-[28px] font-bold text-foreground">Help Center</text>
           <text class="text-sm text-muted-foreground">

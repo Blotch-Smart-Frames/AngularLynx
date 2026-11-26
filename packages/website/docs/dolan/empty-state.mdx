@@ -38,6 +38,7 @@ export class NoResults {}
 
 - `title` is required. `icon` and `description` are optional.
 - `icon` takes any name from the [Icon](/dolan/icon) set, such as `'search'`, `'inbox'` or `'plus'`. It's drawn at the `lg` size.
+- `svg` takes your own icon's markup instead, such as your app's mark: `<ui-empty-state [svg]="logo" title="Welcome" />`. `currentColor` in it takes the muted foreground, as the set's icons do, and colors written out stay. `xmlns` is optional, and lines must be `<path>`s, as for [an icon's own SVG](/dolan/icon#your-own-svg). Give `icon` or `svg`, not both.
 
 ### With an action
 
@@ -63,7 +64,8 @@ Import [`UiButton`](/dolan/button) in your component for this.
 | ------------- | ----------------------- | ----------- | ----------------------------------------- |
 | `title`       | `string`                | Required    | Heading text.                             |
 | `description` | `string`                | `''`        | Supporting text below the title.          |
-| `icon`        | `IconName \| undefined` | `undefined` | Icon above the title.                     |
+| `icon`        | `IconName \| undefined` | `undefined` | Icon above the title. Give this or `svg`. |
+| `svg`         | `string \| undefined`   | `undefined` | SVG markup to draw instead.               |
 | `class`       | `string`                | `''`        | Extra Tailwind classes for the container. |
 
 No outputs.

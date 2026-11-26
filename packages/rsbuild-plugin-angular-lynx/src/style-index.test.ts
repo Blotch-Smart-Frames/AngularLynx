@@ -87,6 +87,12 @@ describe('styleIndexOf', () => {
     ['font-size: calc(var(--angular-lynx-font-size, 14px) / 2)', FONT_SIZE],
     ['font-size: calc(var(--angular-lynx-font-size, 14px) / 1.25)', FONT_SIZE],
     ['font-size: calc(var(--a) / 1.2)', FONT_SIZE],
+    // Nor is a size that adds to the variable before dividing it.
+    [
+      'font-size: calc((var(--angular-lynx-font-size, 14px) + 12px) / 1.2)',
+      FONT_SIZE,
+    ],
+    ['font-size: calc(var(--angular-lynx-font-size) * 2 / 1.2)', FONT_SIZE],
     ['font-size: var(--angular-lynx-font-size-x)', FONT_SIZE],
   ])('counts %s as %s', (declaration, flags) => {
     expect(styleIndexOf([`.a { ${declaration} }`]).rules).toEqual(

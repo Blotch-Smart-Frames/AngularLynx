@@ -3,7 +3,6 @@ import selectorParser from 'postcss-selector-parser';
 import {
   INHERITED_TEXT_PROPERTIES,
   inheritanceVariable,
-  readsVariable,
 } from './text-inheritance.js';
 
 /**
@@ -35,8 +34,17 @@ export const SMALLER_FLAG = LAYOUT_FLAG << 1;
  * rule's size.
  */
 const isSmallerSize = (value: string): boolean =>
-  readsVariable(value, inheritanceVariable('font-size')) &&
-  /\/\s*1\.2\s*\)\s*$/.test(value);
+  SMALLER_SIZE.test(value.trim());
+
+/**
+ * The variable alone, with or without a fallback length, divided by 1.2:
+ * a `calc()` that adds to it, such as `calc((var(--angular-lynx-font-size)
+ * + 12px) / 1.2)`, makes a size the runtime's division can't follow.
+ */
+const SMALLER_SIZE = new RegExp(
+  `^calc\\(\\s*var\\(\\s*${inheritanceVariable('font-size')}\\s*(?:,\\s*[^()]*)?\\)\\s*/\\s*1\\.2\\s*\\)$`,
+  'i',
+);
 
 /** The `display` values that lay children out in a column, as a block. */
 const BLOCK_DISPLAYS = new Set(['linear', 'block', 'flow-root', 'none']);

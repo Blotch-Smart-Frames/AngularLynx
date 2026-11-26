@@ -222,6 +222,23 @@ describe('LynxShortcuts', () => {
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 
+  it('lets go of the DestroyRef callback when the handler is removed by hand', () => {
+    stubHost();
+    const shortcuts = start();
+    const unregister = vi.fn();
+    const onDestroy = vi.fn(() => unregister);
+    const injector = {
+      get: () => ({ onDestroy }),
+    } as unknown as EnvironmentInjector;
+
+    const remove = shortcuts.on('refresh', () => {}, { injector });
+    expect(onDestroy).toHaveBeenCalledTimes(1);
+    remove();
+    remove();
+
+    expect(unregister).toHaveBeenCalledTimes(2);
+  });
+
   it("lets a handler remove itself while it's being called", async () => {
     stubHost();
     const shortcuts = start();

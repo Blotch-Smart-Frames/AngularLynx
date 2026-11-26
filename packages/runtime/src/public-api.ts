@@ -128,7 +128,8 @@ export {
 export { LynxListForContext } from './lib/list-for';
 export type { LynxListForOf, LynxListItemAttributes } from './lib/list-for';
 export type { BaseLynxElement } from './lib/lynx-element/types';
-// <canvas> and its WebGL2 context, for typing a canvas's ElementRef.
+// <canvas> and its 2D and WebGL2 contexts, for typing a canvas's ElementRef.
+export type { LynxCanvasRenderingContext2D } from './lib/canvas/canvas-2d-context';
 export type { LynxCanvasElement } from './lib/canvas/canvas-element';
 export type { LynxWebGL2RenderingContext } from './lib/canvas/webgl2-context';
 export type { LynxPointerEvent } from './lib/lynx-element/pointer-events';

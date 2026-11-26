@@ -3,8 +3,11 @@ import UIKit
 
 /// Hosts the app's single LynxView. Angular Router does all navigation inside
 /// it, so the shell never pushes another view controller.
-final class LynxViewController: UIViewController {
+final class LynxViewController: UIViewController, LynxViewLifecycle {
   private var lynxView: LynxView?
+  /// The font scale the LynxView was built with, which Lynx gives each engine
+  /// it sets up (see lynxView(_:didLoadFinishedWithUrl:)).
+  private var builtFontScale: CGFloat = 1
   private var lastViewport: CGRect = .zero
 
   /// Whether the page fills the screen, under the status bar and the home
@@ -61,6 +64,7 @@ final class LynxViewController: UIViewController {
     config.register(ShortcutsModule.self)
     // `ng serve --platform ios`'s live reload, in the development build.
     DevServer.shared.register(in: config)
+    builtFontScale = textScale()
     let lynxView = LynxView { builder in
       builder.config = config
       // Lynx's engine thread, which runs the main thread's JavaScript (the
@@ -81,7 +85,7 @@ final class LynxViewController: UIViewController {
       // The user's text size (see textScale()). The build tells Lynx to
       // scale only `sp` lengths by it, which the page's root font size is
       // written in, so every rem grows with it and a px size doesn't.
-      builder.fontScale = self.textScale()
+      builder.fontScale = self.builtFontScale
       builder.enableGenericResourceFetcher = .true
       builder.genericResourceFetcher = fetcher
       builder.templateResourceFetcher = fetcher
@@ -91,6 +95,7 @@ final class LynxViewController: UIViewController {
     lynxView.layoutHeightMode = .exact
     view.addSubview(lynxView)
     self.lynxView = lynxView
+    lynxView.addLifecycleClient(self)
     // Who hears that a shortcut ran, or a link arrived, while the app is open.
     ShortcutCenter.shared.lynxView = lynxView
     LinkCenter.shared.lynxView = lynxView
@@ -144,6 +149,17 @@ final class LynxViewController: UIViewController {
   @objc private func contentSizeCategoryDidChange() {
     lynxView?.updateFontScale(textScale())
     lynxView?.updateGlobalProps(with: globalProps())
+  }
+
+  /// A load sets up a new engine, as the development build's reload does, and
+  /// Lynx gives it the font scale the LynxView was built with: updateFontScale
+  /// doesn't change that. So a size chosen since then would be lost on reload
+  /// while `textScale` kept it; give the new page the current scale.
+  func lynxView(_ view: LynxView!, didLoadFinishedWithUrl url: String!) {
+    let scale = textScale()
+    if scale != builtFontScale {
+      view.updateFontScale(scale)
+    }
   }
 
   /// How much larger than the default the user's Dynamic Type size draws body

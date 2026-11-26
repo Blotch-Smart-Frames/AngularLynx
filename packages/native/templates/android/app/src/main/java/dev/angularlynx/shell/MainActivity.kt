@@ -55,6 +55,10 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
         resources.getString(R.string.max_text_scale).toFloatOrNull() ?: 0f
     }
 
+    // The font scale the LynxView was built with, which Lynx gives each engine
+    // it sets up (see onLoadSuccess below).
+    private var builtFontScale = 1f
+
     // The safe-area insets, and whether the screen has a cutout, as the
     // window last reported them. Sent in the global props.
     private var safeArea = Insets.NONE
@@ -166,6 +170,7 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
         // The bundle in the app's assets, or in the debug build `ng serve
         // --platform android` runs, the dev server's (DevServer.kt).
         val bundleUrl = DevServer.bundleUrl(this) ?: BundleAssets.MAIN_BUNDLE
+        builtFontScale = textScale(resources.configuration)
         lynxView = LynxViewBuilder().apply {
             // Lynx's engine thread, which runs the main thread's JavaScript
             // (the whole Angular app), layout and Lynx's animator, gets a
@@ -182,7 +187,7 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
             // The user's font size (see textScale()). The build tells Lynx to
             // scale only `sp` lengths by it, which the page's root font size
             // is written in, so every rem grows with it and a px size doesn't.
-            setFontScale(textScale(resources.configuration))
+            setFontScale(builtFontScale)
             setTemplateProvider(AssetTemplateProvider(this@MainActivity))
             setTemplateResourceFetcher(AssetTemplateResourceFetcher(this@MainActivity))
             setMediaResourceFetcher(AssetMediaResourceFetcher())
@@ -246,6 +251,16 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
         lynxView.addLynxViewClient(object : LynxViewClient() {
             override fun onReceivedError(error: LynxError?) {
                 Log.e(TAG, "Lynx error: ${error?.msg}")
+            }
+
+            // A load sets up a new engine, as the debug build's reload does,
+            // and Lynx gives it the font scale the LynxView was built with:
+            // updateFontScale doesn't change that. So a size chosen since then
+            // would be lost on reload while textScale kept it; give the new
+            // page the current scale.
+            override fun onLoadSuccess() {
+                val scale = textScale(resources.configuration)
+                if (scale != builtFontScale) lynxView.updateFontScale(scale)
             }
         })
 

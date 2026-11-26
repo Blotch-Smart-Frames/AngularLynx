@@ -1,13 +1,11 @@
 package dev.angularlynx.shell
 
-import android.content.Context
 import android.graphics.Bitmap
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
 import android.view.PixelCopy
 import android.view.SurfaceView
-import android.view.View
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
@@ -46,13 +44,13 @@ import kotlin.math.roundToInt
 class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
     private var videoId: String? = null
 
+    /** A frame's size, published whole, so a reader never mixes two frames'. */
+    private data class FrameSize(val width: Int, val height: Int)
+
     // The player's frame, as its listener tells it on the UI thread, read on
     // Lynx's engine thread.
     @Volatile
-    private var frameWidth = 0
-
-    @Volatile
-    private var frameHeight = 0
+    private var frame = FrameSize(0, 0)
 
     @Volatile
     private var hasFrame = false
@@ -69,12 +67,7 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
             if (videoSize.unappliedRotationDegrees % 180 != 0) {
                 width = height.also { height = width }
             }
-            frameWidth = width
-            frameHeight = height
-        }
-
-        override fun onRenderedFirstFrame() {
-            hasFrame = true
+            frame = FrameSize(width, height)
         }
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
@@ -84,12 +77,23 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
         }
     }
 
-    override fun createView(context: Context): View {
-        val view = super.createView(context)
-        // XElement's view gives its PlayerView its player on the UI thread,
-        // in a post when this isn't it, so the listener goes on after.
-        mainHandler.post { (view as? PlayerView)?.player?.addListener(listener) }
-        return view
+    init {
+        // Here rather than in createView(), which LynxBaseUI's constructor
+        // calls before this class's properties are set. XElement's view gives
+        // its PlayerView its player on the UI thread, in a post when this
+        // isn't it, so the listener goes on after.
+        val playerView = view as? PlayerView
+        mainHandler.post { playerView?.player?.addListener(listener) }
+    }
+
+    /**
+     * The player drew its first frame: XElement's element sends
+     * `bindfirstframe` from here, so the frame is there for a canvas before
+     * the app hears of it.
+     */
+    override fun onFirstFrame(durationMs: Long) {
+        hasFrame = true
+        super.onFirstFrame(durationMs)
     }
 
     override val canvasId: String
@@ -106,8 +110,7 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
      * `videoSize`), and the size the snapshot is copied at.
      */
     fun frameSize(): Pair<Int, Int> {
-        val width = frameWidth
-        val height = frameHeight
+        val (width, height) = frame
         return if (hasFrame && width > 0 && height > 0) width to height else 0 to 0
     }
 

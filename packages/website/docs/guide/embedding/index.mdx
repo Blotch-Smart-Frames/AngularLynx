@@ -168,7 +168,13 @@ class AngularLynxShell(context: Context, param: Any?) : LynxModule(context, para
 }
 ```
 
-The runtime reads `angularLynxBackGesture`'s map as `{ phase: "started" | "progressed", progress, edge }`, with `BackEventCompat.progress` (0 to 1) and its `swipeEdge` as `"left"` or `"right"`, and `{ phase: "canceled" }` alone. `BackEventCompat` and the `handleOnBack*` steps need AndroidX Activity 1.8 or later. Android sends the gesture's steps on Android 14 and later. Before Android 16, or to an app that doesn't target API 36, it sends them only to an app that opts in: set `android:enableOnBackInvokedCallback="true"` on the manifest's `<application>`, as the generated app does:
+The runtime reads `angularLynxBackGesture`'s map as `{ phase: "started" | "progressed", progress, edge }`, with `BackEventCompat.progress` (0 to 1) and its `swipeEdge` as `"left"` or `"right"`. A canceled gesture sends `{ phase: "canceled" }` alone.
+
+Your app gets the gesture's steps when:
+
+- **It uses AndroidX Activity 1.8 or later**, which adds `BackEventCompat` and the `handleOnBack*` steps.
+- **It runs on Android 14 or later.**
+- **It opts in**, unless it runs on Android 16 and targets API 36. Set `android:enableOnBackInvokedCallback="true"` on the manifest's `<application>`, as the generated app does:
 
 ```xml
 <application

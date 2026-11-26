@@ -141,16 +141,29 @@ export const transformPrivateMethods = (
 };
 
 /**
- * Two private member accesses (`.#name`, `?.#name` included), anywhere in the
+ * A `.` (or `?.`) and then a private name, maybe with spaces and comments
+ * between (`this./* c *\/#a`). Each comment matches exactly one way, a
+ * block comment up to its first `*\/` and a line comment only up to its
+ * line's end (the lookahead keeps it from stopping at a later `//` on the
+ * line), so a run of them can't backtrack exponentially.
+ */
+const PRIVATE_ACCESS =
+  /\.(?:\s|\/\*(?:[^*]|\*(?!\/))*\*\/|\/\/[^\n\r\u2028\u2029]*(?![^\n\r\u2028\u2029]))*#[\p{ID_Start}$_\\]/u
+    .source;
+
+/**
+ * Two private member accesses (see {@link PRIVATE_ACCESS}) anywhere in the
  * module: every chain {@link splitPrivateChains} rewrites has them, with
  * whatever is between (comments, parentheses, a type assertion). A module
  * with at most one is left without being parsed. Coarse on purpose: a hint
- * that followed the chain's syntax (repeated comment alternatives) can
- * backtrack exponentially on a run of slashes or comments, and this one
- * only scans forward to the second access.
+ * that followed the chain's syntax between the two (repeated, overlapping
+ * comment alternatives) backtracked exponentially on a run of slashes or
+ * comments, and this one only scans forward to the second access.
  */
-const PRIVATE_CHAIN_HINT =
-  /\.\s*#[\p{ID_Start}$_\\][\s\S]*?\.\s*#[\p{ID_Start}$_\\]/u;
+const PRIVATE_CHAIN_HINT = new RegExp(
+  `${PRIVATE_ACCESS}[\\s\\S]*?${PRIVATE_ACCESS}`,
+  'u',
+);
 
 /**
  * Rewrites a private member read on the result of another private member

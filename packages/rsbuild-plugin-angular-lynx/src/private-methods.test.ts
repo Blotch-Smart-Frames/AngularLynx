@@ -1662,14 +1662,29 @@ describe('splitPrivateChains', () => {
     );
   });
 
+  it('finds a chain with comments between a `.` and its private name', () => {
+    expect(
+      split(
+        'class A { #a = this; #b = 1; f() { return this./* c */#a.// d\n#b; } }',
+      ),
+    ).toBe(
+      'class A { #a = this; #b = 1; f() { return (0, this./* c */#a).// d\n#b; } }',
+    );
+  });
+
   it('checks a run of slashes or comments after a private access in linear time', () => {
     // A hint that followed the chain's syntax took about a second for 36
     // slashes, and seven times longer for each four more.
     const slashes = `class A { #a; f() { return this.#a ${'/'.repeat(10_000)}\n.x; } }`;
     const comments = `class A { #a; f() { return this.#a ${'/* */'.repeat(10_000)}.x; } }`;
+    // The same after the `.`, where the hint skips comments.
+    const afterDot = `class A { #a; f() { return this.#a.${'/* */'.repeat(10_000)}x; } }`;
+    const slashesAfterDot = `class A { #a; f() { return this.#a.${'/'.repeat(10_000)}\nx; } }`;
     const start = performance.now();
     expect(split(slashes)).toBe(slashes);
     expect(split(comments)).toBe(comments);
+    expect(split(afterDot)).toBe(afterDot);
+    expect(split(slashesAfterDot)).toBe(slashesAfterDot);
     expect(performance.now() - start).toBeLessThan(1_000);
   });
 

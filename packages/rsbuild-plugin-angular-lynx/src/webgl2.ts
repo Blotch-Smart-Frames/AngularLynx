@@ -5,6 +5,12 @@ import { isAngularLynxPackageModule } from './layers.js';
 
 const RUNTIME = '@blotch/angular-lynx';
 const ENABLE = 'ɵenableWebGL2';
+/**
+ * The name the import gives it: a module can import `ɵenableWebGL2` itself
+ * (the console warning suggests it), and a second binding of the same name
+ * would be a syntax error.
+ */
+const LOCAL = '__angularLynxEnableWebGL2';
 
 /**
  * The name a module asks for the context by. The runtime's `<canvas>` has no
@@ -58,7 +64,7 @@ export const enableWebGL2WhereNamed = (
   if (ts.isExternalModule(sourceFile) || /\.m[jt]s$/.test(filename)) {
     // Imports are hoisted, so the import can go anywhere; the call goes after
     // the module's own imports, which run first whatever their place.
-    return `import { ${ENABLE} } from ${specifier};\n${ENABLE}();\n${code}`;
+    return `import { ${ENABLE} as ${LOCAL} } from ${specifier};\n${LOCAL}();\n${code}`;
   }
   // A CommonJS module (or a script) has no imports. The call goes after its
   // directives: before a `'use strict'`, it would stop being one.

@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 import { PACKAGES_DIR } from './layers.js';
 import { enableWebGL2WhereNamed, resolveRuntimeEntry } from './webgl2.js';
 
-const CALL = `import { ɵenableWebGL2 } from "@blotch/angular-lynx";\nɵenableWebGL2();\n`;
+const CALL = `import { ɵenableWebGL2 as __angularLynxEnableWebGL2 } from "@blotch/angular-lynx";\n__angularLynxEnableWebGL2();\n`;
 
 describe('enableWebGL2WhereNamed', () => {
   it('leaves a module that never names the context as it is', () => {
@@ -33,8 +33,17 @@ describe('enableWebGL2WhereNamed', () => {
         '/app/node_modules/@blotch/angular-lynx/fesm2022/x.mjs',
       ),
     ).toBe(
-      `import { ɵenableWebGL2 } from "/app/node_modules/@blotch/angular-lynx/fesm2022/x.mjs";\nɵenableWebGL2();\n${code}`,
+      `import { ɵenableWebGL2 as __angularLynxEnableWebGL2 } from "/app/node_modules/@blotch/angular-lynx/fesm2022/x.mjs";\n__angularLynxEnableWebGL2();\n${code}`,
     );
+  });
+
+  it('imports under a name of its own, beside a module’s own import of ɵenableWebGL2', () => {
+    const code = `import { ɵenableWebGL2 } from '@blotch/angular-lynx';\nɵenableWebGL2();\nexport const gl = (c) => c.getContext('webgl2');`;
+    const result = enableWebGL2WhereNamed(code, '/app/src/scene.ts');
+    expect(result).toBe(CALL + code);
+    // Two bindings of one name would be a syntax error: the module's own
+    // stays the only `ɵenableWebGL2`.
+    expect(result.match(/import \{ ɵenableWebGL2 \}/g)).toHaveLength(1);
   });
 
   it('imports in an .mjs module with no import or export, which has no require', () => {

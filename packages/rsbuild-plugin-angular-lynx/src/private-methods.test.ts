@@ -111,6 +111,16 @@ const FIXTURES: Record<string, string> = {
     }
     [Made.first, Made.last];
   `,
+  "a subclass's constant field, when its base's constructor returns another object": `
+    class Base { constructor(other) { if (other) return other; } }
+    class Sub extends Base {
+      #n = 1;
+      static read(sub) { return sub.#n; }
+    }
+    const other = {};
+    new Sub(other);
+    [Sub.read(other), Sub.read(new Sub())];
+  `,
   'field initializers in order, public and private': `
     class Order {
       a = 1;

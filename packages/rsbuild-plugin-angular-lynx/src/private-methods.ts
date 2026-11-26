@@ -191,7 +191,10 @@ export const transformPrivateMethods = (
  * field sees a difference, as above (reading it on another instance of the
  * class before its fields are initialized gives the default, not a TypeError).
  * An initializer that makes an object (`[]`, `new Map()`) still runs for each
- * instance, as each needs its own.
+ * instance, as each needs its own. So do a subclass's fields (a class with
+ * `extends`): when its base's constructor returns another object, the
+ * subclass's fields are defined on that object, which doesn't inherit the
+ * subclass's prototype. `LynxElement` has no base, so it loses nothing.
  *
  * **Static members** are renamed and keyed the same way. A class makes its
  * static ones once, but each `LynxElement.#registry` read went through
@@ -297,9 +300,13 @@ export const renamePrivateMethods = (
           ? symbolKeyEdits(uses, text, code, sourceFile)
           : null;
       if (!fieldEdits) continue;
-      const initial = fieldStatic
-        ? undefined
-        : prototypeDefault(field as ts.PropertyDeclaration, sourceFile);
+      // A subclass's fields stay on each instance: its base's constructor
+      // can return another object, which then gets them natively but
+      // doesn't inherit the subclass's prototype (see above).
+      const initial =
+        fieldStatic || info.extendsAnother
+          ? undefined
+          : prototypeDefault(field as ts.PropertyDeclaration, sourceFile);
       if (initial !== undefined) {
         // A constant field starts on the prototype (see above): its
         // declaration goes, and only its uses are keyed.

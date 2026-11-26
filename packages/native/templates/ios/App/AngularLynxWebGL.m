@@ -111,7 +111,8 @@ NSData *AngularLynxBytesFromWords(NSArray *words) {
 /// An image's RGBA bytes, as createImageBitmap's options ask:
 /// `imageOrientation: 'flipY'` flips it, `premultiplyAlpha: 'premultiply'`
 /// keeps CoreGraphics' premultiplied pixels (otherwise they're divided back),
-/// and `resizeWidth`/`resizeHeight` scale it.
+/// and `resizeWidth`/`resizeHeight` scale it. A size given alone keeps the
+/// aspect ratio, the other side rounded up, as the HTML spec has it.
 static AngularLynxDecodedImage *pixelsOfImage(CGImageRef image, NSDictionary *options,
                                               NSString **error) {
   size_t width = CGImageGetWidth(image);
@@ -122,11 +123,11 @@ static AngularLynxDecodedImage *pixelsOfImage(CGImageRef image, NSDictionary *op
     size_t w = resizeWidth.unsignedIntegerValue;
     height = [resizeHeight isKindOfClass:NSNumber.class] && resizeHeight.integerValue > 0
                  ? resizeHeight.unsignedIntegerValue
-                 : MAX(1, (size_t)llround((double)height * w / width));
+                 : MAX(1, (size_t)ceil((double)height * w / width));
     width = w;
   } else if ([resizeHeight isKindOfClass:NSNumber.class] && resizeHeight.integerValue > 0) {
     size_t h = resizeHeight.unsignedIntegerValue;
-    width = MAX(1, (size_t)llround((double)width * h / height));
+    width = MAX(1, (size_t)ceil((double)width * h / height));
     height = h;
   }
   NSMutableData *pixels = [NSMutableData dataWithLength:width * height * 4];

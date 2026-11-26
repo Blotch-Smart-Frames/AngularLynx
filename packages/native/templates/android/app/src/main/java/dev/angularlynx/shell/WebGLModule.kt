@@ -142,8 +142,8 @@ class WebGLModule(context: Context, param: Any?) : LynxModule(context, param) {
             val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
             // ARGB_8888 is R, G, B, A in memory, premultiplied.
             bitmap.copyPixelsFromBuffer(pixels)
-            width = if (resizeWidth > 0) resizeWidth else maxOf(1, snapshot.width * resizeHeight / snapshot.height)
-            height = if (resizeHeight > 0) resizeHeight else maxOf(1, snapshot.height * resizeWidth / snapshot.width)
+            width = resizedSide(resizeWidth, snapshot.width, resizeHeight, snapshot.height)
+            height = resizedSide(resizeHeight, snapshot.height, resizeWidth, snapshot.width)
             val scaled = Bitmap.createScaledBitmap(bitmap, width, height, true)
             pixels = ByteBuffer.allocateDirect(width * height * 4).order(ByteOrder.nativeOrder())
             scaled.copyPixelsToBuffer(pixels)
@@ -339,8 +339,8 @@ class WebGLModule(context: Context, param: Any?) : LynxModule(context, param) {
         }
         var bitmap = BitmapFactory.decodeByteArray(array, 0, array.size, decodeOptions) ?: return null
         if (resize) {
-            val width = if (resizeWidth > 0) resizeWidth else maxOf(1, bitmap.width * resizeHeight / bitmap.height)
-            val height = if (resizeHeight > 0) resizeHeight else maxOf(1, bitmap.height * resizeWidth / bitmap.width)
+            val width = resizedSide(resizeWidth, bitmap.width, resizeHeight, bitmap.height)
+            val height = resizedSide(resizeHeight, bitmap.height, resizeWidth, bitmap.width)
             bitmap = Bitmap.createScaledBitmap(bitmap, width, height, true)
         }
         if (bitmap.config != Bitmap.Config.ARGB_8888) bitmap = bitmap.copy(Bitmap.Config.ARGB_8888, false)
@@ -495,6 +495,18 @@ internal fun flipRows(pixels: ByteBuffer, stride: Int, height: Int) {
         pixels.position(other * stride); pixels.put(top)
     }
     pixels.rewind()
+}
+
+/**
+ * One side of the size createImageBitmap's resize asks for: [resize] when
+ * it's given, otherwise the side scaled by the other side's resize, keeping
+ * the aspect ratio, rounded up, as the HTML spec has it. In Long, so a big
+ * image can't wrap round.
+ */
+internal fun resizedSide(resize: Int, side: Int, otherResize: Int, otherSide: Int): Int {
+    if (resize > 0) return resize
+    val scaled = (side.toLong() * otherResize + otherSide - 1) / otherSide
+    return scaled.coerceIn(1L, Int.MAX_VALUE.toLong()).toInt()
 }
 
 internal fun premultiply(pixels: ByteBuffer) {

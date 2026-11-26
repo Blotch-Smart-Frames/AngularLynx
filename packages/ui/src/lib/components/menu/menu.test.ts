@@ -622,6 +622,21 @@ describe('dragging across the menu', () => {
     expect(rendered.host.sort()).toBe('name');
   });
 
+  it("stays open when the press's tap lands outside it, as beside a trigger wider than the menu", async () => {
+    const rendered = await pressTrigger();
+    await waitForOpen(rendered);
+
+    fireLynxEvent(rendered.trigger(), 'touchend', liftAt(380, 100));
+    fireEvent.tap(rendered.overlay.firstElementChild!);
+    await waitForUpdate();
+    expect(rendered.host.open()).toBe(true);
+
+    // A tap of its own outside it closes it.
+    await after(600);
+    fireEvent.tap(rendered.overlay.firstElementChild!);
+    expect(rendered.host.open()).toBe(false);
+  });
+
   it('chooses the item the finger slides onto and lifts on, with a tap on each', async () => {
     const rendered = await pressTrigger();
     await waitForOpen(rendered);

@@ -175,7 +175,7 @@ export const measureMenuElement = async (
     >
       <!-- The overlay sizes only its first child, to the screen. A tap
            anywhere outside the menu lands here and dismisses it. -->
-      <view class="h-full w-full" (bindtap)="dismissed.emit()">
+      <view class="h-full w-full" (bindtap)="onBackdropTap()">
         @if (blurs()) {
           <!-- Before iOS 26, a context menu blurred the screen. -->
           <blur-view
@@ -480,6 +480,15 @@ export class UiMenuPopup implements OnDestroy, MenuDragTarget {
   protected onAreaLayout(event: unknown): void {
     this.#areaWidth =
       (event as { detail?: { width?: number } }).detail?.width ?? 0;
+  }
+
+  /**
+   * A tap outside the menu dismisses it, unless it ends the press that
+   * opened it: a trigger wider than the menu leaves the finger over the
+   * backdrop, and Lynx sends the press's tap there (see MenuRows' ownsTap).
+   */
+  protected onBackdropTap(): void {
+    if (!this.rows()?.ownsTap()) this.dismissed.emit();
   }
 
   /**

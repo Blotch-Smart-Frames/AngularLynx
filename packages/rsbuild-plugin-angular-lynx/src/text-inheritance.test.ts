@@ -9,6 +9,7 @@ import {
   applyTextInheritance,
   INHERITANCE_CLASS,
   INHERITED_TEXT_PROPERTIES,
+  LYNX_TEXT_INHERITANCE_CLASS,
   scopedSelector,
   textInheritanceForLynx,
 } from './text-inheritance';
@@ -40,8 +41,19 @@ describe('INHERITED_TEXT_PROPERTIES', () => {
 describe('INHERITANCE_CLASS', () => {
   // The runtime gives elements the class the copies are narrowed to.
   it("is the runtime's class", () => {
-    const value = /INHERITANCE_CLASS = '([^']+)'/.exec(runtimeTextFlow())![1];
+    const value = /\bINHERITANCE_CLASS = '([^']+)'/.exec(runtimeTextFlow())![1];
     expect(INHERITANCE_CLASS).toBe(value);
+  });
+});
+
+describe('LYNX_TEXT_INHERITANCE_CLASS', () => {
+  // The runtime gives a Lynx <text> the class a `text` rule's copies are
+  // narrowed to.
+  it("is the runtime's class", () => {
+    const value = /LYNX_TEXT_INHERITANCE_CLASS = '([^']+)'/.exec(
+      runtimeTextFlow(),
+    )![1];
+    expect(LYNX_TEXT_INHERITANCE_CLASS).toBe(value);
   });
 });
 
@@ -50,7 +62,11 @@ describe('scopedSelector', () => {
     ['.a', '.a._nginherit'],
     ['.a .b', '.a .b._nginherit'],
     ['.a > .b.c', '.a > .b.c._nginherit'],
-    ['view > text', 'view > text._nginherit'],
+    // A Lynx <text>, which an HTML text tag such as a <p> isn't on the web.
+    ['view > text', 'view > text._nginherit-text'],
+    ['text.a:active', 'text.a._nginherit-text:active'],
+    ['view > text, .a', 'view > text._nginherit-text, .a._nginherit'],
+    ['text .a', 'text .a._nginherit'],
     ['#id', '#id._nginherit'],
     // Ahead of the pseudo-classes, so it's a class of the same element.
     ['.a:active', '.a._nginherit:active'],

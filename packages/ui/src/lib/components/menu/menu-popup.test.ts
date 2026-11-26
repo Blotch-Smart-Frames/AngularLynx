@@ -18,6 +18,7 @@ import { DURATION } from '../../utils/animate';
 import { provideIconTheme } from '../icon/icon-theme';
 import { type MenuElement, type MenuKind, UiMenuPopup } from './menu-popup';
 import { type MenuRect } from './menu-placement';
+import { type MenuRow, MenuRows } from './menu-rows';
 
 @Component({
   imports: [LYNX_ELEMENTS, UiMenuPopup],
@@ -36,10 +37,11 @@ import { type MenuRect } from './menu-placement';
       [kind]="kind()"
       [anchor]="anchorView().nativeElement"
       [anchorHome]="lifting() ? homeView().nativeElement : null"
+      [rows]="rows()"
       (dismissed)="dismissed()"
       (closed)="closed()"
     >
-      <view class="item"><text>Share</text></view>
+      <view #item class="item"><text>Share</text></view>
     </ui-menu-popup>
   `,
 })
@@ -49,6 +51,9 @@ class PopupHost {
   readonly lifting = signal(false);
   readonly anchorView = viewChild.required<ElementRef<MenuElement>>('anchor');
   readonly homeView = viewChild.required<ElementRef<MenuElement>>('home');
+  readonly itemView = viewChild.required<ElementRef<MenuElement>>('item');
+  readonly popup = viewChild.required(UiMenuPopup);
+  readonly rows = signal<MenuRows | null>(null);
   readonly dismissed = vi.fn();
   readonly closed = vi.fn();
 }
@@ -672,5 +677,114 @@ describe('UiMenuPopup', () => {
     await vi.advanceTimersByTimeAsync(300);
 
     expect(rendered.host.closed).not.toHaveBeenCalled();
+  });
+
+  describe('with rows a finger can slide onto', () => {
+    /**
+     * Where the item is once the menu has grown: it's measured as the safe
+     * area, 62pt below the content's top, in a menu over the anchor.
+     */
+    const ON_ITEM = { x: 100, y: 300 };
+
+    /**
+     * The popup's item as a row, choosing with `choose`.
+     */
+    const itemRow = (rendered: Rendered, choose = vi.fn()): MenuRow => ({
+      element: () => rendered.host.itemView().nativeElement,
+      disabled: () => false,
+      choose,
+    });
+
+    const withRows = async (
+      rendered: Rendered,
+      ...rows: ((rendered: Rendered) => MenuRow)[]
+    ) => {
+      const menuRows = new MenuRows();
+      const added = rows.map((row) => row(rendered));
+      for (const row of added) menuRows.add(row);
+      rendered.host.rows.set(menuRows);
+      await waitForUpdate();
+      return { menuRows, added };
+    };
+
+    it('lights up and chooses the row under the finger', async () => {
+      const rendered = await renderPopup();
+      const { menuRows, added } = await withRows(rendered, itemRow);
+      await openMenu(rendered);
+      expect(menuRows.shown()).toBe(true);
+
+      rendered.host.popup().dragTo(ON_ITEM);
+      expect(menuRows.highlighted()).toBe(added[0]);
+      rendered.host.popup().dragTo(null);
+      expect(menuRows.highlighted()).toBeNull();
+
+      rendered.host.popup().dropAt(ON_ITEM);
+      expect(added[0]!.choose).toHaveBeenCalledTimes(1);
+      await closeMenu(rendered);
+      expect(menuRows.shown()).toBe(false);
+    });
+
+    it('does nothing for a finger without rows', async () => {
+      const rendered = await renderPopup();
+      await openMenu(rendered);
+
+      expect(() => {
+        rendered.host.popup().dragTo(ON_ITEM);
+        rendered.host.popup().dropAt(ON_ITEM);
+      }).not.toThrow();
+
+      // Nor with rows, none of them added.
+      const { menuRows } = await withRows(rendered);
+      await closeMenu(rendered);
+      await openMenu(rendered);
+      rendered.host.popup().dragTo(ON_ITEM);
+      expect(menuRows.highlighted()).toBeNull();
+    });
+
+    it("leaves out a row it can't measure", async () => {
+      const rendered = await renderPopup();
+      const unmeasured = (): MenuRow => ({
+        element: () => ({ element: {} }),
+        disabled: () => false,
+        choose: vi.fn(),
+      });
+      const { menuRows, added } = await withRows(rendered, unmeasured, itemRow);
+      await openMenu(rendered);
+
+      rendered.host.popup().dragTo(ON_ITEM);
+      expect(menuRows.highlighted()).toBe(added[1]);
+    });
+
+    it('chooses nothing where its content answers without a box', async () => {
+      const rendered = await renderPopup();
+      const { menuRows } = await withRows(rendered, itemRow);
+      rendered.held.measure = false;
+      await openMenu(rendered);
+
+      rendered.host.popup().dragTo(ON_ITEM);
+      expect(menuRows.highlighted()).toBeNull();
+    });
+
+    it('forgets its rows when it closes while measuring them', async () => {
+      const rendered = await renderPopup();
+      const { menuRows, added } = await withRows(rendered, itemRow);
+      rendered.held.menu = true;
+
+      rendered.host.open.set(true);
+      await waitForHeld(rendered);
+      rendered.release();
+      await settle();
+      // At its start frame, then open, measuring its rows.
+      await after(20);
+      expect(rendered.pendingCount()).toBeGreaterThan(0);
+      rendered.host.open.set(false);
+      rendered.tick();
+      rendered.release();
+      await settle();
+
+      rendered.host.popup().dropAt(ON_ITEM);
+      expect(added[0]!.choose).not.toHaveBeenCalled();
+      expect(menuRows.shown()).toBe(false);
+    });
   });
 });

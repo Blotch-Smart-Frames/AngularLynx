@@ -4,6 +4,7 @@ import {
   Directive,
   ElementRef,
   InjectionToken,
+  Renderer2,
   ViewEncapsulation,
   booleanAttribute,
   computed,
@@ -18,10 +19,11 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 import { cn } from '@blotch/dolan/utils/cn';
 import { UiGlass } from '../glass/glass';
-import { injectGlassDesign } from '../glass/glass-design';
+import { type GlassDesign, injectGlassDesign } from '../glass/glass-design';
 import { UiIcon } from '../icon/icon';
 import { type IconName } from '../icon/icons';
 import { type MenuElement, UiMenuPopup } from './menu-popup';
+import { type MenuRow, MenuPress, MenuRows } from './menu-rows';
 
 /**
  * What a menu's items need from the menu they're in: `ui-menu` or
@@ -30,7 +32,64 @@ import { type MenuElement, UiMenuPopup } from './menu-popup';
 export type UiMenuHost = {
   /** Closes the menu, as choosing an item does. */
   close(): void;
+  /**
+   * The menu's rows, which its items join so a finger can slide onto them,
+   * and how the menu draws them while it's open.
+   */
+  readonly rows: MenuRows;
 };
+
+/**
+ * The classes of a menu row, an item or a submenu's: Apple's 44pt rows and
+ * Material 3's 48dp rows, which grow when their label wraps.
+ */
+export const menuRowClass = (design: GlassDesign, disabled: boolean) =>
+  cn(
+    'flex-row items-center gap-3 flex relative',
+    design === 'material'
+      ? 'min-h-[48px] px-3 py-3'
+      : 'min-h-[44px] px-4 py-[11px]',
+    disabled && 'opacity-40',
+  );
+
+/**
+ * iOS 26's menus highlight a pressed row with a capsule inset 10pt from
+ * the menu's sides, 8% darker than the glass, measured on iOS 27's Files
+ * menu. Before, Apple's menus filled the row edge to edge, and so does
+ * Material's state layer, at a tenth. In the glass's own foreground, so it
+ * suits light and dark glass.
+ */
+export const menuHighlightClass = (design: GlassDesign) =>
+  cn(
+    'bg-glass-foreground absolute bottom-0 top-0',
+    design === 'glass'
+      ? 'rounded-full left-[10px] right-[10px]'
+      : 'left-0 right-0',
+  );
+
+/** The pressed highlight's opacity: none unless the row is `lit`. */
+export const menuHighlightOpacity = (design: GlassDesign, lit: boolean) => {
+  if (!lit) return 0;
+  return design === 'glass' ? 0.08 : 0.1;
+};
+
+/** A row label's classes, in red for a destructive item. */
+export const menuLabelClass = (design: GlassDesign, destructive = false) =>
+  cn(
+    'flex-1',
+    design === 'material' ? 'text-[16px]' : 'text-[17px]',
+    destructive ? 'text-destructive' : 'text-glass-foreground',
+  );
+
+/**
+ * Makes `row` one of `rows`, until `destroyRef` is destroyed: a finger
+ * sliding across the menu lights it up and chooses it (see MenuPress).
+ */
+export const joinRows = (
+  rows: MenuRows,
+  row: MenuRow,
+  destroyRef: DestroyRef,
+): (() => void) => destroyRef.onDestroy(rows.add(row));
 
 /**
  * The menu an item is in. `ui-menu` and `ui-context-menu` provide it, so the
@@ -69,6 +128,7 @@ const optionalBooleanAttribute = (value: unknown): boolean | undefined =>
          lynxAccessibilityTraits adds the trait to button on iOS, and leaves
          Android, which reads one trait, with button. -->
     <view
+      #row
       [class]="rowClass()"
       [accessibility-element]="true"
       accessibility-traits="button"
@@ -80,10 +140,10 @@ const optionalBooleanAttribute = (value: unknown): boolean | undefined =>
       (bindmousedown)="hold(true)"
       (bindmouseup)="hold(false)"
       (bindmouseleave)="hold(false)"
-      (bindtap)="choose()"
+      (bindtap)="tap()"
     >
       <!-- The pressed highlight, in the glass's own foreground, so it suits
-           light and dark glass (see highlightClass). -->
+           light and dark glass (see menuHighlightClass). -->
       <view
         [class]="highlightClass()"
         [style.opacity]="highlightOpacity()"
@@ -140,6 +200,21 @@ export class UiMenuItem {
   /** Whether a finger (or the mouse) is down on the item. */
   protected readonly held = signal(false);
 
+  // Required: always in the template.
+  readonly row = viewChild.required<ElementRef<MenuElement>>('row');
+
+  /** The item as a row a finger sliding across the menu can choose. */
+  readonly #asRow: MenuRow = {
+    element: () => this.row().nativeElement,
+    disabled: () => this.disabled(),
+    choose: () => this.choose(),
+  };
+  protected readonly joined = joinRows(
+    this.#menu.rows,
+    this.#asRow,
+    inject(DestroyRef),
+  );
+
   readonly #material = computed(() => this.#design() === 'material');
   readonly #destructive = computed(() => this.variant() === 'destructive');
 
@@ -155,42 +230,23 @@ export class UiMenuItem {
     this.#iconLeads() ? undefined : this.icon(),
   );
 
-  /**
-   * iOS 26's menus highlight a pressed row with a capsule inset 10pt from
-   * the menu's sides, 8% darker than the glass, measured on iOS 27's Files
-   * menu. Before, Apple's menus filled the row edge to edge, and so does
-   * Material's state layer, at a tenth.
-   */
   protected readonly highlightClass = computed(() =>
-    cn(
-      'bg-glass-foreground absolute bottom-0 top-0',
-      this.#design() === 'glass'
-        ? 'rounded-full left-[10px] right-[10px]'
-        : 'left-0 right-0',
+    menuHighlightClass(this.#design()),
+  );
+  /** Lit while pressed, or while a finger sliding across the menu is on it. */
+  protected readonly highlightOpacity = computed(() =>
+    menuHighlightOpacity(
+      this.#design(),
+      this.held() || this.#menu.rows.highlighted() === this.#asRow,
     ),
   );
-  protected readonly highlightOpacity = computed(() => {
-    if (!this.held()) return 0;
-    return this.#design() === 'glass' ? 0.08 : 0.1;
-  });
 
   protected readonly rowClass = computed(() =>
-    cn(
-      'flex-row items-center gap-3 flex relative',
-      // A row grows when its label wraps.
-      this.#material()
-        ? 'min-h-[48px] px-3 py-3'
-        : 'min-h-[44px] px-4 py-[11px]',
-      this.disabled() && 'opacity-40',
-    ),
+    menuRowClass(this.#design(), this.disabled()),
   );
 
   protected readonly labelClass = computed(() =>
-    cn(
-      'flex-1',
-      this.#material() ? 'text-[16px]' : 'text-[17px]',
-      this.#destructive() ? 'text-destructive' : 'text-glass-foreground',
-    ),
+    menuLabelClass(this.#design(), this.#destructive()),
   );
   protected readonly iconSize = computed(() =>
     this.#material() ? 'md' : 'sm',
@@ -206,6 +262,14 @@ export class UiMenuItem {
 
   protected hold(down: boolean): void {
     this.held.set(down && !this.disabled());
+  }
+
+  /**
+   * A tap on the item chooses it, unless it ends the press that opened the
+   * menu: lifting there without sliding leaves the menu open, as on iOS.
+   */
+  protected tap(): void {
+    if (!this.#menu.rows.ownsTap()) this.choose();
   }
 
   protected choose(): void {
@@ -235,6 +299,8 @@ export class UiMenuItem {
   // attribute the app writes on it, and a `title` on the host is a tooltip in
   // the web preview and a second match for getByTitle, so the host drops it.
   host: { '[attr.title]': 'null' },
+  // The title stays above the items when the menu lists them from the
+  // bottom up (see MenuRows' reversed), as a section's does in UIKit.
   template: `
     <view class="flex-col flex">
       @if (title()) {
@@ -242,12 +308,20 @@ export class UiMenuItem {
           {{ title() }}
         </text>
       }
-      <ng-content />
+      <view
+        class="flex-col flex"
+        [style.flex-direction]="reversed() ? 'column-reverse' : 'column'"
+      >
+        <ng-content />
+      </view>
     </view>
   `,
 })
 export class UiMenuSection {
   readonly #design = injectGlassDesign();
+  readonly #menu = inject(UI_MENU);
+
+  protected readonly reversed = computed(() => this.#menu.rows.reversed());
 
   /** A title for the section, such as "Sort by". */
   readonly title = input<string | undefined>(undefined);
@@ -332,10 +406,13 @@ const pullDownMenu = (): UiMenuHost => inject(UiMenu);
       [open]="open()"
       [anchor]="anchor()"
       [glassId]="glassId"
+      [rows]="rows"
       (dismissed)="close()"
       (closed)="closed.emit()"
     >
-      <ng-content select="ui-menu-item, ui-menu-section, ui-menu-separator" />
+      <ng-content
+        select="ui-menu-item, ui-menu-section, ui-menu-separator, ui-menu-submenu"
+      />
     </ui-menu-popup>
   `,
 })
@@ -347,6 +424,8 @@ export class UiMenu implements UiMenuHost {
 
   readonly #host = inject<ElementRef<MenuElement>>(ElementRef);
   readonly #trigger = signal<MenuElement | null>(null);
+
+  readonly rows = new MenuRows();
 
   /**
    * The id the menu's glass and a glass trigger share (see UiGlass's
@@ -392,6 +471,56 @@ export class UiMenu implements UiMenuHost {
     this.open.update((open) => !open);
   }
 
+  /**
+   * A finger sliding from the trigger across the menu (see MenuPress).
+   */
+  readonly #press = new MenuPress(() => this.popup());
+
+  /**
+   * @internal A finger touched the trigger down. An Apple menu opens at
+   * once, as UIKit's pull-down menus do, so the finger can slide onto an
+   * item and lift to choose it; the tap that follows the press then doesn't
+   * close it again. A Material menu opens on the tap, as Android's do.
+   */
+  pressTrigger(event: unknown): void {
+    if (this.open() || this.popup().design() === 'material') return;
+    this.#press.start(event);
+    this.rows.pressStarted();
+    this.open.set(true);
+  }
+
+  /**
+   * @internal The finger moved.
+   */
+  moveOnTrigger(event: unknown): void {
+    if (this.#press.active) this.#press.move(event);
+  }
+
+  /**
+   * @internal The finger lifted, on a row, or anywhere.
+   */
+  liftFromTrigger(event: unknown): void {
+    this.#press.end(event);
+    this.rows.pressEnded();
+  }
+
+  /**
+   * @internal The system took the touch over, as a scroll does.
+   */
+  cancelTriggerPress(): void {
+    this.#press.cancel();
+    this.rows.pressEnded();
+  }
+
+  /**
+   * @internal A tap on the trigger: opens or closes the menu, unless it
+   * ends the press that just opened it (see MenuRows' ownsTap). A tap that
+   * comes on its own, as a screen reader's activation does, always toggles.
+   */
+  tapTrigger(): void {
+    if (!this.rows.ownsTap()) this.toggle();
+  }
+
   close(): void {
     this.open.set(false);
   }
@@ -418,12 +547,30 @@ export class UiMenu implements UiMenuHost {
 @Directive({
   selector: '[uiMenuTrigger]',
   host: {
-    '(click)': 'menu.toggle()',
+    '(click)': 'menu.tapTrigger()',
+    '(bindtouchstart)': 'menu.pressTrigger($event)',
+    '(bindtouchend)': 'menu.liftFromTrigger($event)',
+    '(bindtouchcancel)': 'menu.cancelTriggerPress()',
     '[style.visibility]': 'menu.coversTrigger() ? "hidden" : null',
   },
 })
 export class UiMenuTrigger {
   protected readonly menu = inject(UiMenu);
+  readonly #host = inject<ElementRef<MenuElement>>(ElementRef).nativeElement;
+
+  /**
+   * Listens for the finger's moves in code rather than in the host
+   * metadata: Angular checks a host listener's component and every one
+   * around it after each event, and a finger sends one for every frame it
+   * moves (see UiTabsTrigger's moveListeners). Lynx keeps sending a touch's
+   * moves to the element it started on, so they still come here while the
+   * finger slides across the menu.
+   */
+  protected readonly removeMoveListener = inject(DestroyRef).onDestroy(
+    inject(Renderer2).listen(this.#host, 'bindtouchmove', (event: unknown) =>
+      this.menu.moveOnTrigger(event),
+    ),
+  );
 
   /**
    * Points the menu at this element until the directive is destroyed. A

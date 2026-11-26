@@ -17,6 +17,7 @@ import {
 import {
   LYNX_ELEMENTS,
   LynxAccessibilitySettings,
+  LynxHaptics,
   MainThreadElement,
 } from '@blotch/angular-lynx';
 
@@ -31,12 +32,19 @@ import {
   menuStartFrame,
   placeMenu,
 } from './menu-placement';
+import {
+  type MenuDragTarget,
+  type MenuPoint,
+  type MenuRow,
+  type MenuRows,
+} from './menu-rows';
 
 /**
- * What a menu is: a `'pull-down'` menu opened by a button, or a `'context'`
- * menu opened by a long press on an element.
+ * What a menu is: a `'pull-down'` menu opened by a button, a `'context'`
+ * menu opened by a long press on an element, or a `'submenu'` opened by a
+ * row of another menu, which it grows out of.
  */
-export type MenuKind = 'pull-down' | 'context';
+export type MenuKind = 'pull-down' | 'context' | 'submenu';
 
 /**
  * An element the menu measures or moves: AngularLynx's element, which an
@@ -100,6 +108,16 @@ const OVERLAY_STYLE =
   'position: fixed; overflow: visible; width: 100vw; height: 100vh; top: 0; left: 0; z-index: 999;';
 
 const ZERO_RECT: MenuRect = { left: 0, top: 0, width: 0, height: 0 };
+
+/**
+ * How visible a menu's rows stay while a submenu is open over it, as iOS
+ * fades a menu behind its submenu, so the submenu's glass doesn't show
+ * them through it.
+ */
+const COVERED_OPACITY = 0.3;
+
+/** A row's box in the menu's content, from the content's top left. */
+type RowOffset = MenuRect;
 
 /**
  * An element's box on screen, or null where it can't be measured.
@@ -223,10 +241,18 @@ export const measureMenuElement = async (
               class="shrink-0"
               [style.width.px]="placement()?.frame.width ?? metrics().width"
               [style.height.px]="placement()?.frame.height"
-              [style.opacity]="phase() === 'open' ? 1 : 0"
+              [style.opacity]="contentOpacity()"
               [style.transition]="contentTransition()"
             >
-              <view #content [class]="contentClass()">
+              <!-- Reversed, an Apple menu that opens upward lists its items
+                   from the bottom up (see MenuRows' reversed). -->
+              <view
+                #content
+                [class]="contentClass()"
+                [style.flex-direction]="
+                  rows()?.reversed() ? 'column-reverse' : 'column'
+                "
+              >
                 <ng-content />
               </view>
             </scroll-view>
@@ -236,7 +262,7 @@ export const measureMenuElement = async (
     </overlay>
   `,
 })
-export class UiMenuPopup implements OnDestroy {
+export class UiMenuPopup implements OnDestroy, MenuDragTarget {
   /** Whether the menu is open. */
   readonly open = input(false, { transform: booleanAttribute });
   /** The element the menu opens from: a button, or the pressed element. */
@@ -253,6 +279,12 @@ export class UiMenuPopup implements OnDestroy {
    * `glassId`), so that on iOS the menu takes over a glass trigger's glass.
    */
   readonly glassId = input<string | undefined>(undefined);
+  /**
+   * The rows a finger can slide onto and lift on to choose (see MenuPress),
+   * which the menu measures as it opens. The menu also writes its order and
+   * state there for its items.
+   */
+  readonly rows = input<MenuRows | null>(null);
 
   /** The user tapped outside the menu, or pressed Android's back button. */
   readonly dismissed = output<void>();
@@ -261,6 +293,7 @@ export class UiMenuPopup implements OnDestroy {
 
   readonly #renderer = inject(Renderer2);
   readonly #settings = inject(LynxAccessibilitySettings);
+  readonly #haptics = inject(LynxHaptics);
   readonly #scheme = injectColorScheme();
 
   readonly design = injectGlassDesign();
@@ -297,6 +330,7 @@ export class UiMenuPopup implements OnDestroy {
   protected readonly blurs = computed(
     () => this.dims() && this.design() === 'frosted',
   );
+  readonly #submenu = computed(() => this.kind() === 'submenu');
   readonly #lifts = computed(() => this.dims() && !!this.anchorHome());
   readonly #reduceMotion = computed(() => this.#settings.reduceMotion());
 
@@ -346,6 +380,15 @@ export class UiMenuPopup implements OnDestroy {
       placement,
       this.#material() ? 'edge' : this.#context() ? 'corner' : 'anchor',
     );
+  });
+
+  /**
+   * The items fade in once the menu is open, and fade most of the way out
+   * while a submenu is open over it.
+   */
+  protected readonly contentOpacity = computed(() => {
+    if (this.phase() !== 'open') return 0;
+    return this.rows()?.covered() ? COVERED_OPACITY : 1;
   });
 
   /**
@@ -467,6 +510,7 @@ export class UiMenuPopup implements OnDestroy {
     const run = ++this.#run;
     // Opened again while closing: finish closing at once.
     if (this.phase() !== 'closed') this.#finishClose(false);
+    this.rows()?.shown.set(true);
 
     const anchor = await measureMenuElement(this.anchor());
     if (run !== this.#run) return;
@@ -505,15 +549,29 @@ export class UiMenuPopup implements OnDestroy {
           width: this.metrics().width,
           height: inPixels(content).height,
         },
-        mode: this.#material() || this.#context() ? 'beside' : 'grow',
+        // A submenu grows out of its row, over the menu it's in, as on iOS;
+        // on Android it takes the menu's place, as a Material submenu does.
+        mode:
+          this.#submenu() || !(this.#material() || this.#context())
+            ? 'grow'
+            : 'beside',
         movableAnchor: this.#lifts(),
       }),
+    );
+    this.#areaRect = areaRect;
+    this.#scale = scale;
+    this.rows()?.reversed.set(
+      this.placement()?.vertical === 'bottom' && !this.#material(),
     );
     this.#lift();
     this.phase.set('from');
 
     await this.#wait(FRAME_DELAY);
     if (run !== this.#run) return;
+    // Laid out in its order by now: where each row will be once the menu
+    // has grown, for a finger sliding across it. Measured meanwhile, so the
+    // menu doesn't wait to grow.
+    void this.#measureRows(run);
     this.phase.set('open');
     // Move a screen reader into the menu: it would otherwise stay on what
     // opened it, now behind the overlay. With the menu's
@@ -527,6 +585,9 @@ export class UiMenuPopup implements OnDestroy {
     // Only a menu that's open or opening closes: `open` turning false again
     // reaches here only after it turned true, which ends any closing.
     if (phase === 'closed') return;
+    this.#rowOffsets.clear();
+    this.rows()?.highlighted.set(null);
+    this.rows()?.shown.set(false);
     if (phase === 'measuring') {
       this.#finishClose(true);
       return;
@@ -537,6 +598,86 @@ export class UiMenuPopup implements OnDestroy {
     void this.#wait(DURATION.normal + 20).then(() => {
       if (run === this.#run) this.#finishClose(true);
     });
+  }
+
+  /** The safe area on screen, in the app's pixels, as the menu opened. */
+  #areaRect: MenuRect = ZERO_RECT;
+  /** The screen's pixels per app pixel, as the menu opened (#areaWidth). */
+  #scale = 1;
+  /** Where each row is in the menu's content, once measured. */
+  readonly #rowOffsets = new Map<MenuRow, RowOffset>();
+
+  /**
+   * Measures each row against the menu's content. The content keeps its
+   * size as the menu grows and ends up at the menu's frame, so that's where
+   * each row will be.
+   */
+  async #measureRows(run: number): Promise<void> {
+    const rows = this.rows()?.all() ?? [];
+    if (!rows.length) return;
+    const [content, ...boxes] = await Promise.all([
+      measureMenuElement(this.content().nativeElement),
+      ...rows.map((row) => measureMenuElement(row.element())),
+    ]);
+    if (run !== this.#run || !content) return;
+    rows.forEach((row, index) => {
+      const box = boxes[index];
+      if (!box) return;
+      this.#rowOffsets.set(row, {
+        left: (box.left - content.left) / this.#scale,
+        top: (box.top - content.top) / this.#scale,
+        width: box.width / this.#scale,
+        height: box.height / this.#scale,
+      });
+    });
+  }
+
+  /**
+   * The row under `point`, in the window's coordinates, once the menu is
+   * open and its rows measured.
+   */
+  #rowAt(point: MenuPoint): MenuRow | null {
+    const frame = this.placement()?.frame;
+    if (!frame || this.phase() !== 'open') return null;
+    const x = point.x / this.#scale - this.#areaRect.left - frame.left;
+    const y = point.y / this.#scale - this.#areaRect.top - frame.top;
+    for (const [row, box] of this.#rowOffsets) {
+      if (
+        x >= box.left &&
+        x < box.left + box.width &&
+        y >= box.top &&
+        y < box.top + box.height
+      ) {
+        return row;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Lights up the row under a finger sliding across the menu, with a light
+   * tap as it moves onto each, as iOS gives. Null turns the light off.
+   */
+  dragTo(point: MenuPoint | null): void {
+    const rows = this.rows();
+    if (!rows) return;
+    const row = point ? this.#rowAt(point) : null;
+    const target = row && !row.disabled() ? row : null;
+    if (target === rows.highlighted()) return;
+    rows.highlighted.set(target);
+    if (target) this.#haptics.selection();
+  }
+
+  /**
+   * Chooses the row under a finger that lifted there after sliding across
+   * the menu, as a tap on it would.
+   */
+  dropAt(point: MenuPoint): void {
+    const rows = this.rows();
+    if (!rows) return;
+    rows.highlighted.set(null);
+    const row = this.#rowAt(point);
+    if (row && !row.disabled()) row.choose();
   }
 
   /**
@@ -559,6 +700,14 @@ export class UiMenuPopup implements OnDestroy {
     }
     this.placeholder.set(null);
     this.placement.set(null);
+    this.#rowOffsets.clear();
+    const rows = this.rows();
+    if (rows) {
+      rows.highlighted.set(null);
+      rows.reversed.set(false);
+      rows.shown.set(false);
+      rows.covered.set(false);
+    }
     this.phase.set('closed');
     if (emit) this.closed.emit();
   }

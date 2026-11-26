@@ -1,8 +1,10 @@
 import {
   Component,
   type ElementRef,
+  Renderer2,
   ViewEncapsulation,
   booleanAttribute,
+  effect,
   inject,
   input,
   model,
@@ -12,6 +14,7 @@ import {
 import { LYNX_ELEMENTS, LynxHaptics } from '@blotch/angular-lynx';
 
 import { type MenuElement, UiMenuPopup } from '../menu/menu-popup';
+import { MenuPress, MenuRows } from '../menu/menu-rows';
 import { UI_MENU, type UiMenuHost } from '../menu/menu';
 
 /**
@@ -38,8 +41,10 @@ const contextMenu = (): UiMenuHost => inject(UiContextMenu);
  * </ui-context-menu>
  * ```
  *
- * The items (`ui-menu-item`, `ui-menu-section`, `ui-menu-separator`) are the
- * menu, and everything else is the element it opens from. Taps on the
+ * The items (`ui-menu-item`, `ui-menu-section`, `ui-menu-separator`,
+ * `ui-menu-submenu`) are the menu, and everything else is the element it
+ * opens from. On iOS the finger that opened it can slide on onto an item
+ * and lift to choose it. Taps on the
  * element still reach it: Lynx tells a tap from a long press. A tap outside
  * the menu, choosing an item, or Android's back button closes it, and
  * `[(open)]` opens and closes it from code.
@@ -70,7 +75,14 @@ const contextMenu = (): UiMenuHost => inject(UiContextMenu);
       [style.width.px]="popup.placeholder()?.width"
       [style.height.px]="popup.placeholder()?.height"
     >
-      <view #element class="flex-col flex" (bindlongpress)="onLongPress()">
+      <view
+        #element
+        class="flex-col flex"
+        (bindlongpress)="onLongPress()"
+        (bindtouchstart)="onTouchStart($event)"
+        (bindtouchend)="onTouchEnd($event)"
+        (bindtouchcancel)="onTouchCancel()"
+      >
         <ng-content />
       </view>
     </view>
@@ -80,10 +92,13 @@ const contextMenu = (): UiMenuHost => inject(UiContextMenu);
       [open]="open()"
       [anchor]="elementView().nativeElement"
       [anchorHome]="homeView().nativeElement"
+      [rows]="rows"
       (dismissed)="close()"
       (closed)="closed.emit()"
     >
-      <ng-content select="ui-menu-item, ui-menu-section, ui-menu-separator" />
+      <ng-content
+        select="ui-menu-item, ui-menu-section, ui-menu-separator, ui-menu-submenu"
+      />
     </ui-menu-popup>
   `,
 })
@@ -99,8 +114,54 @@ export class UiContextMenu implements UiMenuHost {
   // Required: both are always in the template.
   readonly elementView = viewChild.required<ElementRef<MenuElement>>('element');
   readonly homeView = viewChild.required<ElementRef<MenuElement>>('home');
+  readonly popup = viewChild.required<UiMenuPopup>('popup');
+
+  readonly rows = new MenuRows();
 
   readonly #haptics = inject(LynxHaptics);
+  readonly #renderer = inject(Renderer2);
+
+  /** The finger that long-pressed, sliding on across the menu. */
+  readonly #press = new MenuPress(() => this.popup());
+
+  /**
+   * Listens for the finger's moves in code rather than in the template, as
+   * UiMenuTrigger does: a finger sends one for every frame it moves. Lynx
+   * keeps sending a touch's moves to the element it started on, which
+   * includes the lifted element in the menu's overlay.
+   */
+  protected readonly listen = effect((onCleanup) => {
+    onCleanup(
+      this.#renderer.listen(
+        this.elementView().nativeElement,
+        'bindtouchmove',
+        (event: unknown) => {
+          if (this.#press.active) this.#press.move(event);
+        },
+      ),
+    );
+  });
+
+  /**
+   * Follows a finger on the element, so that once its long press opens an
+   * Apple menu it can slide onto an item and lift to choose it, as on iOS.
+   * Android's context menus wait for a tap.
+   */
+  protected onTouchStart(event: unknown): void {
+    if (this.disabled() || this.popup().design() === 'material') return;
+    this.#press.start(event);
+    this.rows.pressStarted();
+  }
+
+  protected onTouchEnd(event: unknown): void {
+    this.#press.end(event);
+    this.rows.pressEnded();
+  }
+
+  protected onTouchCancel(): void {
+    this.#press.cancel();
+    this.rows.pressEnded();
+  }
 
   /**
    * Opens the menu with a tap, as iOS's context menu and Android's long

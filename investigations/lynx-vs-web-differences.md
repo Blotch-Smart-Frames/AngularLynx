@@ -1362,6 +1362,18 @@ If both `bindtap` and `bindlongpress` listeners are present on the same element,
 
 ---
 
+## A press's `tap` goes to whatever is under the finger when it lifts, even an element that appeared during the press
+
+### What you'd expect (web)
+
+A `click` fires only when the press and the release land on the same element (or the click goes to their common ancestor). An element that appears under the pointer mid-press, such as a menu that opens on `pointerdown`, doesn't get the click of the press that opened it.
+
+### What Lynx does
+
+On iOS (seen on the iOS 27 Simulator), Lynx sends the `tap` to the element under the finger when it lifts. `ui-menu` opens an Apple menu on `touchstart`, as UIKit does, so the menu grows over its trigger under the finger; a plain tap on the trigger then sent its `tap` to the first menu item, which chose it. The trigger's own `bindtouchmove` and `bindtouchend` keep coming to the trigger, as on the web. The menu now ignores the one tap that ends the press which opened it (`MenuRows.ownsTap()` in `packages/ui/src/lib/components/menu/menu-rows.ts`). Anything that shows a tappable element on touch-down needs the same guard.
+
+---
+
 ## `touchstart`/`touchend` never fire from a mouse on web — press feedback must also bind mouse events
 
 ### What you'd expect (web)

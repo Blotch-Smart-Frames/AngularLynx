@@ -5,7 +5,11 @@ import {
   waitForUpdate as nextUpdate,
   within,
 } from '@blotch/angular-lynx-testing-library';
-import { LYNX_ELEMENTS, LynxAccessibilitySettings } from '@blotch/angular-lynx';
+import {
+  LYNX_ELEMENTS,
+  LynxAccessibilitySettings,
+  LynxHaptics,
+} from '@blotch/angular-lynx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
 import { DURATION } from '../../utils/animate';
@@ -125,14 +129,21 @@ const settings = {
 const IOS_26 = { platform: 'iOS', osVersion: '26.0' };
 const IOS_18 = { platform: 'iOS', osVersion: '18.5' };
 
+/** Where the trigger is on screen, near the top: the menu opens below it. */
+const TRIGGER = { left: 16, top: 80, width: 80, height: 44 };
+/** How tall each of the menu's rows is, as measured. */
+const ROW_HEIGHT = 44;
+
 /**
  * Renders the menu on a platform (none for Material), measuring elements as
  * `boundingClientRect` would on a phone: the safe area (the element that
- * holds the menu) a phone's screen, the menu's content 120pt tall, and
- * anything else, the trigger, a small box near the top.
+ * holds the menu) a phone's screen, the menu's content 120pt tall with its
+ * rows ROW_HEIGHT apart from its top, in document order, and anything
+ * else, the trigger, at `trigger`.
  */
 const renderMenu = async (
   platform: { platform: string; osVersion: string } | null = IOS_26,
+  trigger = TRIGGER,
 ) => {
   vi.stubGlobal('SystemInfo', platform ?? undefined);
   const invoke = vi
@@ -142,11 +153,22 @@ const renderMenu = async (
         callback({ code: 0 });
         return;
       }
+      const content = element.closest('scroll-view > view');
+      const rows = content
+        ? [...content.querySelectorAll('[accessibility-traits^="button"]')]
+        : [];
       const data = element.querySelector(':scope > blur-view[ui-glass]')
         ? { left: 0, top: 0, width: 402, height: 800 }
-        : element.parentElement?.tagName.toLowerCase() === 'scroll-view'
+        : element === content
           ? { left: 0, top: 0, width: 250, height: 120 }
-          : { left: 16, top: 80, width: 80, height: 44 };
+          : rows.includes(element)
+            ? {
+                left: 0,
+                top: rows.indexOf(element) * ROW_HEIGHT,
+                width: 250,
+                height: ROW_HEIGHT,
+              }
+            : trigger;
       callback({ code: 0, data });
     });
   const result = await render(MenuHost, {
@@ -512,6 +534,260 @@ describe('UiMenuItem', () => {
     expect(share.className).toContain('min-h-[48px]');
     expect(label.className).toContain('text-[16px]');
     expect(precedes(share.querySelector('svg')!, label)).toBe(true);
+  });
+});
+
+/**
+ * A touch event with one finger at (x, y) in the window, as Lynx sends it.
+ */
+const touchAt = (x: number, y: number) => ({
+  touches: [{ clientX: x, clientY: y }],
+});
+/**
+ * A touchend: the finger that lifted is only in changedTouches.
+ */
+const liftAt = (x: number, y: number) => ({
+  touches: [],
+  changedTouches: [{ clientX: x, clientY: y }],
+});
+
+/**
+ * The middle of a row on screen, by its place in the menu: the menu opens
+ * over the trigger at TRIGGER's corner, and its rows are ROW_HEIGHT apart.
+ */
+const rowAt = (index: number) => ({
+  x: TRIGGER.left + 100,
+  y: TRIGGER.top + index * ROW_HEIGHT + ROW_HEIGHT / 2,
+});
+const NAME = 0;
+const SHARE = 2;
+const ARCHIVE = 4;
+
+const highlight = (rendered: Rendered, name: string | RegExp) =>
+  style(row(rendered, name).firstElementChild!, 'opacity');
+
+describe('dragging across the menu', () => {
+  /**
+   * Renders the menu and presses its trigger down, which opens it on iOS,
+   * with LynxHaptics' selection tap spied on.
+   */
+  const pressTrigger = async (
+    platform: { platform: string; osVersion: string } | null = IOS_26,
+  ) => {
+    const rendered = await renderMenu(platform);
+    const selection = vi.spyOn(
+      rendered.componentRef.injector.get(LynxHaptics),
+      'selection',
+    );
+    fireLynxEvent(rendered.trigger(), 'touchstart', touchAt(40, 100));
+    await waitForUpdate();
+    return { ...rendered, selection };
+  };
+
+  const moveTo = async (
+    rendered: Rendered,
+    point: { x: number; y: number },
+  ) => {
+    fireLynxEvent(rendered.trigger(), 'touchmove', touchAt(point.x, point.y));
+    await waitForUpdate();
+  };
+
+  it('opens on iOS as the finger touches the trigger down, and stays open when it lifts', async () => {
+    const rendered = await pressTrigger();
+    expect(rendered.host.open()).toBe(true);
+    await waitForOpen(rendered);
+
+    // The tap that ends the press doesn't close it again.
+    fireLynxEvent(rendered.trigger(), 'touchend', liftAt(40, 100));
+    fireEvent.tap(rendered.trigger());
+    await waitForUpdate();
+    expect(rendered.host.open()).toBe(true);
+    expect(rendered.host.shared).not.toHaveBeenCalled();
+  });
+
+  it("doesn't choose the item that grew under a finger that lifts without sliding", async () => {
+    const rendered = await pressTrigger();
+    await waitForOpen(rendered);
+
+    // Lynx sends the press's tap to the row under the finger by then.
+    fireLynxEvent(rendered.trigger(), 'touchend', liftAt(40, 100));
+    fireEvent.tap(row(rendered, 'Name'));
+    await waitForUpdate();
+    expect(rendered.host.sort()).toBe('date');
+    expect(rendered.host.open()).toBe(true);
+
+    // A tap of its own chooses it.
+    await after(600);
+    fireEvent.tap(row(rendered, 'Name'));
+    expect(rendered.host.sort()).toBe('name');
+  });
+
+  it('chooses the item the finger slides onto and lifts on, with a tap on each', async () => {
+    const rendered = await pressTrigger();
+    await waitForOpen(rendered);
+
+    await moveTo(rendered, rowAt(NAME));
+    expect(highlight(rendered, 'Name')).toBe('0.08');
+    await moveTo(rendered, rowAt(SHARE));
+    expect(highlight(rendered, 'Name')).toBe('0');
+    expect(highlight(rendered, 'Share')).toBe('0.08');
+    expect(rendered.selection).toHaveBeenCalledTimes(2);
+    // Moving within the row lights nothing new.
+    await moveTo(rendered, { ...rowAt(SHARE), y: rowAt(SHARE).y + 5 });
+    expect(rendered.selection).toHaveBeenCalledTimes(2);
+
+    const { x, y } = rowAt(SHARE);
+    fireLynxEvent(rendered.trigger(), 'touchend', liftAt(x, y));
+    fireEvent.tap(rendered.trigger());
+    await waitForUpdate();
+
+    expect(rendered.host.shared).toHaveBeenCalledTimes(1);
+    expect(rendered.host.open()).toBe(false);
+    await waitForClose(rendered);
+  });
+
+  it("doesn't light up or choose a disabled item, or the space around the rows", async () => {
+    const rendered = await pressTrigger();
+    await waitForOpen(rendered);
+
+    await moveTo(rendered, rowAt(ARCHIVE));
+    expect(highlight(rendered, 'Archive, unavailable offline')).toBe('0');
+    expect(rendered.selection).not.toHaveBeenCalled();
+    fireLynxEvent(
+      rendered.trigger(),
+      'touchend',
+      liftAt(rowAt(ARCHIVE).x, rowAt(ARCHIVE).y),
+    );
+    expect(rendered.host.archived).not.toHaveBeenCalled();
+    expect(rendered.host.open()).toBe(true);
+
+    // Beside the menu, and below it.
+    fireLynxEvent(rendered.trigger(), 'touchstart', touchAt(40, 100));
+    await moveTo(rendered, { x: 380, y: rowAt(SHARE).y });
+    await moveTo(rendered, { x: rowAt(SHARE).x, y: 700 });
+    fireLynxEvent(rendered.trigger(), 'touchend', liftAt(rowAt(SHARE).x, 700));
+    await waitForUpdate();
+    expect(rendered.host.shared).not.toHaveBeenCalled();
+    expect(rendered.host.open()).toBe(true);
+  });
+
+  it('turns the highlight off when the system takes the touch over', async () => {
+    const rendered = await pressTrigger();
+    await waitForOpen(rendered);
+    await moveTo(rendered, rowAt(SHARE));
+    expect(highlight(rendered, 'Share')).toBe('0.08');
+
+    fireLynxEvent(rendered.trigger(), 'touchcancel');
+    await waitForUpdate();
+    expect(highlight(rendered, 'Share')).toBe('0');
+    expect(rendered.host.open()).toBe(true);
+  });
+
+  it('chooses nothing while the menu is still growing', async () => {
+    const rendered = await pressTrigger();
+    await moveTo(rendered, rowAt(SHARE));
+    fireLynxEvent(
+      rendered.trigger(),
+      'touchend',
+      liftAt(rowAt(SHARE).x, rowAt(SHARE).y),
+    );
+    await waitForOpen(rendered);
+
+    expect(rendered.host.shared).not.toHaveBeenCalled();
+    expect(highlight(rendered, 'Share')).toBe('0');
+  });
+
+  it('opens on the tap on Material, as Android does, without following the finger', async () => {
+    const rendered = await pressTrigger(null);
+    expect(rendered.host.open()).toBe(false);
+
+    fireLynxEvent(rendered.trigger(), 'touchend', liftAt(40, 100));
+    fireEvent.tap(rendered.trigger());
+    await waitForOpen(rendered);
+    expect(rendered.host.open()).toBe(true);
+  });
+
+  it('toggles on a tap that comes on its own, as a screen reader sends', async () => {
+    const rendered = await pressTrigger();
+    await waitForOpen(rendered);
+    fireLynxEvent(rendered.trigger(), 'touchend', liftAt(40, 100));
+
+    // Long after the press, a tap is one of its own.
+    await after(600);
+    fireEvent.tap(rendered.trigger());
+    await waitForUpdate();
+    expect(rendered.host.open()).toBe(false);
+  });
+
+  it("ignores a press on the trigger while it's open, and moves without a press", async () => {
+    const rendered = await renderOpenMenu();
+    await moveTo(rendered, rowAt(SHARE));
+    expect(highlight(rendered, 'Share')).toBe('0');
+
+    fireLynxEvent(rendered.trigger(), 'touchstart', touchAt(40, 100));
+    await moveTo(rendered, rowAt(SHARE));
+    expect(highlight(rendered, 'Share')).toBe('0');
+  });
+
+  it('stops listening for moves once the trigger goes', async () => {
+    const rendered = await pressTrigger();
+    await waitForOpen(rendered);
+    const trigger = rendered.trigger();
+    rendered.host.withTrigger.set(false);
+    await waitForUpdate();
+
+    fireLynxEvent(
+      trigger,
+      'touchmove',
+      touchAt(rowAt(SHARE).x, rowAt(SHARE).y),
+    );
+    await waitForUpdate();
+    expect(highlight(rendered, 'Share')).toBe('0');
+  });
+});
+
+describe('a menu that opens upward', () => {
+  /** A trigger near the bottom of the screen, too low for the menu below. */
+  const LOW_TRIGGER = { left: 16, top: 740, width: 80, height: 44 };
+
+  const direction = (element: Element) => style(element, 'flex-direction');
+  const content = (rendered: Rendered) =>
+    rendered.overlay.querySelector('scroll-view > view')!;
+  const sectionItems = (rendered: Rendered) =>
+    row(rendered, 'Name').parentElement!.parentElement!;
+
+  it('lists its items from the bottom up on iOS, so the first is nearest the finger', async () => {
+    const rendered = await renderMenu(IOS_26, LOW_TRIGGER);
+    expect(direction(content(rendered))).toBe('column');
+
+    rendered.host.open.set(true);
+    await waitForOpen(rendered);
+
+    expect(direction(content(rendered))).toBe('column-reverse');
+    // A section's items too, under its title, as in UIKit.
+    const items = sectionItems(rendered);
+    expect(direction(items)).toBe('column-reverse');
+    const title = rendered.menu.getByRole('heading', { name: 'Sort by' });
+    expect(precedes(title, items)).toBe(true);
+
+    rendered.host.open.set(false);
+    await waitForClose(rendered);
+    expect(direction(content(rendered))).toBe('column');
+    expect(direction(items)).toBe('column');
+  });
+
+  it('keeps the order on Material, as Android does', async () => {
+    const rendered = await renderMenu(null, LOW_TRIGGER);
+    rendered.host.open.set(true);
+    await waitForOpen(rendered);
+
+    expect(direction(content(rendered))).toBe('column');
+  });
+
+  it('keeps the order when it opens downward', async () => {
+    const rendered = await renderOpenMenu();
+
+    expect(direction(content(rendered))).toBe('column');
   });
 });
 

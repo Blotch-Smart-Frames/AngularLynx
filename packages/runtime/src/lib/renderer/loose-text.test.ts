@@ -409,6 +409,16 @@ class InheritHost {}
 })
 class BoldHost {}
 
+@Component({
+  selector: 'decorated-host',
+  encapsulation: ViewEncapsulation.None,
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: `<text
+    ><em>italic</em> <s>struck <u>both</u> <b>bold</b></s></text
+  >`,
+})
+class DecoratedHost {}
+
 /**
  * The live element with `cls`.
  */
@@ -722,6 +732,36 @@ describe('loose text', () => {
     expect(style('_ngtag-b')).toContain('color: var(--angular-lynx-color)');
     expect(style('_ngtag-i')).toContain(
       'font-weight: var(--angular-lynx-font-weight)',
+    );
+  });
+
+  // Issue #643: the build gives `<em>`, `<u>`, `<s>` and their kin the
+  // browser's italic and lines, in rules on their tags' classes. As for
+  // `<b>`'s weight, the index entries must keep the inherited value off, and
+  // a tag inside one still reads the value from it.
+  it("leaves an <em>'s style and an <s>'s line to the build's rules for their tags", () => {
+    const bit = (property: string): number =>
+      1 << INHERITED_TEXT_PROPERTIES.indexOf(property);
+    (
+      globalThis as { __angularLynxStyleIndex?: unknown }
+    ).__angularLynxStyleIndex = {
+      rules: [
+        [['_ngtag-em'], bit('font-style')],
+        [['_ngtag-s'], bit('text-decoration')],
+        [['_ngtag-u'], bit('text-decoration')],
+      ],
+    };
+    const fixture = TestBed.createComponent(DecoratedHost);
+    fixture.detectChanges();
+    const style = (cls: string): string =>
+      String(byClass(cls).attrs.get('style') ?? '');
+
+    expect(style('_ngtag-em')).not.toContain('font-style');
+    expect(style('_ngtag-s')).not.toContain('text-decoration');
+    expect(style('_ngtag-u')).not.toContain('text-decoration');
+    // A <b> inside the <s> draws its line through, from the <s>'s copy.
+    expect(style('_ngtag-b')).toContain(
+      'text-decoration: var(--angular-lynx-text-decoration)',
     );
   });
 });

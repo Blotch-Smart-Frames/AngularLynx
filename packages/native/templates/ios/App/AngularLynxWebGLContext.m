@@ -859,8 +859,10 @@ static NSUInteger componentsOf(GLenum format) {
   if (skipPixels == 0 && skipRows == 0 && width == image.width && height == image.height) {
     return image;
   }
-  if (width <= 0 || height <= 0 || skipPixels + width > image.width ||
-      skipRows + height > image.height) {
+  // In NSInteger, 64 bits, so a skip near INT_MAX can't wrap round past the
+  // check.
+  if (width <= 0 || height <= 0 || skipPixels < 0 || skipRows < 0 ||
+      (NSInteger)skipPixels + width > image.width || (NSInteger)skipRows + height > image.height) {
     return nil;
   }
   // Rows counted from the top of the flipped image are counted from the

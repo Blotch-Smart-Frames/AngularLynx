@@ -636,10 +636,30 @@ class Canvas2DContext(
         draw(c)
         c.restore()
         if (unbounded) c.restore()
-        // An opaque canvas stays opaque: what an operation like copy or
-        // destination-out left see-through is drawn over black, as a browser
-        // keeps a canvas made with alpha: false. The clip still applies.
-        if (!alpha && s.composite in REDUCES_ALPHA) c.drawColor(Color.BLACK, PorterDuff.Mode.DST_OVER)
+        if (!alpha && s.composite in REDUCES_ALPHA) keepOpaque()
+    }
+
+    /**
+     * An opaque canvas stays opaque: what an operation like copy or
+     * destination-out left see-through is put over black, as a browser keeps
+     * a canvas made with alpha: false. It's done on the pixels: drawing black
+     * under them would be antialiased at the clip's edge, and leave those
+     * pixels see-through.
+     */
+    private fun keepOpaque() {
+        val target = bitmap ?: return
+        val pixels = IntArray(width * height)
+        target.getPixels(pixels, 0, width, 0, 0, width, height)
+        var changed = false
+        for (i in pixels.indices) {
+            val color = pixels[i]
+            val a = Color.alpha(color)
+            if (a == 255) continue
+            // getPixels gives straight colors: over black, they're scaled by alpha.
+            pixels[i] = Color.argb(255, Color.red(color) * a / 255, Color.green(color) * a / 255, Color.blue(color) * a / 255)
+            changed = true
+        }
+        if (changed) target.setPixels(pixels, 0, width, 0, 0, width, height)
     }
 
     /**

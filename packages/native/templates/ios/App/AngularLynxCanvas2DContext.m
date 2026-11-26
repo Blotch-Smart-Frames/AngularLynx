@@ -973,15 +973,15 @@ static BOOL reducesAlpha(NSInteger composite) {
 }
 
 /// An opaque canvas stays opaque: what an operation like copy or
-/// destination-out left see-through is drawn over black, as a browser keeps
-/// a canvas made with alpha: false. The clip still applies.
+/// destination-out left see-through is put over black, as a browser keeps a
+/// canvas made with alpha: false. It's done on the bytes, as premultiplied
+/// colors are already over black: drawing black under them would be
+/// antialiased at the clip's edge, and leave those pixels see-through.
 - (void)keepOpaque {
-  if (_alpha || !reducesAlpha(_state.composite)) return;
-  CGContextSaveGState(_cg);
-  CGContextSetBlendMode(_cg, kCGBlendModeDestinationOver);
-  CGContextSetRGBFillColor(_cg, 0, 0, 0, 1);
-  CGContextFillRect(_cg, CGRectMake(0, 0, _width, _height));
-  CGContextRestoreGState(_cg);
+  if (_alpha || !reducesAlpha(_state.composite) || !_cg) return;
+  uint8_t *bytes = _data.mutableBytes;
+  NSUInteger length = _data.length;
+  for (NSUInteger i = 3; i < length; i += 4) bytes[i] = 255;
 }
 
 #pragma mark Shapes

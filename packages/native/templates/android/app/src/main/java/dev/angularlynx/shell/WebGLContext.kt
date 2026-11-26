@@ -565,7 +565,12 @@ class WebGLContext(override val canvasId: String, attributes: ReadableMap?) : Ca
         GLES30.glGetIntegerv(GLES30.GL_UNPACK_SKIP_ROWS, skip, 1)
         val x = skip[0]
         if (x == 0 && skip[1] == 0 && width == image.width && height == image.height) return image
-        if (width <= 0 || height <= 0 || x + width > image.width || skip[1] + height > image.height) return null
+        // In Long, so a skip near Int.MAX_VALUE can't wrap round past the check.
+        if (width <= 0 || height <= 0 || x < 0 || skip[1] < 0 ||
+            x.toLong() + width > image.width || skip[1].toLong() + height > image.height
+        ) {
+            return null
+        }
         // Rows counted from the top of the flipped image are counted from the
         // bottom of the image as it is, which convertImage then flips.
         val y = if (flipY) image.height - skip[1] - height else skip[1]

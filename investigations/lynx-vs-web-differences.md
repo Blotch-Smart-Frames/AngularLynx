@@ -7161,6 +7161,8 @@ A list opens at its top, whatever its last item spans.
 
 Measured once (2026-11-05, iOS 27 Simulator, Lynx 4.4): a `<list list-type="flow" span-count="2">` of forty items whose last `<list-item>` had `full-span="true"` (a footnote across both columns) opened scrolled to its end, with that footnote and the last four items on screen; scrolling up reached the rest. The web preview opened the same list at the top. With the footnote moved out of the list (into the header), the list opens at the top on iOS too. Not yet narrowed down (the footnote's span, its being last, or the flow layout) and not checked on Android.
 
+At the time, a `full-span` written on a `<list-item>` never reached native (see "A `<list-item>`'s `full-span` and `sticky-*` are read from the list's update" below), which may be what went wrong. Once it did (2026-11-27, iOS 27 Simulator), a flow list of two columns whose last item was `full-span` (`ui-bar-scroll`'s spacer above the toolbar) opened at its top.
+
 ---
 
 ## A hidden view inside a `<text>` leaves a gap on iOS
@@ -7621,3 +7623,19 @@ For each element with custom properties of its own, the flush collects them and 
 ### The fix
 
 The build plugin sets the starting values only on the elements that read them (`startingValueRules` in `packages/rsbuild-plugin-angular-lynx/src/tailwind-v4/starting-values.ts`): each rule that reads a variable without setting it gets them on its subject's class, before every utility.
+
+---
+
+## A `<list-item>`'s `full-span` and `sticky-*` are read from the list's update, not from the item
+
+### What you'd expect (web)
+
+An attribute written on an element is what the element does: a `<list-item full-span>` written in a template takes a whole row of a `flow` list.
+
+### What Lynx does
+
+Native lays a list out from its `update-list-info`: each item's `type`, `item-key` and layout attributes (`full-span`, `sticky-top`, `sticky-bottom`, `estimated-main-axis-size-px`, `recyclable`) come from the insert or update action that names it, before native asks for the item. React Lynx puts them there from each item's props (its `platformInfo`). Written only on the `<list-item>` element, they do nothing. Measured on the iOS 27 Simulator (2026-11-27): a `<list list-type="flow" span-count="2">` whose first items, a spacer and a heading, had `[full-span]="true"` laid each out in one column, beside the next item, and the first list item went missing from the top rows.
+
+### The fix
+
+`LynxElement.setAttribute` records those attributes on a `<list-item>`'s wrapper (`_listItemAttributes`), and `LynxListElement` sends them in each element item's insert action, and an update action when they change, as it already did for a `*lynxListFor` run's (`itemAttributes`). `ui-bar-scroll` needed it: on a `<list>`, its spacers and large title are `full-span` items.

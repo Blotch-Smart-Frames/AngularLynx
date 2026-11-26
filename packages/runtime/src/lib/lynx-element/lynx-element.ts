@@ -32,6 +32,7 @@ import {
   runAfterFirstRender,
 } from '../lynx-render-lifecycle';
 import type { ElementRef } from '../types/lynx';
+import type { ListItemAttributes } from './lynx-list-element';
 import { toLynxDisplay, withLynxDisplay } from './display';
 import { flushTreeWithListUpdates } from './list-updates';
 import { withFlatCalc } from './nested-calc';
@@ -146,6 +147,32 @@ const parseEventName = (
  * corner; `overflow: hidden` clips them (see "A `display: none` element still
  * draws its text on iOS" in investigations/lynx-vs-web-differences.md).
  */
+/**
+ * A flag attribute as native reads it from update-list-info: a boolean. A
+ * template's `full-span="true"`, or a bare `full-span` (`''`), arrives as a
+ * string, and only `false` or `"false"` turn one off.
+ */
+const listItemFlag = (value: unknown): boolean =>
+  value !== false && value !== 'false';
+
+/**
+ * The `<list-item>` attributes native lays a list out with, which it reads
+ * from the list's update-list-info rather than from the item (see
+ * LynxElement._listItemAttributes), each with how its value is sent.
+ * `reuse-identifier` isn't one: an element item's type is `list-item`.
+ */
+const LIST_ITEM_LAYOUT: {
+  readonly [
+    K in keyof Required<Omit<ListItemAttributes, 'reuse-identifier'>>
+  ]: (value: unknown) => ListItemAttributes[K];
+} = {
+  'estimated-main-axis-size-px': Number,
+  'full-span': listItemFlag,
+  'sticky-top': listItemFlag,
+  'sticky-bottom': listItemFlag,
+  recyclable: listItemFlag,
+};
+
 const HIDDEN_STYLE = 'display: none; overflow: hidden';
 
 /**
@@ -522,6 +549,16 @@ export class LynxElement implements BaseLynxElement {
   _virtualParent: LynxElement | null = null;
   _virtualPrev: LynxElement | null = null;
   _virtualNext: LynxElement | null = null;
+
+  /**
+   * @internal A `<list-item>`'s layout attributes (`full-span`, `sticky-top`
+   * and the rest, see LIST_ITEM_LAYOUT), as they've been set on it. Native
+   * reads them from the list's update-list-info, not from the item, so the
+   * list sends them from here (see LynxListElement.#collectSlots). A new
+   * object for each change, so the list can tell one by identity. Undefined
+   * until one is set, as on most items.
+   */
+  _listItemAttributes: ListItemAttributes | undefined = undefined;
 
   /**
    * @internal Set on the `<list-item>` of a `*lynxListFor` item. Its list
@@ -1185,6 +1222,9 @@ export class LynxElement implements BaseLynxElement {
     if (styledTag && this.#scopeClasses?.includes(tagClassOf(styledTag))) {
       this.setRuntimeClass(attributeClassOf(styledTag, name), value != null);
     }
+    if (this.tagName === 'list-item' && name in LIST_ITEM_LAYOUT) {
+      this.#noteListItemLayout(name as keyof typeof LIST_ITEM_LAYOUT, value);
+    }
     if (name === 'class') {
       // Use __SetClasses (not __AddClass) because setAttribute replaces the
       // entire class attribute with a space-separated list. __AddClass treats
@@ -1380,6 +1420,29 @@ export class LynxElement implements BaseLynxElement {
         : [trait]
       : traits!.filter((added) => added !== trait);
     this.setAttribute('accessibility-traits', this.#ownTraits);
+  }
+
+  /**
+   * Records one of a `<list-item>`'s layout attributes, as native reads it
+   * from update-list-info, and tells the list it's in, which sends it with
+   * its next update. It's set on the element all the same.
+   */
+  #noteListItemLayout(
+    name: keyof typeof LIST_ITEM_LAYOUT,
+    value: unknown,
+  ): void {
+    const attributes: Record<string, unknown> = {
+      ...this._listItemAttributes,
+    };
+    if (value == null) {
+      delete attributes[name];
+    } else {
+      attributes[name] = LIST_ITEM_LAYOUT[name](value);
+    }
+    this._listItemAttributes = attributes as ListItemAttributes;
+    (
+      this._virtualParent as { listItemChanged?(): void } | null
+    )?.listItemChanged?.();
   }
 
   getAttribute(name: string) {

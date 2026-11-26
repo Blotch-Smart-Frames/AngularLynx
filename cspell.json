@@ -382,6 +382,7 @@
     "keyup",
     "KHTML",
     "layoutchange",
+    "layoutcomplete",
     "lepus",
     "letterboxed",
     "lifecycles",

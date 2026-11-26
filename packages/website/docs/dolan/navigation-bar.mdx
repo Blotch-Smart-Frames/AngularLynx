@@ -25,7 +25,7 @@ This also adds [Toolbar](/dolan/toolbar), whose items and groups go in the bar, 
 
 ## Usage
 
-Put the bar after the screen's `<scroll-view>`, and `ui-bar-scroll` on the scroll view:
+Put the bar after the screen's `<scroll-view>`, and `ui-bar-scroll` on the scroll view. A long feed's `<list>` [takes it too](/dolan/toolbar#the-scroll-view):
 
 ```typescript title="src/app/notes.ts"
 import { Component } from '@angular/core';
@@ -115,7 +115,7 @@ With `largeTitle`, the title starts large at the top of the content and scrolls 
 <ui-navigation-bar title="Notes" largeTitle />
 ```
 
-`ui-bar-scroll` draws the large title, so it needs a scroll view with it. It's one line: a title too long for it ends with "…". On Android it's Material 3 Expressive's medium flexible app bar, which collapses into the small one the same way.
+`ui-bar-scroll` draws the large title, so it needs a scroll view or a list with it. It's one line: a title too long for it ends with "…". On Android it's Material 3 Expressive's medium flexible app bar, which collapses into the small one the same way.
 
 #### Beside the large title
 

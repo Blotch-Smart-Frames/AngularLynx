@@ -33,6 +33,7 @@
 - **`upper-threshold-item-count`** / **`lower-threshold-item-count`** — `(bindscrolltoupper)` / `(bindscrolltolower)` fire when fewer than this many items remain above or below the screen (`upper-threshold` and `lower-threshold`, in px, are `<scroll-view>`'s)
 - **`initial-scroll-index`** — the item to start at
 - **`need-visible-item-info`** — adds `attachedCells` to the scroll events
+- **On a `<list-item>`:** `full-span` (a whole row of a `flow` list, such as a section header), `sticky-top`/`sticky-bottom` (with `sticky` on the list), `estimated-main-axis-size-px` and `recyclable`. Native reads them from `update-list-info`, which the renderer fills in from the `<list-item>`s an `@for` or the template writes (and updates when a binding changes them); `*lynxListFor` takes them from `itemAttributes`
 
 ## How It Works
 
@@ -149,7 +150,7 @@ A chat opens on its newest message and loads older ones as the person scrolls up
 3. **`<list-item>` must be a direct child of `<list>`** — wrapping it in other elements breaks recycling
 4. **Don't set `z-index` on `<list-item>`** — it interferes with the recycling mechanism. Set z-index on content inside the list item instead
 5. **Explicit height required** — same as `<scroll-view>`, the list needs a bounded height to scroll
-6. **Keep a footer out of a flow list** — a `full-span="true"` item at the end of a `list-type="flow"` list opened the list scrolled to its end on iOS (measured once, Lynx 4.4). Put a footnote above or below the list, and clear a floating bar with `padding-bottom` on the list
+6. **Check a footer at the end of a flow list on iOS** — a `full-span="true"` item at the end of a `list-type="flow"` list once opened the list scrolled to its end (measured once, Lynx 4.4, before a template's `full-span` reached native). Since then, `ui-bar-scroll`'s full-span spacer at the end of a flow list opened at the top (iOS 27 Simulator). Clear floating bars with `ui-bar-scroll` on the list (see routing.md), or `padding-bottom` on the list
 
 ## List vs Scroll-View
 

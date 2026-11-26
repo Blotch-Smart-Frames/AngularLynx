@@ -1645,12 +1645,40 @@ describe('splitPrivateChains', () => {
     ).toBe('class A { #a?: A; f(): A { return (0, this.#a!).#a!; } }');
   });
 
+  it('reads through `as` and `satisfies`, though a module has no other chain', () => {
+    expect(
+      split(
+        'class A { #a!: A; f(): A { return (this.#a as A).#a; } }',
+        '/app/src/app/a.ts',
+      ),
+    ).toBe('class A { #a!: A; f(): A { return (0, (this.#a as A)).#a; } }');
+    expect(
+      split(
+        'class A { #a!: A; f(): A { return (this.#a satisfies A).#a; } }',
+        '/app/src/app/a.ts',
+      ),
+    ).toBe(
+      'class A { #a!: A; f(): A { return (0, (this.#a satisfies A)).#a; } }',
+    );
+  });
+
+  it('checks a run of slashes or comments after a private access in linear time', () => {
+    // A hint that followed the chain's syntax took about a second for 36
+    // slashes, and seven times longer for each four more.
+    const slashes = `class A { #a; f() { return this.#a ${'/'.repeat(10_000)}\n.x; } }`;
+    const comments = `class A { #a; f() { return this.#a ${'/* */'.repeat(10_000)}.x; } }`;
+    const start = performance.now();
+    expect(split(slashes)).toBe(slashes);
+    expect(split(comments)).toBe(comments);
+    expect(performance.now() - start).toBeLessThan(1_000);
+  });
+
   it('returns the same string when nothing applies', () => {
     for (const code of [
       'export const a = 1;',
       'class A { #a; #b; f() { return [this.#a?.#b, this.#a.x.#b, f(this.#a).#b, this.#a[0].#b]; } }',
       // A match for the hint that isn't a chain.
-      "const s = '#a.#b';",
+      "const s = 'x.#a.#b';",
     ]) {
       expect(split(code)).toBe(code);
     }

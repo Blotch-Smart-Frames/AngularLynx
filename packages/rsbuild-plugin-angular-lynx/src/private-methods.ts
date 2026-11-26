@@ -141,12 +141,16 @@ export const transformPrivateMethods = (
 };
 
 /**
- * A private name, then a `.` and another private name, with only spaces,
- * comments, `)` and `!` between: the shape {@link splitPrivateChains}
- * rewrites. A module without one is left without being parsed.
+ * Two private member accesses (`.#name`, `?.#name` included), anywhere in the
+ * module: every chain {@link splitPrivateChains} rewrites has them, with
+ * whatever is between (comments, parentheses, a type assertion). A module
+ * with at most one is left without being parsed. Coarse on purpose: a hint
+ * that followed the chain's syntax (repeated comment alternatives) can
+ * backtrack exponentially on a run of slashes or comments, and this one
+ * only scans forward to the second access.
  */
 const PRIVATE_CHAIN_HINT =
-  /#[\p{ID_Continue}$\\\u200C\u200D]+(?:[\s)!]|\/\*[\s\S]*?\*\/|\/\/.*)*\.(?:\s|\/\*[\s\S]*?\*\/|\/\/.*)*#[\p{ID_Start}$_\\]/u;
+  /\.\s*#[\p{ID_Start}$_\\][\s\S]*?\.\s*#[\p{ID_Start}$_\\]/u;
 
 /**
  * Rewrites a private member read on the result of another private member

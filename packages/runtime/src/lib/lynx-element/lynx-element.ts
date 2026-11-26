@@ -802,6 +802,13 @@ export class LynxElement implements BaseLynxElement {
   /** One of a `<q>`'s quotation marks (see #quoteMarks). */
   #quoteMark = false;
   /**
+   * Set once a `<q>` has been inside it, as on its ancestors then: a `<q>`
+   * in it may need other marks when it moves (see #setQuoteDepth). Never
+   * cleared, as #passesTextStyles isn't: one the `<q>` left only costs a
+   * walk of its children when it moves.
+   */
+  #holdsQuote = false;
+  /**
    * On an anchor (`tagName` 'comment'): whether its native element is the
    * empty raw-text it is in a `<text>`, rather than the hidden view
    * LynxDocument makes (see #anchorFor and hydrateAnchor).
@@ -1752,6 +1759,19 @@ export class LynxElement implements BaseLynxElement {
   }
 
   /**
+   * Flags this element and its ancestors as holding a `<q>` (see
+   * #holdsQuote). One that has the flag has its own ancestors flagged
+   * already: that's how it got it, and an element that moves flags its new
+   * ones in #adoptChild.
+   */
+  #holdQuote(): void {
+    if (this.#holdsQuote) return;
+    this.#holdsQuote = true;
+    const parent = this.#jsParent;
+    if (parent) parent.#holdQuote();
+  }
+
+  /**
    * How many `<q>`s this element is in, itself included: the depth of a
    * `<q>` put in it.
    */
@@ -1765,9 +1785,10 @@ export class LynxElement implements BaseLynxElement {
    * Gives the `<q>`s in this element, itself included, the marks for how
    * deep each is, `depth` being this one's: “ ” outside any other, and ‘ ’
    * inside one, as a browser's `quotes: auto` draws English quotes, which
-   * repeats its last pair for deeper ones. Run when a `<q>` goes into an
-   * element (see #adoptChild), which is when Angular builds one, and moves
-   * one into another with content projection.
+   * repeats its last pair for deeper ones. Run when a `<q>`, or an element
+   * one is in, goes into an element (see #adoptChild): when Angular builds
+   * one, when content projection moves one into another, and when an
+   * element built with a `<q>` inside goes in after it.
    */
   #setQuoteDepth(depth: number): void {
     let inner = depth;
@@ -1778,7 +1799,7 @@ export class LynxElement implements BaseLynxElement {
       inner++;
     }
     for (const child of this.#children) {
-      if (child.#children.length > 0 || child.#quoteMarks) {
+      if (child.#holdsQuote || child.#quoteMarks) {
         child.#setQuoteDepth(inner);
       }
     }
@@ -2078,7 +2099,10 @@ export class LynxElement implements BaseLynxElement {
     // What it inherits depends on its new parent (see #drawnAtDefault).
     if (newChild.#webText) newChild.#inheritAgain();
     // And a <q>'s marks on how many <q>s it's in (see #setQuoteDepth).
-    if (newChild.#quoteMarks) newChild.#setQuoteDepth(this.#quoteDepth());
+    if (newChild.#quoteMarks || newChild.#holdsQuote) {
+      this.#holdQuote();
+      newChild.#setQuoteDepth(this.#quoteDepth());
+    }
   }
 
   /**

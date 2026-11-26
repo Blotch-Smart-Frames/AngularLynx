@@ -1600,6 +1600,27 @@ describe('<q>, element by element', () => {
     expect(drawn(inner)).toEqual(['“', '‘', 'x', '’', '”']);
   });
 
+  it('draws single marks in a <q> put in an element before that goes in another <q>', () => {
+    const outer = doc.createElement('q');
+    page.appendChild(outer);
+    // The inner <q> goes into its <span> first, then the <span> into the
+    // outer <q>, as an element built apart is put in the tree whole.
+    const span = doc.createElement('span');
+    const inner = doc.createElement('q');
+    span.appendChild(inner);
+    inner.appendChild(doc.createText('x'));
+    expect(drawn(inner)).toEqual(['“', 'x', '”']);
+    outer.appendChild(span);
+    commit();
+
+    expect(drawn(outer)).toEqual(['“', '‘', 'x', '’', '”']);
+
+    // And outermost again when the <span> moves out.
+    page.appendChild(span);
+    commit();
+    expect(drawn(inner)).toEqual(['“', 'x', '”']);
+  });
+
   it('keeps the spaces inside it, which sit beside a mark', () => {
     const p = doc.createElement('p');
     page.appendChild(p);

@@ -686,6 +686,24 @@ describe('LynxElement', () => {
       );
     });
 
+    // Removing a [style.display] binding natively would remove the hiding
+    // `display: none` with it.
+    it('stays hidden when a [style.display] binding goes', () => {
+      element = new LynxElement(fakeRef);
+      element.setAttribute('hidden', '');
+      element.setStyle('display', 'flex');
+      vi.mocked(globalThis.__AddInlineStyle).mockClear();
+
+      element.removeStyle('display');
+
+      expect(globalThis.__AddInlineStyle).not.toHaveBeenCalledWith(
+        fakeRef,
+        'display',
+        null,
+      );
+      expect(lastInlineStyle()).toBe('display: none; overflow: hidden');
+    });
+
     it('writes nothing again when it doesn’t change', () => {
       element = new LynxElement(fakeRef);
       element.setProperty('hidden', true);

@@ -3,7 +3,10 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   LAYOUT_FLAG,
+  LOWERED_FLAG,
+  RAISED_FLAG,
   SMALLER_FLAG,
+  VERTICAL_ALIGN_FLAG,
   styleIndexOf,
   styleIndexStatement,
 } from './style-index';
@@ -165,6 +168,12 @@ describe('styleIndexOf', () => {
     ],
     ['font-size: calc(var(--angular-lynx-font-size) * 2 / 1.2)', FONT_SIZE],
     ['font-size: var(--angular-lynx-font-size-x)', FONT_SIZE],
+    // The build's <sup> and <sub> distances (issue #682), and any other.
+    ['vertical-align: 0.4em', RAISED_FLAG],
+    ['vertical-align: -0.24em', LOWERED_FLAG],
+    ['vertical-align: 0.5em', VERTICAL_ALIGN_FLAG],
+    ['vertical-align: super', VERTICAL_ALIGN_FLAG],
+    ['vertical-align: baseline', VERTICAL_ALIGN_FLAG],
   ])('counts %s as %s', (declaration, flags) => {
     expect(styleIndexOf([`.a { ${declaration} }`]).rules).toEqual(
       flags ? [[['a'], flags]] : [],
@@ -232,6 +241,55 @@ describe('SMALLER_FLAG', () => {
         `calc(var(--angular-lynx-font-size, 14px) / ${Number(
           (1.2 ** (i + 1)).toFixed(5),
         )})`,
+      ]),
+    );
+  });
+});
+
+describe('the vertical-align flags', () => {
+  const runtime = (): string =>
+    fs.readFileSync(
+      path.join(
+        import.meta.dirname,
+        '../../runtime/src/lib/lynx-element/text-flow.ts',
+      ),
+      'utf-8',
+    );
+
+  // The runtime reads the bits, so the two must agree.
+  it("are the runtime's bits", () => {
+    const source = runtime();
+    expect(source).toContain('export const RAISED_FLAG = SMALLER_FLAG << 1;');
+    expect(source).toContain('export const LOWERED_FLAG = RAISED_FLAG << 1;');
+    expect(source).toContain(
+      'export const VERTICAL_ALIGN_FLAG = LOWERED_FLAG << 1;',
+    );
+    expect(RAISED_FLAG).toBe(SMALLER_FLAG << 1);
+    expect(LOWERED_FLAG).toBe(RAISED_FLAG << 1);
+    expect(VERTICAL_ALIGN_FLAG).toBe(LOWERED_FLAG << 1);
+  });
+
+  // The runtime moves the tags inside a <sup> or <sub> by the distances in
+  // the build's stylesheet (issue #682), so they must be the same.
+  it("move the tags by the stylesheet's distances", () => {
+    const source = runtime();
+    const css = fs.readFileSync(
+      path.join(import.meta.dirname, 'styles/html-text-tags.css'),
+      'utf-8',
+    );
+    const distance = (tag: string): string =>
+      new RegExp(`^${tag} \\{\\s*vertical-align: ([^;]+);`, 'm').exec(css)![1]!;
+    expect(distance('sup')).toBe(
+      `${/const RAISED_EM = ([-\d.]+);/.exec(source)![1]}em`,
+    );
+    expect(distance('sub')).toBe(
+      `${/const LOWERED_EM = ([-\d.]+);/.exec(source)![1]}em`,
+    );
+    // Merged with their smaller size's rule, as both name the tag.
+    expect(styleIndexOf([css]).rules).toEqual(
+      expect.arrayContaining([
+        [['<sup>'], SMALLER_FLAG | RAISED_FLAG],
+        [['<sub>'], SMALLER_FLAG | LOWERED_FLAG],
       ]),
     );
   });

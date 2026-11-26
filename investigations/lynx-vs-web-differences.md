@@ -719,6 +719,34 @@ The shells register `AngularLynxShell.collectGarbage()` (`ShellModule.swift`, an
 
 ---
 
+## In PrimJS every own property costs each object about 45 bytes, so a field set in the constructor is paid per instance (issue #586)
+
+### What you'd expect (web)
+
+V8 and JavaScriptCore keep a class's fields in the object itself, laid out by a hidden class the instances share: an object with 50 fields is a few hundred bytes, and a field that stays `null` costs a pointer.
+
+### What Lynx does
+
+PrimJS, which runs the main thread, keeps each object's properties in a table of its own. Measured on the iOS 27 Simulator as the growth of the footprint's "Untagged" memory (PrimJS's heap) for 5,000 objects kept alive, made on the main thread at launch:
+
+| Each object                                    | 5,000 of them |
+| ---------------------------------------------- | ------------- |
+| `{ i }`                                        | 0.9 MB        |
+| A class instance with 10 fields set to `null`  | 2.6 MB        |
+| …with 20                                       | 6.6 MB        |
+| …with 55                                       | 12.6 MB       |
+| A one-entry `Map`                              | 0.85 MB       |
+| An array of 30 slots, filled with `push()`     | 3.7 MB        |
+| A `WeakRef` and a `FinalizationRegistry` entry | 1.7 MB        |
+
+So a field costs about 45 bytes for every instance that has it, whatever its value. `LynxElement` had 41 private fields set in its constructor, most of them `null` or `false` until something sets them, and the runtime makes one for every element, text node and anchor: a screen of 5,000 `<view>`s took 56 MB of PrimJS heap, against ReactLynx's 25 MB for the same screen in the same shell (its main thread keeps about 3 KB per element, AngularLynx about 8.7 KB).
+
+### The fix
+
+The build plugin starts each of AngularLynx's packages' private fields whose initializer is a constant (`null`, `false`, `''`, a number), in a class without `extends`, on the class's prototype rather than on each instance (`renamePrivateMethods` in `packages/rsbuild-plugin-angular-lynx/src/private-methods.ts`): an instance gets a property of its own only once the field is written. The 5,000 views took 52 MB with it. In the runtime's own code, keep state an element rarely has out of its constructor: a field that starts as an object (`[]`, `new Map()`) is still made for each instance.
+
+---
+
 ## `<block>` has no native paintable UI — it must be created as a layout-only element, and its children can't be picked apart on teardown
 
 ### What you'd expect (web)
@@ -1655,6 +1683,22 @@ Lynx's docs say a percentage is relative to the parent's size, but a nested `<te
 ### What Lynx does
 
 On Android (Lynx Explorer 4.1, API 34 emulator, November 2026), `vertical-align: 6px` and `calc(18px / 3)` raised the text, but `calc(var(--angular-lynx-font-size, 14px) / 3)` left it on the baseline, as if the declaration weren't there. Lynx's keywords move it little: `super` and `sub` move by a tenth of the element's height, and `40%` (of the line height) moved nothing visible. Use a length or an `em`, which is the element's own size: the `<sup>` rule is `vertical-align: 0.4em` (issue #649).
+
+---
+
+## The text inside an inline `<text>` with a `vertical-align` doesn't move with it
+
+### What you'd expect (web)
+
+`vertical-align` moves an inline box relative to its parent's baseline, and everything inside the box moves with it. In `x<sup>n<b>2</b></sup>` the "n" and the "2" rise together, and in `x<sup>n<sup>m</sup></sup>` the "m" rises by both `<sup>`s' distances.
+
+### What Lynx does
+
+On iOS, Lynx moves only the text of the inline `<text>` that has the `vertical-align`: it sets each run's `NSBaselineOffsetAttributeName` from the nearest `<text>` that owns the run (`LynxTextShadowNode setVerticalAlign:`), so a `<text>` inside it, with no `vertical-align` of its own, stays on the line. On Android the outer `<text>`'s span (`InlineTextBaselineShiftSpan`) covers the text inside, so it moves, but each span sets the paint's `baselineShift` rather than adding to it, so an inner `<text>` with a `vertical-align` of its own moves by its own distance only. On both, a `<sup>` in a `<sup>` rose no higher than one alone, and a `<sup>` in a `<sub>` sat above the line instead of near it (Lynx Explorer 4.1 shells, iOS 27 Simulator and Android API 34 emulator, November 2026). The web preview draws inline elements in the browser, which adds them up.
+
+### The fix
+
+The style index flags the build's `<sup>` and `<sub>` distances (`RAISED_FLAG` for `vertical-align: 0.4em`, `LOWERED_FLAG` for `-0.24em`, and `VERTICAL_ALIGN_FLAG` for any other value), and on iOS and Android the runtime gives each HTML text tag inside one the whole distance inline, in its own `em` (`baselineShiftFor` in `text-flow.ts`, issue #682): `0.4em` for a `<b>` in a `<sup>`, `0.48em` for a `<small>` in a `<sup>` (it's 1.2 times smaller), `0.88em` for a `<sup>` in a `<sup>`. It leaves the tag alone where an app's rule or inline style sets a `vertical-align` of its own on it or a tag around it (an app's `sup { vertical-align: -0.24em }` merges with the build's rule into both flags), or a size of its own on it or a tag between it and the `<sup>`, since it can't tell the distance then.
 
 ---
 

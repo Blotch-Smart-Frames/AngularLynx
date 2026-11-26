@@ -322,6 +322,31 @@ const dotOf = (
  * `undefined` rather than a TypeError. An auto-accessor (`accessor #x`) and
  * a decorated field stay private.
  *
+ * **Constant fields start on the prototype.** An instance field whose
+ * initializer is a constant (`null`, `false`, `''`, a number, `void 0`, or
+ * none at all) doesn't become a property of each instance: its declaration
+ * goes, and one `static { this.prototype[__x_<key><n>] = v; … }` at the start
+ * of the class's body puts the defaults on the prototype (a field without an
+ * initializer needs none: a missing property reads `undefined` too), before
+ * any static initializer, which could make an instance and read one. An
+ * instance reads the default from its prototype and gets a property of its
+ * own only once the field is written. A declaration that spans lines stays,
+ * as removing it would remove a line. In PrimJS every own property costs each
+ * instance about 45 bytes: on the iOS Simulator, 5,000 objects with 55 fields
+ * took 12.6 MB of its heap, and 5,000 with 10 took 2.6 MB. `LynxElement`
+ * has 41 private fields, most of them `null` or `false` until something sets
+ * them, and the runtime makes one for every element, text node and anchor:
+ * a screen of 5,000 views took 4 MB less with them on the prototype
+ * (issue #586). A constant is the same value for every instance and can't
+ * run code, so it doesn't matter when it's read; only code that misuses the
+ * field sees a difference, as above (reading it on another instance of the
+ * class before its fields are initialized gives the default, not a TypeError).
+ * An initializer that makes an object (`[]`, `new Map()`) still runs for each
+ * instance, as each needs its own. So do a subclass's fields (a class with
+ * `extends`): when its base's constructor returns another object, the
+ * subclass's fields are defined on that object, which doesn't inherit the
+ * subclass's prototype. `LynxElement` has no base, so it loses nothing.
+ *
  * **Static members** are renamed and keyed the same way. A class makes its
  * static ones once, but each `LynxElement.#registry` read went through
  * `_class_private_field_loose_base` all the same, and a static private
@@ -394,6 +419,11 @@ export const renamePrivateMethods = (
     // Every class it makes would share these names, and one made from
     // another would override its base's methods (see above).
     if (info.branded || (info.repeated && info.extendsAnother)) continue;
+    // The class's constant fields' defaults (see above), which a static block
+    // at the start of its body puts on the prototype: before any static
+    // initializer, which could make an instance and read one.
+    const defaults: string[] = [];
+    const defaultsAt = edits.length;
     for (const [name, declarations] of info.members) {
       const text = `__${name.slice(1)}_${key}${info.index}`;
       const uses = info.uses.get(name)!;
@@ -421,6 +451,29 @@ export const renamePrivateMethods = (
           ? symbolKeyEdits(uses, text, code, sourceFile)
           : null;
       if (!fieldEdits) continue;
+      // A subclass's fields stay on each instance: its base's constructor
+      // can return another object, which then gets them natively but
+      // doesn't inherit the subclass's prototype (see above).
+      const initial =
+        fieldStatic || info.extendsAnother
+          ? undefined
+          : prototypeDefault(field as ts.PropertyDeclaration, sourceFile);
+      if (initial !== undefined) {
+        // A constant field starts on the prototype (see above): its
+        // declaration goes, and only its uses are keyed.
+        const start = field!.getStart(sourceFile);
+        edits.push(
+          ...fieldEdits.filter(
+            (edit) => edit.start < start || edit.start >= field!.end,
+          ),
+          { start, end: field!.end, text: '' },
+        );
+        if (initial !== null) {
+          defaults.push(`this.prototype[${text}] = ${initial};`);
+        }
+        symbols.push(`${text} = Symbol(${JSON.stringify(name.slice(1))})`);
+        continue;
+      }
       edits.push(...fieldEdits);
       if (fieldStatic) {
         // An empty `;` is a class element of its own, so this follows a
@@ -432,6 +485,16 @@ export const renamePrivateMethods = (
         });
       }
       symbols.push(`${text} = Symbol(${JSON.stringify(name.slice(1))})`);
+    }
+    if (defaults.length > 0) {
+      // Ahead of the class's other edits, so it comes before an edit to a
+      // first member that starts right after the `{`.
+      const at = info.node.members.pos;
+      edits.splice(defaultsAt, 0, {
+        start: at,
+        end: at,
+        text: ` static { ${defaults.join(' ')} } `,
+      });
     }
   }
   if (symbols.length > 0) {
@@ -459,6 +522,56 @@ const isPlainField = (declarations: ts.ClassElement[]): boolean => {
       ?.some((modifier) => modifier.kind === ts.SyntaxKind.AccessorKeyword) &&
     !ts.getDecorators(field)?.length
   );
+};
+
+/**
+ * What an instance private field starts as, when it can start on the
+ * prototype instead of on each instance (see {@link renamePrivateMethods}):
+ * the initializer's text when it's a constant, a literal that is the same
+ * value for every instance (`null`, `true`, `false`, a number, maybe negated,
+ * a string or `void 0`); `null` when it has no initializer, so starts
+ * `undefined`, which a missing property reads as too; and `undefined` when
+ * it must stay on each instance: an initializer that makes an object (`[]`,
+ * `new Map()`), reads anything, or spans lines (the edit must not remove a
+ * line).
+ */
+const prototypeDefault = (
+  field: ts.PropertyDeclaration,
+  sourceFile: ts.SourceFile,
+): string | null | undefined => {
+  const { initializer } = field;
+  // Removing a declaration that spans lines would remove a line (a comment
+  // inside it can), and the edits must leave every line where it was.
+  const declaration = sourceFile.text.slice(
+    field.getStart(sourceFile),
+    field.end,
+  );
+  if (/[\n\r\u2028\u2029]/.test(declaration)) return undefined;
+  if (!initializer) return null;
+  let value: ts.Expression = initializer;
+  while (
+    ts.isParenthesizedExpression(value) ||
+    ts.isAsExpression(value) ||
+    ts.isSatisfiesExpression(value) ||
+    ts.isTypeAssertionExpression(value) ||
+    ts.isNonNullExpression(value)
+  ) {
+    value = value.expression;
+  }
+  if (
+    ts.isPrefixUnaryExpression(value) &&
+    value.operator === ts.SyntaxKind.MinusToken
+  ) {
+    value = value.operand;
+  }
+  const constant =
+    ts.isNumericLiteral(value) ||
+    ts.isStringLiteral(value) ||
+    value.kind === ts.SyntaxKind.NullKeyword ||
+    value.kind === ts.SyntaxKind.TrueKeyword ||
+    value.kind === ts.SyntaxKind.FalseKeyword ||
+    (ts.isVoidExpression(value) && ts.isNumericLiteral(value.expression));
+  return constant ? initializer.getText(sourceFile) : undefined;
 };
 
 /**

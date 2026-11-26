@@ -142,8 +142,22 @@ describe('LynxDetachedCanvas', () => {
 
   it('encodes its 2D bitmap', async () => {
     const canvas = new LynxDetachedCanvas();
-    // Nothing to encode before there's a context.
+    // Before there's a context, a transparent image of its size, from a
+    // bitmap of the shell's own, which leaves the canvas free.
+    expect(canvas.toDataURL()).toBe('data:image/png;base64,AQI=');
+    const [blankId, blankCanvas, blankSize] = bridge2D.create2D.mock.calls[0];
+    expect(blankCanvas).toMatch(/-blank$/);
+    expect(blankSize).toEqual({ alpha: true, width: 300, height: 150 });
+    expect(bridge2D.destroy2D).toHaveBeenCalledWith(blankId);
+    expect(canvasSourceOf(canvas)!.readable).toBe(false);
+    // Without a shell, or one that can't make the bitmap, there's nothing.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    bridge2D.create2D.mockReturnValueOnce({ ok: false, error: 'too big' });
     expect(canvas.toDataURL()).toBe('data:,');
+    setCanvas2DBridgeForTesting(null);
+    expect(canvas.toDataURL()).toBe('data:,');
+    setCanvas2DBridgeForTesting(bridge2D);
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/too big/));
     canvas.getContext('2d');
     expect(canvas.toDataURL('IMAGE/JPEG', 0.5)).toBe(
       'data:image/jpeg;base64,AQI=',
@@ -164,7 +178,6 @@ describe('LynxDetachedCanvas', () => {
     expect(() => canvas.toBlob(null as never)).toThrow(/is not a function/);
     // An encode the shell can't do.
     bridge2D.encode2D.mockReturnValueOnce({ error: 'no' });
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     expect(canvas.toDataURL()).toBe('data:,');
     expect(warn).toHaveBeenCalledWith(
       expect.stringMatching(/couldn't be encoded: no/),
@@ -212,19 +225,33 @@ describe('LynxDetachedCanvas', () => {
 });
 
 describe('LynxOffscreenCanvas', () => {
-  it('is a canvas of the size given', () => {
-    const canvas = new LynxOffscreenCanvas(32.5, -2);
+  it('is a canvas of the size given, which must be one', () => {
+    const canvas = new LynxOffscreenCanvas(32.5, 0);
     expect([canvas.width, canvas.height]).toEqual([32, 0]);
-    expect([new LynxOffscreenCanvas(NaN, 4).width]).toEqual([0]);
-    expect(new LynxOffscreenCanvas(4, NaN).height).toBe(0);
+    canvas.width = 8.9;
+    canvas.height = 4;
+    expect([canvas.width, canvas.height]).toEqual([8, 4]);
+    // [EnforceRange] unsigned long long: a TypeError, and the size kept.
+    expect(() => new LynxOffscreenCanvas(32, -2)).toThrow(
+      /Failed to construct 'OffscreenCanvas'/,
+    );
+    expect(() => new LynxOffscreenCanvas(NaN, 4)).toThrow(TypeError);
+    expect(() => (canvas.width = -1)).toThrow(/'width' property/);
+    expect(() => (canvas.height = Infinity)).toThrow(/'height' property/);
+    expect([canvas.width, canvas.height]).toEqual([8, 4]);
   });
 
   it('encodes its image with convertToBlob()', async () => {
     const canvas = new LynxOffscreenCanvas(4, 4);
-    await expect(canvas.convertToBlob()).rejects.toMatchObject({
-      name: 'InvalidStateError',
-    });
+    // A transparent image before there's a context, as in a browser.
+    expect((await canvas.convertToBlob()).type).toBe('image/png');
     canvas.getContext('2d');
+    // An encode the shell can't do.
+    bridge2D.encode2D.mockReturnValueOnce({ error: 'no' });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await expect(canvas.convertToBlob()).rejects.toMatchObject({
+      name: 'EncodingError',
+    });
     const blob = await canvas.convertToBlob({
       type: 'image/jpeg',
       quality: 0.5,

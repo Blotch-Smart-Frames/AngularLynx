@@ -117,9 +117,23 @@ export class LynxDetachedCanvas extends LynxCanvasBase {
 export class LynxOffscreenCanvas extends LynxCanvasBase {
   constructor(width: number, height: number) {
     super(
-      Math.max(0, Math.floor(Number(width) || 0)),
-      Math.max(0, Math.floor(Number(height) || 0)),
+      offscreenSize(width, 'constructor'),
+      offscreenSize(height, 'constructor'),
     );
+  }
+
+  override get width(): number {
+    return this.surface.width;
+  }
+  override set width(value: number) {
+    this.surface.width = offscreenSize(value, 'width');
+  }
+
+  override get height(): number {
+    return this.surface.height;
+  }
+  override set height(value: number) {
+    this.surface.height = offscreenSize(value, 'height');
   }
 
   convertToBlob(options?: { type?: string; quality?: number }): Promise<Blob> {
@@ -132,12 +146,10 @@ export class LynxOffscreenCanvas extends LynxCanvasBase {
     }
     const blob = this.surface.blobNow(options?.type, options?.quality);
     if (blob) return Promise.resolve(blob);
-    // A canvas that was never drawn on encodes as a transparent image in a
-    // browser; here the shell has nothing to read until there's a context.
     const error = new Error(
-      "Failed to execute 'convertToBlob' on 'OffscreenCanvas': The canvas has no context to read.",
+      "Failed to execute 'convertToBlob' on 'OffscreenCanvas': The canvas couldn't be encoded.",
     );
-    error.name = 'InvalidStateError';
+    error.name = 'EncodingError';
     return Promise.reject(error);
   }
 
@@ -147,3 +159,21 @@ export class LynxOffscreenCanvas extends LynxCanvasBase {
     );
   }
 }
+
+/**
+ * OffscreenCanvas's sizes are `[EnforceRange] unsigned long long`: a
+ * TypeError for one that's negative or not finite, truncated otherwise.
+ */
+const offscreenSize = (value: unknown, member: string): number => {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= -1) {
+    const where =
+      member === 'constructor'
+        ? "Failed to construct 'OffscreenCanvas'"
+        : `Failed to set the '${member}' property on 'OffscreenCanvas'`;
+    throw new TypeError(
+      `${where}: Value is outside the 'unsigned long long' value range.`,
+    );
+  }
+  return Math.trunc(number);
+};

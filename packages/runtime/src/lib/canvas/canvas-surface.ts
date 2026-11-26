@@ -5,7 +5,11 @@ import {
   LynxCanvasRenderingContext2D,
 } from './canvas-2d-context';
 import { CANVAS_SOURCE, type CanvasSource } from './canvas-source';
-import { getCanvas2DBridge, getWebGLBridge } from './webgl-bridge';
+import {
+  type EncodedImage,
+  getCanvas2DBridge,
+  getWebGLBridge,
+} from './webgl-bridge';
 import {
   contextAttributesFrom,
   type LynxWebGLContextAttributes,
@@ -41,6 +45,7 @@ const contextFinalizer: FinalizationRegistry<() => void> | null =
 export type ContextListener = (event: {
   type: string;
   preventDefault(): void;
+  stopPropagation(): void;
 }) => void;
 
 /** Calls a canvas's context listeners; false if one prevented the event. */
@@ -66,6 +71,20 @@ export const dispatchContextEvent = (
   }
   return !prevented;
 };
+
+/**
+ * A canvas's width or height: a whole number of pixels, from 0 to the
+ * largest the shells' 32-bit sizes hold, so the size the canvas reports is
+ * the size of its bitmap.
+ */
+const pixelSize = (value: unknown): number =>
+  Math.min(0x7fffffff, Math.max(0, Math.floor(Number(value) || 0)));
+
+/**
+ * An encoded image's file, as a Blob.
+ */
+const blobOf = (encoded: { base64: string; type: string }): Blob =>
+  new Blob([base64ToBytes(encoded.base64)], { type: encoded.type }) as Blob;
 
 /** The canvas object an app holds, which a context's `canvas` is. */
 export type CanvasOwner = {
@@ -121,7 +140,7 @@ export class CanvasSurface {
   }
 
   set width(value: number) {
-    this.#width = Math.max(0, Math.floor(Number(value) || 0));
+    this.#width = pixelSize(value);
     this.#context?.resize(this.#width, this.#height);
   }
 
@@ -130,22 +149,30 @@ export class CanvasSurface {
   }
 
   set height(value: number) {
-    this.#height = Math.max(0, Math.floor(Number(value) || 0));
+    this.#height = pixelSize(value);
     this.#context?.resize(this.#width, this.#height);
   }
 
   getContext(type: string, attributes?: Record<string, unknown>): unknown {
     if (type !== 'webgl2' && type !== '2d') return null;
+    // The attributes are read first, as a browser converts them before it
+    // looks at the canvas: a getter among them may itself ask for a context.
+    const resolved =
+      type === '2d'
+        ? canvas2DAttributesFrom(attributes as Partial<LynxCanvas2DAttributes>)
+        : contextAttributesFrom(
+            attributes as Partial<LynxWebGLContextAttributes>,
+          );
     // A canvas has one kind of context, as in a browser.
     if (this.#contextType && this.#contextType !== type) return null;
     if (this.#context && !this.#context.isContextLost()) return this.#context;
     return type === '2d'
-      ? this.#create2D(attributes as Partial<LynxCanvas2DAttributes>)
-      : this.#createWebGL2(attributes as Partial<LynxWebGLContextAttributes>);
+      ? this.#create2D(resolved as LynxCanvas2DAttributes)
+      : this.#createWebGL2(resolved as LynxWebGLContextAttributes);
   }
 
   #createWebGL2(
-    attributes: Partial<LynxWebGLContextAttributes> | undefined,
+    resolved: LynxWebGLContextAttributes,
   ): LynxWebGL2RenderingContext | null {
     const bridge = getWebGLBridge();
     if (!bridge) {
@@ -153,7 +180,6 @@ export class CanvasSurface {
       return null;
     }
     const contextId = nextContextId++;
-    const resolved = contextAttributesFrom(attributes);
     const created = bridge.create(contextId, this.canvasId, {
       ...resolved,
       width: this.#width,
@@ -177,12 +203,11 @@ export class CanvasSurface {
   }
 
   #create2D(
-    attributes: Partial<LynxCanvas2DAttributes> | undefined,
+    resolved: LynxCanvas2DAttributes,
   ): LynxCanvasRenderingContext2D | null {
     const bridge = getCanvas2DBridge();
     if (!bridge) return null;
     const contextId = nextContextId++;
-    const resolved = canvas2DAttributesFrom(attributes);
     const created = bridge.create2D(contextId, this.canvasId, {
       alpha: resolved.alpha,
       width: this.#width,
@@ -232,10 +257,11 @@ export class CanvasSurface {
     type?: string,
     quality?: unknown,
   ): void {
-    // Read now, so the image is of the canvas as it is at the call, and
-    // handed over on a later task, as browsers do.
-    const blob = this.blobNow(type, quality);
-    setTimeout(() => callback(blob), 0);
+    // Read now, so the image is of the canvas as it is at the call; the
+    // file's bytes and the Blob are made on a later task, which hands them
+    // over, as browsers do.
+    const encoded = this.#encode(type, quality);
+    setTimeout(() => callback(encoded ? blobOf(encoded) : null), 0);
   }
 
   /**
@@ -243,11 +269,7 @@ export class CanvasSurface {
    */
   blobNow(type?: string, quality?: unknown): Blob | null {
     const encoded = this.#encode(type, quality);
-    return encoded
-      ? (new Blob([base64ToBytes(encoded.base64)], {
-          type: encoded.type,
-        }) as Blob)
-      : null;
+    return encoded ? blobOf(encoded) : null;
   }
 
   /**
@@ -268,16 +290,11 @@ export class CanvasSurface {
         ? quality
         : DEFAULT_JPEG_QUALITY;
     const context = this.#context;
-    if (
-      this.#width === 0 ||
-      this.#height === 0 ||
-      !context ||
-      context.isContextLost()
-    ) {
-      return null;
-    }
-    const encoded =
-      context instanceof LynxCanvasRenderingContext2D
+    if (this.#width === 0 || this.#height === 0) return null;
+    if (context?.isContextLost()) return null;
+    const encoded = !context
+      ? this.#encodeBlank(mime, jpegQuality)
+      : context instanceof LynxCanvasRenderingContext2D
         ? context.encode(mime, jpegQuality)
         : context.encodeDrawingBuffer(mime, jpegQuality);
     if (encoded.base64 === undefined) {
@@ -287,6 +304,28 @@ export class CanvasSurface {
       return null;
     }
     return { base64: encoded.base64, type: encoded.type ?? mime };
+  }
+
+  /**
+   * A canvas nobody asked for a context of encodes as a transparent image
+   * of its size, as in a browser: the shell encodes one from a 2D bitmap of
+   * its own, which leaves the canvas free to take either kind of context.
+   */
+  #encodeBlank(type: string, quality: number): EncodedImage {
+    const bridge = getCanvas2DBridge();
+    if (!bridge) return { error: 'This host has no canvas' };
+    const contextId = nextContextId++;
+    const created = bridge.create2D(contextId, `${this.canvasId}-blank`, {
+      alpha: true,
+      width: this.#width,
+      height: this.#height,
+    });
+    if (!created.ok) return { error: created.error };
+    try {
+      return bridge.encode2D(contextId, { type, quality });
+    } finally {
+      bridge.destroy2D(contextId);
+    }
   }
 
   /**

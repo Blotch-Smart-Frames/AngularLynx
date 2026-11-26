@@ -62,6 +62,27 @@ const domError = (name: string, message: string): Error => {
 const finite = (...values: number[]): boolean =>
   values.every((value) => Number.isFinite(value));
 
+/**
+ * Web IDL's `[EnforceRange] long`, which the pixel methods take: truncated
+ * toward zero, and a TypeError for a value that's not finite or out of
+ * range.
+ */
+const enforceLong = (value: unknown, method: string): number => {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    throw new TypeError(
+      `Failed to execute '${method}' on 'CanvasRenderingContext2D': The provided double value is non-finite.`,
+    );
+  }
+  const truncated = Math.trunc(number) || 0;
+  if (truncated < -2147483648 || truncated > 2147483647) {
+    throw new TypeError(
+      `Failed to execute '${method}' on 'CanvasRenderingContext2D': Value is outside the 'long' value range.`,
+    );
+  }
+  return truncated;
+};
+
 type Style =
   | { readonly kind: 'color'; readonly rgba: RGBA }
   | { readonly kind: 'gradient'; readonly gradient: LynxCanvasGradient }
@@ -134,19 +155,36 @@ const initialState = (): State => ({
   filter: 'none',
 });
 
-/**
- * Frees a gradient's or pattern's native side when it's garbage-collected.
- * Null where the engine has no FinalizationRegistry.
- */
-const objectFinalizer: FinalizationRegistry<() => void> | null =
-  typeof FinalizationRegistry === 'function'
-    ? new FinalizationRegistry((free) => free())
-    : null;
-
 /** What a context gives the gradients and patterns it makes. */
 type ObjectOwner = {
   record(...items: unknown[]): void;
+  /** Sends what's recorded: another context is about to use the object. */
+  flush(): void;
 };
+
+/**
+ * Frees a gradient's or pattern's native side when it's garbage-collected,
+ * through the context that made it. The held value reaches the context only
+ * weakly: a context whose state holds the gradient would otherwise be held
+ * by the registry through it, and never be collected. Null where the engine
+ * has no FinalizationRegistry.
+ */
+const objectFinalizer: FinalizationRegistry<{
+  owner: WeakRef<ObjectOwner>;
+  id: number;
+}> | null =
+  typeof FinalizationRegistry === 'function' && typeof WeakRef === 'function'
+    ? new FinalizationRegistry(({ owner, id }) =>
+        owner.deref()?.record(OP.releaseObject, id),
+      )
+    : null;
+
+/**
+ * Gradients' and patterns' ids, unique for the page: the shells keep the
+ * objects for every context together, so a gradient one context made can
+ * paint in another, as on the web.
+ */
+let nextObjectId = 1;
 
 /** CanvasGradient: made by the context's create*Gradient(). */
 export class LynxCanvasGradient {
@@ -163,10 +201,11 @@ export class LynxCanvasGradient {
   }
 
   /**
-   * @internal The context that made it, which alone knows its id.
+   * @internal Sends the calls of the context that made it, which made it in
+   * the shell, before another context uses it.
    */
-  ownedBy(owner: unknown): boolean {
-    return owner === this.#owner;
+  flushOwner(owner: unknown): void {
+    if (owner !== this.#owner) this.#owner.flush();
   }
 
   addColorStop(offset: number, color: string): void {
@@ -208,10 +247,10 @@ export class LynxCanvasPattern {
   }
 
   /**
-   * @internal
+   * @internal See LynxCanvasGradient.flushOwner.
    */
-  ownedBy(owner: unknown): boolean {
-    return owner === this.#owner;
+  flushOwner(owner: unknown): void {
+    if (owner !== this.#owner) this.#owner.flush();
   }
 
   setTransform(transform?: MatrixInit): void {
@@ -460,7 +499,6 @@ export class LynxCanvasRenderingContext2D {
   /** Something was drawn since the last present. */
   #dirty = false;
   #destroyed = false;
-  #nextObjectId = 1;
 
   #state: State = initialState();
   #stack: State[] = [];
@@ -480,7 +518,10 @@ export class LynxCanvasRenderingContext2D {
     this.#id = contextId;
     this.canvas = canvas;
     this.#attributes = attributes;
-    this.#owner = { record: (...items) => this.#cmd(...items) };
+    this.#owner = {
+      record: (...items) => this.#cmd(...items),
+      flush: () => this.flush(),
+    };
   }
 
   /**
@@ -749,14 +790,12 @@ export class LynxCanvasRenderingContext2D {
 
   #styleFrom(value: unknown): Style | null {
     if (value instanceof LynxCanvasGradient) {
-      return value.ownedBy(this.#owner)
-        ? { kind: 'gradient', gradient: value }
-        : null;
+      value.flushOwner(this.#owner);
+      return { kind: 'gradient', gradient: value };
     }
     if (value instanceof LynxCanvasPattern) {
-      return value.ownedBy(this.#owner)
-        ? { kind: 'pattern', pattern: value }
-        : null;
+      value.flushOwner(this.#owner);
+      return { kind: 'pattern', pattern: value };
     }
     const rgba = parseColor(value);
     return rgba ? { kind: 'color', rgba } : null;
@@ -802,11 +841,14 @@ export class LynxCanvasRenderingContext2D {
   }
 
   #newObjectId(): number {
-    return this.#nextObjectId++;
+    return nextObjectId++;
   }
 
   #track(object: object, id: number): void {
-    objectFinalizer?.register(object, () => this.#cmd(OP.releaseObject, id));
+    objectFinalizer?.register(object, {
+      owner: new WeakRef(this.#owner),
+      id,
+    });
   }
 
   createLinearGradient(
@@ -1241,7 +1283,7 @@ export class LynxCanvasRenderingContext2D {
     y: number,
     w: number,
     h: number,
-    radii?: number | RadiusInit | (number | RadiusInit)[],
+    radii?: number | RadiusInit | Iterable<number | RadiusInit>,
   ): void {
     this.#path.roundRect(Number(x), Number(y), Number(w), Number(h), radii);
   }
@@ -1452,8 +1494,19 @@ export class LynxCanvasRenderingContext2D {
           `Failed to execute '${method}' on 'CanvasRenderingContext2D': The image argument is a canvas element with a width or height of 0.`,
         );
       }
-      // A canvas without a context is transparent: there's nothing to draw.
-      if (!canvas.readable) return null;
+      // A canvas without a context is a transparent image of its size,
+      // which still clears what an operation like destination-in leaves.
+      if (!canvas.readable) {
+        return {
+          descriptor: {
+            blank: true,
+            width: canvas.width,
+            height: canvas.height,
+          },
+          width: canvas.width,
+          height: canvas.height,
+        };
+      }
       return {
         descriptor: { canvas: canvas.canvasId },
         width: canvas.width,
@@ -1561,21 +1614,16 @@ export class LynxCanvasRenderingContext2D {
       return new LynxImageData(widthOrImageData.width, widthOrImageData.height);
     }
     return new LynxImageData(
-      Math.abs(Math.floor(Number(widthOrImageData))),
-      Math.abs(Math.floor(Number(height))),
+      Math.abs(enforceLong(widthOrImageData, 'createImageData')),
+      Math.abs(enforceLong(height, 'createImageData')),
     );
   }
 
   getImageData(sx: number, sy: number, sw: number, sh: number): LynxImageData {
-    let x = Math.floor(Number(sx));
-    let y = Math.floor(Number(sy));
-    let w = Math.floor(Number(sw));
-    let h = Math.floor(Number(sh));
-    if (!finite(x, y, w, h)) {
-      throw new TypeError(
-        "Failed to execute 'getImageData' on 'CanvasRenderingContext2D': The provided double value is non-finite.",
-      );
-    }
+    let x = enforceLong(sx, 'getImageData');
+    let y = enforceLong(sy, 'getImageData');
+    let w = enforceLong(sw, 'getImageData');
+    let h = enforceLong(sh, 'getImageData');
     if (w === 0 || h === 0) {
       throw domError(
         'IndexSizeError',
@@ -1610,19 +1658,17 @@ export class LynxCanvasRenderingContext2D {
         "Failed to execute 'putImageData' on 'CanvasRenderingContext2D': parameter 1 is not of type 'ImageData'.",
       );
     }
-    const x0 = Math.floor(Number(dx));
-    const y0 = Math.floor(Number(dy));
-    if (!finite(x0, y0)) return;
+    const x0 = enforceLong(dx, 'putImageData');
+    const y0 = enforceLong(dy, 'putImageData');
     let rx = 0;
     let ry = 0;
     let rw = imageData.width;
     let rh = imageData.height;
     if (dirtyX !== undefined) {
-      rx = Math.floor(Number(dirtyX));
-      ry = Math.floor(Number(dirtyY));
-      rw = Math.floor(Number(dirtyWidth));
-      rh = Math.floor(Number(dirtyHeight));
-      if (!finite(rx, ry, rw, rh)) return;
+      rx = enforceLong(dirtyX, 'putImageData');
+      ry = enforceLong(dirtyY, 'putImageData');
+      rw = enforceLong(dirtyWidth, 'putImageData');
+      rh = enforceLong(dirtyHeight, 'putImageData');
       if (rw < 0) {
         rx += rw;
         rw = -rw;

@@ -187,7 +187,8 @@ class LynxProgressEvent {
  */
 class LynxHTMLElement {
   static [Symbol.hasInstance](value: unknown): boolean {
-    return isLynxElement(value);
+    // A canvas made with document.createElement() is an element too.
+    return isLynxElement(value) || value instanceof LynxDetachedCanvas;
   }
 }
 

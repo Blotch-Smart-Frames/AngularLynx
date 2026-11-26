@@ -114,6 +114,7 @@ describe('LynxCanvasRenderingContext2D', () => {
     context.fillStyle = 'nope';
     expect(context.fillStyle).toBe('rgba(255, 0, 0, 0.5)');
     context.strokeStyle = 'hsl(120 100% 50%)';
+    context.strokeStyle = 'nope';
     expect(context.strokeStyle).toBe('#00ff00');
     context.globalAlpha = 0.5;
     context.globalAlpha = 2;
@@ -717,12 +718,34 @@ describe('LynxCanvasRenderingContext2D', () => {
     expect(() => gradient.addColorStop(0.5, 'nope')).toThrow(
       expect.objectContaining({ name: 'SyntaxError' }),
     );
+    expect(gradient).toBeInstanceOf(LynxCanvasGradient);
+  });
+
+  it('paints with another context’s gradients and patterns, made in the shell first', () => {
+    const context = make();
+    const gradient = context.createLinearGradient(0, 0, 1, 1);
+    const pattern = context.createPattern(image(3), null)!;
     const other = make();
     other.fillStyle = gradient;
-    expect(other.fillStyle).toBe('#000000');
-    other.strokeStyle = context.createPattern(image(3), null)!;
-    expect(other.strokeStyle).toBe('#000000');
-    expect(gradient).toBeInstanceOf(LynxCanvasGradient);
+    expect(other.fillStyle).toBe(gradient);
+    // The context that made them sent their calls before the other used them.
+    expect(bridge.batches[0]).toEqual([
+      OP.createLinearGradient,
+      gradient.id,
+      0,
+      0,
+      1,
+      1,
+      OP.createPattern,
+      pattern.id,
+      { image: 3 },
+      0,
+    ]);
+    other.strokeStyle = pattern;
+    expect(other.strokeStyle).toBe(pattern);
+    // Its own needn't be sent first.
+    other.fillStyle = other.createLinearGradient(0, 0, 1, 1);
+    expect(bridge.batches.length).toBe(1);
   });
 
   it('makes patterns of images and canvases, with a transform', async () => {
@@ -741,17 +764,18 @@ describe('LynxCanvasRenderingContext2D', () => {
     expect(() => context.createPattern(image(3), 'sideways')).toThrow(
       expect.objectContaining({ name: 'SyntaxError' }),
     );
+    const id = pattern.id;
     expect(await sent()).toEqual([
       OP.createPattern,
-      1,
+      id,
       { image: 3 },
       1,
       OP.setFillPattern,
-      1,
+      id,
       OP.setStrokePattern,
-      1,
+      id,
       OP.setPatternTransform,
-      1,
+      id,
       1,
       0,
       0,
@@ -759,7 +783,7 @@ describe('LynxCanvasRenderingContext2D', () => {
       2,
       0,
       OP.createPattern,
-      2,
+      id + 1,
       { image: 3 },
       0,
     ]);
@@ -770,7 +794,7 @@ describe('LynxCanvasRenderingContext2D', () => {
     expect(other.flush).toHaveBeenCalled();
     expect(bridge.batches.at(-1)).toEqual([
       OP.createPattern,
-      3,
+      id + 2,
       { canvas: 'other' },
       3,
     ]);
@@ -853,9 +877,24 @@ describe('LynxCanvasRenderingContext2D', () => {
       10,
       10,
     ]);
-    // A canvas without a context has nothing to draw.
-    context.drawImage(canvasSource({ readable: false }), 0, 0);
-    expect(bridge.batches.length).toBe(1);
+    // A canvas without a context is a transparent image of its size, which
+    // has nothing to send first.
+    const blank = canvasSource({ readable: false });
+    context.drawImage(blank, 0, 0);
+    expect(blank.flush).not.toHaveBeenCalled();
+    context.flush();
+    expect(bridge.batches.at(-1)).toEqual([
+      OP.drawImage,
+      { blank: true, width: 10, height: 10 },
+      0,
+      0,
+      10,
+      10,
+      0,
+      0,
+      10,
+      10,
+    ]);
     expect(() => context.drawImage(canvasSource({ width: 0 }), 0, 0)).toThrow(
       expect.objectContaining({ name: 'InvalidStateError' }),
     );
@@ -895,6 +934,10 @@ describe('LynxCanvasRenderingContext2D', () => {
       /source height is 0/,
     );
     expect(() => context.getImageData(NaN, 0, 1, 1)).toThrow(TypeError);
+    // A fraction is cut toward zero.
+    bridge.answers = [toWords(new Uint8Array(4))];
+    context.getImageData(-0.5, 0, 1, 1);
+    expect(bridge.batches.at(-1)).toEqual([OP.getImageData, 0, 0, 1, 1]);
   });
 
   it('writes ImageData as it is, cut to its dirty rectangle', async () => {
@@ -905,10 +948,15 @@ describe('LynxCanvasRenderingContext2D', () => {
     context.putImageData(data, 10, 20, 1, 1, 5, 5);
     context.putImageData(data, 10, 20, 2, 2, -2, -1);
     context.putImageData(data, 0, 0, -1, -1, 2, 2);
-    // Nothing for these.
-    context.putImageData(data, NaN, 0);
-    context.putImageData(data, 0, 0, NaN, 0, 1, 1);
+    // Nothing for this.
     context.putImageData(data, 0, 0, 0, 0, 0, 0);
+    // Its arguments are Web IDL longs: not finite is an error, not nothing,
+    // and a fraction is cut toward zero.
+    expect(() => context.putImageData(data, NaN, 0)).toThrow(TypeError);
+    expect(() => context.putImageData(data, 0, 0, NaN, 0, 1, 1)).toThrow(
+      TypeError,
+    );
+    expect(() => context.putImageData(data, 2 ** 31, 0)).toThrow(/'long'/);
     expect(await sent()).toEqual([
       OP.putImageData,
       toWords(new Uint8Array(data.data)),
@@ -944,14 +992,15 @@ describe('LynxCanvasRenderingContext2D', () => {
 
   it('makes ImageData', () => {
     const context = make();
+    // -2.5 is a long of -2, and the size is its magnitude.
     const data = context.createImageData(-2.5, 3);
     expect([
       data.width,
       data.height,
       data.data.length,
       data.colorSpace,
-    ]).toEqual([3, 3, 36, 'srgb']);
-    expect(context.createImageData(data).width).toBe(3);
+    ]).toEqual([2, 3, 24, 'srgb']);
+    expect(context.createImageData(data).width).toBe(2);
     expect(new LynxImageData(new Uint8ClampedArray(8), 1).height).toBe(2);
     expect(new LynxImageData(new Uint8ClampedArray(8), 1, 2).width).toBe(1);
     expect(() => new LynxImageData(0, 1)).toThrow(/source width/);

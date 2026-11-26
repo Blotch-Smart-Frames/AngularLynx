@@ -236,9 +236,10 @@ export class LynxCanvasElement extends LynxElement {
    *
    * The shell reads and encodes the pixels, so the call blocks the main
    * thread while it does (tens of milliseconds for a photo); the Blob comes
-   * back later. The callback gets `null` when there's nothing to encode: a
-   * canvas without a context, one whose context is lost, or a host without
-   * `<canvas>`, such as Lynx Explorer.
+   * back later. A canvas without a context encodes as a transparent image
+   * of its size, as in a browser. The callback gets `null` when there's
+   * nothing to encode: a canvas with no width or height, one whose context
+   * is lost, or a host without `<canvas>`, such as Lynx Explorer.
    */
   toBlob(
     callback: (blob: Blob | null) => void,

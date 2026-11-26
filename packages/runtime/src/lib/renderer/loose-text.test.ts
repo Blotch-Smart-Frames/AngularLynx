@@ -1900,3 +1900,188 @@ describe('loose text, element by element', () => {
     expect(LynxElement.byUniqueId(wrapperRef.id)).toBeUndefined();
   });
 });
+
+// A <q>'s quotation marks are raw-texts of its own, at the start and end of
+// its native children, which Angular never sees (see LynxElement.markQuote).
+describe('<q>, element by element', () => {
+  let doc: LynxDocument;
+  let page: LynxElement;
+
+  const native = (el: LynxElement): FakeEl => el.element as unknown as FakeEl;
+
+  const commit = (): void => {
+    processPendingRemovals();
+    processPendingFlow();
+    processPendingTextNormalization();
+    (globalThis as unknown as FakeNativeGlobal<FakeEl>).__FlushElementTree();
+  };
+
+  /**
+   * What `el` draws: its raw-text leaves' text, in order.
+   */
+  const drawn = (el: LynxElement): string[] =>
+    rawTextLeaves(native(el)).map(leafText);
+
+  beforeEach(() => {
+    vi.stubGlobal('__MAIN_THREAD__', true);
+    installNativeFakes();
+    resetStyleIndex();
+    doc = new LynxDocument();
+    page = doc.createRootElement();
+  });
+
+  it('puts its children between its marks, and hides the marks', () => {
+    const p = doc.createElement('p');
+    page.appendChild(p);
+    const q = doc.createElement('q');
+    p.appendChild(q);
+    const hello = doc.createText('hello');
+    const bold = doc.createElement('b');
+    q.appendChild(hello);
+    q.appendChild(bold);
+    bold.appendChild(doc.createText('!'));
+    commit();
+
+    expect(drawn(q)).toEqual(['“', 'hello', '!', '”']);
+    // Angular's last child has nothing after it, and its first is first.
+    expect(bold.nextSibling()).toBeNull();
+    expect(hello.nextSibling()).toBe(bold);
+
+    // An insert before the first child goes after the opening mark.
+    const first = doc.createText('so ');
+    q.insertBefore(first, hello);
+    commit();
+    expect(drawn(q)).toEqual(['“', 'so ', 'hello', '!', '”']);
+  });
+
+  it('draws single marks inside another <q>, however deep', () => {
+    // Built out of the tree, then put in it, as a component's view is.
+    const outer = doc.createElement('q');
+    const span = doc.createElement('span');
+    outer.appendChild(span);
+    const inner = doc.createElement('q');
+    span.appendChild(inner);
+    const innermost = doc.createElement('q');
+    inner.appendChild(innermost);
+    innermost.appendChild(doc.createText('x'));
+    page.appendChild(outer);
+    commit();
+
+    expect(drawn(outer)).toEqual(['“', '‘', '‘', 'x', '’', '’', '”']);
+
+    // Moved out of the others, it's outermost again, with what's inside it.
+    page.appendChild(inner);
+    commit();
+    expect(drawn(inner)).toEqual(['“', '‘', 'x', '’', '”']);
+  });
+
+  it('draws single marks in a <q> put in an element before that goes in another <q>', () => {
+    const outer = doc.createElement('q');
+    page.appendChild(outer);
+    // The inner <q> goes into its <span> first, then the <span> into the
+    // outer <q>, as an element built apart is put in the tree whole.
+    const span = doc.createElement('span');
+    const inner = doc.createElement('q');
+    span.appendChild(inner);
+    inner.appendChild(doc.createText('x'));
+    expect(drawn(inner)).toEqual(['“', 'x', '”']);
+    outer.appendChild(span);
+    commit();
+
+    expect(drawn(outer)).toEqual(['“', '‘', 'x', '’', '”']);
+
+    // And outermost again when the <span> moves out.
+    page.appendChild(span);
+    commit();
+    expect(drawn(inner)).toEqual(['“', 'x', '”']);
+  });
+
+  it('keeps the spaces inside it, which sit beside a mark', () => {
+    const p = doc.createElement('p');
+    page.appendChild(p);
+    const q = doc.createElement('q');
+    p.appendChild(q);
+    q.appendChild(doc.createText(' hi '));
+    commit();
+
+    expect(drawn(p)).toEqual(['“', ' hi ', '”']);
+  });
+
+  it('gives a touch on a mark to the <q>', () => {
+    const q = doc.createElement('q');
+    page.appendChild(q);
+    commit();
+    const [open, close] = native(q).children;
+
+    expect(LynxElement.byUniqueId(open!.id)).toBe(q);
+    expect(LynxElement.byUniqueId(close!.id)).toBe(q);
+    expect(LynxElement.isQuoteMark(open as never)).toBe(true);
+    expect(LynxElement.isQuoteMark(native(q) as never)).toBe(false);
+  });
+
+  it('draws its marks again when it comes back', () => {
+    const q = doc.createElement('q');
+    page.appendChild(q);
+    q.appendChild(doc.createText('back'));
+    commit();
+    q.remove();
+    commit();
+    expect(native(q).hasPaintingNode).toBe(false);
+
+    page.appendChild(q);
+    commit();
+
+    expect(native(q).hasPaintingNode).toBe(true);
+    expect(drawn(q)).toEqual(['“', 'back', '”']);
+    expect(LynxElement.byUniqueId(native(q).children[0]!.id)).toBe(q);
+  });
+
+  it('lets go of its marks when it is released', () => {
+    const q = doc.createElement('q');
+    page.appendChild(q);
+    commit();
+    const [open, close] = native(q).children;
+
+    q.remove();
+    q.markDestroyed();
+    commit();
+
+    expect(LynxElement.byUniqueId(open!.id)).toBeUndefined();
+    expect(LynxElement.byUniqueId(close!.id)).toBeUndefined();
+  });
+
+  it("takes a server render's marks, nested as they were", () => {
+    // A snapshot's tree (see LynxHydrateDocument): the <q> holds its marks.
+    const g = globalThis as unknown as FakeNativeGlobal<FakeEl>;
+    const qRef = g.__CreateText();
+    const openRef = g.__CreateRawText('');
+    const textRef = g.__CreateRawText('hi');
+    const closeRef = g.__CreateRawText('');
+    g.__SetAttribute(openRef, 'text', '“');
+    g.__SetAttribute(closeRef, 'text', '”');
+    g.__AppendElement(native(page), qRef);
+    g.__AppendElement(qRef, openRef);
+    g.__AppendElement(qRef, textRef);
+    g.__AppendElement(qRef, closeRef);
+    const q = new LynxElement(qRef as never);
+    q.tagName = 'text';
+    q.markQuote([openRef as never, closeRef as never]);
+    // A <q> inside it, which hydrates after it.
+    const innerRef = g.__CreateText();
+    const innerOpenRef = g.__CreateRawText('');
+    const innerCloseRef = g.__CreateRawText('');
+    g.__AppendElement(qRef, innerRef);
+    g.__AppendElement(innerRef, innerOpenRef);
+    g.__AppendElement(innerRef, innerCloseRef);
+    const inner = new LynxElement(innerRef as never);
+    inner.tagName = 'text';
+    inner.markQuote([innerOpenRef as never, innerCloseRef as never]);
+
+    expect(qRef.children[0]).toBe(openRef);
+    expect(LynxElement.isQuoteMark(openRef as never)).toBe(true);
+    expect(LynxElement.byUniqueId(closeRef.id)).toBe(q);
+    expect(leafText(openRef)).toBe('“');
+    expect(leafText(innerOpenRef)).toBe('‘');
+    expect(leafText(innerCloseRef)).toBe('’');
+  });
+});

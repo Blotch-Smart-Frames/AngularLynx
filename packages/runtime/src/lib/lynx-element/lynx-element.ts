@@ -854,6 +854,21 @@ export class LynxElement implements BaseLynxElement {
   /** Regroup the children when a removed element comes back (see #regroup). */
   #regroupWhenRecreated = false;
   /**
+   * A `<q>`'s quotation marks: raw-texts that are its first and last native
+   * children, which Angular never sees, as a browser's `q::before` and
+   * `q::after` aren't nodes (see markQuote).
+   */
+  #quoteMarks: [open: LynxElement, close: LynxElement] | null = null;
+  /** One of a `<q>`'s quotation marks (see #quoteMarks). */
+  #quoteMark = false;
+  /**
+   * Set once a `<q>` has been inside it, as on its ancestors then: a `<q>`
+   * in it may need other marks when it moves (see #setQuoteDepth). Never
+   * cleared, as #passesTextStyles isn't: one the `<q>` left only costs a
+   * walk of its children when it moves.
+   */
+  #holdsQuote = false;
+  /**
    * On an anchor (`tagName` 'comment'): whether its native element is the
    * empty raw-text it is in a `<text>`, rather than the hidden view
    * LynxDocument makes (see #anchorFor and hydrateAnchor).
@@ -1059,6 +1074,9 @@ export class LynxElement implements BaseLynxElement {
     if (element && element.#anonymous) {
       return element.parentNode() ?? undefined;
     }
+    // And a touch on a <q>'s quotation mark is the <q>'s (see markQuote).
+    // (markQuote gives each mark its <q> as its #jsParent.)
+    if (element && element.#quoteMark) return element.#jsParent as LynxElement;
     return element;
   }
 
@@ -1834,6 +1852,127 @@ export class LynxElement implements BaseLynxElement {
   }
 
   /**
+   * @internal Gives a `<q>` its quotation marks, which a browser draws with
+   * `q::before { content: open-quote }` and `q::after { content: close-quote
+   * }`. Lynx has no `::before`/`::after` content, so the marks are raw-texts
+   * of the `<q>`'s own, at the start and the end of its native children,
+   * kept out of #children: Angular never sees them, as it never sees a
+   * browser's generated content. Its children go between them (see
+   * #appendPrepared), and nextSibling() ends at the closing one.
+   *
+   * With `existing`, the marks a server render drew, which the snapshot
+   * holds (see LynxHydrateDocument). A hydrated element is already in the
+   * snapshot's tree, and hydration inserts nothing, so its depth is read
+   * from its native ancestors, which hydrate before it.
+   */
+  markQuote(existing?: [open: ElementRef, close: ElementRef]): void {
+    const open = LynxElement.#quoteMarkText(existing?.[0]);
+    const close = LynxElement.#quoteMarkText(existing?.[1]);
+    open.#jsParent = this;
+    close.#jsParent = this;
+    this.#quoteMarks = [open, close];
+    let depth = 0;
+    if (existing) {
+      for (let at = __GetParent(this.element); at; at = __GetParent(at)) {
+        const ancestor = LynxElement.#registered(__GetElementUniqueID(at));
+        if (ancestor && ancestor.#quoteMarks) depth++;
+      }
+    } else {
+      __AppendElement(this.element, open.element);
+      __AppendElement(this.element, close.element);
+    }
+    this.#setQuoteDepth(depth);
+  }
+
+  /**
+   * @internal Whether `ref` is a `<q>`'s quotation mark (see markQuote),
+   * which a server render's snapshot holds but Angular never asks for.
+   */
+  static isQuoteMark(ref: ElementRef): boolean {
+    const element = LynxElement.#registered(__GetElementUniqueID(ref));
+    return element !== undefined && element.#quoteMark;
+  }
+
+  /**
+   * A quotation mark's raw-text (see markQuote and #setQuoteDepth).
+   */
+  static #quoteMarkText(existing?: ElementRef): LynxElement {
+    const mark = new LynxElement(existing ?? __CreateRawText(''));
+    mark.tagName = 'raw-text';
+    mark.#quoteMark = true;
+    return mark;
+  }
+
+  /**
+   * Flags this element and its ancestors as holding a `<q>` (see
+   * #holdsQuote). One that has the flag has its own ancestors flagged
+   * already: that's how it got it, and an element that moves flags its new
+   * ones in #adoptChild.
+   */
+  #holdQuote(): void {
+    if (this.#holdsQuote) return;
+    this.#holdsQuote = true;
+    const parent = this.#jsParent;
+    if (parent) parent.#holdQuote();
+  }
+
+  /**
+   * How many `<q>`s this element is in, itself included: the depth of a
+   * `<q>` put in it.
+   */
+  #quoteDepth(): number {
+    const own = this.#quoteMarks ? 1 : 0;
+    const parent = this.#jsParent;
+    return own + (parent ? parent.#quoteDepth() : 0);
+  }
+
+  /**
+   * Gives the `<q>`s in this element, itself included, the marks for how
+   * deep each is, `depth` being this one's: “ ” outside any other, and ‘ ’
+   * inside one, as a browser's `quotes: auto` draws English quotes, which
+   * repeats its last pair for deeper ones. Run when a `<q>`, or an element
+   * one is in, goes into an element (see #adoptChild): when Angular builds
+   * one, when content projection moves one into another, and when an
+   * element built with a `<q>` inside goes in after it.
+   */
+  #setQuoteDepth(depth: number): void {
+    let inner = depth;
+    if (this.#quoteMarks) {
+      const [open, close] = this.#quoteMarks;
+      open.#setQuoteMark(depth === 0 ? '“' : '‘');
+      close.#setQuoteMark(depth === 0 ? '”' : '’');
+      inner++;
+    }
+    for (const child of this.#children) {
+      if (child.#holdsQuote || child.#quoteMarks) {
+        child.#setQuoteDepth(inner);
+      }
+    }
+  }
+
+  /**
+   * A new native raw-text for a quotation mark, with its text, for its
+   * `<q>`'s rebuilt element (see #recreateSubtree).
+   */
+  #renewQuoteMark(): ElementRef {
+    this.deregisterNative();
+    // #setQuoteDepth gave it its text when its <q> was made.
+    this.#nativeRef = __CreateRawText(this.#text as string);
+    LynxElement.#register(__GetElementUniqueID(this.#nativeRef), this);
+    return this.#nativeRef;
+  }
+
+  /**
+   * Sets a quotation mark's text (see #setQuoteDepth).
+   */
+  #setQuoteMark(text: string): void {
+    if (this.#rawText === text) return;
+    this.#rawText = text;
+    this.#text = text;
+    __SetAttribute(this.element, 'text', text);
+  }
+
+  /**
    * @internal An anchor a server render made: an empty raw-text if it was in
    * a `<text>` (see #anchorFor), which the snapshot holds as it was.
    */
@@ -2043,7 +2182,13 @@ export class LynxElement implements BaseLynxElement {
     // insertBefore protects against.
     if (wouldFormCycle(this.element, newChild.element)) return;
     const moving = isWebMove(newChild);
-    __AppendElement(this.element, newChild.element);
+    // A <q>'s children go before its closing mark (see markQuote).
+    const close = this.#quoteMarks?.[1];
+    if (close) {
+      __InsertElementBefore(this.element, newChild.element, close.element);
+    } else {
+      __AppendElement(this.element, newChild.element);
+    }
     if (moving) newChild.#restartWebLayoutChanges();
     this.#adoptChild(newChild);
     // Attaching a run to (or as) a text shifts inline layout — re-derive the
@@ -2100,6 +2245,11 @@ export class LynxElement implements BaseLynxElement {
     // and so do the tags in a Lynx <text> inside it.
     if (newChild.#webText) newChild.#inheritAgain();
     newChild.#ancestorsChanged();
+    // And a <q>'s marks on how many <q>s it's in (see #setQuoteDepth).
+    if (newChild.#quoteMarks || newChild.#holdsQuote) {
+      this.#holdQuote();
+      newChild.#setQuoteDepth(this.#quoteDepth());
+    }
   }
 
   /**
@@ -2839,6 +2989,9 @@ export class LynxElement implements BaseLynxElement {
    * break the recreation registry and background/testing.
    */
   static #collectRawTextLeaves(el: LynxElement, out: LynxElement[]): void {
+    // A <q>'s marks are text of the line, as a browser's generated content
+    // is: the space after `<q>` sits after the opening mark, not at an edge.
+    if (el.#quoteMarks) out.push(el.#quoteMarks[0]);
     for (const child of el.#children) {
       if (child.tagName === 'raw-text') {
         out.push(child);
@@ -2846,6 +2999,7 @@ export class LynxElement implements BaseLynxElement {
         LynxElement.#collectRawTextLeaves(child, out);
       }
     }
+    if (el.#quoteMarks) out.push(el.#quoteMarks[1]);
   }
 
   /**
@@ -3026,6 +3180,9 @@ export class LynxElement implements BaseLynxElement {
     }
     for (const child of this.#children) child.#release();
     for (const child of this.virtualChildren()) child.#release();
+    if (this.#quoteMarks) {
+      for (const mark of this.#quoteMarks) mark.deregisterNative();
+    }
   }
 
   /**
@@ -3148,10 +3305,15 @@ export class LynxElement implements BaseLynxElement {
         });
       }
     }
+    // A <q>'s quotation marks went with its old element, and come back
+    // around its children (see markQuote).
+    const marks = this.#quoteMarks;
+    if (marks) __AppendElement(fresh, marks[0].#renewQuoteMark());
     for (const child of this.#children) {
       child.#recreateSubtree();
       __AppendElement(fresh, child.element);
     }
+    if (marks) __AppendElement(fresh, marks[1].#renewQuoteMark());
     // A static block's elements went with the old element: they have no
     // wrappers to rebuild them, so the block builds them again.
     if (this.#staticBlock) {
@@ -3210,6 +3372,8 @@ export class LynxElement implements BaseLynxElement {
    * children to Angular.
    */
   static #entering(element: LynxElement): LynxElement | null {
+    // A <q>'s closing mark ends its children (see markQuote).
+    if (element.#quoteMark) return null;
     if (!element.#anonymous) return element;
     const first = __FirstElement(element.element);
     return first

@@ -61,6 +61,8 @@ const inlineCompounds = (selector: string): string => {
   // Whether what's lowered so far ends where a compound starts: at the
   // start, or after a combinator, a list's comma or a `(`. An escaped
   // character is part of a name, so `.a\+` doesn't end at a combinator.
+  // Nor does a no-break space: CSS whitespace is only the five characters
+  // below, where `\s` would take in others that can be in a name.
   let compoundStart = true;
   for (let index = 0; index < selector.length; index++) {
     const character = selector[index]!;
@@ -88,7 +90,7 @@ const inlineCompounds = (selector: string): string => {
       }
     }
     lowered += character;
-    compoundStart = /[\s>+~(,]/.test(character);
+    compoundStart = /[ \t\n\f\r>+~(,]/.test(character);
   }
   return lowered;
 };
@@ -110,7 +112,7 @@ const isCompound = (selector: string): boolean => {
       depth++;
     } else if (character === ')') {
       depth--;
-    } else if (depth === 0 && /[\s>+~,]/.test(character)) {
+    } else if (depth === 0 && /[ \t\n\f\r>+~,]/.test(character)) {
       return false;
     }
   }

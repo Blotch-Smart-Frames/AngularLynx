@@ -58,6 +58,8 @@ describe('lowerSelectors', () => {
       // A type selector can go first in its compound.
       [':where(view).a > :is(*)', 'view.a > *'],
       ['.a\\+ + :is(view)', '.a\\+ + view'],
+      // A no-break space is part of a name, so this is one compound.
+      ['.a:is(.b\u00a0.c)', '.a.b\u00a0.c'],
       ['.a:not(:where(.b))', '.a:not(.b)'],
     ];
     for (const [selector, lowered] of cases) {
@@ -75,6 +77,9 @@ describe('lowerSelectors', () => {
       '.a:is(view)',
       // The `+` is part of the class name, not a combinator.
       '.a\\+:is(view) .x',
+      // A no-break space is part of a name too: CSS whitespace is only
+      // space, tab, newline, form feed and carriage return.
+      '.a\u00a0:is(view) .x',
       // An escaped colon is part of a class name.
       '.a\\:where\\(b\\)',
       // Unbalanced, which PostCSS wouldn't parse, but a rule can hold.

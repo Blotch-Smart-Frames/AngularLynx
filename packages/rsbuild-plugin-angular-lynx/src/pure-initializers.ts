@@ -1,10 +1,14 @@
 import * as ts from 'typescript';
+import { findModuleLevelCalls } from './cross-thread-transform.js';
 import { isPure } from './pure-classes.js';
 
 /**
  * The runtime's names whose module-level calls register something on the
  * background thread (see cross-thread-transform.ts). A declaration that makes
- * one is kept whether or not anything reads it.
+ * one is kept whether or not anything reads it. By name, for the runtime's own
+ * modules, which define them rather than import them; the calls of another
+ * package that imports them, under any name, are found as the cross-thread
+ * transform finds them.
  */
 const CROSS_THREAD_NAMES =
   /\b(?:backgroundFn|createMainThreadRef|MainThreadRef)\b/;
@@ -49,6 +53,12 @@ export const wrapPureInitializers = (
     ts.ScriptTarget.Latest,
     true,
   );
+  const crossThreadCalls = findModuleLevelCalls(code, filename);
+  const makesCrossThreadValue = (value: ts.Expression): boolean =>
+    CROSS_THREAD_NAMES.test(value.getText(sourceFile)) ||
+    crossThreadCalls.some(
+      (call) => call.pos >= value.pos && call.end <= value.end,
+    );
   const edits: Edit[] = [];
   for (const statement of sourceFile.statements) {
     if (!ts.isVariableStatement(statement)) continue;
@@ -60,7 +70,7 @@ export const wrapPureInitializers = (
         isPure(value) ||
         isMarkedPure(value, code, sourceFile) ||
         suspends(value) ||
-        CROSS_THREAD_NAMES.test(value.getText(sourceFile))
+        makesCrossThreadValue(value)
       ) {
         continue;
       }

@@ -83,9 +83,9 @@ export const definesCrossThreadValues = (
 
 /**
  * The module-level calls of the runtime's tagged functions and classes, in
- * source order.
+ * source order, under whatever names the module imports them as.
  */
-const findModuleLevelCalls = (
+export const findModuleLevelCalls = (
   code: string,
   filename: string,
 ): Array<ts.CallExpression | ts.NewExpression> => {

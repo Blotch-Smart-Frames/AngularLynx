@@ -62,6 +62,39 @@ describe('wrapPureInitializers', () => {
     expect(wrap(code)).toBe(code);
   });
 
+  // Dropped, the call wouldn't register the function on the background
+  // thread, and a main-thread call of it would find nothing there.
+  it.each([
+    [
+      'an aliased background function',
+      "import { backgroundFn as bg } from '@blotch/angular-lynx';\nexport const task = bg(() => 1, 'id');",
+    ],
+    [
+      'an aliased main-thread ref',
+      "import { createMainThreadRef as ref } from '@blotch/angular-lynx';\nconst a = ref(0, 'id');",
+    ],
+    [
+      "a namespace import's background function",
+      "import * as lynx from '@blotch/angular-lynx';\nconst task = lynx.backgroundFn(() => 1, 'id');",
+    ],
+    [
+      'a background function inside a value',
+      "import { backgroundFn as bg } from '@blotch/angular-lynx';\nconst tasks = [bg(() => 1, 'a'), make()];",
+    ],
+  ])('leaves alone %s', (_label, code) => {
+    expect(wrap(code)).toBe(code);
+  });
+
+  it("wraps a call of the runtime's other functions", () => {
+    expect(
+      wrap(
+        "import { backgroundFn as bg, other } from '@blotch/angular-lynx';\nconst a = other();\nconst b = bg(() => 1, 'id');",
+      ),
+    ).toBe(
+      "import { backgroundFn as bg, other } from '@blotch/angular-lynx';\nconst a = /*#__PURE__*/ (() => (other()))();\nconst b = bg(() => 1, 'id');",
+    );
+  });
+
   it('leaves other statements alone', () => {
     const code = 'install();\nif (a) b = c();\nfunction f() { const x = g(); }';
     expect(wrap(code)).toBe(code);

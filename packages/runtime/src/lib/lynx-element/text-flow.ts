@@ -223,6 +223,39 @@ export const textPropertyBit = (property: string): number =>
   TEXT_PROPERTY_BITS.get(property) ?? 0;
 
 /**
+ * The declarations of an inline style string, split at each `;` outside a
+ * quoted string and outside parentheses: a `;` inside `content: "a;b"` or
+ * `url(data:image/png;base64,…)` is part of the value. Splitting there cut
+ * a declaration in two, which the runtime wrote back when it took another
+ * declaration out of the string (see LynxElement's removeStyle).
+ */
+export const splitDeclarations = (style: string): string[] => {
+  const declarations: string[] = [];
+  let start = 0;
+  let quote = '';
+  let depth = 0;
+  for (let index = 0; index < style.length; index++) {
+    const char = style[index];
+    if (quote) {
+      // A backslash keeps the next character in the string, quote or not.
+      if (char === '\\') index++;
+      else if (char === quote) quote = '';
+    } else if (char === '"' || char === "'") {
+      quote = char;
+    } else if (char === '(') {
+      depth++;
+    } else if (char === ')') {
+      depth = Math.max(0, depth - 1);
+    } else if (char === ';' && depth === 0) {
+      declarations.push(style.slice(start, index));
+      start = index + 1;
+    }
+  }
+  declarations.push(style.slice(start));
+  return declarations;
+};
+
+/**
  * The inheritable text properties an element's inline style sets, with their
  * values: its style="..." string's, then its `[style.x]` styles', which win
  * over the string's as Lynx draws them (see LynxElement's #setsVariables).
@@ -234,7 +267,7 @@ export const inlineTextStyles = (
 ): Map<string, string> | null => {
   let styles: Map<string, string> | null = null;
   if (inlineStyle) {
-    for (const declaration of inlineStyle.split(';')) {
+    for (const declaration of splitDeclarations(inlineStyle)) {
       const colon = declaration.indexOf(':');
       if (colon <= 0) continue;
       const property = declaration.slice(0, colon).trim().toLowerCase();

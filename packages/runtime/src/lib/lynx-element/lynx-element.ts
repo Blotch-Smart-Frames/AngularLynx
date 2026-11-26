@@ -61,6 +61,7 @@ import {
   inheritanceCopiesFor,
   inheritanceStyleFor,
   inlineTextStyles,
+  splitDeclarations,
   isBlankText,
   isBlockDisplay,
   isRowOrientation,
@@ -231,8 +232,7 @@ const withoutDeclaration = (
   property: string,
 ): string | null => {
   if (inlineDeclaration(style, property) === undefined) return style;
-  return style!
-    .split(';')
+  return splitDeclarations(style!)
     .filter((declaration) => !declares(declaration, property))
     .join(';');
 };
@@ -245,7 +245,7 @@ const inlineDeclaration = (
   property: string,
 ): string | undefined => {
   let value: string | undefined;
-  for (const declaration of (style ?? '').split(';')) {
+  for (const declaration of splitDeclarations(style ?? '')) {
     if (declares(declaration, property)) {
       value = declaration.slice(declaration.indexOf(':') + 1).trim();
     }

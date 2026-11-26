@@ -12,6 +12,7 @@ import {
   inheritanceCopiesFor,
   inheritanceStyleFor,
   inlineTextStyles,
+  splitDeclarations,
   isBlankText,
   isBlockDisplay,
   isRowOrientation,
@@ -254,6 +255,25 @@ describe('inlineTextStyles', () => {
   it('is null when there are none', () => {
     expect(inlineTextStyles(null, null)).toBeNull();
     expect(inlineTextStyles('padding: 4px', new Map())).toBeNull();
+  });
+});
+
+describe('splitDeclarations', () => {
+  it('splits at each ; outside quotes and parentheses', () => {
+    expect(
+      splitDeclarations(
+        `--label: "a;b"; content: 'c;\\'d'; background: url(data:x;base64,e); color: red`,
+      ),
+    ).toEqual([
+      '--label: "a;b"',
+      " content: 'c;\\'d'",
+      ' background: url(data:x;base64,e)',
+      ' color: red',
+    ]);
+  });
+
+  it('reads a stray ) as nothing', () => {
+    expect(splitDeclarations('a: b); c: d')).toEqual(['a: b)', ' c: d']);
   });
 });
 

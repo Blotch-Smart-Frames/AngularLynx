@@ -2059,6 +2059,16 @@ describe('loose text, element by element', () => {
       commit();
       expect(style(view)).not.toContain('green');
       expect(style(view)).toContain('height: 10px');
+      // A ; inside a quoted value stays in its declaration.
+      view.setAttribute(
+        'style',
+        '--label: "alpha;height: 10px;omega"; color: red; height: 20px',
+      );
+      commit();
+      view.removeStyle('height');
+      commit();
+      expect(style(view)).toContain('--label: "alpha;height: 10px;omega"');
+      expect(style(view)).not.toContain('height: 20px');
       // One the string doesn't declare leaves it as it is.
       view.setAttribute('style', 'color: blue');
       view.removeStyle('width');

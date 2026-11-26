@@ -1,0 +1,27 @@
+# Layer 6, the app's own builds only: LynxAppState (issue #577). The linking
+# page (fixtures/linking.ts) counts the times the app came back to the front
+# after it left. Going to the home screen and opening the app again, without
+# stopping it, has to make "Returns: 1": the shells send the app's state in the
+# global props as the scene (iOS) or the activity (Android) moves, and Lynx
+# itself tells the app nothing. Lynx Explorer sends no state.
+appId: ${APP_ID}
+---
+- runFlow: open-app.yaml
+- tapOn: Open storage
+- tapOn: Open canvas
+- tapOn: Open linking
+- extendedWaitUntil:
+    visible: 'Returns: 0'
+    timeout: 15000
+- pressKey: Home
+# Back to the same process: launchApp stops it first by default. The
+# permission is open-app.yaml's, for the same reason: launchApp's default
+# reads every permission off the APK, which can take minutes on Android.
+- launchApp:
+    stopApp: false
+    permissions:
+      camera: allow
+- extendedWaitUntil:
+    visible: 'Returns: 1'
+    timeout: 15000
+- takeScreenshot: app-state

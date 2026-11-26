@@ -52,6 +52,13 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
     private var safeArea = Insets.NONE
     private var hasCutout = false
 
+    // Where the app is, for LynxAppState, sent in the global props and again
+    // as the activity's lifecycle moves: "active" from onResume, "inactive"
+    // from onPause (another window has the focus, as in split screen) and
+    // onStart, and "background" from onStop. It starts "inactive": the first
+    // props go out from onCreate, on the way onto the screen.
+    private var appState = "inactive"
+
     // Sends the accessibility settings again when the user changes one while
     // the app is open: Remove animations (the animator duration scale), the
     // contrast level (Android 14) and high contrast text (Android 16). The
@@ -387,8 +394,8 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
      * The global props the runtime reads: `theme` (LynxTheme), `isNotchScreen`
      * (LynxSafeArea), `appLocale` (LynxLocale), `appTimeZone` (the `intl`
      * build option's Intl.DateTimeFormat), the accessibility settings
-     * (LynxAccessibilitySettings), `osVersion` (LynxSystemInfo) and
-     * `initialURL` (LynxLinking and the router), plus the
+     * (LynxAccessibilitySettings), `appState` (LynxAppState), `osVersion`
+     * (LynxSystemInfo) and `initialURL` (LynxLinking and the router), plus the
      * safe-area insets in dp and `edgeToEdge`, which env(safe-area-inset-*)
      * reads. The iOS shell sends the same keys, and Lynx Explorer sends theme
      * and isNotchScreen too. Android 12 and later also send the wallpaper's
@@ -415,6 +422,7 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
             // Lynx has no API for these. Android has no Reduce Transparency.
             "reduceMotion" to reduceMotion(),
             "increaseContrast" to increaseContrast(),
+            "appState" to appState,
         )
         // The user's language as a BCP 47 tag, such as "fr-FR".
         ConfigurationCompat.getLocales(config)[0]?.let { props["appLocale"] = it.toLanguageTag() }
@@ -443,11 +451,26 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
             (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA &&
                 getSystemService(AccessibilityManager::class.java).isHighContrastTextEnabled)
 
+    // Tells the app where it is now (LynxAppState). Lynx itself tells the
+    // app's code nothing when it leaves the screen or comes back.
+    private fun sendAppState(state: String) {
+        if (appState == state) return
+        appState = state
+        sendGlobalProps()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        sendAppState("inactive")
+    }
+
     // Lynx pauses timers and animations in the background and fires the
     // page's visibility events from these.
     override fun onResume() {
         super.onResume()
         lynxView.onEnterForeground()
+        // After the timers resume, so what the app starts on its return runs.
+        sendAppState("active")
         // Back from a Custom Tab without its redirect: the person closed it.
         // Android says nothing else when a Custom Tab closes.
         webAuthSession?.takeIf { it.opened }?.let {
@@ -457,9 +480,16 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
     }
 
     override fun onPause() {
+        // Before Lynx pauses the timers, so the app hears it on its way out.
+        sendAppState("inactive")
         lynxView.onEnterBackground()
         webAuthSession?.opened = true
         super.onPause()
+    }
+
+    override fun onStop() {
+        sendAppState("background")
+        super.onStop()
     }
 
     override fun onDestroy() {

@@ -147,6 +147,19 @@ iOS keeps the system's pale gray: its setter takes a color a string attribute ne
 
 Use runtime logic with conditional classes. `prefers-color-scheme` on its own works: the build turns it into rules under `page.dark` (see "Dark Mode" in [styling-and-css.md](styling-and-css.md)). For `prefers-reduced-motion`, `prefers-reduced-transparency` and `prefers-contrast`, inject `LynxAccessibilitySettings`: its `reduceMotion()`, `reduceTransparency()` and `increaseContrast()` signals come from the host app's global props (the `ng build --platform` apps send them) and, in the web preview, from the browser's media queries.
 
+### No visibility event when the app leaves the screen or comes back
+
+Lynx pauses timers in the background and tells the app's code nothing, and a paused `setTimeout` can fire late once the app wakes. Inject `LynxAppState` instead: `state()` is `'active'`, `'inactive'` (on screen but not taking touches: Control Center, a call, split screen) or `'background'`, and `active()` is `state() === 'active'`. The `ng build --platform` apps send it in the `appState` global prop, the web preview follows the page's visibility, and Lynx Explorer stays `'active'`. Catch up on the way back:
+
+```typescript
+const appState = inject(LynxAppState);
+effect(() => {
+  if (appState.active()) untracked(() => this.#now.set(new Date()));
+});
+```
+
+In a spec, `setAppState('background')` and `setAppState('active')` from the testing library move it; `await waitForUpdate()` before checking.
+
 ### `SystemInfo.osVersion` is missing where Angular runs
 
 Lynx builds the native main thread's `SystemInfo` without the OS version. `LynxSystemInfo.osVersion` fills it in from the host's `osVersion` global prop (the generated apps send it), or else from the background thread shortly after the first frame; read it in a `computed()`.

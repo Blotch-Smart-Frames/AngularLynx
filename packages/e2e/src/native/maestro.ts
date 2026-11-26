@@ -158,6 +158,13 @@ export const FLOWS: readonly Flow[] = [
     only: { host: 'shell' },
   },
   {
+    file: 'app-state.yaml',
+    description: 'hears the app come back to the front',
+    // Only the app's own builds send the app's state. Lynx Explorer sends
+    // none, so the app stays active there.
+    only: { host: 'shell' },
+  },
+  {
     file: 'canvas.yaml',
     description: 'draws a texture with WebGL2 and reads it back',
     // Only the app's own builds have <canvas> and its WebGL module. Lynx

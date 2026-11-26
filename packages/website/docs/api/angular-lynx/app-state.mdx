@@ -1,0 +1,94 @@
+# LynxAppState
+
+Whether the app is in the foreground, as signals, so it can catch up when it comes back. `import { LynxAppState } from '@blotch/angular-lynx';`
+
+## Usage
+
+Lynx pauses timers while the app is in the background, and nothing says how soon a paused timer fires once the app wakes. A screen left open overnight can go on showing yesterday until it does. Read `active()` to catch up the moment the app is back:
+
+```typescript title="src/app/clock.ts"
+import {
+  DestroyRef,
+  effect,
+  inject,
+  Injectable,
+  signal,
+  untracked,
+} from '@angular/core';
+import { LynxAppState } from '@blotch/angular-lynx';
+
+@Injectable({ providedIn: 'root' })
+export class Clock {
+  readonly #now = signal(new Date());
+  readonly now = this.#now.asReadonly();
+
+  constructor() {
+    // Moves on as each minute starts.
+    const untilNextMinute = (now: Date) => 60_000 - (now.getTime() % 60_000);
+    const tick = (): void => {
+      const now = new Date();
+      this.#now.set(now);
+      timer = setTimeout(tick, untilNextMinute(now));
+    };
+    let timer = setTimeout(tick, untilNextMinute(this.#now()));
+    inject(DestroyRef).onDestroy(() => clearTimeout(timer));
+
+    // Caught up the moment the app comes back, rather than whenever its
+    // paused timer fires.
+    const appState = inject(LynxAppState);
+    effect(() => {
+      if (appState.active()) untracked(() => this.#now.set(new Date()));
+    });
+  }
+}
+```
+
+The same goes for anything else to do on the way back: reading again what isn't live, restarting an animation, or refreshing a token.
+
+## API
+
+### `LynxAppState`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxAppState {
+  readonly state: Signal<LynxAppStateValue>;
+  readonly active: Signal<boolean>;
+}
+```
+
+- **`state()`:** where the app is: `'active'`, `'inactive'` or `'background'` (see [`LynxAppStateValue`](#lynxappstatevalue)).
+- **`active()`:** `true` while `state()` is `'active'`: the app is in the foreground, taking touches. It turns `false` as soon as the app stops taking them, before it leaves the screen.
+
+Lynx tells the app's code nothing when it leaves the screen or comes back, so the state comes from the [host app](/guide/glossary#host-app), in the `appState` [global prop](/guide/embedding/host-data#what-the-generated-apps-pass), as the [accessibility settings](/api/angular-lynx/accessibility#lynxaccessibilitysettings) do. Being a global prop rather than an event, it's right from the app's first line, and a change can't come before anything listens.
+
+| Where the app runs                             | Where the state comes from                                                                                                                  |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Apps from `ng build --platform`, iOS           | The scene's activation: `inactive` when it resigns active and `background` when it leaves the screen                                        |
+| Apps from `ng build --platform`, Android       | The activity's lifecycle: `active` from `onResume`, `inactive` from `onPause` (another window has the focus) and `background` from `onStop` |
+| [Web preview](/guide/glossary#web-preview)     | The page's visibility: `background` while its tab is hidden, `active` otherwise                                                             |
+| [Lynx Explorer](/guide/glossary#lynx-explorer) | None: the app is always `active`                                                                                                            |
+
+Your own native app can send `appState` the same way, with each of its global props updates.
+
+In a spec, the testing library's [`setAppState()`](/api/testing-library#setappstate) sends the app to the background and brings it back.
+
+## Types
+
+### `LynxAppStateValue`
+
+```typescript
+import type { LynxAppStateValue } from '@blotch/angular-lynx';
+
+type LynxAppStateValue = 'active' | 'inactive' | 'background';
+```
+
+- **`'active'`:** in the foreground, taking touches.
+- **`'inactive'`:** on screen, or on its way on or off it, but not taking touches. On iOS, Control Center or Notification Center is pulled over the app, the app switcher is open, or a call came in, and an app is `inactive` as it launches, until its scene is active. On Android, another app's window has the focus, as in split screen.
+- **`'background'`:** out of sight. Lynx pauses the app's timers and animations, and the system may end it.
+
+## Related
+
+- [Accessibility](/api/angular-lynx/accessibility)
+- [Host data](/api/angular-lynx/host-data)
+- [System info](/api/angular-lynx/system-info)

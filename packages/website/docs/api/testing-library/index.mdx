@@ -181,6 +181,25 @@ await waitForUpdate();
 expect(screen.getByText('Order 42')).toBeInTheDocument();
 ```
 
+### `setAppState()`
+
+```typescript
+function setAppState(state: 'active' | 'inactive' | 'background'): void;
+```
+
+Sends the app to the background, or brings it back, as the person does by leaving the app and coming back to it, so a spec can check what the app does on its return. [`LynxAppState.state()`](/api/angular-lynx/app-state) becomes `state`, and `active()` is `true` only for `'active'`. It reaches the app as a change to the host's global props, as on a phone, so wait for it with `waitForUpdate()`. Each test starts `'active'`.
+
+```typescript
+await render(Schedule);
+
+setAppState('background');
+vi.setSystemTime(new Date('2026-01-02T09:00'));
+setAppState('active');
+await waitForUpdate();
+
+expect(screen.getByText('Today: 2 January')).toBeInTheDocument();
+```
+
 ### `*ByAccessibilityLabel`
 
 ```typescript

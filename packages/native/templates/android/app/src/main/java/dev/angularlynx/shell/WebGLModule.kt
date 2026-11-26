@@ -93,17 +93,28 @@ class WebGLModule(context: Context, param: Any?) : LynxModule(context, param) {
     fun imageFromCanvas(imageId: Int, canvasId: String?, options: ReadableMap?): JavaOnlyMap {
         val context = canvasId?.let { CanvasRegistry.context(it) }
         return try {
-            val snapshot = context?.snapshot() ?: run {
+            val snapshot = if (context != null) {
+                // A context that has pixels but couldn't read them is a
+                // failure, not a blank canvas.
+                context.snapshot() ?: return imageFailed("The canvas's pixels could not be read")
+            } else {
                 val width = options?.optInt("width") ?: 0
                 val height = options?.optInt("height") ?: 0
                 if (width <= 0 || height <= 0) return imageFailed("The canvas has no pixels")
-                DecodedImage(ByteBuffer.allocateDirect(width * height * 4).order(ByteOrder.nativeOrder()), width, height, true)
+                // In Long: a canvas of 32768 by 32768 has 2^32 bytes, which
+                // an Int wraps round to 0.
+                val bytes = width.toLong() * height * 4
+                if (bytes > Int.MAX_VALUE) return imageFailed("The canvas is too large to copy")
+                DecodedImage(ByteBuffer.allocateDirect(bytes.toInt()).order(ByteOrder.nativeOrder()), width, height, true)
             }
             if (options?.optBool("transfer") == true) context?.clearForTransfer()
             val image = pixelsOfSnapshot(snapshot, options)
             DecodedImages.put(imageId, image)
             JavaOnlyMap.from(mapOf("width" to image.width, "height" to image.height))
         } catch (_: OutOfMemoryError) {
+            imageFailed("The canvas is too large to copy")
+        } catch (_: IllegalArgumentException) {
+            // A resize larger than a Bitmap or a buffer can hold.
             imageFailed("The canvas is too large to copy")
         }
     }

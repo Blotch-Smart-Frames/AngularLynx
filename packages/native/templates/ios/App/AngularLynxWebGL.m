@@ -375,6 +375,11 @@ static AngularLynxDecodedImage *pixelsOfSnapshot(AngularLynxDecodedImage *snapsh
   // A WebGL context's snapshot makes it current; the next batch of any
   // context makes its own current again (see AngularLynxWebGLContext run:).
   AngularLynxDecodedImage *snapshot = [context snapshot];
+  // A context that has pixels but couldn't read them is a failure, not a
+  // blank canvas.
+  if (context && !snapshot) {
+    return @{@"width" : @0, @"height" : @0, @"error" : @"The canvas's pixels could not be read"};
+  }
   if (!snapshot) {
     NSInteger width = [options[@"width"] isKindOfClass:NSNumber.class]
                           ? [options[@"width"] integerValue]
@@ -385,11 +390,14 @@ static AngularLynxDecodedImage *pixelsOfSnapshot(AngularLynxDecodedImage *snapsh
     if (width <= 0 || height <= 0) {
       return @{@"width" : @0, @"height" : @0, @"error" : @"The canvas has no pixels"};
     }
-    snapshot = [[AngularLynxDecodedImage alloc]
-        initWithPixels:[NSMutableData dataWithLength:(NSUInteger)width * height * 4]
-                 width:width
-                height:height
-         premultiplied:YES];
+    NSMutableData *blank = [NSMutableData dataWithLength:(NSUInteger)width * height * 4];
+    if (!blank) {
+      return @{@"width" : @0, @"height" : @0, @"error" : @"The canvas is too large to copy"};
+    }
+    snapshot = [[AngularLynxDecodedImage alloc] initWithPixels:blank
+                                                         width:width
+                                                        height:height
+                                                 premultiplied:YES];
   }
   if ([options[@"transfer"] isEqual:@YES]) [context clearForTransfer];
   NSString *error = nil;

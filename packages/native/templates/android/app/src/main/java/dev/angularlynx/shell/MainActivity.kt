@@ -49,6 +49,18 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
     // resource.
     private val edgeToEdge by lazy { resources.getBoolean(R.bool.edge_to_edge) }
 
+    // Whether the app's text follows the system's font size, and the largest
+    // scale it takes (0 for no cap): angular.json's textScaling, which
+    // app/build.gradle.kts writes as resources.
+    private val textScaling by lazy { resources.getBoolean(R.bool.text_scaling) }
+    private val maxTextScale by lazy {
+        resources.getString(R.string.max_text_scale).toFloatOrNull() ?: 0f
+    }
+
+    // The font scale the LynxView was built with, which Lynx gives each engine
+    // it sets up (see onLoadSuccess below).
+    private var builtFontScale = 1f
+
     // The safe-area insets, and whether the screen has a cutout, as the
     // window last reported them. Sent in the global props.
     private var safeArea = Insets.NONE
@@ -200,6 +212,7 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
         // The bundle in the app's assets, or in the debug build `ng serve
         // --platform android` runs, the dev server's (DevServer.kt).
         val bundleUrl = DevServer.bundleUrl(this) ?: BundleAssets.MAIN_BUNDLE
+        builtFontScale = textScale(resources.configuration)
         lynxView = LynxViewBuilder().apply {
             // Lynx's engine thread, which runs the main thread's JavaScript
             // (the whole Angular app), layout and Lynx's animator, gets a
@@ -213,6 +226,10 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
             // on every <list>, which this strategy requires. The iOS shell
             // does the same.
             setThreadStrategyForRendering(ThreadStrategyForRendering.MOST_ON_TASM)
+            // The user's font size (see textScale()). The build tells Lynx to
+            // scale only `sp` lengths by it, which the page's root font size
+            // is written in, so every rem grows with it and a px size doesn't.
+            setFontScale(builtFontScale)
             setTemplateProvider(AssetTemplateProvider(this@MainActivity))
             setTemplateResourceFetcher(AssetTemplateResourceFetcher(this@MainActivity))
             setMediaResourceFetcher(AssetMediaResourceFetcher())
@@ -276,6 +293,16 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
         lynxView.addLynxViewClient(object : LynxViewClient() {
             override fun onReceivedError(error: LynxError?) {
                 Log.e(TAG, "Lynx error: ${error?.msg}")
+            }
+
+            // A load sets up a new engine, as the debug build's reload does,
+            // and Lynx gives it the font scale the LynxView was built with:
+            // updateFontScale doesn't change that. So a size chosen since then
+            // would be lost on reload while textScale kept it; give the new
+            // page the current scale.
+            override fun onLoadSuccess() {
+                val scale = textScale(resources.configuration)
+                if (scale != builtFontScale) lynxView.updateFontScale(scale)
             }
         })
 
@@ -409,10 +436,25 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
     // language change still restarts the activity, which sends the new
     // appLocale: Angular reads LOCALE_ID only once. A new wallpaper arrives
     // here too, without a restart, and globalProps() reads its colors again.
+    //
+    // A new font size arrives here too (the manifest lists fontScale), and the
+    // page's root font size, with every rem, takes the new scale at once.
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         updateWindowAppearance()
+        lynxView.updateFontScale(textScale(newConfig))
         lynxView.updateGlobalProps(globalProps(newConfig))
+    }
+
+    // How much larger than the default the user's font size is (Settings >
+    // Display > Font size): 1 at the default, up to 2 on Android 14 and
+    // later. Capped at angular.json's textScaling.max, and 1 with
+    // "textScaling": false. Android 14 scales large sp text less than small
+    // (nonlinear font scaling); Lynx applies the one factor to everything.
+    private fun textScale(config: Configuration): Float {
+        if (!textScaling) return 1f
+        val scale = config.fontScale.takeIf { it > 0f } ?: 1f
+        return if (maxTextScale > 0f) minOf(scale, maxTextScale) else scale
     }
 
     // Kept through a dark mode switch, the window keeps the theme it started
@@ -431,8 +473,8 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
     /**
      * The global props the runtime reads: `theme` (LynxTheme), `isNotchScreen`
      * (LynxSafeArea), `appLocale` (LynxLocale), `appTimeZone` (the `intl`
-     * build option's Intl.DateTimeFormat), the accessibility settings
-     * (LynxAccessibilitySettings), `osVersion` (LynxSystemInfo) and
+     * build option's Intl.DateTimeFormat), the accessibility settings and
+     * text scale (LynxAccessibilitySettings), `osVersion` (LynxSystemInfo) and
      * `initialURL` (LynxLinking and the router), plus the
      * safe-area insets in dp and `edgeToEdge`, which env(safe-area-inset-*)
      * reads. The iOS shell sends the same keys, and Lynx Explorer sends theme
@@ -460,6 +502,9 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
             // Lynx has no API for these. Android has no Reduce Transparency.
             "reduceMotion" to reduceMotion(),
             "increaseContrast" to increaseContrast(),
+            // The font size, as the LynxView's font scale has it
+            // (LynxAccessibilitySettings.textScale).
+            "textScale" to textScale(config),
         )
         // The user's language as a BCP 47 tag, such as "fr-FR".
         ConfigurationCompat.getLocales(config)[0]?.let { props["appLocale"] = it.toLanguageTag() }

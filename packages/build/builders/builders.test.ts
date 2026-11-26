@@ -1350,6 +1350,7 @@ describe('unit-test builder', () => {
       'buildNumber',
       'orientation',
       'edgeToEdge',
+      'textScaling',
       'icon',
       'splash',
       'permissions',

@@ -41,6 +41,7 @@ import {
   INHERITED_TEXT_PROPERTIES,
   textInheritanceForLynx,
 } from './text-inheritance';
+import { TEXT_SCALE_STYLESHEET } from './text-scale';
 import { typeSelectorsForLynx } from './type-selectors';
 import { ZeroBigIntLiteralsPlugin } from './zero-bigint-literals';
 
@@ -470,6 +471,7 @@ describe('applyEntry', () => {
 
     expect(imports('lynx')).toEqual([
       BLUR_VIEW_STYLESHEET,
+      TEXT_SCALE_STYLESHEET,
       HTML_TEXT_TAGS_STYLESHEET,
       './src/styles.css',
       './main.ts',

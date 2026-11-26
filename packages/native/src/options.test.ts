@@ -13,6 +13,7 @@ describe('resolveAppOptions', () => {
       buildNumber: 1,
       orientation: 'portrait',
       edgeToEdge: true,
+      textScaling: { enabled: true },
       permissions: {},
       deepLinkSchemes: [],
       appLinkDomains: [],
@@ -439,6 +440,26 @@ describe('resolveAppOptions', () => {
       expect(() => splash(options)).toThrow(message);
     });
   });
+
+  it('turns text scaling off, or caps it', () => {
+    const textScaling = (value: unknown) =>
+      resolveAppOptions({ textScaling: value } as never, defaults).textScaling;
+    expect(textScaling(true)).toEqual({ enabled: true });
+    expect(textScaling(false)).toEqual({ enabled: false });
+    expect(textScaling({})).toEqual({ enabled: true });
+    expect(textScaling({ max: 1.6 })).toEqual({ enabled: true, max: 1.6 });
+    expect(textScaling({ max: 1 })).toEqual({ enabled: true, max: 1 });
+  });
+
+  // Below 1 the default text would shrink.
+  it.each([0.9, 0, -1, Number.POSITIVE_INFINITY, '1.5'])(
+    'rejects a text scale cap of %s',
+    (max) => {
+      expect(() =>
+        resolveAppOptions({ textScaling: { max } } as never, defaults),
+      ).toThrow(/textScaling\.max .* is not valid/);
+    },
+  );
 
   it('accepts the two .ipa export methods and rejects any other', () => {
     expect(

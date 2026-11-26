@@ -107,7 +107,7 @@ Lynx draws text only inside `<text>`, so the runtime draws raw text whose parent
 
 ### Default `font-size` is 14px (not 16px), and so is `1rem`
 
-Every `rem` size is an eighth smaller than in a browser: Tailwind's `h-12` is 42px, not 48px. `page { font-size: 16px; }` makes `1rem` and the default text size 16px (the dolan UI theme sets it). No keyword sizes (`small`, `medium`, `large`).
+Every `rem` size is an eighth smaller than in a browser: Tailwind's `h-12` is 42px, not 48px. `page { font-size: 16px; }` makes `1rem` 16px (the dolan UI theme sets it), and so the text of HTML text tags and loose text, but a `<text>` with no font size of its own stays at 14px: give it one (`text-base`). No keyword sizes (`small`, `medium`, `large`).
 
 ### Text follows the phone's text size through `rem`, not `px`
 
@@ -149,7 +149,7 @@ iOS keeps the system's pale gray: its setter takes a color a string attribute ne
 
 ### No `@media` queries
 
-Use runtime logic with conditional classes. `prefers-color-scheme` on its own works: the build turns it into rules under `page.dark` (see "Dark Mode" in [styling-and-css.md](styling-and-css.md)). For `prefers-reduced-motion`, `prefers-reduced-transparency` and `prefers-contrast`, inject `LynxAccessibilitySettings`: its `reduceMotion()`, `reduceTransparency()` and `increaseContrast()` signals (and `textScale()`, the phone's text size) come from the host app's global props (the `ng build --platform` apps send them) and, in the web preview, from the browser's media queries.
+Use runtime logic with conditional classes. `prefers-color-scheme` on its own works: the build turns it into rules under `page.dark` (see "Dark Mode" in [styling-and-css.md](styling-and-css.md)). For `prefers-reduced-motion`, `prefers-reduced-transparency` and `prefers-contrast`, inject `LynxAccessibilitySettings`: its `reduceMotion()`, `reduceTransparency()` and `increaseContrast()` signals come from the host app's global props (the `ng build --platform` apps send them) and, in the web preview, from the browser's media queries. Its `textScale()`, the phone's text size, comes from the global props only, and is 1 in the web preview.
 
 ### `SystemInfo.osVersion` is missing where Angular runs
 

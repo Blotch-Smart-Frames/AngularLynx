@@ -82,7 +82,8 @@ const haptics = {
  * Renders the context menu on a platform (none for Material), measuring
  * elements as `boundingClientRect` would on a phone: the safe area (the
  * element that holds the menu) a phone's screen, the menu's content 120pt
- * tall, and anything else, the pressed element, a card near the top.
+ * tall with its rows 44pt apart from its top, and anything else, the pressed
+ * element, a card near the top.
  */
 const renderContextMenu = async (
   platform: { platform: string; osVersion: string } | null = IOS_26,
@@ -96,11 +97,17 @@ const renderContextMenu = async (
       callback({ code: 0 });
       return;
     }
+    const content = element.closest('scroll-view > view');
+    const rows = content
+      ? [...content.querySelectorAll('[accessibility-traits^="button"]')]
+      : [];
     const data = element.querySelector(':scope > blur-view[ui-glass]')
       ? { left: 0, top: 62, width: 402, height: 778 }
-      : element.parentElement?.tagName.toLowerCase() === 'scroll-view'
+      : element === content
         ? { left: 0, top: 0, width: 250, height: 120 }
-        : { left: 16, top: 162, width: 370, height: 96 };
+        : rows.includes(element)
+          ? { left: 0, top: rows.indexOf(element) * 44, width: 250, height: 44 }
+          : { left: 16, top: 162, width: 370, height: 96 };
     callback({ code: 0, data });
   });
   const result = await render(ContextMenuHost, {
@@ -287,11 +294,15 @@ describe('UiContextMenu', () => {
       touches: [{ clientX: x, clientY: y }],
     });
     /**
-     * Where the menu's rows answer, as measured: every element but the
-     * safe area and the content answers as the card, so each row's box
-     * is the card's, from the content's corner, in the menu below the card.
+     * The middle of a row on screen: the menu opens 8pt below the card, in
+     * the safe area 62pt down, with its rows 44pt apart.
      */
-    const ON_SHARE = { x: 100, y: 62 + 204 + 162 + 48 };
+    const onRow = (index: number) => ({
+      x: 100,
+      y: 62 + 204 + index * 44 + 22,
+    });
+    const ON_SHARE = onRow(0);
+    const ON_DELETE = onRow(1);
 
     /**
      * The element the long press lands on: the card's holder.
@@ -320,6 +331,27 @@ describe('UiContextMenu', () => {
       });
       expect(rendered.host.shared).toHaveBeenCalledTimes(1);
       expect(rendered.host.open()).toBe(false);
+      await waitForClose(rendered);
+    });
+
+    it('chooses the row it lifts on, not the first', async () => {
+      const rendered = await renderContextMenu();
+      fireLynxEvent(pressed(rendered), 'touchstart', touchAt(100, 200));
+      longPress(rendered.card());
+      await waitForOpen(rendered);
+
+      fireLynxEvent(
+        pressed(rendered),
+        'touchmove',
+        touchAt(ON_DELETE.x, ON_DELETE.y),
+      );
+      fireLynxEvent(pressed(rendered), 'touchend', {
+        touches: [],
+        changedTouches: [{ clientX: ON_DELETE.x, clientY: ON_DELETE.y }],
+      });
+
+      expect(rendered.host.deleted).toHaveBeenCalledTimes(1);
+      expect(rendered.host.shared).not.toHaveBeenCalled();
       await waitForClose(rendered);
     });
 

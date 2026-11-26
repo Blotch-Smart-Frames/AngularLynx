@@ -539,13 +539,13 @@ describe('applyEntry', () => {
     expect(test('/app/src/other.ts')).toBe(false);
   });
 
-  // Issue #611: <b> and <strong> drew at the weight of the text around them,
-  // as nothing gave them the browser's bold. The rules only work once the
-  // plugin's own PostCSS has made the type selectors the classes the runtime
-  // marks the elements with, and once the style index says they set the
-  // weight: without that, the runtime gives the element its parent's weight
-  // inline, which beats any rule.
-  it("gives <b> and <strong> a bold that matches the runtime's elements and wins over the inherited weight", () => {
+  // Issues #611 and #643: <b>, <em>, <u>, <s> and their kin drew as the text
+  // around them, as nothing gave them the browser's text styles. The rules
+  // only work once the plugin's own PostCSS has made the type selectors the
+  // classes the runtime marks the elements with, and once the style index
+  // says they set the property: without that, the runtime gives the element
+  // its parent's value inline, which beats any rule.
+  it("gives the HTML text tags the browser's text styles, on the runtime's elements and over the inherited values", () => {
     const css = postcss([typeSelectorsForLynx(), textInheritanceForLynx()])
       .process(readFileSync(HTML_TEXT_TAGS_STYLESHEET, 'utf8'), {
         from: undefined,
@@ -554,24 +554,72 @@ describe('applyEntry', () => {
     const rules = postcss
       .parse(css)
       .nodes.filter((node) => node.type === 'rule')
-      .map((rule) => [rule.selector, rule.toString()]);
+      .map((rule) => [
+        rule.selector.replace(/\s*,\s*/g, ','),
+        rule.nodes
+          .map((node) =>
+            node.type === 'decl' ? `${node.prop}: ${node.value}` : '',
+          )
+          .join('; '),
+      ]);
+    const tags = (...names: string[]) =>
+      names.map((name) => `._ngtag-${name}`).join(',');
+    const inherit = (...names: string[]) =>
+      names.map((name) => `._ngtag-${name}._nginherit`).join(',');
+    const nested = [
+      ['u', 's'],
+      ['u', 'del'],
+      ['ins', 's'],
+      ['ins', 'del'],
+      ['s', 'u'],
+      ['s', 'ins'],
+      ['del', 'u'],
+      ['del', 'ins'],
+    ];
 
     expect(rules).toEqual([
-      [
-        '._ngtag-b,._ngtag-strong',
-        expect.stringContaining('font-weight: bold'),
-      ],
+      [tags('b', 'strong'), 'font-weight: bold'],
       // Loose text inside a <b> reads the weight from here.
+      [inherit('b', 'strong'), '--angular-lynx-font-weight: bold'],
+      [tags('em', 'i', 'cite', 'dfn', 'var'), 'font-style: italic'],
       [
-        '._ngtag-b._nginherit,._ngtag-strong._nginherit',
-        expect.stringContaining('--angular-lynx-font-weight: bold'),
+        inherit('em', 'i', 'cite', 'dfn', 'var'),
+        '--angular-lynx-font-style: italic',
+      ],
+      [tags('u', 'ins'), 'text-decoration: underline'],
+      [inherit('u', 'ins'), '--angular-lynx-text-decoration: underline'],
+      [tags('s', 'del'), 'text-decoration: line-through'],
+      [inherit('s', 'del'), '--angular-lynx-text-decoration: line-through'],
+      // A <u> inside an <s> keeps the line through, as in a browser.
+      [
+        nested
+          .map(([outer, inner]) => `._ngtag-${outer} ._ngtag-${inner}`)
+          .join(','),
+        'text-decoration: underline line-through',
+      ],
+      [
+        nested
+          .map(
+            ([outer, inner]) => `._ngtag-${outer} ._ngtag-${inner}._nginherit`,
+          )
+          .join(','),
+        '--angular-lynx-text-decoration: underline line-through',
       ],
     ]);
-    const fontWeight = 1 << INHERITED_TEXT_PROPERTIES.indexOf('font-weight');
+    const bit = (property: string) =>
+      1 << INHERITED_TEXT_PROPERTIES.indexOf(property);
     expect(styleIndexOf([css]).rules).toEqual(
       expect.arrayContaining([
-        [['_ngtag-b'], fontWeight],
-        [['_ngtag-strong'], fontWeight],
+        [['_ngtag-b'], bit('font-weight')],
+        [['_ngtag-strong'], bit('font-weight')],
+        ...['em', 'i', 'cite', 'dfn', 'var'].map((tag) => [
+          [`_ngtag-${tag}`],
+          bit('font-style'),
+        ]),
+        ...['u', 'ins', 's', 'del'].map((tag) => [
+          [`_ngtag-${tag}`],
+          bit('text-decoration'),
+        ]),
       ]),
     );
   });

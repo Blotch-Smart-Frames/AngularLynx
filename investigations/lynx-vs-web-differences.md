@@ -2292,6 +2292,7 @@ Multiple `text-decoration` layers can be stacked via comma separation. `text-dec
 
 - Only **one decoration layer** is supported; multiple comma-separated values are ignored.
 - `text-decoration-thickness` is **not supported**.
+- Both lines in one value do work, though Lynx's docs say it draws one: `text-decoration: underline line-through` draws a line under and a line through, on iOS, Android and the web preview. Its parser collects every line keyword (`CSSStringParser::ParseTextDecoration`) and `ComputedCSSStyle::SetTextDecoration` sets a flag for each. The build's rule for a `<u>` inside an `<s>` relies on it (issue #643).
 
 ---
 
@@ -7151,21 +7152,23 @@ The copies go in a rule of their own, right after the rule they copy, narrowed t
 
 ---
 
-## `<b>` and `<strong>` aren't bold: Lynx has no user agent stylesheet
+## `<b>`, `<em>`, `<u>` and `<s>` have no text styles: Lynx has no user agent stylesheet
 
 ### What you'd expect (web)
 
-A browser's user agent stylesheet gives `<b>` and `<strong>` `font-weight: bolder`, so `<text class="blue">blue <b>bold blue</b></text>` draws "bold blue" bold, in blue.
+A browser's user agent stylesheet gives `<b>` and `<strong>` `font-weight: bolder`, so `<text class="blue">blue <b>bold blue</b></text>` draws "bold blue" bold, in blue. It makes `<em>`, `<i>`, `<cite>`, `<dfn>` and `<var>` italic, underlines `<u>` and `<ins>`, and strikes through `<s>` and `<del>`.
 
 ### What Lynx does
 
-Lynx has no user agent stylesheet: an element draws only the styles the app's CSS gives it. AngularLynx renders `<b>` as a `<text>` (see "Text styles reach HTML text tags through CSS variables" above), which took the blue from its parent and stayed at the normal weight, on iOS, Android and the web preview alike (issue #611). Lynx for Web is no exception: it draws each `<text>` in a custom element (`<x-text>`), which the browser's own `b` rule never matches.
+Lynx has no user agent stylesheet: an element draws only the styles the app's CSS gives it. AngularLynx renders `<b>` as a `<text>` (see "Text styles reach HTML text tags through CSS variables" above), which took the blue from its parent and stayed at the normal weight, on iOS, Android and the web preview alike (issue #611). An `<em>` was upright and a `<u>` had no line the same way (issue #643). Lynx for Web is no exception: it draws each `<text>` in a custom element (`<x-text>`), which the browser's own `b` rule never matches.
 
 ### The fix
 
-The build plugin adds a stylesheet of its own to both bundles, ahead of the app's (`src/styles/html-text-tags.css`): `b, strong { font-weight: bold }`. `bolder` becomes `bold`, since Lynx has no relative weights (see "`font-weight` does not support `lighter` or `bolder`"). Its type selectors become the tag classes the runtime marks elements with (`._ngtag-b`), the text inheritance step copies the weight to `--angular-lynx-font-weight` for text inside, and the style index lists the rule, so the runtime doesn't give the element its parent's weight inline, which would beat it. An app's own class or type selector for the weight comes later and wins, as it would against a browser's. Measured with Lynx Explorer 4.1 on the iOS 27 Simulator and the Android API 34 emulator, and in the web preview, where the `<b>` drew at 700 in its parent's color, and at 300 with a class setting that.
+The build plugin adds a stylesheet of its own to both bundles, ahead of the app's (`src/styles/html-text-tags.css`): `b, strong { font-weight: bold }`, `em, i, cite, dfn, var { font-style: italic }`, `u, ins { text-decoration: underline }` and `s, del { text-decoration: line-through }`. `bolder` becomes `bold`, since Lynx has no relative weights (see "`font-weight` does not support `lighter` or `bolder`"). Its type selectors become the tag classes the runtime marks elements with (`._ngtag-b`), the text inheritance step copies each declaration to its variable (`--angular-lynx-font-weight`) for text inside, and the style index lists the rule, so the runtime doesn't give the element its parent's value inline, which would beat it. An app's own class or type selector for the weight comes later and wins, as it would against a browser's. Measured with Lynx Explorer 4.1 on the iOS 27 Simulator and the Android API 34 emulator, and in the web preview, where the `<b>` drew at 700 in its parent's color, and at 300 with a class setting that.
 
-The other tags with a browser style (`<em>`, `<i>`, `<u>`, `<s>`, `<h1>`…) still have none.
+A browser draws a decoration across everything inside the element rather than inheriting it, so a `<u>` inside an `<s>` has both lines. Here `text-decoration` is one inherited value, which the inner tag's own rule would replace, so the stylesheet gives each such pair (`u s`, `s u`, `ins del`…) `text-decoration: underline line-through`, which Lynx draws as both lines (see "`text-decoration` supports only one layer" above). Its two classes beat an app's single class for that pair alone. Measured the same way as the bold, on the iOS 27 Simulator, the Android API 34 emulator and the web preview.
+
+Other tags with a browser style (`<a>`'s underline, `<code>`'s monospace font, `<small>`, `<mark>`, `<sub>`, `<sup>`, `<h1>`…) still have none.
 
 ---
 

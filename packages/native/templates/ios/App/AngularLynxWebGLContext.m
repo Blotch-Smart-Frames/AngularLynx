@@ -439,6 +439,13 @@ static NSUInteger componentsOf(GLenum format) {
   GLboolean discard = glIsEnabled(GL_RASTERIZER_DISCARD);
 
   glBindFramebuffer(GL_DRAW_FRAMEBUFFER, _framebuffer);
+  // The app may have drawn to no color buffer (drawBuffers([NONE]) on the
+  // default framebuffer), which glClear would then skip: the color
+  // attachment is selected for the clear, and the app's choice put back.
+  GLint drawBuffer = GL_COLOR_ATTACHMENT0;
+  glGetIntegerv(GL_DRAW_BUFFER0, &drawBuffer);
+  GLenum colorAttachment = GL_COLOR_ATTACHMENT0;
+  glDrawBuffers(1, &colorAttachment);
   glDisable(GL_SCISSOR_TEST);
   glDisable(GL_RASTERIZER_DISCARD);
   glClearColor(0, 0, 0, 0);
@@ -449,6 +456,8 @@ static NSUInteger componentsOf(GLenum format) {
   glStencilMask(0xffffffff);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
+  GLenum appDrawBuffer = (GLenum)drawBuffer;
+  glDrawBuffers(1, &appDrawBuffer);
   glClearColor(clearColor[0], clearColor[1], clearColor[2], clearColor[3]);
   glClearDepthf(clearDepth);
   glClearStencil(clearStencil);

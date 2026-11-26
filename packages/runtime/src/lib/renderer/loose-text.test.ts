@@ -454,6 +454,22 @@ class CompactHost {
 }
 
 @Component({
+  selector: 'reset-host',
+  encapsulation: ViewEncapsulation.None,
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: `<view [class.compact]="compact()"
+    ><p class="big">
+      <small
+        ><span class="reset">r <b class="in-reset">b</b></span></small
+      >
+    </p></view
+  >`,
+})
+class ResetHost {
+  readonly compact = signal(false);
+}
+
+@Component({
   selector: 'link-host',
   encapsulation: ViewEncapsulation.None,
   schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -955,6 +971,38 @@ describe('loose text', () => {
     fixture.componentInstance.compact.set(false);
     fixture.detectChanges();
     expect(smaller('in-label')).toEqual([]);
+  });
+
+  // A rule that sets the size where an ancestor has a class, as `.compact
+  // .reset` does, ends the levels of <small> above it there, and only there.
+  it('works the levels of <small> out again when an ancestor makes a rule set the size', () => {
+    const fontSize = 1 << INHERITED_TEXT_PROPERTIES.indexOf('font-size');
+    (
+      globalThis as { __angularLynxStyleIndex?: unknown }
+    ).__angularLynxStyleIndex = {
+      rules: [
+        [['big'], fontSize],
+        [['_ngtag-small'], SMALLER_FLAG],
+        [['reset'], fontSize, [[' ', ['compact']]]],
+      ],
+    };
+    const fixture = TestBed.createComponent(ResetHost);
+    fixture.detectChanges();
+    const smaller = (cls: string): string[] =>
+      [...byClass(cls).classes].filter((name) =>
+        name.startsWith('_ngsmaller-'),
+      );
+
+    expect(smaller('in-reset')).toEqual(['_ngsmaller-1']);
+
+    // The span sets its own size now, which its copy passes to the <b>.
+    fixture.componentInstance.compact.set(true);
+    fixture.detectChanges();
+    expect(smaller('in-reset')).toEqual([]);
+
+    fixture.componentInstance.compact.set(false);
+    fixture.detectChanges();
+    expect(smaller('in-reset')).toEqual(['_ngsmaller-1']);
   });
 
   // Issue #643: the build gives `<em>`, `<u>`, `<s>` and their kin the

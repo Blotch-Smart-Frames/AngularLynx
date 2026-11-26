@@ -1574,14 +1574,13 @@ export class LynxElement implements BaseLynxElement {
    */
   #ancestorsChanged(): void {
     if (!this.#passesTextStyles && !this.#webText) return;
-    const smaller = hasAncestorSmallerRules();
-    if (!smaller && !hasAncestorTextRules()) return;
-    if (this.tagName === 'text' && !this.#anonymous && !this.#webText) {
-      this.#inheritAgain();
-    }
+    if (!hasAncestorTextRules() && !hasAncestorSmallerRules()) return;
     // An HTML text tag's levels of <small> are checked against the elements
-    // above it too (see #smallerLevels), when a rule for them needs one.
-    if (smaller && this.#webText) this.#inheritAgain();
+    // above it too (see #smallerLevels), so a rule that sets the size or makes
+    // it smaller there, once it needs an ancestor, can change them: an HTML
+    // text tag is a `<text>` as well, and is worked out again with the Lynx
+    // ones.
+    if (this.tagName === 'text' && !this.#anonymous) this.#inheritAgain();
     for (const child of this.#children) child.#ancestorsChanged();
     for (const item of this.virtualChildren()) item.#ancestorsChanged();
   }

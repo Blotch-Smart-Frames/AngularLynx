@@ -55,7 +55,7 @@ Here's one component in each:
 
 **Lynx elements replace HTML.** A Lynx app has no HTML engine. Lynx [elements](/guide/elements/) map to native UI controls instead, and AngularLynx renders common HTML tags as the closest one. [Elements and layout](/guide/elements/) lists them all.
 
-**Text belongs in `<text>`.** On the web, text can sit anywhere. On Lynx, only a `<text>` draws it. Text written straight in a `<view>` or `<div>` still shows: AngularLynx draws it, and the inline tags beside it, in a `<text>`, which takes the text styles its ancestors' classes set. A `<text>` you write yourself inherits nothing, so set its styles on it, and nest `<text>` elements to style part of a sentence.
+**Text belongs in `<text>`.** On the web, text can sit anywhere. On Lynx, only a `<text>` draws it. Text written straight in a `<view>` or `<div>` still shows: AngularLynx draws it, and the inline tags beside it, in a `<text>`, which takes the text styles its ancestors' classes set. A `<text>` you write yourself inherits only its font size, so set its other styles on it, and nest `<text>` elements to style part of a sentence.
 
 **Import `LYNX_ELEMENTS`.** Add it to every component that uses Lynx elements, as `ng generate component` does. It gives you type checking in your editor and makes `ng test` compile.
 

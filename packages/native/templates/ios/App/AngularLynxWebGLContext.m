@@ -112,6 +112,39 @@ static NSArray *wordsFromBytes(const void *bytes, NSUInteger length) {
   return words;
 }
 
+/// RGBA pixels, rows top to bottom, as a PNG or JPEG file in base64:
+/// `{ base64, type }`, or `{ error }`. Shared with the 2D context.
+NSDictionary *AngularLynxEncodeImage(NSData *pixels, size_t width, size_t height,
+                                     CGBitmapInfo alphaInfo, NSString *type, double quality) {
+  size_t stride = width * 4;
+  BOOL jpeg = [type isEqualToString:@"image/jpeg"];
+  CGDataProviderRef provider = CGDataProviderCreateWithCFData((__bridge CFDataRef)pixels);
+  CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  CGImageRef image =
+      CGImageCreate(width, height, 8, 32, stride, colorSpace,
+                    alphaInfo | kCGBitmapByteOrder32Big, provider, NULL, false,
+                    kCGRenderingIntentDefault);
+  CGColorSpaceRelease(colorSpace);
+  CGDataProviderRelease(provider);
+  if (!image) return @{@"error" : @"Could not make an image of the canvas's pixels"};
+  NSMutableData *file = [NSMutableData data];
+  NSString *fileType = jpeg ? @"public.jpeg" : @"public.png";
+  CGImageDestinationRef destination = CGImageDestinationCreateWithData(
+      (__bridge CFMutableDataRef)file, (__bridge CFStringRef)fileType, 1, NULL);
+  BOOL written = NO;
+  if (destination) {
+    NSDictionary *properties =
+        jpeg ? @{(__bridge NSString *)kCGImageDestinationLossyCompressionQuality : @(quality)}
+             : @{};
+    CGImageDestinationAddImage(destination, image, (__bridge CFDictionaryRef)properties);
+    written = CGImageDestinationFinalize(destination);
+    CFRelease(destination);
+  }
+  CGImageRelease(image);
+  if (!written) return @{@"error" : @"Could not encode the canvas's pixels"};
+  return @{@"base64" : [file base64EncodedStringWithOptions:0], @"type" : type};
+}
+
 /// ANGLE's display on Metal, made once and shared by every context. Nothing
 /// else in the app draws with ANGLE, so it's never terminated.
 static EGLDisplay metalDisplay(void) {
@@ -171,6 +204,7 @@ static NSUInteger componentsOf(GLenum format) {
   BOOL _depth;
   BOOL _stencil;
   BOOL _preserveDrawingBuffer;
+  BOOL _premultipliedAlpha;
   GLint _samples;
 
   // The default framebuffer, multisampled when antialias is on, and the
@@ -258,6 +292,7 @@ static NSUInteger componentsOf(GLenum format) {
   _depth = ![attributes[@"depth"] isEqual:@NO];
   _stencil = [attributes[@"stencil"] isEqual:@YES];
   _preserveDrawingBuffer = [attributes[@"preserveDrawingBuffer"] isEqual:@YES];
+  _premultipliedAlpha = ![attributes[@"premultipliedAlpha"] isEqual:@NO];
   _syncs = [NSMutableDictionary dictionary];
   _heldErrors = [NSMutableOrderedSet orderedSet];
   _namesCapacity = 256;
@@ -541,26 +576,16 @@ static NSUInteger componentsOf(GLenum format) {
 
 #pragma mark - Image files
 
-/// The drawing buffer as an image file, for the runtime's canvas.toBlob() and
-/// toDataURL(): `{ base64, type }`, or `{ error }`.
-///
-/// It reads what the drawing buffer holds now, as a browser does: what the
-/// app has drawn since the last frame was shown, or, once a frame has been
-/// shown without preserveDrawingBuffer, the cleared buffer. The pixels are
-/// encoded here rather than sent to the runtime, which would have to carry
-/// 11 MB of RGBA for a 2048 by 1365 photo across the bridge as numbers, and
-/// encode it in JavaScript on PrimJS, which has no JIT. The file crosses as
-/// base64: the bridge can't return bytes (see webgl-bridge.ts).
-- (NSDictionary *)encodeImageOfType:(NSString *)type
-                            quality:(double)quality
-                      premultiplied:(BOOL)premultiplied {
-  if (_context == EGL_NO_CONTEXT) return @{@"error" : @"The WebGL context is gone"};
+/// The drawing buffer's pixels, RGBA with rows top to bottom, read whatever
+/// the app has bound and set, or nil when they couldn't be read.
+- (nullable NSMutableData *)readDrawingBuffer {
+  if (_context == EGL_NO_CONTEXT) return nil;
   [self makeCurrent];
   size_t width = (size_t)_width;
   size_t height = (size_t)_height;
   size_t stride = width * 4;
   NSMutableData *pixels = [NSMutableData dataWithLength:stride * height];
-  if (!pixels) return @{@"error" : @"Could not allocate the canvas's pixels"};
+  if (!pixels) return nil;
 
   // A plain read of the whole default framebuffer, whatever the app has
   // bound and set: its pixel pack buffer and pack parameters would move or
@@ -620,7 +645,41 @@ static NSUInteger componentsOf(GLenum format) {
   glPixelStorei(GL_PACK_SKIP_PIXELS, skipPixels);
   glPixelStorei(GL_PACK_SKIP_ROWS, skipRows);
   [self restoreBindings];
-  if (!read) return @{@"error" : @"Could not read the canvas's pixels"};
+  return read ? pixels : nil;
+}
+
+/// The canvas's pixels now, for another context to read: drawn on a 2D
+/// canvas or uploaded as a texture. It makes this context current; the
+/// caller makes its own current again.
+- (AngularLynxDecodedImage *)snapshot {
+  NSMutableData *pixels = [self readDrawingBuffer];
+  if (!pixels) return nil;
+  return [[AngularLynxDecodedImage alloc] initWithPixels:pixels
+                                                   width:_width
+                                                  height:_height
+                                           premultiplied:_premultipliedAlpha || !_alpha];
+}
+
+/// The drawing buffer as an image file, for the runtime's canvas.toBlob() and
+/// toDataURL(): `{ base64, type }`, or `{ error }`.
+///
+/// It reads what the drawing buffer holds now, as a browser does: what the
+/// app has drawn since the last frame was shown, or, once a frame has been
+/// shown without preserveDrawingBuffer, the cleared buffer. The pixels are
+/// encoded here rather than sent to the runtime, which would have to carry
+/// 11 MB of RGBA for a 2048 by 1365 photo across the bridge as numbers, and
+/// encode it in JavaScript on PrimJS, which has no JIT. The file crosses as
+/// base64: the bridge can't return bytes (see webgl-bridge.ts).
+- (NSDictionary *)encodeImageOfType:(NSString *)type
+                            quality:(double)quality
+                      premultiplied:(BOOL)premultiplied {
+  if (_context == EGL_NO_CONTEXT) return @{@"error" : @"The WebGL context is gone"};
+  NSMutableData *pixels = [self readDrawingBuffer];
+  if (!pixels) return @{@"error" : @"Could not read the canvas's pixels"};
+  size_t width = (size_t)_width;
+  size_t height = (size_t)_height;
+  size_t stride = width * 4;
+  uint8_t *bytes = pixels.mutableBytes;
 
   BOOL jpeg = [type isEqualToString:@"image/jpeg"];
   CGBitmapInfo alphaInfo;
@@ -646,31 +705,7 @@ static NSUInteger componentsOf(GLenum format) {
     // colors from either.
     alphaInfo = (CGBitmapInfo)(premultiplied ? kCGImageAlphaPremultipliedLast : kCGImageAlphaLast);
   }
-  CGDataProviderRef provider = CGDataProviderCreateWithCFData((__bridge CFDataRef)pixels);
-  CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
-  CGImageRef image =
-      CGImageCreate(width, height, 8, 32, stride, colorSpace,
-                    alphaInfo | kCGBitmapByteOrder32Big, provider, NULL, false,
-                    kCGRenderingIntentDefault);
-  CGColorSpaceRelease(colorSpace);
-  CGDataProviderRelease(provider);
-  if (!image) return @{@"error" : @"Could not make an image of the canvas's pixels"};
-  NSMutableData *file = [NSMutableData data];
-  NSString *fileType = jpeg ? @"public.jpeg" : @"public.png";
-  CGImageDestinationRef destination = CGImageDestinationCreateWithData(
-      (__bridge CFMutableDataRef)file, (__bridge CFStringRef)fileType, 1, NULL);
-  BOOL written = NO;
-  if (destination) {
-    NSDictionary *properties =
-        jpeg ? @{(__bridge NSString *)kCGImageDestinationLossyCompressionQuality : @(quality)}
-             : @{};
-    CGImageDestinationAddImage(destination, image, (__bridge CFDictionaryRef)properties);
-    written = CGImageDestinationFinalize(destination);
-    CFRelease(destination);
-  }
-  CGImageRelease(image);
-  if (!written) return @{@"error" : @"Could not encode the canvas's pixels"};
-  return @{@"base64" : [file base64EncodedStringWithOptions:0], @"type" : type};
+  return AngularLynxEncodeImage(pixels, width, height, alphaInfo, type, quality);
 }
 
 #pragma mark - Errors
@@ -762,25 +797,41 @@ static NSUInteger componentsOf(GLenum format) {
     return (*holder).bytes;
   }
   if (![source isKindOfClass:NSDictionary.class]) return NULL;
-  AngularLynxDecodedImage *image =
-      [AngularLynxDecodedImage imageWithId:[source[@"image"] integerValue]];
+  AngularLynxDecodedImage *image;
+  NSString *canvasId = source[@"canvas"];
+  if (![canvasId isKindOfClass:NSString.class]) canvasId = nil;
+  if (canvasId) {
+    // A canvas's pixels, which its context reads now: a 2D canvas's bitmap,
+    // or a WebGL canvas's drawing buffer, which makes that context current.
+    image = [[AngularLynxCanvasRegistry contextForCanvasId:canvasId] snapshot];
+    [self makeCurrent];
+    // A canvas the app never drew on is transparent, as in a browser: the
+    // upload's storage starts as zeros.
+    if (!image || image.width != width || image.height != height) return NULL;
+  } else {
+    image = [AngularLynxDecodedImage imageWithId:[source[@"image"] integerValue]];
+  }
   if (!image) return NULL;
   *isImage = YES;
   *holder = [self convertImage:image
                         format:format
                           type:type
                          flipY:[source[@"flipY"] boolValue]
-                   premultiply:[source[@"premultiply"] boolValue]];
+                   premultiply:[source[@"premultiply"] boolValue]
+                      fromCanvas:canvasId != nil];
   return (*holder).bytes;
 }
 
 /// A decoded image's RGBA bytes as the format and type an upload names,
-/// tightly packed, flipped and premultiplied as asked.
+/// tightly packed, flipped and premultiplied as asked. A canvas's pixels,
+/// premultiplied, are divided back when the upload doesn't premultiply, as
+/// WebGL uploads a canvas; an ImageBitmap's are uploaded as it was decoded.
 - (NSData *)convertImage:(AngularLynxDecodedImage *)image
                   format:(GLenum)format
                     type:(GLenum)type
                    flipY:(BOOL)flipY
-             premultiply:(BOOL)premultiply {
+             premultiply:(BOOL)premultiply
+              fromCanvas:(BOOL)fromCanvas {
   NSInteger width = image.width;
   NSInteger height = image.height;
   const uint8_t *rgba = image.pixels.bytes;
@@ -792,6 +843,7 @@ static NSUInteger componentsOf(GLenum format) {
   NSMutableData *out = [NSMutableData dataWithLength:width * height * pixelSize];
   uint8_t *bytes = out.mutableBytes;
   BOOL multiply = premultiply && !image.premultiplied;
+  BOOL divide = fromCanvas && !premultiply && image.premultiplied;
   for (NSInteger y = 0; y < height; y++) {
     const uint8_t *row = rgba + (flipY ? height - 1 - y : y) * width * 4;
     uint8_t *outRow = bytes + y * width * pixelSize;
@@ -801,6 +853,10 @@ static NSUInteger componentsOf(GLenum format) {
         r = r * a / 255;
         g = g * a / 255;
         b = b * a / 255;
+      } else if (divide && a > 0 && a < 255) {
+        r = MIN(255, r * 255 / a);
+        g = MIN(255, g * 255 / a);
+        b = MIN(255, b * 255 / a);
       }
       float channels[4];
       switch (format) {

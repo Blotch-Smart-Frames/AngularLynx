@@ -1,0 +1,1452 @@
+// `<canvas>`'s 2D context for the AngularLynx runtime: the bitmap the
+// runtime's CanvasRenderingContext2D (packages/runtime/src/lib/canvas/
+// canvas-2d-context.ts) draws on, with Core Graphics, the engine Safari's
+// canvas drew with for years. The runtime sends its calls in batches, as the
+// WebGL context does, through the AngularLynxWebGL module's `run2D`.
+//
+// The runtime keeps the state its getters answer and builds paths itself, in
+// the canvas's pixels (arcs and rounded rectangles arrive as Bézier curves),
+// so this side draws what it's told: a path filled or stroked with the
+// current style, text, an image. Everything is drawn into one RGBA bitmap,
+// premultiplied, rows top to bottom, the canvas's `width` by `height`; after
+// each task that drew, the runtime asks for it to be shown, and a copy goes
+// to the canvas's view (AngularLynxCanvasView's image layer).
+//
+// What the canvas spec has that Core Graphics doesn't is made here:
+// - Compositing that clears what the shape doesn't cover (source-in,
+//   source-out, destination-in, destination-atop, copy), and shadows, draw
+//   the shape into a layer the size of the canvas first, which is then
+//   drawn over the canvas with the operation and the shadow.
+// - Conic gradients (CGContextDrawConicGradient needs iOS 17) are worked out
+//   a pixel at a time.
+// - Text is laid out with Core Text: drawn as glyphs for a color fill (so
+//   emoji draw), and as the glyphs' outlines for a gradient or pattern, and
+//   for strokes.
+//
+// Everything runs on Lynx's engine thread, where the module's calls arrive;
+// only showing the bitmap hops to the UI thread.
+
+// cspell:words fmod isfinite lround Roundhand
+
+#import "AngularLynxWebGL.h"
+
+#import <CoreText/CoreText.h>
+#import <ImageIO/ImageIO.h>
+
+#import "AngularLynxCanvas2DOps.h"
+
+NSData *AngularLynxBytesFromWords(NSArray *words);
+NSDictionary *AngularLynxEncodeImage(NSData *pixels, size_t width, size_t height,
+                                     CGBitmapInfo alphaInfo, NSString *type, double quality);
+
+#pragma mark - Reading a batch
+
+typedef struct {
+  __unsafe_unretained id *items;
+  NSUInteger count;
+  NSUInteger index;
+} ALReader;
+
+static inline id readItem(ALReader *r) {
+  return r->index < r->count ? r->items[r->index++] : nil;
+}
+
+static inline double readNumber(ALReader *r) {
+  id item = readItem(r);
+  return [item isKindOfClass:NSNumber.class] ? [item doubleValue] : 0;
+}
+
+static inline NSInteger readInt(ALReader *r) { return (NSInteger)readNumber(r); }
+
+static inline NSString *readString(ALReader *r) {
+  id item = readItem(r);
+  return [item isKindOfClass:NSString.class] ? item : @"";
+}
+
+static inline NSArray *readArray(ALReader *r) {
+  id item = readItem(r);
+  return [item isKindOfClass:NSArray.class] ? item : @[];
+}
+
+static inline NSDictionary *readMap(ALReader *r) {
+  id item = readItem(r);
+  return [item isKindOfClass:NSDictionary.class] ? item : @{};
+}
+
+/// Bytes as words for the trip back, the byte count last (see fromWords in
+/// network/words.ts).
+static NSArray *wordsFrom(const uint8_t *bytes, NSUInteger length) {
+  NSUInteger wordCount = (length + 3) / 4;
+  NSMutableArray *words = [NSMutableArray arrayWithCapacity:wordCount + 1];
+  for (NSUInteger i = 0; i < wordCount; i++) {
+    uint32_t word = 0;
+    memcpy(&word, bytes + i * 4, MIN(4, length - i * 4));
+    [words addObject:@(word)];
+  }
+  [words addObject:@(length)];
+  return words;
+}
+
+/// A path from the runtime's segments (PATH_OP in canvas-2d-ops.ts): in the
+/// canvas's pixels, top-left origin.
+static CGMutablePathRef pathFromSegments(NSArray *segments) {
+  CGMutablePathRef path = CGPathCreateMutable();
+  NSUInteger count = segments.count;
+  __unsafe_unretained id *items = (__unsafe_unretained id *)malloc(sizeof(id) * MAX(count, 1));
+  [segments getObjects:items range:NSMakeRange(0, count)];
+  NSUInteger i = 0;
+#define NEXT (i < count ? [items[i++] doubleValue] : 0)
+  while (i < count) {
+    NSInteger op = (NSInteger)[items[i++] doubleValue];
+    switch ((ALCanvas2DPathOp)op) {
+      case ALCanvas2DPathOpMoveTo: {
+        CGFloat x = NEXT, y = NEXT;
+        CGPathMoveToPoint(path, NULL, x, y);
+        break;
+      }
+      case ALCanvas2DPathOpLineTo: {
+        CGFloat x = NEXT, y = NEXT;
+        if (CGPathIsEmpty(path)) {
+          CGPathMoveToPoint(path, NULL, x, y);
+        } else {
+          CGPathAddLineToPoint(path, NULL, x, y);
+        }
+        break;
+      }
+      case ALCanvas2DPathOpQuadTo: {
+        CGFloat cx = NEXT, cy = NEXT, x = NEXT, y = NEXT;
+        if (CGPathIsEmpty(path)) CGPathMoveToPoint(path, NULL, cx, cy);
+        CGPathAddQuadCurveToPoint(path, NULL, cx, cy, x, y);
+        break;
+      }
+      case ALCanvas2DPathOpCubicTo: {
+        CGFloat ax = NEXT, ay = NEXT, bx = NEXT, by = NEXT, x = NEXT, y = NEXT;
+        if (CGPathIsEmpty(path)) CGPathMoveToPoint(path, NULL, ax, ay);
+        CGPathAddCurveToPoint(path, NULL, ax, ay, bx, by, x, y);
+        break;
+      }
+      case ALCanvas2DPathOpClose:
+        if (!CGPathIsEmpty(path)) CGPathCloseSubpath(path);
+        break;
+      default:
+        i = count;
+    }
+  }
+#undef NEXT
+  free(items);
+  return path;
+}
+
+static BOOL invertible(CGAffineTransform t) {
+  CGFloat det = t.a * t.d - t.b * t.c;
+  return det != 0 && isfinite(det);
+}
+
+#pragma mark - State
+
+typedef NS_ENUM(NSInteger, ALStyleKind) {
+  ALStyleColor,
+  ALStyleGradient,
+  ALStylePattern,
+};
+
+typedef struct {
+  ALStyleKind kind;
+  CGFloat rgba[4];
+  NSInteger objectId;
+} ALStyle;
+
+/// What canvas `save()` keeps. The clip is Core Graphics' own state, saved
+/// with it.
+@interface ALCanvas2DState : NSObject <NSCopying>
+@property(nonatomic) CGAffineTransform transform;
+@property(nonatomic) CGFloat globalAlpha;
+@property(nonatomic) NSInteger composite;
+@property(nonatomic) ALStyle fill;
+@property(nonatomic) ALStyle stroke;
+@property(nonatomic) CGFloat lineWidth;
+@property(nonatomic) CGLineCap lineCap;
+@property(nonatomic) CGLineJoin lineJoin;
+@property(nonatomic) CGFloat miterLimit;
+@property(nonatomic, copy) NSArray<NSNumber *> *lineDash;
+@property(nonatomic) CGFloat lineDashOffset;
+@property(nonatomic) CGFloat shadowBlur;
+@property(nonatomic) CGFloat shadowOffsetX;
+@property(nonatomic) CGFloat shadowOffsetY;
+@property(nonatomic) CGFloat shadowR, shadowG, shadowB, shadowA;
+@property(nonatomic, strong) UIFont *font;
+@property(nonatomic) NSInteger textAlign;
+@property(nonatomic) NSInteger textBaseline;
+@property(nonatomic) BOOL rtl;
+@property(nonatomic) CGFloat letterSpacing;
+@property(nonatomic) BOOL smoothing;
+@property(nonatomic) NSInteger smoothingQuality;
+@end
+
+@implementation ALCanvas2DState
+
+- (instancetype)init {
+  if ((self = [super init])) {
+    _transform = CGAffineTransformIdentity;
+    _globalAlpha = 1;
+    _fill = (ALStyle){ALStyleColor, {0, 0, 0, 1}, 0};
+    _stroke = (ALStyle){ALStyleColor, {0, 0, 0, 1}, 0};
+    _lineWidth = 1;
+    _lineCap = kCGLineCapButt;
+    _lineJoin = kCGLineJoinMiter;
+    _miterLimit = 10;
+    _lineDash = @[];
+    _font = [UIFont systemFontOfSize:10];
+    _textAlign = 0;
+    _textBaseline = 3;
+    _smoothing = YES;
+  }
+  return self;
+}
+
+- (id)copyWithZone:(NSZone *)zone {
+  ALCanvas2DState *copy = [[ALCanvas2DState alloc] init];
+  copy.transform = _transform;
+  copy.globalAlpha = _globalAlpha;
+  copy.composite = _composite;
+  copy.fill = _fill;
+  copy.stroke = _stroke;
+  copy.lineWidth = _lineWidth;
+  copy.lineCap = _lineCap;
+  copy.lineJoin = _lineJoin;
+  copy.miterLimit = _miterLimit;
+  copy.lineDash = _lineDash;
+  copy.lineDashOffset = _lineDashOffset;
+  copy.shadowBlur = _shadowBlur;
+  copy.shadowOffsetX = _shadowOffsetX;
+  copy.shadowOffsetY = _shadowOffsetY;
+  copy.shadowR = _shadowR;
+  copy.shadowG = _shadowG;
+  copy.shadowB = _shadowB;
+  copy.shadowA = _shadowA;
+  copy.font = _font;
+  copy.textAlign = _textAlign;
+  copy.textBaseline = _textBaseline;
+  copy.rtl = _rtl;
+  copy.letterSpacing = _letterSpacing;
+  copy.smoothing = _smoothing;
+  copy.smoothingQuality = _smoothingQuality;
+  return copy;
+}
+
+@end
+
+#pragma mark - Gradients and patterns
+
+/// A CanvasGradient: linear, radial or conic, and its stops, in order.
+@interface ALCanvas2DGradient : NSObject
+@property(nonatomic) NSInteger type;  // 0 linear, 1 radial, 2 conic
+@property(nonatomic) CGFloat p0, p1, p2, p3, p4, p5;
+@property(nonatomic, readonly) NSMutableArray<NSArray<NSNumber *> *> *stops;
+- (nullable CGGradientRef)gradient;
+- (void)colorAt:(CGFloat)t into:(CGFloat *)rgba;
+@end
+
+@implementation ALCanvas2DGradient {
+  CGGradientRef _gradient;
+}
+
+- (instancetype)init {
+  if ((self = [super init])) _stops = [NSMutableArray array];
+  return self;
+}
+
+- (void)dealloc {
+  if (_gradient) CGGradientRelease(_gradient);
+}
+
+- (void)addStop:(CGFloat)offset r:(CGFloat)r g:(CGFloat)g b:(CGFloat)b a:(CGFloat)a {
+  // A stop goes after the stops at the same offset, as the spec has it, so
+  // two at one offset make a hard edge.
+  NSUInteger index = _stops.count;
+  while (index > 0 && [_stops[index - 1][0] doubleValue] > offset) index--;
+  [_stops insertObject:@[ @(offset), @(r), @(g), @(b), @(a) ] atIndex:index];
+  if (_gradient) {
+    CGGradientRelease(_gradient);
+    _gradient = NULL;
+  }
+}
+
+/// The stops as a CGGradient, extended to 0 and 1 with the end colors, or
+/// NULL when there are none (the gradient paints nothing).
+- (CGGradientRef)gradient {
+  if (_gradient || _stops.count == 0) return _gradient;
+  NSMutableArray<NSArray<NSNumber *> *> *stops = [_stops mutableCopy];
+  if ([stops.firstObject[0] doubleValue] > 0) {
+    NSMutableArray *first = [stops.firstObject mutableCopy];
+    first[0] = @0;
+    [stops insertObject:first atIndex:0];
+  }
+  if ([stops.lastObject[0] doubleValue] < 1) {
+    NSMutableArray *last = [stops.lastObject mutableCopy];
+    last[0] = @1;
+    [stops addObject:last];
+  }
+  size_t count = stops.count;
+  CGFloat *components = malloc(sizeof(CGFloat) * count * 4);
+  CGFloat *locations = malloc(sizeof(CGFloat) * count);
+  for (size_t i = 0; i < count; i++) {
+    locations[i] = [stops[i][0] doubleValue];
+    for (size_t c = 0; c < 4; c++) {
+      CGFloat value = [stops[i][c + 1] doubleValue];
+      components[i * 4 + c] = c < 3 ? value / 255.0 : value;
+    }
+  }
+  CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  _gradient = CGGradientCreateWithColorComponents(space, components, locations, count);
+  CGColorSpaceRelease(space);
+  free(components);
+  free(locations);
+  return _gradient;
+}
+
+/// The color at `t` (0 to 1), for the conic gradient, which is worked out a
+/// pixel at a time: interpolated between the stops on either side, before
+/// multiplying by alpha, as the spec has it. 0 to 1 each.
+- (void)colorAt:(CGFloat)t into:(CGFloat *)rgba {
+  NSUInteger count = _stops.count;
+  NSArray<NSNumber *> *before = _stops.firstObject;
+  NSArray<NSNumber *> *after = _stops.lastObject;
+  for (NSUInteger i = 0; i < count; i++) {
+    if ([_stops[i][0] doubleValue] <= t) before = _stops[i];
+    if ([_stops[count - 1 - i][0] doubleValue] >= t) after = _stops[count - 1 - i];
+  }
+  CGFloat t0 = [before[0] doubleValue];
+  CGFloat t1 = [after[0] doubleValue];
+  CGFloat f = t1 > t0 ? (t - t0) / (t1 - t0) : 0;
+  for (int c = 0; c < 4; c++) {
+    CGFloat a = [before[c + 1] doubleValue];
+    CGFloat b = [after[c + 1] doubleValue];
+    CGFloat value = a + (b - a) * f;
+    rgba[c] = c < 3 ? value / 255.0 : value;
+  }
+}
+
+@end
+
+/// A CanvasPattern: an image, how it repeats, and its own transform.
+@interface ALCanvas2DPattern : NSObject
+@property(nonatomic) CGImageRef image;
+@property(nonatomic) NSInteger repetition;  // 0 repeat, 1 repeat-x, 2 repeat-y, 3 no-repeat
+@property(nonatomic) CGAffineTransform transform;
+@property(nonatomic) CGInterpolationQuality quality;
+@end
+
+@implementation ALCanvas2DPattern
+
+- (void)dealloc {
+  CGImageRelease(_image);
+}
+
+@end
+
+static void drawPatternCell(void *info, CGContextRef c) {
+  ALCanvas2DPattern *pattern = (__bridge ALCanvas2DPattern *)info;
+  CGFloat width = CGImageGetWidth(pattern.image);
+  CGFloat height = CGImageGetHeight(pattern.image);
+  // Pattern space is the canvas's, top-left origin, so the image is drawn
+  // the right way up by flipping it in its cell.
+  CGContextSetInterpolationQuality(c, pattern.quality);
+  CGContextTranslateCTM(c, 0, height);
+  CGContextScaleCTM(c, 1, -1);
+  CGContextDrawImage(c, CGRectMake(0, 0, width, height), pattern.image);
+}
+
+#pragma mark - Fonts
+
+/// CSS's weights as UIKit's.
+static UIFontWeight fontWeightFor(NSInteger weight) {
+  if (weight < 150) return UIFontWeightUltraLight;
+  if (weight < 250) return UIFontWeightThin;
+  if (weight < 350) return UIFontWeightLight;
+  if (weight < 450) return UIFontWeightRegular;
+  if (weight < 550) return UIFontWeightMedium;
+  if (weight < 650) return UIFontWeightSemibold;
+  if (weight < 750) return UIFontWeightBold;
+  if (weight < 850) return UIFontWeightHeavy;
+  return UIFontWeightBlack;
+}
+
+static UIFont *withItalic(UIFont *font, BOOL italic) {
+  if (!italic) return font;
+  UIFontDescriptor *descriptor =
+      [font.fontDescriptor fontDescriptorWithSymbolicTraits:font.fontDescriptor.symbolicTraits |
+                                                            UIFontDescriptorTraitItalic];
+  return descriptor ? [UIFont fontWithDescriptor:descriptor size:font.pointSize] : font;
+}
+
+/// The first of the families iOS has, at the weight and style, as a
+/// browser's font matching picks it. CSS's generic families are Safari's.
+static UIFont *fontFor(NSString *families, NSInteger weight, BOOL italic, CGFloat size) {
+  UIFontWeight uiWeight = fontWeightFor(weight);
+  for (NSString *raw in [families componentsSeparatedByString:@"\n"]) {
+    NSString *family = [raw stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
+    NSString *lower = family.lowercaseString;
+    UIFont *font = nil;
+    if ([@[ @"sans-serif", @"system-ui", @"-apple-system", @"ui-sans-serif", @"ui-rounded" ]
+            containsObject:lower]) {
+      font = [UIFont systemFontOfSize:size weight:uiWeight];
+      if ([lower isEqualToString:@"ui-rounded"]) {
+        UIFontDescriptor *rounded =
+            [font.fontDescriptor fontDescriptorWithDesign:UIFontDescriptorSystemDesignRounded];
+        if (rounded) font = [UIFont fontWithDescriptor:rounded size:size];
+      }
+    } else if ([lower isEqualToString:@"ui-monospace"]) {
+      font = [UIFont monospacedSystemFontOfSize:size weight:uiWeight];
+    } else if ([lower isEqualToString:@"ui-serif"]) {
+      UIFontDescriptor *serif = [[UIFont systemFontOfSize:size weight:uiWeight].fontDescriptor
+          fontDescriptorWithDesign:UIFontDescriptorSystemDesignSerif];
+      if (serif) font = [UIFont fontWithDescriptor:serif size:size];
+    } else {
+      NSString *name = family;
+      if ([lower isEqualToString:@"serif"]) name = @"Times New Roman";
+      if ([lower isEqualToString:@"monospace"]) name = @"Courier";
+      if ([lower isEqualToString:@"cursive"]) name = @"Snell Roundhand";
+      if ([lower isEqualToString:@"fantasy"]) name = @"Papyrus";
+      // A family name, matched without case, then a font's own name.
+      NSString *match = nil;
+      for (NSString *installed in UIFont.familyNames) {
+        if ([installed caseInsensitiveCompare:name] == NSOrderedSame) {
+          match = installed;
+          break;
+        }
+      }
+      if (match) {
+        UIFontDescriptor *descriptor = [UIFontDescriptor fontDescriptorWithFontAttributes:@{
+          UIFontDescriptorFamilyAttribute : match,
+          UIFontDescriptorTraitsAttribute : @{UIFontWeightTrait : @(uiWeight)},
+        }];
+        font = [UIFont fontWithDescriptor:descriptor size:size];
+      } else {
+        font = [UIFont fontWithName:name size:size];
+      }
+    }
+    if (font) return withItalic(font, italic);
+  }
+  return withItalic([UIFont systemFontOfSize:size weight:uiWeight], italic);
+}
+
+#pragma mark - The context
+
+static const CGBlendMode BLEND_MODES[] = {
+    kCGBlendModeNormal,          kCGBlendModeSourceIn,        kCGBlendModeSourceOut,
+    kCGBlendModeSourceAtop,      kCGBlendModeDestinationOver, kCGBlendModeDestinationIn,
+    kCGBlendModeDestinationOut,  kCGBlendModeDestinationAtop, kCGBlendModePlusLighter,
+    kCGBlendModeCopy,            kCGBlendModeXOR,             kCGBlendModeMultiply,
+    kCGBlendModeScreen,          kCGBlendModeOverlay,         kCGBlendModeDarken,
+    kCGBlendModeLighten,         kCGBlendModeColorDodge,      kCGBlendModeColorBurn,
+    kCGBlendModeHardLight,       kCGBlendModeSoftLight,       kCGBlendModeDifference,
+    kCGBlendModeExclusion,       kCGBlendModeHue,             kCGBlendModeSaturation,
+    kCGBlendModeColor,           kCGBlendModeLuminosity,
+};
+static const NSInteger BLEND_MODE_COUNT = sizeof(BLEND_MODES) / sizeof(BLEND_MODES[0]);
+
+/// The operations that clear what the shape doesn't cover: source-in,
+/// source-out, destination-in, destination-atop and copy.
+static BOOL isUnbounded(NSInteger composite) {
+  return composite == 1 || composite == 2 || composite == 5 || composite == 7 || composite == 9;
+}
+
+@implementation AngularLynxCanvas2DContext {
+  BOOL _alpha;
+  size_t _width;
+  size_t _height;
+  /// The bitmap's bytes: RGBA, premultiplied, rows top to bottom.
+  NSMutableData *_data;
+  CGContextRef _cg;
+  /// A 1 by 1 context for working out stroke outlines.
+  CGContextRef _scratch;
+  ALCanvas2DState *_state;
+  NSMutableArray<ALCanvas2DState *> *_stack;
+  NSMutableDictionary<NSNumber *, id> *_objects;
+  AngularLynxCanvasTarget *_target;
+  /// The bitmap was drawn on and not shown yet, waiting for a view.
+  BOOL _framePending;
+}
+
+- (instancetype)initWithCanvasId:(NSString *)canvasId
+                      attributes:(NSDictionary *)attributes
+                           error:(NSString **)error {
+  if (!(self = [super init])) return nil;
+  _canvasId = [canvasId copy];
+  _alpha = ![attributes[@"alpha"] isEqual:@NO];
+  _objects = [NSMutableDictionary dictionary];
+  CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  _scratch = CGBitmapContextCreate(NULL, 1, 1, 8, 4, space,
+                                   kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
+  CGColorSpaceRelease(space);
+  NSNumber *width = attributes[@"width"];
+  NSNumber *height = attributes[@"height"];
+  if (![self allocateWidth:[width isKindOfClass:NSNumber.class] ? width.unsignedIntegerValue : 300
+                    height:[height isKindOfClass:NSNumber.class] ? height.unsignedIntegerValue
+                                                                 : 150]) {
+    *error = @"Could not allocate the canvas's bitmap";
+    return nil;
+  }
+  return self;
+}
+
+- (void)dealloc {
+  if (_cg) CGContextRelease(_cg);
+  if (_scratch) CGContextRelease(_scratch);
+}
+
+/// A new bitmap, cleared, with the state reset, as a canvas has when it's
+/// resized or reset.
+- (BOOL)allocateWidth:(size_t)width height:(size_t)height {
+  if (_cg) CGContextRelease(_cg);
+  _cg = NULL;
+  _width = width;
+  _height = height;
+  _state = [[ALCanvas2DState alloc] init];
+  _stack = [NSMutableArray array];
+  if (width == 0 || height == 0) {
+    _data = [NSMutableData data];
+    return YES;
+  }
+  _data = [NSMutableData dataWithLength:width * height * 4];
+  if (!_data) return NO;
+  CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  _cg = CGBitmapContextCreate(_data.mutableBytes, width, height, 8, width * 4, space,
+                              kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
+  CGColorSpaceRelease(space);
+  if (!_cg) return NO;
+  // The canvas's top-left origin, y down: Core Graphics' is bottom-left.
+  CGContextTranslateCTM(_cg, 0, height);
+  CGContextScaleCTM(_cg, 1, -1);
+  // A canvas with alpha: false is opaque black until drawn on.
+  if (!_alpha) [self fillOpaqueBlack:CGRectMake(0, 0, width, height) path:NULL];
+  return YES;
+}
+
+/// What clearRect leaves on a canvas without alpha: black.
+- (void)fillOpaqueBlack:(CGRect)rect path:(CGPathRef)path {
+  CGContextSaveGState(_cg);
+  CGContextSetBlendMode(_cg, kCGBlendModeCopy);
+  CGContextSetRGBFillColor(_cg, 0, 0, 0, 1);
+  if (path) {
+    CGContextAddPath(_cg, path);
+    CGContextFillPath(_cg);
+  } else {
+    CGContextFillRect(_cg, rect);
+  }
+  CGContextRestoreGState(_cg);
+}
+
+#pragma mark Showing the bitmap
+
+- (void)attachTarget:(AngularLynxCanvasTarget *)target {
+  if (_target == target) return;
+  _target = target;
+  if (target) [self present];
+}
+
+- (void)targetDidLayOut:(AngularLynxCanvasTarget *)target {
+  if (target == _target && _framePending) [self present];
+}
+
+/// A copy of the bitmap goes to the view: drawing on goes on in the bitmap
+/// while the UI thread shows the copy.
+- (void)present {
+  AngularLynxCanvasTarget *target = _target;
+  if (!target || target.pixelSize.width < 1 || target.pixelSize.height < 1) {
+    _framePending = YES;
+    return;
+  }
+  _framePending = NO;
+  CGImageRef image = [self newImage];
+  BOOL opaque = !_alpha;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [target.view showImage:image opaque:opaque];
+    if (image) CGImageRelease(image);
+  });
+}
+
+/// A copy of the bitmap as an image, or NULL when it has no pixels.
+- (CGImageRef)newImage {
+  if (!_cg) return NULL;
+  NSData *copy = [_data copy];
+  CGDataProviderRef provider = CGDataProviderCreateWithCFData((__bridge CFDataRef)copy);
+  CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  CGImageRef image = CGImageCreate(
+      _width, _height, 8, 32, _width * 4, space,
+      (_alpha ? kCGImageAlphaPremultipliedLast : kCGImageAlphaNoneSkipLast) |
+          kCGBitmapByteOrder32Big,
+      provider, NULL, false, kCGRenderingIntentDefault);
+  CGColorSpaceRelease(space);
+  CGDataProviderRelease(provider);
+  return image;
+}
+
+- (AngularLynxDecodedImage *)snapshot {
+  if (!_cg) return nil;
+  return [[AngularLynxDecodedImage alloc] initWithPixels:[_data copy]
+                                                   width:_width
+                                                  height:_height
+                                           premultiplied:YES];
+}
+
+- (NSDictionary *)encodeImageOfType:(NSString *)type quality:(double)quality {
+  if (!_cg) return @{@"error" : @"The canvas has no pixels"};
+  BOOL jpeg = [type isEqualToString:@"image/jpeg"];
+  // A JPEG has no transparency: its transparent pixels come out black, as in
+  // browsers, which premultiplied colors already are.
+  CGBitmapInfo alphaInfo = (CGBitmapInfo)(jpeg || !_alpha ? kCGImageAlphaNoneSkipLast
+                                                          : kCGImageAlphaPremultipliedLast);
+  return AngularLynxEncodeImage([_data copy], _width, _height, alphaInfo, type, quality);
+}
+
+#pragma mark Running a batch
+
+- (NSArray *)run:(NSArray *)commands {
+  NSUInteger count = commands.count;
+  __unsafe_unretained id *items = (__unsafe_unretained id *)malloc(sizeof(id) * MAX(count, 1));
+  [commands getObjects:items range:NSMakeRange(0, count)];
+  ALReader reader = {items, count, 0};
+  ALReader *r = &reader;
+  NSMutableArray *results = [NSMutableArray array];
+  while (r->index < r->count) {
+    NSInteger op = readInt(r);
+    if (op >= 200) {
+      id result = [self query:op reader:r];
+      [results addObject:result ?: [NSNull null]];
+    } else {
+      [self command:op reader:r];
+    }
+  }
+  free(items);
+  return results;
+}
+
+- (ALStyle)styleOfKind:(ALStyleKind)kind reader:(ALReader *)r {
+  ALStyle style = {kind, {0, 0, 0, 1}, 0};
+  if (kind == ALStyleColor) {
+    for (int i = 0; i < 4; i++) style.rgba[i] = readNumber(r);
+  } else {
+    style.objectId = readInt(r);
+  }
+  return style;
+}
+
+- (void)command:(NSInteger)op reader:(ALReader *)r {
+  ALCanvas2DState *s = _state;
+  switch ((ALCanvas2DOp)op) {
+    case ALCanvas2DOpSave:
+      [_stack addObject:[s copy]];
+      if (_cg) CGContextSaveGState(_cg);
+      break;
+    case ALCanvas2DOpRestore:
+      if (_stack.count == 0) break;
+      _state = _stack.lastObject;
+      [_stack removeLastObject];
+      if (_cg) CGContextRestoreGState(_cg);
+      break;
+    case ALCanvas2DOpReset:
+      [self allocateWidth:_width height:_height];
+      break;
+    case ALCanvas2DOpResize: {
+      size_t width = (size_t)MAX(0, readInt(r));
+      size_t height = (size_t)MAX(0, readInt(r));
+      [self allocateWidth:width height:height];
+      break;
+    }
+    case ALCanvas2DOpPresent:
+      [self present];
+      break;
+    case ALCanvas2DOpSetTransform: {
+      CGFloat a = readNumber(r), b = readNumber(r), c = readNumber(r), d = readNumber(r),
+              e = readNumber(r), f = readNumber(r);
+      s.transform = CGAffineTransformMake(a, b, c, d, e, f);
+      break;
+    }
+    case ALCanvas2DOpSetGlobalAlpha:
+      s.globalAlpha = readNumber(r);
+      break;
+    case ALCanvas2DOpSetCompositeOperation: {
+      NSInteger composite = readInt(r);
+      s.composite = composite >= 0 && composite < BLEND_MODE_COUNT ? composite : 0;
+      break;
+    }
+    case ALCanvas2DOpSetFillColor:
+      s.fill = [self styleOfKind:ALStyleColor reader:r];
+      break;
+    case ALCanvas2DOpSetFillGradient:
+      s.fill = [self styleOfKind:ALStyleGradient reader:r];
+      break;
+    case ALCanvas2DOpSetFillPattern:
+      s.fill = [self styleOfKind:ALStylePattern reader:r];
+      break;
+    case ALCanvas2DOpSetStrokeColor:
+      s.stroke = [self styleOfKind:ALStyleColor reader:r];
+      break;
+    case ALCanvas2DOpSetStrokeGradient:
+      s.stroke = [self styleOfKind:ALStyleGradient reader:r];
+      break;
+    case ALCanvas2DOpSetStrokePattern:
+      s.stroke = [self styleOfKind:ALStylePattern reader:r];
+      break;
+    case ALCanvas2DOpSetLineWidth:
+      s.lineWidth = readNumber(r);
+      break;
+    case ALCanvas2DOpSetLineCap: {
+      NSInteger cap = readInt(r);
+      s.lineCap = cap == 1 ? kCGLineCapRound : cap == 2 ? kCGLineCapSquare : kCGLineCapButt;
+      break;
+    }
+    case ALCanvas2DOpSetLineJoin: {
+      NSInteger join = readInt(r);
+      s.lineJoin = join == 1 ? kCGLineJoinRound : join == 2 ? kCGLineJoinBevel : kCGLineJoinMiter;
+      break;
+    }
+    case ALCanvas2DOpSetMiterLimit:
+      s.miterLimit = readNumber(r);
+      break;
+    case ALCanvas2DOpSetLineDash:
+      s.lineDash = readArray(r);
+      s.lineDashOffset = readNumber(r);
+      break;
+    case ALCanvas2DOpSetShadow:
+      s.shadowBlur = readNumber(r);
+      s.shadowR = readNumber(r);
+      s.shadowG = readNumber(r);
+      s.shadowB = readNumber(r);
+      s.shadowA = readNumber(r);
+      s.shadowOffsetX = readNumber(r);
+      s.shadowOffsetY = readNumber(r);
+      break;
+    case ALCanvas2DOpSetFont: {
+      BOOL italic = readInt(r) != 0;
+      NSInteger weight = readInt(r);
+      CGFloat size = readNumber(r);
+      NSString *families = readString(r);
+      s.font = fontFor(families, weight, italic, MAX(size, 0.01));
+      break;
+    }
+    case ALCanvas2DOpSetTextAlign:
+      s.textAlign = readInt(r);
+      break;
+    case ALCanvas2DOpSetTextBaseline:
+      s.textBaseline = readInt(r);
+      break;
+    case ALCanvas2DOpSetDirection:
+      s.rtl = readInt(r) == 1;
+      break;
+    case ALCanvas2DOpSetLetterSpacing:
+      s.letterSpacing = readNumber(r);
+      break;
+    case ALCanvas2DOpSetImageSmoothing:
+      s.smoothing = readInt(r) != 0;
+      s.smoothingQuality = readInt(r);
+      break;
+    case ALCanvas2DOpCreateLinearGradient:
+    case ALCanvas2DOpCreateRadialGradient:
+    case ALCanvas2DOpCreateConicGradient: {
+      NSInteger objectId = readInt(r);
+      ALCanvas2DGradient *gradient = [[ALCanvas2DGradient alloc] init];
+      gradient.type = op == ALCanvas2DOpCreateLinearGradient   ? 0
+                      : op == ALCanvas2DOpCreateRadialGradient ? 1
+                                                               : 2;
+      NSInteger count = gradient.type == 0 ? 4 : gradient.type == 1 ? 6 : 3;
+      CGFloat p[6] = {0};
+      for (NSInteger i = 0; i < count; i++) p[i] = readNumber(r);
+      gradient.p0 = p[0];
+      gradient.p1 = p[1];
+      gradient.p2 = p[2];
+      gradient.p3 = p[3];
+      gradient.p4 = p[4];
+      gradient.p5 = p[5];
+      _objects[@(objectId)] = gradient;
+      break;
+    }
+    case ALCanvas2DOpAddColorStop: {
+      ALCanvas2DGradient *gradient = _objects[@(readInt(r))];
+      CGFloat offset = readNumber(r), red = readNumber(r), green = readNumber(r),
+              blue = readNumber(r), alpha = readNumber(r);
+      if ([gradient isKindOfClass:ALCanvas2DGradient.class]) {
+        [gradient addStop:offset r:red g:green b:blue a:alpha];
+      }
+      break;
+    }
+    case ALCanvas2DOpCreatePattern: {
+      NSInteger objectId = readInt(r);
+      NSDictionary *source = readMap(r);
+      NSInteger repetition = readInt(r);
+      CGImageRef image = [self newImageFrom:source];
+      if (!image) break;
+      ALCanvas2DPattern *pattern = [[ALCanvas2DPattern alloc] init];
+      pattern.image = image;
+      pattern.repetition = repetition;
+      pattern.transform = CGAffineTransformIdentity;
+      _objects[@(objectId)] = pattern;
+      break;
+    }
+    case ALCanvas2DOpSetPatternTransform: {
+      ALCanvas2DPattern *pattern = _objects[@(readInt(r))];
+      CGFloat a = readNumber(r), b = readNumber(r), c = readNumber(r), d = readNumber(r),
+              e = readNumber(r), f = readNumber(r);
+      if ([pattern isKindOfClass:ALCanvas2DPattern.class]) {
+        pattern.transform = CGAffineTransformMake(a, b, c, d, e, f);
+      }
+      break;
+    }
+    case ALCanvas2DOpReleaseObject:
+      [_objects removeObjectForKey:@(readInt(r))];
+      break;
+    case ALCanvas2DOpClearPath: {
+      CGMutablePathRef path = pathFromSegments(readArray(r));
+      [self clearPath:path];
+      CGPathRelease(path);
+      break;
+    }
+    case ALCanvas2DOpFill: {
+      CGMutablePathRef path = pathFromSegments(readArray(r));
+      BOOL evenOdd = readInt(r) == 1;
+      [self fillDevicePath:path evenOdd:evenOdd style:s.fill];
+      CGPathRelease(path);
+      break;
+    }
+    case ALCanvas2DOpStroke: {
+      CGMutablePathRef path = pathFromSegments(readArray(r));
+      [self strokeDevicePath:path];
+      CGPathRelease(path);
+      break;
+    }
+    case ALCanvas2DOpClip: {
+      CGMutablePathRef path = pathFromSegments(readArray(r));
+      BOOL evenOdd = readInt(r) == 1;
+      if (_cg) {
+        CGContextBeginPath(_cg);
+        CGContextAddPath(_cg, path);
+        // An empty path clips everything away.
+        if (CGPathIsEmpty(path)) {
+          CGContextClipToRect(_cg, CGRectZero);
+        } else if (evenOdd) {
+          CGContextEOClip(_cg);
+        } else {
+          CGContextClip(_cg);
+        }
+      }
+      CGPathRelease(path);
+      break;
+    }
+    case ALCanvas2DOpFillText:
+    case ALCanvas2DOpStrokeText: {
+      NSString *text = readString(r);
+      CGFloat x = readNumber(r), y = readNumber(r), maxWidth = readNumber(r);
+      [self drawText:text x:x y:y maxWidth:maxWidth stroke:op == ALCanvas2DOpStrokeText];
+      break;
+    }
+    case ALCanvas2DOpDrawImage: {
+      NSDictionary *source = readMap(r);
+      CGFloat sx = readNumber(r), sy = readNumber(r), sw = readNumber(r), sh = readNumber(r);
+      CGFloat dx = readNumber(r), dy = readNumber(r), dw = readNumber(r), dh = readNumber(r);
+      CGImageRef image = [self newImageFrom:source];
+      if (image) {
+        [self drawImage:image
+                 source:CGRectMake(sx, sy, sw, sh)
+            destination:CGRectMake(dx, dy, dw, dh)];
+        CGImageRelease(image);
+      }
+      break;
+    }
+    case ALCanvas2DOpPutImageData: {
+      NSData *bytes = AngularLynxBytesFromWords(readArray(r));
+      NSInteger width = readInt(r), height = readInt(r), x = readInt(r), y = readInt(r);
+      [self putPixels:bytes width:width height:height x:x y:y];
+      break;
+    }
+    default:
+      // An unknown command can't be skipped past: the rest of the batch
+      // would be read as the wrong arguments.
+      r->index = r->count;
+  }
+}
+
+- (id)query:(NSInteger)op reader:(ALReader *)r {
+  switch ((ALCanvas2DOp)op) {
+    case ALCanvas2DOpMeasureText:
+      return [self measureText:readString(r)];
+    case ALCanvas2DOpGetImageData: {
+      NSInteger x = readInt(r), y = readInt(r), width = readInt(r), height = readInt(r);
+      return [self pixelsAtX:x y:y width:width height:height];
+    }
+    case ALCanvas2DOpIsPointInPath: {
+      CGMutablePathRef path = pathFromSegments(readArray(r));
+      BOOL evenOdd = readInt(r) == 1;
+      CGFloat x = readNumber(r), y = readNumber(r);
+      BOOL inside = CGPathContainsPoint(path, NULL, CGPointMake(x, y), evenOdd);
+      CGPathRelease(path);
+      return @(inside);
+    }
+    case ALCanvas2DOpIsPointInStroke: {
+      CGMutablePathRef path = pathFromSegments(readArray(r));
+      CGFloat x = readNumber(r), y = readNumber(r);
+      CGPathRef outline = [self strokeOutlineOf:path];
+      BOOL inside = outline && CGPathContainsPoint(outline, NULL, CGPointMake(x, y), NO);
+      if (outline) CGPathRelease(outline);
+      CGPathRelease(path);
+      return @(inside);
+    }
+    default:
+      r->index = r->count;
+      return nil;
+  }
+}
+
+#pragma mark Compositing
+
+- (BOOL)shadowVisible {
+  ALCanvas2DState *s = _state;
+  return s.shadowA > 0 && (s.shadowBlur > 0 || s.shadowOffsetX != 0 || s.shadowOffsetY != 0);
+}
+
+/// Draws with the state's alpha, compositing and shadow. `draw` draws in a
+/// context whose space is the canvas's pixels, with nothing else set.
+///
+/// Core Graphics draws an operation like source-in only where the shape
+/// covers, and a shadow for each thing drawn; the canvas spec composites
+/// the whole canvas, and the shadow of the shape as a whole. So for those,
+/// the shape is drawn into a transparent layer the canvas's size, which is
+/// drawn over the canvas with the operation and the shadow.
+- (void)composite:(void (^)(CGContextRef c))draw {
+  if (!_cg) return;
+  ALCanvas2DState *s = _state;
+  CGContextRef c = _cg;
+  BOOL shadow = [self shadowVisible];
+  if (!shadow && !isUnbounded(s.composite)) {
+    CGContextSaveGState(c);
+    CGContextSetAlpha(c, s.globalAlpha);
+    CGContextSetBlendMode(c, BLEND_MODES[s.composite]);
+    draw(c);
+    CGContextRestoreGState(c);
+    return;
+  }
+  CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  CGContextRef layer =
+      CGBitmapContextCreate(NULL, _width, _height, 8, _width * 4, space,
+                            kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
+  CGColorSpaceRelease(space);
+  if (!layer) return;
+  CGContextTranslateCTM(layer, 0, _height);
+  CGContextScaleCTM(layer, 1, -1);
+  draw(layer);
+  CGImageRef image = CGBitmapContextCreateImage(layer);
+  CGContextRelease(layer);
+  CGContextSaveGState(c);
+  CGContextSetAlpha(c, s.globalAlpha);
+  CGContextSetBlendMode(c, BLEND_MODES[s.composite]);
+  if (shadow) {
+    CGColorRef color = CGColorCreateSRGB(s.shadowR / 255, s.shadowG / 255, s.shadowB / 255,
+                                         s.shadowA);
+    // A shadow's offset is in the bitmap's own space, y up, whatever the
+    // transform, as the canvas's is in its pixels, y down. Its blur is
+    // twice the Gaussian's deviation, as the canvas's is.
+    CGContextSetShadowWithColor(c, CGSizeMake(s.shadowOffsetX, -s.shadowOffsetY), s.shadowBlur,
+                                color);
+    CGColorRelease(color);
+  }
+  // The layer's image is drawn in the bitmap's own space, where its rows
+  // already lie top to bottom.
+  CGContextScaleCTM(c, 1, -1);
+  CGContextTranslateCTM(c, 0, -(CGFloat)_height);
+  CGContextDrawImage(c, CGRectMake(0, 0, _width, _height), image);
+  CGContextRestoreGState(c);
+  CGImageRelease(image);
+}
+
+#pragma mark Shapes
+
+/// Fills a path in the canvas's pixels with a style, which is in the space
+/// of the current transform.
+- (void)fillDevicePath:(CGPathRef)path evenOdd:(BOOL)evenOdd style:(ALStyle)style {
+  if (CGPathIsEmpty(path)) return;
+  CGAffineTransform transform = _state.transform;
+  if (style.kind == ALStyleColor) {
+    CGFloat r = style.rgba[0] / 255, g = style.rgba[1] / 255, b = style.rgba[2] / 255,
+            a = style.rgba[3];
+    [self composite:^(CGContextRef c) {
+      CGContextSetRGBFillColor(c, r, g, b, a);
+      CGContextAddPath(c, path);
+      if (evenOdd) {
+        CGContextEOFillPath(c);
+      } else {
+        CGContextFillPath(c);
+      }
+    }];
+    return;
+  }
+  id object = _objects[@(style.objectId)];
+  if ([object isKindOfClass:ALCanvas2DGradient.class]) {
+    ALCanvas2DGradient *gradient = object;
+    if (gradient.stops.count == 0) return;
+    __weak typeof(self) weakSelf = self;
+    [self composite:^(CGContextRef c) {
+      CGContextAddPath(c, path);
+      if (evenOdd) {
+        CGContextEOClip(c);
+      } else {
+        CGContextClip(c);
+      }
+      [weakSelf paintGradient:gradient in:c transform:transform];
+    }];
+    return;
+  }
+  if ([object isKindOfClass:ALCanvas2DPattern.class]) {
+    ALCanvas2DPattern *pattern = object;
+    pattern.quality = [self interpolationQuality];
+    CGFloat width = CGImageGetWidth(pattern.image);
+    CGFloat height = CGImageGetHeight(pattern.image);
+    // Pattern space maps to the bitmap's own space (y up), past the
+    // canvas's flip: the pattern's transform, then the canvas's, then the
+    // flip.
+    CGAffineTransform flip = CGAffineTransformMake(1, 0, 0, -1, 0, _height);
+    CGAffineTransform matrix = CGAffineTransformConcat(
+        CGAffineTransformConcat(pattern.transform, transform), flip);
+    // A step this long repeats nothing: no-repeat and the other axis of
+    // repeat-x or repeat-y.
+    const CGFloat once = 1e7;
+    NSInteger repetition = pattern.repetition;
+    CGFloat xStep = repetition == 0 || repetition == 1 ? width : once;
+    CGFloat yStep = repetition == 0 || repetition == 2 ? height : once;
+    CGPatternCallbacks callbacks = {0, drawPatternCell, NULL};
+    CGPatternRef cg = CGPatternCreate((__bridge void *)pattern, CGRectMake(0, 0, width, height),
+                                      matrix, xStep, yStep, kCGPatternTilingConstantSpacing, true,
+                                      &callbacks);
+    [self composite:^(CGContextRef c) {
+      CGColorSpaceRef space = CGColorSpaceCreatePattern(NULL);
+      CGContextSetFillColorSpace(c, space);
+      CGColorSpaceRelease(space);
+      CGFloat alpha = 1;
+      CGContextSetFillPattern(c, cg, &alpha);
+      CGContextAddPath(c, path);
+      if (evenOdd) {
+        CGContextEOFillPath(c);
+      } else {
+        CGContextFillPath(c);
+      }
+    }];
+    CGPatternRelease(cg);
+  }
+}
+
+- (void)paintGradient:(ALCanvas2DGradient *)gradient
+                   in:(CGContextRef)c
+            transform:(CGAffineTransform)transform {
+  CGGradientRef cg = gradient.gradient;
+  if (!cg) return;
+  CGGradientDrawingOptions extend =
+      kCGGradientDrawsBeforeStartLocation | kCGGradientDrawsAfterEndLocation;
+  switch (gradient.type) {
+    case 0: {
+      // A gradient of no length paints nothing.
+      if (gradient.p0 == gradient.p2 && gradient.p1 == gradient.p3) return;
+      CGContextConcatCTM(c, transform);
+      CGContextDrawLinearGradient(c, cg, CGPointMake(gradient.p0, gradient.p1),
+                                  CGPointMake(gradient.p2, gradient.p3), extend);
+      break;
+    }
+    case 1: {
+      if (gradient.p0 == gradient.p3 && gradient.p1 == gradient.p4 &&
+          gradient.p2 == gradient.p5) {
+        return;
+      }
+      CGContextConcatCTM(c, transform);
+      CGContextDrawRadialGradient(c, cg, CGPointMake(gradient.p0, gradient.p1), gradient.p2,
+                                  CGPointMake(gradient.p3, gradient.p4), gradient.p5, extend);
+      break;
+    }
+    default:
+      [self paintConicGradient:gradient in:c transform:transform];
+  }
+}
+
+/// A conic gradient, a pixel at a time over what the clip leaves: the color
+/// at each pixel's angle around the center, clockwise from the start angle,
+/// in the gradient's space.
+- (void)paintConicGradient:(ALCanvas2DGradient *)gradient
+                        in:(CGContextRef)c
+                 transform:(CGAffineTransform)transform {
+  if (!invertible(transform)) return;
+  CGAffineTransform inverse = CGAffineTransformInvert(transform);
+  CGRect bounds = CGRectIntegral(CGRectIntersection(CGContextGetClipBoundingBox(c),
+                                                    CGRectMake(0, 0, _width, _height)));
+  if (CGRectIsEmpty(bounds)) return;
+  size_t width = (size_t)bounds.size.width;
+  size_t height = (size_t)bounds.size.height;
+  NSMutableData *pixels = [NSMutableData dataWithLength:width * height * 4];
+  uint8_t *p = pixels.mutableBytes;
+  // 256 colors around the circle, as the stops give them.
+  uint8_t table[256][4];
+  for (int i = 0; i < 256; i++) {
+    CGFloat rgba[4];
+    [gradient colorAt:i / 255.0 into:rgba];
+    table[i][3] = (uint8_t)lround(rgba[3] * 255);
+    for (int k = 0; k < 3; k++) table[i][k] = (uint8_t)lround(rgba[k] * rgba[3] * 255);
+  }
+  CGFloat start = gradient.p0, cx = gradient.p1, cy = gradient.p2;
+  for (size_t y = 0; y < height; y++) {
+    for (size_t x = 0; x < width; x++) {
+      CGPoint point = CGPointApplyAffineTransform(
+          CGPointMake(bounds.origin.x + x + 0.5, bounds.origin.y + y + 0.5), inverse);
+      CGFloat angle = atan2(point.y - cy, point.x - cx) - start;
+      CGFloat t = fmod(angle / (2 * M_PI), 1);
+      if (t < 0) t += 1;
+      const uint8_t *color = table[(int)lround(t * 255)];
+      memcpy(p + (y * width + x) * 4, color, 4);
+    }
+  }
+  CGDataProviderRef provider = CGDataProviderCreateWithCFData((__bridge CFDataRef)pixels);
+  CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  CGImageRef image =
+      CGImageCreate(width, height, 8, 32, width * 4, space,
+                    kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big, provider, NULL,
+                    false, kCGRenderingIntentDefault);
+  CGColorSpaceRelease(space);
+  CGDataProviderRelease(provider);
+  // Drawn upright in the canvas's flipped space.
+  CGContextTranslateCTM(c, bounds.origin.x, bounds.origin.y + bounds.size.height);
+  CGContextScaleCTM(c, 1, -1);
+  CGContextDrawImage(c, CGRectMake(0, 0, width, height), image);
+  CGImageRelease(image);
+}
+
+/// The outline a stroke of the path (in the canvas's pixels) fills, in the
+/// canvas's pixels. The line's width, dashes and joins are in the space of
+/// the current transform, so the path is taken back into it to be stroked.
+- (CGPathRef)strokeOutlineOf:(CGPathRef)devicePath {
+  ALCanvas2DState *s = _state;
+  CGAffineTransform transform = s.transform;
+  if (!invertible(transform) || CGPathIsEmpty(devicePath)) return NULL;
+  CGAffineTransform inverse = CGAffineTransformInvert(transform);
+  CGPathRef userPath = CGPathCreateCopyByTransformingPath(devicePath, &inverse);
+  CGContextRef c = _scratch;
+  CGContextSaveGState(c);
+  CGContextSetLineWidth(c, s.lineWidth);
+  CGContextSetLineCap(c, s.lineCap);
+  CGContextSetLineJoin(c, s.lineJoin);
+  CGContextSetMiterLimit(c, s.miterLimit);
+  NSUInteger dashCount = s.lineDash.count;
+  if (dashCount > 0) {
+    CGFloat *lengths = malloc(sizeof(CGFloat) * dashCount);
+    for (NSUInteger i = 0; i < dashCount; i++) lengths[i] = s.lineDash[i].doubleValue;
+    CGContextSetLineDash(c, s.lineDashOffset, lengths, dashCount);
+    free(lengths);
+  }
+  CGContextBeginPath(c);
+  CGContextAddPath(c, userPath);
+  CGContextReplacePathWithStrokedPath(c);
+  CGPathRef outline = CGContextIsPathEmpty(c) ? NULL : CGContextCopyPath(c);
+  CGContextBeginPath(c);
+  CGContextRestoreGState(c);
+  CGPathRelease(userPath);
+  if (!outline) return NULL;
+  CGPathRef device = CGPathCreateCopyByTransformingPath(outline, &transform);
+  CGPathRelease(outline);
+  return device;
+}
+
+- (void)strokeDevicePath:(CGPathRef)path {
+  CGPathRef outline = [self strokeOutlineOf:path];
+  if (!outline) return;
+  [self fillDevicePath:outline evenOdd:NO style:_state.stroke];
+  CGPathRelease(outline);
+}
+
+- (void)clearPath:(CGPathRef)path {
+  if (!_cg || CGPathIsEmpty(path)) return;
+  if (!_alpha) {
+    [self fillOpaqueBlack:CGRectZero path:path];
+    return;
+  }
+  // Not touched by alpha, compositing or shadows, as the spec has it; the
+  // clip still applies.
+  CGContextSaveGState(_cg);
+  CGContextSetBlendMode(_cg, kCGBlendModeClear);
+  CGContextAddPath(_cg, path);
+  CGContextFillPath(_cg);
+  CGContextRestoreGState(_cg);
+}
+
+#pragma mark Images
+
+- (CGInterpolationQuality)interpolationQuality {
+  if (!_state.smoothing) return kCGInterpolationNone;
+  switch (_state.smoothingQuality) {
+    case 2:
+      return kCGInterpolationHigh;
+    case 1:
+      return kCGInterpolationMedium;
+    default:
+      return kCGInterpolationLow;
+  }
+}
+
+/// An image source (see #imageSource in canvas-2d-context.ts): a decoded
+/// image by id, or a canvas by its id, as it is now.
+- (CGImageRef)newImageFrom:(NSDictionary *)source {
+  AngularLynxDecodedImage *decoded = nil;
+  NSString *canvasId = source[@"canvas"];
+  if ([canvasId isKindOfClass:NSString.class]) {
+    decoded = [canvasId isEqualToString:_canvasId]
+                  ? [self snapshot]
+                  : [[AngularLynxCanvasRegistry contextForCanvasId:canvasId] snapshot];
+  } else if ([source[@"image"] isKindOfClass:NSNumber.class]) {
+    decoded = [AngularLynxDecodedImage imageWithId:[source[@"image"] integerValue]];
+  }
+  if (!decoded || decoded.width < 1 || decoded.height < 1) return NULL;
+  CGDataProviderRef provider =
+      CGDataProviderCreateWithCFData((__bridge CFDataRef)decoded.pixels);
+  CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  CGImageRef image = CGImageCreate(
+      decoded.width, decoded.height, 8, 32, decoded.width * 4, space,
+      (decoded.premultiplied ? kCGImageAlphaPremultipliedLast : kCGImageAlphaLast) |
+          kCGBitmapByteOrder32Big,
+      provider, NULL, false, kCGRenderingIntentDefault);
+  CGColorSpaceRelease(space);
+  CGDataProviderRelease(provider);
+  return image;
+}
+
+/// drawImage: the source rectangle of the image drawn in the destination
+/// rectangle, in the space of the current transform. The whole image is
+/// drawn, placed so the source lands on the destination, and clipped to the
+/// destination, so a source between pixels is drawn where it falls.
+- (void)drawImage:(CGImageRef)image source:(CGRect)src destination:(CGRect)dst {
+  CGAffineTransform transform = _state.transform;
+  CGFloat scaleX = dst.size.width / src.size.width;
+  CGFloat scaleY = dst.size.height / src.size.height;
+  CGRect whole = CGRectMake(dst.origin.x - src.origin.x * scaleX,
+                            dst.origin.y - src.origin.y * scaleY,
+                            CGImageGetWidth(image) * scaleX, CGImageGetHeight(image) * scaleY);
+  CGInterpolationQuality quality = [self interpolationQuality];
+  CGImageRetain(image);
+  [self composite:^(CGContextRef c) {
+    CGContextConcatCTM(c, transform);
+    CGContextClipToRect(c, dst);
+    CGContextSetInterpolationQuality(c, quality);
+    // Drawn upright in the canvas's flipped space.
+    CGContextTranslateCTM(c, whole.origin.x, whole.origin.y + whole.size.height);
+    CGContextScaleCTM(c, 1, -1);
+    CGContextDrawImage(c, CGRectMake(0, 0, whole.size.width, whole.size.height), image);
+  }];
+  CGImageRelease(image);
+}
+
+#pragma mark Pixels
+
+/// getImageData: the rectangle's pixels, not premultiplied, rows top to
+/// bottom; transparent black outside the canvas.
+- (NSArray *)pixelsAtX:(NSInteger)x y:(NSInteger)y width:(NSInteger)width height:(NSInteger)height {
+  if (width <= 0 || height <= 0) return wordsFrom(NULL, 0);
+  NSMutableData *out = [NSMutableData dataWithLength:(NSUInteger)(width * height * 4)];
+  if (!out) return wordsFrom(NULL, 0);
+  uint8_t *o = out.mutableBytes;
+  const uint8_t *bitmap = _data.bytes;
+  for (NSInteger row = 0; row < height; row++) {
+    NSInteger sy = y + row;
+    if (sy < 0 || sy >= (NSInteger)_height || !_cg) continue;
+    for (NSInteger column = 0; column < width; column++) {
+      NSInteger sx = x + column;
+      if (sx < 0 || sx >= (NSInteger)_width) continue;
+      const uint8_t *p = bitmap + (sy * _width + sx) * 4;
+      uint8_t *q = o + (row * width + column) * 4;
+      uint8_t alpha = _alpha ? p[3] : 255;
+      q[3] = alpha;
+      if (alpha == 0) continue;
+      for (int c = 0; c < 3; c++) {
+        q[c] = alpha == 255 ? p[c] : (uint8_t)MIN(255, (p[c] * 255 + alpha / 2) / alpha);
+      }
+    }
+  }
+  return wordsFrom(o, out.length);
+}
+
+/// putImageData: straight RGBA written into the bitmap as it is, whatever
+/// the transform, clip and compositing.
+- (void)putPixels:(NSData *)bytes
+            width:(NSInteger)width
+           height:(NSInteger)height
+                x:(NSInteger)x
+                y:(NSInteger)y {
+  if (!_cg || (NSInteger)bytes.length < width * height * 4) return;
+  const uint8_t *in = bytes.bytes;
+  uint8_t *bitmap = _data.mutableBytes;
+  for (NSInteger row = 0; row < height; row++) {
+    NSInteger dy = y + row;
+    if (dy < 0 || dy >= (NSInteger)_height) continue;
+    for (NSInteger column = 0; column < width; column++) {
+      NSInteger dx = x + column;
+      if (dx < 0 || dx >= (NSInteger)_width) continue;
+      const uint8_t *p = in + (row * width + column) * 4;
+      uint8_t *q = bitmap + (dy * _width + dx) * 4;
+      uint8_t alpha = _alpha ? p[3] : 255;
+      for (int c = 0; c < 3; c++) q[c] = (uint8_t)((p[c] * alpha + 127) / 255);
+      q[3] = alpha;
+    }
+  }
+}
+
+#pragma mark Text
+
+/// The text laid out as one line in the current font.
+- (CTLineRef)newLineFor:(NSString *)text {
+  ALCanvas2DState *s = _state;
+  NSMutableDictionary *attributes = [@{
+    (__bridge NSString *)kCTFontAttributeName : s.font,
+    (__bridge NSString *)kCTForegroundColorFromContextAttributeName : @YES,
+  } mutableCopy];
+  if (s.letterSpacing != 0) {
+    attributes[(__bridge NSString *)kCTKernAttributeName] = @(s.letterSpacing);
+  }
+  CTWritingDirection direction =
+      s.rtl ? kCTWritingDirectionRightToLeft : kCTWritingDirectionLeftToRight;
+  CTParagraphStyleSetting setting = {kCTParagraphStyleSpecifierBaseWritingDirection,
+                                     sizeof(direction), &direction};
+  CTParagraphStyleRef paragraph = CTParagraphStyleCreate(&setting, 1);
+  attributes[(__bridge NSString *)kCTParagraphStyleAttributeName] = (__bridge id)paragraph;
+  CFRelease(paragraph);
+  NSAttributedString *string = [[NSAttributedString alloc] initWithString:text
+                                                               attributes:attributes];
+  return CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)string);
+}
+
+/// Where the line starts from the anchor, for textAlign, as a multiple of
+/// its width.
+- (CGFloat)alignmentOffsetForWidth:(CGFloat)width {
+  BOOL rtl = _state.rtl;
+  switch (_state.textAlign) {
+    case 1:  // end
+      return rtl ? 0 : -width;
+    case 2:  // left
+      return 0;
+    case 3:  // right
+      return -width;
+    case 4:  // center
+      return -width / 2;
+    default:  // start
+      return rtl ? -width : 0;
+  }
+}
+
+/// How far above the alphabetic baseline the anchor is, for textBaseline,
+/// from the font's metrics, as Chrome works it out.
+- (CGFloat)baselineHeight {
+  CTFontRef font = (__bridge CTFontRef)_state.font;
+  CGFloat ascent = CTFontGetAscent(font);
+  CGFloat descent = CTFontGetDescent(font);
+  switch (_state.textBaseline) {
+    case 0:  // top
+      return ascent;
+    case 1:  // hanging
+      return ascent * 0.8;
+    case 2:  // middle
+      return (ascent - descent) / 2;
+    case 4:  // ideographic
+    case 5:  // bottom
+      return -descent;
+    default:  // alphabetic
+      return 0;
+  }
+}
+
+- (void)drawText:(NSString *)text
+               x:(CGFloat)x
+               y:(CGFloat)y
+        maxWidth:(CGFloat)maxWidth
+          stroke:(BOOL)stroke {
+  if (!_cg || text.length == 0 || _state.font.pointSize <= 0.01) return;
+  CTLineRef line = [self newLineFor:text];
+  CGFloat width = CTLineGetTypographicBounds(line, NULL, NULL, NULL);
+  // Text wider than maxWidth is squeezed to fit, as the spec allows.
+  CGFloat scaleX = maxWidth > 0 && width > maxWidth ? maxWidth / width : 1;
+  CGFloat originX = x + [self alignmentOffsetForWidth:width] * scaleX;
+  CGFloat baseline = y + [self baselineHeight];
+  ALStyle style = stroke ? _state.stroke : _state.fill;
+  CGAffineTransform transform = _state.transform;
+  if (!stroke && style.kind == ALStyleColor) {
+    // Drawn as glyphs, so color glyphs (emoji) draw too.
+    CGFloat r = style.rgba[0] / 255, g = style.rgba[1] / 255, b = style.rgba[2] / 255,
+            a = style.rgba[3];
+    [self composite:^(CGContextRef c) {
+      CGContextConcatCTM(c, transform);
+      CGContextTranslateCTM(c, originX, baseline);
+      // Core Text draws y up.
+      CGContextScaleCTM(c, scaleX, -1);
+      CGContextSetTextMatrix(c, CGAffineTransformIdentity);
+      CGContextSetTextPosition(c, 0, 0);
+      CGContextSetRGBFillColor(c, r, g, b, a);
+      CTLineDraw(line, c);
+    }];
+    CFRelease(line);
+    return;
+  }
+  // The glyphs' outlines, in the canvas's pixels, filled or stroked as a
+  // path is.
+  CGMutablePathRef glyphs = CGPathCreateMutable();
+  CFArrayRef runs = CTLineGetGlyphRuns(line);
+  for (CFIndex i = 0; i < CFArrayGetCount(runs); i++) {
+    CTRunRef run = CFArrayGetValueAtIndex(runs, i);
+    CTFontRef font = CFDictionaryGetValue(CTRunGetAttributes(run), kCTFontAttributeName);
+    CFIndex count = CTRunGetGlyphCount(run);
+    CGGlyph *glyphIds = malloc(sizeof(CGGlyph) * MAX(count, 1));
+    CGPoint *positions = malloc(sizeof(CGPoint) * MAX(count, 1));
+    CTRunGetGlyphs(run, CFRangeMake(0, count), glyphIds);
+    CTRunGetPositions(run, CFRangeMake(0, count), positions);
+    for (CFIndex g = 0; g < count; g++) {
+      CGAffineTransform place = CGAffineTransformMake(
+          scaleX, 0, 0, -1, originX + positions[g].x * scaleX, baseline - positions[g].y);
+      CGPathRef outline = CTFontCreatePathForGlyph(font, glyphIds[g], &place);
+      if (outline) {
+        CGPathAddPath(glyphs, NULL, outline);
+        CGPathRelease(outline);
+      }
+    }
+    free(glyphIds);
+    free(positions);
+  }
+  CFRelease(line);
+  CGPathRef device = CGPathCreateCopyByTransformingPath(glyphs, &transform);
+  CGPathRelease(glyphs);
+  if (stroke) {
+    [self strokeDevicePath:device];
+  } else {
+    [self fillDevicePath:device evenOdd:NO style:style];
+  }
+  CGPathRelease(device);
+}
+
+/// measureText: TextMetrics' numbers, in order (see LynxTextMetrics),
+/// measured from the anchor textAlign and textBaseline put it at.
+- (NSArray *)measureText:(NSString *)text {
+  CTLineRef line = [self newLineFor:text];
+  CGFloat width = CTLineGetTypographicBounds(line, NULL, NULL, NULL);
+  CGRect glyphs = text.length > 0 ? CTLineGetBoundsWithOptions(line, kCTLineBoundsUseGlyphPathBounds)
+                                  : CGRectZero;
+  CFRelease(line);
+  CTFontRef font = (__bridge CTFontRef)_state.font;
+  CGFloat ascent = CTFontGetAscent(font);
+  CGFloat descent = CTFontGetDescent(font);
+  CGFloat offset = [self alignmentOffsetForWidth:width];
+  CGFloat anchor = [self baselineHeight];
+  return @[
+    @(width),
+    @(-(offset + CGRectGetMinX(glyphs))),
+    @(offset + CGRectGetMaxX(glyphs)),
+    @(ascent - anchor),
+    @(descent + anchor),
+    @(CGRectGetMaxY(glyphs) - anchor),
+    @(-CGRectGetMinY(glyphs) + anchor),
+    @(ascent - anchor),
+    @(descent + anchor),
+    @(ascent * 0.8 - anchor),
+    @(-anchor),
+    @(-descent - anchor),
+  ];
+}
+
+@end

@@ -1,19 +1,72 @@
 # `<canvas>`
 
-A drawing surface with a WebGL2 context, for 3D scenes with [three.js](https://threejs.org/), [angular-three](https://github.com/angular-threejs/angular-three) or plain [WebGL](https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API). Lynx has no canvas of its own: this one is AngularLynx's.
+A drawing surface with a 2D or WebGL2 context: charts, signatures, image editing and anything else drawn with [`getContext('2d')`](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D), and 3D scenes with [three.js](https://threejs.org/), [angular-three](https://github.com/angular-threejs/angular-three) or plain [WebGL](https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API). Lynx has no canvas of its own: this one is AngularLynx's.
 
 <Go example="element-canvas" defaultFile="src/app/app.ts" />
 
 ## Where it works
 
-| Where                                                                                   | `getContext('webgl2')`                                                                                                    |
-| --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| iOS apps built with [`ng build --platform ios`](/guide/building-for-production)         | Draws with OpenGL ES 3.0 on Metal, through [ANGLE](https://chromium.googlesource.com/angle/angle), as Safari's WebGL does |
-| Android apps built with [`ng build --platform android`](/guide/building-for-production) | Draws with the phone's OpenGL ES 3.0                                                                                      |
-| The web preview                                                                         | The browser's WebGL2: the element is an HTML `<canvas>`                                                                   |
-| Lynx Explorer, and native apps that embed Lynx themselves                               | `null`: the canvas is an empty view. Their apps don't have the canvas element                                             |
+| Where                                                                                   | `getContext('2d')`                                                    | `getContext('webgl2')`                                                                                                    |
+| --------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| iOS apps built with [`ng build --platform ios`](/guide/building-for-production)         | Draws with Core Graphics, as Safari's canvas long did                 | Draws with OpenGL ES 3.0 on Metal, through [ANGLE](https://chromium.googlesource.com/angle/angle), as Safari's WebGL does |
+| Android apps built with [`ng build --platform android`](/guide/building-for-production) | Draws with `android.graphics.Canvas`, which is Skia, as Chrome's does | Draws with the phone's OpenGL ES 3.0                                                                                      |
+| The web preview                                                                         | The browser's canvas: the element is an HTML `<canvas>`               | The browser's WebGL2                                                                                                      |
+| Lynx Explorer, and native apps that embed Lynx themselves                               | `null`: the canvas is an empty view                                   | `null`. Their apps don't have the canvas element                                                                          |
 
-## Usage
+## Drawing in 2D
+
+Give the canvas a size with CSS, size its drawing buffer to the screen's pixels once it's laid out, and draw:
+
+```typescript title="src/app/chart.ts"
+import {
+  afterNextRender,
+  Component,
+  type ElementRef,
+  viewChild,
+} from '@angular/core';
+import { LYNX_ELEMENTS, type LynxCanvasElement } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-chart',
+  imports: [LYNX_ELEMENTS],
+  template: `<canvas #canvas class="h-[200px] w-full"></canvas>`,
+})
+export class Chart {
+  readonly canvas = viewChild.required<ElementRef<LynxCanvasElement>>('canvas');
+
+  constructor() {
+    afterNextRender(() => {
+      const canvas = this.canvas()
+        .nativeElement as unknown as HTMLCanvasElement;
+      const context = canvas.getContext('2d')!;
+      new ResizeObserver(([entry]) => {
+        const { width, height } = entry.contentRect;
+        // Setting the size clears the canvas and resets its state.
+        canvas.width = width * devicePixelRatio;
+        canvas.height = height * devicePixelRatio;
+        context.scale(devicePixelRatio, devicePixelRatio);
+        const gradient = context.createLinearGradient(0, 0, 0, height);
+        gradient.addColorStop(0, '#818cf8');
+        gradient.addColorStop(1, '#4338ca');
+        context.fillStyle = gradient;
+        context.beginPath();
+        context.roundRect(20, 40, 60, height - 60, [8, 8, 0, 0]);
+        context.fill();
+        context.font = '14px sans-serif';
+        context.fillText('Sales', 20, 24);
+      }).observe(canvas);
+    });
+  }
+}
+```
+
+The whole [CanvasRenderingContext2D](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D) is there: paths, `Path2D` (with SVG path data), rectangles, arcs and rounded rectangles, transforms, clipping, line widths, joins and dashes, colors, linear, radial and conic gradients, patterns, shadows, `globalAlpha` and every `globalCompositeOperation`, text with `font`, `textAlign`, `textBaseline`, `direction`, `letterSpacing` and `measureText()`, `drawImage()` of images, `ImageBitmap`s and other canvases, and `getImageData()`, `putImageData()` and `isPointInPath()`.
+
+Canvases the page doesn't show work too: `document.createElement('canvas')` and `new OffscreenCanvas(width, height)` have a 2D context, and can be drawn on another canvas, made a pattern, uploaded as a WebGL texture (three.js's `CanvasTexture`) or saved as an image. That's how three.js apps draw text labels, and how image libraries resize a photo.
+
+<Go example="element-canvas-2d" defaultFile="src/app/app.ts" />
+
+## Drawing in 3D
 
 Give the canvas a size with CSS, and draw once it's laid out:
 
@@ -70,7 +123,7 @@ export class Scene {
 Like an HTML canvas:
 
 - `width` and `height` are the drawing buffer's size in pixels, 300 by 150 to start. The element's CSS size is how big it's shown.
-- `getContext('webgl2')` returns the same context every time. There's no `'2d'` context, and `'webgl'` (WebGL 1) is `null`: three.js needs WebGL2 anyway.
+- `getContext('2d')` and `getContext('webgl2')` return the same context every time. A canvas has the kind of context it was first asked for: after `getContext('2d')`, `getContext('webgl2')` is `null`, and the other way round. `'webgl'` (WebGL 1) is `null`: three.js needs WebGL2 anyway.
 - Pointer events (`pointerdown`, `pointermove`, `pointerup` and the rest) work, from the finger's touches. They work on every element, not only a canvas: see [Element events](/api/angular-lynx/element-events).
 - `clientWidth`, `clientHeight` and `getBoundingClientRect()` answer from the element's last layout, and `ResizeObserver` reports its size as it changes.
 
@@ -105,7 +158,7 @@ Textures and models load as on the web:
 - three.js's `TextureLoader` (an `Image`), `ImageBitmapLoader` (`createImageBitmap()`) and `GLTFLoader`, including `.glb` files with their textures inside.
 - From `https://` URLs, `data:` URLs, object URLs (`URL.createObjectURL()`), and files your app bundles, by their path in `dist/`: copy a model in with [`output.copy`](https://rsbuild.rs/config/output/copy) in `lynx.config.ts`, then load `'/assets/models/frame.glb'`. A build has no loader for `import model from './frame.glb'`.
 
-The phone decodes images, and the pixels go straight to the GPU. Loaders that need Web Workers or WebAssembly, such as `DRACOLoader` and `KTX2Loader`, don't work.
+The phone decodes images, and the pixels go straight to the GPU. A canvas, drawn in 2D or with WebGL, uploads as a texture too (`CanvasTexture`, or `texImage2D()` with the canvas): the phone reads its pixels and hands them to the GPU. Loaders that need Web Workers or WebAssembly, such as `DRACOLoader` and `KTX2Loader`, don't work.
 
 ## Save it as an image
 
@@ -123,10 +176,10 @@ canvas.toBlob(
 
 The `Blob` is ready to show in an `<image>`, upload, or [share](/guide/share). The phone encodes the image, so it's quick: a 2048 by 1365 JPEG takes about 20 ms on the iOS Simulator and 35 ms on the Android emulator, plus 15 ms before the callback has the `Blob`. A PNG of that size is slower to encode, around 100 ms on the iOS Simulator and 300 ms on the Android emulator, and is several times larger.
 
-- **Call it right after you draw.** It reads the drawing buffer, which WebGL clears once a frame is on screen, as in a browser. So call `toBlob()` in the same function that draws, such as right after three.js's `renderer.render()`, or make the context with `preserveDrawingBuffer: true` (three.js: `new WebGLRenderer({ preserveDrawingBuffer: true })`). Called later without it, you get a transparent image.
+- **With WebGL, call it right after you draw.** A 2D canvas keeps what's drawn on it, but WebGL clears the drawing buffer once a frame is on screen, as in a browser. So call `toBlob()` in the same function that draws, such as right after three.js's `renderer.render()`, or make the context with `preserveDrawingBuffer: true` (three.js: `new WebGLRenderer({ preserveDrawingBuffer: true })`). Called later without it, you get a transparent image.
 - **The callback runs later,** as on the web: `toBlob()` reads the canvas when you call it, and the callback gets the `Blob` once it's ready. `toDataURL()` returns at once.
 - **A JPEG has no transparency:** transparent pixels come out black, as in browsers. A PNG keeps them.
-- **Nothing to encode gives `null`** (`toBlob()`) or `'data:,'` (`toDataURL()`): a canvas that never called `getContext('webgl2')`, one whose context was lost, or Lynx Explorer, which has no canvas.
+- **Nothing to encode gives `null`** (`toBlob()`) or `'data:,'` (`toDataURL()`): a canvas that never called `getContext()`, one whose context was lost, or Lynx Explorer, which has no canvas.
 - **Prefer `toBlob()`.** A `data:` URL holds the image as text a third larger than the file, and building it is all at once.
 
 ## Attributes
@@ -157,9 +210,10 @@ The iOS Simulator and the Android emulator both draw on the Mac's GPU, so a scen
 
 ## What's different from the web
 
-- No 2D context: libraries that draw with `getContext('2d')` don't work.
-- `toBlob()` and `toDataURL()` encode only a WebGL canvas, and the main thread waits while the phone reads and encodes it (tens of milliseconds for a photo), where a browser's `toBlob()` encodes in the background. A canvas without a context gives `null` rather than a blank image.
-- A `<canvas>` or `<video>` can't be a texture: use images, `ImageBitmap`s or typed arrays.
+- The 2D context's `filter` is kept but not applied, and `wordSpacing`, `fontKerning`, `fontStretch`, `fontVariantCaps` and `textRendering` are kept but don't change the text. Text drawn with a gradient, a pattern or `strokeText()` is drawn from the glyphs' outlines, so color emoji show only with a plain `fillStyle`.
+- A `<video>` can't be drawn on a canvas or be a texture yet.
+- `OffscreenCanvas` has no `transferToImageBitmap()`, and `createImageBitmap()` doesn't take a canvas: draw the canvas itself with `drawImage()` or `texImage2D()`.
+- `toBlob()` and `toDataURL()` make the main thread wait while the phone reads and encodes the canvas (tens of milliseconds for a photo), where a browser's `toBlob()` encodes in the background. A canvas without a context gives `null` rather than a blank image.
 - A lost context isn't restored: make a new renderer.
 - `crypto.randomUUID()`, which AngularLynx adds for angular-three, isn't cryptographically secure: don't use it for secrets.
 

@@ -132,6 +132,85 @@ describe('getWebGLBridge', () => {
   });
 });
 
+describe('getCanvas2DBridge', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('is null without the module', async () => {
+    vi.stubGlobal('lynx', undefined);
+    expect((await load()).getCanvas2DBridge()).toBeNull();
+    vi.stubGlobal('lynx', { module: () => undefined });
+    expect((await load()).getCanvas2DBridge()).toBeNull();
+    vi.stubGlobal('lynx', {
+      module: () => {
+        throw new Error('no module');
+      },
+    });
+    expect((await load()).getCanvas2DBridge()).toBeNull();
+  });
+
+  it('calls the shell’s 2D methods, and is the same bridge each time', async () => {
+    const invoke = vi.fn((method: string) =>
+      method === 'create2D'
+        ? { ok: true }
+        : method === 'run2D'
+          ? [true]
+          : method === 'encode2D'
+            ? { base64: 'AQI=', type: 'image/png' }
+            : undefined,
+    );
+    vi.stubGlobal('lynx', { module: () => ({ invoke }) });
+    const { getCanvas2DBridge } = await load();
+    const bridge = getCanvas2DBridge()!;
+    expect(getCanvas2DBridge()).toBe(bridge);
+    expect(bridge.create2D(1, 'c-1', { alpha: true })).toEqual({ ok: true });
+    expect(bridge.run2D(1, [5])).toEqual([true]);
+    bridge.destroy2D(1);
+    expect(bridge.encode2D(1, { type: 'image/png', quality: 1 })).toEqual({
+      base64: 'AQI=',
+      type: 'image/png',
+    });
+    expect(invoke.mock.calls).toEqual([
+      ['create2D', 1, 'c-1', { alpha: true }],
+      ['run2D', 1, [5]],
+      ['destroy2D', 1],
+      ['encode2D', 1, { type: 'image/png', quality: 1 }],
+    ]);
+  });
+
+  it('answers for a shell from before the 2D context, which answers nothing or throws', async () => {
+    for (const invoke of [
+      () => undefined,
+      () => {
+        throw new Error('no such method');
+      },
+    ]) {
+      vi.stubGlobal('lynx', { module: () => ({ invoke }) });
+      const bridge = (await load()).getCanvas2DBridge()!;
+      expect(bridge.create2D(1, 'c', {})).toEqual({
+        ok: false,
+        error: expect.stringMatching(/no 2D canvas/),
+      });
+      expect(bridge.run2D(1, [])).toEqual([]);
+      bridge.destroy2D(1);
+      expect(bridge.encode2D(1, { type: 'image/png', quality: 1 })).toEqual({
+        error: expect.stringMatching(/can't encode a canvas/),
+      });
+    }
+  });
+
+  it('can be replaced, and restored, for tests', async () => {
+    const { getCanvas2DBridge, setCanvas2DBridgeForTesting } = await load();
+    vi.stubGlobal('lynx', undefined);
+    const fake = {} as never;
+    setCanvas2DBridgeForTesting(fake);
+    expect(getCanvas2DBridge()).toBe(fake);
+    setCanvas2DBridgeForTesting(undefined);
+    expect(getCanvas2DBridge()).toBeNull();
+  });
+});
+
 describe('bytesOf', () => {
   it('views the bytes of a buffer or a typed array, by element', async () => {
     const { bytesOf } = await load();

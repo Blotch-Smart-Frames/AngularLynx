@@ -57,6 +57,9 @@ NS_ASSUME_NONNULL_BEGIN
 /// (runOnTasmThread:). The canvas element sets it before the canvas id.
 @property(nonatomic, weak, nullable) LynxContext *lynxContext;
 @property(nonatomic, readonly) AngularLynxCanvasTarget *target;
+/// Shows a 2D context's bitmap, scaled to the view (nil shows nothing). UI
+/// thread only.
+- (void)showImage:(nullable CGImageRef)image opaque:(BOOL)opaque;
 @end
 
 /// The `canvas` element. Its `canvas-id` attribute, which the runtime sets,
@@ -72,13 +75,30 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic, readonly) NSInteger height;
 /// Whether the pixels are premultiplied by alpha.
 @property(nonatomic, readonly) BOOL premultiplied;
+- (instancetype)initWithPixels:(NSData *)pixels
+                         width:(NSInteger)width
+                        height:(NSInteger)height
+                 premultiplied:(BOOL)premultiplied;
 + (nullable AngularLynxDecodedImage *)imageWithId:(NSInteger)imageId;
+@end
+
+/// A canvas's context, of either kind: what the registry pairs with the
+/// canvas's view, and what another context reads the canvas through (as a
+/// texture, or drawn on a 2D canvas). Engine thread only.
+@protocol AngularLynxCanvasContext <NSObject>
+@property(nonatomic, readonly, copy) NSString *canvasId;
+/// Shows frames in this canvas's target, or nowhere while it's nil.
+- (void)attachTarget:(nullable AngularLynxCanvasTarget *)target;
+/// The view was laid out: a frame that waited for it to have a size is shown.
+- (void)targetDidLayOut:(AngularLynxCanvasTarget *)target;
+/// The canvas's pixels now, rows top to bottom, or nil when it has none.
+- (nullable AngularLynxDecodedImage *)snapshot;
 @end
 
 /// One WebGL context: an EGL context on ANGLE's Metal display, with an
 /// offscreen default framebuffer the size of the canvas's `width` and
 /// `height`.
-@interface AngularLynxWebGLContext : NSObject
+@interface AngularLynxWebGLContext : NSObject <AngularLynxCanvasContext>
 @property(nonatomic, readonly, copy) NSString *canvasId;
 - (nullable instancetype)initWithCanvasId:(NSString *)canvasId
                                attributes:(NSDictionary *)attributes
@@ -90,11 +110,21 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSDictionary *)encodeImageOfType:(NSString *)type
                             quality:(double)quality
                       premultiplied:(BOOL)premultiplied;
-/// Shows frames in this canvas's target, or nowhere while it's nil.
-- (void)attachTarget:(nullable AngularLynxCanvasTarget *)target;
-/// The view was laid out: a frame that waited for it to have a size is shown.
-- (void)targetDidLayOut:(AngularLynxCanvasTarget *)target;
 - (void)destroy;
+@end
+
+/// One 2D context: a Core Graphics bitmap the size of the canvas's `width`
+/// and `height`, which the runtime's CanvasRenderingContext2D draws on (see
+/// AngularLynxCanvas2DContext.m).
+@interface AngularLynxCanvas2DContext : NSObject <AngularLynxCanvasContext>
+@property(nonatomic, readonly, copy) NSString *canvasId;
+- (nullable instancetype)initWithCanvasId:(NSString *)canvasId
+                               attributes:(NSDictionary *)attributes
+                                    error:(NSString *_Nullable *_Nonnull)error;
+/// Runs the commands in order; returns one result per query.
+- (NSArray *)run:(NSArray *)commands;
+/// The bitmap as a PNG or JPEG file: `{ base64, type }`, or `{ error }`.
+- (NSDictionary *)encodeImageOfType:(NSString *)type quality:(double)quality;
 @end
 
 /// Pairs canvases with contexts by canvas id: either can come first, as the
@@ -103,8 +133,9 @@ NS_ASSUME_NONNULL_BEGIN
 @interface AngularLynxCanvasRegistry : NSObject
 + (void)setTarget:(nullable AngularLynxCanvasTarget *)target forCanvasId:(NSString *)canvasId;
 + (nullable AngularLynxCanvasTarget *)targetForCanvasId:(NSString *)canvasId;
-+ (void)setContext:(nullable AngularLynxWebGLContext *)context forCanvasId:(NSString *)canvasId;
-+ (nullable AngularLynxWebGLContext *)contextForCanvasId:(NSString *)canvasId;
++ (void)setContext:(nullable id<AngularLynxCanvasContext>)context
+       forCanvasId:(NSString *)canvasId;
++ (nullable id<AngularLynxCanvasContext>)contextForCanvasId:(NSString *)canvasId;
 @end
 
 /// The `AngularLynxWebGL` module. Registered on the LynxView's config, and

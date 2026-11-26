@@ -33,7 +33,7 @@ The only Angular renderer for Lynx: the same component, signals and templates a 
 
 - Subject (confirmed): a jeweler's gem catalog. A refractive 3D gemstone with dispersion that the visitor spins and tilts, a market of cut, carat and price with charts, a collection list, and a UI that takes the chosen stone's color.
 - Data (confirmed): bundled only. No HTTP, no API keys, nothing loads from the network. Gem facts (names, hardness, refractive index, dispersion, origins) are real mineralogy; prices, lots and any "market" series are illustrative and must be labelled as such in the app.
-- The `<canvas>` has WebGL2 only: no 2D context, no DRACO/KTX2 loaders, no canvas-as-texture. Procedural geometry and materials only, unless an asset is bundled.
+- The `<canvas>` here draws with WebGL2 (a 2D context and canvas textures exist, but this app doesn't use them); no DRACO/KTX2 loaders. Procedural geometry and materials only, unless an asset is bundled.
 - Lynx CSS: no `@media`, no `:hover`, no pseudo-elements, no inheritance except `<text>` nesting; `display: linear` default; `scroll-view` needs an explicit height. Semantic Tailwind colors (`bg-background`, `text-primary`…) only; never raw HSL.
 - Must build with `ng build`, lint and format with the repo's oxlint/oxfmt, and keep its `@blotch/ui` copies in sync through dolan (never hand-edit `src/components/ui`).
 - Must stay runnable in the web preview with the browser's WebGL2 and degrade gracefully (no crash, no blank screen) in Lynx Explorer, where `getContext('webgl2')` is `null`.

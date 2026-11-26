@@ -230,9 +230,9 @@ A `<webview src>` loads only in Chrome and Edge there, without the cookies the s
 
 Inside a transformed (or CSS-`zoom`ed) `<lynx-view>`, `getBoundingClientRect()` returns the scaled box. Lynx for Web's waterfall `<list>` places its items by those measurements, so in a view scaled to 0.8 the items overlap by a fifth. Size the view at the width you want and let it lay out at that size. `innerWidth` and `innerHeight` read the view's layout size, so they're right either way.
 
-### No 2D canvas, and WebGL only in built apps
+### `<canvas>` only in built apps
 
-`<canvas>` has only a WebGL2 context, and only in the `--platform ios|android` apps (`ng build` and `ng serve`) and the web preview: Lynx Explorer's `getContext('webgl2')` is `null`. Libraries that draw with `getContext('2d')`, such as most chart libraries, don't work. See "3D with `<canvas>`" in [lynx-elements.md](lynx-elements.md).
+`<canvas>` has its 2D and WebGL2 contexts only in the `--platform ios|android` apps (`ng build` and `ng serve`) and the web preview: in Lynx Explorer, `getContext('2d')` and `getContext('webgl2')` are `null`. See "2D with `<canvas>`" and "3D with `<canvas>`" in [lynx-elements.md](lynx-elements.md).
 
 ### `<video>` in the web preview only plays and pauses
 

@@ -18,7 +18,7 @@ static NSMapTable<NSString *, AngularLynxCanvasTarget *> *targets(void) {
   return table;
 }
 
-static NSMapTable<NSString *, AngularLynxWebGLContext *> *contexts(void) {
+static NSMapTable<NSString *, id<AngularLynxCanvasContext>> *contexts(void) {
   static NSMapTable *table;
   static dispatch_once_t once;
   dispatch_once(&once, ^{
@@ -40,7 +40,7 @@ static NSMapTable<NSString *, AngularLynxWebGLContext *> *contexts(void) {
   return [targets() objectForKey:canvasId];
 }
 
-+ (void)setContext:(AngularLynxWebGLContext *)context forCanvasId:(NSString *)canvasId {
++ (void)setContext:(id<AngularLynxCanvasContext>)context forCanvasId:(NSString *)canvasId {
   if (context) {
     [contexts() setObject:context forKey:canvasId];
     [context attachTarget:[targets() objectForKey:canvasId]];
@@ -49,7 +49,7 @@ static NSMapTable<NSString *, AngularLynxWebGLContext *> *contexts(void) {
   }
 }
 
-+ (AngularLynxWebGLContext *)contextForCanvasId:(NSString *)canvasId {
++ (id<AngularLynxCanvasContext>)contextForCanvasId:(NSString *)canvasId {
   return [contexts() objectForKey:canvasId];
 }
 
@@ -182,6 +182,7 @@ static AngularLynxDecodedImage *decodeImage(NSData *bytes, NSDictionary *options
 
 @implementation AngularLynxWebGLModule {
   NSMutableDictionary<NSNumber *, AngularLynxWebGLContext *> *_contexts;
+  NSMutableDictionary<NSNumber *, AngularLynxCanvas2DContext *> *_contexts2D;
 }
 
 + (NSString *)name {
@@ -196,12 +197,17 @@ static AngularLynxDecodedImage *decodeImage(NSData *bytes, NSDictionary *options
     @"decodeImage" : NSStringFromSelector(@selector(decodeImage:bytes:options:)),
     @"releaseImage" : NSStringFromSelector(@selector(releaseImage:)),
     @"encodeImage" : NSStringFromSelector(@selector(encodeImage:options:)),
+    @"create2D" : NSStringFromSelector(@selector(create2D:canvasId:attributes:)),
+    @"run2D" : NSStringFromSelector(@selector(run2D:commands:)),
+    @"destroy2D" : NSStringFromSelector(@selector(destroy2D:)),
+    @"encode2D" : NSStringFromSelector(@selector(encode2D:options:)),
   };
 }
 
 - (instancetype)init {
   if ((self = [super init])) {
     _contexts = [NSMutableDictionary dictionary];
+    _contexts2D = [NSMutableDictionary dictionary];
   }
   return self;
 }
@@ -213,6 +219,9 @@ static AngularLynxDecodedImage *decodeImage(NSData *bytes, NSDictionary *options
 - (void)dealloc {
   for (AngularLynxWebGLContext *context in _contexts.allValues) {
     [context destroy];
+  }
+  for (AngularLynxCanvas2DContext *context in _contexts2D.allValues) {
+    [AngularLynxCanvasRegistry setContext:nil forCanvasId:context.canvasId];
   }
 }
 
@@ -285,6 +294,54 @@ static AngularLynxDecodedImage *decodeImage(NSData *bytes, NSDictionary *options
           premultiplied:![options[@"premultipliedAlpha"] isEqual:@NO]];
 }
 
+#pragma mark - 2D
+
+/// A 2D context for the canvas: `{ ok }`, or `{ ok: false, error }`.
+- (NSDictionary *)create2D:(NSNumber *)contextId
+                  canvasId:(NSString *)canvasId
+                attributes:(NSDictionary *)attributes {
+  [self destroy2D:contextId];
+  NSString *error = nil;
+  AngularLynxCanvas2DContext *context = [[AngularLynxCanvas2DContext alloc]
+      initWithCanvasId:canvasId
+            attributes:[attributes isKindOfClass:NSDictionary.class] ? attributes : @{}
+                 error:&error];
+  if (!context) return @{@"ok" : @NO, @"error" : error ?: @"Could not make the canvas's bitmap"};
+  _contexts2D[contextId] = context;
+  [AngularLynxCanvasRegistry setContext:context forCanvasId:canvasId];
+  return @{@"ok" : @YES};
+}
+
+- (NSArray *)run2D:(NSNumber *)contextId commands:(NSArray *)commands {
+  AngularLynxCanvas2DContext *context = _contexts2D[contextId];
+  if (!context || ![commands isKindOfClass:NSArray.class]) return @[];
+  return [context run:commands];
+}
+
+- (NSNumber *)destroy2D:(NSNumber *)contextId {
+  AngularLynxCanvas2DContext *context = _contexts2D[contextId];
+  if (context) {
+    if ([AngularLynxCanvasRegistry contextForCanvasId:context.canvasId] == context) {
+      [AngularLynxCanvasRegistry setContext:nil forCanvasId:context.canvasId];
+    }
+    [context attachTarget:nil];
+    [_contexts2D removeObjectForKey:contextId];
+  }
+  return @YES;
+}
+
+/// The bitmap as an image file, for canvas.toBlob() and toDataURL().
+- (NSDictionary *)encode2D:(NSNumber *)contextId options:(NSDictionary *)options {
+  AngularLynxCanvas2DContext *context = _contexts2D[contextId];
+  if (!context) return @{@"error" : @"The canvas has no 2D context"};
+  if (![options isKindOfClass:NSDictionary.class]) options = @{};
+  NSString *type = [options[@"type"] isEqual:@"image/jpeg"] ? @"image/jpeg" : @"image/png";
+  NSNumber *quality = options[@"quality"];
+  return [context encodeImageOfType:type
+                            quality:[quality isKindOfClass:NSNumber.class] ? quality.doubleValue
+                                                                           : 0.92];
+}
+
 @end
 
 #pragma mark - Canvas
@@ -301,7 +358,11 @@ static AngularLynxDecodedImage *decodeImage(NSData *bytes, NSDictionary *options
 
 @end
 
-@implementation AngularLynxCanvasView
+@implementation AngularLynxCanvasView {
+  /// Shows a 2D context's bitmap. Made the first time one is shown, over the
+  /// Metal layer a WebGL context draws in, which a 2D canvas leaves empty.
+  CALayer *_imageLayer;
+}
 
 + (Class)layerClass {
   return [CAMetalLayer class];
@@ -336,6 +397,12 @@ static AngularLynxDecodedImage *decodeImage(NSData *bytes, NSDictionary *options
 // again; one drawing every frame never noticed.
 - (void)layoutSubviews {
   [super layoutSubviews];
+  if (_imageLayer) {
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    _imageLayer.frame = self.layer.bounds;
+    [CATransaction commit];
+  }
   // ANGLE sizes the layer's next drawable from its bounds and scale, as here.
   CGSize size = self.bounds.size;
   CGFloat scale = self.layer.contentsScale;
@@ -346,6 +413,23 @@ static AngularLynxDecodedImage *decodeImage(NSData *bytes, NSDictionary *options
   [self onEngineThread:^{
     [[AngularLynxCanvasRegistry contextForCanvasId:canvasId] targetDidLayOut:target];
   }];
+}
+
+- (void)showImage:(CGImageRef)image opaque:(BOOL)opaque {
+  if (!_imageLayer) {
+    if (!image) return;
+    _imageLayer = [CALayer layer];
+    // Scaled to the view, as a canvas's bitmap is to its CSS size, smoothly.
+    _imageLayer.contentsGravity = kCAGravityResize;
+    _imageLayer.minificationFilter = kCAFilterTrilinear;
+    _imageLayer.frame = self.layer.bounds;
+    [self.layer addSublayer:_imageLayer];
+  }
+  [CATransaction begin];
+  [CATransaction setDisableActions:YES];
+  _imageLayer.contents = (__bridge id)image;
+  _imageLayer.opaque = opaque;
+  [CATransaction commit];
 }
 
 - (void)setCanvasId:(NSString *)canvasId {

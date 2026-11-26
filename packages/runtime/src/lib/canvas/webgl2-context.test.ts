@@ -3,6 +3,7 @@ import {
   createFakeWebGLBridge,
   type FakeWebGLBridge,
 } from '../testing/fake-webgl-bridge';
+import { CANVAS_SOURCE } from './canvas-source';
 import { NATIVE_IMAGE } from './native-image';
 import { WEBGL2_CONSTANTS as GL } from './webgl-constants';
 import { OP } from './webgl-ops';
@@ -1646,6 +1647,58 @@ describe('textures', () => {
       new Uint8Array([200, 128, 0, 0]),
     );
     expect((await flushed()).at(-1)).toEqual(words([100, 128, 0, 0]));
+  });
+
+  it('uploads a canvas by its id, read as it is now', () => {
+    const flush = vi.fn();
+    const canvas = {
+      width: 8,
+      height: 6,
+      [CANVAS_SOURCE]: {
+        canvasId: 'c-2',
+        width: 8,
+        height: 6,
+        readable: true,
+        flush,
+      },
+    };
+    gl.pixelStorei(GL.UNPACK_FLIP_Y_WEBGL, true);
+    const before = bridge.batches.length;
+    gl.texImage2D(GL.TEXTURE_2D, 0, GL.RGBA, GL.RGBA, GL.UNSIGNED_BYTE, canvas);
+    // The canvas's calls go first, and the upload at once, before the canvas
+    // draws more.
+    expect(flush).toHaveBeenCalledOnce();
+    expect(bridge.batches.length).toBe(before + 1);
+    expect(bridge.batches.at(-1)!.slice(-10)).toEqual([
+      OP.texImage2D,
+      GL.TEXTURE_2D,
+      0,
+      GL.RGBA,
+      8,
+      6,
+      0,
+      GL.RGBA,
+      GL.UNSIGNED_BYTE,
+      { canvas: 'c-2', flipY: true, premultiply: false },
+    ]);
+  });
+
+  it('says a video can’t be uploaded yet', () => {
+    expect(() =>
+      gl.texImage2D(
+        GL.TEXTURE_2D,
+        0,
+        GL.RGBA,
+        1,
+        1,
+        0,
+        GL.RGBA,
+        GL.UNSIGNED_BYTE,
+        {
+          tagName: 'video',
+        },
+      ),
+    ).toThrow(/<video> can not be a texture source on Lynx yet/);
   });
 
   it('refuses a source it can’t upload', () => {

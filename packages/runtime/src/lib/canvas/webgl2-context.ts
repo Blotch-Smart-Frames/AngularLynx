@@ -28,6 +28,7 @@ import {
   type WebGLObjectHandle,
 } from './webgl-objects';
 import { OP } from './webgl-ops';
+import { canvasSourceOf, isVideo } from './canvas-source';
 import { nativeImageOf } from './native-image';
 
 /** The `<canvas>` a context draws into, as the context needs it. */
@@ -336,9 +337,12 @@ let constantsAssigned = false;
  * - Images: `texImage2D` with an ImageBitmap or an `<img>` uploads pixels the
  *   shell decoded and kept (see image.ts), by id.
  *
+ * - Canvases: `texImage2D` with a `<canvas>` (2D or WebGL) uploads the
+ *   canvas's pixels, which the shell reads by the canvas's id, as three.js's
+ *   CanvasTexture does for text drawn on a 2D canvas.
+ *
  * Not there: context loss and restore (only `WEBGL_lose_context`'s loss,
- * which three.js calls on dispose), a `<canvas>` or video as a texture
- * source, and object answers from `getVertexAttrib` and `getIndexedParameter`
+ * which three.js calls on dispose), a video as a texture source, and object answers from `getVertexAttrib` and `getIndexedParameter`
  * (they return null).
  */
 // The interface below adds the constants, which the first constructor puts on
@@ -355,6 +359,8 @@ export class LynxWebGL2RenderingContext {
   readonly #attributes: LynxWebGLContextAttributes;
   #commands: unknown[] = [];
   #flushScheduled = false;
+  /** The command being recorded reads a canvas: send it at once. */
+  #sendNow = false;
   /** The default framebuffer was drawn to since the last present. */
   #dirty = false;
   #lost = false;
@@ -476,6 +482,12 @@ export class LynxWebGL2RenderingContext {
   #cmd(...items: unknown[]): void {
     if (this.#lost) return;
     for (const item of items) this.#commands.push(item);
+    if (this.#sendNow) {
+      // An upload from a canvas reads it as it is now, before it draws more.
+      this.#sendNow = false;
+      this.#send();
+      return;
+    }
     this.#scheduleFlush();
   }
 
@@ -2224,7 +2236,7 @@ export class LynxWebGL2RenderingContext {
       return { width: sized.width, height: sized.height ?? 0 };
     }
     throw new TypeError(
-      'texImage2D: the source must be an ImageBitmap, an image, ImageData or a typed array',
+      'texImage2D: the source must be an ImageBitmap, an image, a canvas, ImageData or a typed array',
     );
   }
 
@@ -2237,6 +2249,8 @@ export class LynxWebGL2RenderingContext {
    * - `{ image, flipY, premultiply }`: a decoded image, by id, which the
    *   shell converts to the format and type and flips and premultiplies as it
    *   uploads it.
+   * - `{ canvas, flipY, premultiply }`: a canvas's pixels, by its id, which
+   *   the shell reads and converts the same way.
    */
   #pixels(
     source: unknown,
@@ -2249,6 +2263,23 @@ export class LynxWebGL2RenderingContext {
   ): unknown {
     if (source === null || source === undefined) return null;
     if (typeof source === 'number') return source;
+    const canvas = canvasSourceOf(source);
+    if (canvas) {
+      // The shell reads the canvas's own pixels, by its id: its 2D bitmap or
+      // its drawing buffer. Its calls go first.
+      canvas.flush();
+      this.#sendNow = true;
+      return {
+        canvas: canvas.canvasId,
+        flipY: this.#flipY,
+        premultiply: this.#premultiplyAlpha,
+      };
+    }
+    if (isVideo(source)) {
+      throw new TypeError(
+        'texImage: a <video> can not be a texture source on Lynx yet; use an ImageBitmap, an image, a canvas or a typed array',
+      );
+    }
     const image = nativeImageOf(source);
     if (image) {
       return {
@@ -2268,7 +2299,7 @@ export class LynxWebGL2RenderingContext {
       bytes = bytesOf((source as { data: TypedArray }).data);
     } else {
       throw new TypeError(
-        'texImage: a <canvas> or video can not be a texture source on Lynx; use an ImageBitmap, an image or a typed array',
+        'texImage: the source must be an ImageBitmap, an image, a canvas, ImageData or a typed array',
       );
     }
     if (this.#flipY || this.#premultiplyAlpha) {

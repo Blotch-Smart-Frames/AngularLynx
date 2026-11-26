@@ -114,7 +114,7 @@ Put any elements between the header and footer, such as a form. Import `LYNX_ELE
 
 ### Make the user choose
 
-A backdrop tap or Android's back button lets the user leave without choosing. When they must pick an action, such as confirming a delete, use [Alert Dialog](/dolan/alert-dialog) instead.
+A backdrop tap or Android's back button lets the user leave without choosing. When they must pick an action, such as confirming a delete, use [Alert Dialog](/dolan/alert-dialog) with `[cancelable]="false"` instead: by default, Android's back button cancels an alert dialog too.
 
 ## API
 

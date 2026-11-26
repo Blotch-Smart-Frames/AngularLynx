@@ -82,6 +82,25 @@ const FIXTURES: Record<string, string> = {
     for (const key in point) keys.push(key);
     [point.move(2), point.read(), Object.keys(point), JSON.stringify(point), Object.keys(spread), keys];
   `,
+  'constant fields, written on one instance and not another': `
+    class Base {
+      #open = false;
+      #count = 0;
+      #name = 'base';
+      #missing;
+      #list = this.#count + 1;
+      toggle() { this.#open = !this.#open; this.#count++; this.#name += '!'; this.#missing ??= 'set'; return this; }
+      read() { return [this.#open, this.#count, this.#name, this.#missing, this.#list]; }
+    }
+    class Sub extends Base {
+      #open = true;
+      sub() { return this.#open; }
+    }
+    const a = new Base().toggle().toggle();
+    const b = new Base();
+    const c = new Sub().toggle();
+    [a.read(), b.read(), c.read(), c.sub(), Object.keys(a), JSON.stringify(b)];
+  `,
   'field initializers in order, public and private': `
     class Order {
       a = 1;
@@ -948,12 +967,45 @@ describe('renamePrivateMethods', () => {
 
   it('keys an instance private field by a symbol', () => {
     const code = rename(
-      'class A { #f = 1; g(o) { return this.#f + o?.#f + this\n  .#f; } }',
+      'class A { #f = [1]; g(o) { return this.#f + o?.#f + this\n  .#f; } }',
     );
     const [name] = renamed(code, 'f');
     expect(code).toBe(
-      `var ${name} = Symbol("f"); class A { [${name}] = 1; g(o) { return this[${name}] + o?.[${name}] + this\n  [${name}]; } }`,
+      `var ${name} = Symbol("f"); class A { [${name}] = [1]; g(o) { return this[${name}] + o?.[${name}] + this\n  [${name}]; } }`,
     );
+  });
+
+  it("starts a constant instance field on the prototype, so an instance has it only once it's written", () => {
+    // In PrimJS each own property costs every instance about 45 bytes, and
+    // LynxElement's fields are mostly null or false until something sets
+    // them (issue #586).
+    const code = rename(
+      "class A { #n = null; #b = false; #s: string = 'x' as const; #m = -1; #u = void 0; #e; g() { return [this.#n, this.#b, this.#s, this.#m, this.#u, this.#e]; } }",
+    );
+    const names = ['n', 'b', 's', 'm', 'u', 'e'];
+    const keys = names.map((name) => renamed(code, name)[0]);
+    const [n, b, s, m, u, e] = keys;
+    expect(code).toBe(
+      `var ${keys.map((key, index) => `${key} = Symbol("${names[index]}")`).join(', ')}; ` +
+        `class A { static { this.prototype[${n}] = null; } static { this.prototype[${b}] = false; } ` +
+        `static { this.prototype[${s}] = 'x' as const; } static { this.prototype[${m}] = -1; } ` +
+        `static { this.prototype[${u}] = void 0; }  g() { return [this[${n}], this[${b}], this[${s}], this[${m}], this[${u}], this[${e}]]; } }`,
+    );
+  });
+
+  it('keeps on each instance a field that makes an object, reads anything or spans lines', () => {
+    for (const field of [
+      '#f = [];',
+      '#f = new Map();',
+      '#f = this.x;',
+      '#f = `t`;',
+      "#f =\n    'a';",
+      '#f = -x;',
+    ]) {
+      const code = rename(`class A { ${field} g() { return this.#f; } }`);
+      expect(code).not.toContain('prototype');
+      expect(code).toContain(`[${renamed(code, 'f')[0]}] =`);
+    }
   });
 
   it('declares the symbols after a hashbang', () => {
@@ -1236,9 +1288,11 @@ describe('renamePrivateMethods and hidePrivateMethods with an inline source map'
   it("keeps TypeScript's map pointing at the same code", () => {
     const source = [
       'export class Counter {',
-      '  #count = 0;',
-      '  #step(by: number): number { return (this.#count += by); }',
-      '  get #double(): number { return this.#count * 2; }',
+      // An array, which stays on each instance: a constant would start on
+      // the prototype, its declaration replaced whole.
+      '  #count = [0];',
+      '  #step(by: number): number { return (this.#count[0] += by); }',
+      '  get #double(): number { return this.#count[0]! * 2; }',
       '  next(): number { return this.#step(1) + this.#double; }',
       '}',
     ].join('\n');
@@ -1653,7 +1707,17 @@ describe("over the runtime's build", () => {
       Object.getOwnPropertyNames(element).length -
         Object.getOwnPropertyNames(renamedElement).length,
     ).toBe(methodSites(before.main) + fieldSites(before.main));
-    expect(Object.getOwnPropertySymbols(renamedElement)).toHaveLength(
+    // Each is keyed by a symbol, and those that start as a constant (null,
+    // false, '') start on the prototype: a new element has only the few that
+    // start as an object of its own (issue #586).
+    const own = Object.getOwnPropertySymbols(renamedElement);
+    const defaults = Object.getOwnPropertySymbols(
+      Object.getPrototypeOf(renamedElement),
+    );
+    expect(own.length).toBeLessThan(5);
+    expect(defaults.length).toBeGreaterThan(30);
+    // A field without an initializer starts undefined, as a missing one reads.
+    expect(own.length + defaults.length).toBeLessThanOrEqual(
       fieldSites(before.main),
     );
     expect(Object.keys(renamedElement)).toEqual(Object.keys(element));

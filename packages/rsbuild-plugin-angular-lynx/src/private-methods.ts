@@ -171,6 +171,25 @@ export const transformPrivateMethods = (
  * `undefined` rather than a TypeError. An auto-accessor (`accessor #x`) and
  * a decorated field stay private.
  *
+ * **Constant fields start on the prototype.** An instance field whose
+ * initializer is a constant (`null`, `false`, `''`, a number, `void 0`, or
+ * none at all) doesn't become a property of each instance: its declaration
+ * becomes `static { this.prototype[__x_<key><n>] = v; }` where it was (or
+ * goes, with no initializer, which a missing property reads as), so an
+ * instance reads the default from its prototype and gets a property of its
+ * own only once the field is written. In PrimJS every own property costs each
+ * instance about 45 bytes: on the iOS Simulator, 5,000 objects with 55 fields
+ * took 12.6 MB of its heap, and 5,000 with 10 took 2.6 MB. `LynxElement`
+ * has 41 private fields, most of them `null` or `false` until something sets
+ * them, and the runtime makes one for every element, text node and anchor:
+ * a screen of 5,000 views took 4 MB less with them on the prototype
+ * (issue #586). A constant is the same value for every instance and can't
+ * run code, so it doesn't matter when it's read; only code that misuses the
+ * field sees a difference, as above (reading it on another instance of the
+ * class before its fields are initialized gives the default, not a TypeError).
+ * An initializer that makes an object (`[]`, `new Map()`) still runs for each
+ * instance, as each needs its own.
+ *
  * **Static members** are renamed and keyed the same way. A class makes its
  * static ones once, but each `LynxElement.#registry` read went through
  * `_class_private_field_loose_base` all the same, and a static private
@@ -270,6 +289,30 @@ export const renamePrivateMethods = (
           ? symbolKeyEdits(uses, text, code, sourceFile)
           : null;
       if (!fieldEdits) continue;
+      const initial = fieldStatic
+        ? undefined
+        : prototypeDefault(field as ts.PropertyDeclaration, sourceFile);
+      if (initial !== undefined) {
+        // A constant field starts on the prototype (see above): its
+        // declaration becomes a static block that puts it there, and only
+        // its uses are keyed.
+        const start = field!.getStart(sourceFile);
+        edits.push(
+          ...fieldEdits.filter(
+            (edit) => edit.start < start || edit.start >= field!.end,
+          ),
+          {
+            start,
+            end: field!.end,
+            text:
+              initial === null
+                ? ''
+                : `static { this.prototype[${text}] = ${initial}; }`,
+          },
+        );
+        symbols.push(`${text} = Symbol(${JSON.stringify(name.slice(1))})`);
+        continue;
+      }
       edits.push(...fieldEdits);
       if (fieldStatic) {
         // An empty `;` is a class element of its own, so this follows a
@@ -308,6 +351,53 @@ const isPlainField = (declarations: ts.ClassElement[]): boolean => {
       ?.some((modifier) => modifier.kind === ts.SyntaxKind.AccessorKeyword) &&
     !ts.getDecorators(field)?.length
   );
+};
+
+/**
+ * What an instance private field starts as, when it can start on the
+ * prototype instead of on each instance (see {@link renamePrivateMethods}):
+ * the initializer's text when it's a constant, a literal that is the same
+ * value for every instance (`null`, `true`, `false`, a number, maybe negated,
+ * a string or `void 0`); `null` when it has no initializer, so starts
+ * `undefined`, which a missing property reads as too; and `undefined` when
+ * it must stay on each instance: an initializer that makes an object (`[]`,
+ * `new Map()`), reads anything, or spans lines (the edit must not remove a
+ * line).
+ */
+const prototypeDefault = (
+  field: ts.PropertyDeclaration,
+  sourceFile: ts.SourceFile,
+): string | null | undefined => {
+  const { initializer } = field;
+  if (!initializer) return null;
+  let value: ts.Expression = initializer;
+  while (
+    ts.isParenthesizedExpression(value) ||
+    ts.isAsExpression(value) ||
+    ts.isSatisfiesExpression(value) ||
+    ts.isTypeAssertionExpression(value) ||
+    ts.isNonNullExpression(value)
+  ) {
+    value = value.expression;
+  }
+  if (
+    ts.isPrefixUnaryExpression(value) &&
+    value.operator === ts.SyntaxKind.MinusToken
+  ) {
+    value = value.operand;
+  }
+  const constant =
+    ts.isNumericLiteral(value) ||
+    ts.isStringLiteral(value) ||
+    value.kind === ts.SyntaxKind.NullKeyword ||
+    value.kind === ts.SyntaxKind.TrueKeyword ||
+    value.kind === ts.SyntaxKind.FalseKeyword ||
+    (ts.isVoidExpression(value) && ts.isNumericLiteral(value.expression));
+  if (!constant) return undefined;
+  const text = sourceFile.text.slice(field.getStart(sourceFile), field.end);
+  return /[\n\r\u2028\u2029]/.test(text)
+    ? undefined
+    : initializer.getText(sourceFile);
 };
 
 /**

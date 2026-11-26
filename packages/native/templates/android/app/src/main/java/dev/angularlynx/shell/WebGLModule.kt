@@ -101,11 +101,8 @@ class WebGLModule(context: Context, param: Any?) : LynxModule(context, param) {
                 val width = options?.optInt("width") ?: 0
                 val height = options?.optInt("height") ?: 0
                 if (width <= 0 || height <= 0) return imageFailed("The canvas has no pixels")
-                // In Long: a canvas of 32768 by 32768 has 2^32 bytes, which
-                // an Int wraps round to 0.
-                val bytes = width.toLong() * height * 4
-                if (bytes > Int.MAX_VALUE) return imageFailed("The canvas is too large to copy")
-                DecodedImage(ByteBuffer.allocateDirect(bytes.toInt()).order(ByteOrder.nativeOrder()), width, height, true)
+                val bytes = rgbaByteCount(width, height) ?: return imageFailed("The canvas is too large to copy")
+                DecodedImage(ByteBuffer.allocateDirect(bytes).order(ByteOrder.nativeOrder()), width, height, true)
             }
             if (options?.optBool("transfer") == true) context?.clearForTransfer()
             val image = pixelsOfSnapshot(snapshot, options)
@@ -144,8 +141,9 @@ class WebGLModule(context: Context, param: Any?) : LynxModule(context, param) {
             bitmap.copyPixelsFromBuffer(pixels)
             width = resizedSide(resizeWidth, snapshot.width, resizeHeight, snapshot.height)
             height = resizedSide(resizeHeight, snapshot.height, resizeWidth, snapshot.width)
+            val bytes = rgbaByteCount(width, height) ?: throw IllegalArgumentException("The resize is too large")
             val scaled = Bitmap.createScaledBitmap(bitmap, width, height, true)
-            pixels = ByteBuffer.allocateDirect(width * height * 4).order(ByteOrder.nativeOrder())
+            pixels = ByteBuffer.allocateDirect(bytes).order(ByteOrder.nativeOrder())
             scaled.copyPixelsToBuffer(pixels)
             pixels.rewind()
             if (scaled !== bitmap) scaled.recycle()
@@ -495,6 +493,18 @@ internal fun flipRows(pixels: ByteBuffer, stride: Int, height: Int) {
         pixels.position(other * stride); pixels.put(top)
     }
     pixels.rewind()
+}
+
+/**
+ * The bytes of a [width] by [height] RGBA image, or null when a buffer can't
+ * hold that many. The pixel count of two Ints fits in a Long, and is checked
+ * before it's multiplied by 4: a canvas of 32768 by 32768 has 2^32 bytes,
+ * which an Int wraps round to 0, and one of Int.MAX_VALUE by Int.MAX_VALUE
+ * more than a Long holds.
+ */
+internal fun rgbaByteCount(width: Int, height: Int): Int? {
+    val pixels = width.toLong() * height
+    return if (pixels in 0..(Int.MAX_VALUE / 4).toLong()) (pixels * 4).toInt() else null
 }
 
 /**

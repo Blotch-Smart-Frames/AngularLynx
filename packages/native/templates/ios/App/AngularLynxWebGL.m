@@ -130,6 +130,11 @@ static AngularLynxDecodedImage *pixelsOfImage(CGImageRef image, NSDictionary *op
     width = MAX(1, (size_t)ceil((double)width * h / height));
     height = h;
   }
+  // A resize can name sides up to 2^32 - 1, whose bytes would wrap round.
+  if (width > SIZE_MAX / 4 / height) {
+    *error = @"The image is too large";
+    return nil;
+  }
   NSMutableData *pixels = [NSMutableData dataWithLength:width * height * 4];
   CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
   // CoreGraphics draws RGBA only premultiplied.
@@ -391,7 +396,12 @@ static AngularLynxDecodedImage *pixelsOfSnapshot(AngularLynxDecodedImage *snapsh
     if (width <= 0 || height <= 0) {
       return @{@"width" : @0, @"height" : @0, @"error" : @"The canvas has no pixels"};
     }
-    NSMutableData *blank = [NSMutableData dataWithLength:(NSUInteger)width * height * 4];
+    // Checked before it's multiplied: two sides near 2^32 would wrap round
+    // to a small count, and the copy would read past it.
+    NSMutableData *blank =
+        (NSUInteger)width <= NSIntegerMax / 4 / (NSUInteger)height
+            ? [NSMutableData dataWithLength:(NSUInteger)width * height * 4]
+            : nil;
     if (!blank) {
       return @{@"width" : @0, @"height" : @0, @"error" : @"The canvas is too large to copy"};
     }

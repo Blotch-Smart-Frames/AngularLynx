@@ -646,7 +646,7 @@ describe('dragging across the menu', () => {
     await waitForClose(rendered);
   });
 
-  it("doesn't light up or choose a disabled item, or the space around the rows", async () => {
+  it("doesn't light up or choose a disabled item", async () => {
     const rendered = await pressTrigger();
     await waitForOpen(rendered);
 
@@ -660,11 +660,19 @@ describe('dragging across the menu', () => {
     );
     expect(rendered.host.archived).not.toHaveBeenCalled();
     expect(rendered.host.open()).toBe(true);
+  });
 
-    // Beside the menu, and below it.
-    fireLynxEvent(rendered.trigger(), 'touchstart', touchAt(40, 100));
+  it("doesn't light up or choose anything beside the menu, or below it", async () => {
+    const rendered = await pressTrigger();
+    await waitForOpen(rendered);
+    // The press is followed: the row lights up under the finger.
+    await moveTo(rendered, rowAt(SHARE));
+    expect(highlight(rendered, 'Share')).toBe('0.08');
+
     await moveTo(rendered, { x: 380, y: rowAt(SHARE).y });
+    expect(highlight(rendered, 'Share')).toBe('0');
     await moveTo(rendered, { x: rowAt(SHARE).x, y: 700 });
+    expect(highlight(rendered, 'Share')).toBe('0');
     fireLynxEvent(rendered.trigger(), 'touchend', liftAt(rowAt(SHARE).x, 700));
     await waitForUpdate();
     expect(rendered.host.shared).not.toHaveBeenCalled();

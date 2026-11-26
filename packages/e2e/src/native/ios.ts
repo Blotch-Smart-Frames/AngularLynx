@@ -4,12 +4,10 @@ import path from 'node:path';
 import { check, run, runAllowFailure, start, step, stop } from '../process.ts';
 import { EXPLORER, getExplorer } from './explorer.ts';
 import {
-  flowsFor,
-  type NativeHost,
-  judgeFlow,
-  LIBRARY_PHOTO,
-  runFlows,
-} from './maestro.ts';
+  ensureLibraryPhoto,
+  startAddingLibraryPhoto,
+} from './library-photo.ts';
+import { flowsFor, type NativeHost, judgeFlow, runFlows } from './maestro.ts';
 
 /** The simulator the E2E tests create and reuse, so a developer's own stays untouched. */
 const DEVICE_NAME = 'AngularLynx E2E';
@@ -38,42 +36,6 @@ const simctl = async (args: string[], logFile: string) =>
       echo: false,
     })
   ).output;
-
-/**
- * Adds the photo photo.yaml picks, newest in the library, so it's the first
- * the picker shows. On a freshly booted GitHub runner simulator, `simctl
- * addmedia` is slow: 67 to 174 seconds when it worked, and it has also crashed
- * after a minute (exit 133). A try stopped at its limit starts over, so a short
- * limit only adds tries that can't finish: four 90-second tries all failed in
- * one run. Two five-minute tries stay inside the step's 30-minute limit with
- * the flows (about 4 minutes for the shell and 4.5 for Explorer).
- */
-const addLibraryPhoto = async (udid: string, logFile: string) => {
-  const tries = 2;
-  for (let attempt = 1; ; attempt++) {
-    const { code } = await runAllowFailure(
-      'xcrun',
-      ['simctl', 'addmedia', udid, LIBRARY_PHOTO],
-      {
-        cwd: process.cwd(),
-        logFile,
-        echo: false,
-        timeout: { ms: 300_000 },
-      },
-    );
-    if (code === 0) {
-      return;
-    }
-    check(
-      attempt < tries,
-      `\`xcrun simctl addmedia\` failed ${tries} times (last exit code ${code}).`,
-    );
-    console.log(
-      `simctl addmedia exited with code ${code}; trying again (${attempt + 1} of ${tries}).`,
-    );
-    await new Promise((resolve) => setTimeout(resolve, 5_000));
-  }
-};
 
 /**
  * Boots the E2E simulator, creating it on the newest iOS runtime that runs a
@@ -179,11 +141,16 @@ const bootSimulator = async (
 /**
  * Starts booting the simulator and downloads Explorer without waiting for the
  * boot to finish. CI runs this first, so the boot (the slowest part of the
- * iOS job) overlaps with installing Maestro and the other setup steps.
+ * iOS job) overlaps with installing Maestro and the other setup steps. So
+ * does adding photo.yaml's library photo, which a background job does once
+ * the boot finishes: on CI's runners `simctl addmedia` can take minutes
+ * (#624). Only the app's own build runs photo.yaml, but CI always tests it,
+ * and a photo in the library changes nothing for Explorer's flows.
  */
 export const prepareIos = async (logFile: string) => {
   step('Layer 6: start the iOS Simulator and download Lynx Explorer');
   const udid = await bootSimulator(logFile, { wait: false });
+  startAddingLibraryPhoto(udid, logFile);
   await getExplorer('ios', logFile);
   console.log(`${DEVICE_NAME} (${udid}) is booting`);
 };
@@ -219,9 +186,10 @@ export const runOnIosSimulator = async ({
   const processName = host.kind === 'shell' ? host.processName : 'LynxExplorer';
   const udid = await bootSimulator(logFile);
   await simctl(['install', udid, app], logFile);
-  // Only the shell runs photo.yaml, which picks this photo.
+  // Only the shell runs photo.yaml, which picks this photo. In CI,
+  // prepareIos() started adding it while the simulator booted.
   if (host.kind === 'shell') {
-    await addLibraryPhoto(udid, logFile);
+    await ensureLibraryPhoto(udid, logFile);
   }
 
   // The app's own log, for JavaScript errors and for debugging failures.

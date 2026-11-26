@@ -122,6 +122,7 @@ On iOS the menu is one glass shape whose frame grows from the trigger's to the m
 
 - **`label`** is the item's text, and what a screen reader reads.
 - **`icon`** takes a name from the [icon set](/dolan/icon). Give icons to common actions, such as share, copy and delete.
+- **`svg`** takes your own icon's markup instead, for an action the set has nothing for, such as opening your app's other product: `<ui-menu-item label="Open in Acme" [svg]="acmeMark" />`. `currentColor` in it takes the item's color, red on a destructive item, and colors written out stay. `xmlns` is optional, and lines must be `<path>`s, as for [an icon's own SVG](/dolan/icon#your-own-svg). Give `icon` or `svg`, not both.
 - **`variant="destructive"`** colors the item red, for actions that delete or can't be undone.
 - **`disabled`** shows the item, faded, without letting it be chosen.
 
@@ -187,7 +188,8 @@ Selector: `[uiMenuTrigger]`. Put it on the element inside `<ui-menu>` that opens
 | Input                | Type                         | Default     | Description                                                                           |
 | -------------------- | ---------------------------- | ----------- | ------------------------------------------------------------------------------------- |
 | `label`              | `string`                     | (required)  | The item's text.                                                                      |
-| `icon`               | `IconName`                   | —           | An icon from the icon set.                                                            |
+| `icon`               | `IconName`                   | —           | An icon from the icon set. Give this or `svg`.                                        |
+| `svg`                | `string`                     | —           | SVG markup to draw instead, with `currentColor` in the item's color.                  |
 | `variant`            | `'default' \| 'destructive'` | `'default'` | `destructive` colors it red.                                                          |
 | `checked`            | `boolean`                    | —           | Shows a checkmark when true. Set it on every item of a group of options.              |
 | `disabled`           | `boolean`                    | `false`     | Shows the item without letting it be chosen.                                          |

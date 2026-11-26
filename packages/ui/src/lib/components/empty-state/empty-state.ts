@@ -2,7 +2,7 @@ import { Component, ViewEncapsulation, computed, input } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 import { cn } from '../../utils/cn';
-import { type IconName } from '../icon/icons';
+import { type IconName, optionalIconMarkup } from '../icon/icons';
 import { UiIcon } from '../icon/icon';
 
 /**
@@ -22,9 +22,9 @@ import { UiIcon } from '../icon/icon';
     '[attr.title]': 'null',
   },
   template: `
-    @if (icon()) {
+    @if (iconMarkup(); as markup) {
       <ui-icon
-        [name]="icon()!"
+        [svg]="markup"
         size="lg"
         color="var(--muted-foreground)"
         class="mb-4"
@@ -38,10 +38,31 @@ import { UiIcon } from '../icon/icon';
   `,
 })
 export class UiEmptyState {
+  /** An icon from the set (see `ICONS`) over the title. Give this or `svg`. */
   readonly icon = input<IconName | undefined>(undefined);
+  /**
+   * SVG markup to draw instead of an icon from the set, such as the app's
+   * own illustration of what's missing. `currentColor` in it takes the muted
+   * foreground, as the set's icons do; colors written out stay. Give this or
+   * `icon`.
+   */
+  readonly svg = input<string | undefined>(undefined);
   readonly title = input.required<string>();
   readonly description = input('');
   readonly userClass = input<string>('', { alias: 'class' });
+
+  /**
+   * The icon's markup, from the set or the app's own, or nothing. The
+   * <ui-icon> gets it as its `svg` either way, so the empty state checks for
+   * both itself and names itself in the error rather than the icon.
+   */
+  protected readonly iconMarkup = computed(() =>
+    optionalIconMarkup(
+      this.icon(),
+      this.svg(),
+      '<ui-empty-state> takes an icon or an svg, not both.',
+    ),
+  );
 
   protected readonly containerClass = computed(() =>
     cn(

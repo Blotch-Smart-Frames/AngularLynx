@@ -20,7 +20,7 @@ import { cn } from '@blotch/dolan/utils/cn';
 import { UiGlass } from '../glass/glass';
 import { injectGlassDesign } from '../glass/glass-design';
 import { UiIcon } from '../icon/icon';
-import { type IconName } from '../icon/icons';
+import { type IconName, optionalIconMarkup } from '../icon/icons';
 import { type MenuElement, UiMenuPopup } from './menu-popup';
 
 /**
@@ -53,6 +53,7 @@ const optionalBooleanAttribute = (value: unknown): boolean | undefined =>
  * ```html
  * <ui-menu-item label="Copy" icon="copy" (pressed)="copy()" />
  * <ui-menu-item label="Delete" icon="trash" variant="destructive" (pressed)="remove()" />
+ * <ui-menu-item label="Open in Acme" [svg]="acmeMark" (pressed)="open()" />
  * ```
  *
  * Each design lays it out as its platform does: Apple's 44pt rows, with the
@@ -97,12 +98,12 @@ const optionalBooleanAttribute = (value: unknown): boolean | undefined =>
           }
         </view>
       }
-      @if (leadingIcon(); as name) {
-        <ui-icon [name]="name" [size]="iconSize()" [color]="iconColor()" />
+      @if (leadingIcon(); as markup) {
+        <ui-icon [svg]="markup" [size]="iconSize()" [color]="iconColor()" />
       }
       <text [class]="labelClass()">{{ label() }}</text>
-      @if (trailingIcon(); as name) {
-        <ui-icon [name]="name" [size]="iconSize()" [color]="iconColor()" />
+      @if (trailingIcon(); as markup) {
+        <ui-icon [svg]="markup" [size]="iconSize()" [color]="iconColor()" />
       }
     </view>
   `,
@@ -113,8 +114,16 @@ export class UiMenuItem {
 
   /** What the item does, which is also what a screen reader reads. */
   readonly label = input.required<string>();
-  /** An icon for a common action, from the icon set. */
+  /** An icon for a common action, from the icon set. Give this or `svg`. */
   readonly icon = input<IconName | undefined>(undefined);
+  /**
+   * SVG markup to draw instead of an icon from the set, such as the app's
+   * own mark for an action the set has nothing for. `currentColor` in it
+   * takes the item's color, as the set's icons do (the destructive color on
+   * a destructive item, the glass's foreground otherwise), and it's drawn at
+   * the row's icon size; colors written out stay. Give this or `icon`.
+   */
+  readonly svg = input<string | undefined>(undefined);
   /** `'destructive'` for an action that deletes or can't be undone. */
   readonly variant = input<'default' | 'destructive'>('default');
   /**
@@ -148,11 +157,23 @@ export class UiMenuItem {
    * at the end of the row.
    */
   readonly #iconLeads = computed(() => this.#design() !== 'frosted');
+  /**
+   * The icon's markup, from the set or the app's own, or nothing. The
+   * <ui-icon> gets it as its `svg` either way, so the item checks for both
+   * itself and names itself in the error rather than the icon.
+   */
+  readonly #iconMarkup = computed(() =>
+    optionalIconMarkup(
+      this.icon(),
+      this.svg(),
+      '<ui-menu-item> takes an icon or an svg, not both.',
+    ),
+  );
   protected readonly leadingIcon = computed(() =>
-    this.#iconLeads() ? this.icon() : undefined,
+    this.#iconLeads() ? this.#iconMarkup() : undefined,
   );
   protected readonly trailingIcon = computed(() =>
-    this.#iconLeads() ? undefined : this.icon(),
+    this.#iconLeads() ? undefined : this.#iconMarkup(),
   );
 
   /**

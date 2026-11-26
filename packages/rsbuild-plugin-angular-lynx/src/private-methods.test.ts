@@ -996,9 +996,9 @@ describe('renamePrivateMethods', () => {
     const [n, b, s, m, u, e] = keys;
     expect(code).toBe(
       `var ${keys.map((key, index) => `${key} = Symbol("${names[index]}")`).join(', ')}; ` +
-        `class A { static { this.prototype[${n}] = null; this.prototype[${b}] = false; ` +
+        `let A = /*#__PURE__*/ (() => class A { static { this.prototype[${n}] = null; this.prototype[${b}] = false; ` +
         `this.prototype[${s}] = 'x' as const; this.prototype[${m}] = -1; this.prototype[${u}] = void 0; } ` +
-        `       g() { return [this[${n}], this[${b}], this[${s}], this[${m}], this[${u}], this[${e}]]; } }`,
+        `       g() { return [this[${n}], this[${b}], this[${s}], this[${m}], this[${u}], this[${e}]]; } })();`,
     );
   });
 
@@ -1027,7 +1027,7 @@ describe('renamePrivateMethods', () => {
       '#!/usr/bin/env node\nclass A { #f = 1; g() { return this.#f; } }',
     );
     expect(code).toMatch(
-      /^#!\/usr\/bin\/env node\nvar __f_[0-9a-f]{6}0 = Symbol\("f"\); class A/,
+      /^#!\/usr\/bin\/env node\nvar __f_[0-9a-f]{6}0 = Symbol\("f"\); let A = \/\*#__PURE__\*\/ \(\(\) => class A/,
     );
   });
 
@@ -1039,7 +1039,7 @@ describe('renamePrivateMethods', () => {
     const [s] = renamed(code, 's');
     const [t] = renamed(code, 't');
     expect(code).toBe(
-      `var ${t} = Symbol("t"); class A { static ${s}() { return 1; } static [${t}] = 2;; static { Object.defineProperty(this, ${t}, { enumerable: false }); } static f() { return A.${s}() + this[${t}]; } }`,
+      `var ${t} = Symbol("t"); let A = /*#__PURE__*/ (() => class A { static ${s}() { return 1; } static [${t}] = 2;; static { Object.defineProperty(this, ${t}, { enumerable: false }); } static f() { return A.${s}() + this[${t}]; } })();`,
     );
   });
 
@@ -2293,4 +2293,58 @@ describe("over the runtime's build", () => {
     expect(brandChecks(before.main)).toBeGreaterThan(50);
     expect(brandChecks(after.main)).toBe(0);
   }, 60_000);
+});
+
+describe('renamePrivateMethods, wrapping a class it gives a static block', () => {
+  const PURE = '/*#__PURE__*/ (() => ';
+  const wrapped = (code: string): boolean => rename(code).includes(PURE);
+
+  it('wraps a variable’s class and an exported class in a pure IIFE, so the minifier can drop them', () => {
+    const fromVar = rename(
+      'var A = class A { #f = null; g() { return this.#f; } };',
+    );
+    expect(fromVar).toMatch(
+      /^var __f_[0-9a-f]{6}0 = Symbol\("f"\); var A = \/\*#__PURE__\*\/ \(\(\) => class A \{ static \{ .* \} +g\(\) \{ return this\[__f_[0-9a-f]{6}0\]; \} \}\)\(\);$/,
+    );
+    const exported = rename(
+      'export class A { #f = null; g() { return this.#f; } }',
+    );
+    expect(exported).toMatch(
+      /export let A = \/\*#__PURE__\*\/ \(\(\) => class A \{/,
+    );
+    expect(exported.endsWith('} })();')).toBe(true);
+    // A class whose computed names and base only read names is pure too (a subclass's
+    // block hides its static field).
+    expect(
+      wrapped(
+        'class A extends ns.Base { static #t = 1; [Symbol.iterator]() { return A.#t; } }',
+      ),
+    ).toBe(true);
+  });
+
+  it('leaves alone a class that does more when it’s defined, or isn’t at the top of the module', () => {
+    for (const code of [
+      // Defining these does something besides making the class.
+      'class A { #f = null; static s = make(); g() { return this.#f; } }',
+      'class A extends mixin(B) { static #t = 1; g() { return A.#t; } }',
+      'class A { #f = null; [key()]() { return this.#f; } }',
+      'class A { #f = null; static { setUp(); } g() { return this.#f; } }',
+      '@Dec() class A { #f = null; g() { return this.#f; } }',
+      // Not a top-level class of its own.
+      'export default class A { #f = null; g() { return this.#f; } }',
+      'class { #f = null; g() { return this.#f; } }',
+      'var A = class { #f = null; g() { return this.#f; } }, B = 1;',
+      'var A = 1 && class { #f = null; g() { return this.#f; } };',
+      'function f() { return class { #f = null; g() { return this.#f; } }; }',
+      'for (const x of xs) { let A = class { #f = null; g() { return this.#f; } }; }',
+    ]) {
+      expect(wrapped(code), code).toBe(false);
+    }
+  });
+
+  it('leaves alone a class it gives no static block', () => {
+    expect(
+      wrapped('class A { #m() { return 1; } g() { return this.#m(); } }'),
+    ).toBe(false);
+  });
 });

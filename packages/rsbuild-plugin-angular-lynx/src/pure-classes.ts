@@ -316,6 +316,47 @@ const isLoweredPureClass = (node: ts.ClassLikeDeclaration): boolean => {
   return lowered;
 };
 
+/**
+ * Whether defining the class does nothing but make it: no decorators, an
+ * `extends` and computed member names that only read a name or a property of
+ * one, no `static {}` block, and pure static initializers. A pure IIFE around
+ * such a class claims nothing that isn't so (see renamePrivateMethods, which
+ * wraps the classes it gives a static block of its own).
+ */
+export const definesClassPurely = (node: ts.ClassLikeDeclaration): boolean => {
+  if (ts.getDecorators(node)?.length) {
+    return false;
+  }
+  const heritage = node.heritageClauses?.find(
+    (clause) => clause.token === ts.SyntaxKind.ExtendsKeyword,
+  );
+  const base = heritage?.types[0]?.expression;
+  if (base && !isPureReference(base)) {
+    return false;
+  }
+  return node.members.every((member) => {
+    if (ts.isClassStaticBlockDeclaration(member)) {
+      return false;
+    }
+    if (
+      member.name &&
+      ts.isComputedPropertyName(member.name) &&
+      !isPureReference(member.name.expression)
+    ) {
+      return false;
+    }
+    const isStatic = ts
+      .getModifiers(member as ts.HasModifiers)
+      ?.some((modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword);
+    return !(
+      isStatic &&
+      ts.isPropertyDeclaration(member) &&
+      member.initializer &&
+      !isPure(member.initializer)
+    );
+  });
+};
+
 const isPureReference = (node: ts.Expression): boolean =>
   ts.isIdentifier(node) ||
   (ts.isPropertyAccessExpression(node) && isPureReference(node.expression));

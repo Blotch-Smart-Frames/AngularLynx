@@ -6,6 +6,7 @@ import {
   PACKAGES_DIR,
   THIRD_PARTY,
 } from './layers.js';
+import { definesClassPurely } from './pure-classes.js';
 
 export type PrivateMethodsOptions = {
   /** The directory the file keys are relative to, as in cross-thread-transform.ts. */
@@ -713,10 +714,15 @@ export const renamePrivateMethods = (
   // The symbols are made at the top of the module, from `Symbol`, so a module
   // that binds the name keeps its private fields as SWC compiles them.
   const globalSymbol = !bindsName(sourceFile, 'Symbol');
+  // The pure IIFEs around the classes given a static block (see below), put
+  // in after the symbols' line, so a class at the very start of the module
+  // still comes after the symbols it uses.
+  const wraps: Edit[] = [];
   for (const info of analyzeClasses(sourceFile)) {
     // Every class it makes would share these names, and one made from
     // another would override its base's methods (see above).
     if (info.branded || (info.repeated && info.extendsAnother)) continue;
+    const blocksAt = edits.length;
     // The class's constant fields' defaults (see above), which a static block
     // at the start of its body puts on the prototype: before any static
     // initializer, which could make an instance and read one.
@@ -794,6 +800,9 @@ export const renamePrivateMethods = (
         text: ` static { ${defaults.join(' ')} } `,
       });
     }
+    if (edits.slice(blocksAt).some((edit) => edit.text.includes('static {'))) {
+      wraps.push(...pureClassWrap(info.node, sourceFile));
+    }
   }
   if (symbols.length > 0) {
     // Before everything, on the first line (a hashbang keeps it), so a class
@@ -802,7 +811,65 @@ export const renamePrivateMethods = (
     const start = code.startsWith('#!') ? code.indexOf('\n') + 1 : 0;
     edits.push({ start, end: start, text: `var ${symbols.join(', ')}; ` });
   }
+  edits.push(...wraps);
   return applyEdits(code, edits, sourceFile);
+};
+
+/**
+ * Wraps a top-level class in a pure IIFE, `/*#__PURE__*\/ (() => class X
+ * {…})()`, once renamePrivateMethods has given it a `static {}` block.
+ *
+ * The main thread's code is compiled to ES2019, so SWC turns the block into
+ * statements after the class: `_X.prototype[__a] = null`. At the top of a
+ * module those are side effects, so the minifier kept every class that had
+ * one, and all it reaches, whether anything used it or not. The runtime's
+ * WebGL2 and 2D contexts, its observers and its network classes stayed in
+ * every app's main-thread script, about 47 kB of hello-world's (#707).
+ * Inside the arrow function the statements are its own, and the minifier
+ * drops the call when nothing uses its value, as Angular's build does for a
+ * class with static members.
+ *
+ * Only a class whose definition does nothing else (see definesClassPurely),
+ * and only one at the top level: a class declaration, which becomes `let X
+ * = …` (an `export` stays in front of it), or the only initializer of a
+ * variable statement. A default export, or a class inside an expression or
+ * a function, is left as it is. The edits only insert text, so no line moves.
+ */
+const pureClassWrap = (
+  node: ts.ClassLikeDeclaration,
+  sourceFile: ts.SourceFile,
+): Edit[] => {
+  if (!definesClassPurely(node)) return [];
+  const start = node
+    .getChildren(sourceFile)
+    .find((child) => child.kind === ts.SyntaxKind.ClassKeyword)!
+    .getStart(sourceFile);
+  const end = node.end;
+  const iife = '/*#__PURE__*/ (() => ';
+  if (ts.isClassDeclaration(node)) {
+    const isDefault = ts
+      .getModifiers(node)
+      ?.some((modifier) => modifier.kind === ts.SyntaxKind.DefaultKeyword);
+    if (node.parent !== sourceFile || !node.name || isDefault) return [];
+    return [
+      { start, end: start, text: `let ${node.name.text} = ${iife}` },
+      { start: end, end, text: ')();' },
+    ];
+  }
+  const declaration = node.parent;
+  if (
+    !ts.isVariableDeclaration(declaration) ||
+    declaration.initializer !== node ||
+    !ts.isVariableDeclarationList(declaration.parent) ||
+    declaration.parent.declarations.length !== 1 ||
+    declaration.parent.parent.parent !== sourceFile
+  ) {
+    return [];
+  }
+  return [
+    { start, end: start, text: iife },
+    { start: end, end, text: ')()' },
+  ];
 };
 
 /**

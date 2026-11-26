@@ -238,10 +238,16 @@ export const splitPrivateChains = (code: string, filename: string): string => {
   let prefix = '__receiver';
   while (code.includes(prefix)) prefix = `_${prefix}`;
 
-  const visit = (node: ts.Node): void => {
+  /**
+   * Visits `node`. `yielding` is whether it's in a destructuring's default
+   * value that has a `yield` or an `await` (see {@link yieldingDefault}).
+   */
+  const visit = (node: ts.Node, yielding: boolean): void => {
+    const inYielding = yielding || yieldingDefault(node);
     if (ts.isCallExpression(node)) {
       const callee = skipNonNull(node.expression);
       if (
+        !inYielding &&
         isPrivateAccess(callee) &&
         (node.questionDotToken || ts.isOptionalChain(callee))
       ) {
@@ -288,9 +294,17 @@ export const splitPrivateChains = (code: string, filename: string): string => {
       ts.isOptionalChain(node) &&
       !node.questionDotToken
     ) {
-      // A link right after a private member of the same chain.
+      // A link right after a private member of the same chain. A private
+      // one is split even where SWC then can't compile the default value,
+      // as without the `?.` SWC fails the module (see above).
       const inner = skipNonNull(node.expression);
-      if (isPrivateAccess(inner) && ts.isOptionalChain(inner)) {
+      if (
+        isPrivateAccess(inner) &&
+        ts.isOptionalChain(inner) &&
+        (!inYielding ||
+          (ts.isPropertyAccessExpression(node) &&
+            ts.isPrivateIdentifier(node.name)))
+      ) {
         const at = dotOf(node, sourceFile);
         if (ts.isPropertyAccessExpression(node)) {
           questionMarks.add(at);
@@ -318,9 +332,9 @@ export const splitPrivateChains = (code: string, filename: string): string => {
         );
       }
     }
-    ts.forEachChild(node, visit);
+    ts.forEachChild(node, (child) => visit(child, inYielding));
   };
-  visit(sourceFile);
+  visit(sourceFile, false);
   for (const at of questionMarks) {
     edits.push({ start: at, end: at, text: '?' });
   }
@@ -398,9 +412,11 @@ export const splitPrivateChains = (code: string, filename: string): string => {
  * {@link splitPrivateChains}) is declared: the body of the function, method
  * or static block the call is in, so each run of it has its own. An arrow
  * function's expression body, a field's initializer and a default value
- * (a parameter's or a destructuring's), which run once per call or
- * instance, are given one: a default value can't see the function body's
- * variables. A call in a computed key, `extends` or a decorator is in the
+ * in a parameter list (a parameter's, or one in its destructuring), which
+ * run once per call or instance, are given one: a parameter's default
+ * value can't see the function body's variables. A default value in a
+ * destructuring elsewhere is in the function's body, which keeps its
+ * `await` and `yield` in their function, as a wrapper wouldn't. A call in a computed key, `extends` or a decorator is in the
  * scope around them, and one outside any function, which runs once, in the
  * module.
  */
@@ -413,7 +429,7 @@ const receiverScope = (call: ts.Node): ts.Node => {
         (parent as { body?: ts.Node }).body === child) ||
       ((ts.isPropertyDeclaration(parent) ||
         ts.isParameter(parent) ||
-        ts.isBindingElement(parent)) &&
+        (ts.isBindingElement(parent) && inParameter(parent))) &&
         parent.initializer === child)
     ) {
       return child;
@@ -421,6 +437,54 @@ const receiverScope = (call: ts.Node): ts.Node => {
     child = parent;
   }
   return child;
+};
+
+/**
+ * Whether a node is a destructuring's default value (`[a = v] = …`,
+ * `{ a = v } = …`, in a declaration or an assignment) with a `yield` or an
+ * `await` of its function in it. SWC (1.16) compiles such a default value
+ * that has an optional chain it needs a variable for into an arrow function
+ * called at once, where the `yield` or `await` is a SyntaxError, whatever
+ * the chain reads. The rewritten calls and links need one, where SWC's own
+ * compile of them doesn't, so there they're left to SWC: the module loads,
+ * with SWC's short-circuit and receiver, rather than failing to.
+ */
+const yieldingDefault = (node: ts.Node): boolean => {
+  const parent = node.parent;
+  const isDefault =
+    parent !== undefined &&
+    ((ts.isBindingElement(parent) && parent.initializer === node) ||
+      (ts.isShorthandPropertyAssignment(parent) &&
+        parent.objectAssignmentInitializer === node) ||
+      (ts.isBinaryExpression(parent) &&
+        parent.right === node &&
+        parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        (ts.isArrayLiteralExpression(parent.parent) ||
+          ts.isPropertyAssignment(parent.parent))));
+  if (!isDefault) return false;
+  const yields = (inner: ts.Node): boolean =>
+    ts.isYieldExpression(inner) ||
+    ts.isAwaitExpression(inner) ||
+    (!ts.isFunctionLike(inner) &&
+      !ts.isClassLike(inner) &&
+      (ts.forEachChild(inner, (child) => yields(child) || undefined) ?? false));
+  return yields(node);
+};
+
+/**
+ * Whether a destructuring's element is in a parameter list, rather than in
+ * a variable declaration, an assignment's target or a `catch` clause.
+ */
+const inParameter = (element: ts.BindingElement): boolean => {
+  let node: ts.Node = element;
+  while (
+    ts.isBindingElement(node) ||
+    ts.isObjectBindingPattern(node) ||
+    ts.isArrayBindingPattern(node)
+  ) {
+    node = node.parent;
+  }
+  return ts.isParameter(node);
 };
 
 /**

@@ -1664,6 +1664,33 @@ const CHAIN_FIXTURES: Record<string, string> = {
     const field = new Node('q').label;
     [first, Node.reenter, Node.run(null), field(), new Node('r').label()];
   `,
+  'a destructuring default in an async function and a generator': `
+    class Node {
+      #name;
+      constructor(name) { this.#name = name; }
+      #label(suffix) { return this.#name + suffix; }
+      static async later(node) {
+        const suffix = await Promise.resolve('!');
+        const { value = node?.#label(suffix) } = {};
+        return value;
+      }
+      static *labels(node) {
+        const suffix = yield 'asked';
+        const [value = node?.#label(suffix)] = [];
+        yield value;
+      }
+    }
+    (async () => {
+      const node = new Node('n');
+      const labels = Node.labels(node);
+      return [
+        await Node.later(node),
+        await Node.later(null),
+        labels.next().value,
+        labels.next('?').value,
+      ];
+    })();
+  `,
 };
 
 describe('splitPrivateChains', () => {
@@ -1704,11 +1731,13 @@ describe('splitPrivateChains', () => {
 
   for (const [name, fixture] of Object.entries(CHAIN_FIXTURES)) {
     it(`matches native private members: ${name}`, async () => {
-      const expected = runInNewContext(fixture);
+      // Settled, as an async fixture gives a promise.
+      const expected = await settle(fixture);
+      expect(expected).not.toHaveProperty('error');
       const result = split(fixture);
       expect(result.split('\n')).toHaveLength(fixture.split('\n').length);
       for (const layer of [LAYERS.MAIN_THREAD, LAYERS.BACKGROUND]) {
-        expect(runInNewContext(compile(result, layer))).toEqual(expected);
+        expect(await settle(compile(result, layer))).toEqual(expected);
       }
     });
   }
@@ -1806,6 +1835,15 @@ describe('splitPrivateChains', () => {
     expect(call('f(x, { y = x?.#m() }) { return y; }')).toBe(
       'f(x, { y = (() => { var __receiver0; return (__receiver0 = x)?.#m?.call(__receiver0) })() }) { return y; }',
     );
+    // A destructuring's default value in the body is in the function.
+    expect(
+      call('async f(x) { await 0; const { y = x?.#m() } = {}; return y; }'),
+    ).toBe(
+      'async f(x) { await 0; var __receiver0; const { y = (__receiver0 = x)?.#m?.call(__receiver0) } = {}; return y; }'.replace(
+        'await 0; var __receiver0; ',
+        'var __receiver0; await 0; ',
+      ),
+    );
     // Scopes that end at one place close from the inside out.
     expect(call('f = g()?.#m() ? 1 : () => h()?.#m();')).toBe(
       'f = (() => { var __receiver0; return (__receiver0 = g())?.#m?.call(__receiver0) ? 1 : () => { var __receiver1; return (__receiver1 = h())?.#m?.call(__receiver1) } })();',
@@ -1815,6 +1853,38 @@ describe('splitPrivateChains', () => {
     expect(split('class A { static #m() {} [g()?.#m()]() {} }')).toBe(
       'class A { static #m() {} [(__receiver0 = g())?.#m?.call(__receiver0)]() {} };var __receiver0;',
     );
+  });
+
+  it("leaves a destructuring default with a yield or an await to SWC, which can't compile the rewrite there", () => {
+    for (const code of [
+      'class A { #m() {} async f(x) { const { y = x?.#m(await 1) } = {}; return y; } }',
+      'class A { #m() {} *f(x) { const [y = x?.#m(yield 1)] = []; return y; } }',
+      'class A { #a; *f(x) { let y; [y = x?.#a.length + (yield)] = []; return y; } }',
+      'class A { #a; async f(x) { let y; ({ y = x?.#a[0] + (await 1) } = {}); ({ z: y = x?.#a.b(await 1) } = {}); return y; } }',
+    ]) {
+      expect(split(code)).toBe(code);
+      for (const layer of [LAYERS.MAIN_THREAD, LAYERS.BACKGROUND]) {
+        expect(() => runInNewContext(compile(code, layer))).not.toThrow();
+      }
+    }
+    // A `yield` in another element doesn't count.
+    const other = split(
+      'class A { #a; *f(x) { let y; [y = x?.#a.length, y] = [undefined, yield]; return y; } }',
+    );
+    expect(other).toContain('x?.#a?.length');
+    for (const layer of [LAYERS.MAIN_THREAD, LAYERS.BACKGROUND]) {
+      expect(() => runInNewContext(compile(other, layer))).not.toThrow();
+    }
+    // A function inside the default value has its own `await`.
+    expect(
+      split(
+        'class A { #m() {} f(x) { const { y = async () => x?.#m(await 1) } = {}; return y; } }',
+      ),
+    ).toContain('?.#m?.call(');
+    // A private link is still split, as SWC would otherwise fail the module.
+    expect(
+      split('class A { #a; *f(x) { const [y = x?.#a.#a, z = yield] = []; } }'),
+    ).toBe('class A { #a; *f(x) { const [y = x?.#a?.#a, z = yield] = []; } }');
   });
 
   it('gives the link after a private member in an optional chain its own `?.`', () => {

@@ -41,6 +41,13 @@ export const inheritanceVariable = (property: string): string =>
 const VARIABLES = new Set(INHERITED_TEXT_PROPERTIES.map(inheritanceVariable));
 
 /**
+ * Whether a declaration's value reads `variable`: `var(--x)` or
+ * `var( --x, 14px)`, not `var(--x-y)`.
+ */
+const readsVariable = (value: string, variable: string): boolean =>
+  new RegExp(`var\\(\\s*${variable}\\s*[,)]`, 'i').test(value);
+
+/**
  * The class the runtime gives each element that has an HTML text tag or
  * loose text inside it, the only elements whose copies anything reads. A copy
  * of `INHERITANCE_CLASS` in the runtime's lynx-element/text-flow.ts, kept the
@@ -180,6 +187,12 @@ export const textInheritanceForLynx: PluginCreator<void> = () => ({
         if (!INHERITED.has(property)) return;
         const variable = inheritanceVariable(property);
         if (own.has(variable)) return;
+        // A value that reads the variable itself, such as `<small>`'s
+        // `font-size: calc(var(--angular-lynx-font-size, 14px) / 1.2)`,
+        // would make a copy that refers to itself, which is invalid, and the
+        // text inside would lose the value from above too. Without the copy,
+        // it keeps that one.
+        if (readsVariable(node.value, variable)) return;
         own.add(variable);
         const copy = node.clone({ prop: variable, important: false });
         delete copy.raws.important;

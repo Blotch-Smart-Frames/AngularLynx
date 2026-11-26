@@ -145,6 +145,7 @@ const isRendererClass = (name: string): boolean =>
   name.startsWith('_ngcontent-') ||
   name.startsWith('_nghost-') ||
   name.startsWith('_ngtag-') ||
+  name.startsWith('_ngattr-') ||
   name === ANONYMOUS_TEXT_CLASS ||
   name === INHERITANCE_CLASS;
 

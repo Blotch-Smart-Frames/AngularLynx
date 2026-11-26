@@ -116,7 +116,10 @@ A `prefers-color-scheme` query on its own is the exception: see "Dark Mode" belo
 - **`box-shadow`**: No `inset` keyword.
 - **`text-shadow`**: One layer only, all 4 params required (`offset-x offset-y blur-radius color`).
 - **`font-weight`**: No `lighter`/`bolder`. Use `normal`, `bold`, or numeric `100`–`1000`.
-- **`font-size`**: Default is `14px` (not `16px`), which is also what `1rem` is, so Tailwind's sizes come out an eighth smaller than in a browser (`h-12` is 42px). `page { font-size: 16px; }` in the global stylesheet makes both 16px; the dolan UI theme sets it. No keyword sizes (`small`, `large`, etc.).
+- **`font-size`**: Default is `14px` (not `16px`), which is also what `1rem` is, so Tailwind's sizes come out an eighth smaller than in a browser (`h-12` is 42px). `page { font-size: 16px; }` in the global stylesheet makes both 16px; the dolan UI theme sets it. No keyword sizes (`small`, `large`, etc.). A percentage or `em` size is of Lynx's 14px default, not the parent's size: for a size relative to the text around an HTML text tag, divide its variable, `font-size: calc(var(--angular-lynx-font-size, 14px) / 1.2)`, as the build's `<small>` rule does. A declaration that reads its own variable isn't copied to it, so text inside keeps the size from above.
+- **`vertical-align`** (inline text in a `<text>`): a length or `em` (the element's own size) works, but a value with a `var()` in it is dropped, and the `sub`/`super` keywords barely move the text.
+- **`text-decoration` styles**: Android draws no line for `dotted`, `dashed` or `wavy`, only `solid`. iOS and the web draw them.
+- **`font-family`**: each platform takes the first family in the list it finds. iOS finds installed fonts by name (`Menlo`); Android finds only `@font-face` families, never its own `monospace` or `serif`.
 - **`white-space`**: Only `normal` and `nowrap`.
 - **`line-height`**: Only works directly on `<text>` elements.
 - **`text-align`**: No `justify`.

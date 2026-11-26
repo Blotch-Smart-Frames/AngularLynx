@@ -539,8 +539,9 @@ describe('applyEntry', () => {
     expect(test('/app/src/other.ts')).toBe(false);
   });
 
-  // Issues #611 and #643: <b>, <em>, <u>, <s> and their kin drew as the text
-  // around them, as nothing gave them the browser's text styles. The rules
+  // Issues #611, #643 and #649: <b>, <em>, <u>, <s>, <code>, <small>, <a href>
+  // and their kin drew as the text around them, as nothing gave them the
+  // browser's text styles. The rules
   // only work once the plugin's own PostCSS has made the type selectors the
   // classes the runtime marks the elements with, and once the style index
   // says they set the property: without that, the runtime gives the element
@@ -566,15 +567,20 @@ describe('applyEntry', () => {
       names.map((name) => `._ngtag-${name}`).join(',');
     const inherit = (...names: string[]) =>
       names.map((name) => `._ngtag-${name}._nginherit`).join(',');
+    const link = '._ngattr-a-href';
     const nested = [
-      ['u', 's'],
-      ['u', 'del'],
-      ['ins', 's'],
-      ['ins', 'del'],
-      ['s', 'u'],
-      ['s', 'ins'],
-      ['del', 'u'],
-      ['del', 'ins'],
+      ['._ngtag-u', '._ngtag-s'],
+      ['._ngtag-u', '._ngtag-del'],
+      ['._ngtag-ins', '._ngtag-s'],
+      ['._ngtag-ins', '._ngtag-del'],
+      ['._ngtag-s', '._ngtag-u'],
+      ['._ngtag-s', '._ngtag-ins'],
+      ['._ngtag-del', '._ngtag-u'],
+      ['._ngtag-del', '._ngtag-ins'],
+      [link, '._ngtag-s'],
+      [link, '._ngtag-del'],
+      ['._ngtag-s', link],
+      ['._ngtag-del', link],
     ];
 
     expect(rules).toEqual([
@@ -590,18 +596,44 @@ describe('applyEntry', () => {
       [inherit('u', 'ins'), '--angular-lynx-text-decoration: underline'],
       [tags('s', 'del'), 'text-decoration: line-through'],
       [inherit('s', 'del'), '--angular-lynx-text-decoration: line-through'],
+      [tags('code', 'kbd', 'samp'), 'font-family: Menlo, monospace'],
+      [
+        inherit('code', 'kbd', 'samp'),
+        '--angular-lynx-font-family: Menlo, monospace',
+      ],
+      // A smaller size than the text around, which has no copy: it would
+      // read itself.
+      [
+        tags('small', 'sub', 'sup'),
+        'font-size: calc(var(--angular-lynx-font-size, 14px) / 1.2)',
+      ],
+      [tags('sub'), 'vertical-align: -0.24em'],
+      [tags('sup'), 'vertical-align: 0.4em'],
+      [tags('mark'), 'background-color: #ffff00; color: #000000'],
+      [inherit('mark'), '--angular-lynx-color: #000000'],
+      // The runtime's class for an <a> with an href.
+      [
+        link,
+        'color: var(--angular-lynx-link-color, #0000ee); text-decoration: underline',
+      ],
+      [
+        `${link}._nginherit`,
+        '--angular-lynx-color: var(--angular-lynx-link-color, #0000ee); --angular-lynx-text-decoration: underline',
+      ],
+      ['page.dark', '--angular-lynx-link-color: #9e9eff'],
+      ['._ngattr-abbr-title', 'text-decoration: underline dotted'],
+      [
+        '._ngattr-abbr-title._nginherit',
+        '--angular-lynx-text-decoration: underline dotted',
+      ],
       // A <u> inside an <s> keeps the line through, as in a browser.
       [
-        nested
-          .map(([outer, inner]) => `._ngtag-${outer} ._ngtag-${inner}`)
-          .join(','),
+        nested.map(([outer, inner]) => `${outer} ${inner}`).join(','),
         'text-decoration: underline line-through',
       ],
       [
         nested
-          .map(
-            ([outer, inner]) => `._ngtag-${outer} ._ngtag-${inner}._nginherit`,
-          )
+          .map(([outer, inner]) => `${outer} ${inner}._nginherit`)
           .join(','),
         '--angular-lynx-text-decoration: underline line-through',
       ],
@@ -620,6 +652,17 @@ describe('applyEntry', () => {
           [`_ngtag-${tag}`],
           bit('text-decoration'),
         ]),
+        ...['code', 'kbd', 'samp'].map((tag) => [
+          [`_ngtag-${tag}`],
+          bit('font-family'),
+        ]),
+        ...['small', 'sub', 'sup'].map((tag) => [
+          [`_ngtag-${tag}`],
+          bit('font-size'),
+        ]),
+        [['_ngtag-mark'], bit('color')],
+        [['_ngattr-a-href'], bit('color') | bit('text-decoration')],
+        [['_ngattr-abbr-title'], bit('text-decoration')],
       ]),
     );
   });

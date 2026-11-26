@@ -602,14 +602,6 @@ const HIDE_KEPT_NATIVE = new Set([
 ]);
 
 /**
- * Fixtures that SWC's properties mode already compiles wrong, through a
- * method that stays a private method: `node?.#label()` loses its receiver
- * (investigations/lynx-vs-web-differences.md). They run as they do without
- * the pass.
- */
-const CURRENT_BUILD_ONLY = new Set(['other receivers and optional chains']);
-
-/**
  * The variables a static block assigns that no `var` at the top level of
  * the code declares.
  */
@@ -653,7 +645,8 @@ describe('hidePrivateMethods over ES2022 fixtures', () => {
   delete fixtures['reflection on an instance'];
   for (const [name, fixture] of Object.entries(fixtures)) {
     it(`matches native private methods: ${name}`, async () => {
-      const hidden = hide(fixture);
+      // As transformPrivateMethods runs it, splitting what stays private.
+      const hidden = splitPrivateChains(hide(fixture), APP_FILE);
       expect(undeclared(hidden)).toEqual([]);
       // Strict, as a module is: assigning a variable nothing declared
       // throws, where a sloppy script would make it a global.
@@ -661,13 +654,7 @@ describe('hidePrivateMethods over ES2022 fixtures', () => {
       expect(PER_INSTANCE_PRIVATE_METHOD.test(main)).toBe(
         HIDE_KEPT_NATIVE.has(name),
       );
-      expect(await settle(main)).toEqual(
-        await settle(
-          CURRENT_BUILD_ONLY.has(name)
-            ? `"use strict";\n${compile(fixture, LAYERS.MAIN_THREAD)}`
-            : fixture,
-        ),
-      );
+      expect(await settle(main)).toEqual(await settle(fixture));
     });
   }
 
@@ -1526,8 +1513,6 @@ describe('isAppModule', () => {
  * function, so SWC compiles them all.
  */
 const CHAIN_FIXTURES: Record<string, string> = {
-  // A method called inside an optional chain (`a?.#b.#m()`) is left out:
-  // SWC calls it without its receiver, chain or not (CURRENT_BUILD_ONLY).
   'a method of a field, a field of a field, and the `this` a call gets': `
     class Node {
       #parent;
@@ -1593,6 +1578,55 @@ const CHAIN_FIXTURES: Record<string, string> = {
     const three = new Maybe(new Maybe(new Maybe()));
     [Maybe.read(undefined), Maybe.read(three), Maybe.deep(null), Maybe.deep(three)];
   `,
+  'calls and links after a private member inside an optional chain': `
+    class Node {
+      #name;
+      #next;
+      #fn;
+      constructor(name, next, fn) { this.#name = name; this.#next = next; this.#fn = fn; }
+      #label(suffix) { return this === undefined ? 'no this' : this.#name + suffix; }
+      #pair() { return [this.#name, this.#name.length]; }
+      get #getter() { return this.#name; }
+      static call(node) { return node?.#label('!'); }
+      static optionalCall(node) { return node?.#label?.('?'); }
+      static next(node) { return node?.#next.#label('>'); }
+      static nextOptional(node) { return node?.#next?.#label('>>'); }
+      static public(node) { return node?.box.#label('.'); }
+      static calls(node, log) { return node?.#next.#label(log.push('arg')); }
+      static then(node) { return node?.#pair()[1].toFixed(1); }
+      static link(node) { return node?.#name.length; }
+      static index(node) { return node?.#name[0]; }
+      static getter(node) { return node?.#getter.length; }
+      static fnIndex(node, key) { return node.#fn?.()[key]; }
+      static fnLink(node) { return node.#fn?.().length; }
+      static receivers(log) {
+        const node = new Node('r');
+        const get = () => { log.push('get'); return node; };
+        return get()?.#label('#');
+      }
+      static nextLine(node) {
+        return node
+          ?.#next /* a comment */
+          .#label(
+            ',',
+          );
+      }
+    }
+    const leaf = new Node('leaf');
+    const root = new Node('root', leaf, () => 'xy');
+    root.box = leaf;
+    const log = [];
+    const out = [];
+    for (const node of [root, leaf, null, undefined]) {
+      out.push([Node.call(node), Node.optionalCall(node), Node.then(node), Node.link(node), Node.index(node), Node.getter(node)]);
+    }
+    for (const node of [root, null]) {
+      out.push([Node.next(node), Node.nextOptional(node), Node.public(node), Node.calls(node, log), Node.nextLine(node)]);
+    }
+    out.push(Node.nextOptional(leaf), Node.fnIndex(root, 1), Node.fnIndex(leaf, 1), Node.fnLink(root), Node.fnLink(leaf));
+    out.push(Node.receivers(log), Node.receivers(log), log);
+    out;
+  `,
 };
 
 describe('splitPrivateChains', () => {
@@ -1608,6 +1642,27 @@ describe('splitPrivateChains', () => {
         /Private field '#inner' must be declared in an enclosing class/,
       );
     }
+  });
+
+  it('leaves an optional chain SWC compiles wrong without it', async () => {
+    // SWC ends the short-circuit at the private member, and calls a private
+    // method there without its receiver.
+    const fixture =
+      CHAIN_FIXTURES[
+        'calls and links after a private member inside an optional chain'
+      ]!;
+    for (const layer of [LAYERS.MAIN_THREAD, LAYERS.BACKGROUND]) {
+      expect(await settle(compile(fixture, layer))).not.toEqual(
+        await settle(fixture),
+      );
+    }
+    const call = `
+      class A { #m() { return this; } static f(a) { return a?.#m(); } }
+      const a = new A();
+      A.f(a) === a;
+    `;
+    expect(runInNewContext(call)).toBe(true);
+    expect(runInNewContext(compile(call, LAYERS.MAIN_THREAD))).toBe(false);
   });
 
   for (const [name, fixture] of Object.entries(CHAIN_FIXTURES)) {
@@ -1634,6 +1689,59 @@ describe('splitPrivateChains', () => {
     expect(split('class A { #a; f(x) { return x?.#a /* . */ .#a.#a; } }')).toBe(
       'class A { #a; f(x) { return x?.#a /* . */ ?.#a?.#a; } }',
     );
+  });
+
+  it('calls a private method in an optional chain through `call`, on its receiver', () => {
+    expect(split('class A { #m() {} f(x) { return x?.#m(1); } }')).toBe(
+      'class A { #m() {} f(x) { return x?.#m?.call(x, 1); } }',
+    );
+    expect(split('class A { #m() {} f(x) { return x?.#m?.(); } }')).toBe(
+      'class A { #m() {} f(x) { return x?.#m?.call(x); } }',
+    );
+    expect(split('class A { #f; f(k) { return this.#f?.()[k]; } }')).toBe(
+      'class A { #f; f(k) { return this.#f?.call(this)[k]; } }',
+    );
+    // A call written over lines keeps them.
+    expect(
+      split('class A { #m() {} f(x) { return x?.#m /* c */\n(\n1); } }'),
+    ).toBe(
+      'class A { #m() {} f(x) { return x?.#m?.call /* c */\n(x, \n1); } }',
+    );
+  });
+
+  it('reads any other receiver once, into a variable the module declares', () => {
+    expect(split('class A { #m() {} f() { return g()?.a.#m(1); } }')).toBe(
+      'class A { #m() {} f() { return (__receiver0 = g()?.a)?.#m?.call(__receiver0, 1); } };var __receiver0;',
+    );
+    expect(
+      split('class A { #a; #m() {} f() { return this.#a.#a?.#m(); } }'),
+    ).toBe(
+      'class A { #a; #m() {} f() { return (__receiver0 = (0, this.#a).#a)?.#m?.call(__receiver0); } };var __receiver0;',
+    );
+    // `a?.#a.#m()` asks for the same `?` twice.
+    expect(split('class A { #a; #m() {} f(a) { return a?.#a.#m(); } }')).toBe(
+      'class A { #a; #m() {} f(a) { return (__receiver0 = a?.#a)?.#m?.call(__receiver0); } };var __receiver0;',
+    );
+    // A name the module already uses is passed over.
+    expect(
+      split(
+        'const __receiver0 = 1; class A { #m() {} f() { return g()?.#m(); } }',
+      ),
+    ).toBe(
+      'const __receiver0 = 1; class A { #m() {} f() { return (___receiver0 = g())?.#m?.call(___receiver0); } };var ___receiver0;',
+    );
+  });
+
+  it('gives the link after a private member in an optional chain its own `?.`', () => {
+    expect(
+      split('class A { #a; f(x) { return [x?.#a.b.c, x?.#a[0]]; } }'),
+    ).toBe('class A { #a; f(x) { return [x?.#a?.b.c, x?.#a?.[0]]; } }');
+    expect(
+      split(
+        'class A { #a?: A; f(x?: A) { return x?.#a!.#a; } }',
+        '/app/src/app/a.ts',
+      ),
+    ).toBe('class A { #a?: A; f(x?: A) { return x?.#a!?.#a; } }');
   });
 
   it('reads through a non-null assertion in a .ts module', () => {

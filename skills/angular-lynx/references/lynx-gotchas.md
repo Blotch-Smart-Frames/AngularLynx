@@ -455,8 +455,6 @@ XElement's iOS loader and its `WKWebView` keep each other, so in Lynx Explorer, 
 
 The CSS pipeline minifies `rgba(92, 94, 102, 1)` to `#5c5e66`, and a later tokenizer reads `5e66` as a number: the web preview's stylesheet holds `#5c9999`. Any hex with a digit, `e`, digit run (`#3e4048` too) is at risk; `#71717a` or `#3f3f46` is fine. Pick a neighbouring value (`rgba(92, 95, 102, 1)`) until it's fixed. Not yet checked on iOS and Android.
 
-### `this.#field?.()[key]` throws when the field is unset
+### A nullish `#private` member in an optional chain gives `undefined`
 
-The Lynx bundle compiles first-party `#private` fields to properties, and that pass puts the `[key]` outside the optional chain's short-circuit, so `this.#onColors?.()[scheme]` throws `Cannot read properties of undefined` instead of giving `undefined`. Split it: `const fn = this.#onColors; const colors = fn ? fn()[scheme] : undefined;`. A local constant in the same shape compiles correctly. The same pass calls `other?.#method()` outside the short-circuit and without its receiver, so it throws for a nullish `other` and runs the method with `this` undefined for any other: write `other == null ? undefined : other.#method()`.
-
-A private member read on another one (`this.#parent.#depth()`, `node.#next.#label = v`) works: the build splits the chain so the pass compiles both. Inside an optional chain, `a?.#b.#c` gives `undefined` when `a.#b` is nullish, where the web throws a TypeError.
+`#private` members work in chains and optional chains as on the web: `this.#parent.#depth()`, `other?.#method()`, `this.#onColors?.()[scheme]` and `node?.#name.length`. The build rewrites them before its compiler, which would otherwise lift what follows a private member out of the optional chain's short-circuit and call a private method there without its receiver. The rewrite makes the link after a private member optional, so code the web would throw a TypeError for gives `undefined` instead: `a?.#b.#c` when `a.#b` is nullish, or `a?.#field()` when `#field` holds `null`. It covers the app's own code and AngularLynx's packages; other npm packages' private members compile as they are.

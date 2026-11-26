@@ -7173,7 +7173,9 @@ Nothing; it's the build. The main thread is ES2019 (PrimJS), and the Lynx bundle
 
 A private method called through an optional chain on its receiver, `object?.#method()`, comes out wrong the same way: `(null == object ? void 0 : _base(object, _method)[_method])()`, the call outside the conditional and without its receiver. So it throws for a nullish `object`, and for any other it runs the method with `this` undefined. In AngularLynx's packages the build renames private methods first (see "PrimJS never collects objects in a cycle through `#private` fields…" above), and `object?.__method_<key><n>()` compiles correctly; in the app's own code a method called on another object stays private, so the bug stays. Found in November 2026 while checking the build's private-method pass against native semantics.
 
-- Write it as a conditional: `object == null ? undefined : object.#method()`.
+It isn't only calls: SWC ends the short-circuit at any private member inside an optional chain, in its standard (WeakMap) compile as well as with `privateFieldsAsProperties`, so `object?.#field.length` and `object?.#field[0]` throw for a nullish `object` too. Still so in SWC 1.16.22 (issue #706).
+
+The build now rewrites these before SWC, on both threads, in the app's own code and AngularLynx's packages (`splitPrivateChains` in `packages/rsbuild-plugin-angular-lynx/src/private-methods.ts`): the link after a private member gets its own `?.` (`object?.#field?.length`), and a call of one becomes an optional `call` on its receiver (`object?.#method?.call(object, x)`, `this.#field?.call(this)[key]`), with a receiver other than `this` or a name read once into a variable. What differs from the web is only code that would throw a TypeError there: a nullish private member, or a nullish link before it inside the chain (`a?.b.#m()` with `a.b` nullish), gives `undefined`. Other npm packages keep SWC's compile, so their code still has the bug.
 
 ---
 
@@ -7187,7 +7189,7 @@ A private member read on the result of another (`this.#parent.#depth()`, `node.#
 
 Nothing; it's the build. With `privateFieldsAsProperties` (see above), SWC lowers the outer read and leaves the inner one as written: `_class_private_field_loose_base(this.#parent, _depth)[_depth]()`. The class no longer declares `#parent`, so SWC fails the module ("private name #parent is not defined"), or, where the inner read survives into the bundle, loading it throws `SyntaxError: Private field '#parent' must be declared in an enclosing class`. It's the same in SWC 1.16.22. In the app's own code it failed the build on both threads; in AngularLynx's packages the main thread's private-member pass had already turned both reads into symbol keys and renamed methods, but the background thread, which skips that pass, had the same problem (issue #689, found in #687's `this.#jsParent.#quoteDepth()`).
 
-The build now rewrites the chain before SWC (`splitPrivateChains` in `packages/rsbuild-plugin-angular-lynx/src/private-methods.ts`) to `(0, this.#parent).#depth()`, which SWC compiles, on both threads. Inside an optional chain (`a?.#b.#c`) the parentheses would end the chain, so there the `.` becomes `?.` instead: the only difference is that a nullish `a.#b` gives `undefined` where natively reading `#c` of it throws a TypeError.
+The build now rewrites the chain before SWC (`splitPrivateChains` in `packages/rsbuild-plugin-angular-lynx/src/private-methods.ts`) to `(0, this.#parent).#depth()`, which SWC compiles, on both threads. Inside an optional chain (`a?.#b.#c`) the parentheses would end the chain, and SWC would end its short-circuit at `#b` anyway (see above), so there the `.` becomes `?.` instead: the only difference is that a nullish `a.#b` gives `undefined` where natively reading `#c` of it throws a TypeError.
 
 ---
 

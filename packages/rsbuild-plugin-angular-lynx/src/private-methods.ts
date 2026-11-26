@@ -153,27 +153,31 @@ const PRIVATE_ACCESS =
 
 /**
  * Two private member accesses (see {@link PRIVATE_ACCESS}) anywhere in the
- * module: every chain {@link splitPrivateChains} rewrites has them, with
- * whatever is between (comments, parentheses, a type assertion). A module
- * with at most one is left without being parsed. Coarse on purpose: a hint
- * that followed the chain's syntax between the two (repeated, overlapping
- * comment alternatives) backtracked exponentially on a run of slashes or
- * comments, and this one only scans forward to the second access.
+ * module: a chain {@link splitPrivateChains} splits has them, with whatever
+ * is between (comments, parentheses, a type assertion). Coarse on purpose: a
+ * hint that followed the chain's syntax between the two (repeated,
+ * overlapping comment alternatives) backtracked exponentially on a run of
+ * slashes or comments, and this one only scans forward to the second access.
  */
 const PRIVATE_CHAIN_HINT = new RegExp(
   `${PRIVATE_ACCESS}[\\s\\S]*?${PRIVATE_ACCESS}`,
   'u',
 );
 
+/** One private member access, as in {@link PRIVATE_ACCESS}. */
+const PRIVATE_ACCESS_HINT = new RegExp(PRIVATE_ACCESS, 'u');
+
 /**
- * Rewrites a private member read on the result of another private member
- * read (`a.#b.#c`, `a.#b.#c()`, `(a.#b).#c = v`) so SWC compiles both. The
- * modules whose private members SWC compiles to properties (layers.ts) need
- * it (see {@link compilesPrivatesAsProperties}), on both threads:
- * {@link transformPrivateMethods} runs it on the main thread's.
+ * Rewrites the private member reads SWC compiles wrong, so it compiles them
+ * as they run natively. The modules whose private members SWC compiles to
+ * properties (layers.ts) need it (see {@link compilesPrivatesAsProperties}),
+ * on both threads: {@link transformPrivateMethods} runs it on the main
+ * thread's. A module with neither two private accesses nor a `?.` and one is
+ * left without being parsed. It fixes three things.
  *
- * With `privateFieldsAsProperties`, SWC (1.16, and rspack 2.2's) lowers the
- * outer access and leaves the inner one as it was:
+ * **A private member read on another one** (`a.#b.#c`, `a.#b.#c()`,
+ * `(a.#b).#c = v`). With `privateFieldsAsProperties`, SWC (1.16, and rspack
+ * 2.2's) lowers the outer access and leaves the inner one as it was:
  * `_class_private_field_loose_base(a.#b, _c)[_c]`. The class's `#b` is gone,
  * so swc-loader fails the module ("private name #b is not defined"), and
  * code that gets past it is a SyntaxError when it loads ("Private field '#b'
@@ -182,12 +186,30 @@ const PRIVATE_CHAIN_HINT = new RegExp(
  * same value, read once, and nothing added or removed changes what `this` a
  * call of it gets.
  *
- * Inside an optional chain (`a?.#b.#c`) the parentheses would end it, so a
- * nullish `a` would throw instead of giving `undefined`. There the outer `.`
- * becomes `?.` (`a?.#b?.#c`), which SWC compiles: the result differs only
- * when `a.#b` is itself nullish, where natively reading `#c` of it throws a
- * TypeError and here it gives `undefined`. An access that has its own `?.`
- * (`a.#b?.#c`) compiles as it is.
+ * **What follows a private member inside an optional chain.** SWC, in both
+ * of its private-member compiles, ends the chain's short-circuit at the
+ * private member: `a?.#b.c` comes out as `(a == null ? void 0 : <a.#b>).c`,
+ * which throws for a nullish `a` where natively it gives `undefined`. So the
+ * next link gets its own `?.` (`a?.#b?.c`, `a?.#b?.[k]`, `a?.#b?.#c`), which
+ * SWC compiles: the result differs only when `a.#b` is itself nullish, where
+ * natively the next link throws a TypeError and here it gives `undefined`.
+ * Parentheses (`(0, a?.#b).#c`) would end the chain, so a chained read inside
+ * one gets the `?.` too.
+ *
+ * **A call of a private member inside an optional chain, or with its own
+ * `?.`** (`a?.#m(x)`, `a?.#b.#m(x)`, `a.#m?.(x)[k]`). SWC calls it outside
+ * the short-circuit, and inside a chain without its receiver:
+ * `(a == null ? void 0 : <a.#m>)(x)`. So the call becomes one of `call`,
+ * itself optional: `a?.#m?.call(a, x)`, which SWC compiles. A receiver
+ * other than `this` or a name, which could have side effects or be
+ * different the second time, is read once, into a variable the module
+ * declares (`;var __receiver0;` after its last statement, as
+ * {@link hidePrivateMethods} declares its functions): `(__receiver0 =
+ * a?.b)?.#m?.call(__receiver0, x)`. The arguments stay inside the
+ * short-circuit, as they're evaluated only when the call is made. The
+ * result differs only when the member is nullish or the receiver part of
+ * the chain is (`a.b` above): natively the call throws a TypeError, and
+ * here it gives `undefined`.
  *
  * Edits never add or remove a line, and an inline source map's columns are
  * moved to match, as for the passes before it.
@@ -197,43 +219,133 @@ const PRIVATE_CHAIN_HINT = new RegExp(
  * @returns The rewritten code, or `code` itself when nothing applies.
  */
 export const splitPrivateChains = (code: string, filename: string): string => {
-  if (!PRIVATE_CHAIN_HINT.test(code)) {
+  if (
+    !PRIVATE_CHAIN_HINT.test(code) &&
+    !(code.includes('?.') && PRIVATE_ACCESS_HINT.test(code))
+  ) {
     return code;
   }
   const sourceFile = parse(code, filename);
   const edits: Edit[] = [];
+  // Where a `?` goes, before a link's `.`: a set, as two rules can ask for
+  // the same one (`a?.#b.#m()`).
+  const questionMarks = new Set<number>();
+  const receivers: string[] = [];
+  // A name nothing in the module uses, so it can't take another's place.
+  let prefix = '__receiver';
+  while (code.includes(prefix)) prefix = `_${prefix}`;
+
   const visit = (node: ts.Node): void => {
-    if (
+    if (ts.isCallExpression(node)) {
+      const callee = skipNonNull(node.expression);
+      if (
+        isPrivateAccess(callee) &&
+        (node.questionDotToken || ts.isOptionalChain(callee))
+      ) {
+        // Before the edits inside the receiver, which visiting it adds:
+        // edits at one place are made in the order they're pushed, so an
+        // inner `(0, ` comes after the `(__receiver0 = `.
+        const receiver = callee.expression;
+        let text: string;
+        if (
+          receiver.kind === ts.SyntaxKind.ThisKeyword ||
+          ts.isIdentifier(receiver)
+        ) {
+          text = receiver.getText(sourceFile);
+        } else {
+          text = `${prefix}${receivers.length}`;
+          receivers.push(text);
+          const start = receiver.getStart(sourceFile);
+          edits.push(
+            { start, end: start, text: `(${text} = ` },
+            { start: receiver.end, end: receiver.end, text: ')' },
+          );
+          // The parentheses end the chain, so the member's `.` must start
+          // one again.
+          if (!callee.questionDotToken && ts.isOptionalChain(callee)) {
+            questionMarks.add(dotOf(callee, sourceFile));
+          }
+        }
+        const end = node.expression.end;
+        edits.push({ start: end, end, text: '?.call' });
+        if (node.questionDotToken) {
+          edits.push({
+            start: node.questionDotToken.getStart(sourceFile),
+            end: node.questionDotToken.end,
+            text: '',
+          });
+        }
+        edits.push({
+          start: node.arguments.pos,
+          end: node.arguments.pos,
+          text: node.arguments.length > 0 ? `${text}, ` : text,
+        });
+      }
+    } else if (
+      (ts.isPropertyAccessExpression(node) ||
+        ts.isElementAccessExpression(node)) &&
+      ts.isOptionalChain(node) &&
+      !node.questionDotToken
+    ) {
+      // A link right after a private member of the same chain.
+      const inner = skipNonNull(node.expression);
+      if (isPrivateAccess(inner) && ts.isOptionalChain(inner)) {
+        const at = dotOf(node, sourceFile);
+        if (ts.isPropertyAccessExpression(node)) {
+          questionMarks.add(at);
+        } else {
+          edits.push({ start: at, end: at, text: '?.' });
+        }
+      }
+    } else if (
       ts.isPropertyAccessExpression(node) &&
       ts.isPrivateIdentifier(node.name) &&
-      !node.questionDotToken
+      !node.questionDotToken &&
+      // Inside a chain the rule above gives it a `?.`.
+      !ts.isOptionalChain(node)
     ) {
       // Through parentheses, which SWC drops, leaving the same shape, and
       // type assertions, should a .ts module still have them.
       const inner = skipWrappers(node.expression);
-      if (
-        ts.isPropertyAccessExpression(inner) &&
-        ts.isPrivateIdentifier(inner.name)
-      ) {
-        if (ts.isOptionalChain(node)) {
-          const dot = dotOf(node, sourceFile);
-          edits.push({ start: dot, end: dot, text: '?' });
-        } else {
-          // Outer edits come first, so `a.#b.#c.#d` gets `(0, (0, ` where
-          // both start.
-          const start = node.expression.getStart(sourceFile);
-          edits.push(
-            { start, end: start, text: '(0, ' },
-            { start: node.expression.end, end: node.expression.end, text: ')' },
-          );
-        }
+      if (isPrivateAccess(inner)) {
+        // Outer edits come first, so `a.#b.#c.#d` gets `(0, (0, ` where
+        // both start.
+        const start = node.expression.getStart(sourceFile);
+        edits.push(
+          { start, end: start, text: '(0, ' },
+          { start: node.expression.end, end: node.expression.end, text: ')' },
+        );
       }
     }
     ts.forEachChild(node, visit);
   };
   visit(sourceFile);
+  for (const at of questionMarks) {
+    edits.push({ start: at, end: at, text: '?' });
+  }
+  if (receivers.length > 0) {
+    // `var`, hoisted to the module's top, so every function can assign it;
+    // after the last statement, on its line, so no line moves.
+    const end = sourceFile.statements[sourceFile.statements.length - 1]!.end;
+    edits.push({ start: end, end, text: `;var ${receivers.join(', ')};` });
+  }
   return applyEdits(code, edits, sourceFile);
 };
+
+/**
+ * Whether a node is a private member access (`a.#b` or `a?.#b`).
+ */
+const isPrivateAccess = (
+  node: ts.Node,
+): node is ts.PropertyAccessExpression & { name: ts.PrivateIdentifier } =>
+  ts.isPropertyAccessExpression(node) && ts.isPrivateIdentifier(node.name);
+
+/**
+ * The expression inside any non-null assertions (`a!`), which stay in an
+ * optional chain where parentheses would end it.
+ */
+const skipNonNull = (node: ts.Expression): ts.Expression =>
+  ts.isNonNullExpression(node) ? skipNonNull(node.expression) : node;
 
 /**
  * The expression inside any parentheses and type assertions around it.
@@ -248,11 +360,11 @@ const skipWrappers = (node: ts.Expression): ts.Expression =>
     : node;
 
 /**
- * Where the `.` of a property access is: the first token after its object,
- * past any comments.
+ * Where the `.` of a property access is, or the `[` of an element access:
+ * the first token after its object, past any comments.
  */
 const dotOf = (
-  node: ts.PropertyAccessExpression,
+  node: ts.PropertyAccessExpression | ts.ElementAccessExpression,
   sourceFile: ts.SourceFile,
 ): number => {
   const scanner = ts.createScanner(

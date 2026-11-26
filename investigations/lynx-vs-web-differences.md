@@ -743,7 +743,7 @@ So a field costs about 45 bytes for every instance that has it, whatever its val
 
 ### The fix
 
-The build plugin starts each of AngularLynx's packages' private fields whose initializer is a constant (`null`, `false`, `''`, a number) on the class's prototype rather than on each instance (`renamePrivateMethods` in `packages/rsbuild-plugin-angular-lynx/src/private-methods.ts`): an instance gets a property of its own only once the field is written. The 5,000 views took 52 MB with it. In the runtime's own code, keep state an element rarely has out of its constructor: a field that starts as an object (`[]`, `new Map()`) is still made for each instance.
+The build plugin starts each of AngularLynx's packages' private fields whose initializer is a constant (`null`, `false`, `''`, a number), in a class without `extends`, on the class's prototype rather than on each instance (`renamePrivateMethods` in `packages/rsbuild-plugin-angular-lynx/src/private-methods.ts`): an instance gets a property of its own only once the field is written. The 5,000 views took 52 MB with it. In the runtime's own code, keep state an element rarely has out of its constructor: a field that starts as an object (`[]`, `new Map()`) is still made for each instance.
 
 ---
 

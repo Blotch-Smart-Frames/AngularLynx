@@ -58,6 +58,24 @@ describe('textScaleForLynx', () => {
     );
   });
 
+  // A later font-size wins over an earlier one in the page's rule too.
+  it("keeps the order of a list's font sizes in the page's rule", () => {
+    expect(process('page, view { font-size: 16px; font-size: 20px }')).toBe(
+      'page, view { font-size: 16px; font-size: 20px }\npage { font-size: 16sp; font-size: 20sp }',
+    );
+    expect(
+      process('page, view { font-size: 16px; font-size: var(--size) }'),
+    ).toBe(
+      'page, view { font-size: 16px; font-size: var(--size) }\npage { font-size: 16sp; font-size: var(--size) }',
+    );
+    // A font size in a rule nested inside the list is that rule's own.
+    expect(
+      process('page, view { font-size: 16px; &.dark { font-size: 20px } }'),
+    ).toBe(
+      'page, view { font-size: 16px; &.dark { font-size: 20px } } page { font-size: 16sp }',
+    );
+  });
+
   // PostCSS visits a declaration again when another plugin changes it.
   it("gives a list's page one rule however often the declaration is visited", () => {
     let touched = false;

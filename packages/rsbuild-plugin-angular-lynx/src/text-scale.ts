@@ -95,35 +95,40 @@ const pageSelectors = (
  * preview stays at the browser's size.
  */
 export const textScaleForLynx: PluginCreator<void> = () => {
-  // The px declarations of mixed lists that already have their page rule:
-  // PostCSS visits a declaration again after the tree around it changes.
+  // The mixed lists that already have their page rule: PostCSS visits a
+  // declaration again after the tree around it changes.
   const split = new WeakSet<object>();
   return {
     postcssPlugin: 'angular-lynx-text-scale',
     Declaration: {
       'font-size'(declaration) {
-        if (split.has(declaration)) return;
-        const px = PX.exec(declaration.value.trim());
         const rule = declaration.parent;
-        if (!px || rule?.type !== 'rule') return;
+        if (rule?.type !== 'rule' || split.has(rule)) return;
+        const px = PX.exec(declaration.value.trim());
+        if (!px) return;
         const selectors = pageSelectors(rule as Rule);
         if (!selectors || selectors.page.length === 0) return;
-        const sp = `${px[1]}sp`;
         if (selectors.other.length === 0) {
-          declaration.value = sp;
+          declaration.value = `${px[1]}sp`;
           return;
         }
         // A list that also styles other elements (`page, view { font-size:
         // 16px }`) keeps its px for them: their text mustn't grow, since px
-        // is the app's way to say so. The page gets its own rule right after,
-        // which wins over the list's px for it, as the later of two rules of
-        // the same specificity does.
-        (rule as Rule).after(
-          postcss
-            .rule({ selector: selectors.page.join(', ') })
-            .append(declaration.clone({ value: sp })),
-        );
-        split.add(declaration);
+        // is the app's way to say so. The page gets a rule of its own right
+        // after, which wins over the list for it, as the later of two rules
+        // of the same specificity does. It takes every font-size the list
+        // has, in order, so a later one (a fallback's override, a var())
+        // still wins over an earlier one there.
+        const pageRule = postcss.rule({ selector: selectors.page.join(', ') });
+        (rule as Rule).walkDecls(/^font-size$/i, (fontSize) => {
+          if (fontSize.parent !== rule) return;
+          const match = PX.exec(fontSize.value.trim());
+          pageRule.append(
+            fontSize.clone(match ? { value: `${match[1]}sp` } : {}),
+          );
+        });
+        (rule as Rule).after(pageRule);
+        split.add(rule);
       },
     },
   };

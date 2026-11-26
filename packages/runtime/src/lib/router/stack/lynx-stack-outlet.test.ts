@@ -181,6 +181,22 @@ class Host {
   readonly data = signal('outlet data');
 }
 
+/**
+ * The stack in an `@if`, which takes it away without the router.
+ */
+@Component({
+  selector: 'test-if-host',
+  template: `
+    @if (shown()) {
+      <lynx-stack-outlet />
+    }
+  `,
+  imports: [LynxStackOutlet],
+})
+class IfHost {
+  readonly shown = signal(true);
+}
+
 /** Whether the next navigation can leave the guarded page. */
 let canLeave = true;
 
@@ -1519,6 +1535,24 @@ describe('LynxStackOutlet', () => {
       const { fixture } = await pushed();
       fixture.destroy();
       expect(backGesture()).toBeNull();
+    });
+
+    it('lets go of a gesture it follows as it is destroyed', async () => {
+      const harness = await setup([], '/notes', provideRouter(ROUTES), IfHost);
+      layOut(harness.host);
+      await harness.go('/notes/1');
+      await harness.settle();
+      const follower = backGesture()!;
+      follower.progress(0.5);
+      // An @if takes the outlet away, which the router never hears of.
+      (harness.fixture.componentInstance as IfHost).shown.set(false);
+      harness.fixture.detectChanges();
+      const back = vi.spyOn(harness.location, 'historyGo');
+      follower.progress(0.8);
+      // Back then goes as a press does, not to the page under.
+      expect(follower.commit()).toBe(false);
+      await harness.settle();
+      expect(back).not.toHaveBeenCalled();
     });
   });
 

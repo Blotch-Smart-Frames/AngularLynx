@@ -482,6 +482,9 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
     this.#destroyed = true;
     this.#dropsParked.unsubscribe();
     this.#transition?.stop();
+    // A back gesture the outlet follows moves nothing more: its pages go,
+    // and back goes as a press then (see #followBackGesture).
+    this.#swipe = null;
     // Before the pages go, and their views are released.
     this.#homeBars();
     this.#unfollow();

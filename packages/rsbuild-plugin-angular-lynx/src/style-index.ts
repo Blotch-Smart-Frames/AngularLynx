@@ -13,14 +13,32 @@ export const LAYOUT_FLAG = 1 << INHERITED_TEXT_PROPERTIES.length;
 const BLOCK_DISPLAYS = new Set(['linear', 'block', 'flow-root', 'none']);
 
 /**
+ * One step up from a selector's subject, nearest first: the combinator
+ * between it and the compound below it (`>` for a child, ` ` for a
+ * descendant), and the tokens the ancestor's compound requires.
+ */
+export type AncestorStep = [combinator: '>' | ' ', tokens: string[]];
+
+/**
+ * A rule in the index: the tokens its subject requires, what it sets, the
+ * ancestors its selector requires (left out when it requires none), and 1
+ * if it applies only in a state the runtime can't see, such as `:active`.
+ */
+export type StyleIndexRule =
+  | [tokens: string[], flags: number]
+  | [tokens: string[], flags: number, ancestors: AncestorStep[]]
+  | [tokens: string[], flags: number, ancestors: AncestorStep[], inState: 1];
+
+/**
  * What the runtime needs to know about the app's CSS (see the runtime's
  * lynx-element/text-flow.ts): for each rule that sets an inheritable text
  * property or changes layout, the tokens the last part of its selector
- * requires (classes, `#id`, `<tag>`) and a bitmask of what it sets. The
+ * requires (classes, `#id`, `<tag>`), a bitmask of what it sets, and what
+ * the rest of its selector requires of the element's ancestors. The
  * runtime can't read the stylesheet, which Lynx compiles into the bundle.
  */
 export type StyleIndex = {
-  rules: [string[], number][];
+  rules: StyleIndexRule[];
 };
 
 /**
@@ -58,28 +76,81 @@ const inNonSelectorAtRule = (container: Container): boolean => {
 };
 
 /**
- * The tokens each selector in a list requires of the element it styles: the
- * classes, id and tag of its last compound. A part the runtime can't check
- * (a pseudo-class, an attribute, `*`) is left out, so a rule can be counted
- * for an element it doesn't style. That only ever makes the runtime leave
- * the element's text as it is.
+ * The pseudo-classes for a state the runtime can't see: the user's touch,
+ * pointer or focus. Lynx supports only `:active` of them, for a finger on
+ * the element (see investigations/lynx-vs-web-differences.md).
  */
-const subjectsOf = (selectorList: string): string[][] => {
-  const subjects: string[][] = [];
+const STATE_PSEUDO_CLASSES = new Set([
+  ':active',
+  ':hover',
+  ':focus',
+  ':focus-visible',
+  ':focus-within',
+  ':visited',
+]);
+
+/** What a selector requires of the element it styles and its ancestors. */
+type Subject = {
+  tokens: string[];
+  ancestors: AncestorStep[];
+  inState: boolean;
+};
+
+/**
+ * What each selector in a list requires: the classes, id and tag of its
+ * last compound, and of each compound before it, back to the first sibling
+ * combinator (`+`, `~`). A part the runtime can't check (an attribute, `*`,
+ * a pseudo-class other than a state's, a sibling) is left out, so a rule can
+ * be counted for an element it doesn't style. Most of the runtime reads only
+ * the last compound's tokens, where that only ever makes it leave the
+ * element's text as it is; it checks the ancestors where counting a rule
+ * that doesn't apply would let an inline tag take its ancestors' text style
+ * (see the runtime's matchedStyleFlagsFor).
+ */
+const subjectsOf = (selectorList: string): Subject[] => {
+  const subjects: Subject[] = [];
   try {
     selectorParser((selectors) => {
       selectors.each((selector) => {
-        const tokens: string[] = [];
+        const compounds: string[][] = [[]];
+        const combinators: ('>' | ' ')[] = [];
+        let inState = false;
         for (let i = selector.nodes.length - 1; i >= 0; i--) {
           const node = selector.nodes[i]!;
-          if (node.type === 'combinator') break;
-          if (node.type === 'class') tokens.push(node.value);
+          const tokens = compounds[compounds.length - 1]!;
+          if (node.type === 'combinator') {
+            const combinator = node.value.trim();
+            // A sibling's compound, and what's before it, is left out.
+            if (combinator !== '>' && combinator !== '') break;
+            combinators.push(combinator === '>' ? '>' : ' ');
+            compounds.push([]);
+          } else if (node.type === 'class') tokens.push(node.value);
           else if (node.type === 'id') tokens.push(`#${node.value}`);
           else if (node.type === 'tag') {
             tokens.push(`<${node.value.toLowerCase()}>`);
+          } else if (
+            node.type === 'pseudo' &&
+            STATE_PSEUDO_CLASSES.has(node.value.toLowerCase())
+          ) {
+            inState = true;
           }
         }
-        subjects.push(tokens.sort());
+        // An outermost compound with nothing we can check, as in
+        // `:root .a`, or none at all, as in a nested rule's `> .b`, requires
+        // no ancestor we can tell.
+        while (
+          compounds.length > 1 &&
+          !compounds[compounds.length - 1]!.length
+        ) {
+          compounds.pop();
+          combinators.pop();
+        }
+        const [tokens, ...ancestors] = compounds.map((c) => c.sort());
+        subjects.push({
+          tokens: tokens!,
+          ancestors: ancestors.map((t, i) => [combinators[i]!, t]),
+          inState,
+        });
       });
     }).processSync(selectorList);
   } catch {
@@ -94,7 +165,7 @@ const subjectsOf = (selectorList: string): string[][] => {
  * scoping is classes too).
  */
 export const styleIndexOf = (stylesheets: readonly string[]): StyleIndex => {
-  const flagsBySubject = new Map<string, [string[], number]>();
+  const rulesBySelector = new Map<string, StyleIndexRule>();
   for (const css of stylesheets) {
     let root;
     try {
@@ -109,15 +180,21 @@ export const styleIndexOf = (stylesheets: readonly string[]): StyleIndex => {
         if (node.type === 'decl') flags |= flagsOf(node.prop, node.value);
       });
       if (!flags) return;
-      for (const tokens of subjectsOf(rule.selector)) {
-        const key = tokens.join(' ');
-        const entry = flagsBySubject.get(key);
-        if (entry) entry[1] |= flags;
-        else flagsBySubject.set(key, [tokens, flags]);
+      for (const { tokens, ancestors, inState } of subjectsOf(rule.selector)) {
+        const entry: StyleIndexRule = inState
+          ? [tokens, flags, ancestors, 1]
+          : ancestors.length
+            ? [tokens, flags, ancestors]
+            : [tokens, flags];
+        // Rules that require the same share an entry.
+        const key = JSON.stringify([tokens, ancestors, inState]);
+        const merged = rulesBySelector.get(key);
+        if (merged) merged[1] |= flags;
+        else rulesBySelector.set(key, entry);
       }
     });
   }
-  return { rules: [...flagsBySubject.values()] };
+  return { rules: [...rulesBySelector.values()] };
 };
 
 /**

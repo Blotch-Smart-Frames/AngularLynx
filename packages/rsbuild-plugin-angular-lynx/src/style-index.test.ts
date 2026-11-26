@@ -22,9 +22,63 @@ describe('styleIndexOf', () => {
         '.card > .head.big, #main view, ._nghost-abc { color: red }',
       ]).rules,
     ).toEqual([
-      [['big', 'head'], COLOR],
-      [['<view>'], COLOR],
+      [['big', 'head'], COLOR, [['>', ['card']]]],
+      [['<view>'], COLOR, [[' ', ['#main']]]],
       [['_nghost-abc'], COLOR],
+    ]);
+  });
+
+  // Issue #652: the runtime checks them for a Lynx <text> around an inline
+  // tag, where counting a rule that doesn't apply lets the tag take its
+  // ancestors' text style.
+  it('keeps what each selector requires of the ancestors, nearest first', () => {
+    expect(
+      styleIndexOf([
+        '.page .card > .head .total, ._nghost-x .total._ngcontent-x { font-size: 2px }',
+      ]).rules,
+    ).toEqual([
+      [
+        ['total'],
+        FONT_SIZE,
+        [
+          [' ', ['head']],
+          ['>', ['card']],
+          [' ', ['page']],
+        ],
+      ],
+      [['_ngcontent-x', 'total'], FONT_SIZE, [[' ', ['_nghost-x']]]],
+    ]);
+  });
+
+  it('stops at a sibling, and leaves out an outer ancestor it can’t check', () => {
+    expect(
+      styleIndexOf([
+        '.a + .b .c, .d ~ .e, [data-x] .f, :root .g { color: red }',
+      ]).rules,
+    ).toEqual([
+      [['c'], COLOR, [[' ', ['b']]]],
+      [['e'], COLOR],
+      [['f'], COLOR],
+      [['g'], COLOR],
+    ]);
+  });
+
+  it('requires no ancestor of a nested rule that starts with a combinator', () => {
+    expect(styleIndexOf(['.a { > .b { color: red } }']).rules).toEqual([
+      [['b'], COLOR],
+    ]);
+  });
+
+  it('marks a rule that applies only in a state, such as :active', () => {
+    expect(
+      styleIndexOf([
+        '.a:active, .b:hover .c, .d:first-child, .e:not(:focus) { color: red }',
+      ]).rules,
+    ).toEqual([
+      [['a'], COLOR, [], 1],
+      [['c'], COLOR, [[' ', ['b']]], 1],
+      [['d'], COLOR],
+      [['e'], COLOR],
     ]);
   });
 
@@ -54,8 +108,18 @@ describe('styleIndexOf', () => {
 
   it('merges the rules that require the same', () => {
     expect(
-      styleIndexOf(['.a { color: red }', '.a:active { font-size: 2px }']).rules,
-    ).toEqual([[['a'], COLOR | FONT_SIZE]]);
+      styleIndexOf([
+        '.a { color: red }',
+        '.a::before { font-size: 2px }',
+        '.x .a { color: red }',
+        '.x .a { font-size: 2px }',
+        '.a:active { font-size: 2px }',
+      ]).rules,
+    ).toEqual([
+      [['a'], COLOR | FONT_SIZE],
+      [['a'], COLOR | FONT_SIZE, [[' ', ['x']]]],
+      [['a'], FONT_SIZE, [], 1],
+    ]);
   });
 
   it.each([

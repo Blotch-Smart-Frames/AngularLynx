@@ -73,6 +73,56 @@ describe('parseFont', () => {
     expect(parseFont("12px '3D'")?.text).toBe('12px "3D"');
   });
 
+  it('splits families only at commas outside quotes', () => {
+    expect(parseFont('16px "A,B", serif')).toMatchObject({
+      families: ['A,B', 'serif'],
+      text: '16px "A,B", serif',
+    });
+    expect(parseFont("16px '  Spaced  Name'")?.families).toEqual([
+      '  Spaced  Name',
+    ]);
+    expect(parseFont('16px 微软雅黑, sans-serif')?.families).toEqual([
+      '微软雅黑',
+      'sans-serif',
+    ]);
+  });
+
+  it('keeps a quoted keyword a family name, and refuses one unquoted', () => {
+    expect(parseFont('16px inherit')).toBeNull();
+    expect(parseFont('16px Arial, initial')).toBeNull();
+    expect(parseFont('16px "inherit"')?.text).toBe('16px "inherit"');
+    expect(parseFont('16px "serif", serif')?.text).toBe('16px "serif", serif');
+  });
+
+  it('reads a line height after a slash, with or without spaces, and checks it', () => {
+    expect(parseFont('16px / 1.5 Arial')?.families).toEqual(['Arial']);
+    expect(parseFont('16px/normal Arial')?.text).toBe('16px Arial');
+    expect(parseFont('16px /20px Arial')?.size).toBe(16);
+    expect(parseFont('16px/nope Arial')).toBeNull();
+    expect(parseFont('16px /')).toBeNull();
+  });
+
+  it('takes each keyword once', () => {
+    expect(parseFont('italic oblique 16px serif')).toBeNull();
+    expect(parseFont('small-caps small-caps 16px serif')).toBeNull();
+    expect(parseFont('bold 300 16px serif')).toBeNull();
+    expect(parseFont('lighter bold 16px serif')).toBeNull();
+    expect(parseFont('bold lighter 16px serif')).toBeNull();
+    expect(parseFont('condensed expanded 16px serif')).toBeNull();
+    expect(parseFont('normal normal normal normal 16px serif')?.text).toBe(
+      '16px serif',
+    );
+    expect(
+      parseFont('normal normal normal normal normal 16px serif'),
+    ).toBeNull();
+    expect(
+      parseFont('italic normal normal normal normal 16px serif'),
+    ).toBeNull();
+    expect(parseFont('italic bold 16px serif')?.text).toBe(
+      'italic bold 16px serif',
+    );
+  });
+
   it('turns down what isn’t a font', () => {
     for (const text of [
       'Arial',
@@ -80,8 +130,13 @@ describe('parseFont', () => {
       '12 Arial',
       '-1px Arial',
       '12px Arial,',
+      '1e999px Arial',
       '12px 3D',
       '12px Ar@ial',
+      '12px "Arial',
+      '12px "A" "B"',
+      '12px Arial,',
+      '1e999px Arial',
       'bold',
     ]) {
       expect(parseFont(text)).toBeNull();

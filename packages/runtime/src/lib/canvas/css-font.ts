@@ -1,3 +1,4 @@
+// cspell:words fangsong
 /**
  * The CSS `font` shorthand, as the 2D context's `font` takes it:
  * `[style] [variant] [weight] [stretch] size[/line-height] family, …`.
@@ -80,25 +81,94 @@ const sizeOf = (token: string): number | null => {
 };
 
 /**
- * The families after the size, or null if the list is malformed.
+ * The CSS-wide keywords, which can't be a family unquoted, and the generic
+ * families, which mean the generic family only unquoted.
  */
-const familiesOf = (text: string): string[] | null => {
-  const families: string[] = [];
-  for (const part of text.split(',')) {
-    const family = part.trim();
-    if (family === '') return null;
-    const quoted = /^(["'])(.*)\1$/.exec(family);
-    if (quoted) {
-      families.push(quoted[2]);
-    } else if (/^[-\w\s]+$/.test(family) && !/^\d/.test(family)) {
-      // An unquoted family is identifiers separated by spaces.
-      families.push(family.replace(/\s+/g, ' '));
+const RESERVED_FAMILIES = new Set([
+  'inherit',
+  'initial',
+  'unset',
+  'revert',
+  'revert-layer',
+  'default',
+]);
+const GENERIC_FAMILIES = new Set([
+  'serif',
+  'sans-serif',
+  'monospace',
+  'cursive',
+  'fantasy',
+  'system-ui',
+  'ui-serif',
+  'ui-sans-serif',
+  'ui-monospace',
+  'ui-rounded',
+  'math',
+  'emoji',
+  'fangsong',
+]);
+
+type Family = { readonly name: string; readonly quoted: boolean };
+
+/**
+ * The families after the size, split at the commas outside quotes, or null
+ * if the list is malformed.
+ */
+const familiesOf = (text: string): Family[] | null => {
+  const families: Family[] = [];
+  let index = 0;
+  while (true) {
+    while (text[index] === ' ' || text[index] === '\t') index++;
+    const quote = text[index];
+    if (quote === '"' || quote === "'") {
+      const end = text.indexOf(quote, index + 1);
+      if (end < 0) return null;
+      families.push({ name: text.slice(index + 1, end), quoted: true });
+      index = end + 1;
     } else {
-      return null;
+      // Identifiers separated by spaces, up to the next comma.
+      const comma = text.indexOf(',', index);
+      const part = text.slice(index, comma < 0 ? text.length : comma).trim();
+      if (
+        !/^-?[a-z_\u0080-\uffff][-\w\u0080-\uffff]*(?:\s+-?[a-z_\u0080-\uffff][-\w\u0080-\uffff]*)*$/i.test(
+          part,
+        ) ||
+        RESERVED_FAMILIES.has(part.toLowerCase())
+      ) {
+        return null;
+      }
+      families.push({ name: part.replace(/\s+/g, ' '), quoted: false });
+      index = comma < 0 ? text.length : comma;
     }
+    while (text[index] === ' ' || text[index] === '\t') index++;
+    if (index >= text.length) return families;
+    if (text[index] !== ',') return null;
+    index++;
   }
-  return families;
 };
+
+/**
+ * A family as browsers write it back: quoted when unquoted would differ.
+ */
+const serializeFamily = ({ name, quoted }: Family): string => {
+  const lower = name.toLowerCase();
+  const needsQuotes =
+    !/^-?[a-z_\u0080-\uffff][-\w\u0080-\uffff]*(?: -?[a-z_\u0080-\uffff][-\w\u0080-\uffff]*)*$/i.test(
+      name,
+    ) ||
+    / /.test(name) ||
+    (quoted && (RESERVED_FAMILIES.has(lower) || GENERIC_FAMILIES.has(lower)));
+  return needsQuotes ? `"${name}"` : name;
+};
+
+/**
+ * CSS's `line-height` values: `normal`, a number, a length or a percentage.
+ */
+const isLineHeight = (token: string): boolean =>
+  token === 'normal' ||
+  /^(?:\d*\.?\d+(?:e[-+]?\d+)?)(?:px|pt|pc|in|cm|mm|q|em|rem|ex|ch|%)?$/.test(
+    token,
+  );
 
 const formatNumber = (value: number): string =>
   String(Math.round(value * 1000) / 1000);
@@ -116,28 +186,45 @@ export const parseFont = (value: unknown): CanvasFont | null => {
       text: '13px system-ui',
     };
   }
-  // The keywords and the size come first, up to the first space after the
-  // size; the families are everything after.
-  const tokens = text.split(/\s+/);
+  // The tokens before the families: the keywords, the size, and a line
+  // height after a slash, with or without spaces round it.
+  const tokenPattern = /\s*([^\s/]+|\/)/y;
+  const next = (): string | null => {
+    const match = tokenPattern.exec(text);
+    return match ? match[1] : null;
+  };
   let italic = false;
   let smallCaps = false;
   let weight = 400;
+  // Each of style, variant, weight and stretch is given once at most, and
+  // `normal` stands for one not given.
+  const given = new Set<string>();
+  let normals = 0;
+  const give = (slot: string): boolean => {
+    if (given.has(slot)) return false;
+    given.add(slot);
+    return true;
+  };
   const prefix: string[] = [];
-  let index = 0;
   let size: number | null = null;
-  for (; index < tokens.length; index++) {
-    const token = tokens[index].toLowerCase();
-    if (token === 'normal') continue;
-    if (token === 'italic' || token === 'oblique') {
+  for (let raw = next(); raw !== null; raw = next()) {
+    const token = raw.toLowerCase();
+    if (token === 'normal') {
+      normals++;
+    } else if (token === 'italic' || token === 'oblique') {
+      if (!give('style')) return null;
       italic = true;
       prefix.push(token);
     } else if (token === 'small-caps') {
+      if (!give('variant')) return null;
       smallCaps = true;
       prefix.push(token);
     } else if (token === 'bold' || token === 'bolder') {
+      if (!give('weight')) return null;
       weight = 700;
       prefix.push('bold');
     } else if (token === 'lighter') {
+      if (!give('weight')) return null;
       weight = 100;
       prefix.push(token);
     } else if (
@@ -145,31 +232,42 @@ export const parseFont = (value: unknown): CanvasFont | null => {
       Number(token) >= 1 &&
       Number(token) <= 1000
     ) {
+      if (!give('weight')) return null;
       weight = Number(token);
       if (weight !== 400) prefix.push(weight === 700 ? 'bold' : token);
     } else if (STRETCHES.has(token)) {
+      if (!give('stretch')) return null;
       prefix.push(token);
     } else {
-      // The size, with a line height the canvas ignores.
-      size = sizeOf(token.split('/')[0]);
+      size = sizeOf(token);
       break;
     }
+    if (normals + given.size > 4) return null;
   }
-  if (size === null || !Number.isFinite(size) || size < 0) return null;
-  const families = familiesOf(tokens.slice(index + 1).join(' '));
+  if (size === null || !Number.isFinite(size)) return null;
+  // A line height, which the canvas ignores, but must be one.
+  const afterSize = tokenPattern.lastIndex;
+  if (next() === '/') {
+    const lineHeight = next();
+    if (lineHeight === null || !isLineHeight(lineHeight.toLowerCase())) {
+      return null;
+    }
+  } else {
+    tokenPattern.lastIndex = afterSize;
+  }
+  const families = familiesOf(text.slice(tokenPattern.lastIndex));
   if (!families) return null;
-  const familyText = families
-    .map((family) =>
-      /[^-\w]/.test(family) || /^\d/.test(family) ? `"${family}"` : family,
-    )
-    .join(', ');
   return {
     italic,
     smallCaps,
     weight,
     size,
-    families,
-    text: [...prefix, `${formatNumber(size)}px`, familyText].join(' '),
+    families: families.map((family) => family.name),
+    text: [
+      ...prefix,
+      `${formatNumber(size)}px`,
+      families.map(serializeFamily).join(', '),
+    ].join(' '),
   };
 };
 

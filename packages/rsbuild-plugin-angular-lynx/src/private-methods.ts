@@ -873,76 +873,18 @@ const pureClassWrap = (
     ];
   }
   // An anonymous class takes its variable's name (`A.name`) only as an
-  // initializer, so inside the arrow it initializes a `const` of the same
-  // name, which it returns. That `const` is what the class's own code then
-  // reads, so the class is left alone where that would differ: where the
-  // module assigns the variable again, and where a static initializer or a
-  // computed name reads it while the class is defined, when the `const` isn't
-  // set yet (the variable was `undefined`).
+  // initializer. Inside the arrow it's the value of a property of that name,
+  // which names it the same way (`({ A: class {} }).A.name` is `'A'`) and,
+  // unlike a variable, binds nothing: the class's own code still reads the
+  // module's `A`, whenever and however that is written. A property named
+  // `__proto__` would set the object's prototype instead.
   if (!ts.isIdentifier(declaration.name)) return [];
   const name = declaration.name.text;
-  const readsName = (child: ts.Node): boolean =>
-    (ts.isIdentifier(child) && child.text === name) ||
-    !!ts.forEachChild(child, readsName);
-  const definedWith = node.members.flatMap((member) => [
-    ...(member.name && ts.isComputedPropertyName(member.name)
-      ? [member.name]
-      : []),
-    ...(ts.isPropertyDeclaration(member) &&
-    isStatic(member) &&
-    member.initializer
-      ? [member.initializer]
-      : []),
-  ]);
-  if (definedWith.some(readsName) || assignsAgain(sourceFile, declaration)) {
-    return [];
-  }
+  if (name === '__proto__') return [];
   return [
-    { start, end: start, text: `${iife}{ const ${name} = ` },
-    { start: end, end, text: `; return ${name}; })()` },
+    { start, end: start, text: `${iife}({ ${name}: ` },
+    { start: end, end, text: ` }).${name})()` },
   ];
-};
-
-/**
- * Whether anything in the module assigns to the variable `declaration`
- * declares, besides its own initializer: `A = …`, `A += …`, `A++` and the
- * like, as tslib's `A = __decorate([…], A)` does, or a destructuring
- * assignment or a `for…in`/`for…of` head that names it (`[A] = …`,
- * `for (A of …)`). In those two it's taken as written wherever the name
- * appears, which may leave a class unwrapped that could have been.
- */
-const assignsAgain = (
-  sourceFile: ts.SourceFile,
-  declaration: ts.VariableDeclaration,
-): boolean => {
-  const name = (declaration.name as ts.Identifier).text;
-  const isName = (node: ts.Node): boolean =>
-    ts.isIdentifier(node) && node.text === name;
-  const names = (node: ts.Node): boolean =>
-    isName(node) || !!ts.forEachChild(node, names);
-  const visit = (node: ts.Node): boolean => {
-    if (
-      (ts.isBinaryExpression(node) &&
-        node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
-        node.operatorToken.kind <= ts.SyntaxKind.LastAssignment &&
-        (isName(node.left) ||
-          ((ts.isArrayLiteralExpression(node.left) ||
-            ts.isObjectLiteralExpression(node.left)) &&
-            names(node.left)))) ||
-      ((ts.isForOfStatement(node) || ts.isForInStatement(node)) &&
-        !ts.isVariableDeclarationList(node.initializer) &&
-        names(node.initializer)) ||
-      ((ts.isPrefixUnaryExpression(node) ||
-        ts.isPostfixUnaryExpression(node)) &&
-        (node.operator === ts.SyntaxKind.PlusPlusToken ||
-          node.operator === ts.SyntaxKind.MinusMinusToken) &&
-        isName(node.operand))
-    ) {
-      return true;
-    }
-    return !!ts.forEachChild(node, visit);
-  };
-  return visit(sourceFile);
 };
 
 /**

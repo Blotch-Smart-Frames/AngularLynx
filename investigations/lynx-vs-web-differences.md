@@ -7149,6 +7149,24 @@ The copies go in a rule of their own, right after the rule they copy, narrowed t
 
 ---
 
+## `<b>` and `<strong>` aren't bold: Lynx has no user agent stylesheet
+
+### What you'd expect (web)
+
+A browser's user agent stylesheet gives `<b>` and `<strong>` `font-weight: bolder`, so `<text class="blue">blue <b>bold blue</b></text>` draws "bold blue" bold, in blue.
+
+### What Lynx does
+
+Lynx has no user agent stylesheet: an element draws only the styles the app's CSS gives it. AngularLynx renders `<b>` as a `<text>` (see "Text styles reach HTML text tags through CSS variables" above), which took the blue from its parent and stayed at the normal weight, on iOS, Android and the web preview alike (issue #611). Lynx for Web is no exception: it draws each `<text>` in a custom element (`<x-text>`), which the browser's own `b` rule never matches.
+
+### The fix
+
+The build plugin adds a stylesheet of its own to both bundles, ahead of the app's (`src/styles/html-text-tags.css`): `b, strong { font-weight: bold }`. `bolder` becomes `bold`, since Lynx has no relative weights (see "`font-weight` does not support `lighter` or `bolder`"). Its type selectors become the tag classes the runtime marks elements with (`._ngtag-b`), the text inheritance step copies the weight to `--angular-lynx-font-weight` for text inside, and the style index lists the rule, so the runtime doesn't give the element its parent's weight inline, which would beat it. An app's own class or type selector for the weight comes later and wins, as it would against a browser's. Measured with Lynx Explorer 4.1 on the iOS 27 Simulator and the Android API 34 emulator, and in the web preview, where the `<b>` drew at 700 in its parent's color, and at 300 with a class setting that.
+
+The other tags with a browser style (`<em>`, `<i>`, `<u>`, `<s>`, `<h1>`…) still have none.
+
+---
+
 ## Lynx for Web resolves a bundle's images against the page, not the bundle
 
 ### What you'd expect (web)

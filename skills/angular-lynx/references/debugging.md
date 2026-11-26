@@ -94,9 +94,9 @@ Read `globalThis.__lynxLastError` at any point to see the last uncaught error.
 
 ## Common Issues
 
-| Symptom                   | Likely Cause                                              |
-| ------------------------- | --------------------------------------------------------- |
-| Blank screen              | Crash during bootstrap — check `__lynxLastError`          |
-| Element disappears        | Element pool exhausted (~256 slots)                       |
-| Navigation silently fails | Missing default route (empty path redirect)               |
-| Styles not applying       | CSS inheritance assumption (styles don't inherit in Lynx) |
+| Symptom                   | Likely Cause                                                   |
+| ------------------------- | -------------------------------------------------------------- |
+| Blank screen              | Crash during bootstrap — check `__lynxLastError`               |
+| Element disappears        | Element pool exhausted (~256 slots)                            |
+| Navigation silently fails | Missing default route (empty path redirect)                    |
+| Styles not applying       | CSS inheritance assumption (only `font-size` inherits in Lynx) |

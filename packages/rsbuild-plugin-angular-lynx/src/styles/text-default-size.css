@@ -1,0 +1,28 @@
+/*
+ * The page's font size for a Lynx `<text>` that sets none, in an app that
+ * turns off `font-size` inheritance (`enableCSSInheritance: false`, or a
+ * `customCSSInheritanceList` without `font-size`). The build adds this file
+ * only then (see entry.ts): by default `font-size` inherits, and the `<text>`
+ * takes its parent's size, as on the web (issue #685), which this rule would
+ * replace with the page's.
+ *
+ * With nothing inherited, Lynx draws such a `<text>` at its built-in 14px
+ * (`DEFAULT_FONT_SIZE_DP` in core/renderer/tasm/config.h), whatever the
+ * page's size: so `<text>Hello</text>` stayed at 14px beside a 16px
+ * `text-base` under the theme's `page { font-size: 16px }`, and didn't grow
+ * with the phone's text size, which only the page's `sp` takes (issue #673).
+ * `1rem` is the page's size, and grows with it.
+ *
+ * The type selector loses to any class, id or inline style, and this file
+ * comes before the app's, so `text-xl` or an app's own `text` rule still
+ * wins. The build copies it to the font size variable of a `<text>` with
+ * HTML inline tags inside (text-inheritance.ts), and the style index counts
+ * it as the `<text>`'s own, so `<text>Total: <b>12</b></text>` draws the
+ * `<b>` at the same 1rem (see the runtime's LynxElement.#drawnAtDefault).
+ *
+ * Only the native bundle: in the web preview each `<text>` is an element of
+ * the browser's, which takes its parent's size already.
+ */
+text {
+  font-size: 1rem;
+}

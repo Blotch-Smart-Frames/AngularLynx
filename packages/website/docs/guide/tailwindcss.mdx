@@ -81,7 +81,7 @@ export class Counter {
 }
 ```
 
-- **Put text classes on the `<text>`.** `text-white` on the blue `<view>` wouldn't color its label, because CSS doesn't inherit on Lynx. See [Inheritance](/guide/styling#inheritance).
+- **Put text classes on the `<text>`.** `text-white` on the blue `<view>` wouldn't color its label, because only `font-size` inherits on Lynx by default. See [Inheritance](/guide/styling#inheritance).
 - **Rows need `flex flex-row`.** Elements stack in a column by default, and `flex-row` alone does nothing.
 - **Sizes run 12.5% smaller than on the web.** Tailwind's scale uses `rem`, which is 14px on Lynx. For an exact size, use an arbitrary `px` value such as `w-[44px]`.
 

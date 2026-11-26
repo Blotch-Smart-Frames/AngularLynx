@@ -10,6 +10,7 @@ import {
   setInsideChangeDetection,
 } from '../lynx-render-lifecycle';
 import type { ElementRef } from '../types/lynx';
+import { MainThreadElement } from '../main-thread/main-thread-element';
 import { LynxElement } from './lynx-element';
 
 /**
@@ -236,6 +237,49 @@ describe("a text field's value", () => {
     vi.clearAllMocks();
     el.setProperty('value', '');
     expect(globalThis.__InvokeUIMethod).not.toHaveBeenCalled();
+  });
+
+  it('counts the text a main-thread script sets on the field as the text it has', () => {
+    // A script on the field's input reformats what was typed (a card
+    // number in fours, say). The app's [value] then sets the typed text,
+    // which the field no longer shows, so it must go to native.
+    vi.stubGlobal('__FlushElementTree', vi.fn());
+    const el = field();
+    el.setProperty('value', '');
+    handlerFor('input')({ detail: { value: '42424242' } });
+    void new MainThreadElement(el.element).invoke('setValue', {
+      value: '4242 4242',
+    });
+    vi.clearAllMocks();
+
+    el.setProperty('value', '42424242');
+    expect(globalThis.__InvokeUIMethod).toHaveBeenCalledWith(
+      el.element,
+      'setValue',
+      { value: '42424242' },
+      expect.any(Function),
+    );
+
+    // And text a script set, set again by the app, changes nothing.
+    void new MainThreadElement(el.element).invoke('setValue', {});
+    vi.clearAllMocks();
+    el.setProperty('value', '');
+    expect(globalThis.__InvokeUIMethod).not.toHaveBeenCalled();
+  });
+
+  it("lets a script set the text of an element Angular didn't make", () => {
+    vi.stubGlobal('__FlushElementTree', vi.fn());
+    field();
+    const made = { uid: ++uid } as unknown as ElementRef;
+
+    void new MainThreadElement(made).invoke('setValue', { value: 'Ada' });
+
+    expect(globalThis.__InvokeUIMethod).toHaveBeenCalledWith(
+      made,
+      'setValue',
+      { value: 'Ada' },
+      expect.any(Function),
+    );
   });
 
   it('is only setValue on Lynx for Web, whose fields take it at once', () => {

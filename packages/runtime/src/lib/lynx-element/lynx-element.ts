@@ -62,6 +62,7 @@ import {
 import { POINTER_EVENT_NAMES, PointerEventSource } from './pointer-events';
 import { setPendingClassWriter } from './class-writes';
 import { setScriptStyleWriter } from './script-styles';
+import { setScriptFieldTextNoter } from './script-field-text';
 import { noteReleased, scheduleCollection } from './collect-garbage';
 import { removeNativeHandler } from './remove-native-handler';
 import { addNativeEvent } from './event-registration';
@@ -984,6 +985,12 @@ export class LynxElement implements BaseLynxElement {
         if (!target) return false;
         target.#setScriptStyles(styles);
         return true;
+      });
+      // And the text a script sets on a field (see script-field-text.ts).
+      setScriptFieldTextNoter((ref, text) => {
+        LynxElement.#registered(__GetElementUniqueID(ref))?.#noteFieldText(
+          text,
+        );
       });
     }
     this.#nativeRef = element;
@@ -2952,8 +2959,8 @@ export class LynxElement implements BaseLynxElement {
     // The app setting a field's text itself, which a `value` set to the
     // same text afterwards mustn't take for the text the field has (see
     // #setFieldText).
-    if (methodName === 'setValue' && this.#fieldText !== null) {
-      this.#fieldText = String(params?.['value'] ?? '');
+    if (methodName === 'setValue') {
+      this.#noteFieldText(String(params?.['value'] ?? ''));
     }
     const call = (): boolean => {
       let made = true;
@@ -2967,6 +2974,16 @@ export class LynxElement implements BaseLynxElement {
     } else {
       afterNextFlush(call);
     }
+  }
+
+  /**
+   * Notes the text the app or a main-thread script set on the field with
+   * `setValue`, which a `value` set to the same text afterwards mustn't take
+   * for the text the field has (see #setFieldText). Nothing to note for a
+   * field whose text the runtime doesn't track yet.
+   */
+  #noteFieldText(text: string): void {
+    if (this.#fieldText !== null) this.#fieldText = text;
   }
 
   /**

@@ -56,8 +56,25 @@ const readsVariable = (value: string, variable: string): boolean =>
 export const INHERITANCE_CLASS = '_nginherit';
 
 /**
+ * The class the runtime gives each Lynx `<text>` with INHERITANCE_CLASS, which
+ * the copies of a rule naming `text` are narrowed to instead. A copy of
+ * `LYNX_TEXT_INHERITANCE_CLASS` in the runtime's lynx-element/text-flow.ts,
+ * kept the same by a test.
+ *
+ * An HTML text tag (`<p>`) is a `<text>` on Lynx, so `view > text` matches
+ * it, but no `text` selector would on the web. The theme's
+ * `view > text { color: var(--foreground) }` copied to `--foreground` on a
+ * `<p>` hid the color of the view around it from the inline tags in the `<p>`
+ * (issue #610). The runtime gives the class to Lynx `<text>`s alone, and one
+ * class in place of the other keeps each copy's specificity what it was.
+ */
+export const LYNX_TEXT_INHERITANCE_CLASS = '_nginherit-text';
+
+/**
  * Narrows each selector in a list to the elements with INHERITANCE_CLASS:
- * `.a:active` becomes `.a._nginherit:active`, `*` becomes `._nginherit`. A
+ * `.a:active` becomes `.a._nginherit:active`, `*` becomes `._nginherit`, and
+ * one naming `text` to LYNX_TEXT_INHERITANCE_CLASS (`view > text` becomes
+ * `view > text._nginherit-text`). A
  * selector that styles a pseudo-element (`::placeholder`) goes, since nothing
  * is inside one to read the copies. `:root` is narrowed too, though it's one
  * element, so its copies stay one class below the others', as they were:
@@ -78,7 +95,14 @@ const narrower = selectorParser((selectors) => {
       selector.remove();
       return;
     }
-    const scope = selectorParser.className({ value: INHERITANCE_CLASS });
+    // A `text` tag names the Lynx element: an HTML text tag's selector names
+    // the tag (`p`), or its class once type selectors are rewritten.
+    const namesText = compound.some(
+      (node) => node.type === 'tag' && node.value.toLowerCase() === 'text',
+    );
+    const scope = selectorParser.className({
+      value: namesText ? LYNX_TEXT_INHERITANCE_CLASS : INHERITANCE_CLASS,
+    });
     // `*` alone: `svg|*` never reaches Lynx's CSS as an element.
     const universal = compound.find(
       (node) => node.type === 'universal' && node.toString().trim() === '*',

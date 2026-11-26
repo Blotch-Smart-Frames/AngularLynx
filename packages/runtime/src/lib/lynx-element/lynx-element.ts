@@ -46,6 +46,7 @@ import {
   ALL_TEXT_PROPERTIES,
   ANONYMOUS_TEXT_CLASS,
   INHERITANCE_CLASS,
+  LYNX_TEXT_INHERITANCE_CLASS,
   LAYOUT_FLAG,
   NOT_BLOCK_CONTAINERS,
   TAKES_RAW_TEXT,
@@ -1541,16 +1542,41 @@ export class LynxElement implements BaseLynxElement {
    * Gives a #webText element the inherited value of each text style its own
    * rules don't set (see #inheritStyle). An anonymous `<text>` has no rules
    * of its own, and takes them all.
+   *
+   * An HTML text tag's own rules are the ones that would match it on the
+   * web, so a rule whose selector names `text` isn't one. Lynx matches it,
+   * since the `<p>` is a `<text>`, so the theme's `view > text` gave every
+   * `<p>` in a `<view>` the color `--foreground`, whatever color the view
+   * set (issue #610). Read the variable instead, and the nearest ancestor's
+   * color wins over that rule. The theme sets the page's color, which the
+   * page passes down too, so a `<p>` no other ancestor colors takes that,
+   * as on the web. Where no ancestor sets the variable, the `var()` makes
+   * the declaration unset, so the rule doesn't apply either (seen on iOS and
+   * in the web preview), which is again what the web draws.
    */
   #applyInheritance(): void {
-    const own = this.#anonymous
-      ? 0
-      : styleFlagsFor(this.#styleTokens()) & ALL_TEXT_PROPERTIES;
-    const style = inheritanceStyleFor(own | this.#drawnAtDefault());
+    const style = inheritanceStyleFor(
+      this.#ownTextStyles() | this.#drawnAtDefault(),
+    );
     if (style === this.#inheritStyle) return;
     this.#inheritStyle = style;
     // One removed this cycle gets it when it's rebuilt (see #recreateSubtree).
     if (!this.#paintingDead) this.#rewriteInlineStyle();
+  }
+
+  /**
+   * The text properties this element's own rules set, as a bitmask (see
+   * INHERITED_TEXT_PROPERTIES). An anonymous `<text>` has none. An HTML text
+   * tag's leave out the rules whose selector names `text`, which match it on
+   * Lynx, as it's a `<text>`, but not on the web (see #applyInheritance): it
+   * reads the variable for those, and has no copy of them for the tags inside
+   * it (see LYNX_TEXT_INHERITANCE_CLASS).
+   */
+  #ownTextStyles(): number {
+    if (this.#anonymous) return 0;
+    const tokens = this.#styleTokens();
+    if (this.#webText) tokens.delete('<text>');
+    return styleFlagsFor(tokens) & ALL_TEXT_PROPERTIES;
   }
 
   /**
@@ -1580,10 +1606,9 @@ export class LynxElement implements BaseLynxElement {
   #drawnAtDefault(): number {
     let set = 0;
     for (let parent = this.#jsParent; parent; parent = parent.#jsParent) {
-      // An anonymous <text> has no rules of its own (see #applyInheritance).
-      if (!parent.#anonymous) {
-        set |= styleFlagsFor(parent.#styleTokens()) & ALL_TEXT_PROPERTIES;
-      }
+      // The rules that give each one a copy of the property (see
+      // #ownTextStyles): an HTML text tag's leave out those naming `text`.
+      set |= parent.#ownTextStyles();
       if (parent.#webText) continue;
       return parent.tagName === 'text' ? ALL_TEXT_PROPERTIES & ~set : 0;
     }
@@ -1888,6 +1913,12 @@ export class LynxElement implements BaseLynxElement {
       // it goes with the insert's own flush.
       (this.#scopeClasses ??= []).push(INHERITANCE_CLASS);
       this.#addClassName(INHERITANCE_CLASS);
+      // A Lynx <text> takes the copies of the rules naming `text` too, which
+      // an HTML text tag mustn't (see LYNX_TEXT_INHERITANCE_CLASS).
+      if (this.tagName === 'text' && !this.#webText) {
+        this.#scopeClasses.push(LYNX_TEXT_INHERITANCE_CLASS);
+        this.#addClassName(LYNX_TEXT_INHERITANCE_CLASS);
+      }
     }
     // A list's item has the list as its parent (see LynxListElement), as
     // parentNode() says: an item that moved into a list from another

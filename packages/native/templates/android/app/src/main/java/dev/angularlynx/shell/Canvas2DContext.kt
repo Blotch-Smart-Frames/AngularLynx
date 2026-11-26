@@ -99,7 +99,17 @@ class Canvas2DContext(
 
     // --- State ---------------------------------------------------------------
 
-    private class Style(val kind: Int, val color: Int, val objectId: Int) {
+    /**
+     * A fill or stroke style: a color, a gradient (which crosses whole with
+     * the style), or a pattern's image by id, with its transform.
+     */
+    private class Style(
+        val kind: Int,
+        val color: Int,
+        val objectId: Int,
+        val gradient: Gradient? = null,
+        val transform: Matrix? = null,
+    ) {
         companion object {
             const val COLOR = 0
             const val GRADIENT = 1
@@ -151,9 +161,7 @@ class Canvas2DContext(
         }
     }
 
-    private class Pattern(val bitmap: Bitmap, val repetition: Int) {
-        var transform = Matrix()
-    }
+    private class Pattern(val bitmap: Bitmap, val repetition: Int)
 
     // --- The bitmap ----------------------------------------------------------
 
@@ -376,11 +384,11 @@ class Canvas2DContext(
             Canvas2DOps.SET_GLOBAL_ALPHA -> s.globalAlpha = r.float()
             Canvas2DOps.SET_COMPOSITE_OPERATION -> s.composite = r.int().coerceIn(0, COMPOSITE_COUNT - 1)
             Canvas2DOps.SET_FILL_COLOR -> s.fill = Style(Style.COLOR, color(r), 0)
-            Canvas2DOps.SET_FILL_GRADIENT -> s.fill = Style(Style.GRADIENT, 0, r.int())
-            Canvas2DOps.SET_FILL_PATTERN -> s.fill = Style(Style.PATTERN, 0, r.int())
+            Canvas2DOps.SET_FILL_GRADIENT -> s.fill = Style(Style.GRADIENT, 0, 0, gradientFrom(r))
+            Canvas2DOps.SET_FILL_PATTERN -> s.fill = patternStyle(r)
             Canvas2DOps.SET_STROKE_COLOR -> s.stroke = Style(Style.COLOR, color(r), 0)
-            Canvas2DOps.SET_STROKE_GRADIENT -> s.stroke = Style(Style.GRADIENT, 0, r.int())
-            Canvas2DOps.SET_STROKE_PATTERN -> s.stroke = Style(Style.PATTERN, 0, r.int())
+            Canvas2DOps.SET_STROKE_GRADIENT -> s.stroke = Style(Style.GRADIENT, 0, 0, gradientFrom(r))
+            Canvas2DOps.SET_STROKE_PATTERN -> s.stroke = patternStyle(r)
             Canvas2DOps.SET_LINE_WIDTH -> s.lineWidth = r.float()
             Canvas2DOps.SET_LINE_CAP -> s.lineCap = when (r.int()) {
                 1 -> Paint.Cap.ROUND
@@ -420,24 +428,6 @@ class Canvas2DContext(
                 s.smoothing = r.int() != 0
                 r.int()
             }
-            Canvas2DOps.CREATE_LINEAR_GRADIENT -> {
-                val id = r.int()
-                objects[id] = Gradient(0, FloatArray(4) { r.float() })
-            }
-            Canvas2DOps.CREATE_RADIAL_GRADIENT -> {
-                val id = r.int()
-                objects[id] = Gradient(1, FloatArray(6) { r.float() })
-            }
-            Canvas2DOps.CREATE_CONIC_GRADIENT -> {
-                val id = r.int()
-                objects[id] = Gradient(2, FloatArray(3) { r.float() })
-            }
-            Canvas2DOps.ADD_COLOR_STOP -> {
-                val gradient = objects[r.int()] as? Gradient
-                val offset = r.float()
-                val stop = color(r)
-                gradient?.addStop(offset, stop)
-            }
             Canvas2DOps.CREATE_PATTERN -> {
                 val id = r.int()
                 val source = r.map()
@@ -446,11 +436,6 @@ class Canvas2DContext(
                 // canvas drawing on doesn't change.
                 val image = source?.let { bitmapFrom(it) } ?: return
                 objects[id] = Pattern(image.copy(Bitmap.Config.ARGB_8888, false), repetition)
-            }
-            Canvas2DOps.SET_PATTERN_TRANSFORM -> {
-                val pattern = objects[r.int()] as? Pattern
-                val m = FloatArray(6) { r.float() }
-                pattern?.transform = matrixOf(m)
             }
             Canvas2DOps.RELEASE_OBJECT -> objects.remove(r.int())
             Canvas2DOps.CLEAR_PATH -> clearPath(pathFrom(r.array()))
@@ -493,6 +478,32 @@ class Canvas2DContext(
             // batch would be read as the wrong arguments.
             else -> r.index = r.size
         }
+    }
+
+    /** A gradient as the runtime sends it: its type, six numbers, and its stops. */
+    private fun gradientFrom(r: Reader): Gradient {
+        val type = r.int()
+        val gradient = Gradient(type, FloatArray(6) { r.float() })
+        val stops = r.array()
+        var i = 0
+        while (i + 4 < stops.size()) {
+            val color = Color.argb(
+                (stops.getDouble(i + 4) * 255).roundToInt().coerceIn(0, 255),
+                stops.getDouble(i + 1).toInt().coerceIn(0, 255),
+                stops.getDouble(i + 2).toInt().coerceIn(0, 255),
+                stops.getDouble(i + 3).toInt().coerceIn(0, 255),
+            )
+            gradient.addStop(stops.getDouble(i).toFloat(), color)
+            i += 5
+        }
+        return gradient
+    }
+
+    /** A pattern's image, by id, with its transform. */
+    private fun patternStyle(r: Reader): Style {
+        val id = r.int()
+        val transform = matrixOf(FloatArray(6) { r.float() })
+        return Style(Style.PATTERN, 0, id, transform = transform)
     }
 
     private fun query(op: Int, r: Reader): Any? = when (op) {
@@ -699,7 +710,7 @@ class Canvas2DContext(
         when (style.kind) {
             Style.COLOR -> paint.color = style.color
             Style.GRADIENT -> {
-                val gradient = objects[style.objectId] as? Gradient ?: return null
+                val gradient = style.gradient ?: return null
                 val shader = shaderFor(gradient) ?: return null
                 // The shader's own matrix (a conic gradient's turn), then the
                 // transform's.
@@ -716,7 +727,7 @@ class Canvas2DContext(
                 // pattern's transform, then the canvas's.
                 val local = Matrix()
                 shader.getLocalMatrix(local)
-                local.postConcat(pattern.transform)
+                style.transform?.let { local.postConcat(it) }
                 matrix?.let { local.postConcat(it) }
                 shader.setLocalMatrix(local)
                 paint.shader = shader

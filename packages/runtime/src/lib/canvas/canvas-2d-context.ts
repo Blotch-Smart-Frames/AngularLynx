@@ -155,9 +155,8 @@ const initialState = (): State => ({
   filter: 'none',
 });
 
-/** What a context gives the gradients and patterns it makes. */
+/** What a context gives the patterns it makes. */
 type ObjectOwner = {
-  record(...items: unknown[]): void;
   /** Sends what's recorded: another context is about to use the object. */
   flush(): void;
 };
@@ -184,33 +183,28 @@ const objectFinalizer: FinalizationRegistry<{
  */
 let nextObjectId = 1;
 
-/** CanvasGradient: made by the context's create*Gradient(). */
+/**
+ * CanvasGradient: made by the context's create*Gradient(). It lives here,
+ * not in the shell: a context that paints with it sends it whole with the
+ * style, as it is at the draw, so a gradient one context made paints in any
+ * other, and a stop added later reaches every draw after it, in order.
+ */
 export class LynxCanvasGradient {
-  readonly #owner: ObjectOwner;
-  /** @internal The shell's id for it, in its context. */
-  readonly id: number;
+  /** @internal 0 linear, 1 radial, 2 conic. */
+  readonly type: number;
+  /** @internal Its points, radii and angle, six numbers. */
+  readonly params: readonly number[];
+  /** @internal Offset, red, green, blue and alpha of each stop, in order. */
+  readonly stops: number[] = [];
+  /** @internal Counts its changes, so a context knows to send it again. */
+  version = 0;
 
   /**
    * @internal
    */
-  constructor(owner: ObjectOwner, id: number) {
-    this.#owner = owner;
-    this.id = id;
-  }
-
-  /**
-   * @internal Sends the calls of the context that made it, which made it in
-   * the shell, before another context uses it.
-   */
-  flushOwner(owner: unknown): void {
-    if (owner !== this.#owner) this.#owner.flush();
-  }
-
-  /**
-   * @internal Whether the context that made it is this one.
-   */
-  ownedBy(owner: unknown): boolean {
-    return owner === this.#owner;
+  constructor(type: number, params: readonly number[]) {
+    this.type = type;
+    this.params = [...params, 0, 0, 0, 0, 0, 0].slice(0, 6);
   }
 
   addColorStop(offset: number, color: string): void {
@@ -233,15 +227,28 @@ export class LynxCanvasGradient {
         `Failed to execute 'addColorStop' on 'CanvasGradient': The value provided ('${color}') could not be parsed as a color.`,
       );
     }
-    this.#owner.record(OP.addColorStop, this.id, value, ...rgba);
+    // After the stops at the same offset, as the spec has it, so two at one
+    // offset make a hard edge.
+    let index = this.stops.length;
+    while (index > 0 && this.stops[index - 5] > value) index -= 5;
+    this.stops.splice(index, 0, value, ...rgba);
+    this.version++;
   }
 }
 
-/** CanvasPattern: made by the context's createPattern(). */
+/**
+ * CanvasPattern: made by the context's createPattern(). Its image is the
+ * shell's, made once and never changed; its transform lives here, and a
+ * context that paints with it sends it with the style, as it is at the draw.
+ */
 export class LynxCanvasPattern {
   readonly #owner: ObjectOwner;
-  /** @internal */
+  /** @internal The shell's id for its image. */
   readonly id: number;
+  /** @internal */
+  transform: Matrix = IDENTITY;
+  /** @internal Counts its changes, so a context knows to send it again. */
+  version = 0;
 
   /**
    * @internal
@@ -252,23 +259,18 @@ export class LynxCanvasPattern {
   }
 
   /**
-   * @internal See LynxCanvasGradient.flushOwner.
+   * @internal Sends the calls of the context that made it, which made its
+   * image in the shell, before another context uses it.
    */
   flushOwner(owner: unknown): void {
     if (owner !== this.#owner) this.#owner.flush();
   }
 
-  /**
-   * @internal See LynxCanvasGradient.ownedBy.
-   */
-  ownedBy(owner: unknown): boolean {
-    return owner === this.#owner;
-  }
-
   setTransform(transform?: MatrixInit): void {
     const m = matrixFrom(transform);
     if (!finite(...m)) return;
-    this.#owner.record(OP.setPatternTransform, this.id, ...m);
+    this.transform = m;
+    this.version++;
   }
 }
 
@@ -530,10 +532,7 @@ export class LynxCanvasRenderingContext2D {
     this.#id = contextId;
     this.canvas = canvas;
     this.#attributes = attributes;
-    this.#owner = {
-      record: (...items) => this.#cmd(...items),
-      flush: () => this.flush(),
-    };
+    this.#owner = { flush: () => this.flush() };
   }
 
   /**
@@ -547,24 +546,11 @@ export class LynxCanvasRenderingContext2D {
   }
 
   #draw(...items: unknown[]): void {
-    // A gradient or pattern another context made may have changed since it
-    // was set (a color stop, a transform), recorded on that context: this
-    // context's earlier draws go first, then those changes, then this draw,
-    // so each draw uses the object as it was when it was drawn.
-    const borrowed: (LynxCanvasGradient | LynxCanvasPattern)[] = [];
-    for (const style of [this.#state.fillStyle, this.#state.strokeStyle]) {
-      const object =
-        style.kind === 'gradient'
-          ? style.gradient
-          : style.kind === 'pattern'
-            ? style.pattern
-            : null;
-      if (object && !object.ownedBy(this.#owner)) borrowed.push(object);
-    }
-    if (borrowed.length > 0) {
-      this.#send();
-      for (const object of borrowed) object.flushOwner(this.#owner);
-    }
+    // A gradient or pattern that changed since it was sent (a stop, a
+    // transform) is sent again, in this context's batch, so the draw uses it
+    // as it is now and the draws before it as they were.
+    this.#sendStyleIfChanged(this.#state.fillStyle, true);
+    this.#sendStyleIfChanged(this.#state.strokeStyle, false);
     this.#dirty = true;
     this.#cmd(...items);
   }
@@ -672,6 +658,9 @@ export class LynxCanvasRenderingContext2D {
     this.#state = state;
     this.#path.matrix = state.transform;
     this.#cmd(OP.restore);
+    // The shell's styles are the saved ones now, of whichever version was
+    // sent then: the next draw sends them again if they've changed.
+    this.#sentVersion = { fill: -1, stroke: -1 };
   }
 
   reset(): void {
@@ -820,7 +809,6 @@ export class LynxCanvasRenderingContext2D {
 
   #styleFrom(value: unknown): Style | null {
     if (value instanceof LynxCanvasGradient) {
-      value.flushOwner(this.#owner);
       return { kind: 'gradient', gradient: value };
     }
     if (value instanceof LynxCanvasPattern) {
@@ -831,22 +819,45 @@ export class LynxCanvasRenderingContext2D {
     return rgba ? { kind: 'color', rgba } : null;
   }
 
+  /** The version of each style's gradient or pattern the shell has. */
+  #sentVersion = { fill: -1, stroke: -1 };
+
   #sendStyle(style: Style, fill: boolean): void {
     switch (style.kind) {
       case 'color':
         this.#cmd(fill ? OP.setFillColor : OP.setStrokeColor, ...style.rgba);
-        break;
-      case 'gradient':
+        return;
+      case 'gradient': {
+        const { gradient } = style;
         this.#cmd(
           fill ? OP.setFillGradient : OP.setStrokeGradient,
-          style.gradient.id,
+          gradient.type,
+          ...gradient.params,
+          gradient.stops.slice(),
         );
-        break;
-      default:
+        this.#sentVersion[fill ? 'fill' : 'stroke'] = gradient.version;
+        return;
+      }
+      default: {
+        const { pattern } = style;
         this.#cmd(
           fill ? OP.setFillPattern : OP.setStrokePattern,
-          style.pattern.id,
+          pattern.id,
+          ...pattern.transform,
         );
+        this.#sentVersion[fill ? 'fill' : 'stroke'] = pattern.version;
+      }
+    }
+  }
+
+  #sendStyleIfChanged(style: Style, fill: boolean): void {
+    if (style.kind === 'color') return;
+    const version =
+      style.kind === 'gradient'
+        ? style.gradient.version
+        : style.pattern.version;
+    if (version !== this.#sentVersion[fill ? 'fill' : 'stroke']) {
+      this.#sendStyle(style, fill);
     }
   }
 
@@ -890,11 +901,7 @@ export class LynxCanvasRenderingContext2D {
         "Failed to execute 'createLinearGradient' on 'CanvasRenderingContext2D': The provided double value is non-finite.",
       );
     }
-    const id = this.#newObjectId();
-    this.#cmd(OP.createLinearGradient, id, ...values);
-    const gradient = new LynxCanvasGradient(this.#owner, id);
-    this.#track(gradient, id);
-    return gradient;
+    return new LynxCanvasGradient(0, values);
   }
 
   createRadialGradient(
@@ -917,11 +924,7 @@ export class LynxCanvasRenderingContext2D {
         `Failed to execute 'createRadialGradient' on 'CanvasRenderingContext2D': The ${values[2] < 0 ? 'r0' : 'r1'} provided is less than 0.`,
       );
     }
-    const id = this.#newObjectId();
-    this.#cmd(OP.createRadialGradient, id, ...values);
-    const gradient = new LynxCanvasGradient(this.#owner, id);
-    this.#track(gradient, id);
-    return gradient;
+    return new LynxCanvasGradient(1, values);
   }
 
   createConicGradient(
@@ -935,11 +938,7 @@ export class LynxCanvasRenderingContext2D {
         "Failed to execute 'createConicGradient' on 'CanvasRenderingContext2D': The provided double value is non-finite.",
       );
     }
-    const id = this.#newObjectId();
-    this.#cmd(OP.createConicGradient, id, ...values);
-    const gradient = new LynxCanvasGradient(this.#owner, id);
-    this.#track(gradient, id);
-    return gradient;
+    return new LynxCanvasGradient(2, values);
   }
 
   createPattern(

@@ -893,16 +893,18 @@ export class LynxWebGL2RenderingContext {
         break;
       case GL.UNPACK_SKIP_PIXELS:
       case GL.UNPACK_SKIP_ROWS: {
-        // GL refuses a negative skip with INVALID_VALUE and keeps the last
-        // one: so does the context, which crops uploads at it.
-        const skip = Number(param);
+        // The value is a GLint first (-0.5 is 0), then GL refuses a negative
+        // skip with INVALID_VALUE and keeps the last one: so does the
+        // context, which crops uploads at it.
+        const skip = Number(param) | 0;
         if (skip < 0) {
           this.#fail(GL.INVALID_VALUE);
           return;
         }
         if (pname === GL.UNPACK_SKIP_PIXELS) this.#unpackSkip.pixels = skip;
         else this.#unpackSkip.rows = skip;
-        break;
+        this.#cmd(OP.pixelStorei, pname, skip);
+        return;
       }
       case GL.PACK_ALIGNMENT:
         this.#pack.alignment = Number(param);

@@ -1790,6 +1790,18 @@ describe('textures', () => {
     gl.pixelStorei(GL.UNPACK_SKIP_PIXELS, -1);
     gl.pixelStorei(GL.UNPACK_SKIP_ROWS, -1);
     expect(gl.getError()).toBe(GL.INVALID_VALUE);
+    // A fraction is a GLint first: -0.5 is 0, which is kept and sent.
+    gl.pixelStorei(GL.UNPACK_SKIP_ROWS, -0.5);
+    expect(gl.getError()).toBe(GL.NO_ERROR);
+    gl.flush();
+    const sentNow = bridge.batches.flat();
+    const at = sentNow.lastIndexOf(GL.UNPACK_SKIP_ROWS);
+    expect(sentNow.slice(at - 1, at + 2)).toEqual([
+      OP.pixelStorei,
+      GL.UNPACK_SKIP_ROWS,
+      0,
+    ]);
+    gl.pixelStorei(GL.UNPACK_SKIP_ROWS, 1);
     // Inside it, it goes.
     gl.texImage2D(
       GL.TEXTURE_2D,

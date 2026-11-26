@@ -624,13 +624,88 @@ describe('LynxCanvasRenderingContext2D', () => {
     expect(new LynxTextMetrics([1]).ideographicBaseline).toBe(0);
   });
 
-  it('makes gradients the shell keeps, and frees them when they’re collected', async () => {
+  it('sends a gradient whole with the style, and again when it changes', async () => {
+    const context = make();
+    const linear = context.createLinearGradient(0, 0, 10, 0);
+    linear.addColorStop(1, 'rgba(0, 0, 255, 0.5)');
+    linear.addColorStop(0, 'red');
+    // A stop at the same offset goes after the one there, a hard edge.
+    linear.addColorStop(1, 'lime');
+    context.fillStyle = linear;
+    expect(context.fillStyle).toBe(linear);
+    context.fillRect(0, 0, 1, 1);
+    const radial = context.createRadialGradient(0, 0, 1, 0, 0, 5);
+    context.strokeStyle = radial;
+    const conic = context.createConicGradient(1, 2, 3);
+    context.fillStyle = conic;
+    expect(context.strokeStyle).toBe(radial);
+    const stops = [0, 255, 0, 0, 1, 1, 0, 0, 255, 0.5, 1, 0, 255, 0, 1];
+    expect(await sent()).toEqual([
+      OP.setFillGradient,
+      0,
+      0,
+      0,
+      10,
+      0,
+      0,
+      0,
+      stops,
+      OP.fill,
+      [M, 0, 0, L, 1, 0, L, 1, 1, L, 0, 1, Z, M, 0, 0],
+      0,
+      OP.setStrokeGradient,
+      1,
+      0,
+      0,
+      1,
+      0,
+      0,
+      5,
+      [],
+      OP.setFillGradient,
+      2,
+      1,
+      2,
+      3,
+      0,
+      0,
+      0,
+      [],
+      OP.present,
+    ]);
+    // A stop added after it was set is sent with the next draw, in order.
+    conic.addColorStop(0.5, 'blue');
+    context.fillRect(0, 0, 1, 1);
+    // Unchanged, it isn't sent again.
+    context.fillRect(0, 0, 1, 1);
+    await Promise.resolve();
+    const batch = bridge.batches.at(-1)!;
+    expect(batch.filter((item) => item === OP.setFillGradient).length).toBe(1);
+    expect(batch[0]).toBe(OP.setFillGradient);
+    expect(batch[8]).toEqual([0.5, 0, 0, 255, 1]);
+    expect(batch[9]).toBe(OP.fill);
+  });
+
+  it('sends a changed style again after restore(), whose saved one may be older', async () => {
+    const context = make();
+    const gradient = context.createLinearGradient(0, 0, 1, 0);
+    context.fillStyle = gradient;
+    context.save();
+    context.restore();
+    context.fillRect(0, 0, 1, 1);
+    const commands = await sent();
+    expect(commands.filter((item) => item === OP.setFillGradient).length).toBe(
+      2,
+    );
+  });
+
+  it('frees a pattern’s image through the module when it’s collected', async () => {
     let free: (() => void) | undefined;
     vi.stubGlobal(
       'FinalizationRegistry',
       class {
-        constructor(readonly callback: (held: () => void) => void) {}
-        register(_target: object, held: () => void) {
+        constructor(readonly callback: (held: unknown) => void) {}
+        register(_target: object, held: unknown) {
           free = () => this.callback(held);
         }
       },
@@ -643,64 +718,15 @@ describe('LynxCanvasRenderingContext2D', () => {
       canvas,
       module.canvas2DAttributesFrom(undefined),
     );
-    const linear = context.createLinearGradient(0, 0, 10, 0);
-    linear.addColorStop(0, 'red');
-    linear.addColorStop(1, 'rgba(0, 0, 255, 0.5)');
-    context.fillStyle = linear;
-    expect(context.fillStyle).toBe(linear);
-    const radial = context.createRadialGradient(0, 0, 1, 0, 0, 5);
-    const conic = context.createConicGradient(1, 2, 3);
-    context.strokeStyle = conic;
-    expect(context.strokeStyle).toBe(conic);
+    const pattern = context.createPattern(image(3), null)!;
     free!();
-    expect(await sent()).toEqual([
-      OP.createLinearGradient,
-      1,
-      0,
-      0,
-      10,
-      0,
-      OP.addColorStop,
-      1,
-      0,
-      255,
-      0,
-      0,
-      1,
-      OP.addColorStop,
-      1,
-      1,
-      0,
-      0,
-      255,
-      0.5,
-      OP.setFillGradient,
-      1,
-      OP.createRadialGradient,
-      2,
-      0,
-      0,
-      1,
-      0,
-      0,
-      5,
-      OP.createConicGradient,
-      3,
-      1,
-      2,
-      3,
-      OP.setStrokeGradient,
-      3,
-    ]);
     // Freed through the module, which every context's objects share, so it
     // goes whether or not the context that made it is still there.
-    expect(bridge.release2D).toHaveBeenCalledWith(3);
-    // Even after the context that made it is gone.
+    expect(bridge.release2D).toHaveBeenCalledWith(pattern.id);
     context.destroy();
     bridge.release2D.mockClear();
     free!();
-    expect(bridge.release2D).toHaveBeenCalledWith(3);
-    expect(radial).toBeInstanceOf(module.LynxCanvasGradient);
+    expect(bridge.release2D).toHaveBeenCalledWith(pattern.id);
   });
 
   it('refuses what a gradient can’t take, and another context’s gradient', () => {
@@ -727,46 +753,49 @@ describe('LynxCanvasRenderingContext2D', () => {
     expect(gradient).toBeInstanceOf(LynxCanvasGradient);
   });
 
-  it('paints with another context’s gradients and patterns, made in the shell first', () => {
+  it('paints with another context’s gradients and patterns, each draw with it as it was', () => {
     const context = make(undefined, 7);
     const gradient = context.createLinearGradient(0, 0, 1, 1);
     const pattern = context.createPattern(image(3), null)!;
     const other = make(undefined, 8);
     other.fillStyle = gradient;
     expect(other.fillStyle).toBe(gradient);
-    // The context that made them sent their calls before the other used them.
+    // A gradient isn't the shell's: nothing of the maker's goes first.
+    expect(bridge.batches).toEqual([]);
+    // A pattern's image is: the maker sends it before the other uses it.
+    other.fillStyle = pattern;
+    expect(other.fillStyle).toBe(pattern);
+    expect(bridge.batchContexts).toEqual([7]);
     expect(bridge.batches[0]).toEqual([
-      OP.createLinearGradient,
-      gradient.id,
-      0,
-      0,
-      1,
-      1,
       OP.createPattern,
       pattern.id,
       { image: 3 },
       0,
     ]);
-    other.strokeStyle = pattern;
-    expect(other.strokeStyle).toBe(pattern);
-    // A change to one after it was set goes between the other's draws: its
-    // earlier draw first, then the change, then its next draw.
+    // A change to the pattern between two draws: the first draw uses it as
+    // it was and the second as it is, all in the drawing context's batch,
+    // whenever the maker sends its own.
     other.fillRect(0, 0, 1, 1);
-    const before = bridge.batches.length;
     pattern.setTransform({ e: 4 });
+    pattern.setTransform({ a: NaN });
+    context.flush();
     other.fillRect(1, 1, 1, 1);
     other.flush();
-    const sent = bridge.batches.slice(before);
-    expect(bridge.batchContexts.slice(before)).toEqual([8, 7, 8]);
-    expect(sent[0]).toContain(OP.fill);
-    expect(sent[1].slice(0, 2)).toEqual([OP.setPatternTransform, pattern.id]);
-    expect(sent[2]).toContain(OP.fill);
-    // Its own needn't be sent first.
-    other.fillStyle = other.createLinearGradient(0, 0, 1, 1);
-    other.strokeStyle = other.createPattern(image(3), null)!;
-    const count = bridge.batches.length;
-    other.fillRect(0, 0, 1, 1);
-    expect(bridge.batches.length).toBe(count);
+    expect(bridge.batchContexts).toEqual([7, 8]);
+    const batch = bridge.batches[1];
+    const sets = batch
+      .map((item, index) => (item === OP.setFillPattern ? index : -1))
+      .filter((index) => index >= 0);
+    expect(sets.map((index) => batch.slice(index + 2, index + 8))).toEqual([
+      [1, 0, 0, 1, 0, 0],
+      [1, 0, 0, 1, 4, 0],
+    ]);
+    const fills = batch
+      .map((item, index) => (item === OP.fill ? index : -1))
+      .filter((index) => index >= 0);
+    expect(sets[0] < fills[0] && fills[0] < sets[1] && sets[1] < fills[1]).toBe(
+      true,
+    );
   });
 
   it('makes patterns of images and canvases, with a transform', async () => {
@@ -793,16 +822,21 @@ describe('LynxCanvasRenderingContext2D', () => {
       1,
       OP.setFillPattern,
       id,
+      1,
+      0,
+      0,
+      1,
+      0,
+      0,
       OP.setStrokePattern,
       id,
-      OP.setPatternTransform,
-      id,
       1,
       0,
       0,
       1,
-      2,
       0,
+      0,
+      // The transform set after is sent with the next draw (see below).
       OP.createPattern,
       id + 1,
       { image: 3 },

@@ -153,8 +153,13 @@ typedef NS_ENUM(NSInteger, ALStyleKind) {
 typedef struct {
   ALStyleKind kind;
   CGFloat rgba[4];
+  /// A pattern's image, by the runtime's id.
   NSInteger objectId;
+  /// A pattern's transform, which crosses with the style.
+  CGAffineTransform transform;
 } ALStyle;
+
+@class ALCanvas2DGradient;
 
 /// What canvas `save()` keeps. The clip is Core Graphics' own state, saved
 /// with it.
@@ -164,6 +169,9 @@ typedef struct {
 @property(nonatomic) NSInteger composite;
 @property(nonatomic) ALStyle fill;
 @property(nonatomic) ALStyle stroke;
+/// The gradients the styles paint with, which cross whole with the style.
+@property(nonatomic, strong) ALCanvas2DGradient *fillGradient;
+@property(nonatomic, strong) ALCanvas2DGradient *strokeGradient;
 @property(nonatomic) CGFloat lineWidth;
 @property(nonatomic) CGLineCap lineCap;
 @property(nonatomic) CGLineJoin lineJoin;
@@ -189,8 +197,8 @@ typedef struct {
   if ((self = [super init])) {
     _transform = CGAffineTransformIdentity;
     _globalAlpha = 1;
-    _fill = (ALStyle){ALStyleColor, {0, 0, 0, 1}, 0};
-    _stroke = (ALStyle){ALStyleColor, {0, 0, 0, 1}, 0};
+    _fill = (ALStyle){ALStyleColor, {0, 0, 0, 1}, 0, CGAffineTransformIdentity};
+    _stroke = (ALStyle){ALStyleColor, {0, 0, 0, 1}, 0, CGAffineTransformIdentity};
     _lineWidth = 1;
     _lineCap = kCGLineCapButt;
     _lineJoin = kCGLineJoinMiter;
@@ -211,6 +219,8 @@ typedef struct {
   copy.composite = _composite;
   copy.fill = _fill;
   copy.stroke = _stroke;
+  copy.fillGradient = _fillGradient;
+  copy.strokeGradient = _strokeGradient;
   copy.lineWidth = _lineWidth;
   copy.lineCap = _lineCap;
   copy.lineJoin = _lineJoin;
@@ -333,7 +343,6 @@ typedef struct {
 @interface ALCanvas2DPattern : NSObject
 @property(nonatomic) CGImageRef image;
 @property(nonatomic) NSInteger repetition;  // 0 repeat, 1 repeat-x, 2 repeat-y, 3 no-repeat
-@property(nonatomic) CGAffineTransform transform;
 @property(nonatomic) CGInterpolationQuality quality;
 @end
 
@@ -635,13 +644,38 @@ static BOOL reducesAlpha(NSInteger composite) {
 }
 
 - (ALStyle)styleOfKind:(ALStyleKind)kind reader:(ALReader *)r {
-  ALStyle style = {kind, {0, 0, 0, 1}, 0};
+  ALStyle style = {kind, {0, 0, 0, 1}, 0, CGAffineTransformIdentity};
   if (kind == ALStyleColor) {
     for (int i = 0; i < 4; i++) style.rgba[i] = readNumber(r);
-  } else {
+  } else if (kind == ALStylePattern) {
     style.objectId = readInt(r);
+    CGFloat a = readNumber(r), b = readNumber(r), c = readNumber(r), d = readNumber(r),
+            e = readNumber(r), f = readNumber(r);
+    style.transform = CGAffineTransformMake(a, b, c, d, e, f);
   }
   return style;
+}
+
+/// A gradient as the runtime sends it with a style: its type, six numbers,
+/// and its stops as offset, red, green, blue, alpha.
+- (ALCanvas2DGradient *)gradientFrom:(ALReader *)r {
+  ALCanvas2DGradient *gradient = [[ALCanvas2DGradient alloc] init];
+  gradient.type = readInt(r);
+  gradient.p0 = readNumber(r);
+  gradient.p1 = readNumber(r);
+  gradient.p2 = readNumber(r);
+  gradient.p3 = readNumber(r);
+  gradient.p4 = readNumber(r);
+  gradient.p5 = readNumber(r);
+  NSArray *stops = readArray(r);
+  for (NSUInteger i = 0; i + 4 < stops.count; i += 5) {
+    [gradient addStop:[stops[i] doubleValue]
+                    r:[stops[i + 1] doubleValue]
+                    g:[stops[i + 2] doubleValue]
+                    b:[stops[i + 3] doubleValue]
+                    a:[stops[i + 4] doubleValue]];
+  }
+  return gradient;
 }
 
 - (void)command:(NSInteger)op reader:(ALReader *)r {
@@ -688,6 +722,7 @@ static BOOL reducesAlpha(NSInteger composite) {
       break;
     case ALCanvas2DOpSetFillGradient:
       s.fill = [self styleOfKind:ALStyleGradient reader:r];
+      s.fillGradient = [self gradientFrom:r];
       break;
     case ALCanvas2DOpSetFillPattern:
       s.fill = [self styleOfKind:ALStylePattern reader:r];
@@ -697,6 +732,7 @@ static BOOL reducesAlpha(NSInteger composite) {
       break;
     case ALCanvas2DOpSetStrokeGradient:
       s.stroke = [self styleOfKind:ALStyleGradient reader:r];
+      s.strokeGradient = [self gradientFrom:r];
       break;
     case ALCanvas2DOpSetStrokePattern:
       s.stroke = [self styleOfKind:ALStylePattern reader:r];
@@ -754,35 +790,6 @@ static BOOL reducesAlpha(NSInteger composite) {
       s.smoothing = readInt(r) != 0;
       s.smoothingQuality = readInt(r);
       break;
-    case ALCanvas2DOpCreateLinearGradient:
-    case ALCanvas2DOpCreateRadialGradient:
-    case ALCanvas2DOpCreateConicGradient: {
-      NSInteger objectId = readInt(r);
-      ALCanvas2DGradient *gradient = [[ALCanvas2DGradient alloc] init];
-      gradient.type = op == ALCanvas2DOpCreateLinearGradient   ? 0
-                      : op == ALCanvas2DOpCreateRadialGradient ? 1
-                                                               : 2;
-      NSInteger count = gradient.type == 0 ? 4 : gradient.type == 1 ? 6 : 3;
-      CGFloat p[6] = {0};
-      for (NSInteger i = 0; i < count; i++) p[i] = readNumber(r);
-      gradient.p0 = p[0];
-      gradient.p1 = p[1];
-      gradient.p2 = p[2];
-      gradient.p3 = p[3];
-      gradient.p4 = p[4];
-      gradient.p5 = p[5];
-      _objects[@(objectId)] = gradient;
-      break;
-    }
-    case ALCanvas2DOpAddColorStop: {
-      ALCanvas2DGradient *gradient = _objects[@(readInt(r))];
-      CGFloat offset = readNumber(r), red = readNumber(r), green = readNumber(r),
-              blue = readNumber(r), alpha = readNumber(r);
-      if ([gradient isKindOfClass:ALCanvas2DGradient.class]) {
-        [gradient addStop:offset r:red g:green b:blue a:alpha];
-      }
-      break;
-    }
     case ALCanvas2DOpCreatePattern: {
       NSInteger objectId = readInt(r);
       NSDictionary *source = readMap(r);
@@ -792,17 +799,7 @@ static BOOL reducesAlpha(NSInteger composite) {
       ALCanvas2DPattern *pattern = [[ALCanvas2DPattern alloc] init];
       pattern.image = image;
       pattern.repetition = repetition;
-      pattern.transform = CGAffineTransformIdentity;
       _objects[@(objectId)] = pattern;
-      break;
-    }
-    case ALCanvas2DOpSetPatternTransform: {
-      ALCanvas2DPattern *pattern = _objects[@(readInt(r))];
-      CGFloat a = readNumber(r), b = readNumber(r), c = readNumber(r), d = readNumber(r),
-              e = readNumber(r), f = readNumber(r);
-      if ([pattern isKindOfClass:ALCanvas2DPattern.class]) {
-        pattern.transform = CGAffineTransformMake(a, b, c, d, e, f);
-      }
       break;
     }
     case ALCanvas2DOpReleaseObject:
@@ -817,7 +814,7 @@ static BOOL reducesAlpha(NSInteger composite) {
     case ALCanvas2DOpFill: {
       CGMutablePathRef path = pathFromSegments(readArray(r));
       BOOL evenOdd = readInt(r) == 1;
-      [self fillDevicePath:path evenOdd:evenOdd style:s.fill];
+      [self fillDevicePath:path evenOdd:evenOdd style:s.fill gradient:s.fillGradient];
       CGPathRelease(path);
       break;
     }
@@ -988,7 +985,10 @@ static BOOL reducesAlpha(NSInteger composite) {
 
 /// Fills a path in the canvas's pixels with a style, which is in the space
 /// of the current transform.
-- (void)fillDevicePath:(CGPathRef)path evenOdd:(BOOL)evenOdd style:(ALStyle)style {
+- (void)fillDevicePath:(CGPathRef)path
+               evenOdd:(BOOL)evenOdd
+                 style:(ALStyle)style
+              gradient:(ALCanvas2DGradient *)styleGradient {
   if (CGPathIsEmpty(path)) return;
   CGAffineTransform transform = _state.transform;
   if (style.kind == ALStyleColor) {
@@ -1005,7 +1005,7 @@ static BOOL reducesAlpha(NSInteger composite) {
     }];
     return;
   }
-  id object = _objects[@(style.objectId)];
+  id object = style.kind == ALStyleGradient ? styleGradient : _objects[@(style.objectId)];
   if ([object isKindOfClass:ALCanvas2DGradient.class]) {
     ALCanvas2DGradient *gradient = object;
     if (gradient.stops.count == 0) return;
@@ -1031,7 +1031,7 @@ static BOOL reducesAlpha(NSInteger composite) {
     // flip.
     CGAffineTransform flip = CGAffineTransformMake(1, 0, 0, -1, 0, _height);
     CGAffineTransform matrix = CGAffineTransformConcat(
-        CGAffineTransformConcat(pattern.transform, transform), flip);
+        CGAffineTransformConcat(style.transform, transform), flip);
     // A step longer than the canvas reaches in pattern space repeats nothing:
     // no-repeat, and the other axis of repeat-x or repeat-y. The canvas's
     // corners are taken back into pattern space to find how far that is.
@@ -1186,7 +1186,7 @@ static BOOL reducesAlpha(NSInteger composite) {
 - (void)strokeDevicePath:(CGPathRef)path {
   CGPathRef outline = [self strokeOutlineOf:path];
   if (!outline) return;
-  [self fillDevicePath:outline evenOdd:NO style:_state.stroke];
+  [self fillDevicePath:outline evenOdd:NO style:_state.stroke gradient:_state.strokeGradient];
   CGPathRelease(outline);
 }
 
@@ -1463,7 +1463,7 @@ static BOOL reducesAlpha(NSInteger composite) {
   if (stroke) {
     [self strokeDevicePath:device];
   } else {
-    [self fillDevicePath:device evenOdd:NO style:style];
+    [self fillDevicePath:device evenOdd:NO style:style gradient:_state.fillGradient];
   }
   CGPathRelease(device);
 }

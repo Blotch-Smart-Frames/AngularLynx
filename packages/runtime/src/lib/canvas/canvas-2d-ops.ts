@@ -11,6 +11,10 @@
  *
  * Paths cross as one array of numbers in the canvas's pixels, already
  * transformed (see path.ts): PATH_OP below, each followed by its points.
+ * A gradient crosses whole with the style that paints with it: its type
+ * (0 linear, 1 radial, 2 conic), six numbers, and its stops as one array of
+ * offset, red, green, blue, alpha. A pattern's image is made once in the
+ * shell (`createPattern`), and its transform crosses with the style.
  */
 export const OP = {
   save: 1,
@@ -39,12 +43,7 @@ export const OP = {
   setDirection: 28,
   setLetterSpacing: 29,
   setImageSmoothing: 30,
-  createLinearGradient: 40,
-  createRadialGradient: 41,
-  createConicGradient: 42,
-  addColorStop: 43,
   createPattern: 44,
-  setPatternTransform: 45,
   releaseObject: 46,
   clearPath: 50,
   fill: 51,

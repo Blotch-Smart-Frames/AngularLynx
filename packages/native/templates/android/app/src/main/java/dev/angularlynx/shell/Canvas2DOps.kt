@@ -36,12 +36,7 @@ internal object Canvas2DOps {
     const val SET_DIRECTION = 28
     const val SET_LETTER_SPACING = 29
     const val SET_IMAGE_SMOOTHING = 30
-    const val CREATE_LINEAR_GRADIENT = 40
-    const val CREATE_RADIAL_GRADIENT = 41
-    const val CREATE_CONIC_GRADIENT = 42
-    const val ADD_COLOR_STOP = 43
     const val CREATE_PATTERN = 44
-    const val SET_PATTERN_TRANSFORM = 45
     const val RELEASE_OBJECT = 46
     const val CLEAR_PATH = 50
     const val FILL = 51

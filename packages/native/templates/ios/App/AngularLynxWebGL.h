@@ -118,8 +118,11 @@ NS_ASSUME_NONNULL_BEGIN
 /// AngularLynxCanvas2DContext.m).
 @interface AngularLynxCanvas2DContext : NSObject <AngularLynxCanvasContext>
 @property(nonatomic, readonly, copy) NSString *canvasId;
+/// `objects` holds the gradients and patterns of every 2D context in the
+/// LynxView, which any of them can paint with.
 - (nullable instancetype)initWithCanvasId:(NSString *)canvasId
                                attributes:(NSDictionary *)attributes
+                                  objects:(NSMutableDictionary<NSNumber *, id> *)objects
                                     error:(NSString *_Nullable *_Nonnull)error;
 /// Runs the commands in order; returns one result per query.
 - (NSArray *)run:(NSArray *)commands;

@@ -600,6 +600,12 @@ static NSUInteger componentsOf(GLenum format) {
   glPixelStorei(GL_PACK_ROW_LENGTH, 0);
   glPixelStorei(GL_PACK_SKIP_PIXELS, 0);
   glPixelStorei(GL_PACK_SKIP_ROWS, 0);
+  // Its color is read whatever the app selected to read (NONE, say), and
+  // the selection is put back after.
+  glBindFramebuffer(GL_READ_FRAMEBUFFER, _framebuffer);
+  GLint readBuffer = GL_COLOR_ATTACHMENT0;
+  glGetIntegerv(GL_READ_BUFFER, &readBuffer);
+  glReadBuffer(GL_COLOR_ATTACHMENT0);
   GLuint source = _framebuffer;
   if (_samples > 0) {
     // GLES can't read a multisampled framebuffer: its samples are resolved
@@ -639,6 +645,8 @@ static NSUInteger componentsOf(GLenum format) {
     glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
   }
   glDeleteBuffers(1, &pack);
+  glBindFramebuffer(GL_READ_FRAMEBUFFER, _framebuffer);
+  glReadBuffer((GLenum)readBuffer);
   glBindBuffer(GL_PIXEL_PACK_BUFFER, (GLuint)packBuffer);
   glPixelStorei(GL_PACK_ALIGNMENT, alignment);
   glPixelStorei(GL_PACK_ROW_LENGTH, rowLength);
@@ -805,12 +813,12 @@ static NSUInteger componentsOf(GLenum format) {
     // or a WebGL canvas's drawing buffer, which makes that context current.
     image = [[AngularLynxCanvasRegistry contextForCanvasId:canvasId] snapshot];
     [self makeCurrent];
-    // A canvas the app never drew on is transparent, as in a browser: the
-    // upload's storage starts as zeros.
-    if (!image || image.width != width || image.height != height) return NULL;
   } else {
     image = [AngularLynxDecodedImage imageWithId:[source[@"image"] integerValue]];
   }
+  // A canvas the app never drew on is transparent, as in a browser: the
+  // upload's storage starts as zeros.
+  image = [self cropped:image width:width height:height flipY:[source[@"flipY"] boolValue]];
   if (!image) return NULL;
   *isImage = YES;
   *holder = [self convertImage:image
@@ -820,6 +828,42 @@ static NSUInteger componentsOf(GLenum format) {
                    premultiply:[source[@"premultiply"] boolValue]
                       fromCanvas:canvasId != nil];
   return (*holder).bytes;
+}
+
+/// The part of an image an upload of `width` by `height` takes: from
+/// UNPACK_SKIP_PIXELS and UNPACK_SKIP_ROWS, counted in the image as
+/// UNPACK_FLIP_Y_WEBGL leaves it, as WebGL2 reads a sub-rectangle of an
+/// image source. The whole image for a plain upload; nil for a rectangle
+/// outside it.
+- (AngularLynxDecodedImage *)cropped:(AngularLynxDecodedImage *)image
+                               width:(GLsizei)width
+                              height:(GLsizei)height
+                               flipY:(BOOL)flipY {
+  if (!image) return nil;
+  GLint skipPixels = 0, skipRows = 0;
+  glGetIntegerv(GL_UNPACK_SKIP_PIXELS, &skipPixels);
+  glGetIntegerv(GL_UNPACK_SKIP_ROWS, &skipRows);
+  if (skipPixels == 0 && skipRows == 0 && width == image.width && height == image.height) {
+    return image;
+  }
+  if (width <= 0 || height <= 0 || skipPixels + width > image.width ||
+      skipRows + height > image.height) {
+    return nil;
+  }
+  // Rows counted from the top of the flipped image are counted from the
+  // bottom of the image as it is, which convertImage then flips.
+  NSInteger y = flipY ? image.height - skipRows - height : skipRows;
+  NSMutableData *out = [NSMutableData dataWithLength:(NSUInteger)width * height * 4];
+  const uint8_t *from = image.pixels.bytes;
+  uint8_t *to = out.mutableBytes;
+  for (GLsizei r = 0; r < height; r++) {
+    memcpy(to + (NSUInteger)r * width * 4, from + ((y + r) * image.width + skipPixels) * 4,
+           (NSUInteger)width * 4);
+  }
+  return [[AngularLynxDecodedImage alloc] initWithPixels:out
+                                                   width:width
+                                                  height:height
+                                           premultiplied:image.premultiplied];
 }
 
 /// A decoded image's RGBA bytes as the format and type an upload names,

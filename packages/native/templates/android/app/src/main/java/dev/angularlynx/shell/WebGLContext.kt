@@ -362,6 +362,11 @@ class WebGLContext(override val canvasId: String, attributes: ReadableMap?) : Ca
             GLES30.glPixelStorei(GLES30.GL_PACK_ROW_LENGTH, 0)
             GLES30.glPixelStorei(GLES30.GL_PACK_SKIP_PIXELS, 0)
             GLES30.glPixelStorei(GLES30.GL_PACK_SKIP_ROWS, 0)
+            // Its color is read whatever the app selected to read (NONE, say),
+            // and the selection is put back after.
+            GLES30.glBindFramebuffer(GLES30.GL_READ_FRAMEBUFFER, framebuffer)
+            val readBuffer = IntArray(1).also { GLES30.glGetIntegerv(GLES30.GL_READ_BUFFER, it, 0) }[0]
+            GLES30.glReadBuffer(GLES30.GL_COLOR_ATTACHMENT0)
             var source = framebuffer
             if (samples > 0) {
                 // GLES can't read a multisampled framebuffer: its samples are
@@ -382,6 +387,8 @@ class WebGLContext(override val canvasId: String, attributes: ReadableMap?) : Ca
             GLES30.glBindFramebuffer(GLES30.GL_READ_FRAMEBUFFER, source)
             GLES30.glReadBuffer(GLES30.GL_COLOR_ATTACHMENT0)
             GLES30.glReadPixels(0, 0, width, height, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, pixels)
+            GLES30.glBindFramebuffer(GLES30.GL_READ_FRAMEBUFFER, framebuffer)
+            GLES30.glReadBuffer(readBuffer)
             GLES30.glBindBuffer(GLES30.GL_PIXEL_PACK_BUFFER, pack[0])
             GLES30.glPixelStorei(GLES30.GL_PACK_ALIGNMENT, pack[1])
             GLES30.glPixelStorei(GLES30.GL_PACK_ROW_LENGTH, pack[2])
@@ -509,17 +516,17 @@ class WebGLContext(override val canvasId: String, attributes: ReadableMap?) : Ca
                 } else {
                     null
                 }
-                val image = if (canvasId != null) {
+                val whole = if (canvasId != null) {
                     // A canvas's pixels, which its context reads now: a 2D
                     // canvas's bitmap, or a WebGL canvas's drawing buffer
                     // (that context makes itself current and puts this one
                     // back). A canvas the app never drew on uploads zeros.
                     (if (canvasId == this.canvasId) snapshot() else CanvasRegistry.context(canvasId)?.snapshot())
-                        ?.takeIf { it.width == width && it.height == height }
                         ?: return Pixels(null, 0, false)
                 } else {
                     DecodedImages.get(source.getDouble("image").toInt()) ?: return Pixels(null, 0, false)
                 }
+                val image = cropped(whole, width, height, source.bool("flipY")) ?: return Pixels(null, 0, false)
                 Pixels(
                     convertImage(image, format, type, source.bool("flipY"), source.bool("premultiply"), canvasId != null),
                     0,
@@ -532,6 +539,35 @@ class WebGLContext(override val canvasId: String, attributes: ReadableMap?) : Ca
                 Pixels(null, 0, false)
             }
         }
+    }
+
+    /**
+     * The part of an image an upload of `width` by `height` takes: from
+     * UNPACK_SKIP_PIXELS and UNPACK_SKIP_ROWS, counted in the image as
+     * UNPACK_FLIP_Y_WEBGL leaves it, as WebGL2 reads a sub-rectangle of an
+     * image source. The whole image for a plain upload; null for a rectangle
+     * outside it.
+     */
+    private fun cropped(image: DecodedImage, width: Int, height: Int, flipY: Boolean): DecodedImage? {
+        val skip = IntArray(2)
+        GLES30.glGetIntegerv(GLES30.GL_UNPACK_SKIP_PIXELS, skip, 0)
+        GLES30.glGetIntegerv(GLES30.GL_UNPACK_SKIP_ROWS, skip, 1)
+        val x = skip[0]
+        if (x == 0 && skip[1] == 0 && width == image.width && height == image.height) return image
+        if (width <= 0 || height <= 0 || x + width > image.width || skip[1] + height > image.height) return null
+        // Rows counted from the top of the flipped image are counted from the
+        // bottom of the image as it is, which convertImage then flips.
+        val y = if (flipY) image.height - skip[1] - height else skip[1]
+        val out = ByteBuffer.allocateDirect(width * height * 4).order(ByteOrder.nativeOrder())
+        val row = ByteArray(width * 4)
+        for (r in 0 until height) {
+            val from = image.pixels.duplicate()
+            from.position(((y + r) * image.width + x) * 4)
+            from.get(row)
+            out.put(row)
+        }
+        out.rewind()
+        return DecodedImage(out, width, height, image.premultiplied)
     }
 
     private fun ReadableMap.bool(key: String): Boolean =

@@ -62,7 +62,16 @@ import kotlin.math.sqrt
  * on the UI thread, which shows the bitmap again then. The context's lock
  * keeps the two apart.
  */
-class Canvas2DContext(override val canvasId: String, attributes: ReadableMap?) : CanvasContext {
+class Canvas2DContext(
+    override val canvasId: String,
+    attributes: ReadableMap?,
+    /**
+     * The gradients and patterns of every 2D context in the LynxView, by the
+     * runtime's ids, so one context's can paint in another, as on the web.
+     * The module holds it.
+     */
+    private val objects: MutableMap<Int, Any>,
+) : CanvasContext {
     private val alpha = !(attributes != null && attributes.hasKey("alpha") &&
         attributes.getType("alpha") == ReadableType.Boolean && !attributes.getBoolean("alpha"))
     private var width = 0
@@ -71,7 +80,6 @@ class Canvas2DContext(override val canvasId: String, attributes: ReadableMap?) :
     private var canvas: Canvas? = null
     private var state = State()
     private val stack = ArrayList<State>()
-    private val objects = HashMap<Int, Any>()
     private var destroyed = false
 
     private var view: CanvasUI? = null
@@ -159,7 +167,20 @@ class Canvas2DContext(override val canvasId: String, attributes: ReadableMap?) :
         state = State()
         stack.clear()
         if (width == 0 || height == 0) return
-        val created = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val created = try {
+            Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        } catch (_: OutOfMemoryError) {
+            null
+        } catch (_: IllegalArgumentException) {
+            null
+        } ?: run {
+            // Too big to allocate: a canvas with no pixels, as a browser's
+            // that can't hold its size.
+            Log.w(TAG, "The canvas's ${width}x$height bitmap is too big to allocate")
+            width = 0
+            height = 0
+            return
+        }
         bitmap = created
         canvas = Canvas(created)
         // A canvas with alpha: false is opaque black until drawn on.
@@ -174,7 +195,6 @@ class Canvas2DContext(override val canvasId: String, attributes: ReadableMap?) :
         bitmap?.recycle()
         bitmap = null
         canvas = null
-        objects.clear()
     }
 
     // --- Showing the bitmap --------------------------------------------------
@@ -259,12 +279,12 @@ class Canvas2DContext(override val canvasId: String, attributes: ReadableMap?) :
         }
         try {
             return ByteArrayOutputStream().use { output ->
-                image.compress(
+                val written = image.compress(
                     if (jpeg) Bitmap.CompressFormat.JPEG else Bitmap.CompressFormat.PNG,
                     (quality.coerceIn(0.0, 1.0) * 100).roundToInt(),
                     output,
                 )
-                output.toByteArray()
+                if (written) output.toByteArray() else null
             }
         } finally {
             if (image !== source) image.recycle()
@@ -552,21 +572,25 @@ class Canvas2DContext(override val canvasId: String, attributes: ReadableMap?) :
         return det != 0f && det.isFinite()
     }
 
+    /**
+     * Whether the point is in the path, to a 64th of a pixel: Region works in
+     * whole pixels, so the path is moved to put the point at the origin and
+     * scaled up before it's tested. A point on the edge counts as in.
+     */
     private fun contains(path: Path, x: Float, y: Float): Boolean {
         val bounds = RectF()
         @Suppress("DEPRECATION")
         path.computeBounds(bounds, true)
-        if (!bounds.contains(x, y) && !(x == bounds.right || y == bounds.bottom)) return false
-        // Region works in whole pixels: the point's pixel is the one tested.
-        val clip = Region(
-            bounds.left.toInt() - 1,
-            bounds.top.toInt() - 1,
-            bounds.right.toInt() + 1,
-            bounds.bottom.toInt() + 1,
-        )
+        if (x < bounds.left || x > bounds.right || y < bounds.top || y > bounds.bottom) return false
+        val scaled = Path(path)
+        scaled.transform(Matrix().apply {
+            setTranslate(-x, -y)
+            postScale(POINT_SCALE, POINT_SCALE)
+        })
         val region = Region()
-        region.setPath(path, clip)
-        return region.contains(x.toInt(), y.toInt())
+        region.setPath(scaled, Region(-2, -2, 2, 2))
+        // The four pixels round the origin: one that covers the point.
+        return region.contains(0, 0) || region.contains(-1, 0) || region.contains(0, -1) || region.contains(-1, -1)
     }
 
     // --- Compositing ---------------------------------------------------------
@@ -612,6 +636,10 @@ class Canvas2DContext(override val canvasId: String, attributes: ReadableMap?) :
         draw(c)
         c.restore()
         if (unbounded) c.restore()
+        // An opaque canvas stays opaque: what an operation like copy or
+        // destination-out left see-through is drawn over black, as a browser
+        // keeps a canvas made with alpha: false. The clip still applies.
+        if (!alpha && s.composite in REDUCES_ALPHA) c.drawColor(Color.BLACK, PorterDuff.Mode.DST_OVER)
     }
 
     /**
@@ -707,12 +735,21 @@ class Canvas2DContext(override val canvasId: String, attributes: ReadableMap?) :
                     )
                 } else {
                     // Before Android 12 a radial gradient is one circle: the
-                    // end circle, with the start circle's radius as its
+                    // bigger circle, with the smaller one's radius as the
                     // first stop, which is right for circles with one center.
-                    val r1 = max(p[5], 0.0001f)
-                    val start = (p[2] / r1).coerceIn(0f, 1f)
-                    val scaled = FloatArray(positions.size) { start + positions[it] * (1 - start) }
-                    RadialGradient(p[3], p[4], r1, colorArray, scaled, Shader.TileMode.CLAMP)
+                    // A gradient that shrinks runs its stops the other way.
+                    val shrinks = p[2] > p[5]
+                    val outer = max(max(p[2], p[5]), 0.0001f)
+                    val start = (min(p[2], p[5]) / outer).coerceIn(0f, 1f)
+                    val count = positions.size
+                    val stops = FloatArray(count) {
+                        val t = if (shrinks) 1 - positions[count - 1 - it] else positions[it]
+                        start + t * (1 - start)
+                    }
+                    val stopColors = IntArray(count) { colorArray[if (shrinks) count - 1 - it else it] }
+                    val cx = if (shrinks) p[0] else p[3]
+                    val cy = if (shrinks) p[1] else p[4]
+                    RadialGradient(cx, cy, outer, stopColors, stops, Shader.TileMode.CLAMP)
                 }
             }
             else -> SweepGradient(p[1], p[2], colorArray, positions).apply {
@@ -818,6 +855,17 @@ class Canvas2DContext(override val canvasId: String, attributes: ReadableMap?) :
      * image by id, or a canvas by its id, as it is now.
      */
     private fun bitmapFrom(source: ReadableMap): Bitmap? {
+        if (source.hasKey("blank")) {
+            // A canvas without a context: a transparent image of its size.
+            val w = source.int("width", 0)
+            val h = source.int("height", 0)
+            if (w < 1 || h < 1) return null
+            return try {
+                Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            } catch (_: OutOfMemoryError) {
+                null
+            }
+        }
         if (source.hasKey("canvas") && source.getType("canvas") == ReadableType.String) {
             val id = source.getString("canvas")
             if (id == canvasId) return bitmap?.copy(Bitmap.Config.ARGB_8888, false)
@@ -867,9 +915,18 @@ class Canvas2DContext(override val canvasId: String, attributes: ReadableMap?) :
             dst.left - src.left * scaleX + image.width * scaleX,
             dst.top - src.top * scaleY + image.height * scaleY,
         )
+        // A source on whole pixels is drawn as itself, so a shadow falls
+        // outside it; one between pixels is clipped, shadow and all.
+        val integral = src.left == src.left.toInt().toFloat() && src.top == src.top.toInt().toFloat() &&
+            src.right == src.right.toInt().toFloat() && src.bottom == src.bottom.toInt().toFloat()
         composite(paint, transformMatrix()) {
-            it.clipRect(dst)
-            it.drawBitmap(image, null, whole, paint)
+            if (integral) {
+                val crop = Rect(src.left.toInt(), src.top.toInt(), src.right.toInt(), src.bottom.toInt())
+                it.drawBitmap(image, crop, dst, paint)
+            } else {
+                it.clipRect(dst)
+                it.drawBitmap(image, null, whole, paint)
+            }
         }
     }
 
@@ -1055,6 +1112,16 @@ class Canvas2DContext(override val canvasId: String, attributes: ReadableMap?) :
 
         /** The operations that clear what the shape doesn't cover. */
         private val UNBOUNDED = setOf(1, 2, 5, 7, 9)
+
+        /**
+         * The operations that can leave a pixel less opaque than it was:
+         * source-in, source-out, destination-in, destination-out,
+         * destination-atop, copy and xor.
+         */
+        private val REDUCES_ALPHA = setOf(1, 2, 5, 6, 7, 9, 10)
+
+        /** How finely isPointInPath() tests a point: a 64th of a pixel. */
+        private const val POINT_SCALE = 64f
 
 
         /** Before Android 10, the operations PorterDuff has; the rest draw as source-over. */

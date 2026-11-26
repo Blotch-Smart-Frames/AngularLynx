@@ -183,6 +183,9 @@ static AngularLynxDecodedImage *decodeImage(NSData *bytes, NSDictionary *options
 @implementation AngularLynxWebGLModule {
   NSMutableDictionary<NSNumber *, AngularLynxWebGLContext *> *_contexts;
   NSMutableDictionary<NSNumber *, AngularLynxCanvas2DContext *> *_contexts2D;
+  /// The 2D contexts' gradients and patterns, which any of them can paint
+  /// with.
+  NSMutableDictionary<NSNumber *, id> *_canvas2DObjects;
 }
 
 + (NSString *)name {
@@ -208,6 +211,7 @@ static AngularLynxDecodedImage *decodeImage(NSData *bytes, NSDictionary *options
   if ((self = [super init])) {
     _contexts = [NSMutableDictionary dictionary];
     _contexts2D = [NSMutableDictionary dictionary];
+    _canvas2DObjects = [NSMutableDictionary dictionary];
   }
   return self;
 }
@@ -305,6 +309,7 @@ static AngularLynxDecodedImage *decodeImage(NSData *bytes, NSDictionary *options
   AngularLynxCanvas2DContext *context = [[AngularLynxCanvas2DContext alloc]
       initWithCanvasId:canvasId
             attributes:[attributes isKindOfClass:NSDictionary.class] ? attributes : @{}
+               objects:_canvas2DObjects
                  error:&error];
   if (!context) return @{@"ok" : @NO, @"error" : error ?: @"Could not make the canvas's bitmap"};
   _contexts2D[contextId] = context;
@@ -434,6 +439,8 @@ static AngularLynxDecodedImage *decodeImage(NSData *bytes, NSDictionary *options
 
 - (void)setCanvasId:(NSString *)canvasId {
   if ([_canvasId isEqualToString:canvasId]) return;
+  // Another canvas starts blank: the last one's bitmap isn't its.
+  _imageLayer.contents = nil;
   NSString *old = _canvasId;
   _canvasId = [canvasId copy];
   NSString *new = _canvasId;

@@ -26,7 +26,7 @@
 // Everything runs on Lynx's engine thread, where the module's calls arrive;
 // only showing the bitmap hops to the UI thread.
 
-// cspell:words fmod isfinite lround Roundhand
+// cspell:words fabs fmod isfinite lround Roundhand
 
 #import "AngularLynxWebGL.h"
 
@@ -452,6 +452,12 @@ static BOOL isUnbounded(NSInteger composite) {
   return composite == 1 || composite == 2 || composite == 5 || composite == 7 || composite == 9;
 }
 
+/// The operations that can leave a pixel less opaque than it was: those,
+/// and destination-out and xor.
+static BOOL reducesAlpha(NSInteger composite) {
+  return isUnbounded(composite) || composite == 6 || composite == 10;
+}
+
 @implementation AngularLynxCanvas2DContext {
   BOOL _alpha;
   size_t _width;
@@ -463,6 +469,9 @@ static BOOL isUnbounded(NSInteger composite) {
   CGContextRef _scratch;
   ALCanvas2DState *_state;
   NSMutableArray<ALCanvas2DState *> *_stack;
+  /// The gradients and patterns of every 2D context in the LynxView, by the
+  /// runtime's ids, so one context's can paint in another. The module holds
+  /// it.
   NSMutableDictionary<NSNumber *, id> *_objects;
   AngularLynxCanvasTarget *_target;
   /// The bitmap was drawn on and not shown yet, waiting for a view.
@@ -471,11 +480,12 @@ static BOOL isUnbounded(NSInteger composite) {
 
 - (instancetype)initWithCanvasId:(NSString *)canvasId
                       attributes:(NSDictionary *)attributes
+                         objects:(NSMutableDictionary<NSNumber *, id> *)objects
                            error:(NSString **)error {
   if (!(self = [super init])) return nil;
   _canvasId = [canvasId copy];
   _alpha = ![attributes[@"alpha"] isEqual:@NO];
-  _objects = [NSMutableDictionary dictionary];
+  _objects = objects;
   CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
   _scratch = CGBitmapContextCreate(NULL, 1, 1, 8, 4, space,
                                    kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
@@ -924,6 +934,7 @@ static BOOL isUnbounded(NSInteger composite) {
     CGContextSetBlendMode(c, BLEND_MODES[s.composite]);
     draw(c);
     CGContextRestoreGState(c);
+    [self keepOpaque];
     return;
   }
   CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
@@ -957,6 +968,19 @@ static BOOL isUnbounded(NSInteger composite) {
   CGContextDrawImage(c, CGRectMake(0, 0, _width, _height), image);
   CGContextRestoreGState(c);
   CGImageRelease(image);
+  [self keepOpaque];
+}
+
+/// An opaque canvas stays opaque: what an operation like copy or
+/// destination-out left see-through is drawn over black, as a browser keeps
+/// a canvas made with alpha: false. The clip still applies.
+- (void)keepOpaque {
+  if (_alpha || !reducesAlpha(_state.composite)) return;
+  CGContextSaveGState(_cg);
+  CGContextSetBlendMode(_cg, kCGBlendModeDestinationOver);
+  CGContextSetRGBFillColor(_cg, 0, 0, 0, 1);
+  CGContextFillRect(_cg, CGRectMake(0, 0, _width, _height));
+  CGContextRestoreGState(_cg);
 }
 
 #pragma mark Shapes
@@ -1007,9 +1031,17 @@ static BOOL isUnbounded(NSInteger composite) {
     CGAffineTransform flip = CGAffineTransformMake(1, 0, 0, -1, 0, _height);
     CGAffineTransform matrix = CGAffineTransformConcat(
         CGAffineTransformConcat(pattern.transform, transform), flip);
-    // A step this long repeats nothing: no-repeat and the other axis of
-    // repeat-x or repeat-y.
-    const CGFloat once = 1e7;
+    // A step longer than the canvas reaches in pattern space repeats nothing:
+    // no-repeat, and the other axis of repeat-x or repeat-y. The canvas's
+    // corners are taken back into pattern space to find how far that is.
+    CGFloat once = 1;
+    if (invertible(matrix)) {
+      CGAffineTransform back = CGAffineTransformInvert(matrix);
+      CGRect reach = CGRectApplyAffineTransform(CGRectMake(0, 0, _width, _height), back);
+      once = 2 * MAX(MAX(fabs(CGRectGetMinX(reach)), fabs(CGRectGetMaxX(reach))),
+                     MAX(fabs(CGRectGetMinY(reach)), fabs(CGRectGetMaxY(reach)))) +
+             width + height + 1;
+    }
     NSInteger repetition = pattern.repetition;
     CGFloat xStep = repetition == 0 || repetition == 1 ? width : once;
     CGFloat yStep = repetition == 0 || repetition == 2 ? height : once;
@@ -1189,6 +1221,21 @@ static BOOL isUnbounded(NSInteger composite) {
 /// An image source (see #imageSource in canvas-2d-context.ts): a decoded
 /// image by id, or a canvas by its id, as it is now.
 - (CGImageRef)newImageFrom:(NSDictionary *)source {
+  if (source[@"blank"]) {
+    // A canvas without a context: a transparent image of its size.
+    NSInteger width = [source[@"width"] integerValue];
+    NSInteger height = [source[@"height"] integerValue];
+    if (width < 1 || height < 1) return NULL;
+    CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+    CGContextRef blank = CGBitmapContextCreate(NULL, width, height, 8, width * 4, space,
+                                               kCGImageAlphaPremultipliedLast |
+                                                   kCGBitmapByteOrder32Big);
+    CGColorSpaceRelease(space);
+    if (!blank) return NULL;
+    CGImageRef image = CGBitmapContextCreateImage(blank);
+    CGContextRelease(blank);
+    return image;
+  }
   AngularLynxDecodedImage *decoded = nil;
   NSString *canvasId = source[@"canvas"];
   if ([canvasId isKindOfClass:NSString.class]) {

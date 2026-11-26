@@ -35,6 +35,9 @@ class WebGLModule(context: Context, param: Any?) : LynxModule(context, param) {
     private val contexts = HashMap<Int, WebGLContext>()
     private val contexts2D = HashMap<Int, Canvas2DContext>()
 
+    /** The 2D contexts' gradients and patterns, which any of them can paint with. */
+    private val canvas2DObjects = HashMap<Int, Any>()
+
     @LynxMethod
     fun create(contextId: Int, canvasId: String, attributes: ReadableMap?): JavaOnlyMap {
         contexts.remove(contextId)?.destroy()
@@ -170,7 +173,7 @@ class WebGLModule(context: Context, param: Any?) : LynxModule(context, param) {
     fun create2D(contextId: Int, canvasId: String, attributes: ReadableMap?): JavaOnlyMap {
         destroy2D(contextId)
         return try {
-            val context = Canvas2DContext(canvasId, attributes)
+            val context = Canvas2DContext(canvasId, attributes, canvas2DObjects)
             contexts2D[contextId] = context
             CanvasRegistry.setContext(canvasId, context)
             JavaOnlyMap.from(mapOf("ok" to true))
@@ -204,7 +207,7 @@ class WebGLModule(context: Context, param: Any?) : LynxModule(context, param) {
             0.92
         }
         return try {
-            val file = context.encode(jpeg, quality) ?: return encodeFailed("The canvas has no pixels")
+            val file = context.encode(jpeg, quality) ?: return encodeFailed("The canvas couldn't be encoded")
             JavaOnlyMap.from(
                 mapOf(
                     "base64" to Base64.encodeToString(file, Base64.NO_WRAP),
@@ -221,6 +224,7 @@ class WebGLModule(context: Context, param: Any?) : LynxModule(context, param) {
         contexts.clear()
         for (context in contexts2D.values) context.destroy()
         contexts2D.clear()
+        canvas2DObjects.clear()
         super.destroy()
     }
 
@@ -307,30 +311,37 @@ internal object DecodedImages {
  * runtime may make the context before Lynx has made the element's view.
  *
  * Views come and go on the UI thread, contexts on Lynx's engine thread, so
- * it's locked. It takes a context's lock inside its own, and a context never
- * calls it, so the two can't wait on each other.
+ * it's locked. A context looks a canvas up here while it holds its own lock
+ * (drawing another canvas, or uploading it as a texture), so the registry
+ * never calls a context while it holds its lock: it finds the context, lets
+ * go, then attaches the view.
  */
 internal object CanvasRegistry {
     private val views = HashMap<String, WeakReference<CanvasUI>>()
     private val contexts = HashMap<String, WeakReference<CanvasContext>>()
 
-    @Synchronized
     fun setView(canvasId: String, view: CanvasUI?) {
-        if (view == null) views.remove(canvasId) else views[canvasId] = WeakReference(view)
-        contexts[canvasId]?.get()?.attachView(view)
+        val context = synchronized(this) {
+            if (view == null) views.remove(canvasId) else views[canvasId] = WeakReference(view)
+            contexts[canvasId]?.get()
+        }
+        context?.attachView(view)
     }
 
     @Synchronized
     fun view(canvasId: String): CanvasUI? = views[canvasId]?.get()
 
-    @Synchronized
     fun setContext(canvasId: String, context: CanvasContext?) {
-        if (context == null) {
-            contexts.remove(canvasId)
-        } else {
-            contexts[canvasId] = WeakReference(context)
-            context.attachView(views[canvasId]?.get())
+        val view = synchronized(this) {
+            if (context == null) {
+                contexts.remove(canvasId)
+                null
+            } else {
+                contexts[canvasId] = WeakReference(context)
+                views[canvasId]?.get()
+            }
         }
+        context?.attachView(view)
     }
 
     @Synchronized

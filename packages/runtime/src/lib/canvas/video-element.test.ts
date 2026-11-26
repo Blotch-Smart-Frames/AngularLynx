@@ -74,6 +74,14 @@ describe('LynxVideoElement', () => {
       false,
     );
     expect(null instanceof target['HTMLVideoElement']).toBe(false);
+    // Its readyState constants are on the interface too, as on the web.
+    expect([
+      target['HTMLVideoElement'].HAVE_NOTHING,
+      target['HTMLVideoElement'].HAVE_METADATA,
+      target['HTMLVideoElement'].HAVE_CURRENT_DATA,
+      target['HTMLVideoElement'].HAVE_FUTURE_DATA,
+      target['HTMLVideoElement'].HAVE_ENOUGH_DATA,
+    ]).toEqual([0, 1, 2, 3, 4]);
   });
 });
 

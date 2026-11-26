@@ -218,6 +218,14 @@ class LynxHTMLCanvasElement {
 }
 
 class LynxHTMLVideoElement {
+  // HTMLMediaElement's readyState constants, which code compares with as
+  // `HTMLVideoElement.HAVE_CURRENT_DATA` as well as on an instance.
+  static readonly HAVE_NOTHING = 0;
+  static readonly HAVE_METADATA = 1;
+  static readonly HAVE_CURRENT_DATA = 2;
+  static readonly HAVE_FUTURE_DATA = 3;
+  static readonly HAVE_ENOUGH_DATA = 4;
+
   static [Symbol.hasInstance](value: unknown): boolean {
     return isVideoElement(value);
   }

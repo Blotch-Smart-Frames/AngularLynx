@@ -178,11 +178,16 @@ export class CanvasRoute {
    * back.
    */
   drawVideo(tries = 20): void {
-    // The check needs the frame and the WebGL context, which the page makes
-    // after an async decode: the first frame can come before either is
-    // there, so it tries again for up to 2 seconds.
-    const ready = this.video().nativeElement.videoWidth > 0 && this.#gl;
-    if (!ready && tries > 0) {
+    // The frame must be there when bindfirstframe comes, as the docs promise
+    // (VideoUI.onFirstFrame, AngularLynxVideo.m): that's read now, never
+    // waited for. The WebGL context is made after an async decode, so the
+    // first frame can come before it: the rest of the check waits for it,
+    // for up to 2 seconds, and #draw() runs it again once it's there.
+    if (tries === 20 && this.video().nativeElement.videoWidth === 0) {
+      this.resultVideo.set('no frame at bindfirstframe');
+      return;
+    }
+    if (!this.#gl && tries > 0) {
       setTimeout(() => this.drawVideo(tries - 1), 100);
       return;
     }

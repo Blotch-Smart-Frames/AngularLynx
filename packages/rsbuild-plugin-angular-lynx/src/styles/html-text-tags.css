@@ -59,8 +59,9 @@ del {
  * `monospace` and draws its system font for it, so Menlo, which every iOS
  * has, comes first. The web preview's browser finds `monospace`. Lynx on
  * Android finds only `@font-face` families and the ones its host registers
- * (TypefaceCache), so it draws neither, and the text stays in the system
- * font there.
+ * (TypefaceCache): the Android app's shell registers Android's own,
+ * `monospace` among them (SystemFontFamilies.kt in packages/native), but
+ * Lynx Explorer has none, and draws the system font there.
  */
 code,
 kbd,

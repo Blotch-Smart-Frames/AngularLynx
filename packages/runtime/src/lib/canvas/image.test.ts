@@ -125,6 +125,15 @@ describe('createImageBitmap', () => {
         createImageBitmap(new LynxBlob([PNG]), { resizeWidth }),
       ).rejects.toThrow(TypeError);
     }
+    // Options an object inherits count, as in a Web IDL dictionary.
+    await createImageBitmap(
+      new LynxOffscreenCanvas(4, 3),
+      Object.create({ imageOrientation: 'flipY', resizeWidth: 2 }),
+    );
+    expect(bridge.imageFromCanvas.mock.calls[1][2]).toMatchObject({
+      imageOrientation: 'flipY',
+      resizeWidth: 2,
+    });
     // -0.5 truncates to 0, a resize to no pixels.
     await expect(
       createImageBitmap(new LynxBlob([PNG]), { resizeWidth: -0.5 }),

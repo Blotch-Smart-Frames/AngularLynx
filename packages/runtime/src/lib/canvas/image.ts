@@ -204,8 +204,11 @@ export const createImageBitmap = async (
     throw new Error('createImageBitmap() cropping is not supported on Lynx');
   }
   const given = (rest[0] ?? {}) as DecodeOptions;
+  // Each option read by name, as Web IDL reads a dictionary: a spread would
+  // drop the ones an object inherits.
   const options: DecodeOptions = {
-    ...given,
+    imageOrientation: given.imageOrientation,
+    premultiplyAlpha: given.premultiplyAlpha,
     resizeWidth: resizeOption(given.resizeWidth, 'resizeWidth'),
     resizeHeight: resizeOption(given.resizeHeight, 'resizeHeight'),
   };

@@ -99,6 +99,7 @@ page {
 - **HTML text tags and loose text do inherit.** A `<p>`, `<span>` or `<h1>`, and text written straight in a `<view>` or `<div>`, take each text property their own rules don't set from their nearest ancestor that sets it, as on the web. The properties are the ones listed below. [Renderer internals](/guide/renderer-architecture#text-inheritance) explains how.
   - **A rule naming `text` isn't a `<p>`'s own.** The UI theme's `view > text` matches a `<p>` on Lynx, since a `<p>` renders as a `<text>`, but a `<p>` in a `<view class="text-red-500">` is still red, as on the web. One with no colored ancestor takes the page's color, which the theme sets.
   - **A rule that needs an ancestor counts only where the tag has it.** `.card b { font-size: 24px }` sizes a `<b>` inside `.card`, and a `<b>` elsewhere takes the size of the text around it.
+  - **A child combinator reaches an inline tag beside loose text.** `.row > b` styles the `<b>` in `<div class="row">Total: <b>12</b></div>`, though the runtime draws "Total: " and the `<b>` in a `<text>` of their own, between the `<div>` and the `<b>`. The build gives the rule a second selector through that `<text>`.
   - **Only classes and stylesheet rules pass styles down.** An inline `style` on the ancestor doesn't.
 - **A nested `<text>` is the exception.** An inner `<text>` takes its parent `<text>`'s `color` and `font-family`.
 - **CSS variables always inherit**, as on the web. Set them on a parent and use `var()` anywhere below it.

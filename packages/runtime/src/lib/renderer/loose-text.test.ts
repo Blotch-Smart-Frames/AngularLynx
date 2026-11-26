@@ -32,6 +32,7 @@ import {
 import { LynxDocument } from '../lynx-document';
 import { setPageElementRef } from '../lynx-document/page-ref';
 import {
+  ANONYMOUS_TEXT_CLASS,
   INHERITANCE_CLASS,
   LYNX_TEXT_INHERITANCE_CLASS,
   NOT_BLOCK_CONTAINERS,
@@ -1719,6 +1720,17 @@ describe('loose text, element by element', () => {
           [['_ngtag-i'], bit('font-size'), [['>', ['row']]]],
           [['_ngtag-b'], bit('color'), [[' ', ['pressed']]], 1],
           [['_ngtag-b'], bit('font-size'), [[' ', ['#totals']]]],
+          // `.line > u { color: red }`, with the selector the build adds for
+          // a <u> in an anonymous <text> (issue #692).
+          [['_ngtag-u'], bit('color'), [['>', ['line']]]],
+          [
+            ['_ngtag-u'],
+            bit('color'),
+            [
+              ['>', ['_ngtext']],
+              ['>', ['line']],
+            ],
+          ],
         ],
       };
       resetStyleIndex();
@@ -1785,6 +1797,55 @@ describe('loose text, element by element', () => {
       commit();
       expect(style(b)).not.toContain(COLOR);
       expect(style(b)).toContain(FONT_SIZE);
+    });
+
+    // Issue #692: the build matches `.line > u` through the anonymous
+    // <text> a <u> beside loose text is in, and the runtime finds it there.
+    describe('a child combinator', () => {
+      it('counts the rule for a tag in the anonymous <text>', () => {
+        const line = doc.createElement('view');
+        line.setAttribute('class', 'line');
+        page.appendChild(line);
+        const u = bold(line, 'u');
+        commit();
+        expect(native(u).parent?.classes.has(ANONYMOUS_TEXT_CLASS)).toBe(true);
+        expect(style(u)).not.toContain(COLOR);
+      });
+
+      it('counts the rule for a lone tag in a row, with no anonymous <text>', () => {
+        const line = doc.createElement('view');
+        line.setAttribute('class', 'line');
+        line.setStyle('display', 'flex');
+        page.appendChild(line);
+        const u = doc.createElement('u');
+        u.addScopeClass('_ngtag-u');
+        line.appendChild(u);
+        u.appendChild(doc.createText('12'));
+        commit();
+        expect(native(u).parent).toBe(native(line));
+        expect(style(u)).not.toContain(COLOR);
+      });
+
+      it('inherits under an element the rule doesn’t require', () => {
+        const view = doc.createElement('view');
+        page.appendChild(view);
+        const u = bold(view, 'u');
+        commit();
+        expect(style(u)).toContain(COLOR);
+      });
+
+      it('inherits in an anonymous <text> below the element the rule requires', () => {
+        // `<div class="line"><div>Total: <u>12</u></div></div>`: the <u>'s
+        // parent on the web is the inner <div>.
+        const line = doc.createElement('view');
+        line.setAttribute('class', 'line');
+        page.appendChild(line);
+        const view = doc.createElement('view');
+        line.appendChild(view);
+        const u = bold(view, 'u');
+        commit();
+        expect(style(u)).toContain(COLOR);
+      });
     });
 
     it('inherits again when an ancestor’s classes change', () => {

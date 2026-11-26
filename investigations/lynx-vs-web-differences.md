@@ -719,6 +719,34 @@ The shells register `AngularLynxShell.collectGarbage()` (`ShellModule.swift`, an
 
 ---
 
+## In PrimJS every own property costs each object about 45 bytes, so a field set in the constructor is paid per instance (issue #586)
+
+### What you'd expect (web)
+
+V8 and JavaScriptCore keep a class's fields in the object itself, laid out by a hidden class the instances share: an object with 50 fields is a few hundred bytes, and a field that stays `null` costs a pointer.
+
+### What Lynx does
+
+PrimJS, which runs the main thread, keeps each object's properties in a table of its own. Measured on the iOS 27 Simulator as the growth of the footprint's "Untagged" memory (PrimJS's heap) for 5,000 objects kept alive, made on the main thread at launch:
+
+| Each object                                    | 5,000 of them |
+| ---------------------------------------------- | ------------- |
+| `{ i }`                                        | 0.9 MB        |
+| A class instance with 10 fields set to `null`  | 2.6 MB        |
+| …with 20                                       | 6.6 MB        |
+| …with 55                                       | 12.6 MB       |
+| A one-entry `Map`                              | 0.85 MB       |
+| An array of 30 slots, filled with `push()`     | 3.7 MB        |
+| A `WeakRef` and a `FinalizationRegistry` entry | 1.7 MB        |
+
+So a field costs about 45 bytes for every instance that has it, whatever its value. `LynxElement` had 41 private fields set in its constructor, most of them `null` or `false` until something sets them, and the runtime makes one for every element, text node and anchor: a screen of 5,000 `<view>`s took 56 MB of PrimJS heap, against ReactLynx's 25 MB for the same screen in the same shell (its main thread keeps about 3 KB per element, AngularLynx about 8.7 KB).
+
+### The fix
+
+The build plugin starts each of AngularLynx's packages' private fields whose initializer is a constant (`null`, `false`, `''`, a number), in a class without `extends`, on the class's prototype rather than on each instance (`renamePrivateMethods` in `packages/rsbuild-plugin-angular-lynx/src/private-methods.ts`): an instance gets a property of its own only once the field is written. The 5,000 views took 52 MB with it. In the runtime's own code, keep state an element rarely has out of its constructor: a field that starts as an object (`[]`, `new Map()`) is still made for each instance.
+
+---
+
 ## `<block>` has no native paintable UI — it must be created as a layout-only element, and its children can't be picked apart on teardown
 
 ### What you'd expect (web)

@@ -744,24 +744,24 @@ describe('LynxCanvasRenderingContext2D', () => {
     ]);
     other.strokeStyle = pattern;
     expect(other.strokeStyle).toBe(pattern);
-    // A change to one after it was set goes first too, when the other draws
-    // with it.
-    pattern.setTransform({ e: 4 });
+    // A change to one after it was set goes between the other's draws: its
+    // earlier draw first, then the change, then its next draw.
     other.fillRect(0, 0, 1, 1);
-    expect(bridge.batches.length).toBe(2);
-    expect(bridge.batches[1].slice(0, 2)).toEqual([
-      OP.setPatternTransform,
-      pattern.id,
-    ]);
+    const before = bridge.batches.length;
+    pattern.setTransform({ e: 4 });
+    other.fillRect(1, 1, 1, 1);
     other.flush();
-    // Each context's calls went to its own context in the shell.
-    expect(bridge.batchContexts).toEqual([7, 7, 8]);
-    expect(bridge.batches[2]).toContain(OP.fill);
+    const sent = bridge.batches.slice(before);
+    expect(bridge.batchContexts.slice(before)).toEqual([8, 7, 8]);
+    expect(sent[0]).toContain(OP.fill);
+    expect(sent[1].slice(0, 2)).toEqual([OP.setPatternTransform, pattern.id]);
+    expect(sent[2]).toContain(OP.fill);
     // Its own needn't be sent first.
     other.fillStyle = other.createLinearGradient(0, 0, 1, 1);
     other.strokeStyle = other.createPattern(image(3), null)!;
+    const count = bridge.batches.length;
     other.fillRect(0, 0, 1, 1);
-    expect(bridge.batches.length).toBe(3);
+    expect(bridge.batches.length).toBe(count);
   });
 
   it('makes patterns of images and canvases, with a transform', async () => {

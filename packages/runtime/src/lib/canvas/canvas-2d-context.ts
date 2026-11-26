@@ -206,6 +206,13 @@ export class LynxCanvasGradient {
     if (owner !== this.#owner) this.#owner.flush();
   }
 
+  /**
+   * @internal Whether the context that made it is this one.
+   */
+  ownedBy(owner: unknown): boolean {
+    return owner === this.#owner;
+  }
+
   addColorStop(offset: number, color: string): void {
     const value = Number(offset);
     if (!Number.isFinite(value)) {
@@ -249,6 +256,13 @@ export class LynxCanvasPattern {
    */
   flushOwner(owner: unknown): void {
     if (owner !== this.#owner) this.#owner.flush();
+  }
+
+  /**
+   * @internal See LynxCanvasGradient.ownedBy.
+   */
+  ownedBy(owner: unknown): boolean {
+    return owner === this.#owner;
   }
 
   setTransform(transform?: MatrixInit): void {
@@ -534,11 +548,22 @@ export class LynxCanvasRenderingContext2D {
 
   #draw(...items: unknown[]): void {
     // A gradient or pattern another context made may have changed since it
-    // was set (a color stop, a transform), recorded on that context: those
-    // go first.
+    // was set (a color stop, a transform), recorded on that context: this
+    // context's earlier draws go first, then those changes, then this draw,
+    // so each draw uses the object as it was when it was drawn.
+    const borrowed: (LynxCanvasGradient | LynxCanvasPattern)[] = [];
     for (const style of [this.#state.fillStyle, this.#state.strokeStyle]) {
-      if (style.kind === 'gradient') style.gradient.flushOwner(this.#owner);
-      else if (style.kind === 'pattern') style.pattern.flushOwner(this.#owner);
+      const object =
+        style.kind === 'gradient'
+          ? style.gradient
+          : style.kind === 'pattern'
+            ? style.pattern
+            : null;
+      if (object && !object.ownedBy(this.#owner)) borrowed.push(object);
+    }
+    if (borrowed.length > 0) {
+      this.#send();
+      for (const object of borrowed) object.flushOwner(this.#owner);
     }
     this.#dirty = true;
     this.#cmd(...items);

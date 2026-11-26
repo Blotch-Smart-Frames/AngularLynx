@@ -1786,6 +1786,10 @@ describe('textures', () => {
       picture,
     );
     expect(gl.getError()).toBe(GL.INVALID_OPERATION);
+    // A negative skip is refused, and the last one kept.
+    gl.pixelStorei(GL.UNPACK_SKIP_PIXELS, -1);
+    gl.pixelStorei(GL.UNPACK_SKIP_ROWS, -1);
+    expect(gl.getError()).toBe(GL.INVALID_VALUE);
     // Inside it, it goes.
     gl.texImage2D(
       GL.TEXTURE_2D,

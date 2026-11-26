@@ -1098,8 +1098,9 @@ describe('loose text', () => {
     expect(style('small-in-sup')).toContain('vertical-align: 0.48em');
     expect(style('sup-in-sup')).toContain('vertical-align: 0.88em');
 
-    // An app's own vertical-align wins, as it would in a browser: one it
-    // can't copy leaves the tag to Lynx.
+    // An app's rule for the inner <sup> beats the build's, with a distance
+    // the runtime can't copy, so it leaves the tag to Lynx, where a browser
+    // would add the outer <sup>'s distance to it.
     fixture.componentInstance.own.set(true);
     fixture.detectChanges();
     expect(style('sup-in-sup')).not.toContain('vertical-align');

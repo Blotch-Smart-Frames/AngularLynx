@@ -1854,7 +1854,9 @@ export class LynxElement implements BaseLynxElement {
    * The inline `vertical-align` that moves this #webText element with the
    * HTML text tags above it (see baselineShiftFor), or none: from the
    * elements of #textTagChain. Only a tag above with a `vertical-align` moves
-   * it, and the tag's own inline one wins over the runtime's.
+   * it. None where the tag's own inline style sets one, which comes after
+   * the runtime's and would win over it: the tag then moves by its own
+   * distance only, where a browser adds it to those above (issue #736).
    */
   #baselineShift(elements: readonly [LynxElement, number][]): string {
     if (

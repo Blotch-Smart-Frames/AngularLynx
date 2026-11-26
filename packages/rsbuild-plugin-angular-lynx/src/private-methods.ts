@@ -230,6 +230,9 @@ export const renamePrivateMethods = (
   const key = keyForFile(filename, options.root);
   const edits: Edit[] = [];
   const symbols: string[] = [];
+  // The static block that hides a static field calls `Object.defineProperty`
+  // where the field is, so it needs `Object` to be the global there.
+  const globalObject = !bindsName(sourceFile, 'Object');
   for (const info of analyzeClasses(sourceFile)) {
     // Every class it makes would share these names, and one made from
     // another would override its base's methods (see above).
@@ -255,9 +258,10 @@ export const renamePrivateMethods = (
       if (!fieldEdits) continue;
       edits.push(...fieldEdits);
       const [field] = declarations;
-      if (isStatic(field!)) {
+      if (isStatic(field!) && globalObject) {
         // An empty `;` is a class element of its own, so this follows a
-        // field with or without its semicolon (see above).
+        // field with or without its semicolon (see above). In a module that
+        // names something else `Object`, the field stays enumerable.
         edits.push({
           start: field!.end,
           end: field!.end,
@@ -717,6 +721,40 @@ const applyEdits = (
   }
   return result + code.slice(last);
 };
+
+/**
+ * The declarations whose `name` binds an identifier in their scope (unlike
+ * a property's or a method's).
+ */
+const BINDING_KINDS = new Set([
+  ts.SyntaxKind.VariableDeclaration,
+  ts.SyntaxKind.Parameter,
+  ts.SyntaxKind.BindingElement,
+  ts.SyntaxKind.FunctionDeclaration,
+  ts.SyntaxKind.FunctionExpression,
+  ts.SyntaxKind.ClassDeclaration,
+  ts.SyntaxKind.ClassExpression,
+  ts.SyntaxKind.ImportClause,
+  ts.SyntaxKind.ImportSpecifier,
+  ts.SyntaxKind.NamespaceImport,
+  ts.SyntaxKind.ImportEqualsDeclaration,
+  ts.SyntaxKind.EnumDeclaration,
+  ts.SyntaxKind.ModuleDeclaration,
+]);
+
+/**
+ * Whether anything in the module binds `name`, in any scope: a variable, a
+ * parameter, a function, a class or an import.
+ */
+const bindsName = (sourceFile: ts.SourceFile, name: string): boolean =>
+  contains(
+    sourceFile,
+    (node) =>
+      ts.isIdentifier(node) &&
+      node.text === name &&
+      BINDING_KINDS.has(node.parent.kind) &&
+      (node.parent as ts.NamedDeclaration).name === node,
+  );
 
 /**
  * Whether a class member is static.

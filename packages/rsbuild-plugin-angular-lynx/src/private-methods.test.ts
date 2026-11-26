@@ -247,6 +247,17 @@ const FIXTURES: Record<string, string> = {
     // A spread copies an enumerable symbol-keyed property, but no private one.
     [Registry.add(1, 'a'), new Registry().own, Object.getOwnPropertySymbols({ ...Registry })];
   `,
+  'a static private field of a class named Object': `
+    // Inside a function, so SWC's helpers at the top level still see the
+    // global Object. The class's own static blocks would see the class.
+    (() => {
+      class Object {
+        static #x = 1;
+        static read() { return this.#x; }
+      }
+      return [Object.read()];
+    })();
+  `,
   'a static private field without a semicolon': `
     class Counter {
       static #count = 0
@@ -964,6 +975,27 @@ describe('renamePrivateMethods', () => {
     expect(code).toBe(
       `var ${t} = Symbol("t"); class A { static ${s}() { return 1; } static [${t}] = 2;; static { Object.defineProperty(this, ${t}, { enumerable: false }); } static f() { return A.${s}() + this[${t}]; } }`,
     );
+  });
+
+  it('leaves a static field enumerable in a module that binds Object', () => {
+    for (const binding of [
+      'class Object {}',
+      'const Object = {};',
+      'function f(Object) {}',
+      "import { Thing as Object } from 'x';",
+    ]) {
+      const code = rename(
+        `${binding} class A { static #t = 2; static f() { return A.#t; } }`,
+      );
+      expect(code).not.toContain('defineProperty');
+      expect(code).toMatch(/static \[__t_[0-9a-f]{6}\d+\] = 2;/);
+    }
+    // A property or method named Object binds nothing.
+    expect(
+      rename(
+        'const o = { Object: 1 }; class A { Object() {} static #t = 2; static f() { return A.#t + o.Object; } }',
+      ),
+    ).toContain('defineProperty');
   });
 
   it('leaves auto-accessors and decorated fields alone', () => {

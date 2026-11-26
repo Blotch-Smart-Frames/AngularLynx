@@ -165,6 +165,32 @@ export const imageBitmapOfCanvas = (
 };
 
 /**
+ * A resize option as Web IDL's `[EnforceRange] unsigned long` converts it
+ * (`'8'` is 8, 8.7 is 8), so the shell gets a number. One outside that range
+ * is a TypeError, and a resize to no pixels is refused, as a browser does,
+ * before an omitted size becomes 0 ("keep the source's") on its way to the
+ * shell.
+ */
+const resizeOption = (value: unknown, member: string): number | undefined => {
+  if (value === undefined) return undefined;
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= -1 || number >= 2 ** 32) {
+    throw new TypeError(
+      `Failed to execute 'createImageBitmap' on 'Window': Failed to read the '${member}' property from 'ImageBitmapOptions': Value is outside the 'unsigned long' value range.`,
+    );
+  }
+  const size = Math.trunc(number);
+  if (size === 0) {
+    const error = new Error(
+      `Failed to execute 'createImageBitmap' on 'Window': The ${member} is equal to 0.`,
+    );
+    error.name = 'InvalidStateError';
+    throw error;
+  }
+  return size;
+};
+
+/**
  * `createImageBitmap()`, from a Blob (a file's bytes), an image that has
  * loaded, or a canvas (`<canvas>`, `document.createElement('canvas')` or an
  * OffscreenCanvas). Cropping (the `sx, sy, sw, sh` arguments) isn't
@@ -177,18 +203,12 @@ export const createImageBitmap = async (
   if (rest.length > 1) {
     throw new Error('createImageBitmap() cropping is not supported on Lynx');
   }
-  const options = (rest[0] ?? {}) as DecodeOptions;
-  // A resize to no pixels is refused, as a browser does, before an omitted
-  // size becomes 0 ("keep the source's") on its way to the shell.
-  for (const member of ['resizeWidth', 'resizeHeight'] as const) {
-    if (options[member] !== undefined && Number(options[member]) === 0) {
-      const error = new Error(
-        `Failed to execute 'createImageBitmap' on 'Window': The ${member} is equal to 0.`,
-      );
-      error.name = 'InvalidStateError';
-      throw error;
-    }
-  }
+  const given = (rest[0] ?? {}) as DecodeOptions;
+  const options: DecodeOptions = {
+    ...given,
+    resizeWidth: resizeOption(given.resizeWidth, 'resizeWidth'),
+    resizeHeight: resizeOption(given.resizeHeight, 'resizeHeight'),
+  };
   const canvas = canvasSourceOf(source);
   if (canvas) {
     // Read before anything is awaited, so the bitmap is of the canvas as it

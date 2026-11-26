@@ -111,6 +111,26 @@ describe('createImageBitmap', () => {
     expect(bridge.imageFromCanvas).not.toHaveBeenCalled();
   });
 
+  it('converts the resize as a browser does: to a whole number, in range', async () => {
+    await createImageBitmap(new LynxOffscreenCanvas(4, 3), {
+      resizeWidth: '8' as unknown as number,
+      resizeHeight: 6.9,
+    });
+    expect(bridge.imageFromCanvas.mock.calls[0][2]).toMatchObject({
+      resizeWidth: 8,
+      resizeHeight: 6,
+    });
+    for (const resizeWidth of [-1, NaN, Infinity, 2 ** 32]) {
+      await expect(
+        createImageBitmap(new LynxBlob([PNG]), { resizeWidth }),
+      ).rejects.toThrow(TypeError);
+    }
+    // -0.5 truncates to 0, a resize to no pixels.
+    await expect(
+      createImageBitmap(new LynxBlob([PNG]), { resizeWidth: -0.5 }),
+    ).rejects.toMatchObject({ name: 'InvalidStateError' });
+  });
+
   it('refuses other sources, and cropping', async () => {
     await expect(createImageBitmap('nope')).rejects.toThrow(TypeError);
     await expect(createImageBitmap(null)).rejects.toThrow(TypeError);

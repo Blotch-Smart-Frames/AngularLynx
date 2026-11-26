@@ -19,8 +19,28 @@ appId: ${APP_ID}
     timeout: 15000
 # The harness adds photo.jpg to the library first (LIBRARY_PHOTO in
 # src/native/maestro.ts), and the newest photo comes first in both pickers.
-- tapOn: Pick photo
 # iOS labels a photo "Photo, <date>", Android "Photo taken on <date>".
+#
+# On CI's iOS simulators, PHPickerViewController sometimes shows only a
+# spinner and "Loading..." for as long as the flow waits (#624). A picker
+# that shows no photo in 30 seconds is closed and opened again, up to twice
+# more. The first try finds the photo page, where only the picker has a
+# Cancel button.
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow:
+          when:
+            visible: Cancel
+          commands:
+            - tapOn: Cancel
+            - extendedWaitUntil:
+                visible: 'Photo: canceled'
+                timeout: 15000
+      - tapOn: Pick photo
+      - extendedWaitUntil:
+          visible: 'Photo(,| taken on) .*'
+          timeout: 30000
 - tapOn:
     text: 'Photo(,| taken on) .*'
     index: 0

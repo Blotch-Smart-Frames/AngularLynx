@@ -91,6 +91,86 @@ export const slowWebKitLaunch = (appLog: string): string | undefined => {
   return undefined;
 };
 
+/**
+ * A photo picker process that took this long to start was held up by the
+ * simulator rather than the app. It starts in under a second on GitHub's
+ * macOS runners (0.2 to 0.6s on the passing runs of 2026-11-26).
+ */
+const SLOW_PHOTOS_PICKER_LAUNCH_SECONDS = 30;
+
+/**
+ * The time at the start of a `log stream` line, such as
+ * "2026-11-26 16:57:23.922154+0000", in parts `Date` can read: the date, the
+ * time to the millisecond (it can't take microseconds), and the offset's
+ * hours and minutes.
+ */
+const LOG_LINE_TIME =
+  /^(\d{4}-\d\d-\d\d) (\d\d:\d\d:\d\d\.\d{3})\d*([+-]\d\d)(\d\d)/;
+
+/**
+ * What PlugInKit logs in the app when the app asks for the photo picker's
+ * process (PHPickerViewController runs in
+ * com.apple.mobileslideshow.photospicker), and when that process has started.
+ */
+const PHOTOS_PICKER_LAUNCH_LINE =
+  /\[com\.apple\.mobileslideshow\.photospicker\([^)]*\)\] (activating plugin|got pid from ready request)/;
+
+/**
+ * The time of a `log stream` line, in milliseconds, or undefined.
+ */
+const logLineTime = (line: string): number | undefined => {
+  const match = LOG_LINE_TIME.exec(line);
+  if (!match) {
+    return undefined;
+  }
+  const [, date, time, hours, minutes] = match;
+  return Date.parse(`${date}T${time}${hours}:${minutes}`);
+};
+
+/**
+ * Says so when the simulator took over
+ * {@link SLOW_PHOTOS_PICKER_LAUNCH_SECONDS} to start the photo picker's
+ * process in `appLog`, or hadn't started it that long after the app asked;
+ * otherwise undefined. On GitHub's macOS runners the simulator sometimes
+ * stalls starting it as it does WebKit's (issue #672: 132s on a PR's run of
+ * 2026-11-26), and the picker shows only "Loading..." until then. Closing
+ * and reopening the picker, which photo.yaml does, doesn't help: the app asks
+ * for the process once, and every picker it opens waits for that one. The
+ * process may still be starting when the session ends, since photo.yaml is
+ * the last flow, so a request with no start after it counts too, timed to the
+ * log's last line.
+ */
+export const slowPhotosPickerLaunch = (appLog: string): string | undefined => {
+  let requested: number | undefined;
+  let last: number | undefined;
+  const slow = (seconds: number) =>
+    seconds >= SLOW_PHOTOS_PICKER_LAUNCH_SECONDS;
+  for (const line of appLog.split('\n')) {
+    const time = logLineTime(line);
+    if (time === undefined) {
+      continue;
+    }
+    last = time;
+    const event = PHOTOS_PICKER_LAUNCH_LINE.exec(line)?.[1];
+    if (event === 'activating plugin') {
+      requested ??= time;
+    } else if (event !== undefined && requested !== undefined) {
+      const seconds = (time - requested) / 1000;
+      if (slow(seconds)) {
+        return `the simulator took ${Math.round(seconds)}s to start the photo picker's process`;
+      }
+      requested = undefined;
+    }
+  }
+  if (requested !== undefined && last !== undefined) {
+    const seconds = (last - requested) / 1000;
+    if (slow(seconds)) {
+      return `the simulator hadn't started the photo picker's process ${Math.round(seconds)}s after the app asked for it`;
+    }
+  }
+  return undefined;
+};
+
 // No flow is a known failure on any platform. Android used to fail both flows
 // because Maestro couldn't see flattened Lynx elements, which the fixtures now
 // avoid (fixtures/counter.ts), and the iOS lazy route failed because Angular's
@@ -195,6 +275,7 @@ export const FLOWS: readonly Flow[] = [
     // Only the app's own builds have the picker module. Lynx Explorer
     // rejects with unavailable.
     only: { host: 'shell' },
+    deviceFault: slowPhotosPickerLaunch,
   },
 ];
 

@@ -160,8 +160,11 @@ export class UiMenuSubmenu implements UiMenuHost {
   /** Shows the row without letting it open the submenu. */
   readonly disabled = input(false, { transform: booleanAttribute });
 
-  /** The submenu's own rows, which its items join. */
-  readonly rows = new MenuRows();
+  /**
+   * The submenu's own rows, which its items join. A press on the menu it's in
+   * can end on them (see MenuRows' ownsTap).
+   */
+  readonly rows = new MenuRows(this.#parent.rows);
 
   /** Whether the submenu was opened, and hasn't been closed since. */
   readonly expanded = signal(false);
@@ -178,6 +181,7 @@ export class UiMenuSubmenu implements UiMenuHost {
     element: () => this.rowView().nativeElement,
     disabled: () => this.disabled(),
     choose: () => this.expand(),
+    opensSubmenu: true,
   };
   protected readonly joined = joinRows(
     this.#parent.rows,
@@ -258,6 +262,8 @@ export class UiMenuSubmenu implements UiMenuHost {
     if (this.disabled()) return;
     this.expanded.set(true);
     this.#parent.rows.covered.set(true);
+    // A finger still sliding across the menu moves on to the submenu's rows.
+    this.#parent.rows.openSubmenu = this.popup();
   }
 
   /**
@@ -266,6 +272,10 @@ export class UiMenuSubmenu implements UiMenuHost {
   collapse(): void {
     this.expanded.set(false);
     this.#parent.rows.covered.set(false);
+    // Only one submenu of a menu is open at a time: it covers the others'
+    // rows. And a closed one collapses only as the menu it's in closes,
+    // which closes the open one too.
+    this.#parent.rows.openSubmenu = null;
   }
 
   /**

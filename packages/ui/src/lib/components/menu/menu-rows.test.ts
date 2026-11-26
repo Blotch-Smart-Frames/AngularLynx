@@ -90,6 +90,18 @@ describe('MenuRows taps', () => {
     vi.useRealTimers();
   });
 
+  it("owns a submenu's taps that end the press that opened the menu it's in", () => {
+    const menu = new MenuRows();
+    const submenu = new MenuRows(menu);
+    expect(submenu.ownsTap()).toBe(false);
+
+    // A finger rested on the submenu's row, then lifted on one of its items.
+    menu.pressStarted();
+    menu.pressEnded();
+    expect(submenu.ownsTap()).toBe(true);
+    expect(submenu.ownsTap()).toBe(false);
+  });
+
   it('owns no tap after the system takes the press over', () => {
     const rows = new MenuRows();
     rows.pressStarted();

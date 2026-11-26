@@ -27,14 +27,14 @@ import { UiSeparator } from '../components/ui/separator';
   template: `
     <view class="h-full flex-col flex">
       <view
-        class="flex-row items-center border-b border-border bg-background px-4 py-3 flex"
+        class="flex-row items-center border-b border-border bg-background px-4 pb-3 flex pt-safe-3"
       >
         <ui-nav-drawer-trigger (pressed)="drawerOpen.set(true)" />
         <text class="ml-3 text-lg font-semibold text-foreground">My App</text>
       </view>
 
       <scroll-view scroll-orientation="vertical" class="flex-1">
-        <view class="flex-col gap-4 p-4 flex">
+        <view class="flex-col gap-4 px-4 pt-4 flex pb-safe-4">
           <text class="text-2xl font-bold text-foreground">Nav Drawer</text>
           <text class="text-sm text-muted-foreground">
             Tap the hamburger menu icon to open the navigation drawer.

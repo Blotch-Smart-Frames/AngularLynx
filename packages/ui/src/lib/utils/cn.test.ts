@@ -54,6 +54,8 @@ describe('cn', () => {
       'bg-card bg-blend-multiply',
       'text-foreground text-shadow-lg',
       'border-2 border-collapse',
+      // Parts only kept groups have: `static` and `sticky` are `position`'s.
+      'absolute static sticky',
     ];
     for (const list of lists) {
       expect(merge(list)).toBe(twMerge(list));

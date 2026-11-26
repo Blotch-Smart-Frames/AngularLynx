@@ -171,9 +171,9 @@ const addRoots = (
  * below it is the full map's, and tailwind-merge finds the same group for any
  * class starting with one of them as `twMerge()` does.
  *
- * A class starting with another part that some group has would be looked up
- * in a branch this map lacks, or has only some of, so the config's parser
- * calls `onForeignClass` when it parses one.
+ * A class starting with a part that a left-out group has classes under
+ * would be looked up in a branch this map lacks, or has only some of, so the
+ * config's parser calls `onForeignClass` when it parses one.
  */
 const createComponentConfig = (onForeignClass: () => void): DefaultConfig => {
   const config: DefaultConfig = getDefaultConfig();
@@ -181,22 +181,25 @@ const createComponentConfig = (onForeignClass: () => void): DefaultConfig => {
   const conflictingClassGroups: DefaultConfig['conflictingClassGroups'] = {};
   const conflictingClassGroupModifiers: DefaultConfig['conflictingClassGroupModifiers'] =
     {};
-  // The first parts some group has under it that this map doesn't have all
-  // of. A Set of a hundred short strings, against the thousands of objects
+  // The first parts a left-out group has classes under, which this map
+  // lacks some or all of. A Set of a hundred short strings, against the thousands of objects
   // the left-out groups' branches take.
   const foreignRoots = new Set<string>();
   for (const id of Object.keys(config.classGroups) as DefaultClassGroupIds[]) {
     const roots = new Set<string | typeof ANY_ROOT>();
     addRoots(config.classGroups[id], roots);
-    let kept = false;
-    for (const root of roots) {
-      if (root === ANY_ROOT || COMPONENT_CLASS_ROOTS.has(root)) {
-        kept = true;
-      } else {
-        foreignRoots.add(root);
+    const kept = [...roots].some(
+      (root) => root === ANY_ROOT || COMPONENT_CLASS_ROOTS.has(root),
+    );
+    if (!kept) {
+      // None of a left-out group's parts is a component part, or it would
+      // be kept. A part that only kept groups have, such as `static` (kept
+      // with `position` for `absolute`), is whole in this map and not
+      // foreign.
+      for (const root of roots) {
+        foreignRoots.add(root as string);
       }
-    }
-    if (kept) {
+    } else {
       classGroups[id] = config.classGroups[id];
       // Only a kept group's conflicts are ever looked up: every class this
       // map finds a group for is in one.

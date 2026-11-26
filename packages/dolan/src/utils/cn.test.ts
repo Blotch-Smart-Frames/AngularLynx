@@ -155,6 +155,17 @@ describe('cn', () => {
     expect(fullMerge).toHaveBeenCalledTimes(3);
   });
 
+  it('keeps the component map for a part only kept groups have', () => {
+    // `static` and `sticky` are only `position`'s, which is kept for
+    // `absolute` and `relative`, so the map has all of them.
+    const { cn: merge, fullMerge } = freshCn();
+    expect(merge('absolute static', 'sticky')).toBe('sticky');
+    expect(fullMerge).not.toHaveBeenCalled();
+    // `block` is also `block-size`'s, which no component uses.
+    expect(merge('block', 'block-full')).toBe(twMerge('block block-full'));
+    expect(fullMerge).toHaveBeenCalledTimes(1);
+  });
+
   it('switches to the full map on a foreign class with a postfix', () => {
     // tailwind-merge looks up `table/50` whole, then `table` without its
     // postfix, and `table` is `display: table`. Only the second is under a

@@ -204,6 +204,7 @@ static AngularLynxDecodedImage *decodeImage(NSData *bytes, NSDictionary *options
     @"run2D" : NSStringFromSelector(@selector(run2D:commands:)),
     @"destroy2D" : NSStringFromSelector(@selector(destroy2D:)),
     @"encode2D" : NSStringFromSelector(@selector(encode2D:options:)),
+    @"release2D" : NSStringFromSelector(@selector(release2D:)),
   };
 }
 
@@ -335,6 +336,13 @@ static AngularLynxDecodedImage *decodeImage(NSData *bytes, NSDictionary *options
   return @YES;
 }
 
+/// Frees a gradient or pattern, which every 2D context in the LynxView
+/// shares, whether or not the context that made it is still there.
+- (NSNumber *)release2D:(NSNumber *)objectId {
+  if ([objectId isKindOfClass:NSNumber.class]) [_canvas2DObjects removeObjectForKey:objectId];
+  return @YES;
+}
+
 /// The bitmap as an image file, for canvas.toBlob() and toDataURL().
 - (NSDictionary *)encode2D:(NSNumber *)contextId options:(NSDictionary *)options {
   AngularLynxCanvas2DContext *context = _contexts2D[contextId];
@@ -420,7 +428,9 @@ static AngularLynxDecodedImage *decodeImage(NSData *bytes, NSDictionary *options
   }];
 }
 
-- (void)showImage:(CGImageRef)image opaque:(BOOL)opaque {
+- (void)showImage:(CGImageRef)image opaque:(BOOL)opaque canvasId:(NSString *)canvasId {
+  // A frame queued before the view was given another canvas isn't its.
+  if (![canvasId isEqualToString:_canvasId]) return;
   if (!_imageLayer) {
     if (!image) return;
     _imageLayer = [CALayer layer];

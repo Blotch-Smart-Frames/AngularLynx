@@ -59,7 +59,10 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic, readonly) AngularLynxCanvasTarget *target;
 /// Shows a 2D context's bitmap, scaled to the view (nil shows nothing). UI
 /// thread only.
-- (void)showImage:(nullable CGImageRef)image opaque:(BOOL)opaque;
+/// Shows nothing for a frame of another canvas than the view's now.
+- (void)showImage:(nullable CGImageRef)image
+           opaque:(BOOL)opaque
+         canvasId:(NSString *)canvasId;
 @end
 
 /// The `canvas` element. Its `canvas-id` attribute, which the runtime sets,

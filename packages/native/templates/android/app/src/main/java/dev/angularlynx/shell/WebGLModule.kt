@@ -196,6 +196,16 @@ class WebGLModule(context: Context, param: Any?) : LynxModule(context, param) {
         return true
     }
 
+    /**
+     * Frees a gradient or pattern, which every 2D context in the LynxView
+     * shares, whether or not the context that made it is still there.
+     */
+    @LynxMethod
+    fun release2D(objectId: Int): Boolean {
+        canvas2DObjects.remove(objectId)
+        return true
+    }
+
     /** The bitmap as an image file, for canvas.toBlob() and toDataURL(). */
     @LynxMethod
     fun encode2D(contextId: Int, options: ReadableMap?): JavaOnlyMap {

@@ -516,17 +516,28 @@ class WebGLContext(override val canvasId: String, attributes: ReadableMap?) : Ca
                 } else {
                     null
                 }
-                val whole = if (canvasId != null) {
+                val image = if (canvasId != null) {
                     // A canvas's pixels, which its context reads now: a 2D
                     // canvas's bitmap, or a WebGL canvas's drawing buffer
                     // (that context makes itself current and puts this one
-                    // back). A canvas the app never drew on uploads zeros.
-                    (if (canvasId == this.canvasId) snapshot() else CanvasRegistry.context(canvasId)?.snapshot())
-                        ?: return Pixels(null, 0, false)
+                    // back). A canvas with no pixels to read, one the app
+                    // never drew on, is transparent black, as in a browser,
+                    // already the size the upload names.
+                    val snapshot = if (canvasId == this.canvasId) snapshot() else CanvasRegistry.context(canvasId)?.snapshot()
+                    if (snapshot == null) {
+                        DecodedImage(
+                            ByteBuffer.allocateDirect(width * height * 4).order(ByteOrder.nativeOrder()),
+                            width,
+                            height,
+                            true,
+                        )
+                    } else {
+                        cropped(snapshot, width, height, source.bool("flipY")) ?: return Pixels(null, 0, false)
+                    }
                 } else {
-                    DecodedImages.get(source.getDouble("image").toInt()) ?: return Pixels(null, 0, false)
+                    val decoded = DecodedImages.get(source.getDouble("image").toInt()) ?: return Pixels(null, 0, false)
+                    cropped(decoded, width, height, source.bool("flipY")) ?: return Pixels(null, 0, false)
                 }
-                val image = cropped(whole, width, height, source.bool("flipY")) ?: return Pixels(null, 0, false)
                 Pixels(
                     convertImage(image, format, type, source.bool("flipY"), source.bool("premultiply"), canvasId != null),
                     0,

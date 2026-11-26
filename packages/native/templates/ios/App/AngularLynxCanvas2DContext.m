@@ -571,8 +571,9 @@ static BOOL reducesAlpha(NSInteger composite) {
   _framePending = NO;
   CGImageRef image = [self newImage];
   BOOL opaque = !_alpha;
+  NSString *canvasId = _canvasId;
   dispatch_async(dispatch_get_main_queue(), ^{
-    [target.view showImage:image opaque:opaque];
+    [target.view showImage:image opaque:opaque canvasId:canvasId];
     if (image) CGImageRelease(image);
   });
 }

@@ -806,6 +806,7 @@ static NSUInteger componentsOf(GLenum format) {
   }
   if (![source isKindOfClass:NSDictionary.class]) return NULL;
   AngularLynxDecodedImage *image;
+  BOOL blank = NO;
   NSString *canvasId = source[@"canvas"];
   if (![canvasId isKindOfClass:NSString.class]) canvasId = nil;
   if (canvasId) {
@@ -813,12 +814,24 @@ static NSUInteger componentsOf(GLenum format) {
     // or a WebGL canvas's drawing buffer, which makes that context current.
     image = [[AngularLynxCanvasRegistry contextForCanvasId:canvasId] snapshot];
     [self makeCurrent];
+    // A canvas with no pixels to read, one the app never drew on, is
+    // transparent black, as in a browser.
+    if (!image) {
+      image = [[AngularLynxDecodedImage alloc]
+          initWithPixels:[NSMutableData dataWithLength:(NSUInteger)width * height * 4]
+                   width:width
+                  height:height
+           premultiplied:YES];
+      blank = YES;
+    }
   } else {
     image = [AngularLynxDecodedImage imageWithId:[source[@"image"] integerValue]];
   }
-  // A canvas the app never drew on is transparent, as in a browser: the
-  // upload's storage starts as zeros.
-  image = [self cropped:image width:width height:height flipY:[source[@"flipY"] boolValue]];
+  // The part of the image the unpack skips and the size name (a blank one is
+  // already that size).
+  if (!blank) {
+    image = [self cropped:image width:width height:height flipY:[source[@"flipY"] boolValue]];
+  }
   if (!image) return NULL;
   *isImage = YES;
   *holder = [self convertImage:image

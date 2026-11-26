@@ -90,6 +90,84 @@ export const LAYOUT_FLAG = 1 << INHERITED_TEXT_PROPERTIES.length;
  */
 export const SMALLER_FLAG = LAYOUT_FLAG << 1;
 
+/**
+ * The bits in a style index entry for a rule that moves its text off the
+ * baseline with a `vertical-align` length: RAISED_FLAG for the build's
+ * `<sup>` rule, `0.4em`, LOWERED_FLAG for its `<sub>` rule, `-0.24em`, and
+ * VERTICAL_ALIGN_FLAG for any other value, by a distance the runtime doesn't
+ * know. LynxElement gives the HTML text tags inside a `<sub>` or `<sup>`
+ * the whole distance from them (see baselineShiftFor). Above SMALLER_FLAG,
+ * as in the build plugin's style-index.ts.
+ */
+export const RAISED_FLAG = SMALLER_FLAG << 1;
+export const LOWERED_FLAG = RAISED_FLAG << 1;
+export const VERTICAL_ALIGN_FLAG = LOWERED_FLAG << 1;
+
+/**
+ * What a rule with RAISED_FLAG or LOWERED_FLAG moves its text by, in the
+ * element's own `em`: the build's `vertical-align` for `<sup>` and `<sub>`
+ * (styles/html-text-tags.css in the build plugin).
+ */
+const RAISED_EM = 0.4;
+const LOWERED_EM = -0.24;
+
+/**
+ * How far a browser moves the text of an HTML text tag off the line's
+ * baseline, in the tag's own `em`, from its rules' flags and those of the
+ * HTML text tags above it, nearest first (`chain[0]` is the tag's own), up
+ * to the nearest whose rules set the size with a copy. Null when it can't
+ * tell, or no tag above it moves it.
+ *
+ * A browser moves an inline box relative to its parent's baseline, so the
+ * text inside a `<sup>` rises with it, and a `<sup>` in a `<sup>` rises by
+ * both. Lynx doesn't: on iOS a `vertical-align` moves only the text of the
+ * `<text>` that has it, so in `x<sup>n<b>2</b></sup>` the "2" stayed on the
+ * line, and on iOS and Android an inner `<text>`'s offset replaces the one
+ * around it (issue #682). Each offset is in the element's own `em`, so an
+ * outer tag's counts for more in a tag that's smaller than it: 1.2 times for
+ * each `<small>`, `<sub>` or `<sup>` between them (see smallerClassFor),
+ * past which MAX_SMALLER_LEVELS keeps the text the same size.
+ *
+ * It can't tell when the app sets a `vertical-align` of its own on one of
+ * them (VERTICAL_ALIGN_FLAG, or both RAISED_FLAG and LOWERED_FLAG), or a size
+ * of its own (FONT_SIZE_FLAG) on the tag or one between it and a tag that
+ * moves it, whose distance would then need measuring against that size. The
+ * caller adds those flags for the tags' inline styles, which the index
+ * doesn't see.
+ */
+export const baselineShiftFor = (chain: readonly number[]): number | null => {
+  const levels = chain.filter((flags) => flags & SMALLER_FLAG).length;
+  const ownLevel = Math.min(levels, MAX_SMALLER_LEVELS);
+  let shift = 0;
+  // Whether a tag above moves it: a tag that moves alone has its own rule,
+  // which draws it where a browser does.
+  let moved = false;
+  // Whether a tag from here down sets its own size, so the distances from
+  // here up can't be measured in the first tag's em.
+  let sized = false;
+  let below = 0;
+  for (const [index, flags] of chain.entries()) {
+    if (flags & VERTICAL_ALIGN_FLAG) return null;
+    // Both distances: an app's rule for the tag sets the other one, and the
+    // index can't tell which wins.
+    if (flags & RAISED_FLAG && flags & LOWERED_FLAG) return null;
+    if (flags & FONT_SIZE_FLAG) sized = true;
+    const em =
+      flags & RAISED_FLAG ? RAISED_EM : flags & LOWERED_FLAG ? LOWERED_EM : 0;
+    if (em && index > 0) {
+      if (sized) return null;
+      moved = true;
+    }
+    if (em) {
+      const level = Math.min(levels - below, MAX_SMALLER_LEVELS);
+      shift += em * 1.2 ** (ownLevel - level);
+    }
+    if (flags & SMALLER_FLAG) below++;
+  }
+  // Rounded, so the same distance always writes the same style.
+  return moved ? Math.round(shift * 10000) / 10000 : null;
+};
+
 /** The `font-size` bit in the style index. */
 export const FONT_SIZE_FLAG =
   1 << INHERITED_TEXT_PROPERTIES.indexOf('font-size');
@@ -278,8 +356,18 @@ const readIndex = (): IndexedRules | null => {
     const [first, ...rest] = tokens;
     const rule = { rest, flags, ancestors, inState: inState === 1 };
     // A smaller size's rule counts too: where it applies decides the levels
-    // of <small> an HTML text tag is in (see LynxElement's #smallerLevels).
-    if (ancestors.length && flags & (ALL_TEXT_PROPERTIES | SMALLER_FLAG)) {
+    // of <small> an HTML text tag is in (see LynxElement's #sizeChain),
+    // and so does a vertical-align's, which decides how far the tags inside
+    // it move (see baselineShiftFor).
+    if (
+      ancestors.length &&
+      flags &
+        (ALL_TEXT_PROPERTIES |
+          SMALLER_FLAG |
+          RAISED_FLAG |
+          LOWERED_FLAG |
+          VERTICAL_ALIGN_FLAG)
+    ) {
       hasAncestorRules = true;
       for (const [, required] of ancestors) {
         for (const token of required) ancestorTokens.add(token);

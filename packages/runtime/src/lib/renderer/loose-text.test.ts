@@ -37,8 +37,11 @@ import {
   LYNX_TEXT_INHERITANCE_CLASS,
   NOT_BLOCK_CONTAINERS,
   INHERITED_TEXT_PROPERTIES,
+  LOWERED_FLAG,
+  RAISED_FLAG,
   resetStyleIndex,
   SMALLER_FLAG,
+  VERTICAL_ALIGN_FLAG,
 } from '../lynx-element/text-flow';
 import {
   LynxElement,
@@ -496,6 +499,34 @@ class CompactHost {
 })
 class ResetHost {
   readonly compact = signal(false);
+}
+
+@Component({
+  selector: 'raised-host',
+  encapsulation: ViewEncapsulation.None,
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: `<p class="big">
+    x<sup class="sup" [style.vertical-align]="supAlign()"
+      >n<b class="in-sup" [style.font-size]="size()">2</b
+      ><small class="small-in-sup">s</small
+      ><sup class="sup-in-sup" [class.own]="own()">m</sup></sup
+    >
+    H<sub
+      >2<i
+        class="in-sub"
+        [style.vertical-align]="subAlign()"
+        [style.color]="color()"
+        >O</i
+      ></sub
+    >
+  </p>`,
+})
+class RaisedHost {
+  readonly own = signal(false);
+  readonly supAlign = signal<string | null>(null);
+  readonly size = signal<string | null>(null);
+  readonly subAlign = signal<string | null>(null);
+  readonly color = signal<string | null>(null);
 }
 
 @Component({
@@ -1113,6 +1144,148 @@ describe('loose text', () => {
     fixture.componentInstance.compact.set(false);
     fixture.detectChanges();
     expect(smaller('in-reset')).toEqual(['_ngsmaller-1']);
+  });
+
+  // Issue #682: on iOS, Lynx moves only the text of the <text> that has the
+  // vertical-align, so the tags inside a <sup> or <sub> get the distance
+  // inline, in their own em, and a <sup> in a <sup> the sum of both.
+  it('moves the tags inside a <sup> or <sub> with it', () => {
+    const fontSize = 1 << INHERITED_TEXT_PROPERTIES.indexOf('font-size');
+    (
+      globalThis as { __angularLynxStyleIndex?: unknown }
+    ).__angularLynxStyleIndex = {
+      rules: [
+        [['big'], fontSize],
+        [['_ngtag-small'], SMALLER_FLAG],
+        [['_ngtag-sub'], SMALLER_FLAG | LOWERED_FLAG],
+        [['_ngtag-sup'], SMALLER_FLAG | RAISED_FLAG],
+        [['own'], VERTICAL_ALIGN_FLAG],
+      ],
+    };
+    const fixture = TestBed.createComponent(RaisedHost);
+    fixture.detectChanges();
+    const style = (cls: string): string =>
+      String(byClass(cls).attrs.get('style') ?? '');
+
+    // The <sup>'s own rule moves it.
+    expect(style('sup')).not.toContain('vertical-align');
+    expect(style('in-sup')).toContain('vertical-align: 0.4em');
+    expect(style('in-sub')).toContain('vertical-align: -0.24em');
+    // A <small> is smaller, so the same distance is more of its em.
+    expect(style('small-in-sup')).toContain('vertical-align: 0.48em');
+    expect(style('sup-in-sup')).toContain('vertical-align: 0.88em');
+
+    // An app's own vertical-align wins, as it would in a browser.
+    fixture.componentInstance.own.set(true);
+    fixture.detectChanges();
+    expect(style('sup-in-sup')).not.toContain('vertical-align');
+
+    fixture.componentInstance.own.set(false);
+    fixture.detectChanges();
+    expect(style('sup-in-sup')).toContain('vertical-align: 0.88em');
+  });
+
+  // The index sees neither an inline size nor an inline vertical-align
+  // (review of #714): with either, the distance can't be worked out.
+  it('leaves the tags inside a <sup> alone when an inline style sets the size or another distance', () => {
+    (
+      globalThis as { __angularLynxStyleIndex?: unknown }
+    ).__angularLynxStyleIndex = {
+      rules: [
+        [['_ngtag-sub'], SMALLER_FLAG | LOWERED_FLAG],
+        [['_ngtag-sup'], SMALLER_FLAG | RAISED_FLAG],
+        // An app's `sup { vertical-align: -0.24em }`, merged with the
+        // build's: the index can't tell which one wins.
+        [['own'], RAISED_FLAG | LOWERED_FLAG],
+      ],
+    };
+    const fixture = TestBed.createComponent(RaisedHost);
+    fixture.detectChanges();
+    const style = (cls: string): string =>
+      String(byClass(cls).attrs.get('style') ?? '');
+    expect(style('in-sup')).toContain('vertical-align: 0.4em');
+
+    // A size of its own: 0.4em of it isn't the <sup>'s distance.
+    fixture.componentInstance.size.set('40px');
+    fixture.detectChanges();
+    expect(style('in-sup')).not.toContain('vertical-align');
+    fixture.componentInstance.size.set(null);
+    fixture.detectChanges();
+    expect(style('in-sup')).toContain('vertical-align: 0.4em');
+
+    // A distance of the <sup>'s own, which the runtime doesn't read.
+    fixture.componentInstance.supAlign.set('0.8em');
+    fixture.detectChanges();
+    expect(style('in-sup')).not.toContain('vertical-align');
+    expect(style('small-in-sup')).not.toContain('vertical-align');
+    fixture.componentInstance.supAlign.set(null);
+    fixture.detectChanges();
+    expect(style('in-sup')).toContain('vertical-align: 0.4em');
+
+    fixture.componentInstance.own.set(true);
+    fixture.detectChanges();
+    expect(style('sup-in-sup')).not.toContain('vertical-align');
+  });
+
+  // A binding's style covers the runtime's own declaration of it while it's
+  // there, and removing it natively removed both (review of #714).
+  it("keeps the runtime's own declaration of a style when a binding of it goes", () => {
+    (
+      globalThis as { __angularLynxStyleIndex?: unknown }
+    ).__angularLynxStyleIndex = {
+      rules: [[['_ngtag-sub'], SMALLER_FLAG | LOWERED_FLAG]],
+    };
+    const fixture = TestBed.createComponent(RaisedHost);
+    fixture.detectChanges();
+    const native = globalThis as unknown as {
+      __AddInlineStyle: (el: FakeEl, key: string, value: unknown) => void;
+    };
+    const removed: string[] = [];
+    const add = native.__AddInlineStyle;
+    native.__AddInlineStyle = (el, key, value) => {
+      if (value === null) removed.push(key);
+      add(el, key, value);
+    };
+    const style = (): string => String(byClass('in-sub').attrs.get('style'));
+    try {
+      // The inherited color comes back, rather than Lynx's default.
+      fixture.componentInstance.color.set('red');
+      fixture.detectChanges();
+      fixture.componentInstance.color.set(null);
+      fixture.detectChanges();
+      expect(removed).not.toContain('color');
+      expect(style()).toContain('color: var(--angular-lynx-color)');
+
+      // And so does the <sub>'s distance, which the app's own left out.
+      fixture.componentInstance.subAlign.set('2px');
+      fixture.detectChanges();
+      expect(style()).not.toContain('vertical-align');
+      fixture.componentInstance.subAlign.set(null);
+      fixture.detectChanges();
+      expect(style()).toContain('vertical-align: -0.24em');
+    } finally {
+      native.__AddInlineStyle = add;
+    }
+  });
+
+  // The web preview's browser moves an inline element with its parent
+  // already, so an offset of the runtime's would move it twice.
+  it('leaves the tags inside a <sup> to the browser in the web preview', () => {
+    vi.stubGlobal('__WEB__', true);
+    try {
+      (
+        globalThis as { __angularLynxStyleIndex?: unknown }
+      ).__angularLynxStyleIndex = {
+        rules: [[['_ngtag-sup'], SMALLER_FLAG | RAISED_FLAG]],
+      };
+      const fixture = TestBed.createComponent(RaisedHost);
+      fixture.detectChanges();
+      expect(String(byClass('in-sup').attrs.get('style') ?? '')).not.toContain(
+        'vertical-align',
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   // Issue #643: the build gives `<em>`, `<u>`, `<s>` and their kin the

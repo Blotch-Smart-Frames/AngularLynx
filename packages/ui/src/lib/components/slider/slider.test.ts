@@ -6,7 +6,11 @@ import {
   render,
   waitForUpdate,
 } from '@blotch/angular-lynx-testing-library';
-import { LYNX_ELEMENTS, LynxAccessibilitySettings } from '@blotch/angular-lynx';
+import {
+  LYNX_ELEMENTS,
+  LynxAccessibilitySettings,
+  LynxHaptics,
+} from '@blotch/angular-lynx';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
 import { provideGlass } from '../glass/glass-design';
@@ -238,6 +242,62 @@ describe('UiSlider', () => {
     // Lynx may send a tap after a short drag: it doesn't move the thumb.
     await tap();
     expect(host.changes).toEqual([60]);
+  });
+
+  it('ticks through the steps of a coarse slider as it drags, and taps at its ends', async () => {
+    const haptics = {
+      impact: vi.fn(),
+      selection: vi.fn(),
+      notification: vi.fn(),
+    };
+    const { host, update, touch, lift, tap } = await renderSlider(undefined, [
+      { provide: LynxHaptics, useValue: haptics },
+    ]);
+    await update(() => host.step.set(25));
+
+    // Picked up 4px right of its center, at 150 (50).
+    await touch('touchstart', 154);
+    await touch('touchmove', 160);
+    expect(haptics.selection).not.toHaveBeenCalled();
+    // The center at 220: (220 − 10) / 280 = 75%, the next step.
+    await touch('touchmove', 224);
+    expect(haptics.selection).toHaveBeenCalledTimes(1);
+    // Past the end: 100, the slider's end, taps instead.
+    await touch('touchmove', 320);
+    expect(haptics.impact.mock.calls).toEqual([['light']]);
+    // Still at the end, so nothing more.
+    await touch('touchmove', 300);
+    await lift();
+    expect(haptics.selection).toHaveBeenCalledTimes(1);
+    expect(haptics.impact).toHaveBeenCalledTimes(1);
+
+    // A tap on the track glides the thumb there without feedback.
+    await touch('touchstart', 40);
+    await lift();
+    await tap();
+    expect(host.value()).toBe(0);
+    expect(haptics.impact).toHaveBeenCalledTimes(1);
+  });
+
+  it('taps only at the ends of a slider with many steps', async () => {
+    const haptics = {
+      impact: vi.fn(),
+      selection: vi.fn(),
+      notification: vi.fn(),
+    };
+    const { host, touch, lift } = await renderSlider(undefined, [
+      { provide: LynxHaptics, useValue: haptics },
+    ]);
+
+    await touch('touchstart', 150);
+    await touch('touchmove', 200);
+    await touch('touchmove', 100);
+    expect(host.value()).toBe(32);
+    expect(haptics.selection).not.toHaveBeenCalled();
+    await touch('touchmove', -20);
+    await lift();
+    expect(host.value()).toBe(0);
+    expect(haptics.impact.mock.calls).toEqual([['light']]);
   });
 
   // A finger sends a move for every frame it moves, and the mouse on the web

@@ -92,6 +92,7 @@ The platform's own segmented control, for picking one of a few options:
 ```
 
 - **The selected item has a thumb that slides** to the item you tap. You can also drag it across the items: it follows your finger and selects where you let go.
+- **The phone ticks when the selection changes,** with [`LynxHaptics`](/api/angular-lynx/haptics): on a tap of another item, and as a dragged thumb crosses onto each item.
 - **On iOS 26 the thumb lifts into Liquid Glass** while it moves, as UIKit's segmented control does, and settles back into a solid thumb. The thumb is the only glass. The items are plain.
 - **One item stays selected.** Tapping it again doesn't clear it, unlike the other variants.
 - **The items share the group's width.** Give one `class="flex-[2]"` to make it wider. The thumb follows each item's measured width, also after a rotation.

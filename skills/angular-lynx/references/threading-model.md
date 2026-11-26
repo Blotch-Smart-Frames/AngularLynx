@@ -118,5 +118,6 @@ These do not exist in Lynx and are shimmed by the runtime:
 | `URL` constructor                          | Not available (manual string parsing in `LynxPlatformLocation`)                                                  |
 | `localStorage`                             | `LynxLocalStorage`, or `LynxSecureStorage` for secrets                                                           |
 | `navigator.clipboard`                      | `LynxClipboard`                                                                                                  |
+| `navigator.vibrate()`                      | `LynxHaptics`                                                                                                    |
 | `window.open` / `location.href = url`      | `LynxLinking.openURL()`, or `openInApp()` for a browser sheet                                                    |
 | `navigator.share()`                        | `LynxShare.share()`, with files as `{ blob, name }`                                                              |

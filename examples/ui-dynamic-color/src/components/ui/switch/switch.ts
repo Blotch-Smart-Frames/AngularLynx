@@ -14,7 +14,11 @@ import {
   viewChild,
 } from '@angular/core';
 import { type FormCheckboxControl } from '@angular/forms/signals';
-import { LYNX_ELEMENTS, LynxAccessibilitySettings } from '@blotch/angular-lynx';
+import {
+  LYNX_ELEMENTS,
+  LynxAccessibilitySettings,
+  LynxHaptics,
+} from '@blotch/angular-lynx';
 
 import {
   type AnimationHandle,
@@ -376,6 +380,7 @@ export class UiSwitch implements FormCheckboxControl {
 
   readonly #renderer = inject(Renderer2);
   readonly #settings = inject(LynxAccessibilitySettings);
+  readonly #haptics = inject(LynxHaptics);
   readonly #design = injectGlassDesign();
   readonly #scheme = injectColorScheme();
   readonly #systemDrawsGlass = injectSystemDrawsGlass();
@@ -702,6 +707,9 @@ export class UiSwitch implements FormCheckboxControl {
       );
     }
     if (next === this.checked()) return;
+    // A light tap as it flips, as UIKit's switch gives: the thumb landed
+    // on the other side.
+    this.#haptics.impact('light');
     this.checked.set(next);
     this.changed.emit(next);
   }

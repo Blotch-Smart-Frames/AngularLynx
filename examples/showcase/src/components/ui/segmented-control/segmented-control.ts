@@ -10,7 +10,11 @@ import {
   signal,
   ViewEncapsulation,
 } from '@angular/core';
-import { LYNX_ELEMENTS, LynxAccessibilitySettings } from '@blotch/angular-lynx';
+import {
+  LYNX_ELEMENTS,
+  LynxAccessibilitySettings,
+  LynxHaptics,
+} from '@blotch/angular-lynx';
 
 import { DURATION, EASING } from '@blotch/dolan/utils/animate';
 import { cn } from '@blotch/dolan/utils/cn';
@@ -281,6 +285,7 @@ export class UiSegmentedControl {
   readonly #injector = inject(Injector);
   #hostRef?: SegmentedHost;
   readonly #settings = inject(LynxAccessibilitySettings);
+  readonly #haptics = inject(LynxHaptics);
   readonly #scheme = injectColorScheme();
 
   /** The design on this platform, which the segments follow. */
@@ -753,7 +758,12 @@ export class UiSegmentedControl {
     const drag = this.#drag();
     const x = pointerX(event);
     if (drag && x !== undefined) {
+      const before = this.#dragFrame()?.under;
       this.#drag.set({ ...drag, dx: x - drag.startX });
+      // A tick as the indicator crosses onto another segment, as UIKit's
+      // control gives while its thumb is dragged: the selection the drag
+      // lands on moved.
+      if (this.#dragFrame()?.under !== before) this.#haptics.selection();
     }
   }
 
@@ -807,6 +817,16 @@ export class UiSegmentedControl {
     if (this.slides() && value !== this.#selected()) {
       this.#lift();
       this.#settle(DURATION.slow);
+    }
+    // A tick when the tap changes the selection: one that selects another
+    // segment, or any in a control of several, where a tap toggles its
+    // segment. A tap on the selected segment of a single selection changes
+    // nothing. Only a segmented control ticks, not a host's other looks.
+    if (
+      this.enabled() &&
+      (this.#host().multiple() || value !== this.#selected())
+    ) {
+      this.#haptics.selection();
     }
     return true;
   }

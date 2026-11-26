@@ -9,7 +9,7 @@ import {
   output,
   viewChild,
 } from '@angular/core';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { LYNX_ELEMENTS, LynxHaptics } from '@blotch/angular-lynx';
 
 import { type MenuElement, UiMenuPopup } from '../menu/menu-popup';
 import { UI_MENU, type UiMenuHost } from '../menu/menu';
@@ -100,8 +100,17 @@ export class UiContextMenu implements UiMenuHost {
   readonly elementView = viewChild.required<ElementRef<MenuElement>>('element');
   readonly homeView = viewChild.required<ElementRef<MenuElement>>('home');
 
+  readonly #haptics = inject(LynxHaptics);
+
+  /**
+   * Opens the menu with a tap, as iOS's context menu and Android's long
+   * press give: it tells the finger that the press became something else.
+   * Opening from code (`[(open)]`) has no press to answer, so it's silent.
+   */
   protected onLongPress(): void {
-    if (!this.disabled()) this.open.set(true);
+    if (this.disabled()) return;
+    this.#haptics.impact('medium');
+    this.open.set(true);
   }
 
   close(): void {

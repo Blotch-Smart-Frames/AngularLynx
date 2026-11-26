@@ -5,7 +5,11 @@ import {
   waitForUpdate as nextUpdate,
   within,
 } from '@blotch/angular-lynx-testing-library';
-import { LYNX_ELEMENTS, LynxAccessibilitySettings } from '@blotch/angular-lynx';
+import {
+  LYNX_ELEMENTS,
+  LynxAccessibilitySettings,
+  LynxHaptics,
+} from '@blotch/angular-lynx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DURATION } from '../../utils/animate';
 import { UiMenuItem, UiMenuSeparator } from '../menu/menu';
@@ -66,6 +70,9 @@ const settings = {
 
 const IOS_26 = { platform: 'iOS', osVersion: '26.0' };
 
+/** Stands in for LynxHaptics, so a test can see the menu's feedback. */
+const haptics = { impact: vi.fn(), selection: vi.fn(), notification: vi.fn() };
+
 /**
  * Renders the context menu on a platform (none for Material), measuring
  * elements as `boundingClientRect` would on a phone: the safe area (the
@@ -92,7 +99,10 @@ const renderContextMenu = async (
     callback({ code: 0, data });
   });
   const result = await render(ContextMenuHost, {
-    providers: [{ provide: LynxAccessibilitySettings, useValue: settings }],
+    providers: [
+      { provide: LynxAccessibilitySettings, useValue: settings },
+      { provide: LynxHaptics, useValue: haptics },
+    ],
   });
   const host = result.componentRef.instance as ContextMenuHost;
   const overlay = result.container.querySelector('overlay')!;
@@ -180,6 +190,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
+  haptics.impact.mockClear();
   vi.unstubAllGlobals();
 });
 
@@ -201,6 +212,8 @@ describe('UiContextMenu', () => {
     expect(rendered.overlay.querySelector('.bg-glass-dim')).not.toBeNull();
     // The menu opens below it.
     expect(style(rendered.panel(), 'top')).toBe(`${100 + 96 + 8}px`);
+    // With a tap, as the press turns into the menu.
+    expect(haptics.impact.mock.calls).toEqual([['medium']]);
   });
 
   it('runs the chosen item and closes, putting the element back', async () => {
@@ -226,6 +239,8 @@ describe('UiContextMenu', () => {
     const rendered = await renderContextMenu();
     rendered.host.open.set(true);
     await waitForOpen(rendered);
+    // Opened from code, there's no press to answer.
+    expect(haptics.impact).not.toHaveBeenCalled();
 
     fireEvent.tap(rendered.overlay.firstElementChild!);
 
@@ -242,6 +257,7 @@ describe('UiContextMenu', () => {
     await waitForUpdate();
 
     expect(rendered.host.open()).toBe(false);
+    expect(haptics.impact).not.toHaveBeenCalled();
   });
 
   it('opens a Material menu beside the element on Android, leaving it in place', async () => {

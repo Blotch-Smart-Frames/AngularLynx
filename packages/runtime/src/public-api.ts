@@ -37,6 +37,8 @@ export type {
   ObserverFrameRateOptions,
 } from './lib/exposure';
 export { LynxFont } from './lib/font';
+export { LynxHaptics } from './lib/haptics';
+export type { HapticImpactStyle, HapticNotificationType } from './lib/haptics';
 export { reportFullyDrawn } from './lib/fully-drawn';
 export { ImagePickerError, LynxImagePicker } from './lib/image-picker';
 export type {

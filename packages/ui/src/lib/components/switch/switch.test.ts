@@ -6,7 +6,11 @@ import {
   render,
   waitForUpdate,
 } from '@blotch/angular-lynx-testing-library';
-import { LYNX_ELEMENTS, LynxAccessibilitySettings } from '@blotch/angular-lynx';
+import {
+  LYNX_ELEMENTS,
+  LynxAccessibilitySettings,
+  LynxHaptics,
+} from '@blotch/angular-lynx';
 import {
   type MockInstance,
   afterEach,
@@ -187,6 +191,29 @@ describe('UiSwitch', () => {
     await tap();
     expect(host.checked()).toBe(false);
     expect(host.changes).toEqual([true, false]);
+  });
+
+  it('taps the phone lightly each time it flips, and not when a drag lands where it started', async () => {
+    const haptics = {
+      impact: vi.fn(),
+      selection: vi.fn(),
+      notification: vi.fn(),
+    };
+    const { host, tap, touch, lift, update } = await renderSwitch(undefined, [
+      { provide: LynxHaptics, useValue: haptics },
+    ]);
+
+    await tap();
+    await tap();
+    expect(haptics.impact.mock.calls).toEqual([['light'], ['light']]);
+
+    // A drag that's let go on the side it started changes nothing.
+    await touch('touchstart', 12);
+    await touch('touchmove', 18);
+    await lift();
+    // Nor does the app setting it: the person didn't flip it.
+    await update(() => host.checked.set(true));
+    expect(haptics.impact).toHaveBeenCalledTimes(2);
   });
 
   it('springs the thumb across the track, squishing it halfway', async () => {

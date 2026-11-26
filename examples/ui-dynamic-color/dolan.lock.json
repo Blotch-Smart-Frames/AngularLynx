@@ -58,7 +58,7 @@
         "hash": "5ff0c292428843eb"
       },
       "switch.ts": {
-        "hash": "00dde11e35f1a685"
+        "hash": "4727c7e9a598d467"
       }
     },
     "slider": {
@@ -66,7 +66,7 @@
         "hash": "5d6ecb516a720195"
       },
       "slider.ts": {
-        "hash": "1aa0059ee6fd9689"
+        "hash": "dfbdde3d77e533d9"
       }
     },
     "segmented-control": {
@@ -74,7 +74,7 @@
         "hash": "112ffe8715737c91"
       },
       "segmented-control.ts": {
-        "hash": "d0bfcdcc020ad318"
+        "hash": "ca12d35a9884bb65"
       }
     },
     "toggle": {

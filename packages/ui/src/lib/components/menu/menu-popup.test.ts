@@ -682,9 +682,11 @@ describe('UiMenuPopup', () => {
   describe('with rows a finger can slide onto', () => {
     /**
      * Where the item is once the menu has grown: it's measured as the safe
-     * area, 62pt below the content's top, in a menu over the anchor.
+     * area, 62pt below the content's top, in a menu over the anchor, whose
+     * 120pt frame starts at the anchor's top (162). So the item shows in
+     * the frame from 224 to 282.
      */
-    const ON_ITEM = { x: 100, y: 300 };
+    const ON_ITEM = { x: 100, y: 250 };
 
     /**
      * The popup's item as a row, choosing with `choose`.
@@ -739,6 +741,39 @@ describe('UiMenuPopup', () => {
       await openMenu(rendered);
       rendered.host.popup().dragTo(ON_ITEM);
       expect(menuRows.highlighted()).toBeNull();
+    });
+
+    it('chooses nothing outside its frame, where it clips its rows', async () => {
+      const rendered = await renderPopup();
+      // The item measures as the whole safe area, far past the menu.
+      const { menuRows, added } = await withRows(rendered, itemRow);
+      await openMenu(rendered);
+
+      for (const point of [
+        { x: 100, y: 70 },
+        { x: 2, y: 300 },
+        { x: 400, y: 300 },
+        { x: 100, y: 830 },
+      ]) {
+        rendered.host.popup().dragTo(point);
+        expect(menuRows.highlighted()).toBeNull();
+        rendered.host.popup().dropAt(point);
+      }
+      expect(added[0]!.choose).not.toHaveBeenCalled();
+    });
+
+    it('chooses nothing in the place of a row the app took away', async () => {
+      const rendered = await renderPopup();
+      const menuRows = new MenuRows();
+      const row = itemRow(rendered);
+      const remove = menuRows.add(row);
+      rendered.host.rows.set(menuRows);
+      await waitForUpdate();
+      await openMenu(rendered);
+
+      remove();
+      rendered.host.popup().dropAt(ON_ITEM);
+      expect(row.choose).not.toHaveBeenCalled();
     });
 
     it("leaves out a row it can't measure", async () => {

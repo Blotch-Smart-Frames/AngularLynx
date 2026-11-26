@@ -643,15 +643,20 @@ export class UiMenuPopup implements OnDestroy, MenuDragTarget {
 
   /**
    * The row under `point`, in the window's coordinates, once the menu is
-   * open and its rows measured.
+   * open and its rows measured. Only inside the menu's frame: a tall menu
+   * clips the rows past it. And only a row the menu still has, since an
+   * app can take one away while the finger is down.
    */
-  #rowAt(point: MenuPoint): MenuRow | null {
+  #rowAt(rows: MenuRows, point: MenuPoint): MenuRow | null {
     const frame = this.placement()?.frame;
     if (!frame || this.phase() !== 'open') return null;
     const x = point.x / this.#scale - this.#areaRect.left - frame.left;
     const y = point.y / this.#scale - this.#areaRect.top - frame.top;
+    if (x < 0 || y < 0 || x >= frame.width || y >= frame.height) return null;
+    const current = rows.all();
     for (const [row, box] of this.#rowOffsets) {
       if (
+        current.includes(row) &&
         x >= box.left &&
         x < box.left + box.width &&
         y >= box.top &&
@@ -670,7 +675,7 @@ export class UiMenuPopup implements OnDestroy, MenuDragTarget {
   dragTo(point: MenuPoint | null): void {
     const rows = this.rows();
     if (!rows) return;
-    const row = point ? this.#rowAt(point) : null;
+    const row = point ? this.#rowAt(rows, point) : null;
     const target = row && !row.disabled() ? row : null;
     if (target === rows.highlighted()) return;
     rows.highlighted.set(target);
@@ -685,7 +690,7 @@ export class UiMenuPopup implements OnDestroy, MenuDragTarget {
     const rows = this.rows();
     if (!rows) return;
     rows.highlighted.set(null);
-    const row = this.#rowAt(point);
+    const row = this.#rowAt(rows, point);
     if (row && !row.disabled()) row.choose();
   }
 

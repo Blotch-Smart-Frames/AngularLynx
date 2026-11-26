@@ -244,7 +244,26 @@ const FIXTURES: Record<string, string> = {
       #own() { return Registry.#key(2); }
       get own() { return this.#own(); }
     }
-    [Registry.add(1, 'a'), new Registry().own];
+    // A spread copies an enumerable symbol-keyed property, but no private one.
+    [Registry.add(1, 'a'), new Registry().own, Object.getOwnPropertySymbols({ ...Registry })];
+  `,
+  'a static private field of a class named Object': `
+    // Inside a function, so SWC's helpers at the top level still see the
+    // global Object. The class's own static blocks would see the class.
+    (() => {
+      class Object {
+        static #x = 1;
+        static read() { return this.#x; }
+      }
+      return [Object.read(), globalThis.Object.getOwnPropertySymbols({ ...Object })];
+    })();
+  `,
+  'a static private field without a semicolon': `
+    class Counter {
+      static #count = 0
+      static next() { return ++Counter.#count; }
+    }
+    [Counter.next(), Counter.next(), Object.getOwnPropertySymbols({ ...Counter })];
   `,
   'async and generator methods': `
     class Source {
@@ -946,9 +965,49 @@ describe('renamePrivateMethods', () => {
     );
   });
 
-  it('leaves static private members, auto-accessors and decorated fields alone', () => {
+  it('renames a static private method and keys a static private field by a symbol', () => {
+    // Each read of a static one went through SWC's brand check too.
+    const code = rename(
+      'class A { static #s() { return 1; } static #t = 2; static f() { return A.#s() + this.#t; } }',
+    );
+    const [s] = renamed(code, 's');
+    const [t] = renamed(code, 't');
+    expect(code).toBe(
+      `var ${t} = Symbol("t"); class A { static ${s}() { return 1; } static [${t}] = 2;; static { Object.defineProperty(this, ${t}, { enumerable: false }); } static f() { return A.${s}() + this[${t}]; } }`,
+    );
+  });
+
+  it('leaves private fields in a module that binds Symbol, and renames its methods', () => {
+    const code = rename(
+      'const Symbol = globalThis.Symbol; class A { #f = 1; static #t = 2; #m() { return this.#f + A.#t; } g() { return this.#m(); } }',
+    );
+    const [m] = renamed(code, 'm');
+    expect(code).toBe(
+      `const Symbol = globalThis.Symbol; class A { #f = 1; static #t = 2; ${m}() { return this.#f + A.#t; } g() { return this.${m}(); } }`,
+    );
+  });
+
+  it('leaves a static field private in a module that binds Object', () => {
+    for (const binding of [
+      'class Object {}',
+      'const Object = {};',
+      'function f(Object) {}',
+      "import { Thing as Object } from 'x';",
+    ]) {
+      const code = `${binding} class A { static #t = 2; static f() { return A.#t; } }`;
+      expect(rename(code)).toBe(code);
+    }
+    // A property or method named Object binds nothing.
+    expect(
+      rename(
+        'const o = { Object: 1 }; class A { Object() {} static #t = 2; static f() { return A.#t + o.Object; } }',
+      ),
+    ).toContain('defineProperty');
+  });
+
+  it('leaves auto-accessors and decorated fields alone', () => {
     const code =
-      'class A { static #s() {} static #t = 2; accessor #a = 3; @tracked #d = 4; g() { A.#s(); return A.#t + this.#a + this.#d; } }';
+      'class A { static accessor #s = 1; accessor #a = 3; @tracked #d = 4; g() { return A.#s + this.#a + this.#d; } }';
     expect(rename(code)).toBe(code);
   });
 
@@ -1598,5 +1657,17 @@ describe("over the runtime's build", () => {
       fieldSites(before.main),
     );
     expect(Object.keys(renamedElement)).toEqual(Object.keys(element));
+  }, 60_000);
+
+  it('reads no private member of the runtime through the brand check', async () => {
+    // LynxElement's static ones (its registry of wrappers, the sets the end
+    // of a cycle commits) are read for every element it makes and inserts.
+    const before = await compileRuntime(false);
+    const after = await compileRuntime(true);
+    const brandChecks = (code: string) =>
+      code.match(/_class_private_field_loose_base\(/g)?.length ?? 0;
+
+    expect(brandChecks(before.main)).toBeGreaterThan(50);
+    expect(brandChecks(after.main)).toBe(0);
   }, 60_000);
 });

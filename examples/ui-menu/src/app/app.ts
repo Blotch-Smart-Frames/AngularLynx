@@ -10,8 +10,8 @@ import { UiIcon } from '../components/ui/icon';
 import {
   UiMenu,
   UiMenuItem,
-  UiMenuSection,
   UiMenuSeparator,
+  UiMenuSubmenu,
   UiMenuTrigger,
 } from '../components/ui/menu';
 
@@ -30,8 +30,8 @@ type Trip = {
     UiIcon,
     UiMenu,
     UiMenuItem,
-    UiMenuSection,
     UiMenuSeparator,
+    UiMenuSubmenu,
     UiMenuTrigger,
   ],
   template: `
@@ -47,7 +47,9 @@ type Trip = {
               <text class="text-xs text-muted-foreground">{{ status() }}</text>
             </view>
             <!-- A pull-down menu from a glass button in the corner: it grows
-               out of the button, toward the middle of the screen. -->
+               out of the button, toward the middle of the screen. On iOS,
+               press the button and slide onto an item to choose it. "Sort
+               by" is a submenu, which grows out of its row. -->
             <ui-menu>
               <blur-view
                 ui-glass
@@ -61,7 +63,7 @@ type Trip = {
               >
                 <ui-icon name="ellipsis" />
               </blur-view>
-              <ui-menu-section title="Sort by">
+              <ui-menu-submenu label="Sort by" icon="arrow-down">
                 <ui-menu-item
                   label="Name"
                   [checked]="sort() === 'name'"
@@ -72,7 +74,7 @@ type Trip = {
                   [checked]="sort() === 'date'"
                   (pressed)="sortBy('date')"
                 />
-              </ui-menu-section>
+              </ui-menu-submenu>
               <ui-menu-separator />
               <ui-menu-item
                 label="Select"
@@ -121,6 +123,16 @@ type Trip = {
                   icon="copy"
                   (pressed)="did('Duplicated ' + trip.name)"
                 />
+                <ui-menu-submenu label="Move to" icon="folder">
+                  <ui-menu-item
+                    label="Favorites"
+                    (pressed)="did('Moved ' + trip.name + ' to Favorites')"
+                  />
+                  <ui-menu-item
+                    label="Next year"
+                    (pressed)="did('Moved ' + trip.name + ' to Next year')"
+                  />
+                </ui-menu-submenu>
                 <ui-menu-separator />
                 <ui-menu-item
                   label="Delete"
@@ -166,7 +178,8 @@ type Trip = {
           <ui-menu-item label="Archived" icon="archive" disabled />
         </ui-menu>
         <text class="flex-1 text-xs text-muted-foreground">
-          Near the bottom of the screen, a menu opens upward.
+          Near the bottom of the screen, a menu opens upward, with its first
+          item nearest the button on iOS.
         </text>
       </view>
     </view>

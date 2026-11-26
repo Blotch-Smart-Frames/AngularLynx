@@ -8,6 +8,7 @@ import {
 } from './text-inheritance';
 import {
   applyTextScale,
+  TEXT_DEFAULT_SIZE_STYLESHEET,
   TEXT_SCALE_STYLESHEET,
   textScaleForLynx,
 } from './text-scale';
@@ -163,10 +164,10 @@ describe('textScaleForLynx', () => {
     expect(process(css)).toContain('font-size: 14sp;');
   });
 
-  // A Lynx <text> with no size of its own draws at Lynx's built-in 14px,
-  // whatever the page's size, so it neither took the theme's 16px nor grew
-  // with the phone (issue #673). 1rem is the page's size, sp and all.
-  it("gives a <text> with no font size of its own the page's, in rem", () => {
+  // The native bundle's stylesheet sets only the page's size: a <text> with
+  // no size of its own inherits it, or its parent's (issue #685), and a
+  // `text` rule there would replace that with the page's.
+  it('gives the native bundle no font size for <text>', () => {
     const css = fs.readFileSync(TEXT_SCALE_STYLESHEET, 'utf8');
     const rules: [string, string][] = [];
     postcss.parse(process(css)).walkDecls('font-size', (declaration) => {
@@ -175,10 +176,23 @@ describe('textScaleForLynx', () => {
         declaration.value,
       ]);
     });
-    expect(rules).toEqual([
-      ['page', '14sp'],
-      ['text', '1rem'],
-    ]);
+    expect(rules).toEqual([['page', '14sp']]);
+  });
+
+  // With font-size inheritance off, a Lynx <text> with no size of its own
+  // draws at Lynx's built-in 14px, whatever the page's size, so it neither
+  // took the theme's 16px nor grew with the phone (issue #673). 1rem is the
+  // page's size, sp and all.
+  it("gives a <text> the page's font size, in rem, where font-size doesn't inherit", () => {
+    const css = fs.readFileSync(TEXT_DEFAULT_SIZE_STYLESHEET, 'utf8');
+    const rules: [string, string][] = [];
+    postcss.parse(process(css)).walkDecls('font-size', (declaration) => {
+      rules.push([
+        (declaration.parent as postcss.Rule).selector,
+        declaration.value,
+      ]);
+    });
+    expect(rules).toEqual([['text', '1rem']]);
   });
 
   // The HTML inline tags in a Lynx <text> read its copy, so
@@ -186,7 +200,7 @@ describe('textScaleForLynx', () => {
   // the style index tells the runtime the <text> sets its size, so the tag
   // reads the copy rather than staying at Lynx's default (#drawnAtDefault).
   it("passes a <text>'s rem font size to the HTML text tags inside it", () => {
-    const css = fs.readFileSync(TEXT_SCALE_STYLESHEET, 'utf8');
+    const css = fs.readFileSync(TEXT_DEFAULT_SIZE_STYLESHEET, 'utf8');
     const built = postcss([
       textScaleForLynx(),
       textInheritanceForLynx(),

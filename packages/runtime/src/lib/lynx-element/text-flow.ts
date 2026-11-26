@@ -3,8 +3,9 @@
  * which text styles an element takes from its ancestors (inheritance), and
  * whether text and inline tags beside each other share a line (inline flow).
  *
- * Lynx inherits neither. A `<text>` doesn't take its parent's `color` or
- * `font-size`, and only a `<text>` lays text out in lines, so `<div>Hi
+ * Lynx inherits neither. A `<text>` doesn't take its parent's `color` (only
+ * `font-size`, which the build plugin has Lynx inherit), and only a `<text>`
+ * lays text out in lines, so `<div>Hi
  * <b>there</b></div>` has no line to share. The runtime puts such text and
  * tags in an anonymous `<text>` (see LynxElement's #regroup), and gives the
  * elements that stand for HTML's text the inherited styles through CSS
@@ -14,7 +15,7 @@
  * text-inheritance.ts), and those elements read the variables.
  *
  * Elements written as Lynx elements (`<view>`, `<text>`) never read them,
- * so they look as they always have.
+ * so they look as they always have, apart from the inherited `font-size`.
  */
 
 /**

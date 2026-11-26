@@ -133,16 +133,22 @@
     },
     "menu": {
       "index.ts": {
-        "hash": "6844fe66f0fbae47"
+        "hash": "63d175d587e48e60"
       },
       "menu-placement.ts": {
         "hash": "76c669fffb01282d"
       },
       "menu-popup.ts": {
-        "hash": "8baf14e07f5aaf24"
+        "hash": "7ba729522e7a7ae6"
       },
       "menu.ts": {
-        "hash": "bc8be6757a0496f8"
+        "hash": "fd233bb864af5863"
+      },
+      "menu-rows.ts": {
+        "hash": "452194bb6f28a6c5"
+      },
+      "menu-submenu.ts": {
+        "hash": "828e0b401a3fc2f8"
       }
     },
     "popover": {

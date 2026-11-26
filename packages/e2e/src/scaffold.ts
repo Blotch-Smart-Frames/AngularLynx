@@ -1109,12 +1109,13 @@ export const routes: Routes = [
  */
 /**
  * Keeps the fixtures' text at Lynx's 14px, which their layout was made for.
- * The theme makes the page's font size 16px, and the native build gives a
- * `<text>` with no size of its own the page's (issue #673), so the fixtures'
- * buttons and lines grew. Each "Open …" button shows another page below the
+ * The theme makes the page's font size 16px, and a `<text>` with no size of
+ * its own takes it on native too (issues #673 and #685: it inherits its
+ * parent's, which is the page's here), so the fixtures' buttons and lines
+ * grew. Each "Open …" button shows another page below the
  * first, and on CI's 320x640 Android emulator the later buttons ended up
  * below the screen, where Maestro couldn't find them. An app's own `text`
- * rule wins over the build's, as it does here. The text's size isn't what
+ * rule wins over what the `<text>` inherits, as it does here. The text's size isn't what
  * the fixtures check.
  */
 const FIXTURE_TEXT_SIZE = `

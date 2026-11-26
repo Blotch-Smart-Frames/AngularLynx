@@ -1,4 +1,4 @@
-// cspell:words keyevent
+// cspell:words keyevent libserval
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -117,15 +117,14 @@ export const runOnAndroidEmulator = async ({
       }
     }
     if (host.kind === 'shell') {
-      const failure = await checkColorsAfterKeyPress({
-        adb,
-        appId,
-        screenshot,
-        file: path.join(artifactsDir, `android-${host.kind}-key-press.png`),
-      });
-      if (failure) {
-        failures.push(failure);
-      }
+      failures.push(
+        ...(await checkScreenColors({
+          adb,
+          appId,
+          screenshot,
+          file: path.join(artifactsDir, `android-${host.kind}-key-press.png`),
+        })),
+      );
     }
   } finally {
     await stopWatchingAnrDialogs();
@@ -159,9 +158,25 @@ export const runOnAndroidEmulator = async ({
  */
 const BUTTON_GRAY = '224,224,224';
 const HIGHLIGHTED_BUTTON_GRAY = '197,197,197';
+/**
+ * The fill of the counter fixture's 24px `<svg>` circle, `#6366f1`, which no
+ * other element on the page uses.
+ */
+const SVG_INDIGO = '99,102,241';
 
 /**
- * Checks that the shell draws the page's own colors after a key press (issue
+ * Checks the colors the shell draws on the counter page, which Maestro can't
+ * read, from screenshots taken after a key press.
+ *
+ * The `<svg>` circle must be drawn (issue #693). `xelement.yaml` finds the
+ * `<svg>` by its accessibility label, which is there even when ServalSVG's
+ * native library didn't load and nothing is drawn: `xelement-svg` used to
+ * bring a ServalSVG with no x86_64 library, so on CI's x86_64 emulator every
+ * `<svg>` was blank. The circle is about 450 pixels on a 320x640 screen at
+ * 160 dpi (more on a denser one); the edges are antialiased, so a third of
+ * that is enough.
+ *
+ * And the shell must draw the page's own colors after a key press (issue
  * #362). A key press takes the display out of touch mode, and the focusable
  * LynxView then takes focus. Android 8 and later draw a default focus
  * highlight over a focused view that doesn't style its own focus, which over
@@ -170,7 +185,7 @@ const HIGHLIGHTED_BUTTON_GRAY = '197,197,197';
  * must be on screen, and not darkened. (Darkened, the page's white would be
  * `#e0e0e0` too, so the first alone wouldn't do.)
  */
-const checkColorsAfterKeyPress = async ({
+const checkScreenColors = async ({
   adb,
   appId,
   screenshot,
@@ -180,7 +195,7 @@ const checkColorsAfterKeyPress = async ({
   appId: string;
   screenshot: (file: string) => Promise<void>;
   file: string;
-}): Promise<string | undefined> => {
+}): Promise<string[]> => {
   const component = (
     await adb([
       'shell',
@@ -205,7 +220,9 @@ const checkColorsAfterKeyPress = async ({
   await adb(['shell', 'input', 'keyevent', 'KEYCODE_ENTER']);
   let gray = 0;
   let highlighted = 0;
-  // The page takes a moment to draw after the activity starts.
+  let indigo = 0;
+  // The page takes a moment to draw after the activity starts, and ServalSVG
+  // draws on a thread of its own.
   for (let attempt = 0; attempt < 10; attempt++) {
     await delay(2_000);
     await screenshot(file);
@@ -218,9 +235,21 @@ const checkColorsAfterKeyPress = async ({
     }
     gray = colors.get(BUTTON_GRAY) ?? 0;
     highlighted = colors.get(HIGHLIGHTED_BUTTON_GRAY) ?? 0;
-    if (gray > 2_000 && highlighted < 500) {
-      return undefined;
+    indigo = colors.get(SVG_INDIGO) ?? 0;
+    if (gray > 2_000 && highlighted < 500 && indigo > 150) {
+      return [];
     }
   }
-  return `after a key press, the app's colors were darkened: the buttons' #e0e0e0 covered ${gray} pixels and #c5c5c5, the same gray under Android's 12% black focus highlight, ${highlighted} (issue #362). The screenshot is ${path.basename(file)}.`;
+  const failures: string[] = [];
+  if (indigo <= 150) {
+    failures.push(
+      `the <svg> circle wasn't drawn: its #6366f1 covered ${indigo} pixels. ServalSVG's native library may be missing for the emulator's ABI; look for "libserval_svg.so" in the logcat (issue #693). The screenshot is ${path.basename(file)}.`,
+    );
+  }
+  if (!(gray > 2_000 && highlighted < 500)) {
+    failures.push(
+      `after a key press, the app's colors were darkened: the buttons' #e0e0e0 covered ${gray} pixels and #c5c5c5, the same gray under Android's 12% black focus highlight, ${highlighted} (issue #362). The screenshot is ${path.basename(file)}.`,
+    );
+  }
+  return failures;
 };

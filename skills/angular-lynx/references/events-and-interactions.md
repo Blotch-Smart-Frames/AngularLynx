@@ -225,6 +225,10 @@ loaded({ detail }: LynxEvent<ImageLoadDetail>) {
 
 `bindtap` and `bindlongpress` are **mutually exclusive** on the same element. If both are registered, `longpress` takes priority — if a long press is detected, `tap` does NOT fire. Don't rely on both for the same element.
 
+## A tap lands where the finger lifts
+
+On iOS, a press's `tap` goes to the element under the finger when it lifts, even one that appeared during the press. Something that opens on `(bindtouchstart)` over the element pressed, such as a menu that grows over its button, gets the press's tap on whatever opened under the finger. Ignore the one tap that ends the press which opened it, as `ui-menu` does, or open on the tap instead. The pressed element's own `touchmove` and `touchend` keep coming to it while the finger is over the new element.
+
 ## Propagation Rules
 
 - **Only touch events propagate** (`tap`, `longpress`, `touchstart`, `touchmove`, `touchend`)

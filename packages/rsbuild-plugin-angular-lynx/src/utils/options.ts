@@ -4,6 +4,11 @@ import type { IntlApi } from '../intl/apis.js';
 export type PreferredFps = 'high' | 'auto' | 'low';
 
 export type PluginAngularLynxOptions = {
+  /**
+   * The properties that inherit with `enableCSSInheritance`, in place of
+   * Lynx's list. `['font-size']` unless the app turns `enableCSSInheritance`
+   * on itself, which then means Lynx's whole list, as it always has.
+   */
   customCSSInheritanceList?: string[] | undefined;
   debugInfoOutside?: boolean;
   defaultDisplayLinear?: boolean;
@@ -15,6 +20,12 @@ export type PluginAngularLynxOptions = {
   defaultOverflowVisible?: boolean;
   enableA11y?: boolean;
   enableAccessibilityElement?: boolean;
+  /**
+   * Let text properties inherit from the elements around them, as on the
+   * web. On by default for `font-size` alone (see customCSSInheritanceList),
+   * so a `<text>` with no size of its own takes its parent's. With `false`,
+   * nothing inherits, and such a `<text>` takes the page's size.
+   */
   enableCSSInheritance?: boolean;
   /**
    * Restyle the elements a combinator selector matches when a class or ID
@@ -120,6 +131,41 @@ export const DEPRECATED_OPTIONS = [
   'pipelineSchedulerConfig',
 ] as const;
 
+/**
+ * The properties that inherit unless the app says otherwise (see
+ * normalizeOptions).
+ */
+export const DEFAULT_CSS_INHERITANCE_LIST: readonly string[] = ['font-size'];
+
+/**
+ * Whether Lynx passes `font-size` down with these options: inheritance is on,
+ * and the list names it, or there's no list, which is Lynx's own, where
+ * `font-size` is.
+ */
+export const inheritsFontSize = (
+  options: Pick<
+    NormalizedPluginAngularLynxOptions,
+    'enableCSSInheritance' | 'customCSSInheritanceList'
+  >,
+): boolean =>
+  options.enableCSSInheritance &&
+  (!options.customCSSInheritanceList?.length ||
+    options.customCSSInheritanceList.includes('font-size'));
+
+/**
+ * Whether Lynx passes down any property but `font-size` with these options:
+ * inheritance is on, with Lynx's own list or one that names another.
+ */
+export const inheritsMoreThanFontSize = (
+  options: Pick<
+    NormalizedPluginAngularLynxOptions,
+    'enableCSSInheritance' | 'customCSSInheritanceList'
+  >,
+): boolean =>
+  options.enableCSSInheritance &&
+  (!options.customCSSInheritanceList?.length ||
+    options.customCSSInheritanceList.some((name) => name !== 'font-size'));
+
 type DeprecatedOption = (typeof DEPRECATED_OPTIONS)[number];
 
 export type NormalizedPluginAngularLynxOptions = Required<
@@ -136,6 +182,7 @@ export const normalizeOptions = (
   options?: Partial<PluginAngularLynxOptions>,
 ): NormalizedPluginAngularLynxOptions => {
   const defaultOptions: NormalizedPluginAngularLynxOptions = {
+    // Set below, from what the app passes.
     //@ts-expect-error
     customCSSInheritanceList: undefined,
     debugInfoOutside: true,
@@ -145,7 +192,15 @@ export const normalizeOptions = (
     // elements. false exposes a virtual node tree to them at all times.
     enableA11y: true,
     enableAccessibilityElement: false,
-    enableCSSInheritance: false,
+    // On for `font-size` (see below). Lynx inherits no text style, so a
+    // <text> with no size of its own drew at Lynx's 14px inside a 30px
+    // <view> or <text>, where a browser draws it at 30px, and a <text> in a
+    // <text> didn't grow with the phone's text size (issue #685). Inherited,
+    // it takes its parent's computed size, which has the page's scale in it.
+    // Only `font-size`: the other text properties reach the HTML text tags
+    // through variables (text-inheritance.ts), and a Lynx <text> keeps
+    // drawing them at Lynx's defaults, as it always has.
+    enableCSSInheritance: true,
     // True like React Lynx. Without it, a descendant selector such as
     // `page.dark .card`, which `dark:` classes compile to (color-scheme.ts),
     // matched only when the element's own classes were set, so the screen
@@ -185,6 +240,15 @@ export const normalizeOptions = (
     experimental_isLazyBundle: false,
   };
   const normalized = Object.assign(defaultOptions, options);
+  // An app that turns inheritance on itself, without a list, asked for
+  // Lynx's whole list, which an undefined list gives. Otherwise only
+  // `font-size` inherits (see enableCSSInheritance above).
+  if (options?.customCSSInheritanceList === undefined) {
+    normalized.customCSSInheritanceList =
+      options?.enableCSSInheritance === true
+        ? (undefined as unknown as string[])
+        : [...DEFAULT_CSS_INHERITANCE_LIST];
+  }
   // Drop the ignored options, so nothing downstream can start relying on
   // them by accident.
   for (const name of DEPRECATED_OPTIONS) {

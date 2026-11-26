@@ -19,8 +19,15 @@ import { getAngularCliContext } from './angular-cli-context.js';
 import { AngularWebpackPlugin } from './angular-webpack-plugin.js';
 import type { BackgroundEntries } from './background-entry.js';
 import { LAYERS } from './layers.js';
-import { TEXT_SCALE_STYLESHEET } from './text-scale.js';
-import type { NormalizedPluginAngularLynxOptions } from './utils/options.js';
+import {
+  TEXT_DEFAULT_SIZE_STYLESHEET,
+  TEXT_SCALE_STYLESHEET,
+} from './text-scale.js';
+import {
+  inheritsFontSize,
+  inheritsMoreThanFontSize,
+  type NormalizedPluginAngularLynxOptions,
+} from './utils/options.js';
 import { ZeroBigIntLiteralsPlugin } from './zero-bigint-literals.js';
 
 /**
@@ -173,10 +180,18 @@ export const applyEntry = (
       // bundle's font, and the bold of `<b>` both bundles draw. (Rspeedy
       // builds only these two environments.)
       // The native bundle's default root font size follows the phone's text
-      // size (see text-scale.ts).
+      // size (see text-scale.ts). A <text> with no size of its own inherits
+      // its parent's, unless the app turns that off: then it takes the
+      // page's (see styles/text-default-size.css).
       const mainThreadImports = [
         ...(isLynx
-          ? [BLUR_VIEW_STYLESHEET, TEXT_SCALE_STYLESHEET]
+          ? [
+              BLUR_VIEW_STYLESHEET,
+              TEXT_SCALE_STYLESHEET,
+              ...(inheritsFontSize(options)
+                ? []
+                : [TEXT_DEFAULT_SIZE_STYLESHEET]),
+            ]
           : [WEB_SYSTEM_FONT_STYLESHEET]),
         HTML_TEXT_TAGS_STYLESHEET,
         ...entryImports,
@@ -278,7 +293,14 @@ export const applyEntry = (
             defaultDisplayLinear,
             defaultOverflowVisible,
             enableAccessibilityElement,
-            enableCSSInheritance,
+            // Lynx for Web ignores the list: with the flag, a <text> in a
+            // <view> inherits every text style, `color` too, which native
+            // doesn't with the default list, so the preview would draw the
+            // app in colors the phone doesn't. The browser passes
+            // `font-size` down without it.
+            enableCSSInheritance: isLynx
+              ? enableCSSInheritance
+              : inheritsMoreThanFontSize(options),
             enableCSSInvalidation,
             enableCSSSelector,
             enableNewGesture,

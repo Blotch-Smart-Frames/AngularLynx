@@ -95,17 +95,18 @@ page {
 </view>
 ```
 
-- **CSS properties don't inherit by default.** Each element gets only the rules that match it. Inheritance has a performance cost, so Lynx leaves it off.
+- **CSS properties don't inherit by default, except `font-size`.** Each element gets only the rules that match it. Inheritance has a performance cost, so Lynx leaves it off.
+- **`font-size` inherits.** A `<text>` with no size of its own takes its parent's, as on the web: `<view class="text-xl"><text>Hi</text></view>` draws "Hi" at `text-xl`. With no sized ancestor, it takes the page's.
 - **HTML text tags and loose text do inherit.** A `<p>`, `<span>` or `<h1>`, and text written straight in a `<view>` or `<div>`, take each text property their own rules don't set from their nearest ancestor that sets it, as on the web. The properties are the ones listed below. [Renderer internals](/guide/renderer-architecture#text-inheritance) explains how.
   - **A rule naming `text` isn't a `<p>`'s own.** The UI theme's `view > text` matches a `<p>` on Lynx, since a `<p>` renders as a `<text>`, but a `<p>` in a `<view class="text-red-500">` is still red, as on the web. One with no colored ancestor takes the page's color, which the theme sets.
   - **A rule that needs an ancestor counts only where the tag has it.** `.card b { font-size: 24px }` sizes a `<b>` inside `.card`, and a `<b>` elsewhere takes the size of the text around it.
   - **An inline style passes styles down too.** An inline `style` or `[style.x]` binding counts as a rule does, so `<text style="font-size: 18px">Total: <b>12</b></text>` draws the `<b>` at 18px, and `<div style="color: red">` colors the `<p>` inside it.
-  - **An HTML tag inside a Lynx `<text>` follows that `<text>`.** It reads only what the `<text>`'s rules or inline style set, or those of an HTML tag between them, and draws the rest as the `<text>` does. `<text>Total: <b>12</b></text>` draws the `<b>` at the size of "Total:", whatever size a `<view>` around the `<text>` sets.
-- **A nested `<text>` is the exception.** An inner `<text>` takes its parent `<text>`'s `color` and `font-family`.
+  - **An HTML tag inside a Lynx `<text>` follows that `<text>`.** It reads only what the `<text>`'s rules or inline style set, or those of an HTML tag between them, and draws a property none of them sets as the `<text>` does. `<text>Total: <b>12</b></text>` draws the `<b>` at the size of "Total:".
+- **A nested `<text>` takes more.** An inner `<text>` takes its parent `<text>`'s `color` and `font-family`, as well as its `font-size`.
 - **CSS variables always inherit**, as on the web. Set them on a parent and use `var()` anywhere below it.
 - **There's no `inherit`, `initial` or `unset` keyword.**
 
-To make text properties inherit as on the web, turn on `enableCSSInheritance` in a `lynx.config.ts` at the project root:
+To make every text property inherit as on the web, turn on `enableCSSInheritance` in a `lynx.config.ts` at the project root:
 
 ```typescript title="lynx.config.ts"
 import { defineConfig, pluginAngularLynx } from '@blotch/angular-lynx-build';
@@ -115,7 +116,7 @@ export default defineConfig({
 });
 ```
 
-Then `color`, `direction`, `font-family`, `font-size`, `font-style`, `font-weight`, `letter-spacing`, `line-height`, `text-align`, `text-decoration` and `text-shadow` inherit. To pick the list yourself, also pass `customCSSInheritanceList`. Both are in the plugin options on the [`@blotch/angular-lynx-build` page](/api/build/).
+Then `color`, `direction`, `font-family`, `font-size`, `font-style`, `font-weight`, `letter-spacing`, `line-height`, `text-align`, `text-decoration` and `text-shadow` inherit. To pick the list yourself, pass `customCSSInheritanceList` instead (`['font-size']` by default). `enableCSSInheritance: false` turns off `font-size` too: a `<text>` with no size then takes the page's. Both are in the plugin options on the [`@blotch/angular-lynx-build` page](/api/build/).
 
 ## Units
 

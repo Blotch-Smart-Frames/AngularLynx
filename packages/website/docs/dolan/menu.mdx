@@ -16,6 +16,7 @@ import {
   UiMenuItem,
   UiMenuSection,
   UiMenuSeparator,
+  UiMenuSubmenu,
   UiMenuTrigger,
 } from '../components/ui/menu';
 ```
@@ -90,9 +91,10 @@ export class TripsToolbar {
 ```
 
 - **`uiMenuTrigger` marks the element that opens the menu.** A tap on it opens and closes it. Anything can be the trigger: a glass button, as here, a [Button](/dolan/button), or your own view.
-- **Everything else inside `<ui-menu>` is the menu:** `<ui-menu-item>`, `<ui-menu-section>` and `<ui-menu-separator>`.
+- **Everything else inside `<ui-menu>` is the menu:** `<ui-menu-item>`, `<ui-menu-section>`, `<ui-menu-separator>` and `<ui-menu-submenu>`.
+- **On iOS, press the trigger and slide onto an item to choose it.** The menu opens as the finger touches down, as UIKit's pull-down menus do, and lifting on an item chooses it. Lifting without sliding leaves the menu open for a tap. On Android it opens on the tap, as Material's menus do.
 - **Choosing an item emits its `pressed`, then closes the menu.** A tap outside the menu, or Android's back button, closes it without choosing.
-- **It stays on screen and inside the safe area.** Near the bottom of the screen it opens upward, and in the right half it lines up with the trigger's right edge.
+- **It stays on screen and inside the safe area.** Near the bottom of the screen it opens upward, and in the right half it lines up with the trigger's right edge. Opening upward on iOS, it lists its items from the bottom up, so the first is nearest the finger, as UIKit's menus do (a section keeps its title above its items). Android keeps the order.
 - **`[(open)]` opens and closes it from code**, as with [Dialog](/dolan/dialog).
 
 ### What each platform draws
@@ -161,6 +163,27 @@ Set `checked`, true or false, on every item of the group. An unchecked item keep
 - **`<ui-menu-section>`** groups items, under an optional `title`.
 - **`<ui-menu-separator />`** parts two sections: a thin line, or a thick band before iOS 26.
 
+### Submenus
+
+```angular-html
+<ui-menu-submenu label="Sort by" icon="arrow-down">
+  <ui-menu-item
+    label="Name"
+    [checked]="sort() === 'name'"
+    (pressed)="sort.set('name')"
+  />
+  <ui-menu-item
+    label="Date"
+    [checked]="sort() === 'date'"
+    (pressed)="sort.set('date')"
+  />
+</ui-menu-submenu>
+```
+
+- **`<ui-menu-submenu>`** is a row with a chevron that opens a nested menu. It takes what a menu does: items, sections, separators and further submenus.
+- **It grows out of its row, over the menu it's in**, with the row's label as its header, and the menu behind it fades, as iOS's submenus do. On Android's Material menus it unfolds in the menu's place, with a back arrow in the header.
+- **A tap on the header, a tap outside the submenu, or Android's back button goes back** to the menu it opened from. Choosing one of its items closes every menu.
+
 ## API
 
 ### UiMenu
@@ -199,7 +222,21 @@ Selector: `[uiMenuTrigger]`. Put it on the element inside `<ui-menu>` that opens
 | --------- | ------ | ------------------------------------------------------ |
 | `pressed` | `void` | Emits when the item is chosen, before the menu closes. |
 
-Items, sections and separators work in a `<ui-menu>` and in a [`<ui-context-menu>`](/dolan/context-menu).
+Items, sections, separators and submenus work in a `<ui-menu>` and in a [`<ui-context-menu>`](/dolan/context-menu).
+
+### UiMenuSubmenu
+
+| Input      | Type       | Default    | Description                                        |
+| ---------- | ---------- | ---------- | -------------------------------------------------- |
+| `label`    | `string`   | (required) | The row's text, and the submenu's header.          |
+| `icon`     | `IconName` | —          | An icon for the row, from the icon set.            |
+| `disabled` | `boolean`  | `false`    | Shows the row without letting it open the submenu. |
+
+| Method       | Description                                   |
+| ------------ | --------------------------------------------- |
+| `expand()`   | Opens the submenu.                            |
+| `collapse()` | Closes the submenu, back to the menu it's in. |
+| `close()`    | Closes the submenu and every menu it's in.    |
 
 ### UiMenuSection
 
@@ -220,6 +257,7 @@ The menu reads `glass-foreground` and `glass-muted-foreground` (text and icons) 
 - **Each item is a button named by its label.** A destructive item reads as "Delete, destructive". `accessibilityLabel` replaces both.
 - **A checked item is selected**, which VoiceOver reads on iOS.
 - **Section titles are headings.**
+- **A submenu's row and its header are buttons named by its label.** When the submenu opens, a screen reader moves into it.
 - **When the menu opens, a screen reader moves into it** and stays inside until it closes, reading the items in order.
 - **Reduce Motion:** the menu doesn't grow or shrink. It appears in place, and its items fade in.
 - **Reduce Transparency and Increase Contrast** apply as on all [glass](/dolan/glass#accessibility).

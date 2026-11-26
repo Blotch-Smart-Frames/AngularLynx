@@ -140,7 +140,15 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
             bitmap.recycle()
             return null
         }
-        if (!done.await(COPY_TIMEOUT_MS, TimeUnit.MILLISECONDS) || result != PixelCopy.SUCCESS) {
+        if (!done.await(COPY_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+            // The copy is still queued on the RenderThread, which writes into
+            // the bitmap when it gets to it: recycling it now aborts the app
+            // there ("cannot access an invalid/free'd bitmap"), as CI's
+            // software-rendered emulator showed. It's left for the garbage
+            // collector, once the copy has let go of it.
+            return null
+        }
+        if (result != PixelCopy.SUCCESS) {
             bitmap.recycle()
             return null
         }
@@ -169,8 +177,13 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
     }
 
     companion object {
-        /** How long a snapshot waits for its copy: a frame and a half at 60 Hz, then some. */
-        private const val COPY_TIMEOUT_MS = 100L
+        /**
+         * How long a snapshot waits for its copy. A copy takes a few
+         * milliseconds on a phone, but waits behind whatever the RenderThread
+         * is drawing, which takes far longer on an emulator drawing in
+         * software. A copy that doesn't come in time draws nothing.
+         */
+        private const val COPY_TIMEOUT_MS = 250L
 
         private val copyHandler: Handler by lazy {
             Handler(HandlerThread("AngularLynxVideoCopy").apply { start() }.looper)

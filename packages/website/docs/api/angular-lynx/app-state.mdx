@@ -62,12 +62,12 @@ class LynxAppState {
 
 Lynx tells the app's code nothing when it leaves the screen or comes back, so the state comes from the [host app](/guide/glossary#host-app), in the `appState` [global prop](/guide/embedding/host-data#what-the-generated-apps-pass), as the [accessibility settings](/api/angular-lynx/accessibility#lynxaccessibilitysettings) do. Being a global prop rather than an event, it's right from the app's first line, and a change can't come before anything listens.
 
-| Where the app runs                             | Where the state comes from                                                                                                                  |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Apps from `ng build --platform`, iOS           | The scene's activation: `inactive` when it resigns active and `background` when it leaves the screen                                        |
-| Apps from `ng build --platform`, Android       | The activity's lifecycle: `active` from `onResume`, `inactive` from `onPause` (another window has the focus) and `background` from `onStop` |
-| [Web preview](/guide/glossary#web-preview)     | The page's visibility: `background` while its tab is hidden, `active` otherwise                                                             |
-| [Lynx Explorer](/guide/glossary#lynx-explorer) | None: the app is always `active`                                                                                                            |
+| Where the app runs                             | Where the state comes from                                                                                                                                                                                |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Apps from `ng build --platform`, iOS           | The scene's activation: `inactive` when it resigns active and `background` when it leaves the screen                                                                                                      |
+| Apps from `ng build --platform`, Android       | The activity's lifecycle: `active` from `onResume`, `inactive` from `onPause` or when another window takes the focus (`onTopResumedActivityChanged`, Android 10 and later) and `background` from `onStop` |
+| [Web preview](/guide/glossary#web-preview)     | The page's visibility: `background` while its tab is hidden, `active` otherwise                                                                                                                           |
+| [Lynx Explorer](/guide/glossary#lynx-explorer) | None: the app is always `active`                                                                                                                                                                          |
 
 Your own native app can send `appState` the same way, with each of its global props updates.
 

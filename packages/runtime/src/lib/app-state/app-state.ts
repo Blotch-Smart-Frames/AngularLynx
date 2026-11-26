@@ -111,8 +111,9 @@ const watchPageVisibility = (
  *   `inactive` when it resigns (Control Center, Notification Center, the app
  *   switcher, a call), and `background` when it leaves the screen.
  * - **Android:** the activity's lifecycle. `active` from `onResume`,
- *   `inactive` from `onPause` (another window has the focus, as in split
- *   screen), and `background` from `onStop`.
+ *   `inactive` from `onPause` or when another window takes the focus, as in
+ *   split screen (`onTopResumedActivityChanged`, Android 10 and later), and
+ *   `background` from `onStop`.
  *
  * In the web preview it follows the page's visibility: `background` while the
  * tab is hidden, and `active` otherwise. Lynx Explorer sends no state, so the

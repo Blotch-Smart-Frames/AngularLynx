@@ -54,10 +54,15 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
 
     // Where the app is, for LynxAppState, sent in the global props and again
     // as the activity's lifecycle moves: "active" from onResume, "inactive"
-    // from onPause (another window has the focus, as in split screen) and
-    // onStart, and "background" from onStop. It starts "inactive": the first
-    // props go out from onCreate, on the way onto the screen.
+    // from onPause and onStart, and "background" from onStop. It starts
+    // "inactive": the first props go out from onCreate, on the way onto the
+    // screen. From Android 10, both apps in split screen stay resumed, so
+    // onPause doesn't run when the other one takes the focus: a resumed
+    // activity is "inactive" too while it isn't the top resumed one
+    // (onTopResumedActivityChanged, which older Androids never call).
     private var appState = "inactive"
+    private var resumed = false
+    private var topResumed = true
 
     // Sends the accessibility settings again when the user changes one while
     // the app is open: Remove animations (the animator duration scale), the
@@ -472,8 +477,9 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
     override fun onResume() {
         super.onResume()
         lynxView.onEnterForeground()
+        resumed = true
         // After the timers resume, so what the app starts on its return runs.
-        sendAppState("active")
+        sendAppState(if (topResumed) "active" else "inactive")
         // Back from a Custom Tab without its redirect: the person closed it.
         // Android says nothing else when a Custom Tab closes.
         webAuthSession?.takeIf { it.opened }?.let {
@@ -482,7 +488,18 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
         }
     }
 
+    // Android 10 and later: whether this is the resumed activity that has the
+    // focus, which changes without a pause in split screen. Called after
+    // onResume and before onPause, so it only moves a resumed activity
+    // between "active" and "inactive".
+    override fun onTopResumedActivityChanged(isTopResumedActivity: Boolean) {
+        super.onTopResumedActivityChanged(isTopResumedActivity)
+        topResumed = isTopResumedActivity
+        if (resumed) sendAppState(if (isTopResumedActivity) "active" else "inactive")
+    }
+
     override fun onPause() {
+        resumed = false
         // Before Lynx pauses the timers, so the app hears it on its way out.
         sendAppState("inactive")
         lynxView.onEnterBackground()

@@ -8,6 +8,8 @@ import { createFakeCanvas2DBridge } from '../testing/fake-canvas-2d-bridge';
 import { LynxCanvasRenderingContext2D } from './canvas-2d-context';
 import { LynxCanvasElement } from './canvas-element';
 import { canvasSourceOf } from './canvas-source';
+import { setWebGL2ContextFactory } from './canvas-surface';
+import { ɵenableWebGL2 } from './enable-webgl2';
 import {
   setCanvas2DBridgeForTesting,
   setWebGLBridgeForTesting,
@@ -21,6 +23,8 @@ let uid = 1;
 beforeEach(() => {
   bridge = createFakeWebGLBridge();
   setWebGLBridgeForTesting(bridge);
+  // As the build plugin does for a module that names 'webgl2'.
+  ɵenableWebGL2();
   globalThis.__GetElementUniqueID = vi.fn(() => uid++);
   globalThis.__SetAttribute = vi.fn();
   globalThis.__AddInlineStyle = vi.fn();
@@ -32,6 +36,7 @@ beforeEach(() => {
 
 afterEach(() => {
   setWebGLBridgeForTesting(undefined);
+  setWebGL2ContextFactory(null);
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -185,6 +190,7 @@ describe('LynxCanvasElement', () => {
     vi.resetModules();
     const fresh = await import('./canvas-element');
     const freshBridge = await import('./webgl-bridge');
+    (await import('./enable-webgl2')).ɵenableWebGL2();
     freshBridge.setWebGLBridgeForTesting(bridge);
 
     const canvas = new fresh.LynxCanvasElement({} as ElementRef);
@@ -205,6 +211,7 @@ describe('LynxCanvasElement', () => {
     vi.resetModules();
     const fresh = await import('./canvas-element');
     const freshBridge = await import('./webgl-bridge');
+    (await import('./enable-webgl2')).ɵenableWebGL2();
     freshBridge.setWebGLBridgeForTesting(bridge);
 
     const canvas = new fresh.LynxCanvasElement({} as ElementRef);

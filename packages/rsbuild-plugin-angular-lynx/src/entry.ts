@@ -58,6 +58,17 @@ export const WEB_SYSTEM_FONT_STYLESHEET = path.resolve(
 );
 
 /**
+ * The rules that give `<b>` and `<strong>` the browser's bold, which Lynx has
+ * no user agent stylesheet for (see the file). Both bundles get it, ahead of
+ * the app's own stylesheets, so they win a tie as they would against the
+ * browser's.
+ */
+export const HTML_TEXT_TAGS_STYLESHEET = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  './styles/html-text-tags.css',
+);
+
+/**
  * The hot update clients (see client/). The background one stands in for
  * `@rspack/core/hot/dev-server`; the main-thread one gives the main thread its
  * own hot updates. Together they apply each update on both threads, or reload.
@@ -158,9 +169,11 @@ export const applyEntry = (
       );
       // The app's CSS is extracted from the main-thread half (see css.ts), so
       // only that half needs the native bundle's blur-view rule, or the web
-      // bundle's font. (Rspeedy builds only these two environments.)
+      // bundle's font, and the bold of `<b>` both bundles draw. (Rspeedy
+      // builds only these two environments.)
       const mainThreadImports = [
         isLynx ? BLUR_VIEW_STYLESHEET : WEB_SYSTEM_FONT_STYLESHEET,
+        HTML_TEXT_TAGS_STYLESHEET,
         ...entryImports,
       ];
       const backgroundImports = [

@@ -34,6 +34,7 @@ import { setPageElementRef } from '../lynx-document/page-ref';
 import {
   INHERITANCE_CLASS,
   NOT_BLOCK_CONTAINERS,
+  INHERITED_TEXT_PROPERTIES,
   resetStyleIndex,
 } from '../lynx-element/text-flow';
 import {
@@ -400,6 +401,14 @@ class ProjectedHost {}
 })
 class InheritHost {}
 
+@Component({
+  selector: 'bold-host',
+  encapsulation: ViewEncapsulation.None,
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: `<text class="blue">blue <b>bold blue</b> <i>italic</i></text>`,
+})
+class BoldHost {}
+
 /**
  * The live element with `cls`.
  */
@@ -687,6 +696,33 @@ describe('loose text', () => {
     );
     // An element written as a Lynx <text> looks as it always has.
     expect(style('lynx')).toBe('');
+  });
+
+  // Issue #611: the build gives `<b>` and `<strong>` the browser's bold, in a
+  // rule on the tag's class (`._ngtag-b`, the plugin's html-text-tags.css).
+  // The weight it inherits would go inline, where it beats any rule, so the
+  // index entry for the tag's class must keep it off.
+  it("leaves a <b>'s weight to the build's rule for its tag", () => {
+    const fontWeight = 1 << INHERITED_TEXT_PROPERTIES.indexOf('font-weight');
+    (
+      globalThis as { __angularLynxStyleIndex?: unknown }
+    ).__angularLynxStyleIndex = {
+      rules: [
+        [['_ngtag-b'], fontWeight],
+        [['_ngtag-strong'], fontWeight],
+      ],
+    };
+    const fixture = TestBed.createComponent(BoldHost);
+    fixture.detectChanges();
+    const style = (cls: string): string =>
+      String(byClass(cls).attrs.get('style') ?? '');
+
+    expect(style('_ngtag-b')).not.toContain('font-weight');
+    // It still takes the color of the text around it, as on the web.
+    expect(style('_ngtag-b')).toContain('color: var(--angular-lynx-color)');
+    expect(style('_ngtag-i')).toContain(
+      'font-weight: var(--angular-lynx-font-weight)',
+    );
   });
 });
 

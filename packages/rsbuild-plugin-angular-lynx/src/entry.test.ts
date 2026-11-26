@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import postcss from 'postcss';
 import { describe, expect, it, vi } from 'vitest';
 
 // Recognizable plugin stand-ins so `.use(Plugin, [opts])` can be asserted and
@@ -29,11 +30,18 @@ import {
   BLUR_VIEW_STYLESHEET,
   WEB_SYSTEM_FONT_STYLESHEET,
   CSS_HOT_UPDATE,
+  HTML_TEXT_TAGS_STYLESHEET,
   getChunks,
   HMR_BACKGROUND_CLIENT,
   HMR_MAIN_THREAD_CLIENT,
 } from './entry';
 import { LAYERS } from './layers';
+import { styleIndexOf } from './style-index';
+import {
+  INHERITED_TEXT_PROPERTIES,
+  textInheritanceForLynx,
+} from './text-inheritance';
+import { typeSelectorsForLynx } from './type-selectors';
 import { ZeroBigIntLiteralsPlugin } from './zero-bigint-literals';
 
 const entryOptions = {
@@ -442,7 +450,7 @@ describe('applyEntry', () => {
     expect(entryBuilders['main'].prepend).not.toHaveBeenCalled();
   });
 
-  it("starts the main thread from the app's entry, with the blur-view stylesheet first on native and the system font first on web", () => {
+  it("starts the main thread from the app's entry, with the blur-view stylesheet first on native and the system font first on web, then the HTML text tags' bold on both", () => {
     const imports = (name: string) => {
       const { api, triggerChain } = createMockApi();
       const { chain, entryBuilders } = createMockChain({
@@ -462,11 +470,13 @@ describe('applyEntry', () => {
 
     expect(imports('lynx')).toEqual([
       BLUR_VIEW_STYLESHEET,
+      HTML_TEXT_TAGS_STYLESHEET,
       './src/styles.css',
       './main.ts',
     ]);
     expect(imports('web')).toEqual([
       WEB_SYSTEM_FONT_STYLESHEET,
+      HTML_TEXT_TAGS_STYLESHEET,
       './src/styles.css',
       './main.ts',
     ]);
@@ -527,6 +537,43 @@ describe('applyEntry', () => {
     const test = rule.test.mock.calls[0][0] as (file: string) => boolean;
     expect(test('/app/src/page.ts')).toBe(true);
     expect(test('/app/src/other.ts')).toBe(false);
+  });
+
+  // Issue #611: <b> and <strong> drew at the weight of the text around them,
+  // as nothing gave them the browser's bold. The rules only work once the
+  // plugin's own PostCSS has made the type selectors the classes the runtime
+  // marks the elements with, and once the style index says they set the
+  // weight: without that, the runtime gives the element its parent's weight
+  // inline, which beats any rule.
+  it("gives <b> and <strong> a bold that matches the runtime's elements and wins over the inherited weight", () => {
+    const css = postcss([typeSelectorsForLynx(), textInheritanceForLynx()])
+      .process(readFileSync(HTML_TEXT_TAGS_STYLESHEET, 'utf8'), {
+        from: undefined,
+      })
+      .css.replace(/\/\*[\s\S]*?\*\//g, '');
+    const rules = postcss
+      .parse(css)
+      .nodes.filter((node) => node.type === 'rule')
+      .map((rule) => [rule.selector, rule.toString()]);
+
+    expect(rules).toEqual([
+      [
+        '._ngtag-b,._ngtag-strong',
+        expect.stringContaining('font-weight: bold'),
+      ],
+      // Loose text inside a <b> reads the weight from here.
+      [
+        '._ngtag-b._nginherit,._ngtag-strong._nginherit',
+        expect.stringContaining('--angular-lynx-font-weight: bold'),
+      ],
+    ]);
+    const fontWeight = 1 << INHERITED_TEXT_PROPERTIES.indexOf('font-weight');
+    expect(styleIndexOf([css]).rules).toEqual(
+      expect.arrayContaining([
+        [['_ngtag-b'], fontWeight],
+        [['_ngtag-strong'], fontWeight],
+      ]),
+    );
   });
 
   // The runtime sets the variables and the stylesheet reads them, from two

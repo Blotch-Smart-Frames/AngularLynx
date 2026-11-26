@@ -1,0 +1,31 @@
+/*
+ * The browser's bold for `<b>` and `<strong>`, which Lynx doesn't give
+ * them. A browser draws them bold because its user agent style sheet says
+ * so, and a template that uses them expects it. On Lynx the runtime renders each
+ * as a `<text>` (see the runtime's web-tags.ts), which draws its text as the
+ * text around it, so `<text>blue <b>bold blue</b></text>` took the color and
+ * kept the weight (issue #611).
+ *
+ * Both bundles get this file: the phone's Lynx has no browser styles, and
+ * Lynx for Web draws each `<text>` in a custom element of its own
+ * (`<x-text>`), which the browser's `b { font-weight: bolder }` never matches
+ * either. The type selectors become the classes the runtime marks the
+ * elements with (`._ngtag-b`, see type-selectors.ts), so they match on both.
+ * The build copies the declaration to its inheritance variable
+ * (text-inheritance.ts), so loose text inside a `<b>` draws bold too, and
+ * lists the rule in the style index, so the runtime leaves the weight to it
+ * instead of giving the element its parent's.
+ *
+ * `bolder` becomes `bold`: Lynx has no relative weights (see
+ * investigations/lynx-vs-web-differences.md), and a browser draws a `<b>` in
+ * normal text at 700 anyway.
+ *
+ * It goes before every other import, so the app's own style sheets come later
+ * and win a tie, as they win over the browser's styles: a class that sets the
+ * weight (`font-normal`) or a type selector of the app's own
+ * (`strong { font-weight: 600 }`, a class too by then) replaces it.
+ */
+b,
+strong {
+  font-weight: bold;
+}

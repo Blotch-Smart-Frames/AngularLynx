@@ -1,16 +1,23 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   ALL_TEXT_PROPERTIES,
+  hasAncestorTextRules,
   inheritanceStyleFor,
   isBlankText,
   isBlockDisplay,
   isRowOrientation,
   LAYOUT_FLAG,
+  matchedStyleFlagsFor,
   resetStyleIndex,
   styleFlagsFor,
 } from './text-flow';
 
-const setIndex = (rules: [string[], number][]): void => {
+type Rule =
+  | [string[], number]
+  | [string[], number, ['>' | ' ', string[]][]]
+  | [string[], number, ['>' | ' ', string[]][], 1];
+
+const setIndex = (rules: Rule[]): void => {
   (
     globalThis as { __angularLynxStyleIndex?: unknown }
   ).__angularLynxStyleIndex = { rules };
@@ -67,6 +74,93 @@ describe('styleFlagsFor', () => {
       expect(styleFlagsFor(new Set(['grid'])) & LAYOUT_FLAG).toBe(LAYOUT_FLAG);
       expect(styleFlagsFor(new Set(['p-4'])) & LAYOUT_FLAG).toBe(0);
     });
+  });
+});
+
+// Issue #652: what a selector requires of the element's ancestors, checked
+// for a Lynx <text> around an inline tag.
+describe('matchedStyleFlagsFor', () => {
+  /**
+   * An element's ancestors, nearest first, as matchedStyleFlagsFor reads
+   * them.
+   */
+  const up =
+    (...ancestors: string[][]) =>
+    (index: number): ReadonlySet<string> | undefined =>
+      ancestors[index] && new Set(ancestors[index]);
+
+  it('counts a rule only when the ancestors it requires are there', () => {
+    setIndex([
+      [['total'], 1, [[' ', ['card']]]],
+      [['total'], 2],
+    ]);
+    const total = new Set(['total']);
+    expect(matchedStyleFlagsFor(total, up(['row'], ['card', 'big']))).toBe(3);
+    expect(matchedStyleFlagsFor(total, up(['row'], ['page']))).toBe(2);
+    // styleFlagsFor still counts it, wherever the element is.
+    expect(styleFlagsFor(total)).toBe(3);
+  });
+
+  it('requires a child’s parent to be the next one up', () => {
+    setIndex([[['price'], 1, [['>', ['row']]]]]);
+    const price = new Set(['price']);
+    expect(matchedStyleFlagsFor(price, up(['row']))).toBe(1);
+    expect(matchedStyleFlagsFor(price, up(['cell'], ['row']))).toBe(0);
+    expect(matchedStyleFlagsFor(price, up())).toBe(0);
+  });
+
+  it('tries each ancestor for a descendant, past a nearer one that fails', () => {
+    // `.a > .b .c`: the nearer .b's parent isn't .a, the farther one's is.
+    setIndex([
+      [
+        ['c'],
+        1,
+        [
+          [' ', ['b']],
+          ['>', ['a']],
+        ],
+      ],
+    ]);
+    expect(
+      matchedStyleFlagsFor(new Set(['c']), up(['b'], ['x'], ['b'], ['a'])),
+    ).toBe(1);
+    expect(matchedStyleFlagsFor(new Set(['c']), up(['b'], ['x'], ['a']))).toBe(
+      0,
+    );
+  });
+
+  it('checks a rule whose last part requires nothing, and every token', () => {
+    setIndex([
+      [[], 1, [['>', ['row']]]],
+      [['a', 'b'], 2],
+    ]);
+    expect(matchedStyleFlagsFor(new Set(['a', 'b']), up(['row']))).toBe(3);
+    expect(matchedStyleFlagsFor(new Set(['a']), up(['cell']))).toBe(0);
+  });
+
+  it('leaves out a rule that applies only in a state, such as :active', () => {
+    setIndex([[['a'], 1, [], 1]]);
+    expect(matchedStyleFlagsFor(new Set(['a']), up())).toBe(0);
+    expect(styleFlagsFor(new Set(['a']))).toBe(1);
+  });
+
+  it('guesses as styleFlagsFor does without an index', () => {
+    expect(matchedStyleFlagsFor(new Set(['title']), up())).toBe(
+      ALL_TEXT_PROPERTIES,
+    );
+  });
+});
+
+describe('hasAncestorTextRules', () => {
+  it('says whether a rule that sets a text property requires an ancestor', () => {
+    expect(hasAncestorTextRules()).toBe(false);
+    setIndex([
+      [['a'], 1],
+      [['b'], LAYOUT_FLAG, [[' ', ['row']]]],
+    ]);
+    expect(hasAncestorTextRules()).toBe(false);
+    setIndex([[['a'], 1, [[' ', ['card']]]]]);
+    expect(hasAncestorTextRules()).toBe(true);
   });
 });
 

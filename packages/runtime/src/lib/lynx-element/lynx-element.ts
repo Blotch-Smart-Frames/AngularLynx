@@ -44,10 +44,12 @@ import {
   LAYOUT_FLAG,
   NOT_BLOCK_CONTAINERS,
   TAKES_RAW_TEXT,
+  hasAncestorTextRules,
   inheritanceStyleFor,
   isBlankText,
   isBlockDisplay,
   isRowOrientation,
+  matchedStyleFlagsFor,
   styleFlagsFor,
 } from './text-flow';
 import {
@@ -1467,7 +1469,27 @@ export class LynxElement implements BaseLynxElement {
     if (!this.#anonymous && (this.#webText || this.tagName === 'text')) {
       this.#inheritAgain();
     }
+    // A rule of a Lynx <text> further down may need this element, as
+    // `.card .total` needs a `.card` above the `.total` (see
+    // #drawnAtDefault).
+    if (!this.#anonymous) this.#ancestorsChanged();
     this.#layoutChanged();
+  }
+
+  /**
+   * The elements above this one, or their classes, changed: gives the HTML
+   * text tags in each Lynx `<text>` from here down their inherited styles
+   * again, as which rules of the `<text>` apply may have changed with them
+   * (see #drawnAtDefault). Only an element with such tags inside has
+   * #passesTextStyles, and only a rule that requires an ancestor can change.
+   */
+  #ancestorsChanged(): void {
+    if (!this.#passesTextStyles || !hasAncestorTextRules()) return;
+    if (this.tagName === 'text' && !this.#anonymous) {
+      this.#inheritAgain();
+      return;
+    }
+    for (const child of this.#children) child.#ancestorsChanged();
   }
 
   /**
@@ -1559,23 +1581,46 @@ export class LynxElement implements BaseLynxElement {
    * (each gets INHERITANCE_CLASS, see #passTextStyles), which the tag reads,
    * as before.
    *
-   * The style index knows only the last part of a rule's selector (see
-   * styleFlagsFor), so a rule such as `.card .total { font-size: 24px }`
-   * counts for a `<text class="total">` outside `.card` too. There the tag
-   * still reads the variable, and takes its ancestors' value, as every inline
-   * tag in a Lynx `<text>` did before.
+   * Which of their rules apply is checked against the elements above them
+   * (see matchedStyleFlagsFor): a rule such as `.card .total { font-size:
+   * 24px }` that counted for a `<text class="total">` outside `.card` too
+   * let the tag read the variable, and take its ancestors' value, there
+   * (issue #652). It's worked out again when their classes change, or those
+   * of an element above them (see #ancestorsChanged).
    */
   #drawnAtDefault(): number {
     let set = 0;
     for (let parent = this.#jsParent; parent; parent = parent.#jsParent) {
       // An anonymous <text> has no rules of its own (see #applyInheritance).
       if (!parent.#anonymous) {
-        set |= styleFlagsFor(parent.#styleTokens()) & ALL_TEXT_PROPERTIES;
+        set |= parent.#matchedTextFlags();
       }
       if (parent.#webText) continue;
       return parent.tagName === 'text' ? ALL_TEXT_PROPERTIES & ~set : 0;
     }
     return 0;
+  }
+
+  /**
+   * The text properties the app's rules that apply to this element set, as
+   * a bitmask, checked against its ancestors (see matchedStyleFlagsFor). It
+   * reads them up the tree as a list item's parent is its list (see
+   * #passTextStyles), and only as far as a rule needs.
+   */
+  #matchedTextFlags(): number {
+    const ancestors: Set<string>[] = [];
+    let next = this._virtualParent ?? this.#jsParent;
+    const ancestorAt = (index: number): Set<string> | undefined => {
+      while (ancestors.length <= index && next) {
+        ancestors.push(next.#styleTokens());
+        next = next._virtualParent ?? next.#jsParent;
+      }
+      return ancestors[index];
+    };
+    return (
+      matchedStyleFlagsFor(this.#styleTokens(), ancestorAt) &
+      ALL_TEXT_PROPERTIES
+    );
   }
 
   /**
@@ -1851,8 +1896,10 @@ export class LynxElement implements BaseLynxElement {
     if (newChild.#webText || newChild.#passesTextStyles) {
       this.#passTextStyles();
     }
-    // What it inherits depends on its new parent (see #drawnAtDefault).
+    // What it inherits depends on its new parent (see #drawnAtDefault),
+    // and so do the tags in a Lynx <text> inside it.
     if (newChild.#webText) newChild.#inheritAgain();
+    else newChild.#ancestorsChanged();
   }
 
   /**
@@ -1891,6 +1938,7 @@ export class LynxElement implements BaseLynxElement {
    */
   adoptVirtualChild(child: LynxElement): void {
     if (child.#webText || child.#passesTextStyles) this.#passTextStyles();
+    child.#ancestorsChanged();
   }
 
   /**

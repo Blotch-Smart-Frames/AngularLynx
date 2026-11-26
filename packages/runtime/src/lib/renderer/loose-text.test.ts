@@ -1425,6 +1425,118 @@ describe('loose text, element by element', () => {
       expect(style(bold)).toContain(FONT_SIZE);
       expect(style(bold)).toContain(COLOR);
     });
+
+    // Issue #652: the style index kept only the last part of a selector, so
+    // `.card .total` counted for a <text class="total"> outside .card too,
+    // and the tag there took its ancestors' size.
+    describe('with a rule that requires an ancestor', () => {
+      beforeEach(() => {
+        // As the build plugin writes it, for `page { font-size: 16px }`,
+        // `.card .total`, `.row > .price` and `.pressed:active`, each
+        // setting `font-size`.
+        (
+          globalThis as { __angularLynxStyleIndex?: unknown }
+        ).__angularLynxStyleIndex = {
+          rules: [
+            [['<page>'], bit('font-size')],
+            [['total'], bit('font-size'), [[' ', ['card']]]],
+            [['price'], bit('font-size'), [['>', ['row']]]],
+            [['pressed'], bit('font-size'), [], 1],
+          ],
+        };
+        resetStyleIndex();
+      });
+
+      /**
+       * A `<text>` with these classes, holding a `<b>`, in `parent`.
+       */
+      const total = (
+        parent: LynxElement,
+        classes: string,
+      ): { text: LynxElement; bold: LynxElement } => {
+        const text = doc.createElement('text');
+        text.setAttribute('class', classes);
+        parent.appendChild(text);
+        text.appendChild(doc.createText('Total: '));
+        const bold = doc.createElement('b');
+        text.appendChild(bold);
+        bold.appendChild(doc.createText('12'));
+        return { text, bold };
+      };
+
+      it('leaves the tag at the default outside the ancestor', () => {
+        const { bold } = total(page, 'total');
+        commit();
+        expect(style(bold)).not.toContain(FONT_SIZE);
+      });
+
+      it('gives it the <text>’s size inside the ancestor', () => {
+        const card = doc.createElement('view');
+        card.setAttribute('class', 'card');
+        page.appendChild(card);
+        const row = doc.createElement('view');
+        card.appendChild(row);
+        const { bold } = total(row, 'total');
+        commit();
+        expect(style(bold)).toContain(FONT_SIZE);
+      });
+
+      it('requires a child’s parent to be the next one up', () => {
+        const row = doc.createElement('view');
+        row.setAttribute('class', 'row');
+        page.appendChild(row);
+        const inRow = total(row, 'price');
+        const cell = doc.createElement('view');
+        row.appendChild(cell);
+        const inCell = total(cell, 'price');
+        commit();
+        expect(style(inRow.bold)).toContain(FONT_SIZE);
+        expect(style(inCell.bold)).not.toContain(FONT_SIZE);
+      });
+
+      it('leaves it at the default for a rule only a state applies', () => {
+        const { bold } = total(page, 'pressed');
+        commit();
+        expect(style(bold)).not.toContain(FONT_SIZE);
+      });
+
+      it('inherits again when an ancestor’s classes change', () => {
+        const outer = doc.createElement('view');
+        page.appendChild(outer);
+        const inner = doc.createElement('view');
+        outer.appendChild(inner);
+        const { bold } = total(inner, 'total');
+        commit();
+        expect(style(bold)).not.toContain(FONT_SIZE);
+
+        outer.setAttribute('class', 'card');
+        commit();
+        expect(style(bold)).toContain(FONT_SIZE);
+
+        outer.removeClass('card');
+        commit();
+        expect(style(bold)).not.toContain(FONT_SIZE);
+
+        outer.addClass('card');
+        commit();
+        expect(style(bold)).toContain(FONT_SIZE);
+      });
+
+      it('inherits again when the element around the <text> moves', () => {
+        const card = doc.createElement('view');
+        card.setAttribute('class', 'card');
+        page.appendChild(card);
+        const holder = doc.createElement('view');
+        page.appendChild(holder);
+        const { bold } = total(holder, 'total');
+        commit();
+        expect(style(bold)).not.toContain(FONT_SIZE);
+
+        card.appendChild(holder);
+        commit();
+        expect(style(bold)).toContain(FONT_SIZE);
+      });
+    });
   });
 
   it('gives a touch on an anonymous <text> out of the tree no element', () => {

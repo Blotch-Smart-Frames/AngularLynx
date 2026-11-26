@@ -141,6 +141,8 @@ Lynx doesn't pass text styles down, so HTML text tags and loose text get them th
 
 Each HTML text tag then reads `var(--angular-lynx-<property>)` in its inline style for each property its own rules don't set. The build plugin gives the runtime an index of the app's rules, with what each selector requires of the element and its ancestors, and the runtime matches it against the element tree. It works the answer out again when an ancestor's classes change, if a rule needs one of the changed classes.
 
+Loose text and the inline tags beside it are drawn in an anonymous `<text>` (class `_ngtext`), which is the tags' parent on Lynx. So the build gives a child combinator in front of what may be an inline tag a second selector through it: `.row > b` also matches as `.row > ._ngtext > b`. The runtime's matching walks up through the anonymous `<text>` too, so it agrees with Lynx's on which rules apply.
+
 ## Route views
 
 `provideRouter()` keeps Angular's own route reuse strategy, so leaving a route destroys its components, as on the web.

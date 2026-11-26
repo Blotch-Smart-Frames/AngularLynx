@@ -410,6 +410,39 @@ class InheritHost {}
 class BoldHost {}
 
 /**
+ * Angular's compiler (`preserveWhitespaces: false`, the default) deletes a
+ * text node that is only whitespace, so the space in `</b> <b>` never reaches
+ * the renderer, in a browser as on Lynx. This and NgspHost are Angular's two
+ * ways to keep it, which the runtime has to draw as a browser would (#644).
+ */
+@Component({
+  selector: 'kept-spaces-host',
+  encapsulation: ViewEncapsulation.None,
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  preserveWhitespaces: true,
+  template: `<div class="tags">big <b>bold big</b> <b>b thin</b></div>
+    <div class="links"><a>terms</a> <a>privacy</a></div>
+    <div class="label"><b>Name:</b> Ada</div>`,
+})
+class KeptSpacesHost {}
+
+@Component({
+  selector: 'ngsp-host',
+  encapsulation: ViewEncapsulation.None,
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: `<div class="tags">big <b>bold big</b>&ngsp;<b>b thin</b></div>`,
+})
+class NgspHost {}
+
+@Component({
+  selector: 'dropped-space-host',
+  encapsulation: ViewEncapsulation.None,
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: `<div class="tags"><b>Name:</b> <b>Ada</b></div>`,
+})
+class DroppedSpaceHost {}
+
+/**
  * The live element with `cls`.
  */
 const byClass = (cls: string): FakeEl => {
@@ -534,6 +567,27 @@ describe('loose text', () => {
     const fixture = TestBed.createComponent(SpansHost);
     fixture.detectChanges();
     expect(shape(byClass('pair'))).toEqual(['"AB"']);
+  });
+
+  it('drops the space between two inline tags, as Angular does in a browser', () => {
+    const fixture = TestBed.createComponent(DroppedSpaceHost);
+    fixture.detectChanges();
+    expect(shape(byClass('tags'))).toEqual(['"Name:Ada"']);
+  });
+
+  it('keeps the space between inline tags with preserveWhitespaces', () => {
+    const fixture = TestBed.createComponent(KeptSpacesHost);
+    fixture.detectChanges();
+    expect(shape(byClass('tags'))).toEqual(['"big bold big b thin"']);
+    // The indentation around the line is trimmed, as a browser lays it out.
+    expect(shape(byClass('links'))).toEqual(['"terms privacy"']);
+    expect(shape(byClass('label'))).toEqual(['"Name: Ada"']);
+  });
+
+  it('keeps the space between inline tags written as &ngsp;', () => {
+    const fixture = TestBed.createComponent(NgspHost);
+    fixture.detectChanges();
+    expect(shape(byClass('tags'))).toEqual(['"big bold big b thin"']);
   });
 
   it('leaves a lone inline tag as it is', () => {

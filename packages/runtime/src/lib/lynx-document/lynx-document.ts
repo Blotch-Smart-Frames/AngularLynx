@@ -166,6 +166,8 @@ export class LynxDocument implements LynxDocumentBase {
     // shares a line with the text beside it (see LynxElement's #regroup).
     if (tag === 'text' && WEB_TEXT_TAGS.has(name)) {
       el.markWebText(INLINE_FLOW_TAGS.has(name));
+      // And a <q> draws quotation marks around its text (see markQuote).
+      if (name === 'q') el.markQuote();
     }
     return el;
   }

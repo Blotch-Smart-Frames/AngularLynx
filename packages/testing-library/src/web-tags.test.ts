@@ -152,3 +152,98 @@ describe('web tags', () => {
     expect(screen.getByText('Settings page')).toBeInTheDocument();
   });
 });
+
+@Component({
+  selector: 'web-quote',
+  template: `
+    <p class="said">He said <q>hello</q>.</p>
+    <p class="nested">
+      <q>She wrote <q>hi</q> to me</q>
+    </p>
+    <div class="loose">Then <q>bye</q> came</div>
+    <p class="live">
+      <q>
+        @if (shown()) {
+          <b>so </b>
+        }
+        @for (word of words(); track word) {
+          <span>{{ word }}</span>
+        }
+      </q>
+    </p>
+    @if (quoted()) {
+      <p class="toggled"><q>back</q></p>
+    }
+  `,
+})
+class WebQuote {
+  readonly shown = signal(false);
+  readonly words = signal(['get']);
+  readonly quoted = signal(true);
+}
+
+@Component({
+  selector: 'web-cite',
+  template: `<q><ng-content /></q>`,
+})
+class WebCite {}
+
+@Component({
+  selector: 'web-cites',
+  imports: [WebCite],
+  template: `<view class="projected"
+    ><web-cite><q>this</q> one</web-cite></view
+  >`,
+})
+class WebCites {}
+
+describe('<q>', () => {
+  const text = (container: Element, selector: string): string | null =>
+    container.querySelector(selector)!.textContent;
+
+  it('draws quotation marks around its text, as a browser does', async () => {
+    const { container } = await render(WebQuote);
+
+    expect(text(container, 'text.said')).toBe('He said “hello”.');
+    expect(text(container, 'view.loose')).toBe('Then “bye” came');
+  });
+
+  it('draws single marks inside another <q>, as a browser does', async () => {
+    const { container } = await render(WebQuote);
+
+    expect(text(container, 'text.nested')).toBe('“She wrote ‘hi’ to me”');
+  });
+
+  it('keeps the marks at its ends as its content changes', async () => {
+    const { container, componentRef } = await render(WebQuote);
+    expect(text(container, 'text.live')).toBe('“get”');
+
+    componentRef.instance.shown.set(true);
+    componentRef.instance.words.set(['for', 'get']);
+    await waitForUpdate();
+    expect(text(container, 'text.live')).toBe('“so forget”');
+
+    componentRef.instance.shown.set(false);
+    componentRef.instance.words.set(['it']);
+    await waitForUpdate();
+    expect(text(container, 'text.live')).toBe('“it”');
+  });
+
+  it('keeps its marks when it comes back', async () => {
+    const { container, componentRef } = await render(WebQuote);
+
+    componentRef.instance.quoted.set(false);
+    await waitForUpdate();
+    expect(container.querySelector('text.toggled')).toBeNull();
+
+    componentRef.instance.quoted.set(true);
+    await waitForUpdate();
+    expect(text(container, 'text.toggled')).toBe('“back”');
+  });
+
+  it('counts a <q> projected into another as nested', async () => {
+    const { container } = await render(WebCites);
+
+    expect(text(container, 'view.projected')).toBe('“‘this’ one”');
+  });
+});

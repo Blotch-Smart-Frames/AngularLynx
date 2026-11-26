@@ -70,11 +70,14 @@ export class LynxHydrateDocument implements LynxDocumentBase {
     // LynxElement's #regroup) has the <text> just before it in the snapshot.
     // Angular never asks for it, so it's taken here, and marked for what it
     // is. It's always followed by what it holds.
-    while (
-      __GetClasses(ref).includes(ANONYMOUS_TEXT_CLASS) &&
-      this.#cursor < this.#queue.length
-    ) {
-      new LynxElement(ref).markAnonymousText();
+    // A <q>'s quotation marks are in the snapshot too, taken by its wrapper
+    // (see LynxElement.markQuote), and Angular never asks for them either.
+    while (this.#cursor < this.#queue.length) {
+      if (__GetClasses(ref).includes(ANONYMOUS_TEXT_CLASS)) {
+        new LynxElement(ref).markAnonymousText();
+      } else if (!LynxElement.isQuoteMark(ref)) {
+        break;
+      }
       ref = this.#queue[this.#cursor++]!;
     }
     this.#last = new LynxElement(ref);
@@ -129,6 +132,11 @@ export class LynxHydrateDocument implements LynxDocumentBase {
     // inline one shares a line with the text beside it.
     if (el.tagName === 'text' && WEB_TEXT_TAGS.has(tag)) {
       el.markWebText(INLINE_FLOW_TAGS.has(tag));
+      // And a <q> takes the quotation marks the server render drew, its
+      // first and last children.
+      if (tag === 'q') {
+        el.markQuote([__FirstElement(el.element), __LastElement(el.element)]);
+      }
     }
     return el;
   }

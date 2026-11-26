@@ -22,6 +22,7 @@ vi.mock('../lynx-document', () => {
 vi.mock('../lynx-element', () => {
   class MockLynxElement {
     static byUniqueId = vi.fn();
+    static isQuoteMark = vi.fn(() => false);
     element: ElementRef;
     isRootPageElement = false;
     appendChild = vi.fn();
@@ -29,6 +30,7 @@ vi.mock('../lynx-element', () => {
     markAnonymousText = vi.fn();
     hydrateAnchor = vi.fn();
     markWebText = vi.fn();
+    markQuote = vi.fn();
     addEventListener = vi.fn(() => () => {});
     addTrailingEventListener = vi.fn(() => () => {});
     updateSafeAreaInsets = vi.fn();
@@ -196,6 +198,40 @@ describe('LynxHydrateDocument', () => {
       expect(span.element).toBe(spanRef);
       expect(span.markWebText).toHaveBeenCalledWith(true);
     });
+  });
+
+  // A server render drew a <q>'s quotation marks as its first and last
+  // raw-texts (see LynxElement.markQuote).
+  it("gives a <q> the snapshot's quotation marks, and skips them", () => {
+    const qRef = { _q: true } as any as ElementRef;
+    const openRef = { _open: true } as any as ElementRef;
+    const textRef = { _text: true } as any as ElementRef;
+    const closeRef = { _close: true } as any as ElementRef;
+    const bRef = { _b: true } as any as ElementRef;
+    globalThis.__FirstElement = vi.fn(() => openRef);
+    globalThis.__LastElement = vi.fn(() => closeRef);
+    vi.mocked(LynxElement.isQuoteMark).mockImplementation(
+      (ref: ElementRef) => ref === openRef || ref === closeRef,
+    );
+    const doc = new LynxHydrateDocument(pageRef, [
+      qRef,
+      openRef,
+      textRef,
+      closeRef,
+      bRef,
+    ]);
+    doc.createRootElement();
+
+    const q = doc.createElement('q') as any;
+    const text = doc.createText('hello') as any;
+    const b = doc.createElement('b') as any;
+
+    expect(q.element).toBe(qRef);
+    expect(q.markQuote).toHaveBeenCalledWith([openRef, closeRef]);
+    expect(text.element).toBe(textRef);
+    expect(b.element).toBe(bRef);
+    expect(b.markQuote).not.toHaveBeenCalled();
+    vi.mocked(LynxElement.isQuoteMark).mockImplementation(() => false);
   });
 
   describe('createComment — during hydration', () => {

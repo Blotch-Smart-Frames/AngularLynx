@@ -65,7 +65,7 @@ type Task = {
   template: `
     <view class="h-screen flex-col bg-background flex">
       <view
-        class="flex-row items-center border-b border-border bg-card px-5 py-4 flex justify-between"
+        class="flex-row items-center border-b border-border bg-card px-5 pb-4 flex justify-between pt-safe-4"
       >
         <text class="text-[22px] font-bold text-foreground">Tasks</text>
         <ui-button size="sm" (pressed)="newSheetOpen.set(true)"
@@ -108,7 +108,7 @@ type Task = {
 
     <ng-template #taskList let-tasks="tasks">
       <scroll-view scroll-orientation="vertical" class="flex-1">
-        <view class="flex-col gap-2 p-4 flex">
+        <view class="flex-col gap-2 px-4 pt-4 flex pb-safe-4">
           @if (tasks.length === 0) {
             <ui-empty-state
               title="No tasks"

@@ -49,7 +49,7 @@ const formatTime = (seconds: number): string => {
   ],
   template: `
     <scroll-view scroll-orientation="vertical" class="h-screen bg-background">
-      <view class="flex-col items-center gap-6 px-6 py-8 flex">
+      <view class="flex-col items-center gap-6 px-6 flex pt-safe-8 pb-safe-8">
         <view class="rounded-[20px] border border-border bg-card p-2">
           <ui-avatar size="2xl" src="" fallback="♪" />
         </view>

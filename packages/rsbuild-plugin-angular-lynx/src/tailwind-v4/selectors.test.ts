@@ -60,6 +60,8 @@ describe('lowerSelectors', () => {
       ['.a\\+ + :is(view)', '.a\\+ + view'],
       // A no-break space is part of a name, so this is one compound.
       ['.a:is(.b\u00a0.c)', '.a.b\u00a0.c'],
+      // Nor is one at the end of a name trimmed away.
+      ['.a:is(.b\u00a0.c\u00a0) .x', '.a.b\u00a0.c\u00a0 .x'],
       ['.a:not(:where(.b))', '.a:not(.b)'],
     ];
     for (const [selector, lowered] of cases) {

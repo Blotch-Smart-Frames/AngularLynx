@@ -80,7 +80,7 @@ const inlineCompounds = (selector: string): string => {
       const start = index + match[0].length;
       const end = closingParenthesis(selector, start);
       const inner =
-        end === -1 ? '' : inlineCompounds(selector.slice(start, end).trim());
+        end === -1 ? '' : inlineCompounds(trimCss(selector.slice(start, end)));
       // A type selector or `*` has to start its compound.
       if (isCompound(inner) && (compoundStart || /^[.#[:]/.test(inner))) {
         lowered += inner;
@@ -138,6 +138,14 @@ const closingParenthesis = (text: string, start: number): number => {
 };
 
 /**
+ * Trims CSS whitespace (space, tab, newline, form feed, carriage return)
+ * from both ends. `String.prototype.trim()` also takes a no-break space,
+ * which can end a class name.
+ */
+const trimCss = (text: string): string =>
+  text.replace(/^[ \t\n\f\r]+|[ \t\n\f\r]+$/g, '');
+
+/**
  * Splits a selector list on its top-level commas.
  */
 const splitTopLevel = (list: string): string[] => {
@@ -157,13 +165,13 @@ const splitTopLevel = (list: string): string[] => {
     } else if (character === ')') {
       depth--;
     } else if (character === ',' && depth === 0) {
-      parts.push(current.trim());
+      parts.push(trimCss(current));
       current = '';
       continue;
     }
     current += character;
   }
-  parts.push(current.trim());
+  parts.push(trimCss(current));
   return parts;
 };
 

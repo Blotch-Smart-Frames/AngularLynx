@@ -97,6 +97,8 @@ const installNativeFakes = (): void => {
   g.__CreateRawText = (text: string) => makeEl('raw-text', text);
   g.__CreateElement = (tag: string) => makeEl(tag);
   g.__CreateWrapperElement = () => makeEl('wrapper');
+  g.__CreateList = () => makeEl('list');
+  g.__UpdateListCallbacks = () => {};
 
   g.__GetElementUniqueID = (n: FakeEl) => n.id;
   g.__GetTag = (n: FakeEl) => n.tag;
@@ -1518,6 +1520,53 @@ describe('loose text, element by element', () => {
         expect(style(bold)).not.toContain(FONT_SIZE);
 
         outer.addClass('card');
+        commit();
+        expect(style(bold)).toContain(FONT_SIZE);
+      });
+
+      it('inherits again below an HTML <p> when an ancestor’s classes change', () => {
+        // <p> is a <text> too, but its tags aren't a Lynx <text>'s: the
+        // walk goes on through it to the <text class="total"> inside.
+        const outer = doc.createElement('view');
+        page.appendChild(outer);
+        const p = doc.createElement('p');
+        outer.appendChild(p);
+        const { bold } = total(p, 'total');
+        commit();
+        expect(style(bold)).not.toContain(FONT_SIZE);
+
+        outer.setAttribute('class', 'card');
+        commit();
+        expect(style(bold)).toContain(FONT_SIZE);
+      });
+
+      it('inherits again below an HTML <p> that moves', () => {
+        const card = doc.createElement('view');
+        card.setAttribute('class', 'card');
+        page.appendChild(card);
+        const p = doc.createElement('p');
+        page.appendChild(p);
+        const { bold } = total(p, 'total');
+        commit();
+        expect(style(bold)).not.toContain(FONT_SIZE);
+
+        card.appendChild(p);
+        commit();
+        expect(style(bold)).toContain(FONT_SIZE);
+      });
+
+      it('inherits again in a list’s items when an ancestor’s classes change', () => {
+        const outer = doc.createElement('view');
+        page.appendChild(outer);
+        const list = doc.createElement('list');
+        outer.appendChild(list);
+        const item = doc.createElement('list-item');
+        list.appendChild(item);
+        const { bold } = total(item, 'total');
+        commit();
+        expect(style(bold)).not.toContain(FONT_SIZE);
+
+        outer.setAttribute('class', 'card');
         commit();
         expect(style(bold)).toContain(FONT_SIZE);
       });

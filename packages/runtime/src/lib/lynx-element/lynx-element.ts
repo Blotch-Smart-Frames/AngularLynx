@@ -1482,14 +1482,19 @@ export class LynxElement implements BaseLynxElement {
    * again, as which rules of the `<text>` apply may have changed with them
    * (see #drawnAtDefault). Only an element with such tags inside has
    * #passesTextStyles, and only a rule that requires an ancestor can change.
+   *
+   * It goes on below each `<text>`: an HTML `<p>` is a `<text>` too, and a
+   * Lynx `<text>` inside it has tags of its own, which #inheritAgain, going
+   * only through #webText elements, doesn't reach. A list's items are
+   * outside its #children (see virtualChildren).
    */
   #ancestorsChanged(): void {
     if (!this.#passesTextStyles || !hasAncestorTextRules()) return;
-    if (this.tagName === 'text' && !this.#anonymous) {
+    if (this.tagName === 'text' && !this.#anonymous && !this.#webText) {
       this.#inheritAgain();
-      return;
     }
     for (const child of this.#children) child.#ancestorsChanged();
+    for (const item of this.virtualChildren()) item.#ancestorsChanged();
   }
 
   /**
@@ -1899,7 +1904,7 @@ export class LynxElement implements BaseLynxElement {
     // What it inherits depends on its new parent (see #drawnAtDefault),
     // and so do the tags in a Lynx <text> inside it.
     if (newChild.#webText) newChild.#inheritAgain();
-    else newChild.#ancestorsChanged();
+    newChild.#ancestorsChanged();
   }
 
   /**

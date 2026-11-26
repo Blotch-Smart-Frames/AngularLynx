@@ -704,10 +704,12 @@ describe('loose text', () => {
   // index entry for the tag's class must keep it off.
   it("leaves a <b>'s weight to the build's rule for its tag", () => {
     const fontWeight = 1 << INHERITED_TEXT_PROPERTIES.indexOf('font-weight');
+    const color = 1 << INHERITED_TEXT_PROPERTIES.indexOf('color');
     (
       globalThis as { __angularLynxStyleIndex?: unknown }
     ).__angularLynxStyleIndex = {
       rules: [
+        [['blue'], color],
         [['_ngtag-b'], fontWeight],
         [['_ngtag-strong'], fontWeight],
       ],
@@ -720,9 +722,10 @@ describe('loose text', () => {
     expect(style('_ngtag-b')).not.toContain('font-weight');
     // It still takes the color of the text around it, as on the web.
     expect(style('_ngtag-b')).toContain('color: var(--angular-lynx-color)');
-    expect(style('_ngtag-i')).toContain(
-      'font-weight: var(--angular-lynx-font-weight)',
-    );
+    // The <i> has no weight of its own: it draws at the <text>'s, which no
+    // rule sets, so it reads no variable for it (issue #646).
+    expect(style('_ngtag-i')).toContain('color: var(--angular-lynx-color)');
+    expect(style('_ngtag-i')).not.toContain('font-weight');
   });
 });
 
@@ -1215,6 +1218,119 @@ describe('loose text, element by element', () => {
 
     expect(passes(card)).toBe(true);
     expect(passes(view)).toBe(true);
+  });
+
+  // Issue #646: a Lynx <text> reads none of the variables, so it draws a
+  // property its rules don't set at Lynx's default, whatever its ancestors
+  // set. An inline tag in it that read the variable took the ancestors'
+  // value instead: under the theme's 16px page, `<text>Lynx text
+  // <b>bold</b></text>` drew "bold" larger than the text beside it.
+  describe('in a Lynx <text>', () => {
+    const bit = (property: string): number =>
+      1 << INHERITED_TEXT_PROPERTIES.indexOf(property);
+    const style = (el: LynxElement): string =>
+      String(native(el).attrs.get('style') ?? '');
+    const FONT_SIZE = 'font-size: var(--angular-lynx-font-size)';
+    const COLOR = 'color: var(--angular-lynx-color)';
+
+    beforeEach(() => {
+      // As the build plugin writes it, for `page { font-size: 16px }`,
+      // `.big { font-size: 20px }` and `.red { color: red }`.
+      (
+        globalThis as { __angularLynxStyleIndex?: unknown }
+      ).__angularLynxStyleIndex = {
+        rules: [
+          [['<page>'], bit('font-size')],
+          [['big'], bit('font-size')],
+          [['red'], bit('color')],
+        ],
+      };
+      resetStyleIndex();
+    });
+
+    afterEach(() => {
+      delete (globalThis as { __angularLynxStyleIndex?: unknown })
+        .__angularLynxStyleIndex;
+      resetStyleIndex();
+    });
+
+    it('leaves an inline tag at the default the <text> draws at', () => {
+      const view = doc.createElement('view');
+      view.setAttribute('class', 'red');
+      page.appendChild(view);
+      const text = doc.createElement('text');
+      view.appendChild(text);
+      text.appendChild(doc.createText('Lynx text '));
+      const bold = doc.createElement('b');
+      text.appendChild(bold);
+      bold.appendChild(doc.createText('bold'));
+      commit();
+
+      expect(style(bold)).not.toContain(FONT_SIZE);
+      expect(style(bold)).not.toContain(COLOR);
+    });
+
+    it('gives it what the <text>’s own rules set', () => {
+      const text = doc.createElement('text');
+      text.setAttribute('class', 'big');
+      page.appendChild(text);
+      const bold = doc.createElement('b');
+      text.appendChild(bold);
+      commit();
+
+      expect(style(bold)).toContain(FONT_SIZE);
+      expect(style(bold)).not.toContain(COLOR);
+    });
+
+    it('gives a tag inside an inline tag what that tag sets', () => {
+      const text = doc.createElement('text');
+      page.appendChild(text);
+      const bold = doc.createElement('b');
+      bold.setAttribute('class', 'big');
+      text.appendChild(bold);
+      const italic = doc.createElement('i');
+      bold.appendChild(italic);
+      commit();
+
+      expect(style(italic)).toContain(FONT_SIZE);
+      expect(style(italic)).not.toContain(COLOR);
+    });
+
+    it('inherits again when the <text>’s classes change', () => {
+      const text = doc.createElement('text');
+      page.appendChild(text);
+      const bold = doc.createElement('b');
+      text.appendChild(bold);
+      const italic = doc.createElement('i');
+      bold.appendChild(italic);
+      commit();
+      expect(style(italic)).not.toContain(FONT_SIZE);
+
+      text.setAttribute('class', 'big');
+      commit();
+      expect(style(bold)).toContain(FONT_SIZE);
+      expect(style(italic)).toContain(FONT_SIZE);
+
+      text.setAttribute('class', '');
+      commit();
+      expect(style(bold)).not.toContain(FONT_SIZE);
+    });
+
+    it('inherits from the ancestors again when the tag moves out of it', () => {
+      const text = doc.createElement('text');
+      page.appendChild(text);
+      const view = doc.createElement('view');
+      page.appendChild(view);
+      const bold = doc.createElement('b');
+      text.appendChild(bold);
+      commit();
+      expect(style(bold)).not.toContain(FONT_SIZE);
+
+      view.appendChild(bold);
+      commit();
+      expect(style(bold)).toContain(FONT_SIZE);
+      expect(style(bold)).toContain(COLOR);
+    });
   });
 
   it('gives a touch on an anonymous <text> out of the tree no element', () => {

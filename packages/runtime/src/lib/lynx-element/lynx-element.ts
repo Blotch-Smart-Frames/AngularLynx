@@ -1459,10 +1459,28 @@ export class LynxElement implements BaseLynxElement {
    * itself, which it doesn't inherit, and whether it lays out lines.
    */
   #rulesChanged(): void {
-    if (this.#webText && !this.#anonymous) {
-      LynxElement.#pendingInheritance.add(this);
+    // A Lynx <text>'s rules decide which styles the HTML text tags inside it
+    // inherit, and an HTML text tag's decide its own and those of the tags
+    // inside it (see #drawnAtDefault).
+    if (!this.#anonymous && (this.#webText || this.tagName === 'text')) {
+      this.#inheritAgain();
     }
     this.#layoutChanged();
+  }
+
+  /**
+   * Gives this element, if it's a #webText element, and each #webText
+   * element inside it through other #webText elements, their inherited
+   * styles again at the end of the cycle: what they inherit depends on the
+   * elements around them (see #drawnAtDefault). An element of another kind
+   * in between ends that, since the styles inside it don't depend on what's
+   * above it.
+   */
+  #inheritAgain(): void {
+    if (this.#webText) LynxElement.#pendingInheritance.add(this);
+    for (const child of this.#children) {
+      if (child.#webText) child.#inheritAgain();
+    }
   }
 
   /**
@@ -1514,11 +1532,42 @@ export class LynxElement implements BaseLynxElement {
     const own = this.#anonymous
       ? 0
       : styleFlagsFor(this.#styleTokens()) & ALL_TEXT_PROPERTIES;
-    const style = inheritanceStyleFor(own);
+    const style = inheritanceStyleFor(own | this.#drawnAtDefault());
     if (style === this.#inheritStyle) return;
     this.#inheritStyle = style;
     // One removed this cycle gets it when it's rebuilt (see #recreateSubtree).
     if (!this.#paintingDead) this.#rewriteInlineStyle();
+  }
+
+  /**
+   * The text properties this #webText element should leave at Lynx's
+   * default, as a bitmask (see INHERITED_TEXT_PROPERTIES): in a Lynx
+   * `<text>`, those the `<text>` draws at its own default, which no rule of
+   * its or of an HTML text tag between them sets.
+   *
+   * A Lynx `<text>` reads none of the variables (see text-flow.ts), so it
+   * draws a property its rules don't set at Lynx's default, whatever its
+   * ancestors set: `font-size` at 14px under the theme's 16px page. The
+   * variable an inline tag in it reads comes from those ancestors, so
+   * `<text>Total: <b>12</b></text>` drew the `<b>` larger than the text
+   * beside it (issue #646). Left out, the tag draws at the default too, or
+   * at the `<text>`'s `color` and `font-family`, which Lynx passes to a
+   * `<text>` inside a `<text>`; the web preview inherits through the DOM
+   * either way. A property one of them does set has its copy in the variable
+   * (each gets INHERITANCE_CLASS, see #passTextStyles), which the tag reads,
+   * as before.
+   */
+  #drawnAtDefault(): number {
+    let set = 0;
+    for (let parent = this.#jsParent; parent; parent = parent.#jsParent) {
+      // An anonymous <text> has no rules of its own (see #applyInheritance).
+      if (!parent.#anonymous) {
+        set |= styleFlagsFor(parent.#styleTokens()) & ALL_TEXT_PROPERTIES;
+      }
+      if (parent.#webText) continue;
+      return parent.tagName === 'text' ? ALL_TEXT_PROPERTIES & ~set : 0;
+    }
+    return 0;
   }
 
   /**
@@ -1794,6 +1843,8 @@ export class LynxElement implements BaseLynxElement {
     if (newChild.#webText || newChild.#passesTextStyles) {
       this.#passTextStyles();
     }
+    // What it inherits depends on its new parent (see #drawnAtDefault).
+    if (newChild.#webText) newChild.#inheritAgain();
   }
 
   /**

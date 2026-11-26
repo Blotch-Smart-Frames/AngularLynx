@@ -30,12 +30,20 @@ object SystemFontFamilies : TypefaceCache.LazyProvider {
     // family for `fantasy`, `math` or `emoji` (emoji come from the fallback
     // fonts whatever the family), and Chrome doesn't know Safari's `ui-*`
     // families, so those fall through to the next family in the list.
-    private val GENERIC_FAMILIES = mapOf(
+    private val NAMED_FAMILIES = mapOf(
         "serif" to "serif",
         "sans-serif" to "sans-serif",
         "monospace" to "monospace",
         "cursive" to "cursive",
         "system-ui" to "sans-serif",
+        // fonts.xml's aliases of `sans-serif`. Android hands back the default
+        // Typeface itself for them, which the check below can't tell from a
+        // name it doesn't have, so they're named here: `Arial, monospace`
+        // draws Arial's alias, as Chrome on Android does.
+        "arial" to "sans-serif",
+        "helvetica" to "sans-serif",
+        "tahoma" to "sans-serif",
+        "verdana" to "sans-serif",
     )
 
     // Lynx calls this from TypefaceCache, which caches each family and style
@@ -45,7 +53,7 @@ object SystemFontFamilies : TypefaceCache.LazyProvider {
     override fun getTypeface(fontFamily: String, style: Int): Typeface? {
         // CSS family names ignore case; Android's are all lowercase.
         val family = fontFamily.lowercase(Locale.ROOT)
-        GENERIC_FAMILIES[family]?.let { return Typeface.create(it, style) }
+        NAMED_FAMILIES[family]?.let { return Typeface.create(it, style) }
 
         // Any other family in fonts.xml. Typeface.create(name) gives back
         // Typeface.DEFAULT itself for a name it doesn't have, from Android 9;

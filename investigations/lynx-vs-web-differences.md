@@ -1666,7 +1666,7 @@ Both platforms take the first family in the list they find. iOS looks each name 
 
 ### Workaround
 
-The Android shell registers a provider (`SystemFontFamilies.kt` in `packages/native`, issue #661) that answers CSS's generic families (`serif`, `sans-serif`, `monospace`, `cursive`, `system-ui`) and, on Android 9+, any family in the system's fonts.xml, with `Typeface.create`. It returns null for a name Android doesn't have, so Lynx goes on to the app's `@font-face` rules and the next family in the list. Lynx asks the providers before `@font-face`, so a `@font-face` named `serif` loses to Android's. Lynx Explorer has no such provider, so it still draws the default font.
+The Android shell registers a provider (`SystemFontFamilies.kt` in `packages/native`, issue #661) that answers CSS's generic families (`serif`, `sans-serif`, `monospace`, `cursive`, `system-ui`), fonts.xml's aliases of `sans-serif` (`arial`, `helvetica`, `tahoma`, `verdana`, which come back as the default `Typeface` itself and so can't be told from a missing name) and, on Android 9+, any family in the system's fonts.xml, with `Typeface.create`. It returns null for a name Android doesn't have, so Lynx goes on to the app's `@font-face` rules and the next family in the list. Lynx asks the providers before `@font-face`, so a `@font-face` named `serif` loses to Android's. Lynx Explorer has no such provider, so it still draws the default font.
 
 ---
 

@@ -215,6 +215,7 @@ The iOS Simulator and the Android emulator both draw on the Mac's GPU, so a scen
 - The 2D context's `filter` is kept but not applied, and `wordSpacing`, `fontKerning`, `fontStretch`, `fontVariantCaps` and `textRendering` are kept but don't change the text. Text drawn with a gradient, a pattern or `strokeText()` is drawn from the glyphs' outlines, so color emoji show only with a plain `fillStyle`.
 - A `<video>` can't be drawn on a canvas or be a texture yet.
 - `getContext('bitmaprenderer')` is `null`: draw an `ImageBitmap` with a 2D context's `drawImage()` instead.
+- `createImageBitmap()` doesn't take the crop arguments (`sx, sy, sw, sh`), an `ImageBitmap` or `ImageData`: draw the part you want on a canvas, then make the bitmap of that.
 - `toBlob()` and `toDataURL()` make the main thread wait while the phone reads and encodes the canvas (tens of milliseconds for a photo), where a browser's `toBlob()` encodes in the background.
 - A lost context isn't restored: make a new renderer.
 - `crypto.randomUUID()`, which AngularLynx adds for angular-three, isn't cryptographically secure: don't use it for secrets.

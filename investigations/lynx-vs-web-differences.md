@@ -3438,7 +3438,7 @@ Lynx has no canvas, and until issue #469 AngularLynx's had only WebGL2: `getCont
 
 ### What to do
 
-Use `getContext('2d')` as on the web, in an app built with `ng build --platform ios|android` or the web preview (Lynx Explorer has no canvas). `filter` is kept but not applied; `wordSpacing`, `fontKerning`, `fontStretch`, `fontVariantCaps` and `textRendering` are kept but don't change the text. A `<video>` can't be drawn or uploaded yet, and `getContext('bitmaprenderer')` is `null`: draw an ImageBitmap with a 2D context's `drawImage()`. `createImageBitmap()` of a canvas and `OffscreenCanvas.transferToImageBitmap()` work as on the web; make a WebGL canvas's bitmap in the task that drew it, as for `toBlob()`.
+Use `getContext('2d')` as on the web, in an app built with `ng build --platform ios|android` or the web preview (Lynx Explorer has no canvas). `filter` is kept but not applied; `wordSpacing`, `fontKerning`, `fontStretch`, `fontVariantCaps` and `textRendering` are kept but don't change the text. A `<video>` can't be drawn or uploaded yet, and `getContext('bitmaprenderer')` is `null`: draw an ImageBitmap with a 2D context's `drawImage()`. `createImageBitmap()` of a canvas and `OffscreenCanvas.transferToImageBitmap()` work as on the web; make a WebGL canvas's bitmap in the task that drew it, as for `toBlob()`. `createImageBitmap()` doesn't take the crop arguments (`sx, sy, sw, sh`) of any source, or an `ImageBitmap` or `ImageData` (issue #731): draw the part you want on a canvas first.
 
 ---
 

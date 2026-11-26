@@ -988,9 +988,8 @@ export class LynxElement implements BaseLynxElement {
       });
       // And the text a script sets on a field (see script-field-text.ts).
       setScriptFieldTextNoter((ref, text) => {
-        LynxElement.#registered(__GetElementUniqueID(ref))?.#noteFieldText(
-          text,
-        );
+        const target = LynxElement.#registered(__GetElementUniqueID(ref));
+        if (target) target.#noteFieldText(text);
       });
     }
     this.#nativeRef = element;

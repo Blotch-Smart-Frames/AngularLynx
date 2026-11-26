@@ -609,7 +609,7 @@ The release reaches only the elements in the destroyed subtree, and a renderer t
 - **An `*args`** (`NgtArgs`, and so every `ngt-primitive`) hangs its directive's injector on its anchor comment. The injector leads to the view, so the whole screen stayed: its component, every element and every native UI (#279).
 - **A scene component's host** holds angular-three's canvas store, which holds the WebGL renderer and so the `<canvas>`. Without an `*args`, the screen's component and its other elements went, but every `<canvas>` stayed, with its native UI, view and Metal layer on iOS (#280).
 
-So the registry holds each wrapper weakly (a `WeakRef`, as a browser holds a node's JavaScript wrapper), and a `FinalizationRegistry` deletes a collected wrapper's entry. It finds wrappers; it doesn't keep them. A wrapper in the tree is still held by its parent's `#children`, up to the page, which the document holds; one Angular keeps out of the tree (a detached route view) is held by its view; and one with listeners is held by the handlers on its native element. One that nothing else holds can't be found or used again. The main thread has `WeakRef` and `FinalizationRegistry` (see "The main thread lacks newer built-ins").
+So the registry holds each wrapper weakly (a `WeakRef`, as a browser holds a node's JavaScript wrapper), and sweeps out the entries of collected wrappers whenever it has doubled in size since the last sweep (`LynxElement.#sweepCollected`). It used a `FinalizationRegistry` to delete each one as its wrapper was collected, until issue #708: that kept a record for every element as long as the element lived, to delete the few entries nobody released, as an element Angular destroys leaves the registry at once. It finds wrappers; it doesn't keep them. A wrapper in the tree is still held by its parent's `#children`, up to the page, which the document holds; one Angular keeps out of the tree (a detached route view) is held by its view; and one with listeners is held by the handlers on its native element. One that nothing else holds can't be found or used again. The main thread has `WeakRef` and `FinalizationRegistry` (see "The main thread lacks newer built-ins").
 
 Measured on the iOS Simulator (Lynx 4.1) with `heap <pid>` and a `WeakRef` on each screen's component and canvas, in a router app (`ng build --platform ios`) whose Home screen has an `ngt-canvas`, after 18 Home ↔ Other round trips, on Other:
 
@@ -744,6 +744,16 @@ So a field costs about 45 bytes for every instance that has it, whatever its val
 ### The fix
 
 The build plugin starts each of AngularLynx's packages' private fields whose initializer is a constant (`null`, `false`, `''`, a number), in a class without `extends`, on the class's prototype rather than on each instance (`renamePrivateMethods` in `packages/rsbuild-plugin-angular-lynx/src/private-methods.ts`): an instance gets a property of its own only once the field is written. The 5,000 views took 52 MB with it. In the runtime's own code, keep state an element rarely has out of its constructor: a field that starts as an object (`[]`, `new Map()`) is still made for each instance.
+
+Issue #708 took the rest of what each element kept for nothing off it:
+
+- `#children` is `null` until the first child (most elements never have one), and reads go through a shared frozen empty array.
+- The public fields that start as a constant (`isRootPageElement`, `_virtualParent` and the others) are `declare`d, and their defaults go on `LynxElement.prototype` when the first element is made, as the plugin does for the private ones. The plugin leaves public fields alone, because code outside can tell an own property from an inherited one.
+- The `Set` of class names kept beside the class string is a flag; a name is looked up in the string itself.
+- A raw-text's text isn't kept again in the attributes kept for recreation: a rebuilt raw-text is made with its `#text`.
+- The registry has no `FinalizationRegistry` (see "Elements another renderer keeps out of the tree").
+
+Under V8 (the testing library, 4,000 rows, after a full collection), a `@for` row of one `<view class="box">` kept 2,590 bytes instead of 2,963, and one of `<text>{{ i }}</text>` 3,429 instead of 4,100; V8 doesn't show PrimJS's cost per property, so the prototype fields aren't in those numbers. On the iOS 27 Simulator the mount screen of 5,000 views, with a full collection before the footprint was read, took a median of 46 MB of "Untagged" over 9 launches, against 48 MB over 8 for master, but launches of the same build ranged over 10 MB, more than the difference.
 
 ---
 

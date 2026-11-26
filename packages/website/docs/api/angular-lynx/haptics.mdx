@@ -1,0 +1,113 @@
+# LynxHaptics
+
+Taps the phone, as a native control does when something under the finger changes. Lynx has no `navigator.vibrate()`. `import { LynxHaptics, type HapticImpactStyle, type HapticNotificationType } from '@blotch/angular-lynx';`
+
+The [Slider](/dolan/slider), [Switch](/dolan/switch) and [Context Menu](/dolan/context-menu) components give their feedback already, as do the segmented controls of [Tabs](/dolan/tabs#segmented-control) and [Toggle](/dolan/toggle#segmented-control).
+
+## Usage
+
+```typescript
+import { Component, inject, signal } from '@angular/core';
+import { LYNX_ELEMENTS, LynxHaptics } from '@blotch/angular-lynx';
+import { Payments } from './payments';
+
+@Component({
+  selector: 'app-checkout',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view (bindtap)="pay()">
+      <text>{{ paying() ? 'Paying…' : 'Pay' }}</text>
+    </view>
+  `,
+})
+export class Checkout {
+  readonly #payments = inject(Payments);
+  readonly #haptics = inject(LynxHaptics);
+  protected readonly paying = signal(false);
+
+  protected async pay(): Promise<void> {
+    this.paying.set(true);
+    try {
+      await this.#payments.charge();
+      this.#haptics.notification('success');
+    } catch {
+      this.#haptics.notification('error');
+    } finally {
+      this.paying.set(false);
+    }
+  }
+}
+```
+
+`Payments` stands for the app's own service that takes the payment.
+
+Give feedback for a change the person made, as it happens: a value passing a detent, a selection moving, an action going through. Apple and Google both ask apps to use it sparingly, so it keeps its meaning.
+
+## API
+
+### `LynxHaptics`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxHaptics {}
+```
+
+| Platform                                       | Feedback                                                                                                           |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| iOS                                            | `UIImpactFeedbackGenerator`, `UISelectionFeedbackGenerator` and `UINotificationFeedbackGenerator`                  |
+| Android                                        | `View.performHapticFeedback()`, with the nearest `HapticFeedbackConstants`. It needs no `VIBRATE` permission       |
+| [Web preview](/guide/glossary#web-preview)     | The page's `navigator.vibrate()`, which Chrome on Android plays after a tap. Safari and desktop browsers have none |
+| Unit tests with the testing library            | Nothing                                                                                                            |
+| [Lynx Explorer](/guide/glossary#lynx-explorer) | Nothing                                                                                                            |
+
+The methods never throw or reject: feedback a host can't give is left out. iOS and Android play nothing when the person has turned the system's haptics or touch feedback off. Only the apps `--platform` builds, with `ng build` or `ng serve`, have the native module behind it, `AngularLynxHaptics`.
+
+### `impact()`
+
+```typescript
+impact(style?: HapticImpactStyle): void;
+
+type HapticImpactStyle = 'light' | 'medium' | 'heavy' | 'soft' | 'rigid';
+```
+
+Something hit something else, such as a view snapping into place or a control reaching its end. `style` says how hard, `'medium'` unless it's given. Android has three weights of tap, so `'soft'` plays as `'light'` there and `'rigid'` as `'medium'`.
+
+### `selection()`
+
+```typescript
+selection(): void;
+```
+
+A selection moved, such as a picker's value or a segmented control's segment, or a value passed a detent. The lightest feedback, and the one to give again and again as something moves.
+
+### `notification()`
+
+```typescript
+notification(type?: HapticNotificationType): void;
+
+type HapticNotificationType = 'success' | 'warning' | 'error';
+```
+
+A task's outcome: it went through, it needs the person's attention, or it failed. `'success'` unless it's given.
+
+## In tests
+
+Under the [testing library](/guide/testing/) the methods do nothing. To check that a component gave feedback, provide a stand-in:
+
+```typescript
+const haptics = { impact: vi.fn(), selection: vi.fn(), notification: vi.fn() };
+await render(Checkout, {
+  providers: [
+    { provide: LynxHaptics, useValue: haptics },
+    { provide: Payments, useValue: { charge: async () => undefined } },
+  ],
+});
+fireEvent.tap(screen.getByText('Pay'));
+await waitForUpdate();
+
+expect(haptics.notification).toHaveBeenCalledWith('success');
+```
+
+## Related
+
+- [`LynxNativeModule`](/api/angular-lynx/native-module), for the host app's own native code

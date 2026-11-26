@@ -29,6 +29,8 @@ final class LynxViewController: UIViewController {
     config.register(SecureStorageModule.self)
     // LynxClipboard's text (ClipboardModule).
     config.register(ClipboardModule.self)
+    // LynxHaptics' taps (HapticsModule).
+    config.register(HapticsModule.self)
     config.register(LinkingModule.self)
     // The photo picker behind LynxImagePicker (ImagePickerModule).
     config.register(ImagePickerModule.self)

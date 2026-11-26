@@ -3387,6 +3387,7 @@ None of these web APIs exist in Lynx:
 
 - **Drag and drop** — no `DragEvent`, no `draggable` attribute, no `DataTransfer`. Implement custom drag via touch events.
 - **Clipboard** — no `navigator.clipboard`. Copy/paste must go through native bridge modules: `LynxClipboard` (issue #303) calls the shells' `AngularLynxClipboard` module. See [the web preview's clipboard needs the page's window](#the-web-previews-clipboard-needs-the-pages-window) for the web side.
+- **Vibration** — no `navigator.vibrate()`, and nothing for the haptic engine. `LynxHaptics` (issue #462) calls the shells' `AngularLynxHaptics` module (UIKit's feedback generators, Android's `View.performHapticFeedback()`), and in the web preview the `navigator.vibrate()` of the page around web-core's main-thread iframe, as the clipboard does. Lynx Explorer has no module, so it plays nothing.
 - **File system** — no File API, no `<input type="file">`, no `showOpenFilePicker()`. File access requires native bridge.
 - **Web Workers** — not supported. Lynx already has a dual-thread model (main + background), but you cannot spawn additional threads from JS. Use the built-in background thread instead.
 - **SharedWorker / ServiceWorker** — not supported. No offline caching, no background sync.

@@ -18,6 +18,7 @@ import { type FormValueControl } from '@angular/forms/signals';
 import {
   LYNX_ELEMENTS,
   LynxAccessibilitySettings,
+  LynxHaptics,
   LynxSystemInfo,
   MainThreadElement,
 } from '@blotch/angular-lynx';
@@ -164,6 +165,13 @@ const SIDEWAYS: [number, number][] = [
 
 /** How far outside the thumb a press still picks it up, in px. */
 const GRAB_SLOP = 10;
+
+/**
+ * The most steps a slider ticks through one by one as it's dragged. A
+ * slider of more, such as the default 0 to 100, would buzz rather than
+ * tick, so it taps only at its ends, as UIKit's does.
+ */
+const TICKED_STEPS = 20;
 
 /**
  * A CSS transition of each property, for an inline `transition`.
@@ -430,6 +438,7 @@ export class UiSlider implements FormValueControl<number> {
 
   readonly #renderer = inject(Renderer2);
   readonly #settings = inject(LynxAccessibilitySettings);
+  readonly #haptics = inject(LynxHaptics);
   readonly #design = injectGlassDesign();
   readonly #scheme = injectColorScheme();
   readonly #systemDrawsGlass = injectSystemDrawsGlass();
@@ -868,7 +877,30 @@ export class UiSlider implements FormValueControl<number> {
   #follow(press: Press): void {
     const x = this.#local(press.lastX);
     if (x === null || press.grab === null) return;
+    // The value as the thumb shows it, which a bound value between steps
+    // isn't: a drag that only snaps it onto the step it shows at moves
+    // nothing the person can feel.
+    const before = this.#current();
     this.#set(this.#valueAt(x - press.grab));
+    this.#tick(before);
+  }
+
+  /**
+   * The feedback for a drag that moved the value from `before`: a light
+   * tap as it reaches either end, and a tick on each step of a slider with
+   * few enough steps to feel one by one (see TICKED_STEPS). A tap on the
+   * track and an accessibility action give none: the thumb glides there,
+   * and a screen reader speaks the value.
+   */
+  #tick(before: number): void {
+    const value = this.#current();
+    if (value === before) return;
+    const { min, max } = this.#range();
+    if (value === min || value === max) {
+      this.#haptics.impact('light');
+    } else if ((max - min) / this.#stepSize() <= TICKED_STEPS) {
+      this.#haptics.selection();
+    }
   }
 
   /**

@@ -306,6 +306,7 @@ export default defineConfig({
             { text: 'LynxLocale', link: '/api/angular-lynx/locale' },
             { text: 'LynxSystemInfo', link: '/api/angular-lynx/system-info' },
             { text: 'LynxClipboard', link: '/api/angular-lynx/clipboard' },
+            { text: 'LynxHaptics', link: '/api/angular-lynx/haptics' },
             { text: 'Host Data', link: '/api/angular-lynx/host-data' },
             {
               text: 'LynxNativeModule',

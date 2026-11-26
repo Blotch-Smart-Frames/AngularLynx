@@ -1,5 +1,9 @@
 import { Component, inject, signal } from '@angular/core';
-import { LYNX_ELEMENTS, LynxAccessibilitySettings } from '@blotch/angular-lynx';
+import {
+  LYNX_ELEMENTS,
+  LynxAccessibilitySettings,
+  LynxHaptics,
+} from '@blotch/angular-lynx';
 import {
   fireEvent,
   render,
@@ -125,6 +129,9 @@ const settings = {
 };
 
 const IOS_26 = { platform: 'iOS', osVersion: '26.0' };
+
+/** Stands in for LynxHaptics, so a test can see the control's ticks. */
+const haptics = { impact: vi.fn(), selection: vi.fn(), notification: vi.fn() };
 const IOS_18 = { platform: 'iOS', osVersion: '18.6' };
 const ANDROID = { platform: 'Android', osVersion: '15' };
 
@@ -177,6 +184,7 @@ const renderControl = async (
   const result = await render(SegmentedControlHost, {
     providers: [
       { provide: LynxAccessibilitySettings, useValue: settings },
+      { provide: LynxHaptics, useValue: haptics },
       provideIconTheme({ colorScheme: scheme }),
     ],
   });
@@ -280,6 +288,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
+  haptics.selection.mockClear();
   vi.unstubAllGlobals();
   settings.reduceMotion.set(false);
   settings.reduceTransparency.set(false);
@@ -500,6 +509,59 @@ describe('UiSegmentedControl', () => {
       expect(lens()!.style.left).toBe('-10px');
       await after(SETTLED);
       expect(lens()).toBeNull();
+    });
+  });
+
+  describe('haptics', () => {
+    it('ticks when a tap changes the selection, and not on the selected segment', async () => {
+      const { measure, tap } = await renderControl(IOS_26);
+      await measure();
+
+      await tap('Week');
+      expect(haptics.selection).not.toHaveBeenCalled();
+      await tap('Month');
+      expect(haptics.selection).toHaveBeenCalledTimes(1);
+    });
+
+    it('ticks on every tap of a control of several, which toggles its segment', async () => {
+      const { host, update, measure, tap } = await renderControl(IOS_26);
+      await update(() => host.isMultiple.set(true));
+      await measure();
+
+      await tap('Week');
+      await tap('Week');
+      expect(haptics.selection).toHaveBeenCalledTimes(2);
+    });
+
+    it('ticks as a dragged indicator crosses onto each segment', async () => {
+      const { measure, press, move, release } = await renderControl(IOS_26);
+      await measure();
+
+      await press('Week', 150);
+      await move('Week', 170);
+      expect(haptics.selection).not.toHaveBeenCalled();
+      await move('Week', 230);
+      expect(haptics.selection).toHaveBeenCalledTimes(1);
+      await move('Week', 240);
+      await move('Week', 160);
+      expect(haptics.selection).toHaveBeenCalledTimes(2);
+      // Letting go where it started selects nothing, and ticks no more.
+      await release('Week');
+      expect(haptics.selection).toHaveBeenCalledTimes(2);
+    });
+
+    it("doesn't tick while disabled, or for a host that isn't segmented", async () => {
+      const { host, update, measure, tap } = await renderControl(IOS_26);
+      await measure();
+
+      await update(() => host.isDisabled.set(true));
+      await tap('Month');
+      await update(() => {
+        host.isDisabled.set(false);
+        host.isSegmented.set(false);
+      });
+      await tap('Day');
+      expect(haptics.selection).not.toHaveBeenCalled();
     });
   });
 

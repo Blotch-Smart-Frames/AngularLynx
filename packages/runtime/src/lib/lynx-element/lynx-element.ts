@@ -1786,13 +1786,13 @@ export class LynxElement implements BaseLynxElement {
    * A Lynx `<text>` reads none of the variables (see text-flow.ts), so it
    * draws a property its rules don't set at Lynx's default, whatever its
    * ancestors set: `color` at black under a red `<view>`. The variable an
-   * inline tag in it reads comes from those ancestors, so before the native
-   * build gave every `<text>` `font-size: 1rem` (issue #673), which counts
-   * as the `<text>`'s own rule, `<text>Total: <b>12</b></text>` drew the
-   * `<b>` at the theme's 16px beside 14px text (issue #646). Left out, the tag draws at the default too, or
-   * at the `<text>`'s `color` and `font-family`, which Lynx passes to a
-   * `<text>` inside a `<text>`; the web preview inherits through the DOM
-   * either way. A property one of them does set has its copy in the variable
+   * inline tag in it reads comes from those ancestors, so
+   * `<text>Total: <b>12</b></text>` drew the `<b>` at the theme's 16px
+   * beside 14px text (issue #646). Left out, the tag draws as the `<text>`
+   * does: at the default, at the `<text>`'s `color` and `font-family`, which
+   * Lynx passes to a `<text>` inside a `<text>`, and at its `font-size`,
+   * which the native build has Lynx inherit (`customCSSInheritanceList`,
+   * issue #685); the web preview inherits through the DOM either way. A property one of them does set has its copy in the variable
    * (each gets INHERITANCE_CLASS, see #passTextStyles), which the tag reads,
    * as before.
    *

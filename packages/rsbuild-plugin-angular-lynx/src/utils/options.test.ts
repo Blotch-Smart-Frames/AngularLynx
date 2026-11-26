@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { deprecatedOptionsIn, normalizeOptions } from './options';
+import {
+  deprecatedOptionsIn,
+  inheritsFontSize,
+  inheritsMoreThanFontSize,
+  normalizeOptions,
+} from './options';
 
 describe('normalizeOptions', () => {
   it('returns all required defaults when called with no args', () => {
@@ -8,7 +13,7 @@ describe('normalizeOptions', () => {
     expect(result.debugInfoOutside).toBe(true);
     expect(result.enableA11y).toBe(true);
     expect(result.enableAccessibilityElement).toBe(false);
-    expect(result.enableCSSInheritance).toBe(false);
+    expect(result.enableCSSInheritance).toBe(true);
     expect(result.enableCSSInvalidation).toBe(true);
     expect(result.enableCSSSelector).toBe(true);
     expect(result.enableNewGesture).toBe(true);
@@ -21,10 +26,63 @@ describe('normalizeOptions', () => {
     expect(result.preferredFps).toBe('high');
   });
 
-  it('customCSSInheritanceList defaults to undefined', () => {
+  // A <text> with no size of its own takes its parent's, as on the web, and
+  // nothing else inherits (issue #685).
+  it('inherits only font-size by default', () => {
     const result = normalizeOptions();
 
+    expect(result.customCSSInheritanceList).toEqual(['font-size']);
+    expect(inheritsFontSize(result)).toBe(true);
+  });
+
+  // An app that turns inheritance on itself asked for Lynx's whole list, as
+  // the option always meant.
+  it("inherits Lynx's whole list when the app turns inheritance on without one", () => {
+    const result = normalizeOptions({ enableCSSInheritance: true });
+
+    expect(result.enableCSSInheritance).toBe(true);
     expect(result.customCSSInheritanceList).toBeUndefined();
+    expect(inheritsFontSize(result)).toBe(true);
+  });
+
+  it('inherits nothing when the app turns inheritance off', () => {
+    const result = normalizeOptions({ enableCSSInheritance: false });
+
+    expect(inheritsFontSize(result)).toBe(false);
+  });
+
+  it("tells whether an app's own list passes font-size down", () => {
+    expect(
+      inheritsFontSize(
+        normalizeOptions({ customCSSInheritanceList: ['color'] }),
+      ),
+    ).toBe(false);
+    // An empty list is Lynx's own, which has font-size.
+    expect(
+      inheritsFontSize(normalizeOptions({ customCSSInheritanceList: [] })),
+    ).toBe(true);
+  });
+
+  it('tells whether more than font-size inherits', () => {
+    expect(inheritsMoreThanFontSize(normalizeOptions())).toBe(false);
+    expect(
+      inheritsMoreThanFontSize(
+        normalizeOptions({ enableCSSInheritance: true }),
+      ),
+    ).toBe(true);
+    expect(
+      inheritsMoreThanFontSize(
+        normalizeOptions({ customCSSInheritanceList: ['color'] }),
+      ),
+    ).toBe(true);
+    expect(
+      inheritsMoreThanFontSize(
+        normalizeOptions({
+          enableCSSInheritance: false,
+          customCSSInheritanceList: ['color'],
+        }),
+      ),
+    ).toBe(false);
   });
 
   it('partial overrides merge correctly', () => {

@@ -222,7 +222,7 @@ If a screen isn't ready for the largest sizes, cap the scale, or turn it off, wi
 
 Check a screen at the largest sizes: in the iOS Simulator, with Xcode's **Environment Overrides** or `xcrun simctl ui booted content_size accessibility-extra-extra-extra-large`, and on Android with `adb shell settings put system font_scale 2.0`. Look for anything with a fixed height in `px` that the text now overflows.
 
-A `<text>` with no font size of its own draws at the page's size, `1rem`, so it grows too. Give a `<text>` a size in `px` only when it mustn't grow.
+A `<text>` with no font size of its own takes its parent's, which is the page's unless an element above it sets one, so it grows too. It doesn't if that size is in `px`: under a `<view>` with `font-size: 18px`, it stays 18px. Give a `<text>` a size in `px` only when it mustn't grow.
 
 ## Test with a screen reader
 

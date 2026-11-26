@@ -139,7 +139,7 @@ What carries over:
 
 What doesn't carry over:
 
-- **Inline styles don't inherit.** Only classes and stylesheet rules pass text styles down: `<div style="color: red">` colors no text but its own.
+- **Inline styles inherit as rules do.** An inline `style` or `[style.x]` binding passes text styles down to HTML text tags and loose text: `<div style="color: red">` colors the `<p>` inside it, and `<text style="font-size: 18px">` the `<b>` inside it.
 - **An inline tag in a `<text>` you write matches that `<text>`.** That `<text>` inherits nothing, so the tag takes only the styles the `<text>` sets itself. `<text>Total: <b>{{ sum }}</b></text>` stays one size, whatever the page's font size.
 - **An inline tag in a line draws no box.** On iOS and Android, a `<span>` or `<code>` in the middle of a line shows its background behind its letters, without padding, borders or rounded corners. A badge on a line of its own keeps them.
 - **Inline text tags keep their browser text styles.** The build makes `<b>` and `<strong>` bold, `<em>`, `<i>`, `<cite>`, `<dfn>` and `<var>` italic, `<u>` and `<ins>` underlined, `<s>` and `<del>` struck through, `<code>`, `<kbd>` and `<samp>` monospace, `<small>` smaller, `<sub>` and `<sup>` smaller and lowered or raised, and `<mark>` black on yellow. An `<a>` with an `href` is underlined in the link color (lighter in dark mode), and an `<abbr>` with a `title` has a dotted underline. Your own CSS for them wins, as it would in a browser. The differences:

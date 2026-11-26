@@ -88,4 +88,4 @@ Build and page config:
 
 ## Versions
 
-Exact, with `package-lock.json`: `@lynx-js/react` 0.129.3, `@lynx-js/rspeedy` 0.18.6, `@lynx-js/react-rsbuild-plugin` 0.22.3, `@lynx-js/template-webpack-plugin` 0.16.8 (the one the React plugin uses, for the page-config hook), `@lynx-js/types` 4.4.2, `@tanstack/react-query` 5.108.1, `zustand` 5.1.0, `typescript` 6.0.3. The shell is `@blotch/angular-lynx-native` from this repository (Lynx 4.1.0 XCFrameworks, `lynx-ios-4.1.0-3`).
+Exact, with `package-lock.json`: `@lynx-js/react` 0.129.4, `@lynx-js/rspeedy` 0.19.0, `@lynx-js/react-rsbuild-plugin` 0.22.4, `@lynx-js/template-webpack-plugin` 0.16.9 (the one the React plugin uses, for the page-config hook), `@lynx-js/types` 4.4.2, `@tanstack/react-query` 5.108.4, `zustand` 5.1.0, `typescript` 6.0.3. The shell is `@blotch/angular-lynx-native` from this repository (Lynx 4.1.0 XCFrameworks, `lynx-ios-4.1.0-3`).

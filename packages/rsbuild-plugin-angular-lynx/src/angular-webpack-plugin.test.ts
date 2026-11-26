@@ -1039,6 +1039,7 @@ describe('AngularWebpackPlugin', () => {
           enableElementInvokeUIMethodPendingTask: true,
           enableMultiTouch: false,
           enableDisexposureWhenBackground: false,
+          fontScaleEffectiveOnlyOnSp: true,
         });
         expect(
           configOf(new AngularWebpackPlugin({ preferredFps: 'auto' })),
@@ -1142,6 +1143,7 @@ describe('AngularWebpackPlugin', () => {
           enableElementInvokeUIMethodPendingTask: true,
           enableMultiTouch: false,
           enableDisexposureWhenBackground: false,
+          fontScaleEffectiveOnlyOnSp: true,
         });
       });
     });

@@ -190,6 +190,40 @@ export class Banner {
 
 The apps `ng build --platform` makes send the settings, and the web preview reads the browser's. See [`LynxAccessibilitySettings`](/api/angular-lynx/accessibility#lynxaccessibilitysettings) for where each comes from. The [Glass](/dolan/glass) component follows them on its own.
 
+## Follow the phone's text size
+
+Apps from `ng build --platform` follow the text size the person chose: Dynamic Type on iOS (**Settings → Display & Brightness → Text Size**, and the larger sizes under **Accessibility → Display & Text Size**), and the font size on Android (**Settings → Display → Font size**). It changes while the app is open too.
+
+The page's root font size grows by the person's scale, so everything sized in `rem` grows with it: Tailwind's `text-base`, `h-12` and `p-4`, and the [Dolan UI](/dolan/) components. A size in `px` stays as written, for the few labels that mustn't grow:
+
+```html
+<text class="text-base">Grows with the phone's text</text>
+<text style="font-size: 12px">Stays at 12px</text>
+```
+
+To change a layout that can't simply grow, such as a row that puts its label under the icon at a large size, read `textScale()`:
+
+```typescript title="src/app/row.ts"
+readonly #settings = inject(LynxAccessibilitySettings);
+
+// 1 at the default size, about 3.1 at iOS's largest.
+protected readonly stacked = computed(() => this.#settings.textScale() > 1.5);
+```
+
+If a screen isn't ready for the largest sizes, cap the scale, or turn it off, with `textScaling` in the build target's options in `angular.json`:
+
+```json title="angular.json"
+"options": {
+  "textScaling": { "max": 1.6 }
+}
+```
+
+`"textScaling": false` keeps the text at its default size. The web preview and Lynx Explorer stay at the default size.
+
+Check a screen at the largest sizes: in the iOS Simulator, with Xcode's **Environment Overrides** or `xcrun simctl ui booted content_size accessibility-extra-extra-extra-large`, and on Android with `adb shell settings put system font_scale 2.0`. Look for anything with a fixed height in `px` that the text now overflows.
+
+A `<text>` with no font size of its own draws at the page's size, `1rem`, so it grows too. Give a `<text>` a size in `px` only when it mustn't grow.
+
 ## Test with a screen reader
 
 **On an iPhone:**

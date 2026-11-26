@@ -51,10 +51,13 @@ import {
   LAYOUT_FLAG,
   NOT_BLOCK_CONTAINERS,
   TAKES_RAW_TEXT,
+  hasAncestorTextRules,
   inheritanceStyleFor,
   isBlankText,
   isBlockDisplay,
   isRowOrientation,
+  ancestorTextRulesRead,
+  matchedStyleFlagsFor,
   styleFlagsFor,
 } from './text-flow';
 import {
@@ -324,6 +327,19 @@ const isWholeClassList = (classes: string): boolean => {
   if (classes === '') return true;
   const names = classes.split(' ');
   return names.every(isPlainClassName) && new Set(names).size === names.length;
+};
+
+/**
+ * The classes in one list and not the other, either way: the ones a class
+ * string's change added or removed (see LynxElement's #rulesChanged).
+ */
+const changedTokens = (
+  before: Iterable<string>,
+  after: ReadonlySet<string>,
+): string[] => {
+  const old = new Set(before);
+  const changed = [...after].filter((name) => !old.delete(name));
+  return [...changed, ...old];
 };
 
 /**
@@ -1255,6 +1271,12 @@ export class LynxElement implements BaseLynxElement {
           .split(/\s+/)
           .filter(Boolean),
       );
+      // What it had, to tell which classes changed (see #rulesChanged):
+      // unknown while native has classes the string doesn't.
+      const before =
+        this.#nativeClasses === false
+          ? undefined
+          : (this.#classNames ?? this.#classes.split(/\s+/).filter(Boolean));
       // The split's names are plain, and the scope classes Angular and the
       // runtime name are too; an odd one an app gave setRuntimeClass leaves
       // the set to the next addClass.
@@ -1286,13 +1308,16 @@ export class LynxElement implements BaseLynxElement {
       }
       this.#classes = classes;
       this.#classNames = plain ? names : null;
-      this.#rulesChanged();
+      this.#rulesChanged(before && changedTokens(before, names));
     } else if (name === 'style') {
       this.setInlineStyles(value);
     } else if (name === 'id') {
       __SetID(this.element, value);
+      const before = this.#id;
       this.#id = value ?? null;
-      this.#rulesChanged();
+      this.#rulesChanged(
+        [before, this.#id].filter((id) => id).map((id) => `#${id}`),
+      );
     } else if (name.startsWith('data-')) {
       // __SetDataset gets the whole dataset, never the one key. The web
       // preview's replaces the element's dataset with the object it's given
@@ -1553,15 +1578,50 @@ export class LynxElement implements BaseLynxElement {
   /**
    * The element's classes or id changed: so may the text styles it sets
    * itself, which it doesn't inherit, and whether it lays out lines.
+   * `changed` holds the tokens added or removed (see #styleTokens), when
+   * they're known.
    */
-  #rulesChanged(): void {
+  #rulesChanged(changed?: Iterable<string>): void {
     // A Lynx <text>'s rules decide which styles the HTML text tags inside it
     // inherit, and an HTML text tag's decide its own and those of the tags
     // inside it (see #drawnAtDefault).
     if (!this.#anonymous && (this.#webText || this.tagName === 'text')) {
       this.#inheritAgain();
     }
+    // A rule of an HTML text tag or a Lynx <text> further down may need this
+    // element, as `.card b` needs a `.card` above the `<b>` (see
+    // #ownTextStyles and #drawnAtDefault). Only one whose rules require a
+    // changed token of an ancestor can have changed: matching them all
+    // again below a page that toggles `dark` cost a few milliseconds for
+    // every 2,000 tags.
+    if (
+      !this.#anonymous &&
+      (changed === undefined || ancestorTextRulesRead(changed))
+    ) {
+      this.#ancestorsChanged();
+    }
     this.#layoutChanged();
+  }
+
+  /**
+   * The elements above this one, or their classes, changed: gives each
+   * #webText element from here down its inherited styles again, as which of
+   * its own rules apply may have changed with them (see #ownTextStyles), and
+   * which of the rules of a Lynx `<text>` around it (see #drawnAtDefault).
+   * Only a #webText element and an element with one inside (which has
+   * #passesTextStyles) can have any, and only a rule that requires an
+   * ancestor can change.
+   *
+   * It goes on below each `<text>`: an HTML `<p>` is a `<text>` too, with
+   * tags of its own inside, and so is a Lynx `<text>` inside it. A list's
+   * items are outside its #children (see virtualChildren).
+   */
+  #ancestorsChanged(): void {
+    if (!(this.#webText || this.#passesTextStyles)) return;
+    if (!hasAncestorTextRules()) return;
+    if (this.#webText) LynxElement.#pendingInheritance.add(this);
+    for (const child of this.#children) child.#ancestorsChanged();
+    for (const item of this.virtualChildren()) item.#ancestorsChanged();
   }
 
   /**
@@ -1589,10 +1649,17 @@ export class LynxElement implements BaseLynxElement {
   /**
    * The tokens a style index rule's selector can require of this element
    * (see styleFlagsFor): its classes, its id and its tag.
+   *
+   * Native's class list, while #classes may not hold all of it (see
+   * #nativeClasses): an element a server render's snapshot made has classes
+   * only native knows, and a `.card` there must still count for the `.card
+   * .total` of a `<text>` rendered inside it (see #matchedStyleFlags).
    */
   #styleTokens(): Set<string> {
     const tokens = new Set(
-      this.#classNames ?? this.#classes.split(/\s+/).filter(Boolean),
+      this.#nativeClasses === false
+        ? __GetClasses(this.element)
+        : (this.#classNames ?? this.#classes.split(/\s+/).filter(Boolean)),
     );
     if (this.#id) tokens.add(`#${this.#id}`);
     tokens.add(`<${this.tagName}>`);
@@ -1637,7 +1704,7 @@ export class LynxElement implements BaseLynxElement {
    */
   #applyInheritance(): void {
     const style = inheritanceStyleFor(
-      this.#ownTextStyles() | this.#drawnAtDefault(),
+      this.#ownTextStyles(true) | this.#drawnAtDefault(),
     );
     if (style === this.#inheritStyle) return;
     this.#inheritStyle = style;
@@ -1652,12 +1719,18 @@ export class LynxElement implements BaseLynxElement {
    * Lynx, as it's a `<text>`, but not on the web (see #applyInheritance): it
    * reads the variable for those, and has no copy of them for the tags inside
    * it (see LYNX_TEXT_INHERITANCE_CLASS).
+   *
+   * Each rule is checked against the elements above it (see
+   * #matchedStyleFlags): `.card b { font-size: 24px }` counted for every
+   * `<b>` left a `<b>` outside `.card` at Lynx's default size, not that of
+   * the text around it (issue #667). A rule for a state counts when
+   * `inState` is true (see matchedStyleFlagsFor).
    */
-  #ownTextStyles(): number {
+  #ownTextStyles(inState: boolean): number {
     if (this.#anonymous) return 0;
     const tokens = this.#styleTokens();
     if (this.#webText) tokens.delete('<text>');
-    return styleFlagsFor(tokens) & ALL_TEXT_PROPERTIES;
+    return this.#matchedStyleFlags(tokens, inState) & ALL_TEXT_PROPERTIES;
   }
 
   /**
@@ -1668,32 +1741,60 @@ export class LynxElement implements BaseLynxElement {
    *
    * A Lynx `<text>` reads none of the variables (see text-flow.ts), so it
    * draws a property its rules don't set at Lynx's default, whatever its
-   * ancestors set: `font-size` at 14px under the theme's 16px page. The
-   * variable an inline tag in it reads comes from those ancestors, so
-   * `<text>Total: <b>12</b></text>` drew the `<b>` larger than the text
-   * beside it (issue #646). Left out, the tag draws at the default too, or
+   * ancestors set: `color` at black under a red `<view>`. The variable an
+   * inline tag in it reads comes from those ancestors, so before the native
+   * build gave every `<text>` `font-size: 1rem` (issue #673), which counts
+   * as the `<text>`'s own rule, `<text>Total: <b>12</b></text>` drew the
+   * `<b>` at the theme's 16px beside 14px text (issue #646). Left out, the tag draws at the default too, or
    * at the `<text>`'s `color` and `font-family`, which Lynx passes to a
    * `<text>` inside a `<text>`; the web preview inherits through the DOM
    * either way. A property one of them does set has its copy in the variable
    * (each gets INHERITANCE_CLASS, see #passTextStyles), which the tag reads,
    * as before.
    *
-   * The style index knows only the last part of a rule's selector (see
-   * styleFlagsFor), so a rule such as `.card .total { font-size: 24px }`
-   * counts for a `<text class="total">` outside `.card` too. There the tag
-   * still reads the variable, and takes its ancestors' value, as every inline
-   * tag in a Lynx `<text>` did before.
+   * Which of their rules apply is checked against the elements above them
+   * (see matchedStyleFlagsFor): a rule such as `.card .total { font-size:
+   * 24px }` that counted for a `<text class="total">` outside `.card` too
+   * let the tag read the variable, and take its ancestors' value, there
+   * (issue #652). It's worked out again when their classes change, or those
+   * of an element above them (see #ancestorsChanged).
    */
   #drawnAtDefault(): number {
     let set = 0;
     for (let parent = this.#jsParent; parent; parent = parent.#jsParent) {
+      // Above the HTML text tags, only a Lynx <text>'s rules count: the
+      // element around the tags is matched only if it's one.
+      if (!parent.#webText && parent.tagName !== 'text') return 0;
       // The rules that give each one a copy of the property (see
-      // #ownTextStyles): an HTML text tag's leave out those naming `text`.
-      set |= parent.#ownTextStyles();
-      if (parent.#webText) continue;
-      return parent.tagName === 'text' ? ALL_TEXT_PROPERTIES & ~set : 0;
+      // #ownTextStyles): an HTML text tag's leave out those naming `text`,
+      // and each is checked against the elements above it. A state's rule
+      // counts for none of them, as the <text> draws at the default
+      // without it.
+      set |= parent.#ownTextStyles(false);
+      if (!parent.#webText) return ALL_TEXT_PROPERTIES & ~set;
     }
     return 0;
+  }
+
+  /**
+   * The flags of the app's rules that apply to this element, with these of
+   * its tokens, checked against its ancestors (see matchedStyleFlagsFor).
+   * It reads them up the tree as a list item's parent is its list (see
+   * #passTextStyles), and only as far as a rule needs. The ancestors keep
+   * every token, as Lynx matches them natively: a `<p>` above is a `<text>`
+   * there.
+   */
+  #matchedStyleFlags(tokens: ReadonlySet<string>, inState: boolean): number {
+    const ancestors: Set<string>[] = [];
+    let next = this._virtualParent ?? this.#jsParent;
+    const ancestorAt = (index: number): Set<string> | undefined => {
+      while (ancestors.length <= index && next) {
+        ancestors.push(next.#styleTokens());
+        next = next._virtualParent ?? next.#jsParent;
+      }
+      return ancestors[index];
+    };
+    return matchedStyleFlagsFor(tokens, ancestorAt, inState);
   }
 
   /**
@@ -2096,8 +2197,10 @@ export class LynxElement implements BaseLynxElement {
     if (newChild.#webText || newChild.#passesTextStyles) {
       this.#passTextStyles();
     }
-    // What it inherits depends on its new parent (see #drawnAtDefault).
+    // What it inherits depends on its new parent (see #drawnAtDefault),
+    // and so do the tags in a Lynx <text> inside it.
     if (newChild.#webText) newChild.#inheritAgain();
+    newChild.#ancestorsChanged();
     // And a <q>'s marks on how many <q>s it's in (see #setQuoteDepth).
     if (newChild.#quoteMarks || newChild.#holdsQuote) {
       this.#holdQuote();
@@ -2147,6 +2250,7 @@ export class LynxElement implements BaseLynxElement {
    */
   adoptVirtualChild(child: LynxElement): void {
     if (child.#webText || child.#passesTextStyles) this.#passTextStyles();
+    child.#ancestorsChanged();
   }
 
   /**
@@ -2384,7 +2488,7 @@ export class LynxElement implements BaseLynxElement {
 
   addClass(name: string): void {
     this.#addClassName(name);
-    this.#rulesChanged();
+    this.#rulesChanged([name]);
     scheduleSettleFlush();
   }
 
@@ -2499,7 +2603,7 @@ export class LynxElement implements BaseLynxElement {
       // once, it has what #classes says from here.
       this.#nativeClasses = isWholeClassList(joined);
     }
-    this.#rulesChanged();
+    this.#rulesChanged([name]);
     scheduleSettleFlush();
   }
 

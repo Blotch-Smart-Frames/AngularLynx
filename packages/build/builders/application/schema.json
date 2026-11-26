@@ -178,6 +178,24 @@
       "default": true,
       "description": "Whether the page fills the screen, under the status bar and the home indicator, with CSS env(safe-area-inset-*) carrying the insets. false lays the page out inside the safe area, with env() at 0."
     },
+    "textScaling": {
+      "description": "Whether the app's text follows the phone's text size (iOS's Dynamic Type, Android's font size): the page's root font size grows by the user's scale, so every size in rem grows with it, and a size in px doesn't. false keeps the text at its default size; { \"max\": 1.6 } stops it growing past 1.6 times that.",
+      "default": true,
+      "oneOf": [
+        { "type": "boolean" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "max": {
+              "type": "number",
+              "minimum": 1,
+              "description": "The largest scale the text takes, such as 1.6. Without it, the text follows the phone's largest sizes."
+            }
+          }
+        }
+      ]
+    },
     "icon": {
       "type": "string",
       "description": "The app icon: a 1024×1024 PNG without transparency, relative to the project root. iOS uses it as it is; Android gets it at each screen density, round, and as an adaptive icon."

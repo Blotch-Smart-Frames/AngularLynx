@@ -1,0 +1,41 @@
+/*
+ * The root font size of an app that sets none, which is what `1rem` and
+ * text with no size of its own resolve against: Lynx's default, 14px, written
+ * out so the build makes it follow the phone's text size (text-scale.ts turns
+ * it into 14sp). Without a rule, Lynx's default root stays at 14px whatever
+ * the phone's setting.
+ *
+ * Only the native bundle gets this file, before every other import, so an
+ * app's own `page { font-size }` (the @blotch/ui theme's 16px) comes later and
+ * wins. The web preview keeps the browser's size.
+ */
+page {
+  font-size: 14px;
+}
+
+/*
+ * The page's font size for a Lynx `<text>` that sets none, as a browser
+ * gives text with no size of its own the root's. Lynx inherits no text style
+ * (without `enableCSSInheritance`), and draws such a `<text>` at its built-in
+ * 14px (`DEFAULT_FONT_SIZE_DP` in core/renderer/tasm/config.h), whatever the
+ * page's size: so `<text>Hello</text>` stayed at 14px beside a 16px
+ * `text-base` under the theme's `page { font-size: 16px }`, and didn't grow
+ * with the phone's text size, which only the page's `sp` takes (issue #673).
+ * `1rem` is the page's size, and grows with it.
+ *
+ * The type selector loses to any class, id or inline style, and this file
+ * comes before the app's, so `text-xl` or an app's own `text` rule still
+ * wins. The build copies it to the font size variable of a `<text>` with
+ * HTML inline tags inside (text-inheritance.ts), and the style index counts
+ * it as the `<text>`'s own, so `<text>Total: <b>12</b></text>` draws the
+ * `<b>` at the same 1rem (see the runtime's LynxElement.#drawnAtDefault). An
+ * HTML text tag is a `<text>` on Lynx too, but leaves rules naming `text`
+ * out of its own and reads its parent's variable over them, as before.
+ *
+ * Only the native bundle: in the web preview each `<text>` is an element of
+ * the browser's, which takes its parent's size already, and this rule would
+ * replace that with the root's.
+ */
+text {
+  font-size: 1rem;
+}

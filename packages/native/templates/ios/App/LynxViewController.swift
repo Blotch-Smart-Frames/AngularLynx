@@ -3,9 +3,30 @@ import UIKit
 
 /// Hosts the app's single LynxView. Angular Router does all navigation inside
 /// it, so the shell never pushes another view controller.
-final class LynxViewController: UIViewController {
+final class LynxViewController: UIViewController, LynxViewLifecycle {
   private var lynxView: LynxView?
+  /// The font scale the LynxView was built with, which Lynx gives each engine
+  /// it sets up (see lynxView(_:didLoadFinishedWithUrl:)).
+  private var builtFontScale: CGFloat = 1
   private var lastViewport: CGRect = .zero
+
+  /// Where the app is, for LynxAppState: "active", "inactive" or
+  /// "background". Sent in the global props, and again as the scene's
+  /// activation changes (appStateDidChange). It starts from the app's state
+  /// when the view loads, which is "inactive" while the app launches: the
+  /// scene becomes active just after.
+  private var appState = LynxViewController.appState(of: UIApplication.shared.applicationState)
+
+  /// The block observers observeAppState() adds. NotificationCenter keeps a
+  /// block observer until it's removed, and iOS can disconnect the scene and
+  /// build a new controller, so deinit removes them.
+  private var appStateObservers: [NSObjectProtocol] = []
+
+  deinit {
+    for observer in appStateObservers {
+      NotificationCenter.default.removeObserver(observer)
+    }
+  }
 
   /// Whether the page fills the screen, under the status bar and the home
   /// indicator: angular.json's `edgeToEdge`, which the generator writes into
@@ -13,6 +34,15 @@ final class LynxViewController: UIViewController {
   /// and gets the default.
   private let edgeToEdge =
     Bundle.main.object(forInfoDictionaryKey: "AngularLynxEdgeToEdge") as? Bool ?? true
+
+  /// Whether the app's text follows Dynamic Type, and the largest scale it
+  /// takes: angular.json's `textScaling`, which the generator writes into
+  /// Info.plist. A project generated before the option existed follows it,
+  /// without a cap.
+  private let textScaling =
+    Bundle.main.object(forInfoDictionaryKey: "AngularLynxTextScaling") as? Bool ?? true
+  private let maxTextScale =
+    (Bundle.main.object(forInfoDictionaryKey: "AngularLynxMaxTextScale") as? NSNumber)?.doubleValue
 
   override func viewDidLoad() {
     super.viewDidLoad()
@@ -52,6 +82,7 @@ final class LynxViewController: UIViewController {
     config.register(ShortcutsModule.self)
     // `ng serve --platform ios`'s live reload, in the development build.
     DevServer.shared.register(in: config)
+    builtFontScale = textScale()
     let lynxView = LynxView { builder in
       builder.config = config
       // Lynx's engine thread, which runs the main thread's JavaScript (the
@@ -69,7 +100,10 @@ final class LynxViewController: UIViewController {
       // them on its engine thread, not the UI thread (see AngularLynxWebGL.h).
       builder.enableMTSModule = true
       builder.screenSize = screenSize
-      builder.fontScale = 1.0
+      // The user's text size (see textScale()). The build tells Lynx to
+      // scale only `sp` lengths by it, which the page's root font size is
+      // written in, so every rem grows with it and a px size doesn't.
+      builder.fontScale = self.builtFontScale
       builder.enableGenericResourceFetcher = .true
       builder.genericResourceFetcher = fetcher
       builder.templateResourceFetcher = fetcher
@@ -79,6 +113,7 @@ final class LynxViewController: UIViewController {
     lynxView.layoutHeightMode = .exact
     view.addSubview(lynxView)
     self.lynxView = lynxView
+    lynxView.addLifecycleClient(self)
     // Who hears that a shortcut ran, or a link arrived, while the app is open.
     ShortcutCenter.shared.lynxView = lynxView
     LinkCenter.shared.lynxView = lynxView
@@ -117,10 +152,84 @@ final class LynxViewController: UIViewController {
       NotificationCenter.default.addObserver(
         self, selector: #selector(accessibilitySettingsDidChange), name: name, object: nil)
     }
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(contentSizeCategoryDidChange),
+      name: UIContentSizeCategory.didChangeNotification, object: nil)
+
+    // Send the app's state again each time the scene's activation changes.
+    observeAppState()
   }
 
   @objc private func accessibilitySettingsDidChange() {
     lynxView?.updateGlobalProps(with: globalProps())
+  }
+
+  /// The scene's activation changes, as the state each one leads to. Lynx
+  /// tells the app's code nothing when it leaves the screen or comes back,
+  /// so the shell sends the state itself (LynxAppState). Resigning active,
+  /// for Control Center, Notification Center, the app switcher or a call,
+  /// is "inactive", and leaving the screen is "background".
+  private static let appStateNotifications: [(Notification.Name, String)] = [
+    (UIScene.didActivateNotification, "active"),
+    (UIScene.willDeactivateNotification, "inactive"),
+    (UIScene.didEnterBackgroundNotification, "background"),
+    (UIScene.willEnterForegroundNotification, "inactive"),
+  ]
+
+  private static func appState(of state: UIApplication.State) -> String {
+    switch state {
+    case .active: return "active"
+    case .background: return "background"
+    default: return "inactive"
+    }
+  }
+
+  private func observeAppState() {
+    appStateObservers = Self.appStateNotifications.map { name, state in
+      NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) {
+        [weak self] _ in
+        guard let self, self.appState != state else { return }
+        self.appState = state
+        self.lynxView?.updateGlobalProps(with: self.globalProps())
+      }
+    }
+  }
+
+  /// The user chose another text size while the app was open: the page's
+  /// root font size, and with it every rem, takes the new scale at once, as
+  /// UIKit's own text does, and LynxAccessibilitySettings.textScale() hears it.
+  @objc private func contentSizeCategoryDidChange() {
+    lynxView?.updateFontScale(textScale())
+    lynxView?.updateGlobalProps(with: globalProps())
+  }
+
+  /// A load sets up a new engine, as the development build's reload does, and
+  /// Lynx gives it the font scale the LynxView was built with: updateFontScale
+  /// doesn't change that. So a size chosen since then would be lost on reload
+  /// while `textScale` kept it; give the new page the current scale.
+  func lynxView(_ view: LynxView!, didLoadFinishedWithUrl url: String!) {
+    let scale = textScale()
+    if scale != builtFontScale {
+      view.updateFontScale(scale)
+    }
+  }
+
+  /// How much larger than the default the user's Dynamic Type size draws body
+  /// text: 1 at the default (Large), about 1.24 at the largest of the
+  /// standard sizes and 3.1 at the largest accessibility size, and below 1 at
+  /// the smaller sizes. Capped at angular.json's `textScaling.max`, and 1
+  /// with `"textScaling": false`.
+  ///
+  /// Read from the app's content size category rather than the view's
+  /// traits, which may not have changed yet when the notification arrives.
+  private func textScale() -> CGFloat {
+    guard textScaling else { return 1 }
+    let traits = UITraitCollection(
+      preferredContentSizeCategory: UIApplication.shared.preferredContentSizeCategory)
+    let body: CGFloat = 17
+    let scale = UIFontMetrics(forTextStyle: .body).scaledValue(for: body, compatibleWith: traits) / body
+    guard let maxTextScale else { return scale }
+    return min(scale, CGFloat(maxTextScale))
   }
 
   @available(iOS, deprecated: 17.0, message: "registerForTraitChanges in viewDidLoad replaces it")
@@ -177,10 +286,11 @@ final class LynxViewController: UIViewController {
   /// The global props the runtime reads: `theme` (LynxTheme), `isNotchScreen`
   /// (LynxSafeArea), `appLocale` (LynxLocale), `appTimeZone` (the `intl`
   /// build option's Intl.DateTimeFormat), the accessibility settings
-  /// (LynxAccessibilitySettings), `osVersion` (LynxSystemInfo) and
-  /// `initialURL` (LynxLinking and the router), plus the safe-area insets and
-  /// `edgeToEdge`, which env(safe-area-inset-*) reads. The Android shell
-  /// sends the same keys, and Lynx Explorer sends theme and isNotchScreen too.
+  /// and text scale (LynxAccessibilitySettings), `appState` (LynxAppState),
+  /// `osVersion` (LynxSystemInfo) and `initialURL` (LynxLinking and the
+  /// router), plus the safe-area insets and `edgeToEdge`, which
+  /// env(safe-area-inset-*) reads. The Android shell sends the same keys, and
+  /// Lynx Explorer sends theme and isNotchScreen too.
   private func globalProps() -> LynxTemplateData {
     let insets = view.safeAreaInsets
     var props: [String: Any] = [
@@ -203,6 +313,11 @@ final class LynxViewController: UIViewController {
       "reduceTransparency": UIAccessibility.isReduceTransparencyEnabled,
       // Increase Contrast.
       "increaseContrast": UIAccessibility.isDarkerSystemColorsEnabled,
+      // The text size, as the LynxView's font scale has it
+      // (LynxAccessibilitySettings.textScale).
+      "textScale": textScale(),
+      // Whether the app is in the foreground, taking touches.
+      "appState": appState,
       // Lynx builds the main thread's SystemInfo, where Angular runs, without
       // the OS version, so LynxSystemInfo reads it from here. The glass
       // components need it: blur-view draws Liquid Glass only from iOS 26.

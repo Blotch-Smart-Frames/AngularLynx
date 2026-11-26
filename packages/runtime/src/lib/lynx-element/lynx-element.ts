@@ -1556,6 +1556,12 @@ export class LynxElement implements BaseLynxElement {
    * either way. A property one of them does set has its copy in the variable
    * (each gets INHERITANCE_CLASS, see #passTextStyles), which the tag reads,
    * as before.
+   *
+   * The style index knows only the last part of a rule's selector (see
+   * styleFlagsFor), so a rule such as `.card .total { font-size: 24px }`
+   * counts for a `<text class="total">` outside `.card` too. There the tag
+   * still reads the variable, and takes its ancestors' value, as every inline
+   * tag in a Lynx `<text>` did before.
    */
   #drawnAtDefault(): number {
     let set = 0;

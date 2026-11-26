@@ -124,7 +124,7 @@ Like an HTML canvas:
 
 - `width` and `height` are the drawing buffer's size in pixels, 300 by 150 to start. The element's CSS size is how big it's shown.
 - `getContext('2d')` and `getContext('webgl2')` return the same context every time. A canvas has the kind of context it was first asked for: after `getContext('2d')`, `getContext('webgl2')` is `null`, and the other way round. `'webgl'` (WebGL 1) is `null`: three.js needs WebGL2 anyway.
-- The build includes the WebGL2 context only when a module of your app or its libraries names `'webgl2'`, as three.js and `getContext('webgl2')` do, so an app that never draws in 3D doesn't load its code (about 37 kB of the main-thread script). A context name built at runtime gets `null` and a console warning: write the name out, or call `ɵenableWebGL2()` from `@blotch/angular-lynx` before `getContext()`.
+- The build includes the WebGL2 context only when a module of your app or its libraries names `'webgl2'`, as three.js and `getContext('webgl2')` do, so an app that never draws in 3D doesn't load its code (about 37 kB of the main-thread script). So on iOS and Android, a context name built at runtime gets `null` and a console warning, unless another module named `'webgl2'`: write the name out, or call `ɵenableWebGL2()` from `@blotch/angular-lynx` before `getContext()`. The web preview's canvas is the browser's, which has its own context.
 - Pointer events (`pointerdown`, `pointermove`, `pointerup` and the rest) work, from the finger's touches. They work on every element, not only a canvas: see [Element events](/api/angular-lynx/element-events).
 - `clientWidth`, `clientHeight` and `getBoundingClientRect()` answer from the element's last layout, and `ResizeObserver` reports its size as it changes.
 

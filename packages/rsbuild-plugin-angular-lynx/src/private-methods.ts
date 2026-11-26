@@ -906,7 +906,10 @@ const pureClassWrap = (
 /**
  * Whether anything in the module assigns to the variable `declaration`
  * declares, besides its own initializer: `A = …`, `A += …`, `A++` and the
- * like, as tslib's `A = __decorate([…], A)` does.
+ * like, as tslib's `A = __decorate([…], A)` does, or a destructuring
+ * assignment or a `for…in`/`for…of` head that names it (`[A] = …`,
+ * `for (A of …)`). In those two it's taken as written wherever the name
+ * appears, which may leave a class unwrapped that could have been.
  */
 const assignsAgain = (
   sourceFile: ts.SourceFile,
@@ -915,12 +918,20 @@ const assignsAgain = (
   const name = (declaration.name as ts.Identifier).text;
   const isName = (node: ts.Node): boolean =>
     ts.isIdentifier(node) && node.text === name;
+  const names = (node: ts.Node): boolean =>
+    isName(node) || !!ts.forEachChild(node, names);
   const visit = (node: ts.Node): boolean => {
     if (
       (ts.isBinaryExpression(node) &&
         node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
         node.operatorToken.kind <= ts.SyntaxKind.LastAssignment &&
-        isName(node.left)) ||
+        (isName(node.left) ||
+          ((ts.isArrayLiteralExpression(node.left) ||
+            ts.isObjectLiteralExpression(node.left)) &&
+            names(node.left)))) ||
+      ((ts.isForOfStatement(node) || ts.isForInStatement(node)) &&
+        !ts.isVariableDeclarationList(node.initializer) &&
+        names(node.initializer)) ||
       ((ts.isPrefixUnaryExpression(node) ||
         ts.isPostfixUnaryExpression(node)) &&
         (node.operator === ts.SyntaxKind.PlusPlusToken ||

@@ -2324,7 +2324,7 @@ describe('renamePrivateMethods, wrapping a class it gives a static block', () =>
 
   it('keeps an anonymous class’s name, through a const of its variable’s name', () => {
     const code = rename(
-      'var A = class { #f = null; static s = 1; g() { return this.#f + B; } }; B = 2; A.x = 1; let n = A == null;',
+      'var A = class { #f = null; static s = 1; g() { return this.#f + B; } }; B = 2; A.x = 1; let n = A == null; [B] = [A]; for (const A of []); for (B of [A]);',
     );
     expect(code).toMatch(
       /var A = \/\*#__PURE__\*\/ \(\(\) => \{ const A = class \{.*\}; return A; \}\)\(\); B = 2;/,
@@ -2349,6 +2349,11 @@ describe('renamePrivateMethods, wrapping a class it gives a static block', () =>
       'var A = class { #f = null; g() { return this.#f; } }; A += 1;',
       'var A = class { #f = null; g() { return this.#f; } }; A++;',
       'var A = class { #f = null; g() { return this.#f; } }; --A;',
+      'var A = class { #f = null; g() { return this.#f; } }; [A] = [B];',
+      'var A = class { #f = null; g() { return this.#f; } }; ({ x: [A = B] } = o);',
+      'var A = class { #f = null; g() { return this.#f; } }; ({ ...A } = o);',
+      'var A = class { #f = null; g() { return this.#f; } }; for (A of xs);',
+      'var A = class { #f = null; g() { return this.#f; } }; for ([A] in o);',
       // Destructured: there's no one name to keep.
       'var { name } = class { #f = null; g() { return this.#f; } };',
       'class A extends mixin(B) { static #t = 1; g() { return A.#t; } }',

@@ -832,8 +832,8 @@ export const renamePrivateMethods = (
  * Only a class whose definition does nothing else (see definesClassPurely),
  * and only one at the top level: a class declaration, which becomes `let X
  * = …` (an `export` stays in front of it), or the only initializer of a
- * variable statement. A default export, or a class inside an expression or
- * a function, is left as it is. The edits only insert text, so no line moves.
+ * variable statement (an anonymous one keeps its name, see below). A default
+ * export, or a class inside an expression or a function, is left as it is. The edits only insert text, so no line moves.
  */
 const pureClassWrap = (
   node: ts.ClassLikeDeclaration,
@@ -866,10 +866,72 @@ const pureClassWrap = (
   ) {
     return [];
   }
+  if (node.name) {
+    return [
+      { start, end: start, text: iife },
+      { start: end, end, text: ')()' },
+    ];
+  }
+  // An anonymous class takes its variable's name (`A.name`) only as an
+  // initializer, so inside the arrow it initializes a `const` of the same
+  // name, which it returns. That `const` is what the class's own code then
+  // reads, so the class is left alone where that would differ: where the
+  // module assigns the variable again, and where a static initializer or a
+  // computed name reads it while the class is defined, when the `const` isn't
+  // set yet (the variable was `undefined`).
+  if (!ts.isIdentifier(declaration.name)) return [];
+  const name = declaration.name.text;
+  const readsName = (child: ts.Node): boolean =>
+    (ts.isIdentifier(child) && child.text === name) ||
+    !!ts.forEachChild(child, readsName);
+  const definedWith = node.members.flatMap((member) => [
+    ...(member.name && ts.isComputedPropertyName(member.name)
+      ? [member.name]
+      : []),
+    ...(ts.isPropertyDeclaration(member) &&
+    isStatic(member) &&
+    member.initializer
+      ? [member.initializer]
+      : []),
+  ]);
+  if (definedWith.some(readsName) || assignsAgain(sourceFile, declaration)) {
+    return [];
+  }
   return [
-    { start, end: start, text: iife },
-    { start: end, end, text: ')()' },
+    { start, end: start, text: `${iife}{ const ${name} = ` },
+    { start: end, end, text: `; return ${name}; })()` },
   ];
+};
+
+/**
+ * Whether anything in the module assigns to the variable `declaration`
+ * declares, besides its own initializer: `A = …`, `A += …`, `A++` and the
+ * like, as tslib's `A = __decorate([…], A)` does.
+ */
+const assignsAgain = (
+  sourceFile: ts.SourceFile,
+  declaration: ts.VariableDeclaration,
+): boolean => {
+  const name = (declaration.name as ts.Identifier).text;
+  const isName = (node: ts.Node): boolean =>
+    ts.isIdentifier(node) && node.text === name;
+  const visit = (node: ts.Node): boolean => {
+    if (
+      (ts.isBinaryExpression(node) &&
+        node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+        node.operatorToken.kind <= ts.SyntaxKind.LastAssignment &&
+        isName(node.left)) ||
+      ((ts.isPrefixUnaryExpression(node) ||
+        ts.isPostfixUnaryExpression(node)) &&
+        (node.operator === ts.SyntaxKind.PlusPlusToken ||
+          node.operator === ts.SyntaxKind.MinusMinusToken) &&
+        isName(node.operand))
+    ) {
+      return true;
+    }
+    return !!ts.forEachChild(node, visit);
+  };
+  return visit(sourceFile);
 };
 
 /**

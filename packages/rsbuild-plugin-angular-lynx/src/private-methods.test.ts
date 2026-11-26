@@ -2322,10 +2322,35 @@ describe('renamePrivateMethods, wrapping a class it gives a static block', () =>
     ).toBe(true);
   });
 
+  it('keeps an anonymous class’s name, through a const of its variable’s name', () => {
+    const code = rename(
+      'var A = class { #f = null; static s = 1; g() { return this.#f + B; } }; B = 2; A.x = 1; let n = A == null;',
+    );
+    expect(code).toMatch(
+      /var A = \/\*#__PURE__\*\/ \(\(\) => \{ const A = class \{.*\}; return A; \}\)\(\); B = 2;/,
+    );
+    // The wrapped class is a class named A, as the initializer made it.
+    const run = new Function(
+      `${code.replace(/: [a-z]+/g, '')}; return A;`,
+    ) as () => { name: string };
+    expect(run().name).toBe('A');
+  });
+
   it('leaves alone a class that does more when it’s defined, or isn’t at the top of the module', () => {
     for (const code of [
       // Defining these does something besides making the class.
       'class A { #f = null; static s = make(); g() { return this.#f; } }',
+      'class A { #f = null; static id = ++count; g() { return this.#f; } }',
+      'class A { #f = null; static id = --count; g() { return this.#f; } }',
+      // An anonymous class whose own `const` would read differently.
+      'var A = class { #f = null; static self = A; g() { return this.#f; } };',
+      'var A = class { #f = null; [A]() { return this.#f; } };',
+      'var A = class { #f = null; g() { return this.#f; } }; A = decorate(A);',
+      'var A = class { #f = null; g() { return this.#f; } }; A += 1;',
+      'var A = class { #f = null; g() { return this.#f; } }; A++;',
+      'var A = class { #f = null; g() { return this.#f; } }; --A;',
+      // Destructured: there's no one name to keep.
+      'var { name } = class { #f = null; g() { return this.#f; } };',
       'class A extends mixin(B) { static #t = 1; g() { return A.#t; } }',
       'class A { #f = null; [key()]() { return this.#f; } }',
       'class A { #f = null; static { setUp(); } g() { return this.#f; } }',

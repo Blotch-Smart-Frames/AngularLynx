@@ -382,7 +382,14 @@ export const isPure = (node: ts.Expression): boolean => {
   }
   if (ts.isVoidExpression(node)) return isPure(node.expression);
   if (ts.isParenthesizedExpression(node)) return isPure(node.expression);
-  if (ts.isPrefixUnaryExpression(node)) return isPure(node.operand);
+  // `++x` and `--x` write to `x`.
+  if (ts.isPrefixUnaryExpression(node)) {
+    return (
+      node.operator !== ts.SyntaxKind.PlusPlusToken &&
+      node.operator !== ts.SyntaxKind.MinusMinusToken &&
+      isPure(node.operand)
+    );
+  }
   // `typeof` of an undeclared name is `'undefined'`, not a ReferenceError.
   if (ts.isTypeOfExpression(node)) return isPure(node.expression);
   if (ts.isConditionalExpression(node)) {

@@ -75,10 +75,12 @@ const SALES = [
             #signature
             class="h-[180px] w-full"
             accessibility-label="Signature pad"
+            [consume-slide-event]="[[-180, 180]]"
             (pointerdown)="startStroke($event)"
             (pointermove)="continueStroke($event)"
             (pointerup)="endStroke()"
             (pointercancel)="endStroke()"
+            (lostpointercapture)="endStroke()"
           ></canvas>
         </view>
         @if (saved(); as image) {
@@ -183,6 +185,8 @@ export class App {
   }
 
   startStroke(event: PointerEvent): void {
+    // The stroke follows the pointer even when it leaves the pad.
+    this.signature().nativeElement.setPointerCapture(event.pointerId);
     this.#last = { x: event.offsetX, y: event.offsetY };
   }
 

@@ -179,7 +179,7 @@ The `Blob` is ready to show in an `<image>`, upload, or [share](/guide/share). T
 - **With WebGL, call it right after you draw.** A 2D canvas keeps what's drawn on it, but WebGL clears the drawing buffer once a frame is on screen, as in a browser. So call `toBlob()` in the same function that draws, such as right after three.js's `renderer.render()`, or make the context with `preserveDrawingBuffer: true` (three.js: `new WebGLRenderer({ preserveDrawingBuffer: true })`). Called later without it, you get a transparent image.
 - **The callback runs later,** as on the web: `toBlob()` reads the canvas when you call it, and the callback gets the `Blob` once it's ready. `toDataURL()` returns at once.
 - **A JPEG has no transparency:** transparent pixels come out black, as in browsers. A PNG keeps them.
-- **Nothing to encode gives `null`** (`toBlob()`) or `'data:,'` (`toDataURL()`): a canvas that never called `getContext()`, one whose context was lost, or Lynx Explorer, which has no canvas.
+- **A canvas without a context encodes as a transparent image** of its size, as in browsers. **Nothing to encode gives `null`** (`toBlob()`) or `'data:,'` (`toDataURL()`): a canvas with no width or height, one whose context was lost, or Lynx Explorer, which has no canvas.
 - **Prefer `toBlob()`.** A `data:` URL holds the image as text a third larger than the file, and building it is all at once.
 
 ## Attributes
@@ -213,7 +213,7 @@ The iOS Simulator and the Android emulator both draw on the Mac's GPU, so a scen
 - The 2D context's `filter` is kept but not applied, and `wordSpacing`, `fontKerning`, `fontStretch`, `fontVariantCaps` and `textRendering` are kept but don't change the text. Text drawn with a gradient, a pattern or `strokeText()` is drawn from the glyphs' outlines, so color emoji show only with a plain `fillStyle`.
 - A `<video>` can't be drawn on a canvas or be a texture yet.
 - `OffscreenCanvas` has no `transferToImageBitmap()`, and `createImageBitmap()` doesn't take a canvas: draw the canvas itself with `drawImage()` or `texImage2D()`.
-- `toBlob()` and `toDataURL()` make the main thread wait while the phone reads and encodes the canvas (tens of milliseconds for a photo), where a browser's `toBlob()` encodes in the background. A canvas without a context gives `null` rather than a blank image.
+- `toBlob()` and `toDataURL()` make the main thread wait while the phone reads and encodes the canvas (tens of milliseconds for a photo), where a browser's `toBlob()` encodes in the background.
 - A lost context isn't restored: make a new renderer.
 - `crypto.randomUUID()`, which AngularLynx adds for angular-three, isn't cryptographically secure: don't use it for secrets.
 

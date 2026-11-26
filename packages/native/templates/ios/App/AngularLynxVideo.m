@@ -186,6 +186,9 @@ LYNX_PROP_SETTER("video-id", setVideoId, NSString *) {
 /// first frame: half a second at most.
 static const NSInteger kFirstFrameTries = 30;
 
+/// A frame at 60 Hz, in nanoseconds: how long each try waits.
+static const int64_t kFrameNanoseconds = 16666667;
+
 /// XElement's view says it has a first frame when its layer can show one,
 /// which is before the output added to the same item hands that frame over:
 /// a canvas drawing the video from `bindfirstframe` read nothing, which the
@@ -205,7 +208,7 @@ static const NSInteger kFirstFrameTries = 30;
     return;
   }
   __weak typeof(self) weakSelf = self;
-  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(NSEC_PER_SEC / 60)),
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, kFrameNanoseconds),
                  dispatch_get_main_queue(), ^{
                    [weakSelf sendFirstFrame:playable duration:duration triesLeft:triesLeft - 1];
                  });

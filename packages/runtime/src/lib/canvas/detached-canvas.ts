@@ -158,8 +158,9 @@ export class LynxOffscreenCanvas extends LynxCanvasBase {
   /**
    * The canvas's image as an ImageBitmap, and a cleared bitmap for the
    * canvas to draw on next: transparent black, or opaque black for a 2D
-   * context made with `alpha: false`. A WebGL drawing buffer is cleared as a
-   * shown frame's is, unless the context keeps it (`preserveDrawingBuffer`).
+   * context made with `alpha: false`. A WebGL drawing buffer is cleared
+   * too, even with `preserveDrawingBuffer`, which the HTML spec says has no
+   * effect on a transfer.
    * The context's state (transform, styles, GL state) stays as it was.
    */
   transferToImageBitmap(): LynxImageBitmap {

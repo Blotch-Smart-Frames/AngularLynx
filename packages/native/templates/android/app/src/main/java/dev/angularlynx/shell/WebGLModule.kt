@@ -393,8 +393,9 @@ interface CanvasContext {
     /**
      * After `OffscreenCanvas.transferToImageBitmap()` took the pixels: a 2D
      * bitmap is cleared to transparent black (opaque black without alpha),
-     * and a WebGL drawing buffer as a shown frame's is, unless
-     * preserveDrawingBuffer keeps it. The context's state stays.
+     * and a WebGL drawing buffer too, even with preserveDrawingBuffer, which
+     * the HTML spec says has no effect on a transfer. The context's state
+     * stays.
      */
     fun clearForTransfer()
 }

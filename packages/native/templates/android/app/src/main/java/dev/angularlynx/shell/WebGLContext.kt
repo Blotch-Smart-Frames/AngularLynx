@@ -418,12 +418,13 @@ class WebGLContext(override val canvasId: String, attributes: ReadableMap?) : Ca
     }
 
     /**
-     * After transferToImageBitmap() took the drawing buffer, it's cleared as
-     * a shown frame's is: unless the app asked to keep it.
+     * After transferToImageBitmap() took the drawing buffer, it's cleared,
+     * even with preserveDrawingBuffer: the HTML spec gives the canvas a new
+     * bitmap, and says preserveDrawingBuffer has no effect on a transfer.
      */
     @Synchronized
     override fun clearForTransfer() {
-        if (destroyed || preserveDrawingBuffer) return
+        if (destroyed) return
         withCurrent {
             clearDrawingBuffer()
             restoreFramebuffers()

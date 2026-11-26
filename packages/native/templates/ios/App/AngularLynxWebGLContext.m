@@ -677,10 +677,11 @@ static NSUInteger componentsOf(GLenum format) {
                                            premultiplied:_premultipliedAlpha || !_alpha];
 }
 
-/// After transferToImageBitmap() took the drawing buffer, it's cleared as a
-/// shown frame's is: unless the app asked to keep it.
+/// After transferToImageBitmap() took the drawing buffer, it's cleared, even
+/// with preserveDrawingBuffer: the HTML spec gives the canvas a new bitmap,
+/// and says preserveDrawingBuffer has no effect on a transfer.
 - (void)clearForTransfer {
-  if (_context == EGL_NO_CONTEXT || _preserveDrawingBuffer) return;
+  if (_context == EGL_NO_CONTEXT) return;
   [self makeCurrent];
   [self clearDrawingBuffer];
 }

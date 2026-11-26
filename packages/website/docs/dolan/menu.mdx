@@ -183,6 +183,7 @@ Set `checked`, true or false, on every item of the group. An unchecked item keep
 - **`<ui-menu-submenu>`** is a row with a chevron that opens a nested menu. It takes what a menu does: items, sections, separators and further submenus.
 - **It grows out of its row, over the menu it's in**, with the row's label as its header, and the menu behind it fades, as iOS's submenus do. On Android's Material menus it unfolds in the menu's place, with a back arrow in the header.
 - **A tap on the header, a tap outside the submenu, or Android's back button goes back** to the menu it opened from. Choosing one of its items closes every menu.
+- **On iOS, a finger sliding across the menu opens a submenu by resting on its row**, as UIKit's does, and carries on into its items: lifting on one chooses it. Lifting on the row opens the submenu too.
 
 ## API
 

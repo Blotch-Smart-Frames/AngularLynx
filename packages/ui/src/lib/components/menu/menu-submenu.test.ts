@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
 import { DURATION } from '../../utils/animate';
 import { UiMenu, UiMenuItem, UiMenuSection, UiMenuTrigger } from './menu';
+import { SUBMENU_REST_DELAY } from './menu-popup';
 import { UiMenuSubmenu } from './menu-submenu';
 
 @Component({
@@ -36,20 +37,22 @@ import { UiMenuSubmenu } from './menu-submenu';
       >
         <text>View</text>
       </view>
-      <ui-menu-submenu label="Sort by" icon="arrow-down">
-        <ui-menu-section>
-          <ui-menu-item
-            label="Name"
-            [checked]="sort() === 'name'"
-            (pressed)="sort.set('name')"
-          />
-          <ui-menu-item
-            label="Date"
-            [checked]="sort() === 'date'"
-            (pressed)="sort.set('date')"
-          />
-        </ui-menu-section>
-      </ui-menu-submenu>
+      @if (showSort()) {
+        <ui-menu-submenu label="Sort by" icon="arrow-down">
+          <ui-menu-section>
+            <ui-menu-item
+              label="Name"
+              [checked]="sort() === 'name'"
+              (pressed)="sort.set('name')"
+            />
+            <ui-menu-item
+              label="Date"
+              [checked]="sort() === 'date'"
+              (pressed)="sort.set('date')"
+            />
+          </ui-menu-section>
+        </ui-menu-submenu>
+      }
       <ui-menu-submenu label="Move to" disabled>
         <ui-menu-item label="Archive" (pressed)="moved()" />
       </ui-menu-submenu>
@@ -59,6 +62,7 @@ import { UiMenuSubmenu } from './menu-submenu';
 })
 class SubmenuHost {
   readonly open = signal(false);
+  readonly showSort = signal(true);
   readonly sort = signal<'name' | 'date'>('date');
   readonly closed = vi.fn();
   readonly moved = vi.fn();
@@ -110,8 +114,11 @@ const renderSubmenu = async (
       return;
     }
     const content = element.closest('scroll-view > view');
+    // A menu's own rows: a submenu's are in its own content, inside this.
     const rows = content
-      ? [...content.querySelectorAll('[accessibility-traits^="button"]')]
+      ? [
+          ...content.querySelectorAll('[accessibility-traits^="button"]'),
+        ].filter((row) => row.closest('scroll-view > view') === content)
       : [];
     const data = element.querySelector(':scope > blur-view[ui-glass]')
       ? { left: 0, top: 0, width: 402, height: 800 }
@@ -328,6 +335,131 @@ describe('UiMenuSubmenu', () => {
     await after(OPENED);
 
     expect(rendered.submenuOverlay.getAttribute('visible')).toBe('true');
+  });
+
+  /**
+   * Opens the menu with a finger on the trigger, and slides it onto the
+   * Sort by row, the menu's first, over the trigger, leaving it there.
+   */
+  const slideOntoSortRow = async () => {
+    const rendered = await renderSubmenu();
+    fireLynxEvent(rendered.trigger(), 'touchstart', {
+      touches: [{ clientX: 40, clientY: 100 }],
+    });
+    await after(OPENED);
+    const point = { clientX: 100, clientY: TRIGGER.top + ROW_HEIGHT / 2 };
+    fireLynxEvent(rendered.trigger(), 'touchmove', { touches: [point] });
+    await waitForUpdate();
+    return rendered;
+  };
+
+  /**
+   * A point on the submenu's `index`th row (its header is the first), on
+   * screen: the submenu's content measures from the top of its frame.
+   */
+  const onSubmenuRow = (rendered: Rendered, index: number) => {
+    const panel = rendered.submenuOverlay.querySelector('blur-view[ui-glass]')!;
+    const top = Number.parseFloat(style(panel, 'top'));
+    return { clientX: 100, clientY: top + index * ROW_HEIGHT + ROW_HEIGHT / 2 };
+  };
+
+  it('opens when a finger rests on its row, and the same finger chooses one of its items', async () => {
+    const rendered = await slideOntoSortRow();
+    const highlight = sortRow(rendered).firstElementChild!;
+    expect(style(highlight, 'opacity')).toBe('0.08');
+    expect(rendered.submenuOverlay.getAttribute('visible')).toBe('false');
+
+    await after(SUBMENU_REST_DELAY);
+    await after(OPENED);
+    expect(rendered.submenuOverlay.getAttribute('visible')).toBe('true');
+    // The menu's row isn't lit any more: the submenu covers it.
+    expect(style(highlight, 'opacity')).toBe('0');
+
+    // The finger carries on into the submenu, onto Name, and lifts there.
+    const name = rendered.submenu.getByRole('button', { name: 'Name' });
+    const point = onSubmenuRow(rendered, 1);
+    fireLynxEvent(rendered.trigger(), 'touchmove', { touches: [point] });
+    await waitForUpdate();
+    expect(style(name.firstElementChild!, 'opacity')).toBe('0.08');
+    fireLynxEvent(rendered.trigger(), 'touchend', {
+      touches: [],
+      changedTouches: [point],
+    });
+    // Lynx sends the press's tap to the item under the finger.
+    fireEvent.tap(name);
+    await waitForUpdate();
+
+    expect(rendered.host.sort()).toBe('name');
+    expect(rendered.host.open()).toBe(false);
+    await after(CLOSED);
+    expect(rendered.submenuOverlay.getAttribute('visible')).toBe('false');
+
+    // A tap of its own on an item later still chooses it.
+    rendered.host.open.set(true);
+    await after(OPENED);
+    await openSubmenu(rendered);
+    fireEvent.tap(rendered.submenu.getByRole('button', { name: 'Date' }));
+    expect(rendered.host.sort()).toBe('date');
+  });
+
+  it('hands the slide back to the menu when the app takes the open submenu away', async () => {
+    const rendered = await slideOntoSortRow();
+    await after(SUBMENU_REST_DELAY);
+    await after(OPENED);
+    expect(rendered.submenuOverlay.getAttribute('visible')).toBe('true');
+
+    rendered.host.showSort.set(false);
+    await waitForUpdate();
+    expect(style(rendered.menuContent(), 'opacity')).toBe('1');
+
+    // Select is the menu's second row now, after Move to. The rows changed,
+    // so the first move measures them again.
+    const point = { clientX: 100, clientY: TRIGGER.top + ROW_HEIGHT * 1.5 };
+    fireLynxEvent(rendered.trigger(), 'touchmove', { touches: [point] });
+    await after(OPENED);
+    fireLynxEvent(rendered.trigger(), 'touchmove', { touches: [point] });
+    fireLynxEvent(rendered.trigger(), 'touchend', {
+      touches: [],
+      changedTouches: [point],
+    });
+    await waitForUpdate();
+
+    expect(rendered.host.selected).toHaveBeenCalledTimes(1);
+  });
+
+  it("doesn't open for a finger passing over its row", async () => {
+    const rendered = await slideOntoSortRow();
+    await after(SUBMENU_REST_DELAY / 2);
+    // On to Select, the menu's third row.
+    fireLynxEvent(rendered.trigger(), 'touchmove', {
+      touches: [{ clientX: 100, clientY: TRIGGER.top + ROW_HEIGHT * 2.5 }],
+    });
+    await after(SUBMENU_REST_DELAY);
+    await after(OPENED);
+
+    expect(rendered.submenuOverlay.getAttribute('visible')).toBe('false');
+  });
+
+  it("doesn't open once the finger has lifted off the menu", async () => {
+    const rendered = await slideOntoSortRow();
+    fireLynxEvent(rendered.trigger(), 'touchend', {
+      touches: [],
+      changedTouches: [{ clientX: 100, clientY: 700 }],
+    });
+    await after(SUBMENU_REST_DELAY);
+    await after(OPENED);
+
+    expect(rendered.submenuOverlay.getAttribute('visible')).toBe('false');
+    expect(rendered.host.open()).toBe(true);
+  });
+
+  it("doesn't open once the menu has closed", async () => {
+    const rendered = await slideOntoSortRow();
+    rendered.host.open.set(false);
+    await after(SUBMENU_REST_DELAY);
+    await after(CLOSED);
+
+    expect(rendered.submenuOverlay.getAttribute('visible')).toBe('false');
   });
 
   it("doesn't open on the tap of the press that opened the menu", async () => {

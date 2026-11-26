@@ -16,7 +16,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
 import { DURATION } from '../../utils/animate';
 import { provideIconTheme } from '../icon/icon-theme';
-import { type MenuElement, type MenuKind, UiMenuPopup } from './menu-popup';
+import {
+  type MenuElement,
+  type MenuKind,
+  SUBMENU_REST_DELAY,
+  UiMenuPopup,
+} from './menu-popup';
 import { type MenuRect } from './menu-placement';
 import { type MenuRow, MenuRows } from './menu-rows';
 
@@ -724,6 +729,47 @@ describe('UiMenuPopup', () => {
       expect(added[0]!.choose).toHaveBeenCalledTimes(1);
       await closeMenu(rendered);
       expect(menuRows.shown()).toBe(false);
+    });
+
+    it('opens a submenu the finger rests on, unless the app changes its rows first', async () => {
+      const rendered = await renderPopup();
+      const submenuRow = (r: Rendered): MenuRow => ({
+        ...itemRow(r),
+        opensSubmenu: true,
+      });
+      const menuRows = new MenuRows();
+      const row = submenuRow(rendered);
+      const remove = menuRows.add(row);
+      rendered.host.rows.set(menuRows);
+      await waitForUpdate();
+      await openMenu(rendered);
+
+      rendered.host.popup().dragTo(ON_ITEM);
+      expect(menuRows.highlighted()).toBe(row);
+      remove();
+      await after(SUBMENU_REST_DELAY);
+      expect(row.choose).not.toHaveBeenCalled();
+
+      // Nor once a row is added before it, which moves it from under the
+      // finger.
+      menuRows.add(row);
+      rendered.host.popup().dragTo(ON_ITEM);
+      await settle();
+      rendered.host.popup().dragTo(ON_ITEM);
+      expect(menuRows.highlighted()).toBe(row);
+      menuRows.add(itemRow(rendered));
+      await after(SUBMENU_REST_DELAY);
+      expect(row.choose).not.toHaveBeenCalled();
+      rendered.host.popup().dragTo(null);
+
+      // Back, and measured again where it is.
+      menuRows.add(row);
+      rendered.host.popup().dragTo(ON_ITEM);
+      await settle();
+      rendered.host.popup().dragTo(ON_ITEM);
+      await after(SUBMENU_REST_DELAY);
+      expect(row.choose).toHaveBeenCalledTimes(1);
+      expect(menuRows.highlighted()).toBeNull();
     });
 
     it('does nothing for a finger without rows', async () => {

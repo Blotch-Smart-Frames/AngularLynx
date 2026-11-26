@@ -149,6 +149,8 @@ LYNX_PROP_SETTER("video-id", setVideoId, NSString *) {
   _videoId = [videoId copy];
   _frames = videoId ? [[AngularLynxVideoFrames alloc] initWithVideoId:videoId] : nil;
   AngularLynxVideoFrames *frames = _frames;
+  // A new id on the same item: its frames read the output already there.
+  [frames setOutput:_output];
   [self onEngineThread:^{
     if (old && [AngularLynxCanvasRegistry contextForCanvasId:old] == oldFrames) {
       [AngularLynxCanvasRegistry setContext:nil forCanvasId:old];

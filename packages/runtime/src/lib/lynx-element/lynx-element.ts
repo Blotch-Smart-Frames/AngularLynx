@@ -50,10 +50,10 @@ import {
   INHERITANCE_CLASS,
   LYNX_TEXT_INHERITANCE_CLASS,
   LAYOUT_FLAG,
-  LOWERED_FLAG,
   NOT_BLOCK_CONTAINERS,
-  RAISED_FLAG,
   SMALLER_FLAG,
+  type BaselineDistance,
+  type ShiftLink,
   VERTICAL_ALIGN_FLAG,
   TAKES_RAW_TEXT,
   baselineShiftFor,
@@ -64,6 +64,8 @@ import {
   isRowOrientation,
   ancestorTextRulesRead,
   matchedStyleFlagsFor,
+  matchedVerticalAlignFor,
+  parseVerticalAlign,
   smallerClassFor,
   styleFlagsFor,
 } from './text-flow';
@@ -497,23 +499,30 @@ const flushesBefore = (first: ElementRef, second: ElementRef): boolean => {
 
 /**
  * The inline styles that change how far a `<sub>` or `<sup>` moves the HTML
- * text tags inside it (see LynxElement's #inlineShiftFlags).
+ * text tags inside it (see LynxElement's #shiftLink).
  */
 const SHIFT_STYLES = new Set(['font-size', 'vertical-align']);
 
 /**
- * The inline `vertical-align` that moves an HTML text tag inside a `<sub>`
- * or `<sup>` off the baseline as far as the tags around it do together,
- * which Lynx doesn't do for it (see baselineShiftFor), from the flags of its
- * rules and theirs. None where nothing above moves it, and none in the web
+ * The inline `vertical-align` that moves an HTML text tag inside a `<sub>`,
+ * a `<sup>` or another tag with a `vertical-align` off the baseline as far
+ * as the tags around it do together, which Lynx doesn't do for it (see
+ * baselineShiftFor). None where nothing above moves it, and none in the web
  * preview, whose browser moves it already, so it would move twice. An `em`
  * inline resolves against the tag's own size (iOS 27 Simulator and Android
  * API 34 emulator, November 2026).
  */
-const baselineShiftStyle = (chain: readonly number[]): string => {
+const baselineShiftStyle = (chain: readonly ShiftLink[]): string => {
   if (__WEB__) return '';
   const shift = baselineShiftFor(chain);
-  return shift === null ? '' : `vertical-align: ${shift}em`;
+  if (!shift) return '';
+  const [em, px] = shift;
+  // Lynx drops an inline `vertical-align: calc(0.4em + 10px)`, which drew
+  // the tag on the line (iOS 27 Simulator, Lynx Explorer, November 2026),
+  // and the tag's size in pixels isn't known here to add the two up. So a
+  // tag moved by both is left to its own rule.
+  if (em && px) return '';
+  return `vertical-align: ${px ? `${px}px` : `${em}em`}`;
 };
 
 /**
@@ -1689,7 +1698,7 @@ export class LynxElement implements BaseLynxElement {
   /**
    * An inline `font-size` or `vertical-align` came or went: the HTML text
    * tags from here down work out again how far a `<sub>` or `<sup>` moves
-   * them (see #inlineShiftFlags).
+   * them (see #shiftLink).
    */
   #shiftStylesChanged(): void {
     if (this.#webText) this.#inheritAgain();
@@ -1815,18 +1824,53 @@ export class LynxElement implements BaseLynxElement {
   }
 
   /**
-   * The style index flags this element's inline style stands for in
-   * baselineShiftFor, which the index can't see: a size of its own, and a
-   * `vertical-align` of its own, by a distance the runtime doesn't read.
+   * The app's inline `vertical-align`, or undefined where it has none.
    */
-  #inlineShiftFlags(): number {
-    const has = (property: string): boolean => {
-      const value = this.#inlineStyle(property);
-      return value != null && value !== '';
-    };
-    return (
-      (has('font-size') ? FONT_SIZE_FLAG : 0) |
-      (has('vertical-align') ? VERTICAL_ALIGN_FLAG : 0)
+  #inlineVerticalAlign(): string | undefined {
+    const value = this.#inlineStyle('vertical-align');
+    return value == null || value === '' ? undefined : String(value);
+  }
+
+  /**
+   * This element's link in baselineShiftFor's chain, from its rules' flags:
+   * the distance of its `vertical-align`, its inline one's if it has one,
+   * which wins over its rules, and whether its inline style sets its size,
+   * which the index can't see.
+   */
+  #shiftLink(flags: number): ShiftLink {
+    const inline = this.#inlineVerticalAlign();
+    const size = this.#inlineStyle('font-size');
+    return [
+      flags,
+      inline !== undefined
+        ? parseVerticalAlign(inline)
+        : flags & VERTICAL_ALIGN_FLAG
+          ? this.#matchedVerticalAlign()
+          : undefined,
+      size != null && size !== '',
+    ];
+  }
+
+  /**
+   * The inline `vertical-align` that moves this #webText element with the
+   * HTML text tags above it (see baselineShiftFor), or none: from the
+   * elements of #textTagChain. Only a tag above with a `vertical-align` moves
+   * it, and the tag's own inline one wins over the runtime's.
+   */
+  #baselineShift(elements: readonly [LynxElement, number][]): string {
+    if (
+      this.#inlineVerticalAlign() !== undefined ||
+      !elements.some(
+        ([element, flags], index) =>
+          index > 0 &&
+          (flags & VERTICAL_ALIGN_FLAG ||
+            element.#inlineVerticalAlign() !== undefined),
+      )
+    ) {
+      return '';
+    }
+    return baselineShiftStyle(
+      elements.map(([element, flags]) => element.#shiftLink(flags)),
     );
   }
 
@@ -1850,8 +1894,8 @@ export class LynxElement implements BaseLynxElement {
     // A <small>'s own rule divides the size around it once: the text inside
     // it, or a second <small>, needs a class that divides it more (see
     // #sizeChain). The class sets the size, so it reads no variable.
-    const elements = this.#sizeChain();
-    const chain = elements.map(([, flags]) => flags);
+    const tags = this.#textTagChain();
+    const chain = this.#sizeChain(tags).map(([, flags]) => flags);
     const levels = chain.filter((flags) => flags & SMALLER_FLAG).length;
     const ownLevel = this.#ruleFlags(false) & SMALLER_FLAG ? 1 : 0;
     const smaller = levels > ownLevel ? smallerClassFor(levels) : null;
@@ -1861,15 +1905,7 @@ export class LynxElement implements BaseLynxElement {
         this.#drawnAtDefault() |
         (smaller ? FONT_SIZE_FLAG : 0),
     );
-    // Only a <sub> or <sup> above it moves the tag, and only then do the
-    // inline styles of those between count (see #inlineShiftFlags).
-    const shift = chain.some((flags) => flags & (RAISED_FLAG | LOWERED_FLAG))
-      ? baselineShiftStyle(
-          elements.map(
-            ([element, flags]) => flags | element.#inlineShiftFlags(),
-          ),
-        )
-      : '';
+    const shift = this.#baselineShift(tags);
     const style = shift
       ? [inherited, shift].filter(Boolean).join('; ')
       : inherited;
@@ -1911,12 +1947,19 @@ export class LynxElement implements BaseLynxElement {
    */
   #ruleFlags(inState: boolean): number {
     if (this.#anonymous) return 0;
+    return this.#matchedStyleFlags(this.#ruleTokens(), inState);
+  }
+
+  /**
+   * The tokens this element's own rules match it by (see #ruleFlags).
+   */
+  #ruleTokens(): Set<string> {
     const tokens = this.#styleTokens();
     if (this.#webText) tokens.delete('<text>');
     // The runtime's own class for nested <small>s follows from these flags
     // (see #setSmallerClass), so it can't count among them.
     if (this.#smallerClass) tokens.delete(this.#smallerClass);
-    return this.#matchedStyleFlags(tokens, inState);
+    return tokens;
   }
 
   /**
@@ -1942,14 +1985,11 @@ export class LynxElement implements BaseLynxElement {
   }
 
   /**
-   * Each of this #webText element and the HTML text tags above it, nearest
-   * first, with the style index flags of its rules: up to the nearest
-   * ancestor whose rules set the size with a copy, which the variable holds.
-   * Those with
-   * SMALLER_FLAG are the `<small>`, `<sub>` and `<sup>` tags that make its
-   * text smaller, itself included, and those with RAISED_FLAG or
-   * LOWERED_FLAG the ones that move it off the baseline (see
-   * baselineShiftFor).
+   * Of #textTagChain's elements, this #webText element and the HTML text
+   * tags above it up to the nearest ancestor whose rules set the size with a
+   * copy, which the variable holds. Those with SMALLER_FLAG are the
+   * `<small>`, `<sub>` and `<sup>` tags that make its text smaller, itself
+   * included.
    *
    * The build's rule for the tags divides the parent's variable by 1.2 and,
    * reading the variable it would be copied to, has no copy (see
@@ -1965,20 +2005,32 @@ export class LynxElement implements BaseLynxElement {
    * a view sizes its own text. Moving the element or changing an ancestor's
    * classes works it out again (see #inheritAgain and #ancestorsChanged).
    */
-  #sizeChain(): [LynxElement, number][] {
+  #sizeChain(tags: [LynxElement, number][]): [LynxElement, number][] {
+    if (tags[0]![1] & FONT_SIZE_FLAG) return tags.slice(0, 1);
+    const sized = tags.findIndex(
+      ([, flags], index) => index > 0 && flags & FONT_SIZE_FLAG,
+    );
+    return sized < 0 ? tags : tags.slice(0, sized);
+  }
+
+  /**
+   * This #webText element and each HTML text tag above it, nearest first,
+   * with the style index flags of its rules: for #sizeChain, and for
+   * baselineShiftFor, which follows the tags with a `vertical-align` past
+   * one that sets its size, as a `px` distance there still moves the text
+   * inside it. It stops at an element that isn't an HTML text tag, as
+   * #drawnAtDefault does: a Lynx `<text>` or a view lays out its own text.
+   */
+  #textTagChain(): [LynxElement, number][] {
     // A state's rule counts for none of them, as in #drawnAtDefault: the
     // levels are those of the tags as they usually draw.
-    const own = this.#ruleFlags(false);
-    const chain: [LynxElement, number][] = [[this, own]];
-    if (own & FONT_SIZE_FLAG) return chain;
+    const chain: [LynxElement, number][] = [[this, this.#ruleFlags(false)]];
     for (
       let parent = this.#jsParent;
       parent && parent.#webText;
       parent = parent.#jsParent
     ) {
-      const flags = parent.#ruleFlags(false);
-      if (flags & FONT_SIZE_FLAG) break;
-      chain.push([parent, flags]);
+      chain.push([parent, parent.#ruleFlags(false)]);
     }
     return chain;
   }
@@ -2035,16 +2087,31 @@ export class LynxElement implements BaseLynxElement {
    * there.
    */
   #matchedStyleFlags(tokens: ReadonlySet<string>, inState: boolean): number {
+    return matchedStyleFlagsFor(tokens, this.#ancestorTokens(), inState);
+  }
+
+  /**
+   * The distance of the `vertical-align` this element's rules give it (see
+   * matchedVerticalAlignFor).
+   */
+  #matchedVerticalAlign(): BaselineDistance | null | undefined {
+    return matchedVerticalAlignFor(this.#ruleTokens(), this.#ancestorTokens());
+  }
+
+  /**
+   * The tokens of this element's ancestors, nearest first, read as a rule
+   * asks for them (see matchedStyleFlagsFor).
+   */
+  #ancestorTokens(): (index: number) => Set<string> | undefined {
     const ancestors: Set<string>[] = [];
     let next = this._virtualParent ?? this.#jsParent;
-    const ancestorAt = (index: number): Set<string> | undefined => {
+    return (index) => {
       while (ancestors.length <= index && next) {
         ancestors.push(next.#styleTokens());
         next = next._virtualParent ?? next.#jsParent;
       }
       return ancestors[index];
     };
-    return matchedStyleFlagsFor(tokens, ancestorAt, inState);
   }
 
   /**

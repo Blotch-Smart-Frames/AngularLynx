@@ -1,4 +1,4 @@
-import postcss, { type AtRule, type Container } from 'postcss';
+import postcss, { type AtRule, type Container, type Rule } from 'postcss';
 import selectorParser from 'postcss-selector-parser';
 import {
   INHERITED_TEXT_PROPERTIES,
@@ -26,30 +26,39 @@ export const LAYOUT_FLAG = 1 << INHERITED_TEXT_PROPERTIES.length;
 export const SMALLER_FLAG = LAYOUT_FLAG << 1;
 
 /**
- * The bits for a rule that moves its text off the baseline by a `vertical-align`
- * length: RAISED_FLAG for the build's `<sup>` rule (`0.4em`), LOWERED_FLAG
- * for its `<sub>` rule (`-0.24em`), and VERTICAL_ALIGN_FLAG for any other
- * value, whose distance the runtime doesn't know (see
- * styles/html-text-tags.css). On iOS, Lynx moves only the text of the
- * `<text>` that has the `vertical-align`, not that of the inline `<text>`s
+ * The bit for a rule that sets a `vertical-align`. On iOS, Lynx moves only
+ * the text of the `<text>` that has it, not that of the inline `<text>`s
  * inside it, and on both iOS and Android an inner one's offset replaces the
  * outer's rather than adding to it. So the runtime gives the HTML text tags
- * inside a `<sub>` or `<sup>` the whole distance themselves (issue #682),
- * and these tell it which tags move by how much. Above SMALLER_FLAG, as in
- * the runtime's text-flow.ts.
+ * inside such a tag the whole distance themselves (issues #682 and #715),
+ * which it reads from the index's `verticalAligns`. Above SMALLER_FLAG, as
+ * in the runtime's text-flow.ts.
  */
-export const RAISED_FLAG = SMALLER_FLAG << 1;
-export const LOWERED_FLAG = RAISED_FLAG << 1;
-export const VERTICAL_ALIGN_FLAG = LOWERED_FLAG << 1;
+export const VERTICAL_ALIGN_FLAG = SMALLER_FLAG << 1;
 
 /**
- * What a `vertical-align` value moves the text by, as style index bits.
+ * How far a `vertical-align` moves the text off the baseline: the `em` of
+ * the element's own size, plus pixels. The runtime adds up the distances of
+ * the tags around an HTML text tag, so it keeps the two apart (an outer
+ * tag's `em` counts for more in a smaller tag inside it).
  */
-const verticalAlignFlag = (value: string): number => {
+export type BaselineDistance = [em: number, px: number];
+
+/**
+ * The distance a `vertical-align` value moves the text by, or null for one
+ * with no fixed length: a keyword such as `super` or `middle`, which Lynx
+ * places by the line, a percentage of the line height, a `calc()` or a
+ * `var()`, or any other unit. `baseline` and `0` don't move it. The
+ * runtime reads an inline `vertical-align` the same way (parseVerticalAlign
+ * in its text-flow.ts), and a test keeps the two the same.
+ */
+export const parseVerticalAlign = (value: string): BaselineDistance | null => {
   const length = value.trim().toLowerCase();
-  if (length === '0.4em') return RAISED_FLAG;
-  if (length === '-0.24em') return LOWERED_FLAG;
-  return VERTICAL_ALIGN_FLAG;
+  if (length === 'baseline' || length === '0') return [0, 0];
+  const match = /^([+-]?(?:\d+(?:\.\d*)?|\.\d+))(em|px)$/.exec(length);
+  if (!match) return null;
+  const amount = Number(match[1]) + 0;
+  return match[2] === 'em' ? [amount, 0] : [0, amount];
 };
 
 /**
@@ -96,6 +105,26 @@ export type StyleIndexRule =
   | [tokens: string[], flags: number, ancestors: AncestorStep[], inState: 1];
 
 /**
+ * A rule that sets a `vertical-align`, for the runtime to tell how far the
+ * tags inside the element it styles move (see VERTICAL_ALIGN_FLAG): the
+ * tokens its subject requires and the ancestors, as in StyleIndexRule, the
+ * distance (null when the runtime can't copy it, see parseVerticalAlign and
+ * verticalAlignOf), and where it stands in the cascade, so the runtime can
+ * tell which of the rules that match an element wins, as Lynx does: its
+ * selector's specificity (see specificityOf), then the stylesheet it's in
+ * and its place there. The runtime takes the later rule of a tie only
+ * within one stylesheet, whose order is the bundle's.
+ */
+export type VerticalAlignRule = [
+  tokens: string[],
+  ancestors: AncestorStep[],
+  distance: BaselineDistance | null,
+  specificity: number,
+  sheet: number,
+  order: number,
+];
+
+/**
  * What the runtime needs to know about the app's CSS (see the runtime's
  * lynx-element/text-flow.ts): for each rule that sets an inheritable text
  * property or a `vertical-align`, or changes layout, the tokens the last
@@ -103,9 +132,12 @@ export type StyleIndexRule =
  * it sets, and what the rest of its selector requires of the element's
  * ancestors. The
  * runtime can't read the stylesheet, which Lynx compiles into the bundle.
+ * Each rule that sets a `vertical-align` is in `verticalAligns` too, with
+ * its distance, left out when there are none.
  */
 export type StyleIndex = {
   rules: StyleIndexRule[];
+  verticalAligns?: VerticalAlignRule[];
 };
 
 /**
@@ -114,7 +146,7 @@ export type StyleIndex = {
 const flagsOf = (property: string, value: string): number => {
   const name = property.toLowerCase();
   if (name === 'font-size' && isSmallerSize(value)) return SMALLER_FLAG;
-  if (name === 'vertical-align') return verticalAlignFlag(value);
+  if (name === 'vertical-align') return VERTICAL_ALIGN_FLAG;
   const bit = INHERITED_TEXT_PROPERTIES.indexOf(name);
   if (bit >= 0) return 1 << bit;
   const keyword = value.trim().toLowerCase();
@@ -163,7 +195,59 @@ type Subject = {
   tokens: string[];
   ancestors: AncestorStep[];
   inState: boolean;
+  /**
+   * Whether the runtime can check all of it: nothing was left out but `*`.
+   * A rule it may count for an element the rule doesn't style can't give
+   * that element its distance (see verticalAlignOf).
+   */
+  exact: boolean;
+  /** Whether it styles a pseudo-element (`::before`), not the element. */
+  pseudoElement: boolean;
+  /** Its specificity, as specificityOf packs it. */
+  specificity: number;
 };
+
+/**
+ * A selector's specificity, packed into one number that compares as the
+ * three counts do: ids, then classes, attributes and pseudo-classes, then
+ * types and pseudo-elements, each up to 999. `:where()` counts nothing, and
+ * `:is()`, `:not()` and `:has()` count their most specific argument, as in
+ * a browser. Angular's scoping attributes are classes by now, and so are the
+ * type selectors the build turns into the runtime's tag classes, which is
+ * what Lynx compares, as it reads the CSS the build wrote.
+ */
+const specificityOf = (selector: selectorParser.Selector): number => {
+  let ids = 0;
+  let classes = 0;
+  let types = 0;
+  for (const node of selector.nodes) {
+    if (node.type === 'id') ids++;
+    else if (node.type === 'class' || node.type === 'attribute') classes++;
+    else if (node.type === 'tag') types++;
+    else if (node.type === 'pseudo') {
+      const name = node.value.toLowerCase();
+      if (name.startsWith('::') || PSEUDO_ELEMENTS_WITH_ONE_COLON.has(name)) {
+        types++;
+      } else if (name === ':is' || name === ':not' || name === ':has') {
+        // Its arguments count instead of it: the most specific one.
+        const inner = Math.max(0, ...node.nodes.map(specificityOf));
+        ids += Math.floor(inner / 1e6);
+        classes += Math.floor(inner / 1e3) % 1e3;
+        types += inner % 1e3;
+      } else if (name !== ':where') classes++;
+    }
+  }
+  const count = (n: number): number => Math.min(n, 999);
+  return count(ids) * 1e6 + count(classes) * 1e3 + count(types);
+};
+
+/** The pseudo-elements CSS still lets a selector write with one colon. */
+const PSEUDO_ELEMENTS_WITH_ONE_COLON = new Set([
+  ':before',
+  ':after',
+  ':first-line',
+  ':first-letter',
+]);
 
 /**
  * What each selector in a list requires: the classes, id and tag of its
@@ -184,13 +268,18 @@ const subjectsOf = (selectorList: string): Subject[] => {
         const compounds: string[][] = [[]];
         const combinators: ('>' | ' ')[] = [];
         let inState = false;
+        let exact = true;
+        let pseudoElement = false;
         for (let i = selector.nodes.length - 1; i >= 0; i--) {
           const node = selector.nodes[i]!;
           const tokens = compounds[compounds.length - 1]!;
           if (node.type === 'combinator') {
             const combinator = node.value.trim();
             // A sibling's compound, and what's before it, is left out.
-            if (combinator !== '>' && combinator !== '') break;
+            if (combinator !== '>' && combinator !== '') {
+              exact = false;
+              break;
+            }
             combinators.push(combinator === '>' ? '>' : ' ');
             compounds.push([]);
           } else if (node.type === 'class') tokens.push(node.value);
@@ -202,6 +291,17 @@ const subjectsOf = (selectorList: string): Subject[] => {
             STATE_PSEUDO_CLASSES.has(node.value.toLowerCase())
           ) {
             inState = true;
+          } else if (node.type !== 'universal' && node.type !== 'comment') {
+            exact = false;
+            if (node.type === 'pseudo') {
+              const name = node.value.toLowerCase();
+              if (
+                name.startsWith('::') ||
+                PSEUDO_ELEMENTS_WITH_ONE_COLON.has(name)
+              ) {
+                pseudoElement = true;
+              }
+            }
           }
         }
         // An outermost compound with nothing we can check, as in
@@ -219,6 +319,9 @@ const subjectsOf = (selectorList: string): Subject[] => {
           tokens: tokens!,
           ancestors: ancestors.map((t, i) => [combinators[i]!, t]),
           inState,
+          exact,
+          pseudoElement,
+          specificity: specificityOf(selector),
         });
       });
     }).processSync(selectorList);
@@ -235,7 +338,8 @@ const subjectsOf = (selectorList: string): Subject[] => {
  */
 export const styleIndexOf = (stylesheets: readonly string[]): StyleIndex => {
   const rulesBySelector = new Map<string, StyleIndexRule>();
-  for (const css of stylesheets) {
+  const verticalAligns: VerticalAlignRule[] = [];
+  for (const [sheet, css] of stylesheets.entries()) {
     let root;
     try {
       root = postcss.parse(css);
@@ -249,7 +353,23 @@ export const styleIndexOf = (stylesheets: readonly string[]): StyleIndex => {
         if (node.type === 'decl') flags |= flagsOf(node.prop, node.value);
       });
       if (!flags) return;
-      for (const { tokens, ancestors, inState } of subjectsOf(rule.selector)) {
+      const distance =
+        flags & VERTICAL_ALIGN_FLAG ? verticalAlignOf(rule) : undefined;
+      for (const subject of subjectsOf(rule.selector)) {
+        const { tokens, ancestors, inState } = subject;
+        // A state's rule counts for none of the tags' distances, as for their
+        // sizes (see the runtime's #sizeChain), and a pseudo-element's moves
+        // no text of the element.
+        if (distance !== undefined && !inState && !subject.pseudoElement) {
+          verticalAligns.push([
+            tokens,
+            ancestors,
+            subject.exact ? distance : null,
+            subject.specificity,
+            sheet,
+            verticalAligns.length,
+          ]);
+        }
         const entry: StyleIndexRule = inState
           ? [tokens, flags, ancestors, 1]
           : ancestors.length
@@ -263,7 +383,28 @@ export const styleIndexOf = (stylesheets: readonly string[]): StyleIndex => {
       }
     });
   }
-  return { rules: [...rulesBySelector.values()] };
+  const rules = [...rulesBySelector.values()];
+  return verticalAligns.length ? { rules, verticalAligns } : { rules };
+};
+
+/**
+ * The distance a rule's `vertical-align` moves its text by, the last one it
+ * declares, as a browser takes it. Null where the runtime can't tell it
+ * applies as it is: an `!important` one, which beats rules the runtime would
+ * rank above it, and one in a `@media` or another at-rule, or nested in
+ * another rule, whose selector or condition the index doesn't follow.
+ */
+const verticalAlignOf = (rule: Rule): BaselineDistance | null => {
+  let value: string | undefined;
+  let important = false;
+  rule.each((node) => {
+    if (node.type === 'decl' && node.prop.toLowerCase() === 'vertical-align') {
+      value = node.value;
+      important ||= node.important;
+    }
+  });
+  if (important || rule.parent?.type !== 'root') return null;
+  return parseVerticalAlign(value!);
 };
 
 /**

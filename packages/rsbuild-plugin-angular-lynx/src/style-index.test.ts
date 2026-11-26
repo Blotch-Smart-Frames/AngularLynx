@@ -3,10 +3,9 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   LAYOUT_FLAG,
-  LOWERED_FLAG,
-  RAISED_FLAG,
   SMALLER_FLAG,
   VERTICAL_ALIGN_FLAG,
+  parseVerticalAlign,
   styleIndexOf,
   styleIndexStatement,
 } from './style-index';
@@ -168,12 +167,9 @@ describe('styleIndexOf', () => {
     ],
     ['font-size: calc(var(--angular-lynx-font-size) * 2 / 1.2)', FONT_SIZE],
     ['font-size: var(--angular-lynx-font-size-x)', FONT_SIZE],
-    // The build's <sup> and <sub> distances (issue #682), and any other.
-    ['vertical-align: 0.4em', RAISED_FLAG],
-    ['vertical-align: -0.24em', LOWERED_FLAG],
-    ['vertical-align: 0.5em', VERTICAL_ALIGN_FLAG],
+    // Any vertical-align, whose distance is in verticalAligns (issue #715).
+    ['vertical-align: 0.4em', VERTICAL_ALIGN_FLAG],
     ['vertical-align: super', VERTICAL_ALIGN_FLAG],
-    ['vertical-align: baseline', VERTICAL_ALIGN_FLAG],
   ])('counts %s as %s', (declaration, flags) => {
     expect(styleIndexOf([`.a { ${declaration} }`]).rules).toEqual(
       flags ? [[['a'], flags]] : [],
@@ -246,7 +242,107 @@ describe('SMALLER_FLAG', () => {
   });
 });
 
-describe('the vertical-align flags', () => {
+describe('verticalAligns', () => {
+  const verticalAligns = (...stylesheets: string[]) =>
+    styleIndexOf(stylesheets).verticalAligns;
+
+  it('is left out where no rule sets a vertical-align', () => {
+    expect(styleIndexOf(['.a { color: red }'])).toEqual({
+      rules: [[['a'], COLOR]],
+    });
+  });
+
+  // Issue #715: the runtime moves the tags inside by the distance, so it
+  // needs its value, not just a flag.
+  it('lists each rule’s distance, specificity and place', () => {
+    expect(
+      verticalAligns(
+        '.exp { vertical-align: 0.5em } .note > .mark { vertical-align: -3px }',
+        '#main .x { vertical-align: super }',
+      ),
+    ).toEqual([
+      [['exp'], [], [0.5, 0], 1000, 0, 0],
+      [['mark'], [['>', ['note']]], [0, -3], 2000, 0, 1],
+      [['x'], [[' ', ['#main']]], null, 1001000, 1, 2],
+    ]);
+  });
+
+  it('takes the last declaration of a rule', () => {
+    expect(
+      verticalAligns(
+        '.a { vertical-align: 1px; color: red; vertical-align: 0.2em }',
+      ),
+    ).toEqual([[['a'], [], [0.2, 0], 1000, 0, 0]]);
+  });
+
+  it('keeps apart rules the flags merge', () => {
+    expect(
+      verticalAligns(
+        '.a { vertical-align: 1px }',
+        '.a { vertical-align: 2px }',
+      ),
+    ).toEqual([
+      [['a'], [], [0, 1], 1000, 0, 0],
+      [['a'], [], [0, 2], 1000, 1, 1],
+    ]);
+  });
+
+  // The runtime may count such a rule for an element it doesn't style, or
+  // can't rank it against the others.
+  it.each([
+    ['an attribute', '.a[data-x]'],
+    ['a structural pseudo-class', '.a:first-child'],
+    ['a sibling', '.b + .a'],
+    ['an ancestor it can’t check', ':root .a'],
+  ])('can’t copy the distance of a rule with %s', (_, selector) => {
+    expect(
+      verticalAligns(`${selector} { vertical-align: 1px }`)![0]![2],
+    ).toBeNull();
+  });
+
+  it.each([
+    ['an !important one', '.a { vertical-align: 1px !important }'],
+    [
+      'one in a @media',
+      '@media (min-width: 1px) { .a { vertical-align: 1px } }',
+    ],
+    ['a nested one', '.b { .a { vertical-align: 1px } }'],
+  ])('can’t copy the distance of %s', (_, css) => {
+    expect(verticalAligns(css)![0]![2]).toBeNull();
+  });
+
+  it('copies the distance of a rule for any element', () => {
+    expect(verticalAligns('* { vertical-align: 1px }')).toEqual([
+      [[], [], [0, 1], 0, 0, 0],
+    ]);
+  });
+
+  // Neither moves the element's text as it usually draws.
+  it('leaves out a state’s rule and a pseudo-element’s', () => {
+    expect(
+      verticalAligns(
+        '.a:active { vertical-align: 1px } .b::before, .c:after { vertical-align: 1px }',
+      ),
+    ).toBeUndefined();
+  });
+
+  it.each([
+    ['.a', 1000],
+    ['view', 1],
+    ['#a.b view', 1001001],
+    ['.a:first-child', 2000],
+    ['.a:where(.b, #c)', 1000],
+    ['.a:is(.b, #c)', 1001000],
+    ['.a:not(.b.c)', 3000],
+    ['.a:not(:where(#b))', 1000],
+  ])('ranks %s at %s', (selector, specificity) => {
+    expect(verticalAligns(`${selector} { vertical-align: 1px }`)![0]![3]).toBe(
+      specificity,
+    );
+  });
+});
+
+describe('the vertical-align flag', () => {
   const runtime = (): string =>
     fs.readFileSync(
       path.join(
@@ -256,41 +352,58 @@ describe('the vertical-align flags', () => {
       'utf-8',
     );
 
-  // The runtime reads the bits, so the two must agree.
-  it("are the runtime's bits", () => {
-    const source = runtime();
-    expect(source).toContain('export const RAISED_FLAG = SMALLER_FLAG << 1;');
-    expect(source).toContain('export const LOWERED_FLAG = RAISED_FLAG << 1;');
-    expect(source).toContain(
-      'export const VERTICAL_ALIGN_FLAG = LOWERED_FLAG << 1;',
+  // The runtime reads the bit, so the two must agree.
+  it("is the runtime's bit", () => {
+    expect(runtime()).toContain(
+      'export const VERTICAL_ALIGN_FLAG = SMALLER_FLAG << 1;',
     );
-    expect(RAISED_FLAG).toBe(SMALLER_FLAG << 1);
-    expect(LOWERED_FLAG).toBe(RAISED_FLAG << 1);
-    expect(VERTICAL_ALIGN_FLAG).toBe(LOWERED_FLAG << 1);
+    expect(VERTICAL_ALIGN_FLAG).toBe(SMALLER_FLAG << 1);
   });
 
-  // The runtime moves the tags inside a <sup> or <sub> by the distances in
-  // the build's stylesheet (issue #682), so they must be the same.
-  it("move the tags by the stylesheet's distances", () => {
-    const source = runtime();
+  // The runtime reads an inline vertical-align as the build reads a rule's.
+  it('reads a distance as the runtime does', () => {
+    const own = fs.readFileSync(
+      path.join(import.meta.dirname, 'style-index.ts'),
+      'utf-8',
+    );
+    const body = (source: string): string =>
+      /export const parseVerticalAlign = [\s\S]*?\n};\n/.exec(source)![0];
+    expect(body(runtime())).toBe(body(own));
+  });
+
+  it.each([
+    ['0.4em', [0.4, 0]],
+    [' -0.24EM ', [-0.24, 0]],
+    ['.5em', [0.5, 0]],
+    ['+3px', [0, 3]],
+    ['-0em', [0, 0]],
+    ['0', [0, 0]],
+    ['baseline', [0, 0]],
+    ['super', null],
+    ['50%', null],
+    ['1rem', null],
+    ['calc(1em + 2px)', null],
+  ])('reads %s as %j', (value, distance) => {
+    expect(parseVerticalAlign(value)).toEqual(distance);
+  });
+
+  // The build's <sup> and <sub> rules (issue #682), merged with their
+  // smaller size's rule, as both name the tag.
+  it('moves the build’s <sup> and <sub>', () => {
     const css = fs.readFileSync(
       path.join(import.meta.dirname, 'styles/html-text-tags.css'),
       'utf-8',
     );
-    const distance = (tag: string): string =>
-      new RegExp(`^${tag} \\{\\s*vertical-align: ([^;]+);`, 'm').exec(css)![1]!;
-    expect(distance('sup')).toBe(
-      `${/const RAISED_EM = ([-\d.]+);/.exec(source)![1]}em`,
-    );
-    expect(distance('sub')).toBe(
-      `${/const LOWERED_EM = ([-\d.]+);/.exec(source)![1]}em`,
-    );
-    // Merged with their smaller size's rule, as both name the tag.
-    expect(styleIndexOf([css]).rules).toEqual(
+    const index = styleIndexOf([css]);
+    expect(index.rules).toEqual(
       expect.arrayContaining([
-        [['<sup>'], SMALLER_FLAG | RAISED_FLAG],
-        [['<sub>'], SMALLER_FLAG | LOWERED_FLAG],
+        [['<sup>'], SMALLER_FLAG | VERTICAL_ALIGN_FLAG],
+        [['<sub>'], SMALLER_FLAG | VERTICAL_ALIGN_FLAG],
       ]),
     );
+    expect(index.verticalAligns).toEqual([
+      [['<sub>'], [], [-0.24, 0], 1, 0, 0],
+      [['<sup>'], [], [0.4, 0], 1, 0, 1],
+    ]);
   });
 });

@@ -133,10 +133,10 @@ sup {
  * A browser moves the text inside the tag with it, and a `<sup>` in a
  * `<sup>` by both. Lynx doesn't: on iOS the tags inside stayed on the line,
  * and on iOS and Android an inner tag's offset replaces the outer's. So the
- * style index flags these two distances (RAISED_FLAG and LOWERED_FLAG in
+ * style index lists each rule's distance (`verticalAligns` in
  * style-index.ts), and the runtime gives each HTML text tag inside one the
  * whole distance, in its own `em` (baselineShiftFor in its text-flow.ts,
- * issue #682). It has these values too, which a test keeps the same.
+ * issues #682 and #715).
  */
 sub {
   vertical-align: -0.24em;

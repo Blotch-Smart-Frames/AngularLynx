@@ -293,7 +293,11 @@ export class PathBuilder {
     const [sx, sy] = point(startAngle);
     this.#lineToMapped(...this.#map(sx, sy));
     if (sweep === 0) return;
-    const count = Math.ceil(Math.abs(sweep) / (Math.PI / 2) - 1e-9);
+    // At least one curve for any sweep, however small.
+    const count = Math.max(
+      1,
+      Math.ceil(Math.abs(sweep) / (Math.PI / 2) - 1e-9),
+    );
     const step = sweep / count;
     // The control points' distance along the tangent, as a fraction of the
     // radius, for a curve spanning `step`.
@@ -333,14 +337,18 @@ export class PathBuilder {
     if (!inverse) return;
     const x0 = inverse[0] * this.#lastX + inverse[2] * this.#lastY + inverse[4];
     const y0 = inverse[1] * this.#lastX + inverse[3] * this.#lastY + inverse[5];
-    const close = (ax: number, ay: number, bx: number, by: number) =>
-      Math.abs(ax - bx) < 1e-9 && Math.abs(ay - by) < 1e-9;
+    // The tests are relative to the lines' lengths, so they hold at any
+    // scale: a corner a millionth of a pixel across, scaled up by 1e8, is a
+    // corner.
+    const l1 = Math.hypot(x1 - x0, y1 - y0);
+    const l2 = Math.hypot(x2 - x1, y2 - y1);
     const cross = (x1 - x0) * (y2 - y1) - (y1 - y0) * (x2 - x1);
+    const tiny = 1e-12 * Math.max(1, Math.abs(x1), Math.abs(y1));
     if (
-      close(x0, y0, x1, y1) ||
-      close(x1, y1, x2, y2) ||
+      l1 <= tiny ||
+      l2 <= tiny ||
       radius === 0 ||
-      Math.abs(cross) < 1e-9
+      Math.abs(cross) <= 1e-12 * l1 * l2
     ) {
       this.lineTo(x1, y1);
       return;
@@ -351,8 +359,6 @@ export class PathBuilder {
     const v1y = y0 - y1;
     const v2x = x2 - x1;
     const v2y = y2 - y1;
-    const l1 = Math.hypot(v1x, v1y);
-    const l2 = Math.hypot(v2x, v2y);
     const angle = Math.acos(
       Math.max(-1, Math.min(1, (v1x * v2x + v1y * v2y) / (l1 * l2))),
     );
@@ -377,10 +383,14 @@ export class PathBuilder {
     y: number,
     w: number,
     h: number,
-    radii: number | RadiusInit | (number | RadiusInit)[] = 0,
+    radii: number | RadiusInit | Iterable<number | RadiusInit> = 0,
   ): void {
     if (!finite(x, y, w, h)) return;
-    const list = Array.isArray(radii) ? radii : [radii];
+    // A sequence of radii is any iterable; a DOMPointInit is one radius.
+    const list =
+      typeof radii === 'object' && radii !== null && Symbol.iterator in radii
+        ? Array.from(radii as Iterable<number | RadiusInit>)
+        : [radii as number | RadiusInit];
     if (list.length < 1 || list.length > 4) {
       throw new RangeError(
         `Failed to execute 'roundRect' on 'CanvasRenderingContext2D': ${list.length} radii provided. Between one and four radii are necessary.`,
@@ -417,7 +427,12 @@ export class PathBuilder {
           return corners;
       }
     })();
-    // A rectangle drawn with a negative size is flipped, corners with it.
+    // A rectangle drawn with a negative size is flipped, corners with it,
+    // and when only one side is negative, it's drawn the other way round, as
+    // browsers do, so its winding tells nonzero filling it's mirrored.
+    const startX = x;
+    const startY = y;
+    const reversed = w < 0 !== h < 0;
     if (w < 0) {
       x += w;
       w = -w;
@@ -449,20 +464,79 @@ export class PathBuilder {
     const [brx, bry] = r(br);
     const [blx, bly] = r(bl);
     this.moveTo(x + tlx, y);
-    this.lineTo(x + w - trx, y);
-    if (trx || try_)
-      this.ellipse(x + w - trx, y + try_, trx, try_, 0, -Math.PI / 2, 0);
-    this.lineTo(x + w, y + h - bry);
-    if (brx || bry)
-      this.ellipse(x + w - brx, y + h - bry, brx, bry, 0, 0, Math.PI / 2);
-    this.lineTo(x + blx, y + h);
-    if (blx || bly)
-      this.ellipse(x + blx, y + h - bly, blx, bly, 0, Math.PI / 2, Math.PI);
-    this.lineTo(x, y + tly);
-    if (tlx || tly)
-      this.ellipse(x + tlx, y + tly, tlx, tly, 0, Math.PI, Math.PI * 1.5);
+    if (reversed) {
+      if (tlx || tly) {
+        this.ellipse(
+          x + tlx,
+          y + tly,
+          tlx,
+          tly,
+          0,
+          Math.PI * 1.5,
+          Math.PI,
+          true,
+        );
+      }
+      this.lineTo(x, y + h - bly);
+      if (blx || bly) {
+        this.ellipse(
+          x + blx,
+          y + h - bly,
+          blx,
+          bly,
+          0,
+          Math.PI,
+          Math.PI / 2,
+          true,
+        );
+      }
+      this.lineTo(x + w - brx, y + h);
+      if (brx || bry) {
+        this.ellipse(
+          x + w - brx,
+          y + h - bry,
+          brx,
+          bry,
+          0,
+          Math.PI / 2,
+          0,
+          true,
+        );
+      }
+      this.lineTo(x + w, y + try_);
+      if (trx || try_) {
+        this.ellipse(
+          x + w - trx,
+          y + try_,
+          trx,
+          try_,
+          0,
+          0,
+          -Math.PI / 2,
+          true,
+        );
+      }
+    } else {
+      this.lineTo(x + w - trx, y);
+      if (trx || try_) {
+        this.ellipse(x + w - trx, y + try_, trx, try_, 0, -Math.PI / 2, 0);
+      }
+      this.lineTo(x + w, y + h - bry);
+      if (brx || bry) {
+        this.ellipse(x + w - brx, y + h - bry, brx, bry, 0, 0, Math.PI / 2);
+      }
+      this.lineTo(x + blx, y + h);
+      if (blx || bly) {
+        this.ellipse(x + blx, y + h - bly, blx, bly, 0, Math.PI / 2, Math.PI);
+      }
+      this.lineTo(x, y + tly);
+      if (tlx || tly) {
+        this.ellipse(x + tlx, y + tly, tlx, tly, 0, Math.PI, Math.PI * 1.5);
+      }
+    }
     this.closePath();
-    this.moveTo(x, y);
+    // The next subpath starts at the point given, as the spec has it.
+    this.moveTo(startX, startY);
   }
 
   /**
@@ -601,7 +675,7 @@ export class LynxPath2D {
     y: number,
     w: number,
     h: number,
-    radii?: number | RadiusInit | (number | RadiusInit)[],
+    radii?: number | RadiusInit | Iterable<number | RadiusInit>,
   ): void {
     this.builder.roundRect(Number(x), Number(y), Number(w), Number(h), radii);
   }
@@ -651,10 +725,20 @@ export class LynxPath2D {
  * before it.
  */
 export const parseSvgPath = (data: string, builder: PathBuilder): void => {
-  const tokens = data.match(
-    /[MmZzLlHhVvCcSsQqTtAa]|[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/g,
-  );
-  if (!tokens) return;
+  // Commands and numbers, between separators: the data ends at the first
+  // thing that's neither, as SVG's does.
+  const tokens: string[] = [];
+  const tokenPattern =
+    /[\s,]*([MmZzLlHhVvCcSsQqTtAa]|[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)/y;
+  for (
+    let match = tokenPattern.exec(data);
+    match;
+    match = tokenPattern.exec(data)
+  ) {
+    tokens.push(match[1]);
+  }
+  // Path data starts with a move.
+  if (tokens[0] !== 'M' && tokens[0] !== 'm') return;
   let index = 0;
   let x = 0;
   let y = 0;

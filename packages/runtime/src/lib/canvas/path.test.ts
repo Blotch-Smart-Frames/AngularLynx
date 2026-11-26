@@ -234,11 +234,27 @@ describe('PathBuilder', () => {
   });
 
   it('takes the last point back through the matrix for arcTo', () => {
+    // A start point the scale moves: (2, 4) is (1, 2) in the scaled space.
     const path = new PathBuilder();
-    path.moveTo(0, 0);
+    path.moveTo(2, 4);
     path.matrix = [2, 0, 0, 2, 0, 0];
-    path.arcTo(5, 0, 5, 5, 2.5);
-    expect(ends(path.segments).at(-1)).toEqual([C, 10, 5]);
+    path.arcTo(5, 2, 5, 7, 2.5);
+    expect(ends(path.segments).slice(1)).toEqual([
+      [L, 5, 4],
+      [L, 5, 4],
+      [C, 10, 9],
+    ]);
+  });
+
+  it('rounds a corner at any scale, and draws at least one curve for any sweep', () => {
+    const path = new PathBuilder();
+    path.matrix = [1e8, 0, 0, 1e8, 0, 0];
+    path.moveTo(0, 0);
+    path.arcTo(1e-6, 0, 1e-6, 1e-6, 5e-7);
+    expect(ends(path.segments).at(-1)).toEqual([C, 100, 50]);
+    const tiny = new PathBuilder();
+    tiny.arc(-1e9, 0, 1e9, 0, 1e-9);
+    expect(tiny.segments.filter((value) => value === C).length).toBe(1);
   });
 
   it('draws rounded rectangles with every form of radii', () => {
@@ -303,6 +319,48 @@ describe('PathBuilder', () => {
     // A negative size goes the other way from the corner, corners with it.
     expect(shape([1, 0, 0, 0], -10, 10)[0]).toEqual([M, -10, 0]);
     expect(shape([1, 0, 0, 0], 10, -10)[0]).toEqual([M, 0, -10]);
+  });
+
+  it('takes any iterable of radii', () => {
+    const path = new PathBuilder();
+    path.roundRect(0, 0, 10, 10, new Set([2, 4]));
+    expect(ends(path.segments).slice(0, 3)).toEqual([
+      [M, 2, 0],
+      [L, 6, 0],
+      [L, 6, 0],
+    ]);
+  });
+
+  it('draws a rectangle with one negative side the other way round, as browsers do', () => {
+    /**
+     * Clockwise: top-left, top-right, bottom-right, bottom-left.
+     */
+    const area = (segments: number[]) => {
+      const points = ends(segments)
+        .filter((point) => point.length === 3)
+        .map(([, x, y]) => [x, y]);
+      let sum = 0;
+      for (let i = 0; i < points.length; i++) {
+        const [ax, ay] = points[i];
+        const [bx, by] = points[(i + 1) % points.length];
+        sum += ax * by - bx * ay;
+      }
+      return Math.sign(sum);
+    };
+    const shape = (w: number, h: number) => {
+      const path = new PathBuilder();
+      path.roundRect(80, 20, w, h, 8);
+      // Leave out the move to the next subpath.
+      return path.segments.slice(0, path.segments.lastIndexOf(Z) + 1);
+    };
+    expect(area(shape(60, 60))).toBe(1);
+    expect(area(shape(-60, 60))).toBe(-1);
+    expect(area(shape(60, -60))).toBe(-1);
+    expect(area(shape(-60, -60))).toBe(1);
+    // The next subpath starts at the point given.
+    const path = new PathBuilder();
+    path.roundRect(80, 20, -60, 60, 8);
+    expect(path.segments.slice(-3)).toEqual([M, 80, 20]);
   });
 
   it('turns down radii roundRect can’t draw', () => {
@@ -459,6 +517,17 @@ describe('LynxPath2D', () => {
     expect(
       ends(new LynxPath2D('M0 0 A 5 5 0 0 1 0 0').builder.segments),
     ).toEqual([[M, 0, 0]]);
+  });
+
+  it('starts path data with a move, and stops it at anything else', () => {
+    expect(new LynxPath2D('L10 10 L20 20').builder.segments).toEqual([]);
+    expect(
+      ends(new LynxPath2D('M0 0 L10 ! 20 L30 40').builder.segments),
+    ).toEqual([[M, 0, 0]]);
+    expect(ends(new LynxPath2D('m1,1 l2,2').builder.segments)).toEqual([
+      [M, 1, 1],
+      [L, 3, 3],
+    ]);
   });
 
   it('keeps what came before an error in the data', () => {

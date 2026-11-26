@@ -200,16 +200,17 @@ const PRIVATE_ACCESS_HINT = new RegExp(PRIVATE_ACCESS, 'u');
  * `?.`** (`a?.#m(x)`, `a?.#b.#m(x)`, `a.#m?.(x)[k]`). SWC calls it outside
  * the short-circuit, and inside a chain without its receiver:
  * `(a == null ? void 0 : <a.#m>)(x)`. So the call becomes one of `call`,
- * itself optional: `a?.#m?.call(a, x)`, which SWC compiles. A receiver
- * other than `this` or a name, which could have side effects or be
- * different the second time, is read once, into a variable the module
- * declares (`;var __receiver0;` after its last statement, as
- * {@link hidePrivateMethods} declares its functions): `(__receiver0 =
- * a?.b)?.#m?.call(__receiver0, x)`. The arguments stay inside the
- * short-circuit, as they're evaluated only when the call is made. The
- * result differs only when the member is nullish or the receiver part of
- * the chain is (`a.b` above): natively the call throws a TypeError, and
- * here it gives `undefined`.
+ * itself optional, which SWC compiles: `this.#m?.call(this, x)`. Any
+ * receiver but `this` is read once, into a variable, before the member is
+ * (`(__receiver0 = a)?.#m?.call(__receiver0, x)`): the receiver could have
+ * side effects, and a private getter that runs as the member is read could
+ * assign a new value to a name. The variable is declared in the function
+ * the call is in (see {@link receiverScope}), so a call that runs again
+ * before this one has read it back, from such a getter, has its own. The
+ * arguments stay inside the short-circuit, as they're evaluated only when
+ * the call is made. The result differs only when the member is nullish or
+ * the receiver part of the chain is (`a?.b.#m(x)` with `a.b` nullish):
+ * natively the call throws a TypeError, and here it gives `undefined`.
  *
  * Edits never add or remove a line, and an inline source map's columns are
  * moved to match, as for the passes before it.
@@ -230,7 +231,9 @@ export const splitPrivateChains = (code: string, filename: string): string => {
   // Where a `?` goes, before a link's `.`: a set, as two rules can ask for
   // the same one (`a?.#b.#m()`).
   const questionMarks = new Set<number>();
-  const receivers: string[] = [];
+  // The receivers' variables, by the scope that declares them.
+  const receivers = new Map<ts.Node, string[]>();
+  let receiverCount = 0;
   // A name nothing in the module uses, so it can't take another's place.
   let prefix = '__receiver';
   while (code.includes(prefix)) prefix = `_${prefix}`;
@@ -247,14 +250,12 @@ export const splitPrivateChains = (code: string, filename: string): string => {
         // inner `(0, ` comes after the `(__receiver0 = `.
         const receiver = callee.expression;
         let text: string;
-        if (
-          receiver.kind === ts.SyntaxKind.ThisKeyword ||
-          ts.isIdentifier(receiver)
-        ) {
-          text = receiver.getText(sourceFile);
+        if (receiver.kind === ts.SyntaxKind.ThisKeyword) {
+          text = 'this';
         } else {
-          text = `${prefix}${receivers.length}`;
-          receivers.push(text);
+          text = `${prefix}${receiverCount++}`;
+          const scope = receiverScope(node);
+          receivers.set(scope, [...(receivers.get(scope) ?? []), text]);
           const start = receiver.getStart(sourceFile);
           edits.push(
             { start, end: start, text: `(${text} = ` },
@@ -323,13 +324,83 @@ export const splitPrivateChains = (code: string, filename: string): string => {
   for (const at of questionMarks) {
     edits.push({ start: at, end: at, text: '?' });
   }
-  if (receivers.length > 0) {
-    // `var`, hoisted to the module's top, so every function can assign it;
-    // after the last statement, on its line, so no line moves.
-    const end = sourceFile.statements[sourceFile.statements.length - 1]!.end;
-    edits.push({ start: end, end, text: `;var ${receivers.join(', ')};` });
+  // A scope's opening edit goes before, and its closing edit after, the
+  // edits at the same place inside it (`(__receiver0 = ` where an arrow
+  // function's body starts, `)` where it ends): edits at one place are made
+  // in the order they're pushed.
+  const opening: Edit[] = [];
+  for (const [scope, names] of receivers) {
+    const declaration = `var ${names.join(', ')};`;
+    if (ts.isSourceFile(scope)) {
+      // After the last statement, on its line, so no line moves.
+      const end = scope.statements[scope.statements.length - 1]!.end;
+      edits.push({ start: end, end, text: `;${declaration}` });
+    } else if (ts.isBlock(scope)) {
+      // After any directives (`'use strict'`), which must come first. The
+      // statement with the call isn't one, so there's always a statement
+      // after them.
+      const directives = scope.statements.findIndex(
+        (statement) =>
+          !ts.isExpressionStatement(statement) ||
+          !ts.isStringLiteral(statement.expression),
+      );
+      const at =
+        directives > 0
+          ? scope.statements[directives - 1]!.end
+          : scope.getStart(sourceFile) + 1;
+      opening.push({
+        start: at,
+        end: at,
+        // A directive written without its `;` needs one.
+        text:
+          directives > 0 && code[at - 1] !== ';'
+            ? `; ${declaration}`
+            : ` ${declaration}`,
+      });
+    } else {
+      // An arrow function's expression body, or a field's initializer,
+      // becomes a block that declares them, with the expression on the line
+      // it was on (so `return` can't end before it).
+      const field = ts.isPropertyDeclaration(scope.parent);
+      const start = scope.getStart(sourceFile);
+      opening.push({
+        start,
+        end: start,
+        text: `${field ? '(() => ' : ''}{ ${declaration} return `,
+      });
+      edits.push({
+        start: scope.end,
+        end: scope.end,
+        text: field ? ' })()' : ' }',
+      });
+    }
   }
-  return applyEdits(code, edits, sourceFile);
+  return applyEdits(code, [...opening, ...edits], sourceFile);
+};
+
+/**
+ * Where the variable for a receiver the call reads (see
+ * {@link splitPrivateChains}) is declared: the body of the function, method
+ * or static block the call is in, so each run of it has its own. An arrow
+ * function's expression body or a field's initializer, which run once per
+ * call or instance, are given one. A call in a parameter's default value, a
+ * computed key, `extends` or a decorator is in the scope around them, and
+ * one at the module's top level, which runs once, in the module.
+ */
+const receiverScope = (call: ts.Node): ts.Node => {
+  let child = call;
+  for (let parent = call.parent; parent; parent = parent.parent) {
+    if (
+      ((ts.isFunctionLike(parent) ||
+        ts.isClassStaticBlockDeclaration(parent)) &&
+        (parent as { body?: ts.Node }).body === child) ||
+      (ts.isPropertyDeclaration(parent) && parent.initializer === child)
+    ) {
+      return child;
+    }
+    child = parent;
+  }
+  return child;
 };
 
 /**

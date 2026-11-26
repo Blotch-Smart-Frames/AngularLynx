@@ -1627,6 +1627,25 @@ const CHAIN_FIXTURES: Record<string, string> = {
     out.push(Node.receivers(log), Node.receivers(log), log);
     out;
   `,
+  'a private getter that runs the call again, or assigns its receiver': `
+    class Node {
+      #name;
+      constructor(name) { this.#name = name; }
+      get #fn() {
+        if (this.#name === 'a') {
+          Node.reenter = Node.invoke(Node.other);
+          current = Node.other;
+        }
+        return function () { return this.#name; };
+      }
+      static invoke(node) { return [node][0]?.#fn(); }
+      static current() { return current?.#fn(); }
+    }
+    Node.other = new Node('b');
+    let current = new Node('a');
+    const first = new Node('a');
+    [Node.invoke(first), Node.reenter, Node.current()];
+  `,
 };
 
 describe('splitPrivateChains', () => {
@@ -1693,42 +1712,84 @@ describe('splitPrivateChains', () => {
 
   it('calls a private method in an optional chain through `call`, on its receiver', () => {
     expect(split('class A { #m() {} f(x) { return x?.#m(1); } }')).toBe(
-      'class A { #m() {} f(x) { return x?.#m?.call(x, 1); } }',
+      'class A { #m() {} f(x) { var __receiver0; return (__receiver0 = x)?.#m?.call(__receiver0, 1); } }',
     );
     expect(split('class A { #m() {} f(x) { return x?.#m?.(); } }')).toBe(
-      'class A { #m() {} f(x) { return x?.#m?.call(x); } }',
+      'class A { #m() {} f(x) { var __receiver0; return (__receiver0 = x)?.#m?.call(__receiver0); } }',
     );
+    // `this` can't change, so it's read again.
     expect(split('class A { #f; f(k) { return this.#f?.()[k]; } }')).toBe(
       'class A { #f; f(k) { return this.#f?.call(this)[k]; } }',
     );
     // A call written over lines keeps them.
     expect(
-      split('class A { #m() {} f(x) { return x?.#m /* c */\n(\n1); } }'),
+      split('class A { #m() {} f() { return this?.#m /* c */\n(\n1); } }'),
     ).toBe(
-      'class A { #m() {} f(x) { return x?.#m?.call /* c */\n(x, \n1); } }',
+      'class A { #m() {} f() { return this?.#m?.call /* c */\n(this, \n1); } }',
     );
   });
 
-  it('reads any other receiver once, into a variable the module declares', () => {
+  it('reads the receiver once, before the member, into a variable', () => {
     expect(split('class A { #m() {} f() { return g()?.a.#m(1); } }')).toBe(
-      'class A { #m() {} f() { return (__receiver0 = g()?.a)?.#m?.call(__receiver0, 1); } };var __receiver0;',
+      'class A { #m() {} f() { var __receiver0; return (__receiver0 = g()?.a)?.#m?.call(__receiver0, 1); } }',
     );
     expect(
       split('class A { #a; #m() {} f() { return this.#a.#a?.#m(); } }'),
     ).toBe(
-      'class A { #a; #m() {} f() { return (__receiver0 = (0, this.#a).#a)?.#m?.call(__receiver0); } };var __receiver0;',
+      'class A { #a; #m() {} f() { var __receiver0; return (__receiver0 = (0, this.#a).#a)?.#m?.call(__receiver0); } }',
     );
     // `a?.#a.#m()` asks for the same `?` twice.
     expect(split('class A { #a; #m() {} f(a) { return a?.#a.#m(); } }')).toBe(
-      'class A { #a; #m() {} f(a) { return (__receiver0 = a?.#a)?.#m?.call(__receiver0); } };var __receiver0;',
+      'class A { #a; #m() {} f(a) { var __receiver0; return (__receiver0 = a?.#a)?.#m?.call(__receiver0); } }',
     );
     // A name the module already uses is passed over.
     expect(
       split(
-        'const __receiver0 = 1; class A { #m() {} f() { return g()?.#m(); } }',
+        'const __receiver0 = 1; class A { #m() {} f(x) { return x?.#m(); } }',
       ),
     ).toBe(
-      'const __receiver0 = 1; class A { #m() {} f() { return (___receiver0 = g())?.#m?.call(___receiver0); } };var ___receiver0;',
+      'const __receiver0 = 1; class A { #m() {} f(x) { var ___receiver0; return (___receiver0 = x)?.#m?.call(___receiver0); } }',
+    );
+  });
+
+  it('declares the variable in the scope each run of the call has', () => {
+    const call = (code: string) =>
+      split(`class A { #m() {} ${code} }`).slice(
+        'class A { #m() {} '.length,
+        -2,
+      );
+    // After a function's directives, with or without their `;`.
+    expect(call("f(x) { 'use strict'\n  return x?.#m(); }")).toBe(
+      "f(x) { 'use strict'; var __receiver0;\n  return (__receiver0 = x)?.#m?.call(__receiver0); }",
+    );
+    expect(call("f(x) { 'use strict'\n'b'; return x?.#m(); }")).toBe(
+      "f(x) { 'use strict'\n'b'; var __receiver0; return (__receiver0 = x)?.#m?.call(__receiver0); }",
+    );
+    // An arrow function's expression body, on the line it was on.
+    expect(call('f() { return (x) =>\n  x?.#m(); }')).toBe(
+      'f() { return (x) =>\n  { var __receiver0; return (__receiver0 = x)?.#m?.call(__receiver0) }; }',
+    );
+    // A field's initializer, run for each instance.
+    expect(call('a = g()?.#m();')).toBe(
+      'a = (() => { var __receiver0; return (__receiver0 = g())?.#m?.call(__receiver0) })();',
+    );
+    expect(call('static { g()?.#m(); }')).toBe(
+      'static { var __receiver0; (__receiver0 = g())?.#m?.call(__receiver0); }',
+    );
+    // Two calls in one function share the declaration.
+    expect(call('f(x, y) { return [x?.#m(), y?.#m()]; }')).toBe(
+      'f(x, y) { var __receiver0, __receiver1; return [(__receiver0 = x)?.#m?.call(__receiver0), (__receiver1 = y)?.#m?.call(__receiver1)]; }',
+    );
+    // A default value is evaluated outside the function's body.
+    expect(
+      split('class A { #m() {} static f(x) { return (y = x?.#m()) => y; } }'),
+    ).toBe(
+      'class A { #m() {} static f(x) { var __receiver0; return (y = (__receiver0 = x)?.#m?.call(__receiver0)) => y; } }',
+    );
+    // Outside any function, in a computed key, the module's top level runs
+    // once.
+    expect(split('class A { static #m() {} [g()?.#m()]() {} }')).toBe(
+      'class A { static #m() {} [(__receiver0 = g())?.#m?.call(__receiver0)]() {} };var __receiver0;',
     );
   });
 

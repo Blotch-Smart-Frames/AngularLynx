@@ -92,7 +92,7 @@ Lynx has its own CSS engine. It supports most layout CSS, but its defaults diffe
 
 - **Elements stack vertically** by default (`display: linear`). Add `display: flex` (Tailwind's `flex`) for flexbox.
 - **`box-sizing` is `border-box`**, and margins don't collapse.
-- **Styles aren't inherited.** Setting `color` on a `<view>` doesn't color the `<text>` inside it.
+- **Only `font-size` is inherited.** A `font-size` on a `<view>` reaches the `<text>` inside it, but a `color` there doesn't color it.
 - **`rem` is 14px**, not 16px.
 - **Some features are missing:** `:hover`, `::before`, `@media` and `!important`.
 

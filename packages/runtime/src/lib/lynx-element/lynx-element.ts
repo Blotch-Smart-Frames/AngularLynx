@@ -201,6 +201,25 @@ const LAYOUT_STYLES: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * An inline style string without its declarations of `property`, as the
+ * DOM's `style.removeProperty()` leaves the `style` attribute. The string as
+ * it was when it declares none.
+ */
+const withoutDeclaration = (
+  style: string | null,
+  property: string,
+): string | null => {
+  if (inlineDeclaration(style, property) === undefined) return style;
+  return style!
+    .split(';')
+    .filter((declaration) => {
+      const colon = declaration.indexOf(':');
+      return colon <= 0 || declaration.slice(0, colon).trim() !== property;
+    })
+    .join(';');
+};
+
+/**
  * The value an inline style string gives a property, the last if several.
  */
 const inlineDeclaration = (
@@ -1592,6 +1611,14 @@ export class LynxElement implements BaseLynxElement {
     }
     const textStyles = this.#textStylesBefore(key);
     this.#inlineStyleKeys?.delete(key);
+    // It goes from the style="..." string too, as `removeProperty()` takes
+    // it out of the attribute on the web. Native drops it either way, but
+    // a string written again later, as an element that sets variables
+    // writes it for each change (see #setsVariables), brought it back: a
+    // `<view style="color: red; height: 100px">` with HTML text inside
+    // sets copies of its color (see #inlineTextCopies), and a script's
+    // `removeProperty('height')` on it kept the height.
+    this.#inlineStyleWhole = withoutDeclaration(this.#inlineStyleWhole, key);
     if (this.#setsVariables || (textStyles >= 0 && this.#passesTextStyles)) {
       this.#rewriteInlineStyle();
     } else {

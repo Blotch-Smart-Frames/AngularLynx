@@ -1632,6 +1632,30 @@ describe('loose text, element by element', () => {
       expect(style(bold)).toContain(COLOR);
     });
 
+    it('takes a removed style out of the style string of an element that sets copies', () => {
+      const view = doc.createElement('view');
+      view.setAttribute('style', 'color: red; height: 100px');
+      page.appendChild(view);
+      view.appendChild(doc.createElement('p'));
+      commit();
+      expect(style(view)).toContain('height: 100px');
+
+      view.removeStyle('height');
+      commit();
+      expect(style(view)).not.toContain('height');
+      expect(style(view)).toContain('--angular-lynx-color: red');
+
+      // A text style goes with its copy.
+      view.removeStyle('color');
+      commit();
+      expect(style(view)).not.toContain('color');
+      // One the string doesn't declare leaves it as it is.
+      view.setAttribute('style', 'color: blue');
+      view.removeStyle('width');
+      commit();
+      expect(style(view)).toContain('--angular-lynx-color: blue');
+    });
+
     it('lets an inheritance variable the app sets itself win over the copy', () => {
       const view = doc.createElement('view');
       view.setAttribute('style', 'color: red; --angular-lynx-color: blue');

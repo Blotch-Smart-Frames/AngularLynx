@@ -9,7 +9,10 @@ import {
   SMALLER_FLAG,
   VERTICAL_ALIGN_FLAG,
   hasAncestorTextRules,
+  inheritanceCopiesFor,
   inheritanceStyleFor,
+  inlineTextStyles,
+  splitDeclarations,
   isBlankText,
   isBlockDisplay,
   isRowOrientation,
@@ -18,6 +21,8 @@ import {
   resetStyleIndex,
   smallerClassFor,
   styleFlagsFor,
+  textPropertyBit,
+  textPropertyFlags,
 } from './text-flow';
 
 type Rule =
@@ -209,6 +214,109 @@ describe('inheritanceStyleFor', () => {
     );
     expect(inheritanceStyleFor(ALL_TEXT_PROPERTIES)).toBe('');
     expect(inheritanceStyleFor(0).split('; ')).toHaveLength(11);
+  });
+});
+
+describe('inlineTextStyles', () => {
+  it('reads the text styles of a style string, the last of each', () => {
+    expect(
+      inlineTextStyles(
+        'Color: red; padding: 4px; font-size:18px;; color: blue; line-height:',
+        null,
+      ),
+    ).toEqual(
+      new Map([
+        ['color', 'blue'],
+        ['font-size', '18px'],
+      ]),
+    );
+  });
+
+  it('lets [style.x] styles win over the string', () => {
+    expect(
+      inlineTextStyles(
+        'color: red',
+        new Map<string, unknown>([
+          ['color', 'blue'],
+          ['margin', '4px'],
+          ['font-size', null],
+          ['font-weight', ''],
+          ['line-height', 20],
+        ]),
+      ),
+    ).toEqual(
+      new Map([
+        ['color', 'blue'],
+        ['line-height', '20'],
+      ]),
+    );
+  });
+
+  it('is null when there are none', () => {
+    expect(inlineTextStyles(null, null)).toBeNull();
+    expect(inlineTextStyles('padding: 4px', new Map())).toBeNull();
+  });
+});
+
+describe('splitDeclarations', () => {
+  it('splits at each ; outside quotes and parentheses', () => {
+    expect(
+      splitDeclarations(
+        `--label: "a;b"; content: 'c;\\'d'; background: url(data:x;base64,e); color: red`,
+      ),
+    ).toEqual([
+      '--label: "a;b"',
+      " content: 'c;\\'d'",
+      ' background: url(data:x;base64,e)',
+      ' color: red',
+    ]);
+  });
+
+  it('reads a stray ) as nothing', () => {
+    expect(splitDeclarations('a: b); c: d')).toEqual(['a: b)', ' c: d']);
+  });
+});
+
+describe('textPropertyFlags', () => {
+  it('has the bit of each property', () => {
+    expect(textPropertyBit('color')).toBe(1);
+    expect(textPropertyBit('padding')).toBe(0);
+    expect(textPropertyFlags(null)).toBe(0);
+    expect(
+      textPropertyFlags(
+        new Map([
+          ['color', 'red'],
+          ['font-size', '1rem'],
+        ]),
+      ),
+    ).toBe(1 | textPropertyBit('font-size'));
+  });
+});
+
+describe('inheritanceCopiesFor', () => {
+  it('copies each value to its variable, without !important', () => {
+    expect(
+      inheritanceCopiesFor(
+        new Map([
+          ['color', 'var(--primary) !important'],
+          ['font-size', '18px'],
+        ]),
+      ),
+    ).toBe(
+      '--angular-lynx-color: var(--primary); --angular-lynx-font-size: 18px',
+    );
+  });
+
+  it('copies no value that reads its own variable', () => {
+    expect(
+      inheritanceCopiesFor(
+        new Map([
+          ['font-size', 'calc(var( --angular-lynx-font-size, 14px) * 2)'],
+          ['color', 'var(--angular-lynx-color-x)'],
+        ]),
+      ),
+    ).toBe('--angular-lynx-color: var(--angular-lynx-color-x)');
+    expect(inheritanceCopiesFor(null)).toBe('');
   });
 });
 

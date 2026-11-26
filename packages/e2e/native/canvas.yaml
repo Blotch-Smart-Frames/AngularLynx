@@ -17,12 +17,12 @@ appId: ${APP_ID}
 # The 2D context (issue #469): a canvas drawn on another, read back with
 # getImageData(), and uploaded as a texture and read back.
 - extendedWaitUntil:
-    visible: '2D: 0,128,0,255'
+    visible: '2D: 0,128,0,255;.*'
     timeout: 15000
 # A <video> read as an image (issue #696): its first frame, red above and
 # blue below, drawn on a 2D canvas and read back at the top and the bottom,
 # and uploaded as a texture and read back.
 - extendedWaitUntil:
-    visible: 'Video: red,blue / red'
+    visible: '.*; Video: red,blue / red'
     timeout: 20000
 - takeScreenshot: canvas

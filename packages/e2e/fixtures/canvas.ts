@@ -53,9 +53,10 @@ void main() {
  * and read back. Both reads have to give the green; when they don't, the line
  * shows each.
  *
- * Then "Video: red,blue / red" checks a `<video>` read as an image (issue
+ * On the same line, "Video: red,blue / red" checks a `<video>` read as an image (issue
  * #696): fixtures/video.mp4 is red above and blue below, served by the E2E
- * static server. Once its first frame shows, paused, it's drawn on a 2D
+ * static server, and shown beside the WebGL canvas: a row of its own pushed
+ * the links below the bottom of CI's 320x640 Android emulator. Once its first frame shows, paused, it's drawn on a 2D
  * canvas and read back at the top and the bottom, which also checks it's
  * upright, then uploaded as the WebGL texture and drawn, and the pixel read
  * back is the frame's first row, the top. The colors are named rather than
@@ -78,26 +79,21 @@ void main() {
         height="2"
         style="width: 40px; height: 40px;"
       ></canvas>
-      <text flatten="false" style="margin-left: 12px;"
-        >WebGL: {{ result() }}</text
-      >
-    </view>
-    <text flatten="false">2D: {{ result2D() }}</text>
-    <view
-      style="display: flex; flex-direction: row; align-items: center; margin-top: 8px;"
-    >
       <video
         #video
         [src]="videoUrl"
         [muted]="true"
-        style="width: 64px; height: 32px;"
+        style="width: 40px; height: 20px; margin-left: 8px;"
         (bindfirstframe)="drawVideo()"
         (binderror)="resultVideo.set('error')"
       ></video>
       <text flatten="false" style="margin-left: 12px;"
-        >Video: {{ resultVideo() }}</text
+        >WebGL: {{ result() }}</text
       >
     </view>
+    <text flatten="false"
+      >2D: {{ result2D() }}; Video: {{ resultVideo() }}</text
+    >
     <e2e-library-frame />
     <view style="display: flex; flex-direction: row; margin-top: 8px;">
       <view

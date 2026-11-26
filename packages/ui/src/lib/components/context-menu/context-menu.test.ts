@@ -11,6 +11,7 @@ import {
   LynxHaptics,
 } from '@blotch/angular-lynx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
 import { DURATION } from '../../utils/animate';
 import { UiMenuItem, UiMenuSeparator } from '../menu/menu';
 import { UiContextMenu } from './context-menu';
@@ -71,13 +72,18 @@ const settings = {
 const IOS_26 = { platform: 'iOS', osVersion: '26.0' };
 
 /** Stands in for LynxHaptics, so a test can see the menu's feedback. */
-const haptics = { impact: vi.fn(), selection: vi.fn(), notification: vi.fn() };
+const haptics = {
+  impact: vi.fn(),
+  selection: vi.fn(),
+  notification: vi.fn(),
+};
 
 /**
  * Renders the context menu on a platform (none for Material), measuring
  * elements as `boundingClientRect` would on a phone: the safe area (the
  * element that holds the menu) a phone's screen, the menu's content 120pt
- * tall, and anything else, the pressed element, a card near the top.
+ * tall with its rows 44pt apart from its top, and anything else, the pressed
+ * element, a card near the top.
  */
 const renderContextMenu = async (
   platform: { platform: string; osVersion: string } | null = IOS_26,
@@ -91,11 +97,17 @@ const renderContextMenu = async (
       callback({ code: 0 });
       return;
     }
+    const content = element.closest('scroll-view > view');
+    const rows = content
+      ? [...content.querySelectorAll('[accessibility-traits^="button"]')]
+      : [];
     const data = element.querySelector(':scope > blur-view[ui-glass]')
       ? { left: 0, top: 62, width: 402, height: 778 }
-      : element.parentElement?.tagName.toLowerCase() === 'scroll-view'
+      : element === content
         ? { left: 0, top: 0, width: 250, height: 120 }
-        : { left: 16, top: 162, width: 370, height: 96 };
+        : rows.includes(element)
+          ? { left: 0, top: rows.indexOf(element) * 44, width: 250, height: 44 }
+          : { left: 16, top: 162, width: 370, height: 96 };
     callback({ code: 0, data });
   });
   const result = await render(ContextMenuHost, {
@@ -191,6 +203,7 @@ afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
   haptics.impact.mockClear();
+  haptics.selection.mockClear();
   vi.unstubAllGlobals();
 });
 
@@ -271,5 +284,115 @@ describe('UiContextMenu', () => {
     expect(style(home, 'height')).toBe('');
     expect(rendered.overlay.querySelector('.bg-glass-dim')).toBeNull();
     expect(rendered.menu.getByRole('button', { name: 'Share' })).toBeTruthy();
+  });
+
+  describe('with a finger that slides on from the long press', () => {
+    /**
+     * A touch event with one finger at (x, y) in the window.
+     */
+    const touchAt = (x: number, y: number) => ({
+      touches: [{ clientX: x, clientY: y }],
+    });
+    /**
+     * The middle of a row on screen: the menu opens 8pt below the card, in
+     * the safe area 62pt down, with its rows 44pt apart.
+     */
+    const onRow = (index: number) => ({
+      x: 100,
+      y: 62 + 204 + index * 44 + 22,
+    });
+    const ON_SHARE = onRow(0);
+    const ON_DELETE = onRow(1);
+
+    /**
+     * The element the long press lands on: the card's holder.
+     */
+    const pressed = (rendered: Rendered) => rendered.card().parentElement!;
+
+    it('chooses the item it lifts on, as on iOS', async () => {
+      const rendered = await renderContextMenu();
+      fireLynxEvent(pressed(rendered), 'touchstart', touchAt(100, 200));
+      longPress(rendered.card());
+      await waitForOpen(rendered);
+
+      fireLynxEvent(
+        pressed(rendered),
+        'touchmove',
+        touchAt(ON_SHARE.x, ON_SHARE.y),
+      );
+      await waitForUpdate();
+      const share = rendered.menu.getByRole('button', { name: 'Share' });
+      expect(style(share.firstElementChild!, 'opacity')).toBe('0.08');
+      expect(haptics.selection).toHaveBeenCalledTimes(1);
+
+      fireLynxEvent(pressed(rendered), 'touchend', {
+        touches: [],
+        changedTouches: [{ clientX: ON_SHARE.x, clientY: ON_SHARE.y }],
+      });
+      expect(rendered.host.shared).toHaveBeenCalledTimes(1);
+      expect(rendered.host.open()).toBe(false);
+      await waitForClose(rendered);
+    });
+
+    it('chooses the row it lifts on, not the first', async () => {
+      const rendered = await renderContextMenu();
+      fireLynxEvent(pressed(rendered), 'touchstart', touchAt(100, 200));
+      longPress(rendered.card());
+      await waitForOpen(rendered);
+
+      fireLynxEvent(
+        pressed(rendered),
+        'touchmove',
+        touchAt(ON_DELETE.x, ON_DELETE.y),
+      );
+      fireLynxEvent(pressed(rendered), 'touchend', {
+        touches: [],
+        changedTouches: [{ clientX: ON_DELETE.x, clientY: ON_DELETE.y }],
+      });
+
+      expect(rendered.host.deleted).toHaveBeenCalledTimes(1);
+      expect(rendered.host.shared).not.toHaveBeenCalled();
+      await waitForClose(rendered);
+    });
+
+    it('turns the highlight off when the system takes the touch over', async () => {
+      const rendered = await renderContextMenu();
+      fireLynxEvent(pressed(rendered), 'touchstart', touchAt(100, 200));
+      longPress(rendered.card());
+      await waitForOpen(rendered);
+      fireLynxEvent(
+        pressed(rendered),
+        'touchmove',
+        touchAt(ON_SHARE.x, ON_SHARE.y),
+      );
+      fireLynxEvent(pressed(rendered), 'touchcancel');
+      await waitForUpdate();
+
+      const share = rendered.menu.getByRole('button', { name: 'Share' });
+      expect(style(share.firstElementChild!, 'opacity')).toBe('0');
+      expect(rendered.host.open()).toBe(true);
+    });
+
+    it("isn't followed on Android's Material menus, or when disabled", async () => {
+      for (const [platform, disabled] of [
+        [null, false],
+        [IOS_26, true],
+      ] as const) {
+        const rendered = await renderContextMenu(platform);
+        rendered.host.disabled.set(disabled);
+        rendered.host.open.set(true);
+        await waitForOpen(rendered);
+
+        fireLynxEvent(pressed(rendered), 'touchstart', touchAt(100, 200));
+        fireLynxEvent(
+          pressed(rendered),
+          'touchmove',
+          touchAt(ON_SHARE.x, ON_SHARE.y),
+        );
+        await waitForUpdate();
+        expect(haptics.selection).not.toHaveBeenCalled();
+        rendered.unmount();
+      }
+    });
   });
 });

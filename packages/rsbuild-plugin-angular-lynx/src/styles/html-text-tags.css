@@ -9,7 +9,9 @@
  * style sheet says so, and a template that uses them expects it. On Lynx the
  * runtime renders each as a `<text>` (see the runtime's web-tags.ts), which
  * draws its text as the text around it, so `<text>blue <b>bold blue</b></text>`
- * took the color and kept the weight (issues #611 and #643).
+ * took the color and kept the weight (issues #611 and #643). A `<q>`'s
+ * quotation marks aren't here: Lynx has no `::before` content, so the runtime
+ * draws them (LynxElement.markQuote).
  *
  * Both bundles get this file: the phone's Lynx has no browser styles, and
  * Lynx for Web draws each `<text>` in a custom element of its own

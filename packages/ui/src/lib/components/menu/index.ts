@@ -23,3 +23,11 @@ export {
   type MenuRect,
   type MenuSize,
 } from './menu-placement';
+export {
+  MenuPress,
+  MenuRows,
+  type MenuDragTarget,
+  type MenuPoint,
+  type MenuRow,
+} from './menu-rows';
+export { UiMenuSubmenu } from './menu-submenu';

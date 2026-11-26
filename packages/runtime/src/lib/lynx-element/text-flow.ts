@@ -53,6 +53,19 @@ export const inheritanceVariable = (property: string): string =>
  */
 export const INHERITANCE_CLASS = '_nginherit';
 
+/**
+ * The class of every Lynx `<text>` (one written as `<text>`) with
+ * INHERITANCE_CLASS. The build narrows the copies of a rule whose selector
+ * names `text`, such as the theme's `view > text`, to it instead (see the
+ * build plugin's text-inheritance.ts). An HTML text tag is a `<text>` too, so
+ * such a rule matches it natively, but on the web no `text` selector matches
+ * a `<p>`: with INHERITANCE_CLASS alone, the theme's copy on a `<p>` set
+ * `--foreground` for the inline tags in it, hiding the color around the `<p>`
+ * (issue #610). It's one class, as INHERITANCE_CLASS is, so the copies keep
+ * the specificity they had against each other.
+ */
+export const LYNX_TEXT_INHERITANCE_CLASS = '_nginherit-text';
+
 /** Every inheritable property, as a bitmask (see INHERITED_TEXT_PROPERTIES). */
 export const ALL_TEXT_PROPERTIES = (1 << INHERITED_TEXT_PROPERTIES.length) - 1;
 
@@ -179,8 +192,10 @@ const isRendererClass = (name: string): boolean =>
   name.startsWith('_ngcontent-') ||
   name.startsWith('_nghost-') ||
   name.startsWith('_ngtag-') ||
+  name.startsWith('_ngattr-') ||
   name === ANONYMOUS_TEXT_CLASS ||
-  name === INHERITANCE_CLASS;
+  name === INHERITANCE_CLASS ||
+  name === LYNX_TEXT_INHERITANCE_CLASS;
 
 /**
  * The flags of every rule in the app's CSS that may apply to an element with

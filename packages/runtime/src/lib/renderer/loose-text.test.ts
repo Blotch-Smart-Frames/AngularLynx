@@ -33,6 +33,7 @@ import { LynxDocument } from '../lynx-document';
 import { setPageElementRef } from '../lynx-document/page-ref';
 import {
   INHERITANCE_CLASS,
+  LYNX_TEXT_INHERITANCE_CLASS,
   NOT_BLOCK_CONTAINERS,
   INHERITED_TEXT_PROPERTIES,
   resetStyleIndex,
@@ -421,6 +422,20 @@ class BoldHost {}
 })
 class DecoratedHost {}
 
+@Component({
+  selector: 'link-host',
+  encapsulation: ViewEncapsulation.None,
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: `<text
+    ><a class="link" [attr.href]="href()">docs</a> <a class="plain">plain</a>
+    <abbr class="abbr" title="HyperText Markup Language">HTML</abbr>
+    <span class="span" title="no style">span</span></text
+  >`,
+})
+class LinkHost {
+  readonly href = signal<string | null>('https://lynxjs.org');
+}
+
 /**
  * Angular's compiler (`preserveWhitespaces: false`, the default) deletes a
  * text node that is only whitespace, so the space in `</b> <b>` never reaches
@@ -794,6 +809,30 @@ describe('loose text', () => {
     expect(style('_ngtag-i')).not.toContain('font-weight');
   });
 
+  // Issue #649: a browser styles an `<a>` as a link only with an `href`, and
+  // an `<abbr>` only with a `title`. Lynx matches no attribute selector, so
+  // the runtime gives the element a class standing for the pair, which the
+  // build's rules style, for as long as it has the attribute.
+  it('marks an <a> with an href and an <abbr> with a title for the build to style', () => {
+    const fixture = TestBed.createComponent(LinkHost);
+    fixture.detectChanges();
+
+    expect(byClass('link').classes.has('_ngattr-a-href')).toBe(true);
+    // The attribute still reaches the element.
+    expect(byClass('link').attrs.get('href')).toBe('https://lynxjs.org');
+    expect(byClass('plain').classes.has('_ngattr-a-href')).toBe(false);
+    expect(byClass('abbr').classes.has('_ngattr-abbr-title')).toBe(true);
+    // Only the tag a browser styles with the attribute gets a class.
+    expect(
+      [...byClass('span').classes].some((name) => name.startsWith('_ngattr-')),
+    ).toBe(false);
+
+    fixture.componentInstance.href.set(null);
+    fixture.detectChanges();
+
+    expect(byClass('link').classes.has('_ngattr-a-href')).toBe(false);
+  });
+
   // Issue #643: the build gives `<em>`, `<u>`, `<s>` and their kin the
   // browser's italic and lines, in rules on their tags' classes. As for
   // `<b>`'s weight, the index entries must keep the inherited value off, and
@@ -822,6 +861,32 @@ describe('loose text', () => {
     expect(style('_ngtag-b')).toContain(
       'text-decoration: var(--angular-lynx-text-decoration)',
     );
+  });
+
+  it('gives an HTML text tag its ancestors’ text styles over a rule for every <text>', () => {
+    // As the build writes the theme's `view > text { color: … }` and a
+    // `text.title { font-size: … }`: they match a <p> natively, as it's a
+    // <text>, but on the web no `text` selector matches a <p>, which takes
+    // its parent's color and size (issue #610).
+    (
+      globalThis as { __angularLynxStyleIndex?: unknown }
+    ).__angularLynxStyleIndex = {
+      rules: [
+        [['<text>'], 1],
+        [['<text>', 'title'], 4],
+      ],
+    };
+    const fixture = TestBed.createComponent(InheritHost);
+    fixture.detectChanges();
+    const style = (cls: string): string =>
+      String(byClass(cls).attrs.get('style') ?? '');
+
+    expect(style('plain')).toContain('color: var(--angular-lynx-color)');
+    expect(style('title')).toContain('color: var(--angular-lynx-color)');
+    expect(style('title')).toContain(
+      'font-size: var(--angular-lynx-font-size)',
+    );
+    expect(style('lynx')).toBe('');
   });
 });
 
@@ -1270,6 +1335,31 @@ describe('loose text, element by element', () => {
     commit();
 
     expect(passes(p)).toBe(true);
+  });
+
+  it('gives the class for a rule naming <text> to a Lynx <text> only', () => {
+    // The build narrows the copies of `view > text { color: … }` to it: a
+    // <p> isn't a `text` on the web, so they'd hide its parent's color from
+    // the inline tags in it (issue #610).
+    const view = doc.createElement('view');
+    page.appendChild(view);
+    const text = doc.createElement('text');
+    view.appendChild(text);
+    text.appendChild(doc.createElement('b'));
+    const p = doc.createElement('p');
+    view.appendChild(p);
+    p.appendChild(doc.createElement('b'));
+    commit();
+
+    const forText = (el: LynxElement): boolean =>
+      native(el).classes.has(LYNX_TEXT_INHERITANCE_CLASS);
+    expect(forText(text)).toBe(true);
+    expect(passes(text)).toBe(true);
+    expect(forText(p)).toBe(false);
+    expect(passes(p)).toBe(true);
+    // Nothing a `text` rule styles.
+    expect(forText(view)).toBe(false);
+    expect(forText(page)).toBe(false);
   });
 
   it('keeps it through a class binding', () => {

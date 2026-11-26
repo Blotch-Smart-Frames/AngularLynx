@@ -1618,6 +1618,54 @@ Only `normal`, `bold`, and numeric values `100`–`1000` (integers only) are sup
 
 ---
 
+## A percentage or `em` font size ignores the parent's size
+
+### What you'd expect (web)
+
+`font-size: 80%` and `font-size: 0.8em` are 80% of the parent's font size: 14.4px inside 18px text.
+
+### What Lynx does
+
+Lynx's docs say a percentage is relative to the parent's size, but a nested `<text>` with `font-size: 83.333%` inside a `<text>` of 18px drew at about 11.7px, 83% of Lynx's default 14px, and the same inside 24px text (Lynx Explorer 4.1, Android API 34 emulator, November 2026). Lynx inherits no text style without `enableCSSInheritance`, so the parent's size isn't what the unit resolves against. A `<small>` gets its smaller size from the parent's inheritance variable instead: `calc(var(--angular-lynx-font-size, 14px) / 1.2)` (issue #649). An `em` in another property, such as `vertical-align: 0.4em`, is the element's own size, as on the web.
+
+---
+
+## `vertical-align` drops a value with a `var()` in it
+
+### What you'd expect (web)
+
+`vertical-align: calc(var(--size) / 3)` raises the text by a third of `--size`.
+
+### What Lynx does
+
+On Android (Lynx Explorer 4.1, API 34 emulator, November 2026), `vertical-align: 6px` and `calc(18px / 3)` raised the text, but `calc(var(--angular-lynx-font-size, 14px) / 3)` left it on the baseline, as if the declaration weren't there. Lynx's keywords move it little: `super` and `sub` move by a tenth of the element's height, and `40%` (of the line height) moved nothing visible. Use a length or an `em`, which is the element's own size: the `<sup>` rule is `vertical-align: 0.4em` (issue #649).
+
+---
+
+## Android draws no line for a dotted, dashed or wavy `text-decoration`
+
+### What you'd expect (web)
+
+`text-decoration: underline dotted` draws a dotted line under the text.
+
+### What Lynx does
+
+On iOS it does, and so does the web preview. On Android (Lynx Explorer 4.1, API 34 emulator, November 2026), `underline dotted`, `dotted underline`, `underline dashed`, `underline wavy` and `text-decoration-style: dotted` drew no line at all; `underline` and `underline solid` drew a solid one. So an `<abbr title>`'s dotted underline (issue #649) shows on iOS and the web only.
+
+---
+
+## Android doesn't find generic or system font families
+
+### What you'd expect (web)
+
+`font-family: Menlo, monospace` draws Menlo where it's installed and the platform's monospace font elsewhere.
+
+### What Lynx does
+
+Both platforms take the first family in the list they find. iOS looks each name up as a font family or font name (`LynxFontFaceManager`), so `Menlo` is found and `monospace`, which isn't a font there, falls through to the system font. Android only finds families from `@font-face` rules and from providers the host app registers (`TypefaceCache.addLazyProvider`, `FontFaceManager.getTypeface` returns null for anything else), never Android's own `monospace`, `serif` or `sans-serif`, so it draws the default font (Lynx Explorer 4.1, API 34 emulator, November 2026). `<code>` is monospace on iOS and the web, but not on Android (issue #649).
+
+---
+
 ## `letter-spacing` does not accept the `normal` keyword
 
 ### What you'd expect (web)
@@ -7143,7 +7191,7 @@ An empty raw-text in the same place draws nothing on all three, first, last or b
 
 Nothing inherits (see "CSS inheritance is NOT enabled by default"). A nested `<text>` takes its parent `<text>`'s `color` and `font-family` only: measured on iOS and Android, a nested `<text>` in a 22px bold `<text>` drew at 14px, normal weight. The web preview inherits everything, through the DOM.
 
-CSS variables do inherit, and follow class changes (`[class.x]` toggles), on iOS, Android and the web. A `var()` in an inline style reads them; one no ancestor sets leaves the property as it would be without the declaration. A variable holding `rgba(var(--rgb), 0.5)` resolves where it's read. All measured with Lynx Explorer 4.1 on the iOS 27 Simulator and the Android API 34 emulator, and in the web preview.
+CSS variables do inherit, and follow class changes (`[class.x]` toggles), on iOS, Android and the web. A `var()` in an inline style reads them. One no ancestor sets makes the declaration unset: the property inherits or takes its initial value, as with no rule at all, and a stylesheet rule for it on the same element no longer applies (a `.x > text { letter-spacing: 4px }` rule on a `<p>` reading `var(--angular-lynx-letter-spacing)` drew no spacing on the iOS 27 Simulator and in the web preview, 2026-11-26). A variable holding `rgba(var(--rgb), 0.5)` resolves where it's read. All measured with Lynx Explorer 4.1 on the iOS 27 Simulator and the Android API 34 emulator, and in the web preview.
 
 ### How AngularLynx uses it
 
@@ -7153,11 +7201,13 @@ The copies go in a rule of their own, right after the rule they copy, narrowed t
 
 An HTML inline tag in a Lynx `<text>` reads a variable only for the properties that `<text>`'s rules set, or those of an HTML text tag between them (`LynxElement.#drawnAtDefault`). The `<text>` reads none of the variables, so it draws a property its rules don't set at Lynx's default, whatever its ancestors set. The tag took their value from the variable instead: with the UI theme's `page { font-size: 16px }`, `<text>Lynx text <b>bold</b></text>` drew "Lynx text" at 14px and "bold" at 16px (issue #646). Left without the variable, the tag draws at the default as the `<text>` does, and takes its `color` and `font-family`, which Lynx passes to a `<text>` inside a `<text>`. The web preview inherits through the DOM either way. Measured with Lynx Explorer 4.1 on the iOS 27 Simulator: both words at 14px, and both at 24px in a `<text>` whose class sets `font-size: 24px` (2026-11-26).
 
+An HTML text tag is a `<text>` on Lynx, so a rule naming `text` matches it, though on the web no `text` selector matches a `<p>`. The theme's `view > text { color: var(--foreground) }` did, in two ways (issue #610). The style index counted it as one of the `<p>`'s own rules, so the `<p>` didn't read `--angular-lynx-color`, and `<view class="red big"><p>Hi</p></view>` drew "Hi" at 24px in `--foreground` (seen on an iPhone 14 Pro, and measured in the web preview's computed styles on 2026-11-26). And the rule's copy on a `<p>` with inline tags inside (`--angular-lynx-color: var(--foreground)`) hid the view's color from them. So the runtime leaves the rules that name `text` out of an HTML text tag's own (`#applyInheritance`): it reads the variable, and the nearest ancestor's color wins over the rule. The theme sets `color` on `page`, whose copy every `<p>` can read, so a `<p>` no other ancestor colors takes the page's `--foreground`, as on the web. In the web preview, `.x > text { color: green }` left a `<p>` in an uncolored `.x` the page's color (measured on 2026-11-26), which is what the web draws. Where no ancestor sets the variable at all, the `<p>` doesn't take the `text` rule's value either, again as on the web: the same rule's `letter-spacing: 4px`, which nothing passes down, left the `<p>` unspaced on the iOS 27 Simulator and in the web preview. And the build narrows a `text` rule's copies to a class of its own, `_nginherit-text`, which the runtime gives only to the Lynx `<text>`s that get `_nginherit` (`view > text` is followed by `view > text._nginherit-text { … }`). It replaces `_nginherit` in those selectors rather than joining it, so each copy keeps the specificity it had against the others: `.red` on a `<text class="red">` still beats the theme's `view > text`.
+
 Which of the `<text>`'s rules apply is checked against its ancestors (`matchedStyleFlagsFor` in `text-flow.ts`). The style index used to keep only the last compound of each selector, so `.card .total { font-size: 24px }` counted for a `<text class="total">` outside `.card` too: the `<text>` drew at 14px, and the `<b>` in it read the variable and took the page's 16px (issue #652). A component's styles hit this for ordinary rules, since `:host .total` is `._nghost-x .total._ngcontent-x` by the time the index is built. The index now keeps each selector's ancestor compounds, back to the first sibling combinator, and marks a rule for `:active`, `:hover` or `:focus`, which the runtime can't see. The runtime matches the ancestors against the element tree, works it out again when an element above the `<text>` changes its classes or the `<text>` moves under another, and counts a state's rule for no element: Lynx has no `:hover` or `:focus`, and while a finger is on a `<text>` whose `:active` rule sets a size, the tag in it stays at the default. What the index still can't check (an attribute, `:first-child`, a sibling) counts, as before.
 
 ---
 
-## `<b>`, `<em>`, `<u>` and `<s>` have no text styles: Lynx has no user agent stylesheet
+## `<b>`, `<em>`, `<code>`, `<a href>` and the other inline text tags have no text styles: Lynx has no user agent stylesheet
 
 ### What you'd expect (web)
 
@@ -7173,7 +7223,13 @@ The build plugin adds a stylesheet of its own to both bundles, ahead of the app'
 
 A browser draws a decoration across everything inside the element rather than inheriting it, so a `<u>` inside an `<s>` has both lines. Here `text-decoration` is one inherited value, which the inner tag's own rule would replace, so the stylesheet gives each such pair (`u s`, `s u`, `ins del`…) `text-decoration: underline line-through`, which Lynx draws as both lines (see "`text-decoration` supports only one layer" above). Its two classes beat an app's single class for that pair alone. Measured the same way as the bold, on the iOS 27 Simulator, the Android API 34 emulator and the web preview.
 
-Other tags with a browser style (`<a>`'s underline, `<code>`'s monospace font, `<small>`, `<mark>`, `<sub>`, `<sup>`, `<h1>`…) still have none.
+The rest of the inline text tags with a browser style followed (issue #649): `code, kbd, samp { font-family: Menlo, monospace }`, `small, sub, sup { font-size: calc(var(--angular-lynx-font-size, 14px) / 1.2) }` with `vertical-align: -0.24em` for `sub` and `0.4em` for `sup`, and `mark { background-color: #ffff00; color: #000000 }`. Each works around a Lynx difference recorded below: a percentage or `em` font size ignores the parent's size, a `vertical-align` with a `var()` is dropped, and Android finds no `monospace` font. The `<small>` rule reads the variable it would be copied to, so the text inheritance step makes no copy (a copy would refer to itself), and text inside a `<small>` takes the size around it.
+
+A browser styles `<a>` only as a link (`a:any-link`, with an `href`) and `<abbr>` only with a `title` (`abbr[title]`). Lynx matches no attribute selector (see "Lynx can't match attribute selectors" above), so the runtime gives such an element a class while it has the attribute (`_ngattr-a-href`, `_ngattr-abbr-title`, from `ATTRIBUTE_STYLED_TAGS` in `web-tags.ts`), and the stylesheet styles the class: `color: var(--angular-lynx-link-color, #0000ee); text-decoration: underline`, with `page.dark { --angular-lynx-link-color: #9e9eff }` for Chrome's dark link color, and `text-decoration: underline dotted`. One class, not the tag's class and another, so an app's own class beats it, as an author style beats a browser's. `RouterLink` writes no `href` on Lynx (it treats the `<a>` as a plain element), so an `<a routerLink>` isn't styled as a link, unlike in a browser. A `<q>` still gets no quotation marks: Lynx has no `::before`/`::after` content on a `<text>`.
+
+Measured with Lynx Explorer 4.1 on the iOS 27 Simulator (iPhone 18 Pro) and the Android API 34 emulator, and in the web preview, November 2026. All three drew the smaller sizes, the lowered and raised text, the highlight and the link (and its dark color, on Android and the web), and an app's class beat the link color. Menlo and the dotted underline showed on iOS and the web only (see below).
+
+`<h1>`…`<h6>` and `<button>` still have no browser styles.
 
 ---
 

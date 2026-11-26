@@ -3,10 +3,13 @@ import * as ts from 'typescript';
 const RUNTIME = '@blotch/angular-lynx';
 const REGISTER = 'registerHostElement';
 const PURE = '/*#__PURE__*/ ';
+/** The name of the declarations the registrations become, before their number. */
+const DECLARATION = 'ɵhostElement';
 
 /**
- * Marks a module's top-level `registerHostElement()` calls pure, for the
- * background layer, so a bundler can drop them with the components they name.
+ * Turns a module's top-level `registerHostElement()` calls into pure
+ * declarations nothing reads, for the background layer, so a bundler can drop
+ * them with the components they name.
  *
  * A call next to its component (`registerHostElement(UiCardTitle, 'text')`, as
  * `@blotch/ui` has for 11 of them) is a side effect of loading the module.
@@ -16,6 +19,17 @@ const PURE = '/*#__PURE__*/ ';
  * though the background thread never renders and never reads the
  * registrations. Only the background's copy changes: on the main thread the
  * registration is what makes the component's host a `<text>`.
+ *
+ * Marking the call pure isn't enough. Rspack's tree shaking (its inner graph)
+ * counts what a top-level statement reads as read by the module itself, pure
+ * or not: `/*#__PURE__*\/ registerHostElement(UiIcon, 'svg')` kept UiIcon, and
+ * with it the `input()`, `computed()`, `inject()` and `cn()` it imports, so
+ * the bundle kept `@angular/core` and tailwind-merge whole for the minifier to
+ * pick through, which it couldn't (issue #716). As the value of a variable
+ * nothing reads, the call belongs to that declaration, which is pure and
+ * unused, so rspack itself leaves out the component and the imports only it
+ * used. An argument that does something makes the declaration impure, and
+ * rspack keeps it, as the minifier keeps such an argument of a pure call.
  *
  * Only calls of the runtime's own function count: the name a named import
  * gives it, renamed or not, or a namespace import's property. A function of
@@ -90,10 +104,18 @@ export const markHostElementsPure = (
     if (registers) starts.push(statement.expression.getStart(sourceFile));
   }
 
+  // A name no identifier in the module contains, so a declaration can't
+  // shadow or redeclare one of the module's own.
+  let name = DECLARATION;
+  while (code.includes(name)) name = `_${name}`;
+
   // From the end, so earlier offsets stay valid.
   let result = code;
-  for (const start of starts.reverse()) {
-    result = result.slice(0, start) + PURE + result.slice(start);
+  for (const [index, start] of [...starts.entries()].reverse()) {
+    result =
+      result.slice(0, start) +
+      `const ${name}${index} = ${PURE}` +
+      result.slice(start);
   }
   return result;
 };

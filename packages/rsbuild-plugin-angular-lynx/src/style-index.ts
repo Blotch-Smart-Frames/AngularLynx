@@ -26,6 +26,33 @@ export const LAYOUT_FLAG = 1 << INHERITED_TEXT_PROPERTIES.length;
 export const SMALLER_FLAG = LAYOUT_FLAG << 1;
 
 /**
+ * The bits for a rule that moves its text off the baseline by a `vertical-align`
+ * length: RAISED_FLAG for the build's `<sup>` rule (`0.4em`), LOWERED_FLAG
+ * for its `<sub>` rule (`-0.24em`), and VERTICAL_ALIGN_FLAG for any other
+ * value, whose distance the runtime doesn't know (see
+ * styles/html-text-tags.css). On iOS, Lynx moves only the text of the
+ * `<text>` that has the `vertical-align`, not that of the inline `<text>`s
+ * inside it, and on both iOS and Android an inner one's offset replaces the
+ * outer's rather than adding to it. So the runtime gives the HTML text tags
+ * inside a `<sub>` or `<sup>` the whole distance themselves (issue #682),
+ * and these tell it which tags move by how much. Above SMALLER_FLAG, as in
+ * the runtime's text-flow.ts.
+ */
+export const RAISED_FLAG = SMALLER_FLAG << 1;
+export const LOWERED_FLAG = RAISED_FLAG << 1;
+export const VERTICAL_ALIGN_FLAG = LOWERED_FLAG << 1;
+
+/**
+ * What a `vertical-align` value moves the text by, as style index bits.
+ */
+const verticalAlignFlag = (value: string): number => {
+  const length = value.trim().toLowerCase();
+  if (length === '0.4em') return RAISED_FLAG;
+  if (length === '-0.24em') return LOWERED_FLAG;
+  return VERTICAL_ALIGN_FLAG;
+};
+
+/**
  * Whether a `font-size` is the build's smaller size, the parent's variable
  * divided by 1.2, which the runtime divides again for each level (see
  * SMALLER_FLAG). An app's own rule that reads the variable with another
@@ -71,9 +98,10 @@ export type StyleIndexRule =
 /**
  * What the runtime needs to know about the app's CSS (see the runtime's
  * lynx-element/text-flow.ts): for each rule that sets an inheritable text
- * property or changes layout, the tokens the last part of its selector
- * requires (classes, `#id`, `<tag>`), a bitmask of what it sets, and what
- * the rest of its selector requires of the element's ancestors. The
+ * property or a `vertical-align`, or changes layout, the tokens the last
+ * part of its selector requires (classes, `#id`, `<tag>`), a bitmask of what
+ * it sets, and what the rest of its selector requires of the element's
+ * ancestors. The
  * runtime can't read the stylesheet, which Lynx compiles into the bundle.
  */
 export type StyleIndex = {
@@ -86,6 +114,7 @@ export type StyleIndex = {
 const flagsOf = (property: string, value: string): number => {
   const name = property.toLowerCase();
   if (name === 'font-size' && isSmallerSize(value)) return SMALLER_FLAG;
+  if (name === 'vertical-align') return verticalAlignFlag(value);
   const bit = INHERITED_TEXT_PROPERTIES.indexOf(name);
   if (bit >= 0) return 1 << bit;
   const keyword = value.trim().toLowerCase();

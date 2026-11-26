@@ -36,7 +36,12 @@ import {
   HMR_MAIN_THREAD_CLIENT,
 } from './entry';
 import { LAYERS } from './layers';
-import { SMALLER_FLAG, styleIndexOf } from './style-index';
+import {
+  LOWERED_FLAG,
+  RAISED_FLAG,
+  SMALLER_FLAG,
+  styleIndexOf,
+} from './style-index';
 import {
   INHERITED_TEXT_PROPERTIES,
   textInheritanceForLynx,
@@ -706,11 +711,11 @@ describe('applyEntry', () => {
           [`_ngtag-${tag}`],
           bit('font-family'),
         ]),
-        // Read from the parent's variable, with no copy (issue #663).
-        ...['small', 'sub', 'sup'].map((tag) => [
-          [`_ngtag-${tag}`],
-          SMALLER_FLAG,
-        ]),
+        // Read from the parent's variable, with no copy (issue #663), and
+        // moved off the baseline by the build's distances (issue #682).
+        [['_ngtag-small'], SMALLER_FLAG],
+        [['_ngtag-sub'], SMALLER_FLAG | LOWERED_FLAG],
+        [['_ngtag-sup'], SMALLER_FLAG | RAISED_FLAG],
         [['_ngtag-mark'], bit('color')],
         [['_ngattr-a-href'], bit('color') | bit('text-decoration')],
         [['_ngattr-abbr-title'], bit('text-decoration')],

@@ -129,6 +129,14 @@ sup {
  * in the element's own `em`, which is the parent's size divided by 1.2 (see
  * above). A length raises the text by that much, as on the web.
  * `vertical-align` isn't inherited, so it has no copy.
+ *
+ * A browser moves the text inside the tag with it, and a `<sup>` in a
+ * `<sup>` by both. Lynx doesn't: on iOS the tags inside stayed on the line,
+ * and on iOS and Android an inner tag's offset replaces the outer's. So the
+ * style index flags these two distances (RAISED_FLAG and LOWERED_FLAG in
+ * style-index.ts), and the runtime gives each HTML text tag inside one the
+ * whole distance, in its own `em` (baselineShiftFor in its text-flow.ts,
+ * issue #682). It has these values too, which a test keeps the same.
  */
 sub {
   vertical-align: -0.24em;

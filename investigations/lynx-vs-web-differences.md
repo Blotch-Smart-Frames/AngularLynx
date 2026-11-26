@@ -1686,6 +1686,22 @@ On Android (Lynx Explorer 4.1, API 34 emulator, November 2026), `vertical-align:
 
 ---
 
+## The text inside an inline `<text>` with a `vertical-align` doesn't move with it
+
+### What you'd expect (web)
+
+`vertical-align` moves an inline box relative to its parent's baseline, and everything inside the box moves with it. In `x<sup>n<b>2</b></sup>` the "n" and the "2" rise together, and in `x<sup>n<sup>m</sup></sup>` the "m" rises by both `<sup>`s' distances.
+
+### What Lynx does
+
+On iOS, Lynx moves only the text of the inline `<text>` that has the `vertical-align`: it sets each run's `NSBaselineOffsetAttributeName` from the nearest `<text>` that owns the run (`LynxTextShadowNode setVerticalAlign:`), so a `<text>` inside it, with no `vertical-align` of its own, stays on the line. On Android the outer `<text>`'s span (`InlineTextBaselineShiftSpan`) covers the text inside, so it moves, but each span sets the paint's `baselineShift` rather than adding to it, so an inner `<text>` with a `vertical-align` of its own moves by its own distance only. On both, a `<sup>` in a `<sup>` rose no higher than one alone, and a `<sup>` in a `<sub>` sat above the line instead of near it (Lynx Explorer 4.1 shells, iOS 27 Simulator and Android API 34 emulator, November 2026). The web preview draws inline elements in the browser, which adds them up.
+
+### The fix
+
+The style index flags the build's `<sup>` and `<sub>` distances (`RAISED_FLAG` for `vertical-align: 0.4em`, `LOWERED_FLAG` for `-0.24em`, and `VERTICAL_ALIGN_FLAG` for any other value), and on iOS and Android the runtime gives each HTML text tag inside one the whole distance inline, in its own `em` (`baselineShiftFor` in `text-flow.ts`, issue #682): `0.4em` for a `<b>` in a `<sup>`, `0.48em` for a `<small>` in a `<sup>` (it's 1.2 times smaller), `0.88em` for a `<sup>` in a `<sup>`. It leaves the tag alone where an app's rule or inline style sets a `vertical-align` of its own on it or a tag around it (an app's `sup { vertical-align: -0.24em }` merges with the build's rule into both flags), or a size of its own on it or a tag between it and the `<sup>`, since it can't tell the distance then.
+
+---
+
 ## Android draws no line for a dotted, dashed or wavy `text-decoration`
 
 ### What you'd expect (web)

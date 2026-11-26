@@ -946,9 +946,21 @@ describe('renamePrivateMethods', () => {
     );
   });
 
-  it('leaves static private members, auto-accessors and decorated fields alone', () => {
+  it('renames a static private method and keys a static private field by a symbol', () => {
+    // Each read of a static one went through SWC's brand check too.
+    const code = rename(
+      'class A { static #s() { return 1; } static #t = 2; static f() { return A.#s() + this.#t; } }',
+    );
+    const [s] = renamed(code, 's');
+    const [t] = renamed(code, 't');
+    expect(code).toBe(
+      `var ${t} = Symbol("t"); class A { static ${s}() { return 1; } static [${t}] = 2; static f() { return A.${s}() + this[${t}]; } }`,
+    );
+  });
+
+  it('leaves auto-accessors and decorated fields alone', () => {
     const code =
-      'class A { static #s() {} static #t = 2; accessor #a = 3; @tracked #d = 4; g() { A.#s(); return A.#t + this.#a + this.#d; } }';
+      'class A { static accessor #s = 1; accessor #a = 3; @tracked #d = 4; g() { return A.#s + this.#a + this.#d; } }';
     expect(rename(code)).toBe(code);
   });
 
@@ -1598,5 +1610,17 @@ describe("over the runtime's build", () => {
       fieldSites(before.main),
     );
     expect(Object.keys(renamedElement)).toEqual(Object.keys(element));
+  }, 60_000);
+
+  it('reads no private member of the runtime through the brand check', async () => {
+    // LynxElement's static ones (its registry of wrappers, the sets the end
+    // of a cycle commits) are read for every element it makes and inserts.
+    const before = await compileRuntime(false);
+    const after = await compileRuntime(true);
+    const brandChecks = (code: string) =>
+      code.match(/_class_private_field_loose_base\(/g)?.length ?? 0;
+
+    expect(brandChecks(before.main)).toBeGreaterThan(50);
+    expect(brandChecks(after.main)).toBe(0);
   }, 60_000);
 });

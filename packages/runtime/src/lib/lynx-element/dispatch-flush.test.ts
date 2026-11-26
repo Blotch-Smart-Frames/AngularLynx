@@ -83,8 +83,10 @@ beforeEach(() => {
   vi.stubGlobal('__RemoveElement', vi.fn());
   vi.stubGlobal('__GetParent', () => null);
   // No element tree here, so every element has a child as far as the cycle
-  // check asks, which keeps it on its full walk (see wouldFormCycle).
+  // check asks, and each child another, past its search down: that keeps it
+  // on its full walk (see wouldFormCycle).
   vi.stubGlobal('__FirstElement', () => ({}));
+  vi.stubGlobal('__NextElement', () => null);
   vi.stubGlobal('__InvokeUIMethod', vi.fn());
   vi.stubGlobal('__ElementAnimate', vi.fn());
   vi.stubGlobal('SystemInfo', { platform: 'iOS' });

@@ -117,10 +117,10 @@ export const transformPrivateMethods = (
 };
 
 /**
- * Turns each class's instance `#private` methods, getters and setters into
- * ordinary methods with unique public names, so they're defined once on the
- * prototype instead of on every instance, and its instance `#private`
- * fields into properties keyed by symbols. AngularLynx's own packages use it
+ * Turns each class's `#private` methods, getters and setters into ordinary
+ * methods with unique public names, so an instance one is defined once on
+ * the prototype instead of on every instance, and its `#private` fields into
+ * properties keyed by symbols, static members included. AngularLynx's own packages use it
  * (see {@link transformPrivateMethods}).
  *
  * The main thread compiles to ES2019 with SWC's `privateFieldsAsProperties`
@@ -168,9 +168,20 @@ export const transformPrivateMethods = (
  * `undefined` rather than a TypeError. An auto-accessor (`accessor #x`) and
  * a decorated field stay private.
  *
+ * **Static members** are renamed and keyed the same way. A class makes its
+ * static ones once, but each `LynxElement.#registry` read went through
+ * `_class_private_field_loose_base` all the same, and a static private
+ * method was a field holding a function, read through it before each call:
+ * `LynxElement`'s static members are read for every element it makes,
+ * inserts and commits (about 9% of building 5,000 views under
+ * `node --jitless`). A renamed static method is a static method of the
+ * class, so a subclass inherits it and `Object.getOwnPropertyNames()` of the
+ * class lists it, and a subclass reads its base's static fields through its
+ * prototype chain: only code that reaches a static private member through a
+ * subclass, which natively throws a TypeError, sees that.
+ *
  * Left as they are:
  *
- * - Static private members, which are made once anyway.
  * - Any class that uses `#name in object`: a public name can't answer it.
  * - A class with `extends` that can be made more than once: one inside a
  *   function that isn't called at once, or is but has a name or uses
@@ -217,7 +228,6 @@ export const renamePrivateMethods = (
     // another would override its base's methods (see above).
     if (info.branded || (info.repeated && info.extendsAnother)) continue;
     for (const [name, declarations] of info.members) {
-      if (declarations.some(isStatic)) continue;
       const text = `__${name.slice(1)}_${key}${info.index}`;
       const uses = info.uses.get(name)!;
       // A getter and setter share one name, and so one new name.

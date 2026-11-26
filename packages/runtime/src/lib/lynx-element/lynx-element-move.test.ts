@@ -105,6 +105,8 @@ const installNativeFakes = (): void => {
   g['__GetParent'] = (n: FakeEl) => n.parent;
   g['__GetChildren'] = (n: FakeEl) => n.children.slice();
   g['__FirstElement'] = (n: FakeEl) => n.children[0] ?? null;
+  g['__NextElement'] = (n: FakeEl) =>
+    n.parent?.children[n.parent.children.indexOf(n) + 1] ?? null;
   g['__CreateView'] = () => makeEl('view');
   g['__AppendElement'] = (parent: FakeEl, child: FakeEl) =>
     attach(parent, child, parent.children.length);

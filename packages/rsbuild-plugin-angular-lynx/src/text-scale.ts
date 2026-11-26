@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { RsbuildPluginAPI } from '@lynx-js/rspeedy';
-import type { PluginCreator, Rule } from 'postcss';
+import postcss, { type PluginCreator, type Rule } from 'postcss';
 import selectorParser from 'postcss-selector-parser';
 
 /**
@@ -18,42 +18,58 @@ export const TEXT_SCALE_STYLESHEET = path.resolve(
 const PX = /^(\d*\.?\d+)px$/i;
 
 /**
- * Whether one selector of a rule matches the page itself: `page`, or `page`
- * with classes or pseudo-classes of its own, such as `page.dark`. A selector
- * with a combinator styles something inside the page, and `:root`, which Lynx
- * also matches on the page, is left to the app: Tailwind and the theme use
- * `page`.
+ * Whether one selector matches the page itself: `page`, or `page` with
+ * classes or pseudo-classes of its own, such as `page.dark`. A selector with a
+ * combinator styles something inside the page, and `:root`, which Lynx also
+ * matches on the page, is left to the app: Tailwind and the theme use `page`.
+ *
+ * A nested selector that starts with `&` (`page { &.dark { … } }`) matches the
+ * page when its parent rule does: PostCSS visits its declarations before
+ * Tailwind 4 flattens it into `page.dark`, at `OnceExit`, and doesn't visit
+ * them again after.
  */
-const isPageSelector = (selector: selectorParser.Selector): boolean => {
-  const nodes = selector.nodes;
-  const tag = nodes[0];
+const isPageSelector = (
+  selector: selectorParser.Selector,
+  parentIsPage: boolean,
+): boolean => {
+  const [first, ...rest] = selector.nodes;
+  const page =
+    (first?.type === 'tag' && first.value.toLowerCase() === 'page') ||
+    (first?.type === 'nesting' && parentIsPage);
   return (
-    tag?.type === 'tag' &&
-    tag.value.toLowerCase() === 'page' &&
-    nodes
-      .slice(1)
-      .every((node) => node.type === 'class' || node.type === 'pseudo')
+    page &&
+    rest.every((node) => node.type === 'class' || node.type === 'pseudo')
   );
 };
 
 /**
- * Whether every selector in a rule's list matches the page. A list that also
- * styles other elements (`page, view { font-size: 16px }`) keeps its px: a
- * view's own text must not grow twice, once through `sp` and once through
- * the root.
+ * Splits a rule's selector list into the selectors that match the page and
+ * the rest, or returns undefined for one PostCSS can't parse.
  */
-const stylesOnlyThePage = (rule: Rule): boolean => {
-  let only = true;
+const pageSelectors = (
+  rule: Rule,
+): { page: string[]; other: string[] } | undefined => {
+  const parent = rule.parent;
+  const parentIsPage =
+    parent?.type === 'rule' &&
+    (() => {
+      const split = pageSelectors(parent as Rule);
+      return !!split && split.page.length > 0 && split.other.length === 0;
+    })();
+  const page: string[] = [];
+  const other: string[] = [];
   try {
     selectorParser((selectors) => {
       selectors.each((selector) => {
-        if (!isPageSelector(selector)) only = false;
+        (isPageSelector(selector, parentIsPage) ? page : other).push(
+          selector.toString().trim(),
+        );
       });
     }).processSync(rule.selector);
   } catch {
-    return false;
+    return undefined;
   }
-  return only;
+  return { page, other };
 };
 
 /**
@@ -78,18 +94,40 @@ const stylesOnlyThePage = (rule: Rule): boolean => {
  * Only the native bundle takes it: a browser has no `sp`, and the web
  * preview stays at the browser's size.
  */
-export const textScaleForLynx: PluginCreator<void> = () => ({
-  postcssPlugin: 'angular-lynx-text-scale',
-  Declaration: {
-    'font-size'(declaration) {
-      const px = PX.exec(declaration.value.trim());
-      const parent = declaration.parent;
-      if (!px || parent?.type !== 'rule') return;
-      if (!stylesOnlyThePage(parent as Rule)) return;
-      declaration.value = `${px[1]}sp`;
+export const textScaleForLynx: PluginCreator<void> = () => {
+  // The px declarations of mixed lists that already have their page rule:
+  // PostCSS visits a declaration again after the tree around it changes.
+  const split = new WeakSet<object>();
+  return {
+    postcssPlugin: 'angular-lynx-text-scale',
+    Declaration: {
+      'font-size'(declaration) {
+        if (split.has(declaration)) return;
+        const px = PX.exec(declaration.value.trim());
+        const rule = declaration.parent;
+        if (!px || rule?.type !== 'rule') return;
+        const selectors = pageSelectors(rule as Rule);
+        if (!selectors || selectors.page.length === 0) return;
+        const sp = `${px[1]}sp`;
+        if (selectors.other.length === 0) {
+          declaration.value = sp;
+          return;
+        }
+        // A list that also styles other elements (`page, view { font-size:
+        // 16px }`) keeps its px for them: their text mustn't grow, since px
+        // is the app's way to say so. The page gets its own rule right after,
+        // which wins over the list's px for it, as the later of two rules of
+        // the same specificity does.
+        (rule as Rule).after(
+          postcss
+            .rule({ selector: selectors.page.join(', ') })
+            .append(declaration.clone({ value: sp })),
+        );
+        split.add(declaration);
+      },
     },
-  },
-});
+  };
+};
 textScaleForLynx.postcss = true;
 
 /**

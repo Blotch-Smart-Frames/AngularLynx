@@ -41,12 +41,60 @@ describe('textScaleForLynx', () => {
     '.title { font-size: 16px }',
     'page view { font-size: 16px }',
     'page > text { font-size: 16px }',
-    'page, view { font-size: 16px }',
     ':root { font-size: 16px }',
     'page { line-height: 24px }',
     'page { --size: 16px }',
   ])('leaves %s as it is', (css) => {
     expect(process(css)).toBe(css);
+  });
+
+  // The view keeps its px; the page's root follows the phone.
+  it('gives the page of a list that styles other elements too a rule of its own, in sp', () => {
+    expect(process('page, view { font-size: 16px }')).toBe(
+      'page, view { font-size: 16px }\npage { font-size: 16sp }',
+    );
+    expect(process('page.dark, .title, page { font-size: 16px }')).toBe(
+      'page.dark, .title, page { font-size: 16px }\npage.dark, page { font-size: 16sp }',
+    );
+  });
+
+  // PostCSS visits a declaration again when another plugin changes it.
+  it("gives a list's page one rule however often the declaration is visited", () => {
+    let touched = false;
+    const touch = {
+      postcssPlugin: 'touch',
+      Declaration(declaration: { value: string }) {
+        if (touched) return;
+        touched = true;
+        declaration.value = '16px ';
+      },
+    };
+    expect(
+      postcss([textScaleForLynx(), touch]).process(
+        'page, view { font-size: 16px }',
+        { from: undefined },
+      ).css,
+    ).toBe('page, view { font-size: 16px  }\npage { font-size: 16sp }');
+  });
+
+  // Tailwind 4 flattens nesting at OnceExit, after this plugin's
+  // declarations have been visited for the last time.
+  it('writes a page rule nested with & in sp', () => {
+    expect(process('page { &.dark { font-size: 20px } }')).toBe(
+      'page { &.dark { font-size: 20sp } }',
+    );
+    expect(process('page { &:hover { font-size: 20px } }')).toBe(
+      'page { &:hover { font-size: 20sp } }',
+    );
+    expect(process('.a { &.dark { font-size: 20px } }')).toBe(
+      '.a { &.dark { font-size: 20px } }',
+    );
+    expect(process('page { & view { font-size: 20px } }')).toBe(
+      'page { & view { font-size: 20px } }',
+    );
+    expect(process('page, .a { &.dark { font-size: 20px } }')).toBe(
+      'page, .a { &.dark { font-size: 20px } }',
+    );
   });
 
   // Of the root itself, or the app's own arithmetic.

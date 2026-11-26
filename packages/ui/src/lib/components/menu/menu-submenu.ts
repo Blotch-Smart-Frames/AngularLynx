@@ -279,6 +279,16 @@ export class UiMenuSubmenu implements UiMenuHost {
   }
 
   /**
+   * A submenu the app takes away while it's open closes first: otherwise the
+   * menu it's in would stay faded behind it, and hand a finger sliding
+   * across it to a popup that's gone (see MenuRows' openSubmenu). A field
+   * rather than a constructor (see UiMenuPopup's openOrClose).
+   */
+  protected readonly collapseOnDestroy = inject(DestroyRef).onDestroy(() => {
+    if (this.expanded()) this.collapse();
+  });
+
+  /**
    * Closes the submenu and every menu it's in, as choosing an item does.
    */
   close(): void {

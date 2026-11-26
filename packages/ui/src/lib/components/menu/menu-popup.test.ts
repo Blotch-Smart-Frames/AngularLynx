@@ -731,7 +731,7 @@ describe('UiMenuPopup', () => {
       expect(menuRows.shown()).toBe(false);
     });
 
-    it('opens a submenu the finger rests on, unless the app takes its row away first', async () => {
+    it('opens a submenu the finger rests on, unless the app changes its rows first', async () => {
       const rendered = await renderPopup();
       const submenuRow = (r: Rendered): MenuRow => ({
         ...itemRow(r),
@@ -749,6 +749,18 @@ describe('UiMenuPopup', () => {
       remove();
       await after(SUBMENU_REST_DELAY);
       expect(row.choose).not.toHaveBeenCalled();
+
+      // Nor once a row is added before it, which moves it from under the
+      // finger.
+      menuRows.add(row);
+      rendered.host.popup().dragTo(ON_ITEM);
+      await settle();
+      rendered.host.popup().dragTo(ON_ITEM);
+      expect(menuRows.highlighted()).toBe(row);
+      menuRows.add(itemRow(rendered));
+      await after(SUBMENU_REST_DELAY);
+      expect(row.choose).not.toHaveBeenCalled();
+      rendered.host.popup().dragTo(null);
 
       // Back, and measured again where it is.
       menuRows.add(row);

@@ -738,14 +738,17 @@ export class UiMenuPopup implements OnDestroy, MenuDragTarget {
    * SUBMENU_REST_DELAY, as UIKit's does, so the same finger carries on into
    * its items and lifts on one to choose it. The submenu then measures its
    * own rows as it opens, and later moves go to it (see MenuRows'
-   * openSubmenu). Moving off the row first stops the timer.
+   * openSubmenu). Moving off the row first stops the timer, and so does a
+   * change to the rows, as it does #rowAt's measurements.
    */
   #restOn(rows: MenuRows, row: MenuRow): void {
+    const version = rows.version;
     const timer = setTimeout(() => {
       this.#timers.delete(timer);
       this.#resting = null;
-      // Gone meanwhile: the app took the row away, which turns its light off.
-      if (rows.highlighted() !== row) return;
+      // The app added or took away a row meanwhile: this one may be gone, or
+      // have moved out from under the finger, which hasn't moved since.
+      if (rows.version !== version) return;
       rows.highlighted.set(null);
       row.choose();
     }, SUBMENU_REST_DELAY);

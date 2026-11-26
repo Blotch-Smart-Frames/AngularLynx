@@ -37,20 +37,22 @@ import { UiMenuSubmenu } from './menu-submenu';
       >
         <text>View</text>
       </view>
-      <ui-menu-submenu label="Sort by" icon="arrow-down">
-        <ui-menu-section>
-          <ui-menu-item
-            label="Name"
-            [checked]="sort() === 'name'"
-            (pressed)="sort.set('name')"
-          />
-          <ui-menu-item
-            label="Date"
-            [checked]="sort() === 'date'"
-            (pressed)="sort.set('date')"
-          />
-        </ui-menu-section>
-      </ui-menu-submenu>
+      @if (showSort()) {
+        <ui-menu-submenu label="Sort by" icon="arrow-down">
+          <ui-menu-section>
+            <ui-menu-item
+              label="Name"
+              [checked]="sort() === 'name'"
+              (pressed)="sort.set('name')"
+            />
+            <ui-menu-item
+              label="Date"
+              [checked]="sort() === 'date'"
+              (pressed)="sort.set('date')"
+            />
+          </ui-menu-section>
+        </ui-menu-submenu>
+      }
       <ui-menu-submenu label="Move to" disabled>
         <ui-menu-item label="Archive" (pressed)="moved()" />
       </ui-menu-submenu>
@@ -60,6 +62,7 @@ import { UiMenuSubmenu } from './menu-submenu';
 })
 class SubmenuHost {
   readonly open = signal(false);
+  readonly showSort = signal(true);
   readonly sort = signal<'name' | 'date'>('date');
   readonly closed = vi.fn();
   readonly moved = vi.fn();
@@ -111,8 +114,11 @@ const renderSubmenu = async (
       return;
     }
     const content = element.closest('scroll-view > view');
+    // A menu's own rows: a submenu's are in its own content, inside this.
     const rows = content
-      ? [...content.querySelectorAll('[accessibility-traits^="button"]')]
+      ? [
+          ...content.querySelectorAll('[accessibility-traits^="button"]'),
+        ].filter((row) => row.closest('scroll-view > view') === content)
       : [];
     const data = element.querySelector(':scope > blur-view[ui-glass]')
       ? { left: 0, top: 0, width: 402, height: 800 }
@@ -394,6 +400,31 @@ describe('UiMenuSubmenu', () => {
     await openSubmenu(rendered);
     fireEvent.tap(rendered.submenu.getByRole('button', { name: 'Date' }));
     expect(rendered.host.sort()).toBe('date');
+  });
+
+  it('hands the slide back to the menu when the app takes the open submenu away', async () => {
+    const rendered = await slideOntoSortRow();
+    await after(SUBMENU_REST_DELAY);
+    await after(OPENED);
+    expect(rendered.submenuOverlay.getAttribute('visible')).toBe('true');
+
+    rendered.host.showSort.set(false);
+    await waitForUpdate();
+    expect(style(rendered.menuContent(), 'opacity')).toBe('1');
+
+    // Select is the menu's second row now, after Move to. The rows changed,
+    // so the first move measures them again.
+    const point = { clientX: 100, clientY: TRIGGER.top + ROW_HEIGHT * 1.5 };
+    fireLynxEvent(rendered.trigger(), 'touchmove', { touches: [point] });
+    await after(OPENED);
+    fireLynxEvent(rendered.trigger(), 'touchmove', { touches: [point] });
+    fireLynxEvent(rendered.trigger(), 'touchend', {
+      touches: [],
+      changedTouches: [point],
+    });
+    await waitForUpdate();
+
+    expect(rendered.host.selected).toHaveBeenCalledTimes(1);
   });
 
   it("doesn't open for a finger passing over its row", async () => {

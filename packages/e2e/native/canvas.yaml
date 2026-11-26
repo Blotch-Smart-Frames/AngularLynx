@@ -3,7 +3,9 @@
 # createImageBitmap(), through a shader that tints it magenta, then reads a
 # pixel back: blue only if the shell's AngularLynxWebGL module compiled and
 # linked the shader, took the vertex buffer and uniforms, decoded and
-# uploaded the image, and read the pixels back. Lynx Explorer has no canvas.
+# uploaded the image, and read the pixels back. Under it, the 2D line checks
+# getContext('2d'), drawImage() of one canvas on another, getImageData(), and
+# a 2D canvas uploaded as a WebGL texture. Lynx Explorer has no canvas.
 appId: ${APP_ID}
 ---
 - runFlow: open-app.yaml
@@ -11,5 +13,10 @@ appId: ${APP_ID}
 - tapOn: Open canvas
 - extendedWaitUntil:
     visible: 'WebGL: 0,0,255,255'
+    timeout: 15000
+# The 2D context (issue #469): a canvas drawn on another, read back with
+# getImageData(), and uploaded as a texture and read back.
+- extendedWaitUntil:
+    visible: '2D: 0,128,0,255'
     timeout: 15000
 - takeScreenshot: canvas

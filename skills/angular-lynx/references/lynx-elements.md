@@ -33,7 +33,7 @@ At runtime, Angular makes no directive for an element whose directive only decla
 | `<blur-view>`   | Blurs what's behind it; Liquid Glass on iOS  | `blur-effect`, `blur-radius`, `blur-material`, `glass-style`, `glass-tint-color`         |
 | `<frame>`       | Embedded Lynx page                           | `src` (URL to `.lynx.bundle`)                                                            |
 | `<svg>`         | Inline SVG rendering                         | `content` (SVG string)                                                                   |
-| `<canvas>`      | WebGL2 drawing surface, for three.js         | `width`, `height` (drawing buffer, in pixels)                                            |
+| `<canvas>`      | 2D and WebGL2 drawing surface                | `width`, `height` (drawing buffer, in pixels)                                            |
 | `<block>`       | Grouping container                           | —                                                                                        |
 | `<raw-text>`    | Unprocessed text                             | —                                                                                        |
 
@@ -69,7 +69,7 @@ A template written for the browser renders: the runtime creates the Lynx element
 - **Inline text tags keep the browser's text styles:** the build plugin adds `b, strong { font-weight: bold }`, `em, i, cite, dfn, var { font-style: italic }`, `u, ins { text-decoration: underline }`, `s, del { text-decoration: line-through }`, `code, kbd, samp { font-family: Menlo, monospace }`, a smaller size for `small`, `sub` and `sup` (and lowered `sub`, raised `sup`) and black on yellow for `mark` to both bundles, ahead of the app's CSS, so the app's own rule or class for them wins. A `<u>` inside an `<s>` (or `<ins>`/`<del>`) gets both lines, from a two-class rule that beats an app's single class on either tag of the pair: `<u class="no-underline"><s>x</s></u>` still draws both lines on the `<s>`.
   - **An `<a href>` is a link, an `<abbr title>` dotted:** Lynx can't match `a[href]`, so the runtime gives an `<a>` with an `href` the class `_ngattr-a-href` (underlined, `#0000ee`, `#9e9eff` when the page is dark), and an `<abbr>` with a `title` `_ngattr-abbr-title` (dotted underline). An `<a routerLink>` writes no `href`, so it isn't styled as a link.
   - **A `<q>` draws quotation marks:** Lynx has no `::before` content, so the runtime puts “ ” around its text itself (‘ ’ inside another `<q>`), as raw-texts at the ends of its `<text>` that Angular never sees: they aren't in its children or `nextSibling()`, but a test's `textContent` of the `<text>` includes them (`He said “hello”.`).
-  - **Limits:** text inside a `<small>`, `<sub>` or `<sup>` takes the size around it, not the smaller one (`<small><b>x</b></small>`). Android draws no dotted underline, and Lynx Explorer on Android has no monospace for `<code>` (the app's own build does). A `<q>`'s quotation marks are always English ones (“ ”, and ‘ ’ inside another `<q>`), whatever the language, and CSS `quotes` doesn't change them.
+  - **Limits:** text more than five `<small>`, `<sub>` or `<sup>` tags deep stays at the fifth's size. Android draws no dotted underline, and Lynx Explorer on Android has no monospace for `<code>` (the app's own build does). A `<q>`'s quotation marks are always English ones (“ ”, and ‘ ’ inside another `<q>`), whatever the language, and CSS `quotes` doesn't change them.
 - **No other browser styles or behavior:** an `<h1>` is the size of any text, a `<button>` has no border, `<a href>` opens nothing (open links with `LynxLinking`, see [http-requests.md](http-requests.md)), a `<form>` doesn't submit, and `disabled` doesn't stop a `<button>`'s taps.
 - **Other HTML tags** (`table`, `tr`, `td`, `select`, `option`, `br`, `pre`, `details`, `iframe`, `audio`…) render as a plain `<view>`, and the build warns about each.
 - **Lynx elements are still the better choice** in new code: `LYNX_ELEMENTS` types their attributes (`<image mode>`) and their events' `$event`, while an HTML tag's `$event` is typed as the DOM's.
@@ -165,6 +165,33 @@ In the apps `ng build --platform` makes, an overlay covers the whole screen, und
 - **Glass comes and goes smoothly in that iOS app.** Inside a `glass-container` that's already on screen, a glass view materializes when it's added or shown and dissolves when it's removed or hidden. Two glass views with the same `glass-effect-id` are one piece of glass changing shape when one goes and the other comes in the same update: inside a container, the first morphs into the second; elsewhere, such as a button and the menu it opens, the second takes over as the first's content fades out. Lynx Explorer pops glass in and out instead.
 - `npx @blotch/dolan add glass` adds `<blur-view ui-glass>`, which picks the effect, material and tint for the platform, its version and the color scheme, so an app rarely sets these attributes itself.
 
+### 2D with `<canvas>`
+
+`getContext('2d')` is the web's CanvasRenderingContext2D, drawn natively: Core Graphics on iOS, `android.graphics.Canvas` on Android, the browser's canvas in the web preview, `null` in Lynx Explorer. Paths, `Path2D` (with SVG path data), `roundRect`, transforms, clipping, dashes, gradients (linear, radial, conic), patterns, shadows, every `globalCompositeOperation`, text with `measureText()`, `drawImage()` of images, `ImageBitmap`s and other canvases, and `getImageData()`/`putImageData()` all work. Chart, signature-pad and image libraries can draw with it.
+
+```typescript
+afterNextRender(() => {
+  const canvas = this.canvas().nativeElement as unknown as HTMLCanvasElement;
+  const context = canvas.getContext('2d')!;
+  new ResizeObserver(([entry]) => {
+    const { width, height } = entry.contentRect;
+    // Setting the size clears the bitmap and resets the state.
+    canvas.width = width * devicePixelRatio;
+    canvas.height = height * devicePixelRatio;
+    context.scale(devicePixelRatio, devicePixelRatio);
+    context.fillStyle = '#4338ca';
+    context.beginPath();
+    context.roundRect(16, 16, width - 32, height - 32, 12);
+    context.fill();
+  }).observe(canvas);
+});
+```
+
+- **Canvases off the page:** `document.createElement('canvas')` and `new OffscreenCanvas(w, h)` have 2D (and WebGL2) contexts, as three.js text labels and photo resizing need. Draw one with `drawImage()`, make it a pattern, upload it as a texture (three.js `CanvasTexture`, `texImage2D()` with the canvas), or encode it (`toBlob()`, `toDataURL()`, `convertToBlob()`).
+- **Batched:** calls reach the phone once per task, except those that answer (`measureText()`, `getImageData()`, `isPointInPath()`), which send everything recorded first. Avoid them in a tight loop.
+- **Not there:** `filter` (kept, not applied); `wordSpacing`, `fontKerning`, `fontStretch`, `fontVariantCaps`, `textRendering` (kept, no effect); a `<video>` as an image; `OffscreenCanvas.transferToImageBitmap()`; `createImageBitmap()` of a canvas. Color emoji show only in a plain-color `fillText()`.
+- A canvas has the kind of context it was first asked for: after `getContext('2d')`, `getContext('webgl2')` is `null`.
+
 ### 3D with `<canvas>`
 
 `<canvas>` has a WebGL2 context, which three.js and angular-three draw with. Lynx has no canvas: this is AngularLynx's. In apps built with `ng build --platform ios|android` it draws with OpenGL ES 3.0: on iOS, ANGLE's on Metal (as Safari's WebGL does), and on Android, the phone's. In the web preview it's the browser's canvas. Lynx Explorer has none: there `getContext('webgl2')` is `null` and the canvas is an empty view.
@@ -218,8 +245,8 @@ export class Scene {
 }
 ```
 
-- **Like an HTML canvas:** `width` and `height` are the drawing buffer's size (300 by 150 to start); CSS sizes it on screen. `getContext('webgl2')` only: no `'2d'` context, and `'webgl'` is `null`. A `<canvas>` or video can't be a texture.
-- **`toBlob(callback, type, quality)` and `toDataURL(type, quality)`** encode a PNG, or a JPEG for `'image/jpeg'` (quality 0.92 by default; other types give PNG), natively: a 2048×1365 JPEG takes ~20 ms (iOS Simulator) to ~35 ms (Android emulator), and the callback runs on a later task. They read the drawing buffer, which WebGL clears once a frame is shown: call them in the task that drew (right after `renderer.render()`), or create the context with `preserveDrawingBuffer: true`; later you get a transparent image. JPEG makes transparent pixels black. No context (or Lynx Explorer) gives `null` / `'data:,'`. Share the `Blob` with `LynxShare` (see [http-requests.md](http-requests.md#share-files-and-links)).
+- **Like an HTML canvas:** `width` and `height` are the drawing buffer's size (300 by 150 to start); CSS sizes it on screen. `'webgl'` is `null`. A canvas (2D or WebGL) can be a texture; a video can't yet.
+- **`toBlob(callback, type, quality)` and `toDataURL(type, quality)`** encode a PNG, or a JPEG for `'image/jpeg'` (quality 0.92 by default; other types give PNG), natively: a 2048×1365 JPEG takes ~20 ms (iOS Simulator) to ~35 ms (Android emulator), and the callback runs on a later task. A 2D canvas keeps its drawing; WebGL's drawing buffer is cleared once a frame is shown: call them in the task that drew (right after `renderer.render()`), or create the context with `preserveDrawingBuffer: true`; later you get a transparent image. JPEG makes transparent pixels black. A canvas without a context encodes a transparent image; a lost context, a zero size or Lynx Explorer gives `null` / `'data:,'`. Share the `Blob` with `LynxShare` (see [http-requests.md](http-requests.md#share-files-and-links)).
 - **What three.js needs works:** `ResizeObserver`, `getBoundingClientRect()`/`clientWidth` (from the element's last layout), pointer events from touches (on the canvas and on `document`), `performance.now()`, `devicePixelRatio`, `requestAnimationFrame`. `TextureLoader`, `ImageBitmapLoader` and `GLTFLoader` (`.glb` with embedded textures) load from `https://`, `data:` and object URLs and from files the app bundles (by their path in `dist/`, see [http-requests.md](http-requests.md)); the phone decodes images. `DRACOLoader` and `KTX2Loader` need Workers or WebAssembly: they don't work.
 - **angular-three:** add `provideNgtRenderer()` from `angular-three/dom` after `provideRenderer()`: it wraps AngularLynx's renderer. `<ngt-canvas>` sizes itself, and mesh events come from touches. angular-three 4.2 lists Angular below 22 and three.js below 0.183 as peers: install with `--legacy-peer-deps` (or an npm `overrides` entry) and pin `three@0.182`.
 - **The GL context goes with the canvas:** at once when Angular destroys the view the canvas is at the top of, otherwise when the canvas is garbage-collected, as in a browser. To free it as soon as a component goes, dispose of it there (three.js: `renderer.dispose()` and `renderer.forceContextLoss()` in `ngOnDestroy`).

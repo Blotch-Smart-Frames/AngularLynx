@@ -78,6 +78,22 @@ export const isAppModule = (
   !THIRD_PARTY.test(file) && !isAngularLynxPackageModule(file, packagesDir);
 
 /**
+ * Whether SWC compiles the module's `#private` members to properties
+ * (`privateFieldsAsProperties`, layers.ts): AngularLynx's packages and the
+ * app's own code, on both threads. Such a module needs
+ * {@link splitPrivateChains}.
+ *
+ * @param file - The module's path.
+ * @param packagesDir - The folder this plugin's package is in.
+ */
+export const compilesPrivatesAsProperties = (
+  file: string,
+  packagesDir: string = PACKAGES_DIR,
+): boolean =>
+  isAngularLynxPackageModule(file, packagesDir) ||
+  isAppModule(file, packagesDir);
+
+/**
  * Compiles a main-thread module's instance `#private` methods so they're no
  * longer defined on every instance: {@link renamePrivateMethods} for
  * AngularLynx's own packages (see {@link isAngularLynxPackageModule}), which
@@ -107,13 +123,148 @@ export const transformPrivateMethods = (
   options: PrivateMethodsOptions,
   packagesDir: string = PACKAGES_DIR,
 ): string => {
+  // Last, on what the pass left private: a chain it turned into symbol keys
+  // and renamed methods needs nothing more.
   if (isAngularLynxPackageModule(filename, packagesDir)) {
-    return renamePrivateMethods(code, filename, options);
+    return splitPrivateChains(
+      renamePrivateMethods(code, filename, options),
+      filename,
+    );
   }
   if (isAppModule(filename, packagesDir)) {
-    return hidePrivateMethods(code, filename, options);
+    return splitPrivateChains(
+      hidePrivateMethods(code, filename, options),
+      filename,
+    );
   }
   return code;
+};
+
+/**
+ * A `.` (or `?.`) and then a private name, maybe with spaces and comments
+ * between (`this./* c *\/#a`). Each comment matches exactly one way, a
+ * block comment up to its first `*\/` and a line comment only up to its
+ * line's end (the lookahead keeps it from stopping at a later `//` on the
+ * line), so a run of them can't backtrack exponentially.
+ */
+const PRIVATE_ACCESS =
+  /\.(?:\s|\/\*(?:[^*]|\*(?!\/))*\*\/|\/\/[^\n\r\u2028\u2029]*(?![^\n\r\u2028\u2029]))*#[\p{ID_Start}$_\\]/u
+    .source;
+
+/**
+ * Two private member accesses (see {@link PRIVATE_ACCESS}) anywhere in the
+ * module: every chain {@link splitPrivateChains} rewrites has them, with
+ * whatever is between (comments, parentheses, a type assertion). A module
+ * with at most one is left without being parsed. Coarse on purpose: a hint
+ * that followed the chain's syntax between the two (repeated, overlapping
+ * comment alternatives) backtracked exponentially on a run of slashes or
+ * comments, and this one only scans forward to the second access.
+ */
+const PRIVATE_CHAIN_HINT = new RegExp(
+  `${PRIVATE_ACCESS}[\\s\\S]*?${PRIVATE_ACCESS}`,
+  'u',
+);
+
+/**
+ * Rewrites a private member read on the result of another private member
+ * read (`a.#b.#c`, `a.#b.#c()`, `(a.#b).#c = v`) so SWC compiles both. The
+ * modules whose private members SWC compiles to properties (layers.ts) need
+ * it (see {@link compilesPrivatesAsProperties}), on both threads:
+ * {@link transformPrivateMethods} runs it on the main thread's.
+ *
+ * With `privateFieldsAsProperties`, SWC (1.16, and rspack 2.2's) lowers the
+ * outer access and leaves the inner one as it was:
+ * `_class_private_field_loose_base(a.#b, _c)[_c]`. The class's `#b` is gone,
+ * so swc-loader fails the module ("private name #b is not defined"), and
+ * code that gets past it is a SyntaxError when it loads ("Private field '#b'
+ * must be declared in an enclosing class"). It lowers any other object
+ * (`a.#b.x.#c`, `f(a.#b).#c`), so `a.#b.#c` becomes `(0, a.#b).#c`: the
+ * same value, read once, and nothing added or removed changes what `this` a
+ * call of it gets.
+ *
+ * Inside an optional chain (`a?.#b.#c`) the parentheses would end it, so a
+ * nullish `a` would throw instead of giving `undefined`. There the outer `.`
+ * becomes `?.` (`a?.#b?.#c`), which SWC compiles: the result differs only
+ * when `a.#b` is itself nullish, where natively reading `#c` of it throws a
+ * TypeError and here it gives `undefined`. An access that has its own `?.`
+ * (`a.#b?.#c`) compiles as it is.
+ *
+ * Edits never add or remove a line, and an inline source map's columns are
+ * moved to match, as for the passes before it.
+ *
+ * @param code - The module's code, before SWC.
+ * @param filename - The module's path, for the parser.
+ * @returns The rewritten code, or `code` itself when nothing applies.
+ */
+export const splitPrivateChains = (code: string, filename: string): string => {
+  if (!PRIVATE_CHAIN_HINT.test(code)) {
+    return code;
+  }
+  const sourceFile = parse(code, filename);
+  const edits: Edit[] = [];
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isPropertyAccessExpression(node) &&
+      ts.isPrivateIdentifier(node.name) &&
+      !node.questionDotToken
+    ) {
+      // Through parentheses, which SWC drops, leaving the same shape, and
+      // type assertions, should a .ts module still have them.
+      const inner = skipWrappers(node.expression);
+      if (
+        ts.isPropertyAccessExpression(inner) &&
+        ts.isPrivateIdentifier(inner.name)
+      ) {
+        if (ts.isOptionalChain(node)) {
+          const dot = dotOf(node, sourceFile);
+          edits.push({ start: dot, end: dot, text: '?' });
+        } else {
+          // Outer edits come first, so `a.#b.#c.#d` gets `(0, (0, ` where
+          // both start.
+          const start = node.expression.getStart(sourceFile);
+          edits.push(
+            { start, end: start, text: '(0, ' },
+            { start: node.expression.end, end: node.expression.end, text: ')' },
+          );
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return applyEdits(code, edits, sourceFile);
+};
+
+/**
+ * The expression inside any parentheses and type assertions around it.
+ */
+const skipWrappers = (node: ts.Expression): ts.Expression =>
+  ts.isParenthesizedExpression(node) ||
+  ts.isAsExpression(node) ||
+  ts.isSatisfiesExpression(node) ||
+  ts.isTypeAssertionExpression(node) ||
+  ts.isNonNullExpression(node)
+    ? skipWrappers(node.expression)
+    : node;
+
+/**
+ * Where the `.` of a property access is: the first token after its object,
+ * past any comments.
+ */
+const dotOf = (
+  node: ts.PropertyAccessExpression,
+  sourceFile: ts.SourceFile,
+): number => {
+  const scanner = ts.createScanner(
+    ts.ScriptTarget.Latest,
+    true,
+    sourceFile.languageVariant,
+    sourceFile.text,
+    undefined,
+    node.expression.end,
+  );
+  scanner.scan();
+  return scanner.getTokenStart();
 };
 
 /**
@@ -170,6 +321,31 @@ export const transformPrivateMethods = (
  * as for methods: reading one on an object that isn't an instance gives
  * `undefined` rather than a TypeError. An auto-accessor (`accessor #x`) and
  * a decorated field stay private.
+ *
+ * **Constant fields start on the prototype.** An instance field whose
+ * initializer is a constant (`null`, `false`, `''`, a number, `void 0`, or
+ * none at all) doesn't become a property of each instance: its declaration
+ * goes, and one `static { this.prototype[__x_<key><n>] = v; … }` at the start
+ * of the class's body puts the defaults on the prototype (a field without an
+ * initializer needs none: a missing property reads `undefined` too), before
+ * any static initializer, which could make an instance and read one. An
+ * instance reads the default from its prototype and gets a property of its
+ * own only once the field is written. A declaration that spans lines stays,
+ * as removing it would remove a line. In PrimJS every own property costs each
+ * instance about 45 bytes: on the iOS Simulator, 5,000 objects with 55 fields
+ * took 12.6 MB of its heap, and 5,000 with 10 took 2.6 MB. `LynxElement`
+ * has 41 private fields, most of them `null` or `false` until something sets
+ * them, and the runtime makes one for every element, text node and anchor:
+ * a screen of 5,000 views took 4 MB less with them on the prototype
+ * (issue #586). A constant is the same value for every instance and can't
+ * run code, so it doesn't matter when it's read; only code that misuses the
+ * field sees a difference, as above (reading it on another instance of the
+ * class before its fields are initialized gives the default, not a TypeError).
+ * An initializer that makes an object (`[]`, `new Map()`) still runs for each
+ * instance, as each needs its own. So do a subclass's fields (a class with
+ * `extends`): when its base's constructor returns another object, the
+ * subclass's fields are defined on that object, which doesn't inherit the
+ * subclass's prototype. `LynxElement` has no base, so it loses nothing.
  *
  * **Static members** are renamed and keyed the same way. A class makes its
  * static ones once, but each `LynxElement.#registry` read went through
@@ -243,6 +419,11 @@ export const renamePrivateMethods = (
     // Every class it makes would share these names, and one made from
     // another would override its base's methods (see above).
     if (info.branded || (info.repeated && info.extendsAnother)) continue;
+    // The class's constant fields' defaults (see above), which a static block
+    // at the start of its body puts on the prototype: before any static
+    // initializer, which could make an instance and read one.
+    const defaults: string[] = [];
+    const defaultsAt = edits.length;
     for (const [name, declarations] of info.members) {
       const text = `__${name.slice(1)}_${key}${info.index}`;
       const uses = info.uses.get(name)!;
@@ -270,6 +451,29 @@ export const renamePrivateMethods = (
           ? symbolKeyEdits(uses, text, code, sourceFile)
           : null;
       if (!fieldEdits) continue;
+      // A subclass's fields stay on each instance: its base's constructor
+      // can return another object, which then gets them natively but
+      // doesn't inherit the subclass's prototype (see above).
+      const initial =
+        fieldStatic || info.extendsAnother
+          ? undefined
+          : prototypeDefault(field as ts.PropertyDeclaration, sourceFile);
+      if (initial !== undefined) {
+        // A constant field starts on the prototype (see above): its
+        // declaration goes, and only its uses are keyed.
+        const start = field!.getStart(sourceFile);
+        edits.push(
+          ...fieldEdits.filter(
+            (edit) => edit.start < start || edit.start >= field!.end,
+          ),
+          { start, end: field!.end, text: '' },
+        );
+        if (initial !== null) {
+          defaults.push(`this.prototype[${text}] = ${initial};`);
+        }
+        symbols.push(`${text} = Symbol(${JSON.stringify(name.slice(1))})`);
+        continue;
+      }
       edits.push(...fieldEdits);
       if (fieldStatic) {
         // An empty `;` is a class element of its own, so this follows a
@@ -281,6 +485,16 @@ export const renamePrivateMethods = (
         });
       }
       symbols.push(`${text} = Symbol(${JSON.stringify(name.slice(1))})`);
+    }
+    if (defaults.length > 0) {
+      // Ahead of the class's other edits, so it comes before an edit to a
+      // first member that starts right after the `{`.
+      const at = info.node.members.pos;
+      edits.splice(defaultsAt, 0, {
+        start: at,
+        end: at,
+        text: ` static { ${defaults.join(' ')} } `,
+      });
     }
   }
   if (symbols.length > 0) {
@@ -308,6 +522,56 @@ const isPlainField = (declarations: ts.ClassElement[]): boolean => {
       ?.some((modifier) => modifier.kind === ts.SyntaxKind.AccessorKeyword) &&
     !ts.getDecorators(field)?.length
   );
+};
+
+/**
+ * What an instance private field starts as, when it can start on the
+ * prototype instead of on each instance (see {@link renamePrivateMethods}):
+ * the initializer's text when it's a constant, a literal that is the same
+ * value for every instance (`null`, `true`, `false`, a number, maybe negated,
+ * a string or `void 0`); `null` when it has no initializer, so starts
+ * `undefined`, which a missing property reads as too; and `undefined` when
+ * it must stay on each instance: an initializer that makes an object (`[]`,
+ * `new Map()`), reads anything, or spans lines (the edit must not remove a
+ * line).
+ */
+const prototypeDefault = (
+  field: ts.PropertyDeclaration,
+  sourceFile: ts.SourceFile,
+): string | null | undefined => {
+  const { initializer } = field;
+  // Removing a declaration that spans lines would remove a line (a comment
+  // inside it can), and the edits must leave every line where it was.
+  const declaration = sourceFile.text.slice(
+    field.getStart(sourceFile),
+    field.end,
+  );
+  if (/[\n\r\u2028\u2029]/.test(declaration)) return undefined;
+  if (!initializer) return null;
+  let value: ts.Expression = initializer;
+  while (
+    ts.isParenthesizedExpression(value) ||
+    ts.isAsExpression(value) ||
+    ts.isSatisfiesExpression(value) ||
+    ts.isTypeAssertionExpression(value) ||
+    ts.isNonNullExpression(value)
+  ) {
+    value = value.expression;
+  }
+  if (
+    ts.isPrefixUnaryExpression(value) &&
+    value.operator === ts.SyntaxKind.MinusToken
+  ) {
+    value = value.operand;
+  }
+  const constant =
+    ts.isNumericLiteral(value) ||
+    ts.isStringLiteral(value) ||
+    value.kind === ts.SyntaxKind.NullKeyword ||
+    value.kind === ts.SyntaxKind.TrueKeyword ||
+    value.kind === ts.SyntaxKind.FalseKeyword ||
+    (ts.isVoidExpression(value) && ts.isNumericLiteral(value.expression));
+  return constant ? initializer.getText(sourceFile) : undefined;
 };
 
 /**
@@ -518,16 +782,8 @@ const contains = (node: ts.Node, test: (node: ts.Node) => boolean): boolean =>
  * can't make an instance: a literal or a function, maybe in parentheses or
  * a type assertion.
  */
-const isInert = (node: ts.Expression): boolean => {
-  if (
-    ts.isParenthesizedExpression(node) ||
-    ts.isAsExpression(node) ||
-    ts.isSatisfiesExpression(node) ||
-    ts.isTypeAssertionExpression(node) ||
-    ts.isNonNullExpression(node)
-  ) {
-    return isInert(node.expression);
-  }
+const isInert = (expression: ts.Expression): boolean => {
+  const node = skipWrappers(expression);
   return (
     ts.isLiteralExpression(node) ||
     ts.isNoSubstitutionTemplateLiteral(node) ||

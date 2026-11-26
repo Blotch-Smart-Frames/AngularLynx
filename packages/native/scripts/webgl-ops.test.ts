@@ -1,11 +1,16 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
+  ANDROID_CANVAS_2D_OPS,
   ANDROID_OPS,
+  CANVAS_2D_OPS_SOURCE,
+  IOS_CANVAS_2D_OPS,
   IOS_OPS,
   OPS_SOURCE,
   parseOps,
+  renderAndroidCanvas2DOps,
   renderAndroidOps,
+  renderIosCanvas2DOps,
   renderIosOps,
 } from './webgl-ops.ts';
 
@@ -41,6 +46,38 @@ describe('WebGL bridge opcodes', () => {
     );
     expect(renderAndroidOps([['texImage2D', 110]])).toContain(
       'const val TEX_IMAGE2D = 110',
+    );
+  });
+});
+
+describe('2D context bridge opcodes', () => {
+  const source = readFileSync(CANVAS_2D_OPS_SOURCE, 'utf8');
+  const ops = parseOps(source);
+  const pathOps = parseOps(source, 'PATH_OP');
+
+  it('reads the commands and the path segments, each list on its own', () => {
+    expect(ops[0]).toEqual(['save', 1]);
+    expect(ops).toContainEqual(['measureText', 200]);
+    expect(new Set(ops.map(([, value]) => value)).size).toBe(ops.length);
+    expect(pathOps).toEqual([
+      ['moveTo', 0],
+      ['lineTo', 1],
+      ['quadTo', 2],
+      ['cubicTo', 3],
+      ['close', 4],
+    ]);
+  });
+
+  // Regenerate with `npm run generate:webgl-ops -w packages/native`.
+  it('matches the iOS shell', () => {
+    expect(readFileSync(IOS_CANVAS_2D_OPS, 'utf8')).toBe(
+      renderIosCanvas2DOps(ops, pathOps),
+    );
+  });
+
+  it('matches the Android shell', () => {
+    expect(readFileSync(ANDROID_CANVAS_2D_OPS, 'utf8')).toBe(
+      renderAndroidCanvas2DOps(ops, pathOps),
     );
   });
 });

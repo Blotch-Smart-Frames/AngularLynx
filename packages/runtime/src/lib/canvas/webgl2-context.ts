@@ -28,6 +28,7 @@ import {
   type WebGLObjectHandle,
 } from './webgl-objects';
 import { OP } from './webgl-ops';
+import { canvasSourceOf, isVideo } from './canvas-source';
 import { nativeImageOf } from './native-image';
 
 /** The `<canvas>` a context draws into, as the context needs it. */
@@ -302,6 +303,9 @@ const alignUp = (value: number, alignment: number): number =>
 const isTypedArray = (value: unknown): value is TypedArray =>
   ArrayBuffer.isView(value) && !(value instanceof DataView);
 
+/** What #pixels gives for an upload GL would refuse, which isn't sent. */
+const REFUSED = Symbol('refused');
+
 /** Whether a context's constructor has put the constants on the class. */
 let constantsAssigned = false;
 
@@ -336,9 +340,12 @@ let constantsAssigned = false;
  * - Images: `texImage2D` with an ImageBitmap or an `<img>` uploads pixels the
  *   shell decoded and kept (see image.ts), by id.
  *
+ * - Canvases: `texImage2D` with a `<canvas>` (2D or WebGL) uploads the
+ *   canvas's pixels, which the shell reads by the canvas's id, as three.js's
+ *   CanvasTexture does for text drawn on a 2D canvas.
+ *
  * Not there: context loss and restore (only `WEBGL_lose_context`'s loss,
- * which three.js calls on dispose), a `<canvas>` or video as a texture
- * source, and object answers from `getVertexAttrib` and `getIndexedParameter`
+ * which three.js calls on dispose), a video as a texture source, and object answers from `getVertexAttrib` and `getIndexedParameter`
  * (they return null).
  */
 // The interface below adds the constants, which the first constructor puts on
@@ -355,6 +362,8 @@ export class LynxWebGL2RenderingContext {
   readonly #attributes: LynxWebGLContextAttributes;
   #commands: unknown[] = [];
   #flushScheduled = false;
+  /** The command being recorded reads a canvas: send it at once. */
+  #sendNow = false;
   /** The default framebuffer was drawn to since the last present. */
   #dirty = false;
   #lost = false;
@@ -400,6 +409,8 @@ export class LynxWebGL2RenderingContext {
   #premultiplyAlpha = false;
   #colorspaceConversion: number = GL.BROWSER_DEFAULT_WEBGL;
   #unpackAlignment = 4;
+  /** Where an upload of part of an image starts, which the shell crops at. */
+  readonly #unpackSkip = { pixels: 0, rows: 0 };
   readonly #pack = { alignment: 4, rowLength: 0, skipPixels: 0, skipRows: 0 };
 
   constructor(
@@ -476,6 +487,12 @@ export class LynxWebGL2RenderingContext {
   #cmd(...items: unknown[]): void {
     if (this.#lost) return;
     for (const item of items) this.#commands.push(item);
+    if (this.#sendNow) {
+      // An upload from a canvas reads it as it is now, before it draws more.
+      this.#sendNow = false;
+      this.#send();
+      return;
+    }
     this.#scheduleFlush();
   }
 
@@ -527,6 +544,15 @@ export class LynxWebGL2RenderingContext {
     for (const item of items) this.#commands.push(item);
     const results = this.#send();
     return results[results.length - 1] ?? null;
+  }
+
+  /**
+   * Records a texture upload, unless working out its pixels failed (see
+   * #pixels), when GL would refuse it: the error is the app's to read.
+   */
+  #upload(...items: unknown[]): void {
+    if (items.includes(REFUSED)) return;
+    this.#cmd(...items);
   }
 
   #fail(error: number): void {
@@ -865,6 +891,21 @@ export class LynxWebGL2RenderingContext {
       case GL.UNPACK_ALIGNMENT:
         this.#unpackAlignment = Number(param);
         break;
+      case GL.UNPACK_SKIP_PIXELS:
+      case GL.UNPACK_SKIP_ROWS: {
+        // The value is a GLint first (-0.5 is 0), then GL refuses a negative
+        // skip with INVALID_VALUE and keeps the last one: so does the
+        // context, which crops uploads at it.
+        const skip = Number(param) | 0;
+        if (skip < 0) {
+          this.#fail(GL.INVALID_VALUE);
+          return;
+        }
+        if (pname === GL.UNPACK_SKIP_PIXELS) this.#unpackSkip.pixels = skip;
+        else this.#unpackSkip.rows = skip;
+        this.#cmd(OP.pixelStorei, pname, skip);
+        return;
+      }
       case GL.PACK_ALIGNMENT:
         this.#pack.alignment = Number(param);
         break;
@@ -1865,7 +1906,7 @@ export class LynxWebGL2RenderingContext {
         unknown,
       ];
       const { width, height } = this.#sourceSize(source);
-      this.#cmd(
+      this.#upload(
         OP.texImage2D,
         target,
         level,
@@ -1892,7 +1933,7 @@ export class LynxWebGL2RenderingContext {
         unknown,
         number | undefined,
       ];
-    this.#cmd(
+    this.#upload(
       OP.texImage2D,
       target,
       level,
@@ -1924,7 +1965,7 @@ export class LynxWebGL2RenderingContext {
         unknown,
       ];
       const { width, height } = this.#sourceSize(source);
-      this.#cmd(
+      this.#upload(
         OP.texSubImage2D,
         target,
         level,
@@ -1950,7 +1991,7 @@ export class LynxWebGL2RenderingContext {
       unknown,
       number | undefined,
     ];
-    this.#cmd(
+    this.#upload(
       OP.texSubImage2D,
       target,
       level,
@@ -1977,7 +2018,7 @@ export class LynxWebGL2RenderingContext {
     source: unknown,
     srcOffset = 0,
   ): void {
-    this.#cmd(
+    this.#upload(
       OP.texImage3D,
       target,
       level,
@@ -2006,7 +2047,7 @@ export class LynxWebGL2RenderingContext {
     source: unknown,
     srcOffset = 0,
   ): void {
-    this.#cmd(
+    this.#upload(
       OP.texSubImage3D,
       target,
       level,
@@ -2224,7 +2265,7 @@ export class LynxWebGL2RenderingContext {
       return { width: sized.width, height: sized.height ?? 0 };
     }
     throw new TypeError(
-      'texImage2D: the source must be an ImageBitmap, an image, ImageData or a typed array',
+      'texImage2D: the source must be an ImageBitmap, an image, a canvas, ImageData or a typed array',
     );
   }
 
@@ -2237,6 +2278,8 @@ export class LynxWebGL2RenderingContext {
    * - `{ image, flipY, premultiply }`: a decoded image, by id, which the
    *   shell converts to the format and type and flips and premultiplies as it
    *   uploads it.
+   * - `{ canvas, flipY, premultiply }`: a canvas's pixels, by its id, which
+   *   the shell reads and converts the same way.
    */
   #pixels(
     source: unknown,
@@ -2249,7 +2292,45 @@ export class LynxWebGL2RenderingContext {
   ): unknown {
     if (source === null || source === undefined) return null;
     if (typeof source === 'number') return source;
-    const image = nativeImageOf(source);
+    // An image or an array can't be uploaded while a PIXEL_UNPACK_BUFFER is
+    // bound: WebGL2 makes that INVALID_OPERATION.
+    if (this.#pixelUnpackBuffer) {
+      this.#fail(GL.INVALID_OPERATION);
+      return REFUSED;
+    }
+    const canvas = canvasSourceOf(source);
+    const image = canvas ? null : nativeImageOf(source);
+    if (canvas || image) {
+      // A canvas or an image is one picture: it can't fill a 3D upload's
+      // layers here, and the rectangle the unpack skips and the size name
+      // must lie inside it, as WebGL2 has it.
+      const sourceWidth = (canvas ?? image)!.width;
+      const sourceHeight = (canvas ?? image)!.height;
+      if (
+        depth > 1 ||
+        this.#unpackSkip.pixels + width > sourceWidth ||
+        this.#unpackSkip.rows + height > sourceHeight
+      ) {
+        this.#fail(GL.INVALID_OPERATION);
+        return REFUSED;
+      }
+    }
+    if (canvas) {
+      // The shell reads the canvas's own pixels, by its id: its 2D bitmap or
+      // its drawing buffer. Its calls go first.
+      canvas.flush();
+      this.#sendNow = true;
+      return {
+        canvas: canvas.canvasId,
+        flipY: this.#flipY,
+        premultiply: this.#premultiplyAlpha,
+      };
+    }
+    if (isVideo(source)) {
+      throw new TypeError(
+        'texImage: a <video> can not be a texture source on Lynx yet; use an ImageBitmap, an image, a canvas or a typed array',
+      );
+    }
     if (image) {
       return {
         image: image.id,
@@ -2268,7 +2349,7 @@ export class LynxWebGL2RenderingContext {
       bytes = bytesOf((source as { data: TypedArray }).data);
     } else {
       throw new TypeError(
-        'texImage: a <canvas> or video can not be a texture source on Lynx; use an ImageBitmap, an image or a typed array',
+        'texImage: the source must be an ImageBitmap, an image, a canvas, ImageData or a typed array',
       );
     }
     if (this.#flipY || this.#premultiplyAlpha) {

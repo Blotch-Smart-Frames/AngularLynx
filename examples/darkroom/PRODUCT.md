@@ -35,7 +35,7 @@ The only Angular renderer for Lynx. Facet proves 3D; Darkroom proves 2D image pr
 - Export (confirmed): a full-resolution JPEG from the canvas (`canvas.toBlob()`), passed to the system share sheet (`LynxShare`), from which the person can save it to Photos. Both APIs are being added to AngularLynx alongside this app (branch `feat/canvas-to-blob-share`).
 - Saved looks and per-photo edits persist with `LynxLocalStorage`.
 - Film stock names are the app's own inventions: no real film manufacturer's trademarks.
-- The `<canvas>` has WebGL2 only (no 2D context). Lynx CSS: no `@media`, no `:hover`, no pseudo-elements, no inheritance except `<text>` nesting; `scroll-view` needs an explicit height; semantic Tailwind colors only; never raw HSL.
+- The `<canvas>` here draws with WebGL2 (it has a 2D context too, which this app doesn't use). Lynx CSS: no `@media`, no `:hover`, no pseudo-elements, no inheritance except `<text>` nesting; `scroll-view` needs an explicit height; semantic Tailwind colors only; never raw HSL.
 - Must build with `ng build`, lint and format with the repo's oxlint/oxfmt, and keep its `@blotch/ui` copies in sync through dolan (never hand-edit `src/components/ui`).
 
 ## Brand Commitments

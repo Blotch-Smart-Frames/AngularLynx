@@ -32,7 +32,7 @@ The only Angular renderer for Lynx. Facet proves a 3D object, Darkroom proves 2D
 - Two views (confirmed): the whole system, every planet at its real heliocentric position for the current date (computed from JPL's published Keplerian orbital elements), with time scrubbing to watch them orbit; and a close-up of one planet, reached by tapping it (a camera flight), that a finger spins, with its facts.
 - Surfaces (confirmed, "mix"): real public-domain NASA/USGS maps for the rocky worlds (Earth with its night lights, the Moon, Mars, Mercury), and the gas giants, Venus's clouds and the Sun generated live in GLSL so they move. Shader lighting everywhere: atmosphere scattering, terminator, city lights, ring shadows. Every image's source and license recorded in `src/assets/planets/CREDITS.md` and on the docs page.
 - Planet facts come from NASA's planetary fact sheets: real figures only.
-- The `<canvas>` has WebGL2 only (no 2D context). Lynx CSS: no `@media`, no `:hover`, no pseudo-elements, no inheritance except `<text>` nesting; `scroll-view` needs an explicit height; never raw HSL.
+- The `<canvas>` here draws with WebGL2 (it has a 2D context too, which this app doesn't use). Lynx CSS: no `@media`, no `:hover`, no pseudo-elements, no inheritance except `<text>` nesting; `scroll-view` needs an explicit height; never raw HSL.
 - Must build with `ng build`, lint and format with the repo's oxlint/oxfmt.
 
 ## Brand Commitments

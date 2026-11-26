@@ -10,8 +10,9 @@ import com.lynx.tasm.behavior.LynxProp
 import com.lynx.tasm.behavior.ui.LynxUI
 
 /**
- * The `canvas` element: a TextureView its WebGL context (WebGLContext) copies
- * each finished frame into. Its `canvas-id` attribute, which the runtime
+ * The `canvas` element: a TextureView its context copies each finished frame
+ * into: a WebGL context's drawing buffer (WebGLContext), or a 2D context's
+ * bitmap (Canvas2DContext). Its `canvas-id` attribute, which the runtime
  * sets, pairs it with the context the runtime made for it.
  *
  * A TextureView composites with the views around it, so a canvas can sit
@@ -52,7 +53,7 @@ class CanvasUI(context: LynxContext) : LynxUI<TextureView>(context) {
             }
         }
 
-    private fun contextOrNull(): WebGLContext? = canvasId?.let { CanvasRegistry.context(it) }
+    private fun contextOrNull(): CanvasContext? = canvasId?.let { CanvasRegistry.context(it) }
 
     /**
      * Whether the frames can be shown see-through, as the context's `alpha`

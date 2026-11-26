@@ -1,6 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { installCanvasGlobals } from './dom-globals';
+import {
+  LynxCanvasGradient,
+  LynxCanvasPattern,
+  LynxCanvasRenderingContext2D,
+  LynxImageData,
+  LynxTextMetrics,
+} from './canvas-2d-context';
+import { LynxDetachedCanvas, LynxOffscreenCanvas } from './detached-canvas';
 import { createImageBitmap, LynxImageBitmap, LynxImageElement } from './image';
+import { LynxPath2D } from './path';
 import type { LayoutRect } from '../lynx-element/layout';
 
 /**
@@ -49,18 +58,40 @@ describe('installCanvasGlobals', () => {
     expect(
       target['document'].createElementNS('http://www.w3.org/1999/xhtml', 'img'),
     ).toBeInstanceOf(LynxImageElement);
-    expect(() => target['document'].createElement('canvas')).toThrow(
-      /Put a <canvas> in a template/,
+    expect(target['document'].createElement('Canvas')).toBeInstanceOf(
+      LynxDetachedCanvas,
     );
+    expect(() => target['document'].createElement('div')).toThrow(
+      /elements come from templates/,
+    );
+    expect(target['OffscreenCanvas']).toBe(LynxOffscreenCanvas);
+    expect(target['CanvasRenderingContext2D']).toBe(
+      LynxCanvasRenderingContext2D,
+    );
+    expect(target['OffscreenCanvasRenderingContext2D']).toBe(
+      LynxCanvasRenderingContext2D,
+    );
+    expect(target['CanvasGradient']).toBe(LynxCanvasGradient);
+    expect(target['CanvasPattern']).toBe(LynxCanvasPattern);
+    expect(target['TextMetrics']).toBe(LynxTextMetrics);
+    expect(target['ImageData']).toBe(LynxImageData);
+    expect(target['Path2D']).toBe(LynxPath2D);
   });
 
-  it('makes a template’s elements HTMLElements, and nothing an HTMLCanvasElement', () => {
+  it('makes a template’s elements HTMLElements, and canvases HTMLCanvasElements', () => {
     const target: Record<string, any> = {};
     installCanvasGlobals(target);
     expect(element() instanceof target['HTMLElement']).toBe(true);
     expect({} instanceof target['HTMLElement']).toBe(false);
     expect(null instanceof target['HTMLElement']).toBe(false);
     expect(element() instanceof target['HTMLCanvasElement']).toBe(false);
+    expect(null instanceof target['HTMLCanvasElement']).toBe(false);
+    expect(
+      new LynxDetachedCanvas() instanceof target['HTMLCanvasElement'],
+    ).toBe(true);
+    expect(
+      new LynxOffscreenCanvas(1, 1) instanceof target['HTMLCanvasElement'],
+    ).toBe(false);
   });
 
   it('fires progress events', () => {

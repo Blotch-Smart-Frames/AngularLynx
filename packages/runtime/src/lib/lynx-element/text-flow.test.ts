@@ -12,6 +12,7 @@ import {
   LAYOUT_FLAG,
   matchedStyleFlagsFor,
   resetStyleIndex,
+  smallerClassFor,
   styleFlagsFor,
   textPropertyBit,
   textPropertyFlags,
@@ -290,6 +291,19 @@ describe('inheritanceCopiesFor', () => {
       ),
     ).toBe('--angular-lynx-color: var(--angular-lynx-color-x)');
     expect(inheritanceCopiesFor(null)).toBe('');
+  });
+});
+
+describe('smallerClassFor', () => {
+  // Issue #663: the build has a class for each level of <small>, up to
+  // MAX_SMALLER_LEVELS, past which the text stays at that size.
+  it.each([
+    [1, '_ngsmaller-1'],
+    [2, '_ngsmaller-2'],
+    [5, '_ngsmaller-5'],
+    [9, '_ngsmaller-5'],
+  ])('names the class for %s levels', (levels, name) => {
+    expect(smallerClassFor(levels)).toBe(name);
   });
 });
 

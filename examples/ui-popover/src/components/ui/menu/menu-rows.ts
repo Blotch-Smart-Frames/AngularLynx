@@ -16,6 +16,11 @@ export type MenuRow = {
   disabled(): boolean;
   /** Does what a tap on the row does. */
   choose(): void;
+  /**
+   * Whether the row opens a submenu, which a finger sliding across the menu
+   * opens by resting on the row, as UIKit's does, and carries on into.
+   */
+  readonly opensSubmenu?: boolean;
 };
 
 /**
@@ -28,6 +33,21 @@ export type MenuRow = {
  */
 export class MenuRows {
   readonly #rows = new Set<MenuRow>();
+  readonly #parent: MenuRows | null;
+
+  /**
+   * `parent` is the rows of the menu a submenu is in: the press that opened
+   * that menu is the one a submenu's taps can belong to (see ownsTap).
+   */
+  constructor(parent: MenuRows | null = null) {
+    this.#parent = parent;
+  }
+
+  /**
+   * The open submenu's menu, which a finger sliding across this menu moves
+   * on to: it covers this one, so the finger is over its rows now.
+   */
+  openSubmenu: MenuDragTarget | null = null;
 
   /** The row under a finger sliding across the menu, if any. */
   readonly highlighted = signal<MenuRow | null>(null);
@@ -82,13 +102,14 @@ export class MenuRows {
    * then: the trigger, or the row that grew under the finger, which a press
    * that lifts without sliding mustn't choose (and a slide has chosen
    * already). A tap later than TAP_AFTER_PRESS is one of its own, such as a
-   * screen reader's.
+   * screen reader's. A submenu's rows ask the menu it's in: a finger that
+   * rested on its row to open it lifts on one of its items.
    */
   ownsTap(): boolean {
     const owned =
       this.#pressing || Date.now() - this.#liftedAt < TAP_AFTER_PRESS;
     this.#liftedAt = this.#pressing ? this.#liftedAt : -Infinity;
-    return owned;
+    return owned || (this.#parent?.ownsTap() ?? false);
   }
 
   /**

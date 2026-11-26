@@ -45,6 +45,13 @@ void main() {
  * made with two GL errors pending, which it must leave for getError(). Hosts
  * without WebGL (Lynx Explorer) show "WebGL: none".
  *
+ * Under it, "2D: 0,128,0,255" checks the 2D context (issue #469): a green
+ * square drawn on a canvas made with `document.createElement('canvas')`,
+ * drawn on a second one with drawImage() through a transform, read back with
+ * getImageData(), and uploaded from the second as the WebGL texture, drawn
+ * and read back. Both reads have to give the green; when they don't, the line
+ * shows each.
+ *
  * Below it, the prebuilt library fixture (fixtures/prebuilt-library), which
  * the counter page has no room for, and "Open linking" and "Open photo",
  * which open linking.ts and photo.ts.
@@ -66,6 +73,7 @@ void main() {
         >WebGL: {{ result() }}</text
       >
     </view>
+    <text flatten="false">2D: {{ result2D() }}</text>
     <e2e-library-frame />
     <view style="display: flex; flex-direction: row; margin-top: 8px;">
       <view
@@ -94,6 +102,7 @@ void main() {
 export class CanvasRoute {
   readonly canvas = viewChild.required<ElementRef<LynxCanvasElement>>('canvas');
   readonly result = signal('…');
+  readonly result2D = signal('…');
 
   constructor() {
     afterNextRender(() => {
@@ -102,6 +111,37 @@ export class CanvasRoute {
         (error: Error) => this.result.set(`error ${error.message}`),
       );
     });
+  }
+
+  /**
+   * The 2D check: getImageData() of a canvas drawn on another, and the same
+   * canvas uploaded as a texture into the WebGL context and read back.
+   */
+  #draw2D(gl: WebGL2RenderingContext, program: WebGLProgram): string {
+    const square = document.createElement('canvas');
+    square.width = 2;
+    square.height = 2;
+    const squareContext = square.getContext('2d');
+    if (!squareContext) return 'none';
+    squareContext.fillStyle = 'rgb(0, 128, 0)';
+    squareContext.fillRect(0, 0, 2, 2);
+    const target = document.createElement('canvas');
+    target.width = 4;
+    target.height = 4;
+    const context = target.getContext('2d')!;
+    // Scaled by 2, the 2 by 2 square covers the 4 by 4 canvas.
+    context.scale(2, 2);
+    context.imageSmoothingEnabled = false;
+    context.drawImage(square, 0, 0);
+    const read = Array.from(context.getImageData(1, 1, 1, 1).data).join(',');
+
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, target);
+    gl.uniform4f(gl.getUniformLocation(program, 'tint'), 1, 1, 1, 1);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    const pixel = new Uint8Array(4);
+    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+    const uploaded = Array.from(pixel).join(',');
+    return read === uploaded ? read : `${read} / ${uploaded}`;
   }
 
   async #draw(): Promise<string> {
@@ -162,6 +202,12 @@ export class CanvasRoute {
     // The errors are still the app's to ask for. Which comes first, and
     // whether GL kept the second, is up to the GL.
     if (gl.getError() === gl.NO_ERROR) return 'errors lost';
+    while (gl.getError() !== gl.NO_ERROR);
+    try {
+      this.result2D.set(this.#draw2D(gl, program));
+    } catch (error) {
+      this.result2D.set(`error ${(error as Error).message}`);
+    }
     return Array.from(pixel).join(',');
   }
 }

@@ -180,6 +180,98 @@ const lookUpBridge = (): WebGLBridge | null => {
   };
 };
 
+/**
+ * The module's methods for `<canvas>`'s 2D context (see
+ * canvas-2d-context.ts), which the shells draw with the platform's own 2D
+ * graphics: Core Graphics on iOS, `android.graphics.Canvas` on Android.
+ * `run2D` returns one result per query in the batch, as `run` does.
+ */
+export type Canvas2DBridge = {
+  create2D(
+    contextId: number,
+    canvasId: string,
+    attributes: Record<string, unknown>,
+  ): WebGLCreateResult;
+  run2D(contextId: number, commands: unknown[]): unknown[];
+  destroy2D(contextId: number): void;
+  /**
+   * Frees a gradient or pattern, which every context in the LynxView shares,
+   * whether or not the context that made it is still there.
+   */
+  release2D(objectId: number): void;
+  /** The canvas's pixels as a PNG or JPEG file, as `encodeImage`. */
+  encode2D(
+    contextId: number,
+    options: { type: string; quality: number },
+  ): EncodedImage;
+};
+
+let override2D: Canvas2DBridge | null | undefined;
+let cached2D: Canvas2DBridge | null | undefined;
+
+/**
+ * Replaces the native 2D bridge, for tests. `undefined` restores the real
+ * one.
+ */
+export const setCanvas2DBridgeForTesting = (
+  bridge: Canvas2DBridge | null | undefined,
+): void => {
+  override2D = bridge;
+};
+
+/**
+ * The 2D bridge, or null where there's none: the same hosts as WebGL's
+ * (see getWebGLBridge).
+ */
+export const getCanvas2DBridge = (): Canvas2DBridge | null => {
+  if (override2D !== undefined) return override2D;
+  if (cached2D === undefined) cached2D = lookUpCanvas2DBridge();
+  return cached2D;
+};
+
+const lookUpCanvas2DBridge = (): Canvas2DBridge | null => {
+  const lynxGlobal = (globalThis as { lynx?: { module?: unknown } }).lynx;
+  if (typeof lynxGlobal?.module !== 'function') return null;
+  let module: LynxModuleHandle | undefined;
+  try {
+    module = (lynxGlobal.module as (name: string) => LynxModuleHandle)(
+      WEBGL_MODULE_NAME,
+    );
+  } catch {
+    return null;
+  }
+  if (!module || typeof module.invoke !== 'function') return null;
+  const handle = module;
+  /**
+   * A shell from before the 2D context answers its methods with nothing, or
+   * throws: either way the canvas has no 2D context there.
+   */
+  const invoke = (method: string, ...args: unknown[]): unknown => {
+    try {
+      return handle.invoke(method, ...args);
+    } catch {
+      return undefined;
+    }
+  };
+  return {
+    create2D: (contextId, canvasId, attributes) =>
+      (invoke('create2D', contextId, canvasId, attributes) as
+        | WebGLCreateResult
+        | undefined) ?? {
+        ok: false,
+        error: `This app's shell has no 2D canvas: build it again with \`ng build --platform\``,
+      },
+    run2D: (contextId, commands) =>
+      (invoke('run2D', contextId, commands) as unknown[] | undefined) ?? [],
+    destroy2D: (contextId) => void invoke('destroy2D', contextId),
+    release2D: (objectId) => void invoke('release2D', objectId),
+    encode2D: (contextId, options) =>
+      (invoke('encode2D', contextId, options) as EncodedImage | undefined) ?? {
+        error: `This app's shell can't encode a canvas: build it again with \`ng build --platform\``,
+      },
+  };
+};
+
 /** The bytes a typed array or buffer views, as a Uint8Array over them. */
 export const bytesOf = (
   data: ArrayBufferView | ArrayBuffer,

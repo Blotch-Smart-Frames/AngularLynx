@@ -41,7 +41,7 @@ private const val EGL_OPENGL_ES3_BIT = 0x40
  * making two at once. The UI thread waits for a batch only when the surface
  * comes, goes or resizes.
  */
-class WebGLContext(val canvasId: String, attributes: ReadableMap?) {
+class WebGLContext(override val canvasId: String, attributes: ReadableMap?) : CanvasContext {
     private val display: EGLDisplay = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
     private val config: EGLConfig
     private var context: EGLContext
@@ -54,6 +54,7 @@ class WebGLContext(val canvasId: String, attributes: ReadableMap?) {
     private val depth = attributes.flag("depth", true)
     private val stencil = attributes.flag("stencil", false)
     private val preserveDrawingBuffer = attributes.flag("preserveDrawingBuffer", false)
+    private val premultipliedAlpha = attributes.flag("premultipliedAlpha", true)
     private var samples = 0
 
     // The default framebuffer, multisampled when antialias is on, and the
@@ -174,7 +175,7 @@ class WebGLContext(val canvasId: String, attributes: ReadableMap?) {
     // --- The view ------------------------------------------------------------
 
     @Synchronized
-    fun attachView(canvas: CanvasUI?) {
+    override fun attachView(canvas: CanvasUI?) {
         if (view === canvas) return
         view = canvas
         canvas?.setOpaque(!alpha)
@@ -183,7 +184,7 @@ class WebGLContext(val canvasId: String, attributes: ReadableMap?) {
 
     /** The view's surface came, went or changed size. */
     @Synchronized
-    fun surfaceChanged() {
+    override fun surfaceChanged() {
         if (destroyed) return
         val texture = view?.surface
         if (texture !== windowTexture) {
@@ -361,6 +362,11 @@ class WebGLContext(val canvasId: String, attributes: ReadableMap?) {
             GLES30.glPixelStorei(GLES30.GL_PACK_ROW_LENGTH, 0)
             GLES30.glPixelStorei(GLES30.GL_PACK_SKIP_PIXELS, 0)
             GLES30.glPixelStorei(GLES30.GL_PACK_SKIP_ROWS, 0)
+            // Its color is read whatever the app selected to read (NONE, say),
+            // and the selection is put back after.
+            GLES30.glBindFramebuffer(GLES30.GL_READ_FRAMEBUFFER, framebuffer)
+            val readBuffer = IntArray(1).also { GLES30.glGetIntegerv(GLES30.GL_READ_BUFFER, it, 0) }[0]
+            GLES30.glReadBuffer(GLES30.GL_COLOR_ATTACHMENT0)
             var source = framebuffer
             if (samples > 0) {
                 // GLES can't read a multisampled framebuffer: its samples are
@@ -381,6 +387,8 @@ class WebGLContext(val canvasId: String, attributes: ReadableMap?) {
             GLES30.glBindFramebuffer(GLES30.GL_READ_FRAMEBUFFER, source)
             GLES30.glReadBuffer(GLES30.GL_COLOR_ATTACHMENT0)
             GLES30.glReadPixels(0, 0, width, height, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, pixels)
+            GLES30.glBindFramebuffer(GLES30.GL_READ_FRAMEBUFFER, framebuffer)
+            GLES30.glReadBuffer(readBuffer)
             GLES30.glBindBuffer(GLES30.GL_PIXEL_PACK_BUFFER, pack[0])
             GLES30.glPixelStorei(GLES30.GL_PACK_ALIGNMENT, pack[1])
             GLES30.glPixelStorei(GLES30.GL_PACK_ROW_LENGTH, pack[2])
@@ -390,6 +398,17 @@ class WebGLContext(val canvasId: String, attributes: ReadableMap?) {
         }
         pixels.rewind()
         return DrawingBufferPixels(pixels, width, height, alpha)
+    }
+
+    /**
+     * The drawing buffer's pixels now, rows top to bottom, for another
+     * context to read: drawn on a 2D canvas or uploaded as a texture.
+     */
+    override fun snapshot(): DecodedImage? {
+        val pixels = readDrawingBuffer() ?: return null
+        // GL's first row is the bottom of the image.
+        flipRows(pixels.rgba, pixels.width * 4, pixels.height)
+        return DecodedImage(pixels.rgba, pixels.width, pixels.height, premultipliedAlpha || !alpha)
     }
 
     /**
@@ -487,15 +506,40 @@ class WebGLContext(val canvasId: String, attributes: ReadableMap?) {
      * into the bound PIXEL_UNPACK_BUFFER, bytes, or a decoded image converted
      * to the format and type.
      */
-    private fun pixels(reader: Reader, format: Int, type: Int): Pixels {
+    private fun pixels(reader: Reader, format: Int, type: Int, width: Int, height: Int): Pixels {
         return when (reader.peekType()) {
             ReadableType.Array -> Pixels(bytesFromWords(reader.array()), 0, false)
             ReadableType.Map -> {
                 val source = reader.map()
-                val image = DecodedImages.get(source.getDouble("image").toInt())
-                    ?: return Pixels(null, 0, false)
+                val canvasId = if (source.hasKey("canvas") && source.getType("canvas") == ReadableType.String) {
+                    source.getString("canvas")
+                } else {
+                    null
+                }
+                val image = if (canvasId != null) {
+                    // A canvas's pixels, which its context reads now: a 2D
+                    // canvas's bitmap, or a WebGL canvas's drawing buffer
+                    // (that context makes itself current and puts this one
+                    // back). A canvas with no pixels to read, one the app
+                    // never drew on, is transparent black, as in a browser,
+                    // already the size the upload names.
+                    val snapshot = if (canvasId == this.canvasId) snapshot() else CanvasRegistry.context(canvasId)?.snapshot()
+                    if (snapshot == null) {
+                        DecodedImage(
+                            ByteBuffer.allocateDirect(width * height * 4).order(ByteOrder.nativeOrder()),
+                            width,
+                            height,
+                            true,
+                        )
+                    } else {
+                        cropped(snapshot, width, height, source.bool("flipY")) ?: return Pixels(null, 0, false)
+                    }
+                } else {
+                    val decoded = DecodedImages.get(source.getDouble("image").toInt()) ?: return Pixels(null, 0, false)
+                    cropped(decoded, width, height, source.bool("flipY")) ?: return Pixels(null, 0, false)
+                }
                 Pixels(
-                    convertImage(image, format, type, source.bool("flipY"), source.bool("premultiply")),
+                    convertImage(image, format, type, source.bool("flipY"), source.bool("premultiply"), canvasId != null),
                     0,
                     true,
                 )
@@ -508,6 +552,40 @@ class WebGLContext(val canvasId: String, attributes: ReadableMap?) {
         }
     }
 
+    /**
+     * The part of an image an upload of `width` by `height` takes: from
+     * UNPACK_SKIP_PIXELS and UNPACK_SKIP_ROWS, counted in the image as
+     * UNPACK_FLIP_Y_WEBGL leaves it, as WebGL2 reads a sub-rectangle of an
+     * image source. The whole image for a plain upload; null for a rectangle
+     * outside it.
+     */
+    private fun cropped(image: DecodedImage, width: Int, height: Int, flipY: Boolean): DecodedImage? {
+        val skip = IntArray(2)
+        GLES30.glGetIntegerv(GLES30.GL_UNPACK_SKIP_PIXELS, skip, 0)
+        GLES30.glGetIntegerv(GLES30.GL_UNPACK_SKIP_ROWS, skip, 1)
+        val x = skip[0]
+        if (x == 0 && skip[1] == 0 && width == image.width && height == image.height) return image
+        // In Long, so a skip near Int.MAX_VALUE can't wrap round past the check.
+        if (width <= 0 || height <= 0 || x < 0 || skip[1] < 0 ||
+            x.toLong() + width > image.width || skip[1].toLong() + height > image.height
+        ) {
+            return null
+        }
+        // Rows counted from the top of the flipped image are counted from the
+        // bottom of the image as it is, which convertImage then flips.
+        val y = if (flipY) image.height - skip[1] - height else skip[1]
+        val out = ByteBuffer.allocateDirect(width * height * 4).order(ByteOrder.nativeOrder())
+        val row = ByteArray(width * 4)
+        for (r in 0 until height) {
+            val from = image.pixels.duplicate()
+            from.position(((y + r) * image.width + x) * 4)
+            from.get(row)
+            out.put(row)
+        }
+        out.rewind()
+        return DecodedImage(out, width, height, image.premultiplied)
+    }
+
     private fun ReadableMap.bool(key: String): Boolean =
         hasKey(key) && when (getType(key)) {
             ReadableType.Boolean -> getBoolean(key)
@@ -515,8 +593,20 @@ class WebGLContext(val canvasId: String, attributes: ReadableMap?) {
             else -> false
         }
 
-    /** A decoded image's RGBA bytes as the format and type an upload names, tightly packed, flipped and premultiplied as asked. */
-    private fun convertImage(image: DecodedImage, format: Int, type: Int, flipY: Boolean, premultiply: Boolean): ByteBuffer {
+    /**
+     * A decoded image's RGBA bytes as the format and type an upload names,
+     * tightly packed, flipped and premultiplied as asked. A canvas's pixels,
+     * premultiplied, are divided back when the upload doesn't premultiply, as
+     * WebGL uploads a canvas; an ImageBitmap's are uploaded as it was decoded.
+     */
+    private fun convertImage(
+        image: DecodedImage,
+        format: Int,
+        type: Int,
+        flipY: Boolean,
+        premultiply: Boolean,
+        fromCanvas: Boolean = false,
+    ): ByteBuffer {
         val components = when (format) {
             GLES30.GL_RGBA, GLES30.GL_RGBA_INTEGER -> 4
             GLES30.GL_RGB, GLES30.GL_RGB_INTEGER -> 3
@@ -534,6 +624,7 @@ class WebGLContext(val canvasId: String, attributes: ReadableMap?) {
         val out = ByteBuffer.allocateDirect(image.width * image.height * pixelSize).order(ByteOrder.nativeOrder())
         val rgba = image.pixels
         val multiply = premultiply && !image.premultiplied
+        val divide = fromCanvas && !premultiply && image.premultiplied
         val channels = FloatArray(4)
         for (y in 0 until image.height) {
             val row = (if (flipY) image.height - 1 - y else y) * image.width * 4
@@ -547,6 +638,10 @@ class WebGLContext(val canvasId: String, attributes: ReadableMap?) {
                     r = r * a / 255
                     g = g * a / 255
                     b = b * a / 255
+                } else if (divide && a > 0 && a < 255) {
+                    r = minOf(255f, r * 255 / a)
+                    g = minOf(255f, g * 255 / a)
+                    b = minOf(255f, b * 255 / a)
                 }
                 when (format) {
                     GLES30.GL_LUMINANCE -> channels[0] = r
@@ -1008,7 +1103,7 @@ class WebGLContext(val canvasId: String, attributes: ReadableMap?) {
                 val target = r.int(); val level = r.int(); val internalformat = r.int()
                 val width = r.int(); val height = r.int(); val border = r.int()
                 val format = r.int(); val type = r.int()
-                val pixels = pixels(r, format, type)
+                val pixels = pixels(r, format, type, width, height)
                 withTightUnpacking(pixels.isImage) {
                     if (pixels.buffer == null && pixels.offset != 0) {
                         Log.w(TAG, "texImage2D from a PIXEL_UNPACK_BUFFER is not supported on Android")
@@ -1021,7 +1116,7 @@ class WebGLContext(val canvasId: String, attributes: ReadableMap?) {
                 val target = r.int(); val level = r.int(); val internalformat = r.int()
                 val width = r.int(); val height = r.int(); val depth = r.int(); val border = r.int()
                 val format = r.int(); val type = r.int()
-                val pixels = pixels(r, format, type)
+                val pixels = pixels(r, format, type, width, height)
                 withTightUnpacking(pixels.isImage) {
                     if (pixels.buffer == null && pixels.offset != 0) {
                         GLES30.glTexImage3D(target, level, internalformat, width, height, depth, border, format, type, pixels.offset)
@@ -1037,7 +1132,7 @@ class WebGLContext(val canvasId: String, attributes: ReadableMap?) {
             WebGLOps.TEX_SUB_IMAGE2D -> {
                 val target = r.int(); val level = r.int(); val x = r.int(); val y = r.int()
                 val width = r.int(); val height = r.int(); val format = r.int(); val type = r.int()
-                val pixels = pixels(r, format, type)
+                val pixels = pixels(r, format, type, width, height)
                 withTightUnpacking(pixels.isImage) {
                     if (pixels.buffer == null) {
                         Log.w(TAG, "texSubImage2D from a PIXEL_UNPACK_BUFFER is not supported on Android")
@@ -1049,7 +1144,7 @@ class WebGLContext(val canvasId: String, attributes: ReadableMap?) {
             WebGLOps.TEX_SUB_IMAGE3D -> {
                 val target = r.int(); val level = r.int(); val x = r.int(); val y = r.int(); val z = r.int()
                 val width = r.int(); val height = r.int(); val depth = r.int(); val format = r.int(); val type = r.int()
-                val pixels = pixels(r, format, type)
+                val pixels = pixels(r, format, type, width, height)
                 withTightUnpacking(pixels.isImage) {
                     if (pixels.buffer == null) {
                         GLES30.glTexSubImage3D(target, level, x, y, z, width, height, depth, format, type, pixels.offset)

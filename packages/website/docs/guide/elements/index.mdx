@@ -145,7 +145,6 @@ What doesn't carry over:
 - **Inline text tags keep their browser text styles.** The build makes `<b>` and `<strong>` bold, `<em>`, `<i>`, `<cite>`, `<dfn>` and `<var>` italic, `<u>` and `<ins>` underlined, `<s>` and `<del>` struck through, `<code>`, `<kbd>` and `<samp>` monospace, `<small>` smaller, `<sub>` and `<sup>` smaller and lowered or raised, and `<mark>` black on yellow. An `<a>` with an `href` is underlined in the link color (lighter in dark mode), and an `<abbr>` with a `title` has a dotted underline. Your own CSS for them wins, as it would in a browser. A `<q>` draws “ ” around its text, and ‘ ’ inside another `<q>`. The differences:
   - A `<u>` or `<ins>` (or a link) inside an `<s>` or `<del>`, or the other way round, gets both lines from a rule with two classes, which beats a single class of yours on either tag of the pair.
   - An `<a routerLink>` has no `href`, so it keeps the text's own style.
-  - Text inside a `<small>`, `<sub>` or `<sup>` takes the size around it: `<small><b>x</b></small>` draws the `<b>` at the full size.
   - Android draws no dotted line under an `<abbr>`, and Lynx Explorer on Android draws `<code>` in the default font, not monospace (your app's own build has it).
   - A `<q>` always draws English quotation marks, whatever the language, and CSS `quotes` doesn't change them.
 - **There are no other browser styles.** An `<h1>` is the size of any other text and a `<button>` has no border, as with Tailwind's Preflight reset. Style them yourself.

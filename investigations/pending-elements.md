@@ -238,7 +238,7 @@ These elements exist in the Lynx web-platform implementation (`@lynx-js/web-elem
 
 ### `<x-canvas>` (aka `canvas`)
 
-**Done (issue #211), as `<canvas>` with a WebGL2 context, not 2D.** See `lynx-vs-web-differences.md` ("`<canvas>` with WebGL2 is AngularLynx's own") and the runtime's `canvas/`. The notes below are from before.
+**Done (issue #211), as `<canvas>` with a WebGL2 context, and a 2D context since issue #469.** See `lynx-vs-web-differences.md` ("`<canvas>` with WebGL2 is AngularLynx's own") and the runtime's `canvas/`. The notes below are from before.
 
 **What it does:** 2D drawing canvas element. Provides a pixel-level drawing surface for custom graphics, charts, and procedural visuals.
 

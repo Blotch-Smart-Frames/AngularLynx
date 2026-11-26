@@ -116,6 +116,13 @@ const ZERO_RECT: MenuRect = { left: 0, top: 0, width: 0, height: 0 };
  */
 const COVERED_OPACITY = 0.3;
 
+/**
+ * How long a finger sliding across the menu rests on a submenu's row before
+ * the submenu opens, as UIKit's does, in ms: long enough that a finger
+ * passing over the row on its way to another doesn't open it.
+ */
+export const SUBMENU_REST_DELAY = 500;
+
 /** A row's box in the menu's content, from the content's top left. */
 type RowOffset = MenuRect;
 
@@ -594,6 +601,7 @@ export class UiMenuPopup implements OnDestroy, MenuDragTarget {
     // Only a menu that's open or opening closes: `open` turning false again
     // reaches here only after it turned true, which ends any closing.
     if (phase === 'closed') return;
+    this.#stopResting();
     this.#rowOffsets = new Map();
     this.rows()?.highlighted.set(null);
     this.rows()?.shown.set(false);
@@ -690,23 +698,69 @@ export class UiMenuPopup implements OnDestroy, MenuDragTarget {
   dragTo(point: MenuPoint | null): void {
     const rows = this.rows();
     if (!rows) return;
+    // An open submenu covers this menu: the finger is over its rows now.
+    if (rows.openSubmenu) {
+      rows.openSubmenu.dragTo(point);
+      return;
+    }
     const row = point ? this.#rowAt(rows, point) : null;
     const target = row && !row.disabled() ? row : null;
     if (target === rows.highlighted()) return;
+    this.#stopResting();
     rows.highlighted.set(target);
-    if (target) this.#haptics.selection();
+    if (!target) return;
+    this.#haptics.selection();
+    if (target.opensSubmenu) this.#restOn(rows, target);
   }
 
   /**
    * Chooses the row under a finger that lifted there after sliding across
-   * the menu, as a tap on it would.
+   * the menu, as a tap on it would, or the open submenu's row under it.
    */
   dropAt(point: MenuPoint): void {
     const rows = this.rows();
     if (!rows) return;
+    this.#stopResting();
     rows.highlighted.set(null);
+    if (rows.openSubmenu) {
+      rows.openSubmenu.dropAt(point);
+      return;
+    }
     const row = this.#rowAt(rows, point);
     if (row && !row.disabled()) row.choose();
+  }
+
+  /** The timer that opens the submenu a finger rests on (see #restOn). */
+  #resting: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Opens a submenu once the finger has rested on its row for
+   * SUBMENU_REST_DELAY, as UIKit's does, so the same finger carries on into
+   * its items and lifts on one to choose it. The submenu then measures its
+   * own rows as it opens, and later moves go to it (see MenuRows'
+   * openSubmenu). Moving off the row first stops the timer, and so does a
+   * change to the rows, as it does #rowAt's measurements.
+   */
+  #restOn(rows: MenuRows, row: MenuRow): void {
+    const version = rows.version;
+    const timer = setTimeout(() => {
+      this.#timers.delete(timer);
+      this.#resting = null;
+      // The app added or took away a row meanwhile: this one may be gone, or
+      // have moved out from under the finger, which hasn't moved since.
+      if (rows.version !== version) return;
+      rows.highlighted.set(null);
+      row.choose();
+    }, SUBMENU_REST_DELAY);
+    this.#timers.add(timer);
+    this.#resting = timer;
+  }
+
+  #stopResting(): void {
+    if (this.#resting === null) return;
+    clearTimeout(this.#resting);
+    this.#timers.delete(this.#resting);
+    this.#resting = null;
   }
 
   /**

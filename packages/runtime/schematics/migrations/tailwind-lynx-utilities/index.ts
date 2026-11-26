@@ -6,10 +6,11 @@ import { LYNX_TAILWIND_IMPORT } from '../../utility/tailwind';
 /**
  * An `@import` of Tailwind 4: the one `ng add` writes
  * (`tailwindcss/utilities.css`) or Angular CLI's (`tailwindcss`), through the
- * `;` that ends it, which can be on a later line than the URL.
+ * `;` that ends it, which can be on a later line than the URL. A `;` inside a
+ * comment or a quoted string doesn't end it.
  */
 const TAILWIND_IMPORT =
-  /^\s*@import\s+(['"])tailwindcss(?:\/utilities\.css)?\1[^;]*;/gm;
+  /^\s*@import\s+(['"])tailwindcss(?:\/utilities\.css)?\1(?:\/\*[\s\S]*?\*\/|'[^']*'|"[^"]*"|[^;'"/]|\/)*?;/gm;
 
 /**
  * Imports @blotch/angular-lynx/tailwind.css, Lynx's own utilities and

@@ -94,6 +94,19 @@ describe('the tailwind-lynx-utilities migration', () => {
     );
   });
 
+  it('skips a ; in a comment or a string inside the @import', async () => {
+    workspace();
+    const css =
+      "@import 'tailwindcss' /* base; utilities */ supports(content: ';');\n";
+    tree.create('src/styles.css', css);
+
+    await migrate();
+
+    expect(tree.readText('src/styles.css')).toBe(
+      `${css.trimEnd()}\n@import '@blotch/angular-lynx/tailwind.css';\n`,
+    );
+  });
+
   it('finds a stylesheet that only a build configuration lists', async () => {
     tree.create(
       'angular.json',

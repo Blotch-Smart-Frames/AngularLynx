@@ -146,11 +146,18 @@ describe('styleIndexOf', () => {
       'font-size: calc(var(--angular-lynx-font-size, 14px) / 1.2)',
       SMALLER_FLAG,
     ],
-    ['font-size: calc(var(--angular-lynx-font-size) /1.2 )', SMALLER_FLAG],
+    [
+      'font-size: calc(var( --angular-lynx-font-size,14px ) /1.2 )',
+      SMALLER_FLAG,
+    ],
     // Another divisor isn't one the runtime can divide by again.
     ['font-size: calc(var(--angular-lynx-font-size, 14px) / 2)', FONT_SIZE],
     ['font-size: calc(var(--angular-lynx-font-size, 14px) / 1.25)', FONT_SIZE],
     ['font-size: calc(var(--a) / 1.2)', FONT_SIZE],
+    // Nor is another fallback, or none: where no ancestor sets the variable,
+    // the runtime's classes divide 14px again.
+    ['font-size: calc(var(--angular-lynx-font-size, 24px) / 1.2)', FONT_SIZE],
+    ['font-size: calc(var(--angular-lynx-font-size) / 1.2)', FONT_SIZE],
     // Nor is a size that adds to the variable before dividing it.
     [
       'font-size: calc((var(--angular-lynx-font-size, 14px) + 12px) / 1.2)',

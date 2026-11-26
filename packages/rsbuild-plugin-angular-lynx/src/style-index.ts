@@ -37,12 +37,14 @@ const isSmallerSize = (value: string): boolean =>
   SMALLER_SIZE.test(value.trim());
 
 /**
- * The variable alone, with or without a fallback length, divided by 1.2:
- * a `calc()` that adds to it, such as `calc((var(--angular-lynx-font-size)
- * + 12px) / 1.2)`, makes a size the runtime's division can't follow.
+ * The variable alone, with the build's 14px fallback, divided by 1.2: a
+ * `calc()` that adds to it, such as `calc((var(--angular-lynx-font-size)
+ * + 12px) / 1.2)`, makes a size the runtime's division can't follow, and so
+ * does another fallback, which the runtime's classes don't have (they draw
+ * the text inside at 14px divided again where no ancestor sets the size).
  */
 const SMALLER_SIZE = new RegExp(
-  `^calc\\(\\s*var\\(\\s*${inheritanceVariable('font-size')}\\s*(?:,\\s*[^()]*)?\\)\\s*/\\s*1\\.2\\s*\\)$`,
+  `^calc\\(\\s*var\\(\\s*${inheritanceVariable('font-size')}\\s*,\\s*14px\\s*\\)\\s*/\\s*1\\.2\\s*\\)$`,
   'i',
 );
 

@@ -1,7 +1,11 @@
 import fs from 'node:fs';
 import postcss from 'postcss';
 import { describe, expect, it } from 'vitest';
-import { textInheritanceForLynx } from './text-inheritance';
+import { styleIndexOf } from './style-index';
+import {
+  INHERITED_TEXT_PROPERTIES,
+  textInheritanceForLynx,
+} from './text-inheritance';
 import {
   applyTextScale,
   TEXT_SCALE_STYLESHEET,
@@ -157,6 +161,42 @@ describe('textScaleForLynx', () => {
   it("gives the native bundle's page Lynx's default root font size, in sp", () => {
     const css = fs.readFileSync(TEXT_SCALE_STYLESHEET, 'utf8');
     expect(process(css)).toContain('font-size: 14sp;');
+  });
+
+  // A Lynx <text> with no size of its own draws at Lynx's built-in 14px,
+  // whatever the page's size, so it neither took the theme's 16px nor grew
+  // with the phone (issue #673). 1rem is the page's size, sp and all.
+  it("gives a <text> with no font size of its own the page's, in rem", () => {
+    const css = fs.readFileSync(TEXT_SCALE_STYLESHEET, 'utf8');
+    const rules: [string, string][] = [];
+    postcss.parse(process(css)).walkDecls('font-size', (declaration) => {
+      rules.push([
+        (declaration.parent as postcss.Rule).selector,
+        declaration.value,
+      ]);
+    });
+    expect(rules).toEqual([
+      ['page', '14sp'],
+      ['text', '1rem'],
+    ]);
+  });
+
+  // The HTML inline tags in a Lynx <text> read its copy, so
+  // `<text>Total: <b>12</b></text>` draws the <b> at the <text>'s 1rem, and
+  // the style index tells the runtime the <text> sets its size, so the tag
+  // reads the copy rather than staying at Lynx's default (#drawnAtDefault).
+  it("passes a <text>'s rem font size to the HTML text tags inside it", () => {
+    const css = fs.readFileSync(TEXT_SCALE_STYLESHEET, 'utf8');
+    const built = postcss([
+      textScaleForLynx(),
+      textInheritanceForLynx(),
+    ]).process(css, { from: undefined }).css;
+    expect(built).toContain('text._nginherit-text {');
+    expect(built).toMatch(
+      /text\._nginherit-text \{\s*--angular-lynx-font-size: 1rem;?\s*\}/,
+    );
+    const fontSize = 1 << INHERITED_TEXT_PROPERTIES.indexOf('font-size');
+    expect(styleIndexOf([css]).rules).toContainEqual([['<text>'], fontSize]);
   });
 });
 

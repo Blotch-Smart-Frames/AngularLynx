@@ -52,18 +52,6 @@ const fromHex = (hex: string): RGBA | null => {
 };
 
 /**
- * A number, or a percentage of `percentOf`; NaN when it's neither.
- */
-const numberOf = (token: string, percentOf: number): number => {
-  if (token === 'none') return 0;
-  if (token.endsWith('%')) {
-    const value = Number(token.slice(0, -1));
-    return token.length > 1 ? (value / 100) * percentOf : NaN;
-  }
-  return token === '' ? NaN : Number(token);
-};
-
-/**
  * An angle in degrees.
  */
 const hueOf = (token: string): number => {
@@ -86,11 +74,15 @@ const hueOf = (token: string): number => {
  * A function's arguments, in its legacy comma form (`rgb(1, 2, 3)`) or its
  * modern one (`rgb(1 2 3 / 50%)`). The last item is the alpha, if any.
  */
-const argumentsOf = (body: string): string[] | null => {
+const argumentsOf = (
+  body: string,
+): { parts: string[]; legacy: boolean } | null => {
   const trimmed = body.trim();
   if (trimmed.includes(',')) {
     const parts = trimmed.split(',').map((part) => part.trim());
-    return parts.length === 3 || parts.length === 4 ? parts : null;
+    return parts.length === 3 || parts.length === 4
+      ? { parts, legacy: true }
+      : null;
   }
   const [main, alpha, extra] = trimmed.split('/').map((part) => part.trim());
   if (extra !== undefined) return null;
@@ -100,11 +92,42 @@ const argumentsOf = (body: string): string[] | null => {
     if (alpha === '') return null;
     parts.push(alpha);
   }
-  return parts;
+  return { parts, legacy: false };
 };
 
-const alphaOf = (token: string | undefined): number =>
-  token === undefined ? 1 : clamp(numberOf(token, 1), 0, 1);
+const NUMBER = /^[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?$/;
+const isNumber = (token: string): boolean => NUMBER.test(token);
+const isPercentage = (token: string): boolean =>
+  token.endsWith('%') && isNumber(token.slice(0, -1));
+
+/**
+ * A channel: a number, a percentage of `percentOf`, or, in the modern
+ * syntax, `none` (0). NaN for anything else.
+ */
+const channelOf = (
+  token: string,
+  percentOf: number,
+  legacy: boolean,
+): number => {
+  if (token === 'none') return legacy ? NaN : 0;
+  if (isPercentage(token)) {
+    return (Number(token.slice(0, -1)) / 100) * percentOf;
+  }
+  return isNumber(token) ? Number(token) : NaN;
+};
+
+/**
+ * Saturation, lightness, whiteness or blackness, from 0 to 1.
+ */
+const fractionOf = (token: string, legacy: boolean): number =>
+  isNumber(token)
+    ? legacy
+      ? NaN
+      : Number(token) / 100
+    : channelOf(token, 1, legacy);
+
+const alphaOf = (token: string | undefined, legacy: boolean): number =>
+  token === undefined ? 1 : clamp(channelOf(token, 1, legacy), 0, 1);
 
 const hslToRgb = (hue: number, saturation: number, lightness: number) => {
   const h = (((hue % 360) + 360) % 360) / 360;
@@ -118,39 +141,51 @@ const hslToRgb = (hue: number, saturation: number, lightness: number) => {
   return [channel(0) * 255, channel(8) * 255, channel(4) * 255];
 };
 
+/**
+ * rgb(), hsl() and hwb(), as CSS Color 4 reads them: the legacy comma syntax
+ * takes rgb()'s channels all as numbers or all as percentages, and hsl()'s
+ * saturation and lightness as percentages, with no `none`; hwb() has only
+ * the modern syntax.
+ */
 const fromFunction = (name: string, body: string): RGBA | null => {
-  const args = argumentsOf(body);
-  if (!args) return null;
+  const parsed = argumentsOf(body);
+  if (!parsed) return null;
+  const { parts: args, legacy } = parsed;
   let rgb: number[];
   switch (name) {
     case 'rgb':
-    case 'rgba':
-      rgb = args.slice(0, 3).map((token) => numberOf(token, 255));
+    case 'rgba': {
+      const channels = args.slice(0, 3);
+      if (
+        legacy &&
+        !channels.every(isNumber) &&
+        !channels.every(isPercentage)
+      ) {
+        return null;
+      }
+      rgb = channels.map((token) => channelOf(token, 255, legacy));
       break;
+    }
     case 'hsl':
     case 'hsla':
       rgb = hslToRgb(
         hueOf(args[0]),
-        numberOf(args[1].endsWith('%') ? args[1] : `${args[1]}%`, 1),
-        numberOf(args[2].endsWith('%') ? args[2] : `${args[2]}%`, 1),
+        fractionOf(args[1], legacy),
+        fractionOf(args[2], legacy),
       );
       break;
     case 'hwb': {
-      const white = clamp(
-        numberOf(args[1], 1) / (args[1].endsWith('%') ? 1 : 100),
-        0,
-        1,
-      );
-      const black = clamp(
-        numberOf(args[2], 1) / (args[2].endsWith('%') ? 1 : 100),
-        0,
-        1,
-      );
+      if (legacy) return null;
+      const hue = hueOf(args[0]);
+      if (Number.isNaN(hue)) return null;
+      const white = Math.max(0, fractionOf(args[1], false));
+      const black = Math.max(0, fractionOf(args[2], false));
       if (white + black >= 1) {
+        // Too much white and black together is a gray, in their proportion.
         const gray = (white / (white + black)) * 255;
         rgb = [gray, gray, gray];
       } else {
-        rgb = hslToRgb(hueOf(args[0]), 1, 0.5).map(
+        rgb = hslToRgb(hue, 1, 0.5).map(
           (value) => (value / 255) * (1 - white - black) * 255 + white * 255,
         );
       }
@@ -159,7 +194,7 @@ const fromFunction = (name: string, body: string): RGBA | null => {
     default:
       return null;
   }
-  const alpha = alphaOf(args[3]);
+  const alpha = alphaOf(args[3], legacy);
   if (rgb.some((value) => Number.isNaN(value)) || Number.isNaN(alpha)) {
     return null;
   }

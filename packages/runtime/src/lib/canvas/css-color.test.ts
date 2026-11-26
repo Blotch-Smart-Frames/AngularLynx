@@ -42,6 +42,24 @@ describe('parseColor', () => {
     expect(parseColor('hwb(0 60% 60%)')).toEqual([128, 128, 128, 1]);
   });
 
+  it('follows CSS Color 4’s grammar for each syntax', () => {
+    // The legacy syntax doesn't mix numbers and percentages, take `none`, or
+    // hsl() saturation without a percent sign; hwb() has no legacy syntax.
+    expect(parseColor('rgb(100%, 0, 0)')).toBeNull();
+    expect(parseColor('rgb(none, 0, 0)')).toBeNull();
+    expect(parseColor('rgb(10%, 20%, 30%)')).toEqual([26, 51, 77, 1]);
+    expect(parseColor('hsl(0, 50, 50)')).toBeNull();
+    expect(parseColor('hsl(0, none, 50%)')).toBeNull();
+    expect(parseColor('rgb(a b c)')).toBeNull();
+    expect(parseColor('hwb(0, 0%, 0%)')).toBeNull();
+    expect(parseColor('hwb(bogus 60% 60%)')).toBeNull();
+    // The modern syntax mixes them, and takes `none`.
+    expect(parseColor('rgb(100% 0 none)')).toEqual([255, 0, 0, 1]);
+    expect(parseColor('hsl(0 none 50%)')).toEqual([128, 128, 128, 1]);
+    // White and black past 100% together are a gray in their proportion.
+    expect(parseColor('hwb(0 200% 100%)')).toEqual([170, 170, 170, 1]);
+  });
+
   it('turns down what isn’t a color', () => {
     for (const text of [
       'rgb(1, 2)',

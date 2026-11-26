@@ -1,10 +1,12 @@
+// @vitest-environment jsdom
+import '@angular/compiler';
+import { provideZonelessChangeDetection, signal } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
 import {
-  type DestroyableInjector,
-  Injector,
-  runInInjectionContext,
-  signal,
-} from '@angular/core';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+  BrowserTestingModule,
+  platformBrowserTesting,
+} from '@angular/platform-browser/testing';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { LynxGlobalData } from '../data-flow/global-data';
 import { LynxAppState } from './app-state';
 
@@ -35,16 +37,26 @@ const stubWebPage = (document: object | undefined) => {
   );
 };
 
+/**
+ * The service from an app's root injector, which afterNextRender() needs.
+ */
 const create = (globalData = signal<Record<string, unknown>>({})) => {
-  const injector = Injector.create({
-    providers: [{ provide: LynxGlobalData, useValue: { globalData } }],
-  }) as DestroyableInjector;
-  const appState = runInInjectionContext(injector, () => new LynxAppState());
-  return { appState, globalData, injector };
+  TestBed.configureTestingModule({
+    providers: [
+      provideZonelessChangeDetection(),
+      { provide: LynxGlobalData, useValue: { globalData } },
+    ],
+  });
+  return { appState: TestBed.inject(LynxAppState), globalData };
 };
 
 describe('LynxAppState', () => {
+  beforeAll(() => {
+    TestBed.initTestEnvironment(BrowserTestingModule, platformBrowserTesting());
+  });
+
   afterEach(() => {
+    TestBed.resetTestingModule();
     vi.unstubAllGlobals();
   });
 
@@ -123,9 +135,9 @@ describe('LynxAppState', () => {
     it('stops listening when its injector is destroyed', () => {
       const document = fakeDocument('visible');
       stubWebPage(document);
-      const { injector } = create();
+      create();
 
-      injector.destroy();
+      TestBed.resetTestingModule();
 
       expect(document.removeEventListener).toHaveBeenCalledWith(
         'visibilitychange',
@@ -136,6 +148,8 @@ describe('LynxAppState', () => {
     it('is active when the page has no document to read', () => {
       stubWebPage(undefined);
       const { appState } = create();
+      // Still none after the first render.
+      TestBed.tick();
 
       expect(appState.state()).toBe('active');
     });
@@ -145,6 +159,22 @@ describe('LynxAppState', () => {
       vi.stubGlobal('__GetPageElement', undefined);
       const { appState } = create();
 
+      expect(appState.state()).toBe('active');
+    });
+
+    it('follows the page once the first render has created it', () => {
+      // Injected before the root component, as an app initializer can.
+      const document = fakeDocument('hidden');
+      vi.stubGlobal('__WEB__', true);
+      vi.stubGlobal('__GetPageElement', () => undefined);
+      const { appState } = create();
+      expect(appState.state()).toBe('active');
+
+      stubWebPage(document);
+      TestBed.tick();
+
+      expect(appState.state()).toBe('background');
+      document.show('visible');
       expect(appState.state()).toBe('active');
     });
   });

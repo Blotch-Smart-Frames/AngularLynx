@@ -1,4 +1,5 @@
 import {
+  afterNextRender,
   computed,
   DestroyRef,
   inject,
@@ -62,21 +63,36 @@ type PageDocument = {
 /**
  * The web preview's state, from the page's visibility: `background` while its
  * tab is hidden or its window minimized, as the Page Visibility API reports,
- * and `active` otherwise. Undefined off the web.
+ * and `active` otherwise. Undefined off the web, and until there's a page.
+ *
+ * The page doesn't exist until the root component is created, and an app
+ * initializer, or a provider's factory, can inject this before that. So when
+ * there's no page yet, it looks again after the first render, which comes
+ * once there is.
  */
 const watchPageVisibility = (
   destroyRef: DestroyRef,
-): Signal<LynxAppStateValue> | undefined => {
-  const document = pageDocument();
-  if (typeof document?.visibilityState !== 'string') return undefined;
-  const read = (): LynxAppStateValue =>
-    document.visibilityState === 'hidden' ? 'background' : 'active';
-  const state = signal(read());
-  const update = () => state.set(read());
-  document.addEventListener?.('visibilitychange', update);
-  destroyRef.onDestroy(() =>
-    document.removeEventListener?.('visibilitychange', update),
-  );
+): Signal<LynxAppStateValue | undefined> => {
+  const state = signal<LynxAppStateValue | undefined>(undefined);
+  if (!__WEB__) return state.asReadonly();
+  const attach = (): void => {
+    const document = pageDocument();
+    if (typeof document?.visibilityState !== 'string') return;
+    const update = () =>
+      state.set(
+        document.visibilityState === 'hidden' ? 'background' : 'active',
+      );
+    update();
+    document.addEventListener?.('visibilitychange', update);
+    destroyRef.onDestroy(() =>
+      document.removeEventListener?.('visibilitychange', update),
+    );
+  };
+  if (pageDocument()) {
+    attach();
+  } else {
+    afterNextRender(attach);
+  }
   return state.asReadonly();
 };
 
@@ -130,7 +146,7 @@ export class LynxAppState {
       APP_STATE_PROP
     ];
     if (isAppState(sent)) return sent;
-    return this.#page?.() ?? 'active';
+    return this.#page() ?? 'active';
   });
 
   /**

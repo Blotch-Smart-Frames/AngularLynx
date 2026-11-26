@@ -281,6 +281,9 @@ export class CanvasRoute {
     if (gl.getError() === gl.NO_ERROR) return 'errors lost';
     while (gl.getError() !== gl.NO_ERROR);
     this.#gl = { gl, program };
+    // A video check that ran out of tries before the context was there runs
+    // again with it.
+    if (this.resultVideo().endsWith('no WebGL')) this.drawVideo();
     try {
       this.result2D.set(this.#draw2D(gl, program));
     } catch (error) {

@@ -279,6 +279,32 @@ describe('UiSlider', () => {
     expect(haptics.impact).toHaveBeenCalledTimes(1);
   });
 
+  it("doesn't tick when a drag only snaps a value between steps onto the one it shows at", async () => {
+    const haptics = {
+      impact: vi.fn(),
+      selection: vi.fn(),
+      notification: vi.fn(),
+    };
+    const { host, update, touch } = await renderSlider(undefined, [
+      { provide: LynxHaptics, useValue: haptics },
+    ]);
+    // 51 shows at 50, with the thumb's center at 150.
+    await update(() => {
+      host.step.set(25);
+      host.value.set(51);
+    });
+
+    await touch('touchstart', 150);
+    await touch('touchmove', 160);
+    expect(host.value()).toBe(50);
+    expect(haptics.selection).not.toHaveBeenCalled();
+
+    // The next step does tick.
+    await touch('touchmove', 220);
+    expect(host.value()).toBe(75);
+    expect(haptics.selection).toHaveBeenCalledTimes(1);
+  });
+
   it('taps only at the ends of a slider with many steps', async () => {
     const haptics = {
       impact: vi.fn(),

@@ -877,7 +877,10 @@ export class UiSlider implements FormValueControl<number> {
   #follow(press: Press): void {
     const x = this.#local(press.lastX);
     if (x === null || press.grab === null) return;
-    const before = this.value();
+    // The value as the thumb shows it, which a bound value between steps
+    // isn't: a drag that only snaps it onto the step it shows at moves
+    // nothing the person can feel.
+    const before = this.#current();
     this.#set(this.#valueAt(x - press.grab));
     this.#tick(before);
   }
@@ -890,7 +893,7 @@ export class UiSlider implements FormValueControl<number> {
    * and a screen reader speaks the value.
    */
   #tick(before: number): void {
-    const value = this.value();
+    const value = this.#current();
     if (value === before) return;
     const { min, max } = this.#range();
     if (value === min || value === max) {

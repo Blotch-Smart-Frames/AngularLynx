@@ -7,19 +7,39 @@ The [Slider](/dolan/slider), [Switch](/dolan/switch) and [Context Menu](/dolan/c
 ## Usage
 
 ```typescript
+import { Component, inject, signal } from '@angular/core';
+import { LYNX_ELEMENTS, LynxHaptics } from '@blotch/angular-lynx';
+import { Payments } from './payments';
+
+@Component({
+  selector: 'app-checkout',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view (bindtap)="pay()">
+      <text>{{ paying() ? 'Paying…' : 'Pay' }}</text>
+    </view>
+  `,
+})
 export class Checkout {
+  readonly #payments = inject(Payments);
   readonly #haptics = inject(LynxHaptics);
+  protected readonly paying = signal(false);
 
   protected async pay(): Promise<void> {
+    this.paying.set(true);
     try {
       await this.#payments.charge();
       this.#haptics.notification('success');
     } catch {
       this.#haptics.notification('error');
+    } finally {
+      this.paying.set(false);
     }
   }
 }
 ```
+
+`Payments` stands for the app's own service that takes the payment.
 
 Give feedback for a change the person made, as it happens: a value passing a detent, a selection moving, an action going through. Apple and Google both ask apps to use it sparingly, so it keeps its meaning.
 
@@ -77,7 +97,10 @@ Under the [testing library](/guide/testing/) the methods do nothing. To check th
 ```typescript
 const haptics = { impact: vi.fn(), selection: vi.fn(), notification: vi.fn() };
 await render(Checkout, {
-  providers: [{ provide: LynxHaptics, useValue: haptics }],
+  providers: [
+    { provide: LynxHaptics, useValue: haptics },
+    { provide: Payments, useValue: { charge: async () => undefined } },
+  ],
 });
 fireEvent.tap(screen.getByText('Pay'));
 await waitForUpdate();

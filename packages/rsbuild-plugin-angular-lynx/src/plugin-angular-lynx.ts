@@ -2,6 +2,7 @@ import type { RsbuildPlugin } from '@lynx-js/rspeedy';
 import { ANGULAR_CLI_CONTEXT_PLUGIN_NAME } from './angular-cli-context.js';
 import { applyAngularRules } from './angular.js';
 import { createBackgroundEntries } from './background-entry.js';
+import { applyBackgroundMinify } from './background-minify.js';
 import { applyColorScheme } from './color-scheme.js';
 import { applyCSS } from './css.js';
 import { applyDisplay } from './display.js';
@@ -99,6 +100,9 @@ export const pluginAngularLynx = (
       );
       applyGenerator(api);
       applySplitChunksRule(api, normalizedOptions);
+      // More minifier passes for the background scripts, which use little of
+      // what they hold (see background-minify.ts).
+      applyBackgroundMinify(api);
       applyDevLogger(api);
       applyWebPreviewIsolation(api);
       // Reloads the web preview after each rebuild, which can't take hot

@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 import { PACKAGES_DIR } from './layers.js';
 import { enableWebGL2WhereNamed, resolveRuntimeEntry } from './webgl2.js';
 
-const CALL = `import { ɵenableWebGL2 as __angularLynxEnableWebGL2 } from "@blotch/angular-lynx";\n__angularLynxEnableWebGL2();\n`;
+const CALL = `import { ɵenableWebGL2 as __angularLynxEnableWebGL2 } from "@blotch/angular-lynx"; __angularLynxEnableWebGL2(); `;
 
 describe('enableWebGL2WhereNamed', () => {
   it('leaves a module that never names the context as it is', () => {
@@ -33,7 +33,7 @@ describe('enableWebGL2WhereNamed', () => {
         '/app/node_modules/@blotch/angular-lynx/fesm2022/x.mjs',
       ),
     ).toBe(
-      `import { ɵenableWebGL2 as __angularLynxEnableWebGL2 } from "/app/node_modules/@blotch/angular-lynx/fesm2022/x.mjs";\n__angularLynxEnableWebGL2();\n${code}`,
+      `import { ɵenableWebGL2 as __angularLynxEnableWebGL2 } from "/app/node_modules/@blotch/angular-lynx/fesm2022/x.mjs"; __angularLynxEnableWebGL2(); ${code}`,
     );
   });
 
@@ -44,6 +44,36 @@ describe('enableWebGL2WhereNamed', () => {
     // Two bindings of one name would be a syntax error: the module's own
     // stays the only `ɵenableWebGL2`.
     expect(result.match(/import \{ ɵenableWebGL2 \}/g)).toHaveLength(1);
+  });
+
+  it('picks a name the module doesn’t use, beside its own import under that alias', () => {
+    const code = `import { ɵenableWebGL2 as __angularLynxEnableWebGL2 } from '@blotch/angular-lynx';\nexport const gl = (c) => c.getContext('webgl2');`;
+    expect(enableWebGL2WhereNamed(code, '/app/src/scene.ts')).toBe(
+      `import { ɵenableWebGL2 as __angularLynxEnableWebGL22 } from "@blotch/angular-lynx"; __angularLynxEnableWebGL22(); ${code}`,
+    );
+  });
+
+  it('keeps a hashbang first, and adds no line, so a source map still fits', () => {
+    const esm = `#!/usr/bin/env node\nexport const name = 'webgl2';\n`;
+    expect(enableWebGL2WhereNamed(esm, '/app/node_modules/cli/x.js')).toBe(
+      `#!/usr/bin/env node\n${CALL}export const name = 'webgl2';\n`,
+    );
+    const cjs = `#!/usr/bin/env node\n'use strict'\nmodule.exports = 'webgl2';`;
+    expect(enableWebGL2WhereNamed(cjs, '/app/node_modules/cli/y.js')).toBe(
+      `#!/usr/bin/env node\n'use strict';require("@blotch/angular-lynx").ɵenableWebGL2(); \nmodule.exports = 'webgl2';`,
+    );
+    const bare = `#!/usr/bin/env node\nmodule.exports = 'webgl2';`;
+    expect(enableWebGL2WhereNamed(bare, '/app/node_modules/cli/z.js')).toBe(
+      `#!/usr/bin/env node\n;require("@blotch/angular-lynx").ɵenableWebGL2(); module.exports = 'webgl2';`,
+    );
+    // A hashbang alone, which only names it in a comment.
+    expect(
+      enableWebGL2WhereNamed('#!webgl2', '/app/node_modules/cli/w.js'),
+    ).toBe('#!webgl2');
+    for (const code of [esm, cjs]) {
+      const result = enableWebGL2WhereNamed(code, '/app/node_modules/cli/x.js');
+      expect(result.split('\n')).toHaveLength(code.split('\n').length);
+    }
   });
 
   it('imports in an .mjs module with no import or export, which has no require', () => {
@@ -58,11 +88,11 @@ describe('enableWebGL2WhereNamed', () => {
     expect(
       enableWebGL2WhereNamed(code, '/app/node_modules/lib/index.cjs'),
     ).toBe(
-      `'use strict';\n"another";\nrequire("@blotch/angular-lynx").ɵenableWebGL2();\n\nmodule.exports = 'webgl2';`,
+      `'use strict';\n"another";;require("@blotch/angular-lynx").ɵenableWebGL2(); \nmodule.exports = 'webgl2';`,
     );
     const bare = `module.exports = 'webgl2';`;
     expect(enableWebGL2WhereNamed(bare, '/app/node_modules/lib/i.js')).toBe(
-      `\nrequire("@blotch/angular-lynx").ɵenableWebGL2();\n${bare}`,
+      `;require("@blotch/angular-lynx").ɵenableWebGL2(); ${bare}`,
     );
   });
 

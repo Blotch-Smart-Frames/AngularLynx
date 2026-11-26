@@ -6,9 +6,10 @@ import { isAngularLynxPackageModule } from './layers.js';
 const RUNTIME = '@blotch/angular-lynx';
 const ENABLE = 'ɵenableWebGL2';
 /**
- * The name the import gives it: a module can import `ɵenableWebGL2` itself
- * (the console warning suggests it), and a second binding of the same name
- * would be a syntax error.
+ * The start of the name the import gives it: a module can import
+ * `ɵenableWebGL2` itself (the console warning suggests it), and a second
+ * binding of a name is a syntax error. A number goes after it while the
+ * module already uses the name (see localName).
  */
 const LOCAL = '__angularLynxEnableWebGL2';
 
@@ -59,16 +60,25 @@ export const enableWebGL2WhereNamed = (
     false,
     /\.[cm]?tsx?$/.test(filename) ? ts.ScriptKind.TS : ts.ScriptKind.JS,
   );
+  // A hashbang must stay first, and the call goes on the line after it. The
+  // call never adds a line, so a source map the module carries still fits.
+  // A module that is only a hashbang has no code to ask for a context.
+  const head = code.startsWith('#!') ? code.indexOf('\n') + 1 : 0;
+  if (code.startsWith('#!') && head === 0) {
+    return code;
+  }
   // An `.mjs` or `.mts` file is an ES module even with no import or export,
   // and has no `require` (strict-esm.ts builds it as one).
   if (ts.isExternalModule(sourceFile) || /\.m[jt]s$/.test(filename)) {
     // Imports are hoisted, so the import can go anywhere; the call goes after
     // the module's own imports, which run first whatever their place.
-    return `import { ${ENABLE} as ${LOCAL} } from ${specifier};\n${LOCAL}();\n${code}`;
+    const local = localName(code);
+    return `${code.slice(0, head)}import { ${ENABLE} as ${local} } from ${specifier}; ${local}(); ${code.slice(head)}`;
   }
   // A CommonJS module (or a script) has no imports. The call goes after its
-  // directives: before a `'use strict'`, it would stop being one.
-  let offset = 0;
+  // directives: before a `'use strict'`, it would stop being one. The `;`
+  // ends a directive written without one.
+  let offset = head;
   for (const statement of sourceFile.statements) {
     if (
       !ts.isExpressionStatement(statement) ||
@@ -78,7 +88,18 @@ export const enableWebGL2WhereNamed = (
     }
     offset = statement.end;
   }
-  return `${code.slice(0, offset)}\nrequire(${specifier}).${ENABLE}();\n${code.slice(offset)}`;
+  return `${code.slice(0, offset)};require(${specifier}).${ENABLE}(); ${code.slice(offset)}`;
+};
+
+/**
+ * A name for the import that the module doesn't use.
+ *
+ * @param code - The module's code.
+ */
+const localName = (code: string): string => {
+  let name = LOCAL;
+  for (let n = 2; code.includes(name); n++) name = `${LOCAL}${n}`;
+  return name;
 };
 
 /**

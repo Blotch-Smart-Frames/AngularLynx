@@ -303,6 +303,9 @@ const alignUp = (value: number, alignment: number): number =>
 const isTypedArray = (value: unknown): value is TypedArray =>
   ArrayBuffer.isView(value) && !(value instanceof DataView);
 
+/** What #pixels gives for an upload GL would refuse, which isn't sent. */
+const REFUSED = Symbol('refused');
+
 /** Whether a context's constructor has put the constants on the class. */
 let constantsAssigned = false;
 
@@ -539,6 +542,15 @@ export class LynxWebGL2RenderingContext {
     for (const item of items) this.#commands.push(item);
     const results = this.#send();
     return results[results.length - 1] ?? null;
+  }
+
+  /**
+   * Records a texture upload, unless working out its pixels failed (see
+   * #pixels), when GL would refuse it: the error is the app's to read.
+   */
+  #upload(...items: unknown[]): void {
+    if (items.includes(REFUSED)) return;
+    this.#cmd(...items);
   }
 
   #fail(error: number): void {
@@ -1877,7 +1889,7 @@ export class LynxWebGL2RenderingContext {
         unknown,
       ];
       const { width, height } = this.#sourceSize(source);
-      this.#cmd(
+      this.#upload(
         OP.texImage2D,
         target,
         level,
@@ -1904,7 +1916,7 @@ export class LynxWebGL2RenderingContext {
         unknown,
         number | undefined,
       ];
-    this.#cmd(
+    this.#upload(
       OP.texImage2D,
       target,
       level,
@@ -1936,7 +1948,7 @@ export class LynxWebGL2RenderingContext {
         unknown,
       ];
       const { width, height } = this.#sourceSize(source);
-      this.#cmd(
+      this.#upload(
         OP.texSubImage2D,
         target,
         level,
@@ -1962,7 +1974,7 @@ export class LynxWebGL2RenderingContext {
       unknown,
       number | undefined,
     ];
-    this.#cmd(
+    this.#upload(
       OP.texSubImage2D,
       target,
       level,
@@ -1989,7 +2001,7 @@ export class LynxWebGL2RenderingContext {
     source: unknown,
     srcOffset = 0,
   ): void {
-    this.#cmd(
+    this.#upload(
       OP.texImage3D,
       target,
       level,
@@ -2018,7 +2030,7 @@ export class LynxWebGL2RenderingContext {
     source: unknown,
     srcOffset = 0,
   ): void {
-    this.#cmd(
+    this.#upload(
       OP.texSubImage3D,
       target,
       level,
@@ -2263,8 +2275,19 @@ export class LynxWebGL2RenderingContext {
   ): unknown {
     if (source === null || source === undefined) return null;
     if (typeof source === 'number') return source;
+    // An image or an array can't be uploaded while a PIXEL_UNPACK_BUFFER is
+    // bound: WebGL2 makes that INVALID_OPERATION.
+    if (this.#pixelUnpackBuffer) {
+      this.#fail(GL.INVALID_OPERATION);
+      return REFUSED;
+    }
     const canvas = canvasSourceOf(source);
     if (canvas) {
+      // A canvas is one image: it can't fill a 3D upload's layers here.
+      if (depth > 1) {
+        this.#fail(GL.INVALID_OPERATION);
+        return REFUSED;
+      }
       // The shell reads the canvas's own pixels, by its id: its 2D bitmap or
       // its drawing buffer. Its calls go first.
       canvas.flush();

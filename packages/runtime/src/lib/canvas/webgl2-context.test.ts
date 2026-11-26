@@ -1683,6 +1683,58 @@ describe('textures', () => {
     ]);
   });
 
+  it('refuses an image while a PIXEL_UNPACK_BUFFER is bound, and a canvas in 3D', () => {
+    const canvas = {
+      width: 2,
+      height: 2,
+      [CANVAS_SOURCE]: {
+        canvasId: 'c-3',
+        width: 2,
+        height: 2,
+        readable: true,
+        flush: vi.fn(),
+      },
+    };
+    const before = bridge.batches.length;
+    // A canvas is one image: it can't fill a 3D upload's layers.
+    gl.texImage3D(
+      GL.TEXTURE_3D,
+      0,
+      GL.RGBA,
+      2,
+      2,
+      2,
+      0,
+      GL.RGBA,
+      GL.UNSIGNED_BYTE,
+      canvas,
+    );
+    expect(gl.getError()).toBe(GL.INVALID_OPERATION);
+    gl.bindBuffer(GL.PIXEL_UNPACK_BUFFER, gl.createBuffer());
+    gl.texImage2D(GL.TEXTURE_2D, 0, GL.RGBA, GL.RGBA, GL.UNSIGNED_BYTE, canvas);
+    expect(gl.getError()).toBe(GL.INVALID_OPERATION);
+    gl.texSubImage2D(
+      GL.TEXTURE_2D,
+      0,
+      0,
+      0,
+      1,
+      1,
+      GL.RGBA,
+      GL.UNSIGNED_BYTE,
+      new Uint8Array(4),
+    );
+    expect(gl.getError()).toBe(GL.INVALID_OPERATION);
+    // Neither upload was sent, nor the canvas read.
+    expect(canvas[CANVAS_SOURCE].flush).not.toHaveBeenCalled();
+    expect(
+      bridge.batches
+        .slice(before)
+        .flat()
+        .filter((item) => item === OP.texImage2D || item === OP.texSubImage2D),
+    ).toEqual([]);
+  });
+
   it('says a video can’t be uploaded yet', () => {
     expect(() =>
       gl.texImage2D(

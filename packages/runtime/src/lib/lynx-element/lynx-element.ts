@@ -1852,8 +1852,8 @@ export class LynxElement implements BaseLynxElement {
    * The whole inline style to give the native element: the runtime's
    * declarations first (`hidden`'s HIDDEN_STYLE, then #runtimeStyle), so
    * the app's own wins where both set the same name,
-   * then the app's style="...", then the copies of its text styles (see
-   * #inlineTextCopies), then its `[style.--x]` variables, which win
+   * then the copies of the app's text styles (see #inlineTextCopies), then
+   * the app's style="...", then its `[style.--x]` variables, which win
    * over the attribute as bindings do on the web. Without runtime
    * declarations or variables it's the app's value as is.
    */
@@ -1878,8 +1878,11 @@ export class LynxElement implements BaseLynxElement {
       this.#hidden ? HIDDEN_STYLE : '',
       this.#inheritStyle,
       this.#runtimeStyle,
-      inlineStyle?.replace(/[\s;]+$/, ''),
+      // Ahead of the app's own declarations, so a `--angular-lynx-color` it
+      // sets itself wins over the copy of its `color`, as the build keeps
+      // one a rule sets.
       copies,
+      inlineStyle?.replace(/[\s;]+$/, ''),
       variables,
     ]
       .filter(Boolean)

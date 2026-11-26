@@ -1632,6 +1632,19 @@ describe('loose text, element by element', () => {
       expect(style(bold)).toContain(COLOR);
     });
 
+    it('lets an inheritance variable the app sets itself win over the copy', () => {
+      const view = doc.createElement('view');
+      view.setAttribute('style', 'color: red; --angular-lynx-color: blue');
+      page.appendChild(view);
+      view.appendChild(doc.createElement('p'));
+      commit();
+
+      const written = style(view);
+      expect(written.lastIndexOf('--angular-lynx-color: blue')).toBeGreaterThan(
+        written.indexOf('--angular-lynx-color: red'),
+      );
+    });
+
     it('leaves a <text> that never had a text style as it is when one goes', () => {
       const text = doc.createElement('text');
       page.appendChild(text);

@@ -27,9 +27,12 @@ const UNDECLARED_URL = 'angularlynx-e2e-undeclared://x';
  * "Sheet: closed" once the person is back, or why it failed.
  *
  * "Returns" counts the times LynxAppState saw the app come back to the front
- * after it left (issue #577): the shells send its state in the global props
- * as the scene or activity moves. It's on this page because only the app's
- * own builds open it: Lynx Explorer sends no state, so it would stay at 0.
+ * from the background (issue #577): the shells send its state in the global
+ * props as the scene or activity moves. Only from the background: a tap
+ * near the bottom of a small Android screen can start the system's app-switcher
+ * gesture, which makes the app inactive for a moment without leaving it. It's
+ * on this page because only the app's own builds open it: Lynx Explorer sends
+ * no state, so it would stay at 0.
  */
 @Component({
   selector: 'app-linking',
@@ -64,11 +67,14 @@ export class LinkingRoute implements OnInit {
 
   constructor() {
     const appState = inject(LynxAppState);
-    let away = false;
+    let wentAway = false;
     effect(() => {
-      const active = appState.active();
-      if (active && away) untracked(() => this.returns.update((n) => n + 1));
-      away = !active;
+      const state = appState.state();
+      if (state === 'background') wentAway = true;
+      if (state === 'active' && wentAway) {
+        wentAway = false;
+        untracked(() => this.returns.update((n) => n + 1));
+      }
     });
   }
 

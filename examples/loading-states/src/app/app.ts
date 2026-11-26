@@ -39,7 +39,7 @@ type UploadFile = {
   ],
   template: `
     <scroll-view scroll-orientation="vertical" class="h-screen bg-background">
-      <view class="flex-col gap-6 p-4 flex">
+      <view class="flex-col gap-6 px-4 flex pt-safe-4 pb-safe-4">
         <text class="text-[28px] font-bold text-foreground">File Manager</text>
 
         <ui-card>

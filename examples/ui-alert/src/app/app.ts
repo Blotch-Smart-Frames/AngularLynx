@@ -7,7 +7,7 @@ import { UiAlert } from '../components/ui/alert';
   imports: [LYNX_ELEMENTS, UiAlert],
   template: `
     <scroll-view scroll-orientation="vertical" class="h-full">
-      <view class="flex-col gap-4 p-4 flex">
+      <view class="flex-col gap-4 px-4 flex pt-safe-4 pb-safe-4">
         <text class="text-2xl font-bold text-foreground">Alert</text>
 
         <!-- Default variant -->

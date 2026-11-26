@@ -200,8 +200,17 @@ export const scanSourcesForUnsupportedPatterns = (
 };
 
 /**
+ * A component definition one of whose selectors is a `<list>`, which the
+ * compiler writes as `selectors: [["list", "attr", ""], …]`: its host is the
+ * list its template's items go in.
+ */
+const LIST_HOST_SELECTOR =
+  /selectors:\s*\[\s*(?:\[[^\]]*\]\s*,\s*)*\[\s*["']list["']/;
+
+/**
  * Scans the AOT compiled output for structural issues:
- * - <list-item> used without a <list> parent in the same component
+ * - <list-item> used without a <list> parent in the same component, or a
+ *   `<list>` host
  *
  * Uses the same ɵɵelementStart/ɵɵelement pattern as HTML element detection
  * to identify element usage in compiled templates.
@@ -223,8 +232,13 @@ export const scanCompiledOutputForStructuralIssues = (
 
     const fileName = path.relative(process.cwd(), file);
 
-    // <list-item> without <list> in the same component
-    if (tags.has('list-item') && !tags.has('list')) {
+    // <list-item> without <list> in the same component, or as its host: a
+    // component whose selector is `list[…]` puts its items in itself.
+    if (
+      tags.has('list-item') &&
+      !tags.has('list') &&
+      !LIST_HOST_SELECTOR.test(code)
+    ) {
       diagnostics.push({
         file,
         message: `${fileName}: <list-item> used without a <list> parent. Wrap list items in a <list> element.`,

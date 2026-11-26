@@ -25,7 +25,8 @@ const SCREEN_HOST = { class: 'flex-1 flex-col flex' };
 
 /**
  * The first screen: a large title over a list of notes, with actions at both
- * ends of the bar and a toolbar along the bottom.
+ * ends of the bar and a toolbar along the bottom. The notes are a `<list>`,
+ * as a long feed would be, and the note's own screen a `<scroll-view>`.
  */
 @Component({
   selector: 'app-notes-screen',
@@ -41,45 +42,55 @@ const SCREEN_HOST = { class: 'flex-1 flex-col flex' };
   host: SCREEN_HOST,
   template: `
     <!-- ui-bar-scroll starts the content below the bar and draws the large
-         title at its top; the bar shows the title once it scrolls under. -->
-    <scroll-view
+         title at its top; the bar shows the title once it scrolls under.
+         A long feed is a <list>, which takes it as a <scroll-view> does:
+         the room for the bars and the large title are list items of its
+         own, around the list's. -->
+    <list
       ui-bar-scroll
       scroll-orientation="vertical"
+      list-type="single"
       class="h-full w-full"
     >
-      <view class="flex-col gap-3 px-4 pb-4 pt-2 flex">
-        <text class="text-sm text-muted-foreground">
-          Scroll the notes under the bars. Tap one to open it: its bar has a
-          Back button.
-        </text>
-        <text class="text-xs text-muted-foreground">{{ status() }}</text>
-        <text class="text-xs text-muted-foreground"
-          >Last action: {{ lastAction() }}</text
-        >
-        @for (note of notes; track note.id) {
-          <view
-            class="flex-row items-center gap-3 rounded-2xl bg-secondary p-3 flex"
-            [accessibility-element]="true"
-            accessibility-traits="button"
-            [accessibility-label]="note.title"
-            (bindtap)="open(note.id)"
+      <list-item item-key="intro">
+        <view class="flex-col gap-3 px-4 pb-3 pt-2 flex">
+          <text class="text-sm text-muted-foreground">
+            Scroll the notes under the bars. Tap one to open it: its bar has a
+            Back button.
+          </text>
+          <text class="text-xs text-muted-foreground">{{ status() }}</text>
+          <text class="text-xs text-muted-foreground"
+            >Last action: {{ lastAction() }}</text
           >
+        </view>
+      </list-item>
+      @for (note of notes; track note.id) {
+        <list-item [attr.item-key]="'note-' + note.id">
+          <view class="px-4 pb-3">
             <view
-              class="h-12 w-12 rounded-xl"
-              [style.background-image]="note.cover"
-            ></view>
-            <view class="flex-1 flex-col gap-0.5 flex">
-              <text class="text-base font-semibold text-foreground">{{
-                note.title
-              }}</text>
-              <text class="text-sm text-muted-foreground">{{
-                note.excerpt
-              }}</text>
+              class="flex-row items-center gap-3 rounded-2xl bg-secondary p-3 flex"
+              [accessibility-element]="true"
+              accessibility-traits="button"
+              [accessibility-label]="note.title"
+              (bindtap)="open(note.id)"
+            >
+              <view
+                class="h-12 w-12 rounded-xl"
+                [style.background-image]="note.cover"
+              ></view>
+              <view class="flex-1 flex-col gap-0.5 flex">
+                <text class="text-base font-semibold text-foreground">{{
+                  note.title
+                }}</text>
+                <text class="text-sm text-muted-foreground">{{
+                  note.excerpt
+                }}</text>
+              </view>
             </view>
           </view>
-        }
-      </view>
-    </scroll-view>
+        </list-item>
+      }
+    </list>
 
     <ui-navigation-bar title="Notes" largeTitle>
       <!-- leading puts an item after the Back button, which the first

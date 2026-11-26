@@ -50,7 +50,7 @@ type Contact = {
   template: `
     <view class="h-screen flex-col bg-background flex">
       <view
-        class="flex-row items-center border-b border-border bg-card px-5 py-4 flex justify-between"
+        class="flex-row items-center border-b border-border bg-card px-5 pb-4 flex justify-between pt-safe-4"
       >
         <text class="text-[22px] font-bold text-foreground">Contacts</text>
         <ui-button size="sm" (pressed)="openAdd()">+ Add</ui-button>
@@ -118,6 +118,8 @@ type Contact = {
             }
           }
         }
+        <!-- Lets the last row scroll clear of the home indicator. -->
+        <view class="pb-safe-4"></view>
       </scroll-view>
     </view>
 

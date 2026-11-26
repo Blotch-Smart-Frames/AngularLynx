@@ -5,6 +5,7 @@ export {
   UiToolbarSpacer,
 } from './toolbar';
 export {
+  BAR_SCROLL_ITEM_KEYS,
   UiBarScroll,
   UiBarState,
   injectBarState,

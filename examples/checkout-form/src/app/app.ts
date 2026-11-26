@@ -36,7 +36,7 @@ import { UiSeparator } from '../components/ui/separator';
   ],
   template: `
     <scroll-view scroll-orientation="vertical" class="h-screen bg-background">
-      <view class="flex-col gap-6 p-4 flex">
+      <view class="flex-col gap-6 px-4 flex pt-safe-4 pb-safe-4">
         <view class="flex-col gap-2 flex">
           <view class="flex-row flex justify-between">
             <text class="text-sm font-medium text-foreground">

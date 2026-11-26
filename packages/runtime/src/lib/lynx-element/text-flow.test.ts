@@ -10,6 +10,7 @@ import {
   LAYOUT_FLAG,
   matchedStyleFlagsFor,
   resetStyleIndex,
+  smallerClassFor,
   styleFlagsFor,
 } from './text-flow';
 
@@ -202,6 +203,19 @@ describe('inheritanceStyleFor', () => {
     );
     expect(inheritanceStyleFor(ALL_TEXT_PROPERTIES)).toBe('');
     expect(inheritanceStyleFor(0).split('; ')).toHaveLength(11);
+  });
+});
+
+describe('smallerClassFor', () => {
+  // Issue #663: the build has a class for each level of <small>, up to
+  // MAX_SMALLER_LEVELS, past which the text stays at that size.
+  it.each([
+    [1, '_ngsmaller-1'],
+    [2, '_ngsmaller-2'],
+    [5, '_ngsmaller-5'],
+    [9, '_ngsmaller-5'],
+  ])('names the class for %s levels', (levels, name) => {
+    expect(smallerClassFor(levels)).toBe(name);
   });
 });
 

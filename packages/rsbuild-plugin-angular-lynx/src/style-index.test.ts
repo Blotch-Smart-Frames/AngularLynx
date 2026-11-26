@@ -1,5 +1,12 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { LAYOUT_FLAG, styleIndexOf, styleIndexStatement } from './style-index';
+import {
+  LAYOUT_FLAG,
+  SMALLER_FLAG,
+  styleIndexOf,
+  styleIndexStatement,
+} from './style-index';
 
 const COLOR = 1;
 const FONT_SIZE = 1 << 2;
@@ -133,6 +140,31 @@ describe('styleIndexOf', () => {
     ['display: none', 0],
     ['linear-orientation: vertical', 0],
     ['--angular-lynx-color: red', 0],
+    // The build's <small> rule (issue #663): a size read from the parent's
+    // variable, which has no copy, gets SMALLER_FLAG in place of FONT_SIZE.
+    [
+      'font-size: calc(var(--angular-lynx-font-size, 14px) / 1.2)',
+      SMALLER_FLAG,
+    ],
+    [
+      'font-size: calc(var( --angular-lynx-font-size,14px ) /1.2 )',
+      SMALLER_FLAG,
+    ],
+    // Another divisor isn't one the runtime can divide by again.
+    ['font-size: calc(var(--angular-lynx-font-size, 14px) / 2)', FONT_SIZE],
+    ['font-size: calc(var(--angular-lynx-font-size, 14px) / 1.25)', FONT_SIZE],
+    ['font-size: calc(var(--a) / 1.2)', FONT_SIZE],
+    // Nor is another fallback, or none: where no ancestor sets the variable,
+    // the runtime's classes divide 14px again.
+    ['font-size: calc(var(--angular-lynx-font-size, 24px) / 1.2)', FONT_SIZE],
+    ['font-size: calc(var(--angular-lynx-font-size) / 1.2)', FONT_SIZE],
+    // Nor is a size that adds to the variable before dividing it.
+    [
+      'font-size: calc((var(--angular-lynx-font-size, 14px) + 12px) / 1.2)',
+      FONT_SIZE,
+    ],
+    ['font-size: calc(var(--angular-lynx-font-size) * 2 / 1.2)', FONT_SIZE],
+    ['font-size: var(--angular-lynx-font-size-x)', FONT_SIZE],
   ])('counts %s as %s', (declaration, flags) => {
     expect(styleIndexOf([`.a { ${declaration} }`]).rules).toEqual(
       flags ? [[['a'], flags]] : [],
@@ -155,6 +187,52 @@ describe('styleIndexStatement', () => {
   it('hands the index to the runtime as a global', () => {
     expect(styleIndexStatement({ rules: [[['a'], 1]] })).toBe(
       'globalThis["__angularLynxStyleIndex"]={"rules":[[["a"],1]]};',
+    );
+  });
+});
+
+describe('SMALLER_FLAG', () => {
+  // The runtime reads the bit, so the two must agree (both sit above the
+  // text properties' bits and LAYOUT_FLAG).
+  it("is the runtime's bit", () => {
+    const runtime = fs.readFileSync(
+      path.join(
+        import.meta.dirname,
+        '../../runtime/src/lib/lynx-element/text-flow.ts',
+      ),
+      'utf-8',
+    );
+    expect(runtime).toContain('export const SMALLER_FLAG = LAYOUT_FLAG << 1;');
+    expect(SMALLER_FLAG).toBe(LAYOUT_FLAG << 1);
+  });
+
+  // The runtime gives text inside nested <small>s a class of the build's for
+  // its level, up to its MAX_SMALLER_LEVELS (issue #663). Each must be in the
+  // build's stylesheet, dividing by 1.2 once for each level.
+  it('has a class for each level of <small> the runtime names', () => {
+    const runtime = fs.readFileSync(
+      path.join(
+        import.meta.dirname,
+        '../../runtime/src/lib/lynx-element/text-flow.ts',
+      ),
+      'utf-8',
+    );
+    const max = Number(/MAX_SMALLER_LEVELS = (\d+);/.exec(runtime)![1]);
+    const prefix = /SMALLER_CLASS_PREFIX = '([^']+)'/.exec(runtime)![1];
+    const css = fs.readFileSync(
+      path.join(import.meta.dirname, 'styles/html-text-tags.css'),
+      'utf-8',
+    );
+    const classes = [
+      ...css.matchAll(/\.(_ngsmaller-\d+) \{\s*font-size: ([^;]+);/g),
+    ].map(([, name, value]) => [name, value]);
+    expect(classes).toEqual(
+      Array.from({ length: max }, (_, i) => [
+        `${prefix}${i + 1}`,
+        `calc(var(--angular-lynx-font-size, 14px) / ${Number(
+          (1.2 ** (i + 1)).toFixed(5),
+        )})`,
+      ]),
     );
   });
 });

@@ -37,6 +37,7 @@ import {
   NOT_BLOCK_CONTAINERS,
   INHERITED_TEXT_PROPERTIES,
   resetStyleIndex,
+  SMALLER_FLAG,
 } from '../lynx-element/text-flow';
 import {
   LynxElement,
@@ -421,6 +422,52 @@ class BoldHost {}
   >`,
 })
 class DecoratedHost {}
+
+@Component({
+  selector: 'smaller-host',
+  encapsulation: ViewEncapsulation.None,
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: `<text class="big"
+    ><small class="outer" [class.large]="large()"
+      >a <b class="in-small">b</b>
+      <small class="inner">c <i class="in-inner">i</i></small></small
+    >
+    x<sup class="sup">n<b class="in-sup">2</b></sup></text
+  >`,
+})
+class SmallerHost {
+  readonly large = signal(false);
+}
+
+@Component({
+  selector: 'compact-host',
+  encapsulation: ViewEncapsulation.None,
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: `<view [class.compact]="compact()"
+    ><p class="big">
+      <span class="label">l <b class="in-label">b</b></span>
+    </p></view
+  >`,
+})
+class CompactHost {
+  readonly compact = signal(false);
+}
+
+@Component({
+  selector: 'reset-host',
+  encapsulation: ViewEncapsulation.None,
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: `<view [class.compact]="compact()"
+    ><p class="big">
+      <small
+        ><span class="reset">r <b class="in-reset">b</b></span></small
+      >
+    </p></view
+  >`,
+})
+class ResetHost {
+  readonly compact = signal(false);
+}
 
 @Component({
   selector: 'link-host',
@@ -831,6 +878,131 @@ describe('loose text', () => {
     fixture.detectChanges();
 
     expect(byClass('link').classes.has('_ngattr-a-href')).toBe(false);
+  });
+
+  // Issue #663: the build's `<small>`, `<sub>` and `<sup>` rule divides the
+  // size around the tag by 1.2, but has no copy to pass that on. The index
+  // marks it with SMALLER_FLAG, and the runtime gives the text inside a class
+  // of the build's that divides the size again for each level, as a browser
+  // draws it.
+  it('draws the text inside a <small>, <sub> or <sup> at its smaller size', () => {
+    const fontSize = 1 << INHERITED_TEXT_PROPERTIES.indexOf('font-size');
+    (
+      globalThis as { __angularLynxStyleIndex?: unknown }
+    ).__angularLynxStyleIndex = {
+      rules: [
+        [['big'], fontSize],
+        [['large'], fontSize],
+        [['_ngtag-small'], SMALLER_FLAG],
+        [['_ngtag-sup'], SMALLER_FLAG],
+        // The build's classes are in the index too, as it lists every rule.
+        [['_ngsmaller-1'], SMALLER_FLAG],
+        [['_ngsmaller-2'], SMALLER_FLAG],
+      ],
+    };
+    const fixture = TestBed.createComponent(SmallerHost);
+    fixture.detectChanges();
+    const style = (cls: string): string =>
+      String(byClass(cls).attrs.get('style') ?? '');
+    const smaller = (cls: string): string[] =>
+      [...byClass(cls).classes].filter((name) =>
+        name.startsWith('_ngsmaller-'),
+      );
+
+    // The outer tags' own rule makes them smaller.
+    expect(smaller('outer')).toEqual([]);
+    expect(style('outer')).not.toContain('font-size');
+    expect(smaller('sup')).toEqual([]);
+    // The text inside one is as small as it is, from the class, which an
+    // inherited size inline would beat.
+    expect(smaller('in-small')).toEqual(['_ngsmaller-1']);
+    expect(style('in-small')).not.toContain('font-size');
+    expect(smaller('in-sup')).toEqual(['_ngsmaller-1']);
+    // A <small> in a <small> is smaller again, and so is the text in it.
+    expect(smaller('inner')).toEqual(['_ngsmaller-2']);
+    expect(smaller('in-inner')).toEqual(['_ngsmaller-2']);
+
+    // A class of the app's that sizes the outer <small> passes its size on
+    // in its copy, which the text inside reads.
+    fixture.componentInstance.large.set(true);
+    fixture.detectChanges();
+    expect(smaller('in-small')).toEqual([]);
+    expect(style('in-small')).toContain(
+      'font-size: var(--angular-lynx-font-size)',
+    );
+    expect(smaller('inner')).toEqual([]);
+    expect(smaller('in-inner')).toEqual(['_ngsmaller-1']);
+
+    fixture.componentInstance.large.set(false);
+    fixture.detectChanges();
+    expect(smaller('in-small')).toEqual(['_ngsmaller-1']);
+    expect(smaller('inner')).toEqual(['_ngsmaller-2']);
+    expect(smaller('in-inner')).toEqual(['_ngsmaller-2']);
+  });
+
+  // A rule with the build's smaller size can require an ancestor, as
+  // `.compact .label` does: outside `.compact` the label isn't smaller, and
+  // nor is the text inside it.
+  it('counts a smaller size only where its selector matches the elements above', () => {
+    const fontSize = 1 << INHERITED_TEXT_PROPERTIES.indexOf('font-size');
+    (
+      globalThis as { __angularLynxStyleIndex?: unknown }
+    ).__angularLynxStyleIndex = {
+      rules: [
+        [['big'], fontSize],
+        [['label'], SMALLER_FLAG, [[' ', ['compact']]]],
+      ],
+    };
+    const fixture = TestBed.createComponent(CompactHost);
+    fixture.detectChanges();
+    const smaller = (cls: string): string[] =>
+      [...byClass(cls).classes].filter((name) =>
+        name.startsWith('_ngsmaller-'),
+      );
+
+    expect(smaller('in-label')).toEqual([]);
+
+    // The ancestor's class makes the label smaller, and the text inside it.
+    fixture.componentInstance.compact.set(true);
+    fixture.detectChanges();
+    expect(smaller('label')).toEqual([]);
+    expect(smaller('in-label')).toEqual(['_ngsmaller-1']);
+
+    fixture.componentInstance.compact.set(false);
+    fixture.detectChanges();
+    expect(smaller('in-label')).toEqual([]);
+  });
+
+  // A rule that sets the size where an ancestor has a class, as `.compact
+  // .reset` does, ends the levels of <small> above it there, and only there.
+  it('works the levels of <small> out again when an ancestor makes a rule set the size', () => {
+    const fontSize = 1 << INHERITED_TEXT_PROPERTIES.indexOf('font-size');
+    (
+      globalThis as { __angularLynxStyleIndex?: unknown }
+    ).__angularLynxStyleIndex = {
+      rules: [
+        [['big'], fontSize],
+        [['_ngtag-small'], SMALLER_FLAG],
+        [['reset'], fontSize, [[' ', ['compact']]]],
+      ],
+    };
+    const fixture = TestBed.createComponent(ResetHost);
+    fixture.detectChanges();
+    const smaller = (cls: string): string[] =>
+      [...byClass(cls).classes].filter((name) =>
+        name.startsWith('_ngsmaller-'),
+      );
+
+    expect(smaller('in-reset')).toEqual(['_ngsmaller-1']);
+
+    // The span sets its own size now, which its copy passes to the <b>.
+    fixture.componentInstance.compact.set(true);
+    fixture.detectChanges();
+    expect(smaller('in-reset')).toEqual([]);
+
+    fixture.componentInstance.compact.set(false);
+    fixture.detectChanges();
+    expect(smaller('in-reset')).toEqual(['_ngsmaller-1']);
   });
 
   // Issue #643: the build gives `<em>`, `<u>`, `<s>` and their kin the

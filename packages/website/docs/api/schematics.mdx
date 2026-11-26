@@ -97,7 +97,7 @@ Use it if you skipped Tailwind during `ng add`. It sets up the Tailwind version 
 
 **What it changes, for Tailwind 4** (as Angular CLI's own Tailwind schematic does):
 
-- **`src/styles.css`**: its contents are replaced with Tailwind's theme and utilities imports, without Preflight. A project styled with `styles.scss` gets a `src/tailwind.css`, added to the build's `styles`, instead.
+- **`src/styles.css`**: its contents are replaced with Tailwind's theme and utilities imports, without Preflight, and `@blotch/angular-lynx/tailwind.css`, [Lynx's own utilities and variants](/guide/tailwindcss#lynx-utilities-and-variants). A project styled with `styles.scss` gets a `src/tailwind.css`, added to the build's `styles`, instead.
 - **`.postcssrc.json`**: created, or `@tailwindcss/postcss` added to it (or to `postcss.config.json`).
 - **`package.json`**: adds `tailwindcss` and `@tailwindcss/postcss` (4.x) as dev dependencies, keeping the version of a project that has them.
 - It warns about a `tailwind.config.ts` left from Tailwind 3, which Tailwind 4 doesn't read.
@@ -182,6 +182,8 @@ Updates `@blotch/angular-lynx`, `@blotch/angular-lynx-build`, `@blotch/angular-l
 It also updates your app for changes that need one:
 
 - **22.2.3**: adds `.html` to the Tailwind `content` glob that older versions of `ng add` and `add-tailwind` wrote (`./src/**/*.ts` becomes `./src/**/*.{html,ts}`), so classes in `.html` templates get CSS. It also renames `accessibility-trait`, which Lynx ignores, to `accessibility-traits` in your templates, adds the `extract-i18n` target that `ng add` and `add-i18n` now write, so `ng extract-i18n` works, and adds `.dev-logs` to your `.gitignore`.
+
+- **22.3.2**: imports `@blotch/angular-lynx/tailwind.css` after Tailwind 4's imports in your stylesheet, so the [Lynx utilities and variants](/guide/tailwindcss#lynx-utilities-and-variants), such as `linear` and `ui-open:`, get CSS. A Tailwind 3 app is left alone: its preset has them.
 
 ## Related
 

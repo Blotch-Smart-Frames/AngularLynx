@@ -86,6 +86,11 @@ describe('the add-tailwind schematic', () => {
       await addTailwind();
 
       expect(tree.readText('src/styles.css')).toBe(TAILWIND_4_STYLESHEET);
+      // Lynx's own utilities and variants, which the preset adds on
+      // Tailwind 3, after Tailwind's.
+      expect(TAILWIND_4_STYLESHEET).toMatch(
+        /utilities\);\n@import '@blotch\/angular-lynx\/tailwind\.css';\n$/,
+      );
       expect(tree.readJson('.postcssrc.json')).toEqual({
         plugins: { '@tailwindcss/postcss': {} },
       });

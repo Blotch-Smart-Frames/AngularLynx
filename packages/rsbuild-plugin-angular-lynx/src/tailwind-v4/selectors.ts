@@ -10,7 +10,8 @@ export const lowerSelectors = (rule: Rule): boolean => {
     // host, and an unknown pseudo-class drops the whole selector list, so the
     // theme would be lost. `:root` matches the page on Lynx and on the web.
     .filter((selector) => !/(?<!\\):host\b/.test(selector))
-    .flatMap(unwrapWhereAndIs);
+    .flatMap(unwrapWhereAndIs)
+    .map(inlineCompounds);
   if (selectors.length === 0) {
     return false;
   }
@@ -45,6 +46,87 @@ const unwrapWhereAndIs = (selector: string): string[] => {
 };
 
 /**
+ * Inlines each `:where(…)` and `:is(…)` inside a selector that holds one
+ * compound selector, such as the `:where(.group)` of Tailwind's `group-*`
+ * variants: `:where(.group).ui-open .x` becomes `.group.ui-open .x`, the
+ * selector Lynx's Tailwind 3 preset writes. Lynx drops a rule with either
+ * pseudo-class anywhere in it, so `group-*`, `peer-*` and `in-*` never
+ * applied. A complex selector or a list inside one (`:is(.group:hover *)`)
+ * has no inline form and stays, as does a type selector that would land
+ * after a class. As with {@link unwrapWhereAndIs}, the selector gains the
+ * specificity `:where()` hid.
+ */
+const inlineCompounds = (selector: string): string => {
+  let lowered = '';
+  // Whether what's lowered so far ends where a compound starts: at the
+  // start, or after a combinator, a list's comma or a `(`. An escaped
+  // character is part of a name, so `.a\+` doesn't end at a combinator.
+  // Nor does a no-break space: CSS whitespace is only the five characters
+  // below, where `\s` would take in others that can be in a name.
+  let compoundStart = true;
+  for (let index = 0; index < selector.length; index++) {
+    const character = selector[index]!;
+    if (character === '\\') {
+      lowered += selector.slice(index, index + 2);
+      index++;
+      compoundStart = false;
+      continue;
+    }
+    const match =
+      character === ':'
+        ? /^:(?:where|is)\(/i.exec(selector.slice(index))
+        : null;
+    if (match) {
+      const start = index + match[0].length;
+      const end = closingParenthesis(selector, start);
+      const inner =
+        end === -1 ? '' : inlineCompounds(trimCss(selector.slice(start, end)));
+      // A type selector or `*` has to start its compound.
+      // Inlined, an argument ending in a hex escape would run into what
+      // follows: `.a:is(.b\31) .x` would become `.a.b\31 .x`, where the
+      // space ends the escape instead of separating the compounds.
+      if (
+        isCompound(inner) &&
+        !endsInHexEscape(inner) &&
+        (compoundStart || /^[.#[:]/.test(inner))
+      ) {
+        lowered += inner;
+        index = end;
+        compoundStart = false;
+        continue;
+      }
+    }
+    lowered += character;
+    compoundStart = /[ \t\n\f\r>+~(,]/.test(character);
+  }
+  return lowered;
+};
+
+/**
+ * Whether a selector is one compound selector: no combinator and no list at
+ * its top level.
+ */
+const isCompound = (selector: string): boolean => {
+  if (selector === '') {
+    return false;
+  }
+  let depth = 0;
+  for (let index = 0; index < selector.length; index++) {
+    const character = selector[index]!;
+    if (character === '\\') {
+      index++;
+    } else if (character === '(') {
+      depth++;
+    } else if (character === ')') {
+      depth--;
+    } else if (depth === 0 && /[ \t\n\f\r>+~,]/.test(character)) {
+      return false;
+    }
+  }
+  return true;
+};
+
+/**
  * The index of the parenthesis closing the group that starts at `start`.
  */
 const closingParenthesis = (text: string, start: number): number => {
@@ -61,6 +143,27 @@ const closingParenthesis = (text: string, start: number): number => {
   }
   return -1;
 };
+
+/**
+ * Trims CSS whitespace (space, tab, newline, form feed, carriage return)
+ * from both ends. `String.prototype.trim()` also takes a no-break space,
+ * which can end a class name. One whitespace character after a hex escape
+ * (`\31 `) ends the escape, so it stays.
+ */
+const trimCss = (text: string): string => {
+  const trimmed = text.replace(/^[ \t\n\f\r]+|[ \t\n\f\r]+$/g, '');
+  const trailing = /[ \t\n\f\r]+$/.exec(text);
+  return endsInHexEscape(trimmed) && trailing
+    ? trimmed + trailing[0][0]
+    : trimmed;
+};
+
+/**
+ * Whether a selector ends in a hex escape such as `\31`, which whitespace
+ * written after it would end, rather than separate compounds.
+ */
+const endsInHexEscape = (text: string): boolean =>
+  /(?:^|[^\\])(?:\\\\)*\\[0-9a-f]{1,6}$/i.test(text);
 
 /**
  * Splits a selector list on its top-level commas.
@@ -82,13 +185,13 @@ const splitTopLevel = (list: string): string[] => {
     } else if (character === ')') {
       depth--;
     } else if (character === ',' && depth === 0) {
-      parts.push(current.trim());
+      parts.push(trimCss(current));
       current = '';
       continue;
     }
     current += character;
   }
-  parts.push(current.trim());
+  parts.push(trimCss(current));
   return parts;
 };
 

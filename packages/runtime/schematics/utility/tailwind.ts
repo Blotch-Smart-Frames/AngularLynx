@@ -72,14 +72,24 @@ const prefixed = (projectRoot: string, file: string) =>
   projectRoot ? `${projectRoot}/${file}` : file;
 
 /**
+ * The stylesheet of Lynx's own utilities and variants (`linear`, `ui-open:`),
+ * which @lynx-js/tailwind-preset adds on Tailwind 3. See
+ * packages/runtime/tailwind.css.
+ */
+export const LYNX_TAILWIND_IMPORT =
+  "@import '@blotch/angular-lynx/tailwind.css';";
+
+/**
  * Tailwind 4, without its Preflight reset, whose rules are for HTML elements
  * (`h1`, `button`, `img`) that a Lynx app doesn't have: Lynx drops most of
  * them, and the web preview would apply them, so the two would differ.
- * Tailwind documents this way of leaving Preflight out.
+ * Tailwind documents this way of leaving Preflight out. Then Lynx's own
+ * utilities and variants.
  */
 export const TAILWIND_4_STYLESHEET = `@layer theme, base, components, utilities;
 @import 'tailwindcss/theme.css' layer(theme);
 @import 'tailwindcss/utilities.css' layer(utilities);
+${LYNX_TAILWIND_IMPORT}
 `;
 
 /** The PostCSS config files Angular CLI reads, and its Tailwind schematic writes. */

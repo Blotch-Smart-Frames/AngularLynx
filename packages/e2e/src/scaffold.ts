@@ -726,8 +726,9 @@ const checkTailwindSetup = (appDir: string, version: '3' | '4') => {
       "ng add didn't set Tailwind 4 up as Angular CLI does: .postcssrc.json and no tailwind.config.ts.",
     );
     check(
-      stylesheet.includes("@import 'tailwindcss/utilities.css'"),
-      `ng add didn't import Tailwind 4 in src/styles.css, which holds:\n${stylesheet}`,
+      stylesheet.includes("@import 'tailwindcss/utilities.css'") &&
+        stylesheet.includes("@import '@blotch/angular-lynx/tailwind.css'"),
+      `ng add didn't import Tailwind 4 and Lynx's utilities in src/styles.css, which holds:\n${stylesheet}`,
     );
   } else {
     check(

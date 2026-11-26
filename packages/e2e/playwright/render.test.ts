@@ -387,6 +387,14 @@ test('Tailwind styles classes in .html templates', async ({ page }) => {
     'rgba(24, 24, 27, 0.1)',
   );
 
+  // Its `group-ui-open:underline`, under a `group ui-open` view: Lynx's own
+  // variant, from the preset on Tailwind 3 and from
+  // @blotch/angular-lynx/tailwind.css on Tailwind 4 (issue #461).
+  await expect(page.locator('x-text', { has: words })).toHaveCSS(
+    'text-decoration-line',
+    'underline',
+  );
+
   // Its `dark:text-[#5ce0b8]`, once the browser turns dark, which the web
   // preview follows as a phone's shell does. Tailwind writes `dark:` as a
   // prefers-color-scheme query, which Lynx and Lynx for Web drop, so the

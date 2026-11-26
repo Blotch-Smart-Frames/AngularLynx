@@ -125,14 +125,13 @@ export const parseVerticalAlign = (value: string): BaselineDistance | null => {
 
 /**
  * One of the HTML text tags in baselineShiftFor's chain: the style index
- * flags of its rules, its `vertical-align`'s distance (undefined where it
- * sets none, null where the runtime can't tell it, see
- * matchedVerticalAlignFor), and whether its inline style sets its size.
+ * flags of its rules and of its inline size, and its `vertical-align`'s
+ * distance (undefined where it sets none, null where the runtime can't tell
+ * it, see matchedVerticalAlignFor).
  */
 export type ShiftLink = readonly [
   flags: number,
   distance: BaselineDistance | null | undefined,
-  sizedInline?: boolean,
 ];
 
 /**
@@ -153,11 +152,10 @@ export type ShiftLink = readonly [
  * in the size of the tag that has it, so it counts for more in a tag that's
  * smaller: 1.2 times for each `<small>`, `<sub>` or `<sup>` between them
  * (see smallerClassFor), past which MAX_SMALLER_LEVELS keeps the text the
- * same size. A tag whose rules set its size (FONT_SIZE_FLAG) passes the
- * size to the tags inside it, through its copy, so they're measured from
- * it, but the runtime doesn't know its size against the tags above it: an
- * `em` distance from above it can't be measured. Nor can one from a tag
- * with a size in its inline style or above it, which has no copy.
+ * same size. A tag whose rules or inline style set its size
+ * (FONT_SIZE_FLAG) passes the size to the tags inside it, through its copy,
+ * so they're measured from it, but the runtime doesn't know its size against
+ * the tags above it: an `em` distance from above it can't be measured.
  *
  * It can't tell when one of them sets a `vertical-align` it can't copy (a
  * null distance), such as `super`.
@@ -187,23 +185,17 @@ export const baselineShiftFor = (
   // Whether a tag above moves it: a tag that moves alone has its own rule,
   // which draws it where a browser does.
   let moved = false;
-  // Whether the size of a tag from here down is inline, so the em of the
-  // tags above can't be measured.
-  let sizedInline = false;
-  for (const [index, [, distance, inline]] of chain.entries()) {
-    // A tag above with an inline size measures its own em by it.
-    if (inline && index > 0) sizedInline = true;
+  for (const [index, [, distance]] of chain.entries()) {
     if (distance === null) return null;
     if (distance) {
       const [ownEm, ownPx] = distance;
       if (index > 0 && (ownEm || ownPx)) moved = true;
       if (ownEm && index > 0) {
-        if (sizedInline || sizedBy[index] !== sizedBy[0]) return null;
+        if (sizedBy[index] !== sizedBy[0]) return null;
         em += ownEm * 1.2 ** (levels[0]! - levels[index]!);
       } else em += ownEm;
       px += ownPx;
     }
-    if (inline) sizedInline = true;
   }
   const round = (n: number): number =>
     // Rounded, so the same distance always writes the same style, and
@@ -278,6 +270,116 @@ export const inheritanceStyleFor = (ownProperties: number): string =>
   INHERITED_TEXT_PROPERTIES.filter((_, bit) => !(ownProperties & (1 << bit)))
     .map((property) => `${property}: var(${inheritanceVariable(property)})`)
     .join('; ');
+
+/** Each inheritable property's bit (see INHERITED_TEXT_PROPERTIES). */
+const TEXT_PROPERTY_BITS: ReadonlyMap<string, number> = new Map(
+  INHERITED_TEXT_PROPERTIES.map((property, bit) => [property, 1 << bit]),
+);
+
+/**
+ * The bit of an inheritable text property (see INHERITED_TEXT_PROPERTIES),
+ * or 0 for any other.
+ */
+export const textPropertyBit = (property: string): number =>
+  TEXT_PROPERTY_BITS.get(property) ?? 0;
+
+/**
+ * The declarations of an inline style string, split at each `;` outside a
+ * quoted string and outside parentheses: a `;` inside `content: "a;b"` or
+ * `url(data:image/png;base64,…)` is part of the value. Splitting there cut
+ * a declaration in two, which the runtime wrote back when it took another
+ * declaration out of the string (see LynxElement's removeStyle).
+ */
+export const splitDeclarations = (style: string): string[] => {
+  const declarations: string[] = [];
+  let start = 0;
+  let quote = '';
+  let depth = 0;
+  for (let index = 0; index < style.length; index++) {
+    const char = style[index];
+    if (quote) {
+      // A backslash keeps the next character in the string, quote or not.
+      if (char === '\\') index++;
+      else if (char === quote) quote = '';
+    } else if (char === '"' || char === "'") {
+      quote = char;
+    } else if (char === '(') {
+      depth++;
+    } else if (char === ')') {
+      depth = Math.max(0, depth - 1);
+    } else if (char === ';' && depth === 0) {
+      declarations.push(style.slice(start, index));
+      start = index + 1;
+    }
+  }
+  declarations.push(style.slice(start));
+  return declarations;
+};
+
+/**
+ * The inheritable text properties an element's inline style sets, with their
+ * values: its style="..." string's, then its `[style.x]` styles', which win
+ * over the string's as Lynx draws them (see LynxElement's #setsVariables).
+ * Null when it sets none.
+ */
+export const inlineTextStyles = (
+  inlineStyle: string | null,
+  styleKeys: ReadonlyMap<string, unknown> | null,
+): Map<string, string> | null => {
+  let styles: Map<string, string> | null = null;
+  if (inlineStyle) {
+    for (const declaration of splitDeclarations(inlineStyle)) {
+      const colon = declaration.indexOf(':');
+      if (colon <= 0) continue;
+      const property = declaration.slice(0, colon).trim().toLowerCase();
+      const value = declaration.slice(colon + 1).trim();
+      if (value && TEXT_PROPERTY_BITS.has(property)) {
+        (styles ??= new Map()).set(property, value);
+      }
+    }
+  }
+  if (styleKeys) {
+    for (const [property, value] of styleKeys) {
+      if (value != null && value !== '' && TEXT_PROPERTY_BITS.has(property)) {
+        (styles ??= new Map()).set(property, String(value));
+      }
+    }
+  }
+  return styles;
+};
+
+/** The properties in `styles` (see inlineTextStyles), as a bitmask. */
+export const textPropertyFlags = (
+  styles: ReadonlyMap<string, string> | null,
+): number => {
+  let flags = 0;
+  if (styles)
+    for (const property of styles.keys()) flags |= textPropertyBit(property);
+  return flags;
+};
+
+/**
+ * The declarations that copy an element's inline text styles (see
+ * inlineTextStyles) to the variables HTML text tags inside it read, as the
+ * build copies its rules' (see the build plugin's text-inheritance.ts). The
+ * build sees only the stylesheets, so without these a `<text style="font-size:
+ * 18px">` passed nothing down to the `<b>` inside (issue #690). As there, a
+ * copy drops `!important`, which a variable can't have, and a value that
+ * reads its own variable has none: it would refer to itself, which is
+ * invalid, and hide the value from above too.
+ */
+export const inheritanceCopiesFor = (
+  styles: ReadonlyMap<string, string> | null,
+): string => {
+  if (!styles) return '';
+  const copies: string[] = [];
+  for (const [property, value] of styles) {
+    const variable = inheritanceVariable(property);
+    if (new RegExp(`var\\(\\s*${variable}\\s*[,)]`, 'i').test(value)) continue;
+    copies.push(`${variable}: ${value.replace(/\s*!important\s*$/i, '')}`);
+  }
+  return copies.join('; ');
+};
 
 /**
  * One step up from a selector's subject, nearest first: the combinator

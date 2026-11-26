@@ -58,7 +58,10 @@ import {
   TAKES_RAW_TEXT,
   hasAncestorTextRules,
   inlineBaselineShift,
+  inheritanceCopiesFor,
   inheritanceStyleFor,
+  inlineTextStyles,
+  splitDeclarations,
   isBlankText,
   isBlockDisplay,
   isRowOrientation,
@@ -68,6 +71,8 @@ import {
   parseVerticalAlign,
   smallerClassFor,
   styleFlagsFor,
+  textPropertyBit,
+  textPropertyFlags,
 } from './text-flow';
 import {
   type LayoutRect,
@@ -206,6 +211,35 @@ const LAYOUT_STYLES: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Whether a declaration in an inline style string (`Color: red`) declares
+ * `property`, a CSS property's name in lower case. The name is matched in
+ * any case, as CSS matches it and inlineTextStyles reads it. Never given a
+ * variable's (`--x`), whose case counts: removeStyle and setStyle keep
+ * those apart (see #customProperties).
+ */
+const declares = (declaration: string, property: string): boolean => {
+  const colon = declaration.indexOf(':');
+  return (
+    colon > 0 && declaration.slice(0, colon).trim().toLowerCase() === property
+  );
+};
+
+/**
+ * An inline style string without its declarations of `property`, as the
+ * DOM's `style.removeProperty()` leaves the `style` attribute. The string as
+ * it was when it declares none.
+ */
+const withoutDeclaration = (
+  style: string | null,
+  property: string,
+): string | null => {
+  if (inlineDeclaration(style, property) === undefined) return style;
+  return splitDeclarations(style!)
+    .filter((declaration) => !declares(declaration, property))
+    .join(';');
+};
+
+/**
  * The value an inline style string gives a property, the last if several.
  */
 const inlineDeclaration = (
@@ -213,10 +247,9 @@ const inlineDeclaration = (
   property: string,
 ): string | undefined => {
   let value: string | undefined;
-  for (const declaration of (style ?? '').split(';')) {
-    const colon = declaration.indexOf(':');
-    if (colon > 0 && declaration.slice(0, colon).trim() === property) {
-      value = declaration.slice(colon + 1).trim();
+  for (const declaration of splitDeclarations(style ?? '')) {
+    if (declares(declaration, property)) {
+      value = declaration.slice(declaration.indexOf(':') + 1).trim();
     }
   }
   return value;
@@ -1601,9 +1634,17 @@ export class LynxElement implements BaseLynxElement {
     // gets the inset the shell sends (see safe-area-insets.ts), and is kept
     // as written to get the next one.
     if (readsSafeAreaInsets(value)) this.#readsSafeArea = true;
+    const textStyles = this.#textStylesBefore(key);
     (this.#inlineStyleKeys ??= new Map()).set(key, value);
-    if (this.#setsVariables) this.#rewriteInlineStyle();
-    else __AddInlineStyle(this.element, key, forNative(value));
+    // An element that passes text styles down copies a text style to its
+    // variable too, which only the whole string can set (see
+    // #inlineTextCopies).
+    if (this.#setsVariables || (textStyles >= 0 && this.#passesTextStyles)) {
+      this.#rewriteInlineStyle();
+    } else {
+      __AddInlineStyle(this.element, key, forNative(value));
+    }
+    if (textStyles >= 0) this.#inlineTextStylesChanged(textStyles);
     if (LAYOUT_STYLES.has(key)) this.#layoutChanged();
     if (SHIFT_STYLES.has(key)) this.#shiftStylesChanged();
     // A style set outside change detection, as a transition's last frame is
@@ -1615,15 +1656,34 @@ export class LynxElement implements BaseLynxElement {
       if (this.#customProperties?.delete(key)) this.#rewriteInlineStyle();
       return;
     }
+    const textStyles = this.#textStylesBefore(key);
     this.#inlineStyleKeys?.delete(key);
+    // It goes from the style="..." string too, as `removeProperty()` takes
+    // it out of the attribute on the web. Native drops it either way, but
+    // a string written again later, as an element that sets variables
+    // writes it for each change (see #setsVariables), brought it back: a
+    // `<view style="color: red; height: 100px">` with HTML text inside
+    // sets copies of its color (see #inlineTextCopies), and a script's
+    // `removeProperty('height')` on it kept the height.
+    this.#inlineStyleWhole = withoutDeclaration(this.#inlineStyleWhole, key);
     // Removing the key natively would remove the runtime's own declaration
     // of it too, such as an inherited `color` or a <sup>'s offset (see
-    // #withRuntimeStyle), which the binding only covered.
-    if (this.#setsVariables || this.#runtimeDeclares(key)) {
+    // #withRuntimeStyle), which the binding only covered. An HTML text tag
+    // whose inline style set the text style has no such declaration yet:
+    // it inherits again at the end of the cycle (see
+    // #inlineTextStylesChanged), which gives it one, and a native removal
+    // meanwhile would leave the default showing until then.
+    if (
+      this.#setsVariables ||
+      (textStyles >= 0 &&
+        (this.#passesTextStyles || this.#readsInlineTextStyles())) ||
+      this.#runtimeDeclares(key)
+    ) {
       this.#rewriteInlineStyle();
     } else {
       __AddInlineStyle(this.element, key, null);
     }
+    if (textStyles >= 0) this.#inlineTextStylesChanged(textStyles);
     if (LAYOUT_STYLES.has(key)) this.#layoutChanged();
     if (SHIFT_STYLES.has(key)) this.#shiftStylesChanged();
     scheduleSettleFlush();
@@ -1653,17 +1713,19 @@ export class LynxElement implements BaseLynxElement {
       // Its env(safe-area-inset-*) get the insets as in setStyle.
       if (readsSafeAreaInsets(inlineStyle)) this.#readsSafeArea = true;
     }
+    const textStyles = this.#readsInlineTextStyles()
+      ? this.#inlineTextFlags()
+      : -1;
     const before = this.#inlineStyleWhole;
     this.#inlineStyleWhole = inlineStyle;
-    // __SetInlineStyles replaces the [style.x] styles natively too, which
-    // stay in #inlineStyleKeys: #rewriteInlineStyle writes them again after
-    // the string, so a binding wins over the attribute, as in Angular's
-    // styling, and #inlineStyle reads what's drawn. A `[style.vertical-align]`
-    // of 8px under a new `style="vertical-align: 4px"` was read as 8px but
-    // drawn at 4px, and moved the tags inside by 8px (review of #735). A
-    // style="--x: …" makes the [style.x] styles that come after it go into
-    // the string as well (see #setsVariables).
+    // Written as #rewriteInlineStyle writes it, with the [style.x] styles
+    // the app hasn't removed: __SetInlineStyles replaces them all, and the
+    // copies of its text styles read them (see #inlineTextCopies), so a
+    // `[style.font-size]` lost here left its copy for the tags inside to
+    // draw at a size the element no longer had. A style="--x: …" makes the
+    // [style.x] styles go into the string (see #setsVariables).
     this.#rewriteInlineStyle();
+    if (textStyles >= 0) this.#inlineTextStylesChanged(textStyles);
     this.#layoutChanged();
     for (const property of SHIFT_STYLES) {
       if (
@@ -1831,14 +1893,13 @@ export class LynxElement implements BaseLynxElement {
   }
 
   /**
-   * This element's link in baselineShiftFor's chain, from its rules' flags:
-   * the distance of its `vertical-align`, its inline one's if it has one,
-   * which wins over its rules, and whether its inline style sets its size,
-   * which the index can't see.
+   * This element's link in baselineShiftFor's chain, from its flags (an
+   * inline size among them, see #textTagChain): the distance of its
+   * `vertical-align`, its inline one's if it has one, which wins over its
+   * rules.
    */
   #shiftLink(flags: number): ShiftLink {
     const inline = this.#inlineVerticalAlign();
-    const size = this.#inlineStyle('font-size');
     return [
       flags,
       inline !== undefined
@@ -1846,7 +1907,6 @@ export class LynxElement implements BaseLynxElement {
         : flags & VERTICAL_ALIGN_FLAG
           ? this.#matchedVerticalAlign()
           : undefined,
-      size != null && size !== '',
     ];
   }
 
@@ -1932,10 +1992,15 @@ export class LynxElement implements BaseLynxElement {
    */
   #ownTextStyles(inState: boolean): number {
     const flags = this.#ruleFlags(inState);
-    // A <small>'s rule sets its size too, from the size around it.
+    // A <small>'s rule sets its size too, from the size around it. Its
+    // inline style sets them as its rules do: an HTML text tag's wins over
+    // what it would inherit, and a Lynx `<text>`'s goes to the tags inside
+    // through the copies (see #inlineTextCopies), rather than leaving them
+    // at the default (issue #690).
     return (
       (flags & ALL_TEXT_PROPERTIES) |
-      (flags & SMALLER_FLAG ? FONT_SIZE_FLAG : 0)
+      (flags & SMALLER_FLAG ? FONT_SIZE_FLAG : 0) |
+      this.#inlineTextFlags()
     );
   }
 
@@ -2025,15 +2090,76 @@ export class LynxElement implements BaseLynxElement {
   #textTagChain(): [LynxElement, number][] {
     // A state's rule counts for none of them, as in #drawnAtDefault: the
     // levels are those of the tags as they usually draw.
-    const chain: [LynxElement, number][] = [[this, this.#ruleFlags(false)]];
+    // An inline size sets it as a rule does, and an ancestor's has its copy
+    // in the variable (see #inlineTextCopies).
+    const chain: [LynxElement, number][] = [
+      [this, this.#ruleFlags(false) | this.#inlineTextFlags()],
+    ];
     for (
       let parent = this.#jsParent;
       parent && parent.#webText;
       parent = parent.#jsParent
     ) {
-      chain.push([parent, parent.#ruleFlags(false)]);
+      chain.push([
+        parent,
+        parent.#ruleFlags(false) | parent.#inlineTextFlags(),
+      ]);
     }
     return chain;
+  }
+
+  /**
+   * The text properties the app's inline style sets, as a bitmask (see
+   * inlineTextStyles).
+   */
+  #inlineTextFlags(): number {
+    if (!this.#inlineStyleWhole && !this.#inlineStyleKeys?.size) return 0;
+    return textPropertyFlags(
+      inlineTextStyles(this.#inlineStyleWhole, this.#inlineStyleKeys),
+    );
+  }
+
+  /**
+   * Whether which text properties its inline style sets decides what HTML
+   * text tags inherit (see #ownTextStyles): its own, as one, or those inside
+   * it, as a Lynx `<text>`. An element of another kind passes its inline
+   * values down through the copies alone, whose `var()`s Lynx resolves.
+   */
+  #readsInlineTextStyles(): boolean {
+    return !this.#anonymous && (this.#webText || this.tagName === 'text');
+  }
+
+  /**
+   * Before a `[style.x]` change: the text properties the inline style sets,
+   * if `key` is one and the element reads them (see #readsInlineTextStyles),
+   * 0 if it's one the element doesn't read, and -1 for any other key.
+   */
+  #textStylesBefore(key: string): number {
+    if (!textPropertyBit(key)) return -1;
+    return this.#readsInlineTextStyles() ? this.#inlineTextFlags() : 0;
+  }
+
+  /**
+   * After an inline style change: if the text properties it sets aren't
+   * those it set before, the HTML text tags in and below it inherit again.
+   */
+  #inlineTextStylesChanged(before: number): void {
+    if (!this.#readsInlineTextStyles()) return;
+    if (this.#inlineTextFlags() !== before) this.#inheritAgain();
+  }
+
+  /**
+   * The copies of the app's inline text styles to the variables the HTML
+   * text tags inside read (see inheritanceCopiesFor), on an element that
+   * passes text styles down (see #passTextStyles). `inlineStyle` is the
+   * style="..." string about to be written.
+   */
+  #inlineTextCopies(inlineStyle: string | null): string {
+    if (!this.#passesTextStyles || this.#anonymous) return '';
+    if (!inlineStyle && !this.#inlineStyleKeys?.size) return '';
+    return inheritanceCopiesFor(
+      inlineTextStyles(inlineStyle, this.#inlineStyleKeys),
+    );
   }
 
   /**
@@ -2268,16 +2394,19 @@ export class LynxElement implements BaseLynxElement {
    * The whole inline style to give the native element: the runtime's
    * declarations first (`hidden`'s HIDDEN_STYLE, then #runtimeStyle), so
    * the app's own wins where both set the same name,
-   * then the app's style="...", then its `[style.--x]` variables, which win
+   * then the copies of the app's text styles (see #inlineTextCopies), then
+   * the app's style="...", then its `[style.--x]` variables, which win
    * over the attribute as bindings do on the web. Without runtime
    * declarations or variables it's the app's value as is.
    */
   #withRuntimeStyle(inlineStyle: string | null): string | null {
     const customProperties = this.#customProperties;
+    const copies = this.#inlineTextCopies(inlineStyle);
     if (
       !this.#hidden &&
       !this.#inheritStyle &&
       !this.#runtimeStyle &&
+      !copies &&
       !customProperties?.size
     ) {
       return inlineStyle;
@@ -2291,6 +2420,10 @@ export class LynxElement implements BaseLynxElement {
       this.#hidden ? HIDDEN_STYLE : '',
       this.#inheritStyle,
       this.#runtimeStyle,
+      // Ahead of the app's own declarations, so a `--angular-lynx-color` it
+      // sets itself wins over the copy of its `color`, as the build keeps
+      // one a rule sets.
+      copies,
       inlineStyle?.replace(/[\s;]+$/, ''),
       variables,
     ]
@@ -2552,6 +2685,13 @@ export class LynxElement implements BaseLynxElement {
       if (this.tagName === 'text' && !this.#webText) {
         this.#scopeClasses.push(LYNX_TEXT_INHERITANCE_CLASS);
         this.#addClassName(LYNX_TEXT_INHERITANCE_CLASS);
+      }
+      // Its inline text styles, set before the text went in as Angular sets
+      // a static style, get their copies now (see #inlineTextCopies). One
+      // removed this cycle gets them when it's rebuilt (see
+      // #recreateSubtree).
+      if (this.#inlineTextFlags() && !this.#paintingDead) {
+        this.#rewriteInlineStyle();
       }
     }
     // A list's item has the list as its parent (see LynxListElement), as

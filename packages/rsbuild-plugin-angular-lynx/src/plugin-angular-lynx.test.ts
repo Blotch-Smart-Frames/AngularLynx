@@ -5,6 +5,7 @@ vi.mock('./angular.js', () => ({ applyAngularRules: vi.fn() }));
 vi.mock('./background-entry.js', () => ({
   createBackgroundEntries: vi.fn(() => ({ _backgroundEntries: true })),
 }));
+vi.mock('./background-minify.js', () => ({ applyBackgroundMinify: vi.fn() }));
 vi.mock('./color-scheme.js', () => ({ applyColorScheme: vi.fn() }));
 vi.mock('./css.js', () => ({ applyCSS: vi.fn() }));
 vi.mock('./display.js', () => ({ applyDisplay: vi.fn() }));
@@ -38,6 +39,7 @@ vi.mock('./utils/options.js', async (importOriginal) => ({
 
 import { applyAngularRules } from './angular.js';
 import { createBackgroundEntries } from './background-entry.js';
+import { applyBackgroundMinify } from './background-minify.js';
 import { applyColorScheme } from './color-scheme.js';
 import { applyCSS } from './css.js';
 import { applyDisplay } from './display.js';
@@ -288,6 +290,13 @@ describe('pluginAngularLynx', () => {
         mockApi,
         expect.objectContaining({ _normalized: true }),
       );
+    });
+
+    it('calls applyBackgroundMinify with api', () => {
+      const plugin = pluginAngularLynx();
+      plugin.setup(mockApi);
+
+      expect(applyBackgroundMinify).toHaveBeenCalledWith(mockApi);
     });
 
     it('calls applyDevLogger with api', () => {

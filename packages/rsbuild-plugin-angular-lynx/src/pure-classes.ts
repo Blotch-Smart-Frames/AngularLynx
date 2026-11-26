@@ -86,8 +86,11 @@ export const wrapPureClasses = (code: string, filename: string): string => {
       { start: classNode.end, end: classNode.end, text: ')()' },
     );
     if (alias) {
+      // From the statement itself, not the trivia before it: written without
+      // a semicolon, the class's statement ends where that trivia starts,
+      // which is where `)()` goes, and the comments before it stay.
       edits.push({
-        start: alias.statement.getFullStart(),
+        start: alias.statement.getStart(sourceFile),
         end: alias.statement.end,
         text: '',
       });

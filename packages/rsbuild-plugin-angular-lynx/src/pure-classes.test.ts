@@ -126,11 +126,35 @@ describe('wrapPureClasses', () => {
       [
         'var _a;',
         'var Element = /*#__PURE__*/ (() => _a = class { static #byId = new Map(); static get(id) { return _a.#byId.get(id); } })();',
+        '',
         'var after = 1;',
       ].join('\n'),
     );
     const Element = new Function(`${wrap(code)}; return Element;`)();
     expect(Element.get(1)).toBeUndefined();
+  });
+
+  // Without a semicolon, the class's statement ends where the alias's trivia
+  // starts, which is also where the IIFE's `)()` goes.
+  it('moves the alias of a class written without a semicolon', () => {
+    const code = [
+      '// The alias.',
+      'var _a;',
+      'var Element = class { #x; get() { return _a; } }',
+      '// Set after the class.',
+      '_a = Element;',
+    ].join('\n');
+    expect(wrap(code)).toBe(
+      [
+        '// The alias.',
+        'var _a;',
+        'var Element = /*#__PURE__*/ (() => _a = class { #x; get() { return _a; } })()',
+        '// Set after the class.',
+        '',
+      ].join('\n'),
+    );
+    const Element = new Function(`${wrap(code)}; return Element;`)();
+    expect(new Element().get()).toBe(Element);
   });
 
   it('leaves an alias alone that is assigned more than once', () => {

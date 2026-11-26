@@ -255,7 +255,7 @@ const FIXTURES: Record<string, string> = {
         static #x = 1;
         static read() { return this.#x; }
       }
-      return [Object.read()];
+      return [Object.read(), globalThis.Object.getOwnPropertySymbols({ ...Object })];
     })();
   `,
   'a static private field without a semicolon': `
@@ -987,18 +987,15 @@ describe('renamePrivateMethods', () => {
     );
   });
 
-  it('leaves a static field enumerable in a module that binds Object', () => {
+  it('leaves a static field private in a module that binds Object', () => {
     for (const binding of [
       'class Object {}',
       'const Object = {};',
       'function f(Object) {}',
       "import { Thing as Object } from 'x';",
     ]) {
-      const code = rename(
-        `${binding} class A { static #t = 2; static f() { return A.#t; } }`,
-      );
-      expect(code).not.toContain('defineProperty');
-      expect(code).toMatch(/static \[__t_[0-9a-f]{6}\d+\] = 2;/);
+      const code = `${binding} class A { static #t = 2; static f() { return A.#t; } }`;
+      expect(rename(code)).toBe(code);
     }
     // A property or method named Object binds nothing.
     expect(

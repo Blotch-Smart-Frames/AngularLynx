@@ -190,7 +190,8 @@ export const transformPrivateMethods = (
  * Left as they are:
  *
  * - The private fields of a module that binds the name `Symbol` (its
- *   methods are still renamed), as the symbols are made from it.
+ *   methods are still renamed), as the symbols are made from it, and the
+ *   static private fields of one that binds `Object`, which hides them.
  * - Any class that uses `#name in object`: a public name can't answer it.
  * - A class with `extends` that can be made more than once: one inside a
  *   function that isn't called at once, or is but has a name or uses
@@ -257,17 +258,22 @@ export const renamePrivateMethods = (
         }
         continue;
       }
+      const [field] = declarations;
+      const fieldStatic = isStatic(field!);
+      // A static field is hidden with `Object` (below): in a module that
+      // names something else that, it stays private, so a spread of its
+      // class still leaves it out.
       const fieldEdits =
-        globalSymbol && isPlainField(declarations)
+        globalSymbol &&
+        (globalObject || !fieldStatic) &&
+        isPlainField(declarations)
           ? symbolKeyEdits(uses, text, code, sourceFile)
           : null;
       if (!fieldEdits) continue;
       edits.push(...fieldEdits);
-      const [field] = declarations;
-      if (isStatic(field!) && globalObject) {
+      if (fieldStatic) {
         // An empty `;` is a class element of its own, so this follows a
-        // field with or without its semicolon (see above). In a module that
-        // names something else `Object`, the field stays enumerable.
+        // field with or without its semicolon (see above).
         edits.push({
           start: field!.end,
           end: field!.end,

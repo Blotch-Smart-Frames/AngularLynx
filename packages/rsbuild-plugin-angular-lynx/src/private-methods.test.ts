@@ -101,6 +101,16 @@ const FIXTURES: Record<string, string> = {
     const c = new Sub().toggle();
     [a.read(), b.read(), c.read(), c.sub(), Object.keys(a), JSON.stringify(b)];
   `,
+  'a static initializer that makes an instance and reads a constant field declared after it': `
+    class Made {
+      static first = new Made().read();
+      #n = 1;
+      #s = 'made';
+      read() { return [this.#n, this.#s]; }
+      static last = new Made().read();
+    }
+    [Made.first, Made.last];
+  `,
   'field initializers in order, public and private': `
     class Order {
       a = 1;
@@ -987,9 +997,9 @@ describe('renamePrivateMethods', () => {
     const [n, b, s, m, u, e] = keys;
     expect(code).toBe(
       `var ${keys.map((key, index) => `${key} = Symbol("${names[index]}")`).join(', ')}; ` +
-        `class A { static { this.prototype[${n}] = null; } static { this.prototype[${b}] = false; } ` +
-        `static { this.prototype[${s}] = 'x' as const; } static { this.prototype[${m}] = -1; } ` +
-        `static { this.prototype[${u}] = void 0; }  g() { return [this[${n}], this[${b}], this[${s}], this[${m}], this[${u}], this[${e}]]; } }`,
+        `class A { static { this.prototype[${n}] = null; this.prototype[${b}] = false; ` +
+        `this.prototype[${s}] = 'x' as const; this.prototype[${m}] = -1; this.prototype[${u}] = void 0; } ` +
+        `       g() { return [this[${n}], this[${b}], this[${s}], this[${m}], this[${u}], this[${e}]]; } }`,
     );
   });
 
@@ -1001,10 +1011,15 @@ describe('renamePrivateMethods', () => {
       '#f = `t`;',
       "#f =\n    'a';",
       '#f = -x;',
+      // No initializer, but a comment across lines, which removing the
+      // declaration would take with it.
+      '#f /*\n  */;',
     ]) {
       const code = rename(`class A { ${field} g() { return this.#f; } }`);
       expect(code).not.toContain('prototype');
-      expect(code).toContain(`[${renamed(code, 'f')[0]}] =`);
+      // Still declared where it was, keyed by its symbol, on the same lines.
+      expect(code).toContain(`class A { [${renamed(code, 'f')[0]}]`);
+      expect(code.split('\n')).toHaveLength(field.split('\n').length);
     }
   });
 

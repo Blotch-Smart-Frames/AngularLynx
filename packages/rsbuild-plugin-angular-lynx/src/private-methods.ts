@@ -174,10 +174,13 @@ export const transformPrivateMethods = (
  * **Constant fields start on the prototype.** An instance field whose
  * initializer is a constant (`null`, `false`, `''`, a number, `void 0`, or
  * none at all) doesn't become a property of each instance: its declaration
- * becomes `static { this.prototype[__x_<key><n>] = v; }` where it was (or
- * goes, with no initializer, which a missing property reads as), so an
+ * goes, and one `static { this.prototype[__x_<key><n>] = v; … }` at the start
+ * of the class's body puts the defaults on the prototype (a field without an
+ * initializer needs none: a missing property reads `undefined` too), before
+ * any static initializer, which could make an instance and read one. An
  * instance reads the default from its prototype and gets a property of its
- * own only once the field is written. In PrimJS every own property costs each
+ * own only once the field is written. A declaration that spans lines stays,
+ * as removing it would remove a line. In PrimJS every own property costs each
  * instance about 45 bytes: on the iOS Simulator, 5,000 objects with 55 fields
  * took 12.6 MB of its heap, and 5,000 with 10 took 2.6 MB. `LynxElement`
  * has 41 private fields, most of them `null` or `false` until something sets
@@ -262,6 +265,11 @@ export const renamePrivateMethods = (
     // Every class it makes would share these names, and one made from
     // another would override its base's methods (see above).
     if (info.branded || (info.repeated && info.extendsAnother)) continue;
+    // The class's constant fields' defaults (see above), which a static block
+    // at the start of its body puts on the prototype: before any static
+    // initializer, which could make an instance and read one.
+    const defaults: string[] = [];
+    const defaultsAt = edits.length;
     for (const [name, declarations] of info.members) {
       const text = `__${name.slice(1)}_${key}${info.index}`;
       const uses = info.uses.get(name)!;
@@ -294,22 +302,17 @@ export const renamePrivateMethods = (
         : prototypeDefault(field as ts.PropertyDeclaration, sourceFile);
       if (initial !== undefined) {
         // A constant field starts on the prototype (see above): its
-        // declaration becomes a static block that puts it there, and only
-        // its uses are keyed.
+        // declaration goes, and only its uses are keyed.
         const start = field!.getStart(sourceFile);
         edits.push(
           ...fieldEdits.filter(
             (edit) => edit.start < start || edit.start >= field!.end,
           ),
-          {
-            start,
-            end: field!.end,
-            text:
-              initial === null
-                ? ''
-                : `static { this.prototype[${text}] = ${initial}; }`,
-          },
+          { start, end: field!.end, text: '' },
         );
+        if (initial !== null) {
+          defaults.push(`this.prototype[${text}] = ${initial};`);
+        }
         symbols.push(`${text} = Symbol(${JSON.stringify(name.slice(1))})`);
         continue;
       }
@@ -324,6 +327,16 @@ export const renamePrivateMethods = (
         });
       }
       symbols.push(`${text} = Symbol(${JSON.stringify(name.slice(1))})`);
+    }
+    if (defaults.length > 0) {
+      // Ahead of the class's other edits, so it comes before an edit to a
+      // first member that starts right after the `{`.
+      const at = info.node.members.pos;
+      edits.splice(defaultsAt, 0, {
+        start: at,
+        end: at,
+        text: ` static { ${defaults.join(' ')} } `,
+      });
     }
   }
   if (symbols.length > 0) {
@@ -369,6 +382,13 @@ const prototypeDefault = (
   sourceFile: ts.SourceFile,
 ): string | null | undefined => {
   const { initializer } = field;
+  // Removing a declaration that spans lines would remove a line (a comment
+  // inside it can), and the edits must leave every line where it was.
+  const declaration = sourceFile.text.slice(
+    field.getStart(sourceFile),
+    field.end,
+  );
+  if (/[\n\r\u2028\u2029]/.test(declaration)) return undefined;
   if (!initializer) return null;
   let value: ts.Expression = initializer;
   while (
@@ -393,11 +413,7 @@ const prototypeDefault = (
     value.kind === ts.SyntaxKind.TrueKeyword ||
     value.kind === ts.SyntaxKind.FalseKeyword ||
     (ts.isVoidExpression(value) && ts.isNumericLiteral(value.expression));
-  if (!constant) return undefined;
-  const text = sourceFile.text.slice(field.getStart(sourceFile), field.end);
-  return /[\n\r\u2028\u2029]/.test(text)
-    ? undefined
-    : initializer.getText(sourceFile);
+  return constant ? initializer.getText(sourceFile) : undefined;
 };
 
 /**

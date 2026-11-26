@@ -40,7 +40,7 @@ type Swatch = { readonly token: string; readonly fill: string };
          gives the page the theme's dark class. -->
     <view class="h-full bg-background" uiDynamicColor>
       <scroll-view scroll-orientation="vertical" class="h-full">
-        <view class="flex-col gap-6 p-4 flex">
+        <view class="flex-col gap-6 px-4 flex pt-safe-4 pb-safe-4">
           <text class="text-2xl font-bold text-foreground">Dynamic color</text>
           <text class="text-sm text-muted-foreground">
             On Android 12 and later, the theme takes its colors from your

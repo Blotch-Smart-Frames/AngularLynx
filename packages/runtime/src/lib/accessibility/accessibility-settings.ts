@@ -43,6 +43,22 @@ const pageWindow = (): Window | undefined => {
 };
 
 /**
+ * The text scale the host app sent as `textScale`: a positive number, or the
+ * string Lynx Explorer passes for a query parameter of the bundle URL
+ * (`?textScale=1.5`). Anything else, or nothing, is the system default, 1.
+ */
+const textScaleOf = (data: Record<string, unknown>): number => {
+  const value = data['textScale'];
+  const scale =
+    typeof value === 'number'
+      ? value
+      : typeof value === 'string' && value.trim() !== ''
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(scale) && scale > 0 ? scale : 1;
+};
+
+/**
  * One signal per setting that follows the page's media query on the web, and
  * stays `false` elsewhere.
  */
@@ -69,7 +85,7 @@ const watchMediaQueries = (
 
 /**
  * The user's accessibility display settings, as signals: Reduce Motion,
- * Reduce Transparency and Increase Contrast.
+ * Reduce Transparency, Increase Contrast and the text size.
  *
  * Lynx has no API for them on any platform, so they come from the host app,
  * in its global props, like the theme does: `reduceMotion`,
@@ -84,6 +100,10 @@ const watchMediaQueries = (
  *   Reduce Motion, and contrast above standard (Android 14) or high contrast
  *   text (Android 16) for Increase Contrast. Android has no Reduce
  *   Transparency setting.
+ *
+ * The text size is `textScale`, a number: 1 at the system's default size,
+ * from iOS's Dynamic Type and Android's font size (see
+ * {@link LynxAccessibilitySettings.textScale}).
  *
  * In the web preview they follow the browser's `prefers-reduced-motion`,
  * `prefers-reduced-transparency` and `prefers-contrast: more` too. Lynx
@@ -124,6 +144,28 @@ export class LynxAccessibilitySettings {
    * borders and use full-strength text colors.
    */
   readonly increaseContrast = this.#setting('increaseContrast');
+
+  /**
+   * How much larger than the system's default the user's text is: 1 at the
+   * default size, 1.5 when they chose text half as large again, and below 1
+   * for the smaller sizes iOS offers. From iOS's Dynamic Type (Settings >
+   * Display & Brightness > Text Size, and the larger accessibility sizes) and
+   * Android's font size (Settings > Display > Font size), capped by the
+   * native build's `textScaling.max`, and 1 with `"textScaling": false`.
+   *
+   * The app's text already follows it: the page's root font size grows by it
+   * in the apps `ng build --platform` makes, so every size in `rem` grows
+   * with it, and a size in `px` doesn't. Read it to change a layout that
+   * can't simply grow, such as a row that wraps its label under the icon at
+   * a large size.
+   *
+   * 1 in the web preview and in Lynx Explorer, unless you add it to the
+   * bundle URL there: `?textScale=1.5` (which changes this signal, not the
+   * page's text).
+   */
+  readonly textScale: Signal<number> = computed(() =>
+    textScaleOf(this.#globalData.globalData() as Record<string, unknown>),
+  );
 
   #setting(setting: Setting): Signal<boolean> {
     return computed(

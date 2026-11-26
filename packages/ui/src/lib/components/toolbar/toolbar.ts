@@ -27,7 +27,12 @@ import {
   injectSystemDrawsGlass,
 } from '../glass/glass-design';
 import { injectIconColor } from '../icon/icon-theme';
-import { type IconName, ICONS } from '../icon/icons';
+import {
+  type IconName,
+  ICONS,
+  optionalIconMarkup,
+  paintIcon,
+} from '../icon/icons';
 import { edgeFadeOverlay, injectBarState, platformOf } from './bar-scroll';
 
 /**
@@ -40,13 +45,6 @@ const TOOLBAR_HEIGHT: Readonly<Record<GlassDesign, number>> = {
   frosted: 44,
   material: 64,
 };
-
-/**
- * An icon's markup, drawn in `color`.
- */
-const iconSvg = (icon: IconName, color: string): string =>
-  // split/join, not replaceAll(), which PrimJS's ES2019 runtime lacks.
-  ICONS[icon].split('currentColor').join(color);
 
 /**
  * Items that belong together, sharing one background: on iOS 26 and later,
@@ -124,6 +122,7 @@ export class UiToolbarGroup {
  * ```html
  * <ui-toolbar-item icon="plus" label="New note" (pressed)="add()" />
  * <ui-toolbar-item label="Done" prominent (pressed)="save()" />
+ * <ui-toolbar-item [svg]="acmeMark" label="Open in Acme" (pressed)="open()" />
  * ```
  *
  * In a `<ui-toolbar-group>` it's a plain item on the group's glass. On its
@@ -204,8 +203,19 @@ export class UiToolbarGroup {
 export class UiToolbarItem {
   /** What the item does, shown without an icon and read by screen readers. */
   readonly label = input.required<string>();
-  /** The [Icon](/dolan/icon) the item shows instead of its label. */
+  /**
+   * The [Icon](/dolan/icon) the item shows instead of its label. Give this
+   * or `svg`.
+   */
   readonly icon = input<IconName | undefined>(undefined);
+  /**
+   * SVG markup to show instead of an icon from the set, such as the app's
+   * own mark for an action the set has nothing for. `currentColor` in it
+   * takes the item's color for its design and state, as the set's icons do,
+   * and it's drawn at the item's icon size; colors written out stay. Give
+   * this or `icon`.
+   */
+  readonly svg = input<string | undefined>(undefined);
   /** The screen's key action, such as Done: tinted, on its own. */
   readonly prominent = input(false, { transform: booleanAttribute });
   /** The platform's Back button, with `label` as the previous screen's title. */
@@ -236,12 +246,19 @@ export class UiToolbarItem {
   protected readonly ownGlass = computed(() => this.#glass() && !this.#group);
 
   /**
-   * The icon the item shows: a Back button's chevron (Material's arrow), or
-   * the item's own.
+   * The markup of the icon the item shows, before it's colored: a Back
+   * button's chevron (Material's arrow), or the item's own, from the set or
+   * the app's.
    */
-  readonly #icon = computed<IconName | undefined>(() => {
-    if (!this.back()) return this.icon();
-    return this.#material() ? 'arrow-left' : 'chevron-left';
+  readonly #icon = computed<string | undefined>(() => {
+    if (this.back()) {
+      return ICONS[this.#material() ? 'arrow-left' : 'chevron-left'];
+    }
+    return optionalIconMarkup(
+      this.icon(),
+      this.svg(),
+      '<ui-toolbar-item> takes an icon or an svg, not both.',
+    );
   });
 
   /**
@@ -296,7 +313,7 @@ export class UiToolbarItem {
   // resolved to its value and written into the markup (see icon-theme.ts).
   protected readonly iconMarkup = computed(() => {
     const icon = this.#icon();
-    return icon ? iconSvg(icon, this.#resolveColor(this.#iconColor())) : null;
+    return icon ? paintIcon(icon, this.#resolveColor(this.#iconColor())) : null;
   });
 
   protected readonly iconStyle = computed(() => {

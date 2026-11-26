@@ -15,7 +15,9 @@ import { UiCard } from '../components/ui/card';
   imports: [LYNX_ELEMENTS, UiButton, UiCard],
   template: `
     <scroll-view class="h-full bg-background" scroll-orientation="vertical">
-      <view class="flex flex-col gap-4 px-5 pt-14 pb-10">
+      <view
+        class="flex flex-col gap-4 px-5 pt-[calc(1.25rem+env(safe-area-inset-top))] pb-[calc(1.25rem+env(safe-area-inset-bottom))]"
+      >
         <view class="flex flex-col gap-1">
           <text class="text-2xl font-bold tracking-tight text-foreground">
             Tailwind CSS 4

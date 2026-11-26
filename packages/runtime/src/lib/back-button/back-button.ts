@@ -10,6 +10,11 @@ import {
   signal,
 } from '@angular/core';
 import { LynxNativeModule } from '../native-module/native-module';
+import {
+  type BackGestureEdge,
+  type BackGestureFollower,
+  BackGestures,
+} from './back-gesture';
 
 /**
  * The native module and global event of the Android app that
@@ -18,13 +23,27 @@ import { LynxNativeModule } from '../native-module/native-module';
  */
 const SHELL_MODULE = 'AngularLynxShell';
 const BACK_EVENT = 'angularLynxBack';
+/**
+ * Android's predictive back gesture as it goes, before it's back: sent as the
+ * gesture starts, as the finger moves, and if it's canceled. Letting go so
+ * back happens sends BACK_EVENT, as a press does.
+ */
+const BACK_GESTURE_EVENT = 'angularLynxBackGesture';
+
+/** What the shell sends with BACK_GESTURE_EVENT. */
+type BackGestureEvent = {
+  readonly phase?: 'started' | 'progressed' | 'canceled';
+  /** How far the gesture has gone, 0 to 1, as Android measures it. */
+  readonly progress?: number;
+  readonly edge?: BackGestureEdge;
+};
 
 type ShellModule = {
   setBackHandlerEnabled(enabled: boolean): unknown;
 };
 
 type GlobalEventEmitter = {
-  addListener(name: string, listener: () => void): unknown;
+  addListener(name: string, listener: (...args: any[]) => void): unknown;
 };
 
 /** What a handler registered with {@link LynxBackButton.on} is. */
@@ -74,6 +93,12 @@ const currentDestroyRef = (): DestroyRef | null => {
  * the handler enabled while a handler is registered or the router has a
  * screen to go back to.
  *
+ * Android's predictive back gesture follows the finger: while nothing
+ * registered with {@link on} takes back, a `<lynx-stack-outlet>` whose top
+ * page back would leave moves the page with the gesture, as a finger
+ * dragging it in the app does, and either finishes going back as the finger
+ * lets go or brings the page back if the gesture is canceled.
+ *
  * While an `<overlay>` shows, Android gives back to it instead, as its
  * `requestclose` event: a sheet or dialog in one closes on that.
  *
@@ -103,6 +128,9 @@ export class LynxBackButton {
   readonly #handlers = signal<readonly LynxBackHandler[]>([]);
   readonly #navigation = inject(BACK_NAVIGATION, { optional: true });
   readonly #errorHandler = inject(ErrorHandler);
+  readonly #gestures = inject(BackGestures);
+  /** What follows the back gesture in progress, if anything does. */
+  #follower: BackGestureFollower | null = null;
 
   constructor() {
     const modules = inject(LynxNativeModule);
@@ -126,7 +154,12 @@ export class LynxBackButton {
     const emitter =
       modules.getJSModule<GlobalEventEmitter>('GlobalEventEmitter');
     Promise.resolve()
-      .then(() => emitter?.addListener(BACK_EVENT, () => this.#press()))
+      .then(() => {
+        emitter?.addListener(BACK_EVENT, () => this.#press());
+        emitter?.addListener(BACK_GESTURE_EVENT, (event?: BackGestureEvent) =>
+          this.#gesture(event),
+        );
+      })
       .catch(() => {
         // Without a background thread there are no global events to hear.
       });
@@ -171,9 +204,48 @@ export class LynxBackButton {
     };
   }
 
+  #gesture(event: BackGestureEvent | undefined): void {
+    try {
+      switch (event?.phase) {
+        case 'started':
+          // A start without the last one's end: that one is over.
+          this.#follower?.cancel();
+          // What a handler closes doesn't follow the finger: the handler
+          // hears back once it's done, as before. Nor does a gesture with
+          // nowhere to go back to.
+          this.#follower =
+            this.#handlers().length === 0 && this.#navigation?.canGoBack()
+              ? this.#gestures.start(event.edge === 'right' ? 'right' : 'left')
+              : null;
+          if (event.progress) this.#follower?.progress(event.progress);
+          break;
+        case 'progressed':
+          this.#follower?.progress(event.progress ?? 0);
+          break;
+        case 'canceled': {
+          const follower = this.#follower;
+          this.#follower = null;
+          follower?.cancel();
+          break;
+        }
+      }
+    } catch (error) {
+      this.#follower = null;
+      this.#errorHandler.handleError(error);
+    }
+  }
+
   #press(): void {
     const handlers = this.#handlers();
+    const follower = this.#follower;
+    this.#follower = null;
     try {
+      // The gesture a stack followed ends there, where the page already is.
+      // A handler registered meanwhile takes back from it.
+      if (follower) {
+        if (handlers.length === 0 && follower.commit()) return;
+        follower.cancel();
+      }
       if (handlers.length > 0) handlers[handlers.length - 1]();
       // The press can come just after the router's last screen went, while
       // the shell's handler is still enabled: there's nowhere to go then.

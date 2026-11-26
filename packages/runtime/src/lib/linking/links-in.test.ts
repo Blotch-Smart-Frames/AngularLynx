@@ -234,6 +234,23 @@ describe('LynxLinking, links to the app', () => {
       expect(handler).not.toHaveBeenCalled();
     });
 
+    it('lets go of the DestroyRef callback when the handler is removed by hand', () => {
+      stubHost();
+      const linking = start();
+      const unregister = vi.fn();
+      const onDestroy = vi.fn(() => unregister);
+      const injector = {
+        get: () => ({ onDestroy }),
+      } as unknown as EnvironmentInjector;
+
+      const remove = linking.onURL(() => {}, { injector });
+      expect(onDestroy).toHaveBeenCalledTimes(1);
+      remove();
+      remove();
+
+      expect(unregister).toHaveBeenCalledTimes(2);
+    });
+
     it("sends a handler's error to the ErrorHandler and still calls the others", async () => {
       stubHost();
       const error = new Error('handler failed');

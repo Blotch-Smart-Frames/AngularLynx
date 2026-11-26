@@ -382,6 +382,7 @@
     "keyup",
     "KHTML",
     "layoutchange",
+    "layoutcomplete",
     "lepus",
     "letterboxed",
     "lifecycles",
@@ -400,6 +401,8 @@
     "maxline",
     "maxlines",
     "mediump",
+    "Menlo",
+    "mobileslideshow",
     "Moda",
     "mouseclick",
     "mousedblclick",
@@ -412,6 +415,7 @@
     "msgpackr",
     "Navigations",
     "Neue",
+    "ngattr",
     "ngcontent",
     "nghost",
     "nginherit",
@@ -433,6 +437,7 @@
     "Pacifico",
     "packagr",
     "PAPI",
+    "photospicker",
     "Playfair",
     "pluginAngularLynx",
     "pluralrules",
@@ -534,7 +539,12 @@
     {
       "name": "angular-internal-symbols",
       "pattern": "/ɵ\\w+/g"
+    },
+    {
+      "// android-api-names": "Android's own names, in its British spelling, which flagWords would otherwise flag.",
+      "name": "android-api-names",
+      "pattern": "/\\bhandleOnBackCancelled\\b/g"
     }
   ],
-  "ignoreRegExpList": ["angular-internal-symbols"]
+  "ignoreRegExpList": ["angular-internal-symbols", "android-api-names"]
 }

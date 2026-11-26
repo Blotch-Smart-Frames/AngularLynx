@@ -11,7 +11,9 @@ import {
   selector: 'app-root',
   template: `
     <scroll-view class="h-full bg-zinc-50" scroll-orientation="vertical">
-      <view class="p-6">
+      <view
+        class="px-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-[calc(1.5rem+env(safe-area-inset-top))]"
+      >
         <text class="mb-1 text-[28px] font-bold text-zinc-900">Gestures</text>
         <text class="mb-5 text-[13px] text-zinc-500">
           Pan, tap, and exclusive gesture recognition.

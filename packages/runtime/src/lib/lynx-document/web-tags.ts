@@ -113,3 +113,26 @@ export const WEB_TAG_ELEMENTS: ReadonlyMap<string, 'view' | 'text' | 'image'> =
     ...VIEW_TAGS.map((tag) => [tag, 'view'] as const),
     ['img', 'image'],
   ]);
+
+/**
+ * The HTML tags a browser styles only while they have an attribute, by the
+ * attribute: an `<a>` is underlined and link-colored only with an `href`
+ * (`a:any-link`), and an `<abbr>` has a dotted underline only with a `title`
+ * (`abbr[title]`). Lynx matches no attribute selector (see
+ * investigations/lynx-vs-web-differences.md), so the runtime gives such an
+ * element a class while it has the attribute (attributeClassOf), and the
+ * build plugin's html-text-tags.css styles the class.
+ */
+export const ATTRIBUTE_STYLED_TAGS: ReadonlyMap<string, string> = new Map([
+  ['href', 'a'],
+  ['title', 'abbr'],
+]);
+
+/**
+ * The class that stands for `tag[attribute]`: `_ngattr-a-href` for an `<a>`
+ * with an `href`. One class rather than the attribute's alongside the tag's,
+ * so the build's rule for it is as specific as an app's own class, which
+ * comes later and wins, as an app's CSS wins over a browser's styles.
+ */
+export const attributeClassOf = (tag: string, attribute: string): string =>
+  `_ngattr-${tag}-${attribute}`;

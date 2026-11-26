@@ -32,7 +32,7 @@ import { UiButton } from '../components/ui/button';
   ],
   template: `
     <scroll-view scroll-orientation="vertical" class="h-full">
-      <view class="flex-col gap-4 p-4 flex">
+      <view class="flex-col gap-4 px-4 flex pt-safe-4 pb-safe-4">
         <text class="text-2xl font-bold text-foreground">Sheet</text>
 
         <ui-button (pressed)="showSheet.set(true)">Open Sheet</ui-button>

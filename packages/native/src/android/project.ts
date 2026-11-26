@@ -88,6 +88,10 @@ export const properties = (app: ResolvedApp): string =>
     `appName=${propertyValue(app.name)}`,
     `screenOrientation=${SCREEN_ORIENTATIONS[app.orientation]}`,
     `edgeToEdge=${app.edgeToEdge}`,
+    // MainActivity's font scale: the system's, capped at the max (0 for
+    // none), or 1 when it's off.
+    `textScaling=${app.textScaling.enabled}`,
+    `maxTextScale=${app.textScaling.max ?? 0}`,
     '',
   ].join('\n');
 

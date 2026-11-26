@@ -14,7 +14,7 @@ import { UiIcon } from '../components/ui/icon';
   imports: [LYNX_ELEMENTS, UiBottomSheet, UiButton, UiIcon],
   template: `
     <scroll-view scroll-orientation="vertical" class="h-full">
-      <view class="flex-col gap-4 p-4 flex">
+      <view class="flex-col gap-4 px-4 flex pt-safe-4 pb-safe-4">
         <text class="text-2xl font-bold text-foreground">Bottom Sheet</text>
         <text class="text-sm text-muted-foreground">
           Drag the handle down or tap the backdrop to close a sheet.

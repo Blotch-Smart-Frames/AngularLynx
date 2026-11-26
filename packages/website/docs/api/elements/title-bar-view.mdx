@@ -44,8 +44,8 @@ Import `LYNX_ELEMENTS` in your component (see [Elements](/api/angular-lynx/eleme
 
 Put the title bar across the top of the window, above the page's content. Dragging anywhere on the `<title-bar-view>` moves the window. Keep buttons, such as close, outside it, next to it in the bar: they stay tappable, and a press on them doesn't start a drag.
 
-:::warning
-iOS and Android have no `<title-bar-view>`. Like any element the host app doesn't register, iOS leaves an empty box in its place and Android can drop the elements after it. Don't render it on iOS or Android.
+:::note
+iOS, Android and the web have no `<title-bar-view>`, so AngularLynx creates a [`<view>`](/api/elements/view) in its place there. Its content and layout stay the same, and dragging it does nothing. `moveable` has no effect, and a CSS rule that selects the element by its tag name (`title-bar-view { … }`) doesn't apply: style it with a class instead.
 :::
 
 ## Attributes
@@ -65,8 +65,8 @@ None, apart from the [common events](/api/elements/view#events), such as `bindta
 | Platform                              | Support                    |
 | ------------------------------------- | -------------------------- |
 | Windows and macOS desktop apps (Clay) | Yes, Lynx 3.8 and later.   |
-| iOS and Android                       | No. See the warning above. |
-| Web                                   | No.                        |
+| iOS and Android                       | No. It's a `<view>` there. |
+| Web                                   | No. It's a `<view>` there. |
 
 ## Related
 

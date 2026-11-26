@@ -26,6 +26,15 @@ export type NativeAppOptions = {
    * lays the page out inside the safe area, with `env()` at 0.
    */
   readonly edgeToEdge?: boolean;
+  /**
+   * Whether the app's text follows the phone's text size: iOS's Dynamic Type
+   * and Android's font size. The page's root font size grows by the user's
+   * scale, so every size in `rem` grows with it (a size in `px` doesn't), and
+   * `LynxAccessibilitySettings.textScale()` reads it. On by default; `false`
+   * keeps the text at its default size, and `{ "max": 1.6 }` stops it
+   * growing past 1.6 times that, for a layout that can't take more.
+   */
+  readonly textScaling?: boolean | TextScaling;
   /** Each permission the app uses, with the reason shown to the user. */
   readonly permissions?: Partial<Record<Permission, string>>;
   /** Custom URL schemes that open the app, e.g. `["myapp"]`. */
@@ -258,6 +267,23 @@ export type AdaptiveIcon = {
   readonly background?: string;
 };
 
+/** {@link NativeAppOptions.textScaling} as an object. */
+export type TextScaling = {
+  /**
+   * The largest scale the app's text takes, such as 1.6: at a larger text
+   * size it stays 1.6 times its default size. At least 1. Without it, the
+   * text follows the phone's largest sizes (about 3.1 on iOS, 2 on Android).
+   */
+  readonly max?: number;
+};
+
+/** {@link NativeAppOptions.textScaling} with its default applied. */
+export type ResolvedTextScaling = {
+  readonly enabled: boolean;
+  /** The cap, or undefined for none. */
+  readonly max?: number;
+};
+
 /** {@link NativeAppOptions} with every default applied and every value checked. */
 export type ResolvedApp = {
   readonly name: string;
@@ -266,6 +292,7 @@ export type ResolvedApp = {
   readonly buildNumber: number;
   readonly orientation: Orientation;
   readonly edgeToEdge: boolean;
+  readonly textScaling: ResolvedTextScaling;
   readonly permissions: Partial<Record<Permission, string>>;
   readonly deepLinkSchemes: readonly string[];
   /** {@link NativeAppOptions.appLinkDomains} in lowercase, each once. */
@@ -464,6 +491,7 @@ export const resolveAppOptions = (
     );
   }
 
+  const textScaling = resolveTextScaling(options.textScaling);
   const shortcuts = resolveShortcuts(options.shortcuts ?? []);
   const splash = resolveSplash(options.splash ?? {});
 
@@ -516,6 +544,7 @@ export const resolveAppOptions = (
     buildNumber,
     orientation: options.orientation ?? 'portrait',
     edgeToEdge: options.edgeToEdge ?? true,
+    textScaling,
     permissions,
     deepLinkSchemes,
     appLinkDomains,
@@ -528,6 +557,28 @@ export const resolveAppOptions = (
     ios: options.ios ?? {},
     android,
   };
+};
+
+/**
+ * Checks `textScaling` and gives it its default, on. A cap below 1 would make
+ * the default text smaller than the app was designed at, so it's caught here,
+ * where the message can name the option.
+ */
+const resolveTextScaling = (
+  textScaling: boolean | TextScaling | undefined,
+): ResolvedTextScaling => {
+  if (textScaling === undefined || textScaling === true) {
+    return { enabled: true };
+  }
+  if (textScaling === false) return { enabled: false };
+  const max = textScaling.max;
+  if (max === undefined) return { enabled: true };
+  if (typeof max !== 'number' || !Number.isFinite(max) || max < 1) {
+    throw new NativeConfigError(
+      `textScaling.max ${String(max)} is not valid. Use a number of at least 1, such as 1.6, or "textScaling": false to keep the text at its default size.`,
+    );
+  }
+  return { enabled: true, max };
 };
 
 /**

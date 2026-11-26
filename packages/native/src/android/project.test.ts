@@ -49,6 +49,8 @@ describe('properties', () => {
         'appName=My App',
         'screenOrientation=sensorLandscape',
         'edgeToEdge=true',
+        'textScaling=true',
+        'maxTextScale=0',
       ].join('\n'),
     );
   });
@@ -56,6 +58,15 @@ describe('properties', () => {
   it('tells the shell to keep the page inside the safe area', () => {
     expect(properties(app({ edgeToEdge: false }))).toContain(
       'edgeToEdge=false',
+    );
+  });
+
+  it("tells the shell the text scale's cap, or that it's off", () => {
+    expect(properties(app({ textScaling: { max: 1.6 } }))).toContain(
+      'textScaling=true\nmaxTextScale=1.6',
+    );
+    expect(properties(app({ textScaling: false }))).toContain(
+      'textScaling=false\nmaxTextScale=0',
     );
   });
 

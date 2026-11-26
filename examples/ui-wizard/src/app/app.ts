@@ -8,7 +8,7 @@ import { UiWizard, UiWizardStep } from '../components/ui/wizard';
   imports: [LYNX_ELEMENTS, UiButton, UiWizard, UiWizardStep],
   template: `
     <scroll-view scroll-orientation="vertical" class="h-full">
-      <view class="flex-col gap-8 p-4 flex">
+      <view class="flex-col gap-8 px-4 flex pt-safe-4 pb-safe-4">
         <view class="flex-col gap-2 flex">
           <text class="text-2xl font-bold text-foreground">Wizard</text>
           <text class="text-sm text-muted-foreground">

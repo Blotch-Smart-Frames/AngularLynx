@@ -1,21 +1,10 @@
 import { LynxElement } from '../lynx-element/lynx-element';
-import { base64ToBytes } from '../network/base64';
 import type { ElementRef } from '../types/lynx';
-import { getWebGLBridge } from './webgl-bridge';
 import {
-  contextAttributesFrom,
-  type LynxWebGLContextAttributes,
-  LynxWebGL2RenderingContext,
-} from './webgl2-context';
-
-// A page-unique prefix for canvas ids, so two LynxViews in one app (each with
-// its own JavaScript) can't pair a context with the other's canvas.
-const ID_PREFIX = `c${Math.floor(Math.random() * 0x7fffffff).toString(36)}`;
-let nextCanvasId = 1;
-let nextContextId = 1;
-
-/** The JPEG quality toBlob() and toDataURL() use without one: Chrome's and Firefox's. */
-const DEFAULT_JPEG_QUALITY = 0.92;
+  type ContextListener,
+  CanvasSurface,
+  dispatchContextEvent,
+} from './canvas-surface';
 
 /** The context's events, which the canvas fires itself (see getContext). */
 const CONTEXT_EVENTS: ReadonlySet<string> = new Set([
@@ -23,28 +12,6 @@ const CONTEXT_EVENTS: ReadonlySet<string> = new Set([
   'webglcontextrestored',
   'webglcontextcreationerror',
 ]);
-
-/**
- * Frees a context's GL side when its canvas is garbage-collected, as a
- * browser frees a canvas's context with it. Angular destroying a canvas frees
- * its context at once (see releaseContext), but only for a canvas at the top
- * of the view it destroys: Angular says nothing of the elements under those.
- * Nor can the runtime free a canvas's context when the view it's shown in
- * goes, since content another view projected into it may be shown again
- * (see LynxElement.markDestroyed). Once nothing can reach the canvas, the
- * context can go. The held value names the context by id, never the canvas,
- * which would keep it alive; the shells' `destroy` ignores an id they've
- * freed already. Null where the engine has no FinalizationRegistry.
- */
-const contextFinalizer: FinalizationRegistry<() => void> | null =
-  typeof FinalizationRegistry === 'function'
-    ? new FinalizationRegistry((free) => free())
-    : null;
-
-type ContextListener = (event: {
-  type: string;
-  preventDefault(): void;
-}) => void;
 
 const kebab = (name: string): string =>
   name.startsWith('--')
@@ -92,35 +59,40 @@ const createStyle = (element: LynxElement): Record<string, string> => {
 };
 
 /**
- * `<canvas>`: a drawing surface with a WebGL2 context, as HTMLCanvasElement
- * has, for three.js and other WebGL libraries.
+ * `<canvas>`: a drawing surface with a 2D or WebGL2 context, as
+ * HTMLCanvasElement has, for chart and image libraries, three.js and other
+ * WebGL libraries.
  *
  * - `width` and `height` are the drawing buffer's size in pixels (300 by 150
  *   to start, as on the web); the element's CSS size is how big it's shown.
- * - `getContext('webgl2')` returns a WebGL2RenderingContext: on iOS and
- *   Android, the runtime's (see webgl2-context.ts), drawing with the shell's
- *   OpenGL ES 3.0; on Lynx for Web, the browser's own, since the element is a
- *   real `<canvas>` there. It returns null where there's no WebGL: a host
- *   without the shell's `AngularLynxWebGL` module, such as Lynx Explorer.
- *   There's no `'2d'` context, and `'webgl'` (WebGL 1) is null too.
+ * - `getContext('2d')` returns a CanvasRenderingContext2D, and
+ *   `getContext('webgl2')` a WebGL2RenderingContext: on iOS and Android, the
+ *   runtime's (see canvas-2d-context.ts and webgl2-context.ts), drawing with
+ *   the shell's Core Graphics or `android.graphics.Canvas`, or its OpenGL ES
+ *   3.0; on Lynx for Web, the browser's own, since the element is a real
+ *   `<canvas>` there. A canvas keeps the kind of context it was first asked
+ *   for, as in a browser. They return null on a host without the shell's
+ *   `AngularLynxWebGL` module, such as Lynx Explorer. `'webgl'` (WebGL 1)
+ *   is null too.
  * - Pointer events (see pointer-events.ts) and `getBoundingClientRect()`
  *   (see layout.ts) work on every element; a canvas keeps its layout from
  *   the start, so `clientWidth` and `clientHeight` are right after its first
  *   layout.
  * - `webglcontextlost` fires when `WEBGL_lose_context` loses the context,
  *   which three.js does when it's disposed.
+ * - It can be drawn with `drawImage()`, made a pattern, or uploaded as a
+ *   WebGL texture (three.js's CanvasTexture), as an image is.
  */
 export class LynxCanvasElement extends LynxElement {
-  readonly #canvasId = `${ID_PREFIX}-${nextCanvasId++}`;
-  #width = 300;
-  #height = 150;
-  #context: LynxWebGL2RenderingContext | null = null;
+  readonly #surface: CanvasSurface;
   readonly #contextListeners = new Map<string, Set<ContextListener>>();
   readonly style: Record<string, string>;
 
   constructor(element: ElementRef) {
     super(element);
     this.tagName = 'canvas';
+    this.#surface = new CanvasSurface(this);
+    this.#surface.exposeOn(this);
     this.style = __WEB__
       ? ((element as unknown as HTMLElement).style as unknown as Record<
           string,
@@ -129,7 +101,7 @@ export class LynxCanvasElement extends LynxElement {
       : createStyle(this);
     if (!__WEB__) {
       // Pairs the native view with the context the shell makes for it.
-      this.setAttribute('canvas-id', this.#canvasId);
+      this.setAttribute('canvas-id', this.#surface.canvasId);
       // Starts following its layout, so clientWidth and clientHeight are
       // right from its first layout on.
       this.getBoundingClientRect();
@@ -141,7 +113,7 @@ export class LynxCanvasElement extends LynxElement {
   }
 
   get width(): number {
-    return __WEB__ ? this.#dom.width : this.#width;
+    return __WEB__ ? this.#dom.width : this.#surface.width;
   }
 
   set width(value: number) {
@@ -149,12 +121,11 @@ export class LynxCanvasElement extends LynxElement {
       this.#dom.width = value;
       return;
     }
-    this.#width = Math.max(0, Math.floor(Number(value) || 0));
-    this.#context?.resize(this.#width, this.#height);
+    this.#surface.width = value;
   }
 
   get height(): number {
-    return __WEB__ ? this.#dom.height : this.#height;
+    return __WEB__ ? this.#dom.height : this.#surface.height;
   }
 
   set height(value: number) {
@@ -162,8 +133,7 @@ export class LynxCanvasElement extends LynxElement {
       this.#dom.height = value;
       return;
     }
-    this.#height = Math.max(0, Math.floor(Number(value) || 0));
-    this.#context?.resize(this.#width, this.#height);
+    this.#surface.height = value;
   }
 
   /**
@@ -187,46 +157,17 @@ export class LynxCanvasElement extends LynxElement {
   }
 
   /**
-   * The id that pairs this canvas with its native view and GL context.
+   * The id that pairs this canvas with its native view and context.
    */
   get canvasId(): string {
-    return this.#canvasId;
+    return this.#surface.canvasId;
   }
 
-  getContext(
-    type: string,
-    attributes?: Partial<LynxWebGLContextAttributes>,
-  ): unknown {
+  getContext(type: string, attributes?: Record<string, unknown>): unknown {
     if (__WEB__) {
-      return this.#dom.getContext(type, attributes as WebGLContextAttributes);
+      return this.#dom.getContext(type, attributes);
     }
-    if (type !== 'webgl2') return null;
-    if (this.#context && !this.#context.isContextLost()) return this.#context;
-    const bridge = getWebGLBridge();
-    if (!bridge) {
-      this.dispatchContextEvent('webglcontextcreationerror');
-      return null;
-    }
-    const contextId = nextContextId++;
-    const resolved = contextAttributesFrom(attributes);
-    const created = bridge.create(contextId, this.#canvasId, {
-      ...resolved,
-      width: this.#width,
-      height: this.#height,
-    });
-    if (!created.ok) {
-      console.warn(`[angular-lynx] No WebGL2 on this canvas: ${created.error}`);
-      this.dispatchContextEvent('webglcontextcreationerror');
-      return null;
-    }
-    this.#context = new LynxWebGL2RenderingContext(
-      bridge,
-      contextId,
-      this,
-      resolved,
-    );
-    contextFinalizer?.register(this, () => bridge.destroy(contextId));
-    return this.#context;
+    return this.#surface.getContext(type, attributes);
   }
 
   override addEventListener(name: string, cb: (event: any) => any) {
@@ -254,30 +195,14 @@ export class LynxCanvasElement extends LynxElement {
    * @internal Fires one of the context's events; false if one prevented it.
    */
   dispatchContextEvent(type: string): boolean {
-    let prevented = false;
-    const event = {
-      type,
-      target: this,
-      currentTarget: this,
-      statusMessage: '',
-      preventDefault: () => {
-        prevented = true;
-      },
-      stopPropagation: () => {},
-    };
-    // A copy: a listener may remove itself as it runs.
-    for (const listener of Array.from(this.#contextListeners.get(type) ?? [])) {
-      listener(event);
-    }
-    return !prevented;
+    return dispatchContextEvent(this, this.#contextListeners, type);
   }
 
   /**
-   * @internal Angular destroyed the element: the GL context goes with it.
+   * @internal Angular destroyed the element: the context goes with it.
    */
   releaseContext(): void {
-    this.#context?.destroy();
-    this.#context = null;
+    this.#surface.release();
   }
 
   /**
@@ -291,8 +216,7 @@ export class LynxCanvasElement extends LynxElement {
     // The browser's canvas takes any quality, as the spec has it, and
     // ignores one that isn't a number from 0 to 1: its types say number.
     if (__WEB__) return this.#dom.toDataURL(type, quality as number);
-    const encoded = this.#encode(type, quality);
-    return encoded ? `data:${encoded.type};base64,${encoded.base64}` : 'data:,';
+    return this.#surface.toDataURL(type, quality);
   }
 
   /**
@@ -302,18 +226,20 @@ export class LynxCanvasElement extends LynxElement {
    * otherwise); any type other than `image/jpeg` and `image/png` gives a
    * PNG, as browsers fall back to.
    *
-   * It reads the drawing buffer as it is when it's called, as a browser
-   * does. WebGL clears the drawing buffer once a frame has been shown, so
-   * call it in the task that drew (right after three.js's `render()`), or
-   * make the context with `preserveDrawingBuffer: true`; called later, it
-   * gives a transparent image. JPEGs have no transparency: transparent
-   * pixels come out black, as in browsers.
+   * It reads the canvas as it is when it's called, as a browser does. A 2D
+   * canvas keeps what's drawn on it. WebGL clears the drawing buffer once a
+   * frame has been shown, so call it in the task that drew (right after
+   * three.js's `render()`), or make the context with
+   * `preserveDrawingBuffer: true`; called later, it gives a transparent
+   * image. JPEGs have no transparency: transparent pixels come out black, as
+   * in browsers.
    *
    * The shell reads and encodes the pixels, so the call blocks the main
    * thread while it does (tens of milliseconds for a photo); the Blob comes
-   * back later. The callback gets `null` when there's nothing to encode: a
-   * canvas without a WebGL context, one whose context is lost, or a host
-   * without `<canvas>`, such as Lynx Explorer.
+   * back later. A canvas without a context encodes as a transparent image
+   * of its size, as in a browser. The callback gets `null` when there's
+   * nothing to encode: a canvas with no width or height, one whose context
+   * is lost, or a host without `<canvas>`, such as Lynx Explorer.
    */
   toBlob(
     callback: (blob: Blob | null) => void,
@@ -336,54 +262,6 @@ export class LynxCanvasElement extends LynxElement {
       );
       return;
     }
-    // Read now, so the image is of the canvas as it is at the call, and
-    // handed over on a later task, as browsers do.
-    const encoded = this.#encode(type, quality);
-    setTimeout(() => {
-      callback(
-        encoded
-          ? (new Blob([base64ToBytes(encoded.base64)], {
-              type: encoded.type,
-            }) as Blob)
-          : null,
-      );
-    }, 0);
-  }
-
-  /**
-   * The drawing buffer as an image file, or null when there's nothing to
-   * encode.
-   */
-  #encode(
-    type: string | undefined,
-    quality: unknown,
-  ): { base64: string; type: string } | null {
-    // MIME types are matched without case, and an unknown one means PNG.
-    // A browser turns any type into a string first.
-    const mime =
-      String(type ?? '').toLowerCase() === 'image/jpeg'
-        ? 'image/jpeg'
-        : 'image/png';
-    const jpegQuality =
-      typeof quality === 'number' && quality >= 0 && quality <= 1
-        ? quality
-        : DEFAULT_JPEG_QUALITY;
-    const context = this.#context;
-    if (
-      this.#width === 0 ||
-      this.#height === 0 ||
-      !context ||
-      context.isContextLost()
-    ) {
-      return null;
-    }
-    const encoded = context.encodeDrawingBuffer(mime, jpegQuality);
-    if (encoded.base64 === undefined) {
-      console.warn(
-        `[angular-lynx] The canvas couldn't be encoded: ${encoded.error}`,
-      );
-      return null;
-    }
-    return { base64: encoded.base64, type: encoded.type ?? mime };
+    this.#surface.toBlob(callback, type, quality);
   }
 }

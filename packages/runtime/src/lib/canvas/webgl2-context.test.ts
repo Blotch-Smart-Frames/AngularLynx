@@ -3,6 +3,7 @@ import {
   createFakeWebGLBridge,
   type FakeWebGLBridge,
 } from '../testing/fake-webgl-bridge';
+import { CANVAS_SOURCE } from './canvas-source';
 import { NATIVE_IMAGE } from './native-image';
 import { WEBGL2_CONSTANTS as GL } from './webgl-constants';
 import { OP } from './webgl-ops';
@@ -1646,6 +1647,198 @@ describe('textures', () => {
       new Uint8Array([200, 128, 0, 0]),
     );
     expect((await flushed()).at(-1)).toEqual(words([100, 128, 0, 0]));
+  });
+
+  it('uploads a canvas by its id, read as it is now', () => {
+    const flush = vi.fn();
+    const canvas = {
+      width: 8,
+      height: 6,
+      [CANVAS_SOURCE]: {
+        canvasId: 'c-2',
+        width: 8,
+        height: 6,
+        readable: true,
+        flush,
+      },
+    };
+    gl.pixelStorei(GL.UNPACK_FLIP_Y_WEBGL, true);
+    const before = bridge.batches.length;
+    gl.texImage2D(GL.TEXTURE_2D, 0, GL.RGBA, GL.RGBA, GL.UNSIGNED_BYTE, canvas);
+    // The canvas's calls go first, and the upload at once, before the canvas
+    // draws more.
+    expect(flush).toHaveBeenCalledOnce();
+    expect(bridge.batches.length).toBe(before + 1);
+    expect(bridge.batches.at(-1)!.slice(-10)).toEqual([
+      OP.texImage2D,
+      GL.TEXTURE_2D,
+      0,
+      GL.RGBA,
+      8,
+      6,
+      0,
+      GL.RGBA,
+      GL.UNSIGNED_BYTE,
+      { canvas: 'c-2', flipY: true, premultiply: false },
+    ]);
+  });
+
+  it('refuses an image while a PIXEL_UNPACK_BUFFER is bound, and a canvas in 3D', () => {
+    const canvas = {
+      width: 2,
+      height: 2,
+      [CANVAS_SOURCE]: {
+        canvasId: 'c-3',
+        width: 2,
+        height: 2,
+        readable: true,
+        flush: vi.fn(),
+      },
+    };
+    const before = bridge.batches.length;
+    // A canvas is one image: it can't fill a 3D upload's layers.
+    gl.texImage3D(
+      GL.TEXTURE_3D,
+      0,
+      GL.RGBA,
+      2,
+      2,
+      2,
+      0,
+      GL.RGBA,
+      GL.UNSIGNED_BYTE,
+      canvas,
+    );
+    expect(gl.getError()).toBe(GL.INVALID_OPERATION);
+    gl.bindBuffer(GL.PIXEL_UNPACK_BUFFER, gl.createBuffer());
+    gl.texImage2D(GL.TEXTURE_2D, 0, GL.RGBA, GL.RGBA, GL.UNSIGNED_BYTE, canvas);
+    expect(gl.getError()).toBe(GL.INVALID_OPERATION);
+    gl.texSubImage2D(
+      GL.TEXTURE_2D,
+      0,
+      0,
+      0,
+      1,
+      1,
+      GL.RGBA,
+      GL.UNSIGNED_BYTE,
+      new Uint8Array(4),
+    );
+    expect(gl.getError()).toBe(GL.INVALID_OPERATION);
+    // None of them was sent, nor the canvas read.
+    gl.flush();
+    expect(canvas[CANVAS_SOURCE].flush).not.toHaveBeenCalled();
+    expect(
+      bridge.batches
+        .slice(before)
+        .flat()
+        .filter(
+          (item) =>
+            item === OP.texImage2D ||
+            item === OP.texSubImage2D ||
+            item === OP.texImage3D,
+        ),
+    ).toEqual([]);
+  });
+
+  it('refuses part of an image outside it, and an image in 3D', () => {
+    const picture = {
+      [NATIVE_IMAGE]: { id: 5, width: 4, height: 2, bakedOptions: false },
+    };
+    const before = bridge.batches.length;
+    // The unpack skips and the size name a rectangle past the image's edge.
+    gl.pixelStorei(GL.UNPACK_SKIP_PIXELS, 2);
+    gl.pixelStorei(GL.UNPACK_SKIP_ROWS, 1);
+    gl.texImage2D(
+      GL.TEXTURE_2D,
+      0,
+      GL.RGBA,
+      3,
+      1,
+      0,
+      GL.RGBA,
+      GL.UNSIGNED_BYTE,
+      picture,
+    );
+    expect(gl.getError()).toBe(GL.INVALID_OPERATION);
+    gl.texImage2D(
+      GL.TEXTURE_2D,
+      0,
+      GL.RGBA,
+      2,
+      2,
+      0,
+      GL.RGBA,
+      GL.UNSIGNED_BYTE,
+      picture,
+    );
+    expect(gl.getError()).toBe(GL.INVALID_OPERATION);
+    gl.texImage3D(
+      GL.TEXTURE_3D,
+      0,
+      GL.RGBA,
+      1,
+      1,
+      2,
+      0,
+      GL.RGBA,
+      GL.UNSIGNED_BYTE,
+      picture,
+    );
+    expect(gl.getError()).toBe(GL.INVALID_OPERATION);
+    // A negative skip is refused, and the last one kept.
+    gl.pixelStorei(GL.UNPACK_SKIP_PIXELS, -1);
+    gl.pixelStorei(GL.UNPACK_SKIP_ROWS, -1);
+    expect(gl.getError()).toBe(GL.INVALID_VALUE);
+    // A fraction is a GLint first: -0.5 is 0, which is kept and sent.
+    gl.pixelStorei(GL.UNPACK_SKIP_ROWS, -0.5);
+    expect(gl.getError()).toBe(GL.NO_ERROR);
+    gl.flush();
+    const sentNow = bridge.batches.flat();
+    const at = sentNow.lastIndexOf(GL.UNPACK_SKIP_ROWS);
+    expect(sentNow.slice(at - 1, at + 2)).toEqual([
+      OP.pixelStorei,
+      GL.UNPACK_SKIP_ROWS,
+      0,
+    ]);
+    gl.pixelStorei(GL.UNPACK_SKIP_ROWS, 1);
+    // Inside it, it goes.
+    gl.texImage2D(
+      GL.TEXTURE_2D,
+      0,
+      GL.RGBA,
+      2,
+      1,
+      0,
+      GL.RGBA,
+      GL.UNSIGNED_BYTE,
+      picture,
+    );
+    gl.flush();
+    expect(
+      bridge.batches
+        .slice(before)
+        .flat()
+        .filter((item) => item === OP.texImage2D || item === OP.texImage3D),
+    ).toEqual([OP.texImage2D]);
+  });
+
+  it('says a video can’t be uploaded yet', () => {
+    expect(() =>
+      gl.texImage2D(
+        GL.TEXTURE_2D,
+        0,
+        GL.RGBA,
+        1,
+        1,
+        0,
+        GL.RGBA,
+        GL.UNSIGNED_BYTE,
+        {
+          tagName: 'video',
+        },
+      ),
+    ).toThrow(/<video> can not be a texture source on Lynx yet/);
   });
 
   it('refuses a source it can’t upload', () => {

@@ -103,7 +103,7 @@ Content projected into a `<text>` host follows `<text>`'s rules: raw text, and n
 
 ### Raw text in `<view>` gets an anonymous `<text>`
 
-Lynx draws text only inside `<text>`, so the runtime draws raw text whose parent is a `<view>` (a `<div>`, `<li>`, component host or any other element that isn't a `<text>`) in an anonymous `<text>` (class `_ngtext`), with the HTML inline tags beside it when the parent lays out as a block. Angular never sees it: `parentNode()` of the text is the `<view>`. It reads the text styles its ancestors' classes set (see [lynx-elements.md](lynx-elements.md)). A Lynx element beside it (`<view>Hi <text>there</text></view>`) still ends the line: "Hi" stacks above "there". While its text is blank (an empty `{{ name() }}`), the anonymous `<text>` is hidden, so it takes no room. The grouping is settled at the end of each change detection, before the flush.
+Lynx draws text only inside `<text>`, so the runtime draws raw text whose parent is a `<view>` (a `<div>`, `<li>`, component host or any other element that isn't a `<text>`) in an anonymous `<text>` (class `_ngtext`), with the HTML inline tags beside it when the parent lays out as a block. Angular never sees it: `parentNode()` of the text is the `<view>`. Lynx's CSS sees it, as the inline tags' parent: the build gives a child combinator a second selector through it, so `.row > b` still styles the `<b>` in `<div class="row">Total: <b>12</b></div>`. It reads the text styles its ancestors' classes set (see [lynx-elements.md](lynx-elements.md)). A Lynx element beside it (`<view>Hi <text>there</text></view>`) still ends the line: "Hi" stacks above "there". While its text is blank (an empty `{{ name() }}`), the anonymous `<text>` is hidden, so it takes no room. The grouping is settled at the end of each change detection, before the flush.
 
 ### Default `font-size` is 14px (not 16px), and so is `1rem`
 
@@ -247,9 +247,9 @@ A `<webview src>` loads only in Chrome and Edge there, without the cookies the s
 
 Inside a transformed (or CSS-`zoom`ed) `<lynx-view>`, `getBoundingClientRect()` returns the scaled box. Lynx for Web's waterfall `<list>` places its items by those measurements, so in a view scaled to 0.8 the items overlap by a fifth. Size the view at the width you want and let it lay out at that size. `innerWidth` and `innerHeight` read the view's layout size, so they're right either way.
 
-### No 2D canvas, and WebGL only in built apps
+### `<canvas>` only in built apps
 
-`<canvas>` has only a WebGL2 context, and only in the `--platform ios|android` apps (`ng build` and `ng serve`) and the web preview: Lynx Explorer's `getContext('webgl2')` is `null`. Libraries that draw with `getContext('2d')`, such as most chart libraries, don't work. See "3D with `<canvas>`" in [lynx-elements.md](lynx-elements.md).
+`<canvas>` has its 2D and WebGL2 contexts only in the `--platform ios|android` apps (`ng build` and `ng serve`) and the web preview: in Lynx Explorer, `getContext('2d')` and `getContext('webgl2')` are `null`. See "2D with `<canvas>`" and "3D with `<canvas>`" in [lynx-elements.md](lynx-elements.md).
 
 ### `<video>` in the web preview only plays and pauses
 
@@ -458,3 +458,5 @@ The CSS pipeline minifies `rgba(92, 94, 102, 1)` to `#5c5e66`, and a later token
 ### `this.#field?.()[key]` throws when the field is unset
 
 The Lynx bundle compiles first-party `#private` fields to properties, and that pass puts the `[key]` outside the optional chain's short-circuit, so `this.#onColors?.()[scheme]` throws `Cannot read properties of undefined` instead of giving `undefined`. Split it: `const fn = this.#onColors; const colors = fn ? fn()[scheme] : undefined;`. A local constant in the same shape compiles correctly. The same pass calls `other?.#method()` outside the short-circuit and without its receiver, so it throws for a nullish `other` and runs the method with `this` undefined for any other: write `other == null ? undefined : other.#method()`.
+
+A private member read on another one (`this.#parent.#depth()`, `node.#next.#label = v`) works: the build splits the chain so the pass compiles both. Inside an optional chain, `a?.#b.#c` gives `undefined` when `a.#b` is nullish, where the web throws a TypeError.

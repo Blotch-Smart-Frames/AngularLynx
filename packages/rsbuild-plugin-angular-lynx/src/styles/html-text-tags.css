@@ -80,15 +80,45 @@ samp {
  * text whose size nothing sets.
  *
  * The rule reads the variable it would be copied to, so the text inheritance
- * step makes no copy (text-inheritance.ts), and text inside a `<small>` takes
- * the size around the `<small>`: `<small><b>bold</b></small>` draws the
- * `<b>` at the full size. A copy can't hold the smaller size: Lynx doesn't
- * resolve a `var()` inside a `calc()` in a custom property.
+ * step makes no copy (text-inheritance.ts), and a copy couldn't hold the
+ * smaller size anyway: Lynx doesn't resolve a `var()` inside a `calc()` in a
+ * custom property. So the style index marks the rule (SMALLER_FLAG in
+ * style-index.ts), and the runtime gives the text inside the tag one of the
+ * classes below, by how many of these tags it's in: `<small>a <b>b</b></small>`
+ * draws the `<b>` at the `<small>`'s size, and a `<small>` in a `<small>`
+ * smaller again, each dividing by 1.2 once more, as Chrome does (issue
+ * #663). The runtime can't write the size inline instead: Lynx resolves a
+ * `var()` in a `calc()` only in a style sheet. Past the fifth level, the
+ * text stays at the fifth's size.
+ *
+ * The classes come after the tags' rule, so `._ngsmaller-2` wins over it on
+ * a `<small>` in a `<small>`. The runtime gives none to an element whose own
+ * rules set its size, which then passes it on as any size does.
  */
 small,
 sub,
 sup {
   font-size: calc(var(--angular-lynx-font-size, 14px) / 1.2);
+}
+
+._ngsmaller-1 {
+  font-size: calc(var(--angular-lynx-font-size, 14px) / 1.2);
+}
+
+._ngsmaller-2 {
+  font-size: calc(var(--angular-lynx-font-size, 14px) / 1.44);
+}
+
+._ngsmaller-3 {
+  font-size: calc(var(--angular-lynx-font-size, 14px) / 1.728);
+}
+
+._ngsmaller-4 {
+  font-size: calc(var(--angular-lynx-font-size, 14px) / 2.0736);
+}
+
+._ngsmaller-5 {
+  font-size: calc(var(--angular-lynx-font-size, 14px) / 2.48832);
 }
 
 /*
@@ -99,6 +129,14 @@ sup {
  * in the element's own `em`, which is the parent's size divided by 1.2 (see
  * above). A length raises the text by that much, as on the web.
  * `vertical-align` isn't inherited, so it has no copy.
+ *
+ * A browser moves the text inside the tag with it, and a `<sup>` in a
+ * `<sup>` by both. Lynx doesn't: on iOS the tags inside stayed on the line,
+ * and on iOS and Android an inner tag's offset replaces the outer's. So the
+ * style index flags these two distances (RAISED_FLAG and LOWERED_FLAG in
+ * style-index.ts), and the runtime gives each HTML text tag inside one the
+ * whole distance, in its own `em` (baselineShiftFor in its text-flow.ts,
+ * issue #682). It has these values too, which a test keeps the same.
  */
 sub {
   vertical-align: -0.24em;

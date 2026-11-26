@@ -1,6 +1,16 @@
 import { writePendingClasses } from '../lynx-element/class-writes';
 import { type LayoutRect, toDOMRect } from '../lynx-element/layout';
+import {
+  LynxCanvasGradient,
+  LynxCanvasPattern,
+  LynxCanvasRenderingContext2D,
+  LynxImageData,
+  LynxTextMetrics,
+} from './canvas-2d-context';
+import { CANVAS_SOURCE } from './canvas-source';
+import { LynxDetachedCanvas, LynxOffscreenCanvas } from './detached-canvas';
 import { createImageBitmap, LynxImageBitmap, LynxImageElement } from './image';
+import { LynxPath2D } from './path';
 
 /**
  * A template's element: a LynxElement, told apart by shape rather than class,
@@ -41,8 +51,13 @@ const isLynxElement = (value: unknown): value is LayoutElement =>
  *   pointer listeners off the element its events connect to only if it's an
  *   `HTMLElement`, so with no instances they stayed on every canvas's host,
  *   holding its scene, after the canvas had gone.
- * - `HTMLCanvasElement`: a class nothing is an instance of, for the checks
- *   that only need the class to exist.
+ * - `HTMLCanvasElement`: a template's `<canvas>` and a canvas made with
+ *   `document.createElement('canvas')` are instances of it.
+ * - `document.createElement('canvas')`, `OffscreenCanvas`, and the 2D
+ *   context's classes (`CanvasRenderingContext2D`, `CanvasGradient`,
+ *   `CanvasPattern`, `TextMetrics`, `ImageData`, `Path2D`): see
+ *   canvas-2d-context.ts and detached-canvas.ts. Chart and image libraries,
+ *   and three.js's text textures, draw on a canvas that's never in the page.
  * - `Image`, `HTMLImageElement`, `ImageBitmap`, `createImageBitmap()`, and
  *   `document.createElement('img')`: see image.ts.
  * - `devicePixelRatio`: from Lynx's SystemInfo, so a 3D scene renders at the
@@ -67,6 +82,14 @@ export const installCanvasGlobals = (target: Record<string, any>): void => {
   install('ProgressEvent', LynxProgressEvent);
   install('HTMLElement', LynxHTMLElement);
   install('HTMLCanvasElement', LynxHTMLCanvasElement);
+  install('OffscreenCanvas', LynxOffscreenCanvas);
+  install('CanvasRenderingContext2D', LynxCanvasRenderingContext2D);
+  install('OffscreenCanvasRenderingContext2D', LynxCanvasRenderingContext2D);
+  install('CanvasGradient', LynxCanvasGradient);
+  install('CanvasPattern', LynxCanvasPattern);
+  install('TextMetrics', LynxTextMetrics);
+  install('ImageData', LynxImageData);
+  install('Path2D', LynxPath2D);
   install('Image', LynxImageElement);
   install('HTMLImageElement', LynxImageElement);
   install('ImageBitmap', LynxImageBitmap);
@@ -164,23 +187,34 @@ class LynxProgressEvent {
  */
 class LynxHTMLElement {
   static [Symbol.hasInstance](value: unknown): boolean {
-    return isLynxElement(value);
+    // A canvas made with document.createElement() is an element too.
+    return isLynxElement(value) || value instanceof LynxDetachedCanvas;
   }
 }
 
 class LynxHTMLCanvasElement {
-  static [Symbol.hasInstance](): boolean {
-    return false;
+  static [Symbol.hasInstance](value: unknown): boolean {
+    return (
+      typeof value === 'object' &&
+      value !== null &&
+      CANVAS_SOURCE in value &&
+      !(value instanceof LynxOffscreenCanvas)
+    );
   }
 }
 
 /**
- * `document.createElement()` on Lynx's main thread: images only.
+ * `document.createElement()` on Lynx's main thread: images and canvases,
+ * which web code makes to draw on without showing them.
  */
-const createDetachedElement = (name: string): LynxImageElement => {
-  if (name.toLowerCase() === 'img') return new LynxImageElement();
+const createDetachedElement = (
+  name: string,
+): LynxImageElement | LynxDetachedCanvas => {
+  const tag = name.toLowerCase();
+  if (tag === 'img') return new LynxImageElement();
+  if (tag === 'canvas') return new LynxDetachedCanvas();
   throw new Error(
-    `document.createElement('${name}') is not available on Lynx: elements come from templates. Put a <canvas> in a template to draw with WebGL.`,
+    `document.createElement('${name}') is not available on Lynx: elements come from templates.`,
   );
 };
 

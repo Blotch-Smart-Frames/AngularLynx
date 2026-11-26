@@ -1,5 +1,15 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { LAYOUT_FLAG, styleIndexOf, styleIndexStatement } from './style-index';
+import {
+  LAYOUT_FLAG,
+  LOWERED_FLAG,
+  RAISED_FLAG,
+  SMALLER_FLAG,
+  VERTICAL_ALIGN_FLAG,
+  styleIndexOf,
+  styleIndexStatement,
+} from './style-index';
 
 const COLOR = 1;
 const FONT_SIZE = 1 << 2;
@@ -133,6 +143,37 @@ describe('styleIndexOf', () => {
     ['display: none', 0],
     ['linear-orientation: vertical', 0],
     ['--angular-lynx-color: red', 0],
+    // The build's <small> rule (issue #663): a size read from the parent's
+    // variable, which has no copy, gets SMALLER_FLAG in place of FONT_SIZE.
+    [
+      'font-size: calc(var(--angular-lynx-font-size, 14px) / 1.2)',
+      SMALLER_FLAG,
+    ],
+    [
+      'font-size: calc(var( --angular-lynx-font-size,14px ) /1.2 )',
+      SMALLER_FLAG,
+    ],
+    // Another divisor isn't one the runtime can divide by again.
+    ['font-size: calc(var(--angular-lynx-font-size, 14px) / 2)', FONT_SIZE],
+    ['font-size: calc(var(--angular-lynx-font-size, 14px) / 1.25)', FONT_SIZE],
+    ['font-size: calc(var(--a) / 1.2)', FONT_SIZE],
+    // Nor is another fallback, or none: where no ancestor sets the variable,
+    // the runtime's classes divide 14px again.
+    ['font-size: calc(var(--angular-lynx-font-size, 24px) / 1.2)', FONT_SIZE],
+    ['font-size: calc(var(--angular-lynx-font-size) / 1.2)', FONT_SIZE],
+    // Nor is a size that adds to the variable before dividing it.
+    [
+      'font-size: calc((var(--angular-lynx-font-size, 14px) + 12px) / 1.2)',
+      FONT_SIZE,
+    ],
+    ['font-size: calc(var(--angular-lynx-font-size) * 2 / 1.2)', FONT_SIZE],
+    ['font-size: var(--angular-lynx-font-size-x)', FONT_SIZE],
+    // The build's <sup> and <sub> distances (issue #682), and any other.
+    ['vertical-align: 0.4em', RAISED_FLAG],
+    ['vertical-align: -0.24em', LOWERED_FLAG],
+    ['vertical-align: 0.5em', VERTICAL_ALIGN_FLAG],
+    ['vertical-align: super', VERTICAL_ALIGN_FLAG],
+    ['vertical-align: baseline', VERTICAL_ALIGN_FLAG],
   ])('counts %s as %s', (declaration, flags) => {
     expect(styleIndexOf([`.a { ${declaration} }`]).rules).toEqual(
       flags ? [[['a'], flags]] : [],
@@ -155,6 +196,101 @@ describe('styleIndexStatement', () => {
   it('hands the index to the runtime as a global', () => {
     expect(styleIndexStatement({ rules: [[['a'], 1]] })).toBe(
       'globalThis["__angularLynxStyleIndex"]={"rules":[[["a"],1]]};',
+    );
+  });
+});
+
+describe('SMALLER_FLAG', () => {
+  // The runtime reads the bit, so the two must agree (both sit above the
+  // text properties' bits and LAYOUT_FLAG).
+  it("is the runtime's bit", () => {
+    const runtime = fs.readFileSync(
+      path.join(
+        import.meta.dirname,
+        '../../runtime/src/lib/lynx-element/text-flow.ts',
+      ),
+      'utf-8',
+    );
+    expect(runtime).toContain('export const SMALLER_FLAG = LAYOUT_FLAG << 1;');
+    expect(SMALLER_FLAG).toBe(LAYOUT_FLAG << 1);
+  });
+
+  // The runtime gives text inside nested <small>s a class of the build's for
+  // its level, up to its MAX_SMALLER_LEVELS (issue #663). Each must be in the
+  // build's stylesheet, dividing by 1.2 once for each level.
+  it('has a class for each level of <small> the runtime names', () => {
+    const runtime = fs.readFileSync(
+      path.join(
+        import.meta.dirname,
+        '../../runtime/src/lib/lynx-element/text-flow.ts',
+      ),
+      'utf-8',
+    );
+    const max = Number(/MAX_SMALLER_LEVELS = (\d+);/.exec(runtime)![1]);
+    const prefix = /SMALLER_CLASS_PREFIX = '([^']+)'/.exec(runtime)![1];
+    const css = fs.readFileSync(
+      path.join(import.meta.dirname, 'styles/html-text-tags.css'),
+      'utf-8',
+    );
+    const classes = [
+      ...css.matchAll(/\.(_ngsmaller-\d+) \{\s*font-size: ([^;]+);/g),
+    ].map(([, name, value]) => [name, value]);
+    expect(classes).toEqual(
+      Array.from({ length: max }, (_, i) => [
+        `${prefix}${i + 1}`,
+        `calc(var(--angular-lynx-font-size, 14px) / ${Number(
+          (1.2 ** (i + 1)).toFixed(5),
+        )})`,
+      ]),
+    );
+  });
+});
+
+describe('the vertical-align flags', () => {
+  const runtime = (): string =>
+    fs.readFileSync(
+      path.join(
+        import.meta.dirname,
+        '../../runtime/src/lib/lynx-element/text-flow.ts',
+      ),
+      'utf-8',
+    );
+
+  // The runtime reads the bits, so the two must agree.
+  it("are the runtime's bits", () => {
+    const source = runtime();
+    expect(source).toContain('export const RAISED_FLAG = SMALLER_FLAG << 1;');
+    expect(source).toContain('export const LOWERED_FLAG = RAISED_FLAG << 1;');
+    expect(source).toContain(
+      'export const VERTICAL_ALIGN_FLAG = LOWERED_FLAG << 1;',
+    );
+    expect(RAISED_FLAG).toBe(SMALLER_FLAG << 1);
+    expect(LOWERED_FLAG).toBe(RAISED_FLAG << 1);
+    expect(VERTICAL_ALIGN_FLAG).toBe(LOWERED_FLAG << 1);
+  });
+
+  // The runtime moves the tags inside a <sup> or <sub> by the distances in
+  // the build's stylesheet (issue #682), so they must be the same.
+  it("move the tags by the stylesheet's distances", () => {
+    const source = runtime();
+    const css = fs.readFileSync(
+      path.join(import.meta.dirname, 'styles/html-text-tags.css'),
+      'utf-8',
+    );
+    const distance = (tag: string): string =>
+      new RegExp(`^${tag} \\{\\s*vertical-align: ([^;]+);`, 'm').exec(css)![1]!;
+    expect(distance('sup')).toBe(
+      `${/const RAISED_EM = ([-\d.]+);/.exec(source)![1]}em`,
+    );
+    expect(distance('sub')).toBe(
+      `${/const LOWERED_EM = ([-\d.]+);/.exec(source)![1]}em`,
+    );
+    // Merged with their smaller size's rule, as both name the tag.
+    expect(styleIndexOf([css]).rules).toEqual(
+      expect.arrayContaining([
+        [['<sup>'], SMALLER_FLAG | RAISED_FLAG],
+        [['<sub>'], SMALLER_FLAG | LOWERED_FLAG],
+      ]),
     );
   });
 });

@@ -4,8 +4,14 @@ import {
   type FakeWebGLBridge,
 } from '../testing/fake-webgl-bridge';
 import type { ElementRef } from '../types/lynx';
+import { createFakeCanvas2DBridge } from '../testing/fake-canvas-2d-bridge';
+import { LynxCanvasRenderingContext2D } from './canvas-2d-context';
 import { LynxCanvasElement } from './canvas-element';
-import { setWebGLBridgeForTesting } from './webgl-bridge';
+import { canvasSourceOf } from './canvas-source';
+import {
+  setCanvas2DBridgeForTesting,
+  setWebGLBridgeForTesting,
+} from './webgl-bridge';
 import { OP } from './webgl-ops';
 import { LynxWebGL2RenderingContext } from './webgl2-context';
 
@@ -472,5 +478,38 @@ describe('LynxCanvasElement on Lynx for Web', () => {
     );
     canvas.toBlob(callback);
     expect(callback).toHaveBeenLastCalledWith(null);
+  });
+});
+
+describe('LynxCanvasElement with a 2D context', () => {
+  afterEach(() => {
+    setCanvas2DBridgeForTesting(undefined);
+  });
+
+  it('makes a 2D context for its view, and is drawn as an image', async () => {
+    const bridge2D = createFakeCanvas2DBridge();
+    setCanvas2DBridgeForTesting(bridge2D);
+    const canvas = new LynxCanvasElement({} as ElementRef);
+    canvas.setAttribute('width', '40');
+    const context = canvas.getContext('2d') as LynxCanvasRenderingContext2D;
+    expect(context).toBeInstanceOf(LynxCanvasRenderingContext2D);
+    expect(context.canvas).toBe(canvas);
+    expect(bridge2D.create2D).toHaveBeenCalledWith(
+      expect.any(Number),
+      canvas.canvasId,
+      { alpha: true, width: 40, height: 150 },
+    );
+    expect(canvas.getContext('webgl2')).toBeNull();
+    expect(canvasSourceOf(canvas)).toMatchObject({
+      canvasId: canvas.canvasId,
+      width: 40,
+      readable: true,
+    });
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, 'image/jpeg'),
+    );
+    expect(blob?.type).toBe('image/jpeg');
+    canvas.releaseContext();
+    expect(bridge2D.destroy2D).toHaveBeenCalledOnce();
   });
 });

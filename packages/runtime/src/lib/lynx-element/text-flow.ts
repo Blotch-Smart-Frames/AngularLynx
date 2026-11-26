@@ -78,6 +78,127 @@ export const ALL_TEXT_PROPERTIES = (1 << INHERITED_TEXT_PROPERTIES.length) - 1;
 export const LAYOUT_FLAG = 1 << INHERITED_TEXT_PROPERTIES.length;
 
 /**
+ * The bit in a style index entry for a rule whose `font-size` makes the size
+ * around the element smaller, reading it from the parent's variable: the
+ * build's `<small>`, `<sub>` and `<sup>` rule, `calc(var(--angular-lynx-
+ * font-size, 14px) / 1.2)`. Such a rule has no copy to pass its size to the
+ * text inside (a copy would refer to itself), so the index gives it this bit
+ * instead of the `font-size` one, which says a copy passes the size on, and
+ * the runtime gives the text inside a class that divides it again (see
+ * smallerClassFor). Above LAYOUT_FLAG, as in the build plugin's
+ * style-index.ts.
+ */
+export const SMALLER_FLAG = LAYOUT_FLAG << 1;
+
+/**
+ * The bits in a style index entry for a rule that moves its text off the
+ * baseline with a `vertical-align` length: RAISED_FLAG for the build's
+ * `<sup>` rule, `0.4em`, LOWERED_FLAG for its `<sub>` rule, `-0.24em`, and
+ * VERTICAL_ALIGN_FLAG for any other value, by a distance the runtime doesn't
+ * know. LynxElement gives the HTML text tags inside a `<sub>` or `<sup>`
+ * the whole distance from them (see baselineShiftFor). Above SMALLER_FLAG,
+ * as in the build plugin's style-index.ts.
+ */
+export const RAISED_FLAG = SMALLER_FLAG << 1;
+export const LOWERED_FLAG = RAISED_FLAG << 1;
+export const VERTICAL_ALIGN_FLAG = LOWERED_FLAG << 1;
+
+/**
+ * What a rule with RAISED_FLAG or LOWERED_FLAG moves its text by, in the
+ * element's own `em`: the build's `vertical-align` for `<sup>` and `<sub>`
+ * (styles/html-text-tags.css in the build plugin).
+ */
+const RAISED_EM = 0.4;
+const LOWERED_EM = -0.24;
+
+/**
+ * How far a browser moves the text of an HTML text tag off the line's
+ * baseline, in the tag's own `em`, from its rules' flags and those of the
+ * HTML text tags above it, nearest first (`chain[0]` is the tag's own), up
+ * to the nearest whose rules set the size with a copy. Null when it can't
+ * tell, or no tag above it moves it.
+ *
+ * A browser moves an inline box relative to its parent's baseline, so the
+ * text inside a `<sup>` rises with it, and a `<sup>` in a `<sup>` rises by
+ * both. Lynx doesn't: on iOS a `vertical-align` moves only the text of the
+ * `<text>` that has it, so in `x<sup>n<b>2</b></sup>` the "2" stayed on the
+ * line, and on iOS and Android an inner `<text>`'s offset replaces the one
+ * around it (issue #682). Each offset is in the element's own `em`, so an
+ * outer tag's counts for more in a tag that's smaller than it: 1.2 times for
+ * each `<small>`, `<sub>` or `<sup>` between them (see smallerClassFor),
+ * past which MAX_SMALLER_LEVELS keeps the text the same size.
+ *
+ * It can't tell when the app sets a `vertical-align` of its own on one of
+ * them (VERTICAL_ALIGN_FLAG, or both RAISED_FLAG and LOWERED_FLAG), or a size
+ * of its own (FONT_SIZE_FLAG) on the tag or one between it and a tag that
+ * moves it, whose distance would then need measuring against that size. The
+ * caller adds those flags for the tags' inline styles, which the index
+ * doesn't see.
+ */
+export const baselineShiftFor = (chain: readonly number[]): number | null => {
+  const levels = chain.filter((flags) => flags & SMALLER_FLAG).length;
+  const ownLevel = Math.min(levels, MAX_SMALLER_LEVELS);
+  let shift = 0;
+  // Whether a tag above moves it: a tag that moves alone has its own rule,
+  // which draws it where a browser does.
+  let moved = false;
+  // Whether a tag from here down sets its own size, so the distances from
+  // here up can't be measured in the first tag's em.
+  let sized = false;
+  let below = 0;
+  for (const [index, flags] of chain.entries()) {
+    if (flags & VERTICAL_ALIGN_FLAG) return null;
+    // Both distances: an app's rule for the tag sets the other one, and the
+    // index can't tell which wins.
+    if (flags & RAISED_FLAG && flags & LOWERED_FLAG) return null;
+    if (flags & FONT_SIZE_FLAG) sized = true;
+    const em =
+      flags & RAISED_FLAG ? RAISED_EM : flags & LOWERED_FLAG ? LOWERED_EM : 0;
+    if (em && index > 0) {
+      if (sized) return null;
+      moved = true;
+    }
+    if (em) {
+      const level = Math.min(levels - below, MAX_SMALLER_LEVELS);
+      shift += em * 1.2 ** (ownLevel - level);
+    }
+    if (flags & SMALLER_FLAG) below++;
+  }
+  // Rounded, so the same distance always writes the same style.
+  return moved ? Math.round(shift * 10000) / 10000 : null;
+};
+
+/** The `font-size` bit in the style index. */
+export const FONT_SIZE_FLAG =
+  1 << INHERITED_TEXT_PROPERTIES.indexOf('font-size');
+
+/**
+ * The most levels of `<small>`, `<sub>` and `<sup>` the build has a class
+ * for (see smallerClassFor). Text deeper than that draws at this level's
+ * size, already under half the size around the first tag.
+ */
+export const MAX_SMALLER_LEVELS = 5;
+
+/** The prefix of the classes smallerClassFor names. */
+export const SMALLER_CLASS_PREFIX = '_ngsmaller-';
+
+/**
+ * The class that draws text inside `levels` `<small>`, `<sub>` or `<sup>`
+ * tags below the nearest ancestor that passes its size on: the build's
+ * `._ngsmaller-2 { font-size: calc(var(--angular-lynx-font-size, 14px) /
+ * 1.44) }` and the like (styles/html-text-tags.css in the build plugin),
+ * which divides the size from that ancestor's variable by 1.2 for each, as
+ * Chrome draws nested `smaller` text.
+ *
+ * A class, not an inline `font-size`: Lynx resolves a `var()` inside a
+ * `calc()` in a stylesheet, but not in an inline style, where the text drew
+ * at a few pixels (iOS 27 Simulator, Lynx Explorer, November 2026), though an
+ * inline `var()` alone, or a `calc()` of lengths, works.
+ */
+export const smallerClassFor = (levels: number): string =>
+  `${SMALLER_CLASS_PREFIX}${Math.min(levels, MAX_SMALLER_LEVELS)}`;
+
+/**
  * The inline declarations that give an element the inherited value of each
  * text property not in `ownProperties`, the ones its own rules may set. They
  * go ahead of the app's own inline style, which wins over them. A variable no
@@ -157,7 +278,19 @@ const readIndex = (): IndexedRules | null => {
   for (const [tokens, flags, ancestors = [], inState] of index.rules) {
     const [first, ...rest] = tokens;
     const rule = { rest, flags, ancestors, inState: inState === 1 };
-    if (ancestors.length && flags & ALL_TEXT_PROPERTIES) {
+    // A smaller size's rule counts too: where it applies decides the levels
+    // of <small> an HTML text tag is in (see LynxElement's #sizeChain),
+    // and so does a vertical-align's, which decides how far the tags inside
+    // it move (see baselineShiftFor).
+    if (
+      ancestors.length &&
+      flags &
+        (ALL_TEXT_PROPERTIES |
+          SMALLER_FLAG |
+          RAISED_FLAG |
+          LOWERED_FLAG |
+          VERTICAL_ALIGN_FLAG)
+    ) {
       hasAncestorRules = true;
       for (const [, required] of ancestors) {
         for (const token of required) ancestorTokens.add(token);
@@ -209,6 +342,7 @@ const isRendererClass = (name: string): boolean =>
   name.startsWith('_nghost-') ||
   name.startsWith('_ngtag-') ||
   name.startsWith('_ngattr-') ||
+  name.startsWith(SMALLER_CLASS_PREFIX) ||
   name === ANONYMOUS_TEXT_CLASS ||
   name === INHERITANCE_CLASS ||
   name === LYNX_TEXT_INHERITANCE_CLASS;

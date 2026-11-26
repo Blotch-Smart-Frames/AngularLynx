@@ -719,6 +719,34 @@ The shells register `AngularLynxShell.collectGarbage()` (`ShellModule.swift`, an
 
 ---
 
+## In PrimJS every own property costs each object about 45 bytes, so a field set in the constructor is paid per instance (issue #586)
+
+### What you'd expect (web)
+
+V8 and JavaScriptCore keep a class's fields in the object itself, laid out by a hidden class the instances share: an object with 50 fields is a few hundred bytes, and a field that stays `null` costs a pointer.
+
+### What Lynx does
+
+PrimJS, which runs the main thread, keeps each object's properties in a table of its own. Measured on the iOS 27 Simulator as the growth of the footprint's "Untagged" memory (PrimJS's heap) for 5,000 objects kept alive, made on the main thread at launch:
+
+| Each object                                    | 5,000 of them |
+| ---------------------------------------------- | ------------- |
+| `{ i }`                                        | 0.9 MB        |
+| A class instance with 10 fields set to `null`  | 2.6 MB        |
+| …with 20                                       | 6.6 MB        |
+| …with 55                                       | 12.6 MB       |
+| A one-entry `Map`                              | 0.85 MB       |
+| An array of 30 slots, filled with `push()`     | 3.7 MB        |
+| A `WeakRef` and a `FinalizationRegistry` entry | 1.7 MB        |
+
+So a field costs about 45 bytes for every instance that has it, whatever its value. `LynxElement` had 41 private fields set in its constructor, most of them `null` or `false` until something sets them, and the runtime makes one for every element, text node and anchor: a screen of 5,000 `<view>`s took 56 MB of PrimJS heap, against ReactLynx's 25 MB for the same screen in the same shell (its main thread keeps about 3 KB per element, AngularLynx about 8.7 KB).
+
+### The fix
+
+The build plugin starts each of AngularLynx's packages' private fields whose initializer is a constant (`null`, `false`, `''`, a number), in a class without `extends`, on the class's prototype rather than on each instance (`renamePrivateMethods` in `packages/rsbuild-plugin-angular-lynx/src/private-methods.ts`): an instance gets a property of its own only once the field is written. The 5,000 views took 52 MB with it. In the runtime's own code, keep state an element rarely has out of its constructor: a field that starts as an object (`[]`, `new Map()`) is still made for each instance.
+
+---
+
 ## `<block>` has no native paintable UI — it must be created as a layout-only element, and its children can't be picked apart on teardown
 
 ### What you'd expect (web)
@@ -968,6 +996,8 @@ Text must be wrapped in a `<text>` element (`<x-text>` in AngularLynx). Raw text
 AngularLynx draws such text in an anonymous `<text>` of its own (`LynxElement`'s `#putInTextWrapper`), which Angular never sees, so `<view>Hello</view>` and `<div>Hello</div>` show "Hello" (measured on the iOS 27 Simulator and Android API 34 emulator with Lynx Explorer 4.1, and in the web preview, including `@if` toggles and `@for` reorders of the text). In a parent that lays out as a block, a run of loose text and HTML inline tags (`span`, `a`, `b`…) shares one anonymous `<text>`, so `<div>Hi <b>there</b></div>` is one line; in a flex or grid container each is an item of its own, as on the web (`LynxElement.#regroup`, settled at the end of each change detection). The anonymous `<text>` and the HTML text tags read the text styles their ancestors set through CSS variables the build copies each inheritable declaration to (see "Text styles reach HTML text tags through CSS variables" below).
 
 A `<text>` holding an empty raw-text takes a line of height, where a `<text>` with no children takes none and a browser gives empty or whitespace-only text no box (measured the same way, on iOS and Android). So the anonymous `<text>` is hidden (`display: none; overflow: hidden`) while its text is blank, as an empty `{{ name() }}` is, and an empty interpolation in a `<view>` takes no room, as it didn't before it was wrapped.
+
+The anonymous `<text>` sits between the parent and the inline tags in it, so Lynx's CSS matched a child combinator such as `.row > b { color: red }` to nothing in `<div class="row">Total: <b>12</b></div>`: "12" drew black at the default size, where a browser draws it red (issue #692, measured on the iOS 27 Simulator and in the web preview). The build plugin's `typeSelectorsForLynx` adds a second selector for each child combinator in front of an inline tag, or of a compound that names no tag (`.bold`, `*`), with the anonymous `<text>` between them: `.row > b` also matches as `.row > ._ngtext > ._ngtag-b`. A block inside an inline tag has an anonymous `<text>` of its own, so a selector whose path can cross two (`.outer > a .inner > b`) gets one through both as well. A compound naming any other tag, such as the theme's `view > text`, gets none, since no such rule styles an inline tag on the web. The runtime's style index matching walks up through the anonymous `<text>`, as Lynx does, so it counts the rule as the tag's own wherever Lynx applies it. The second selector is one class more specific than the first, which can let it win against a rule it would lose to on the web, as a rewritten type selector can. A child combinator inside `:is()` or `:not()` gets no second selector.
 
 ```html
 <!-- WRONG — raw text in x-view doesn't render (AngularLynx wraps it) -->
@@ -1640,7 +1670,7 @@ Only `normal`, `bold`, and numeric values `100`–`1000` (integers only) are sup
 
 ### What Lynx does
 
-Lynx's docs say a percentage is relative to the parent's size, but a nested `<text>` with `font-size: 83.333%` inside a `<text>` of 18px drew at about 11.7px, 83% of Lynx's default 14px, and the same inside 24px text (Lynx Explorer 4.1, Android API 34 emulator, November 2026). Lynx inherits no text style without `enableCSSInheritance`, so the parent's size isn't what the unit resolves against. (The build now has Lynx inherit `font-size` by default, issue #685, and with it a `text-[1.5em]` `<text>` in a 30px `<view>` drew at 45px on the iOS 27 Simulator and the Android API 34 emulator. The `<small>` rule below is unchanged.) A `<small>` gets its smaller size from the parent's inheritance variable instead: `calc(var(--angular-lynx-font-size, 14px) / 1.2)` (issue #649). An `em` in another property, such as `vertical-align: 0.4em`, is the element's own size, as on the web.
+Lynx's docs say a percentage is relative to the parent's size, but a nested `<text>` with `font-size: 83.333%` inside a `<text>` of 18px drew at about 11.7px, 83% of Lynx's default 14px, and the same inside 24px text (Lynx Explorer 4.1, Android API 34 emulator, November 2026). Lynx inherits no text style without `enableCSSInheritance`, so the parent's size isn't what the unit resolves against. (The build now has Lynx inherit `font-size` by default, issue #685, and with it a `text-[1.5em]` `<text>` in a 30px `<view>` drew at 45px on the iOS 27 Simulator and the Android API 34 emulator. The `<small>` rule below is unchanged.) A `<small>` gets its smaller size from the parent's inheritance variable instead: `calc(var(--angular-lynx-font-size, 14px) / 1.2)` (issue #649), and the text inside it a class dividing by 1.2 again for each `<small>` it's in (issue #663). An `em` in another property, such as `vertical-align: 0.4em`, is the element's own size, as on the web.
 
 ---
 
@@ -1653,6 +1683,22 @@ Lynx's docs say a percentage is relative to the parent's size, but a nested `<te
 ### What Lynx does
 
 On Android (Lynx Explorer 4.1, API 34 emulator, November 2026), `vertical-align: 6px` and `calc(18px / 3)` raised the text, but `calc(var(--angular-lynx-font-size, 14px) / 3)` left it on the baseline, as if the declaration weren't there. Lynx's keywords move it little: `super` and `sub` move by a tenth of the element's height, and `40%` (of the line height) moved nothing visible. Use a length or an `em`, which is the element's own size: the `<sup>` rule is `vertical-align: 0.4em` (issue #649).
+
+---
+
+## The text inside an inline `<text>` with a `vertical-align` doesn't move with it
+
+### What you'd expect (web)
+
+`vertical-align` moves an inline box relative to its parent's baseline, and everything inside the box moves with it. In `x<sup>n<b>2</b></sup>` the "n" and the "2" rise together, and in `x<sup>n<sup>m</sup></sup>` the "m" rises by both `<sup>`s' distances.
+
+### What Lynx does
+
+On iOS, Lynx moves only the text of the inline `<text>` that has the `vertical-align`: it sets each run's `NSBaselineOffsetAttributeName` from the nearest `<text>` that owns the run (`LynxTextShadowNode setVerticalAlign:`), so a `<text>` inside it, with no `vertical-align` of its own, stays on the line. On Android the outer `<text>`'s span (`InlineTextBaselineShiftSpan`) covers the text inside, so it moves, but each span sets the paint's `baselineShift` rather than adding to it, so an inner `<text>` with a `vertical-align` of its own moves by its own distance only. On both, a `<sup>` in a `<sup>` rose no higher than one alone, and a `<sup>` in a `<sub>` sat above the line instead of near it (Lynx Explorer 4.1 shells, iOS 27 Simulator and Android API 34 emulator, November 2026). The web preview draws inline elements in the browser, which adds them up.
+
+### The fix
+
+The style index flags the build's `<sup>` and `<sub>` distances (`RAISED_FLAG` for `vertical-align: 0.4em`, `LOWERED_FLAG` for `-0.24em`, and `VERTICAL_ALIGN_FLAG` for any other value), and on iOS and Android the runtime gives each HTML text tag inside one the whole distance inline, in its own `em` (`baselineShiftFor` in `text-flow.ts`, issue #682): `0.4em` for a `<b>` in a `<sup>`, `0.48em` for a `<small>` in a `<sup>` (it's 1.2 times smaller), `0.88em` for a `<sup>` in a `<sup>`. It leaves the tag alone where an app's rule or inline style sets a `vertical-align` of its own on it or a tag around it (an app's `sup { vertical-align: -0.24em }` merges with the build's rule into both flags), or a size of its own on it or a tag between it and the `<sup>`, since it can't tell the distance then.
 
 ---
 
@@ -2934,7 +2980,7 @@ The declaration is dropped: the element gets no height. Only a stylesheet gets i
 - A bare `var()` inline works (`style="height: var(--h)"`, or `[style.height]="'var(--h, 34px)'"`), and so does `var()` inside `rgba()` (see "`var()` inside `rgba()` is substituted as text").
 - `calc()` with a `var()` fails both ways in, `style="..."` and a `[style.height]` binding, whichever side of the `+` the `var()` is on.
 - **Why:** `Element::MergeInlineStyles` (core/renderer/dom/fiber/fiber_element.cc) first hands each inline value to `UnitHandler::Process`, and looks for `var()` (`CSSStringParser::ParseVariable`) only if that fails. The length handler takes any `calc(...)` as a `CALC` value without reading inside it, so it succeeds, and the `var()` is never substituted; `calc()` can't evaluate it later. A stylesheet's declaration doesn't go that way: the CSS serializer marks any declaration holding a `var()` as a variable one at build time.
-- **Workaround:** compute the value in TypeScript, or put the `calc()` in a stylesheet. The runtime does the first for `env(safe-area-inset-*)` in inline styles (issue #281).
+- **Workaround:** compute the value in TypeScript, or put the `calc()` in a stylesheet. The runtime does the first for `env(safe-area-inset-*)` in inline styles (issue #281), and the second for text inside nested `<small>` tags (issue #663): an inline `font-size: calc(var(--angular-lynx-font-size, 14px) / 1.44)` drew the text at a few pixels on the iOS 27 Simulator (Lynx Explorer, November 2026), so the build has a class for each level (`._ngsmaller-2`), which the runtime gives the element.
 
 Probe (2026-11-05): inline stripes on the iOS 27 simulator in a generated app, each meant to be 44pt.
 
@@ -3354,7 +3400,7 @@ WebAssembly support is **severely restricted**:
 
 None of these elements exist in Lynx:
 
-- **`<canvas>`** — Lynx has none. AngularLynx adds one with a WebGL2 context, but no 2D context (see the next section).
+- **`<canvas>`** — Lynx has none. AngularLynx adds one, with a WebGL2 context and a 2D context (see the next two sections).
 - **`<video>` / `<audio>`** — not supported as built-in elements. Media playback requires native bridge integration via `lynx.requireModule()`.
 - **`<iframe>`** — replaced by the Lynx-specific `<frame>` element (which embeds another Lynx page, not arbitrary web content). There is no way to embed web URLs.
 
@@ -3381,7 +3427,33 @@ Open-source Lynx has no canvas on iOS or Android (lynx-family/lynx has no WebGL;
 
 ### What to do
 
-Use `<canvas>` with `getContext('webgl2')` in an app built with `ng build --platform ios|android`, or in the web preview. three.js and angular-three need the DOM globals the runtime adds on the main thread (`canvas/dom-globals.ts`): `performance.now()`, `crypto.randomUUID()` (from `Math.random()`, so not for secrets), `self`, `ProgressEvent`, an `HTMLElement` class a template's elements are instances of (angular-three takes its pointer listeners off the element its events connect to only if it's an `HTMLElement`, so without one they stayed on every canvas's host after the canvas had gone), an `HTMLCanvasElement` class nothing is an instance of, `Image`, `ImageBitmap`, `createImageBitmap()`, `Blob`, object URLs, `devicePixelRatio`, `getComputedStyle()` and `ResizeObserver`.
+Use `<canvas>` with `getContext('webgl2')` in an app built with `ng build --platform ios|android`, or in the web preview. three.js and angular-three need the DOM globals the runtime adds on the main thread (`canvas/dom-globals.ts`): `performance.now()`, `crypto.randomUUID()` (from `Math.random()`, so not for secrets), `self`, `ProgressEvent`, an `HTMLElement` class a template's elements are instances of (angular-three takes its pointer listeners off the element its events connect to only if it's an `HTMLElement`, so without one they stayed on every canvas's host after the canvas had gone), an `HTMLCanvasElement` class a `<canvas>` and `document.createElement('canvas')` are instances of, `Image`, `ImageBitmap`, `createImageBitmap()`, `Blob`, object URLs, `devicePixelRatio`, `getComputedStyle()` and `ResizeObserver`.
+
+---
+
+## `<canvas>`'s 2D context is drawn by the platform's own 2D graphics
+
+### What you'd expect (web)
+
+`getContext('2d')` on any canvas, including one made with `document.createElement('canvas')` or `new OffscreenCanvas()` that's never shown: chart and signature-pad libraries, image resizing and cropping, and three.js's text labels (drawn on a 2D canvas, uploaded with `CanvasTexture`) all use it. A canvas can be drawn on another (`drawImage()`) and uploaded as a WebGL texture.
+
+### What Lynx does
+
+Lynx has no canvas, and until issue #469 AngularLynx's had only WebGL2: `getContext('2d')` was `null`, `document.createElement('canvas')` threw, and `texImage2D()` with a canvas threw. Now the shells draw the 2D context with the engine the platform's browser draws its canvas with: Core Graphics on iOS (Safari's canvas drew with it for years), `android.graphics.Canvas` on Android (Skia, which is Chrome's). Each 2D context is one RGBA bitmap, premultiplied, the canvas's `width` by `height`, in the same `AngularLynxWebGL` module as the WebGL contexts (`create2D`, `run2D`, `destroy2D`, `encode2D`; `AngularLynxCanvas2DContext.m`, `Canvas2DContext.kt`).
+
+- **Batched like WebGL.** The runtime's context (`canvas/canvas-2d-context.ts`) records its calls and sends them in one `run2D` at the end of the task, or when a call needs an answer (`measureText()`, `getImageData()`, `isPointInPath()`, `isPointInStroke()`). It keeps the state the getters answer itself (`fillStyle` serialized as browsers do, `font`, the transform), parsing CSS colors and fonts (`css-color.ts`, `css-font.ts`), so the shells get numbers. The bitmap is shown after each task that drew, as a browser composites a canvas.
+- **Paths are built in the runtime**, in the canvas's pixels (`canvas/path.ts`): the spec transforms each point by the matrix of the moment it's added, so the path can't be kept in user space. Arcs, ellipses, `arcTo` and `roundRect` become cubic Béziers of at most a quarter turn, which an affine transform maps exactly; `Path2D` takes SVG path data too. A stroke is taken back through the current transform to be stroked, since its width and dashes are in that space.
+- **Compositing that clears what the shape doesn't cover** (`source-in`, `source-out`, `destination-in`, `destination-atop`, `copy`): Core Graphics and Android's canvas composite only where the shape draws, the spec over the whole canvas. Those operations draw the shape into a transparent layer first, then composite the layer. On iOS, shadows go through the layer too, so the whole shape casts one, as the spec has it (Core Graphics would shadow each part a gradient fill draws).
+- **iOS:** `CGContextDrawConicGradient` needs iOS 17, and the shell supports 15, so conic gradients are worked out a pixel at a time. `CGPathCreateCopyByDashingPath` needs iOS 16: dashes are applied with `CGContextSetLineDash` and `CGContextReplacePathWithStrokedPath`. Text is laid out with Core Text; a plain-color `fillText()` draws the glyphs (so color emoji draw), but a gradient or pattern, and `strokeText()`, draw the glyphs' outlines (`CTFontCreatePathForGlyph`), which color emoji don't have. The bitmap is shown as a copy in a `CALayer` over the view's `CAMetalLayer`, on the UI thread. `textBaseline` positions come from the font's ascent and descent as Chrome works them out (`hanging` is 80% of the ascent).
+- **Android:** shadows set with `setShadowLayer` are offset in the space the shape is drawn in; the spec's are in the canvas's pixels, so a stroke, text or image drawn under the transform takes its shadow offset back through it. Before Android 12 there's no `DECAL` tiling for `no-repeat` patterns (the image gets a transparent border and is clamped) and no two-circle radial gradient (the end circle is drawn, with the start circle's radius as its first stop, which is right when the circles share a center). Before Android 10, the blend modes past `lighten` draw as `source-over`. The bitmap is drawn into the `TextureView`'s surface with `lockHardwareCanvas()`.
+- **Gradients and patterns are shared.** A gradient lives in the runtime and crosses whole with the style that paints with it, and a pattern's transform crosses with its style, so a change made after it was set reaches the next draw in that context's own batch, and every draw uses the object as it was when it was drawn. A pattern's image is made once in the shell, kept for every context in the LynxView (in the module), and freed with `release2D` when the pattern is collected, so one context's gradient or pattern paints in another, as on the web.
+- **`alpha: false`** canvases start black and stay opaque: after an operation that can leave a pixel see-through (`copy`, `destination-out` and the like), what it left is drawn over black, as browsers keep them.
+- **Canvases as images.** `drawImage()`, `createPattern()` and `texImage2D()` name a canvas by its id (`CANVAS_SOURCE`, `canvas/canvas-source.ts`); the shell reads its 2D bitmap or WebGL drawing buffer itself, so the pixels never cross the bridge. The source canvas's recorded calls are sent first, and the call that reads it at once, so it's read as it was at the call. A canvas without a context is a transparent image of its size, and encodes as one. A WebGL upload of part of a canvas or image (`UNPACK_SKIP_PIXELS`, `UNPACK_SKIP_ROWS` and a smaller `width` and `height`) crops it in the shell. A WebGL upload divides a canvas's premultiplied pixels back unless `UNPACK_PREMULTIPLY_ALPHA_WEBGL` is set, as WebGL does.
+- **Measured** on the iOS 27 Simulator and the Android 14 emulator with `examples/element-canvas-2d`: a chart of gradient bars with shadows, a dashed grid and text, a signature pad following the finger, `toDataURL()` into an `<image>`, a three.js cube textured from a canvas made with `document.createElement('canvas')`, and `getImageData()` reading back `(255, 0, 0, 255)` from a red `fillRect()`. The E2E canvas flow checks `drawImage()` of one canvas on another, `getImageData()` and a 2D canvas uploaded as a texture.
+
+### What to do
+
+Use `getContext('2d')` as on the web, in an app built with `ng build --platform ios|android` or the web preview (Lynx Explorer has no canvas). `filter` is kept but not applied; `wordSpacing`, `fontKerning`, `fontStretch`, `fontVariantCaps` and `textRendering` are kept but don't change the text. A `<video>` can't be drawn or uploaded yet, `OffscreenCanvas` has no `transferToImageBitmap()`, and `createImageBitmap()` doesn't take a canvas: draw the canvas itself.
 
 ---
 
@@ -7175,6 +7247,20 @@ A private method called through an optional chain on its receiver, `object?.#met
 
 ---
 
+## `this.#a.#b()` failed the build, or the bundle's load
+
+### What you'd expect (web)
+
+A private member read on the result of another (`this.#parent.#depth()`, `node.#next.#label = v`) works like any other.
+
+### What Lynx does
+
+Nothing; it's the build. With `privateFieldsAsProperties` (see above), SWC lowers the outer read and leaves the inner one as written: `_class_private_field_loose_base(this.#parent, _depth)[_depth]()`. The class no longer declares `#parent`, so SWC fails the module ("private name #parent is not defined"), or, where the inner read survives into the bundle, loading it throws `SyntaxError: Private field '#parent' must be declared in an enclosing class`. It's the same in SWC 1.16.22. In the app's own code it failed the build on both threads; in AngularLynx's packages the main thread's private-member pass had already turned both reads into symbol keys and renamed methods, but the background thread, which skips that pass, had the same problem (issue #689, found in #687's `this.#jsParent.#quoteDepth()`).
+
+The build now rewrites the chain before SWC (`splitPrivateChains` in `packages/rsbuild-plugin-angular-lynx/src/private-methods.ts`) to `(0, this.#parent).#depth()`, which SWC compiles, on both threads. Inside an optional chain (`a?.#b.#c`) the parentheses would end the chain, so there the `.` becomes `?.` instead: the only difference is that a nullish `a.#b` gives `undefined` where natively reading `#c` of it throws a TypeError.
+
+---
+
 ## An element at `opacity: 0` never comes into view on a phone
 
 ### What you'd expect (web)
@@ -7263,7 +7349,9 @@ The build plugin adds a stylesheet of its own to both bundles, ahead of the app'
 
 A browser draws a decoration across everything inside the element rather than inheriting it, so a `<u>` inside an `<s>` has both lines. Here `text-decoration` is one inherited value, which the inner tag's own rule would replace, so the stylesheet gives each such pair (`u s`, `s u`, `ins del`…) `text-decoration: underline line-through`, which Lynx draws as both lines (see "`text-decoration` supports only one layer" above). Its two classes beat an app's single class for that pair alone. Measured the same way as the bold, on the iOS 27 Simulator, the Android API 34 emulator and the web preview.
 
-The rest of the inline text tags with a browser style followed (issue #649): `code, kbd, samp { font-family: Menlo, monospace }`, `small, sub, sup { font-size: calc(var(--angular-lynx-font-size, 14px) / 1.2) }` with `vertical-align: -0.24em` for `sub` and `0.4em` for `sup`, and `mark { background-color: #ffff00; color: #000000 }`. Each works around a Lynx difference recorded below: a percentage or `em` font size ignores the parent's size, a `vertical-align` with a `var()` is dropped, and Android finds no `monospace` font. The `<small>` rule reads the variable it would be copied to, so the text inheritance step makes no copy (a copy would refer to itself), and text inside a `<small>` takes the size around it.
+The rest of the inline text tags with a browser style followed (issue #649): `code, kbd, samp { font-family: Menlo, monospace }`, `small, sub, sup { font-size: calc(var(--angular-lynx-font-size, 14px) / 1.2) }` with `vertical-align: -0.24em` for `sub` and `0.4em` for `sup`, and `mark { background-color: #ffff00; color: #000000 }`. Each works around a Lynx difference recorded below: a percentage or `em` font size ignores the parent's size, a `vertical-align` with a `var()` is dropped, and Android finds no `monospace` font. The `<small>` rule reads the variable it would be copied to, so the text inheritance step makes no copy (a copy would refer to itself), and text inside a `<small>` took the size around it: `<small>a <b>b</b></small>` drew the `<b>` at the full size, and a `<small>` in a `<small>` at the outer one's.
+
+Issue #663 fixed that in the runtime. The style index marks the `<small>` rule with a bit of its own (`SMALLER_FLAG`, for a `font-size` that divides the parent's variable by 1.2) instead of the `font-size` bit, which says a copy passes the size on. For each HTML text tag, the runtime counts the `<small>`, `<sub>` and `<sup>` tags it's in, up to the nearest ancestor whose rules set the size with a copy, and gives it the build's class for that many (`._ngsmaller-2 { font-size: calc(var(--angular-lynx-font-size, 14px) / 1.44) }`, up to five levels), unless the tag's own rule already makes it the one level it is. The size can't go inline: Lynx substitutes no `var()` inside an inline `calc()` (see "`var()` inside `calc()` in an inline style is never substituted"). Measured with Lynx Explorer on the iOS 27 Simulator and in the web preview, in 48px text: a `<b>` in a `<small>` drew at 40px, a second level at about 33px and a third at about 28px. Not checked on Android.
 
 A browser styles `<a>` only as a link (`a:any-link`, with an `href`) and `<abbr>` only with a `title` (`abbr[title]`). Lynx matches no attribute selector (see "Lynx can't match attribute selectors" above), so the runtime gives such an element a class while it has the attribute (`_ngattr-a-href`, `_ngattr-abbr-title`, from `ATTRIBUTE_STYLED_TAGS` in `web-tags.ts`), and the stylesheet styles the class: `color: var(--angular-lynx-link-color, #0000ee); text-decoration: underline`, with `page.dark { --angular-lynx-link-color: #9e9eff }` for Chrome's dark link color, and `text-decoration: underline dotted`. One class, not the tag's class and another, so an app's own class beats it, as an author style beats a browser's. `RouterLink` writes no `href` on Lynx (it treats the `<a>` as a plain element), so an `<a routerLink>` isn't styled as a link, unlike in a browser. A `<q>`'s quotation marks can't come from a stylesheet either: Lynx has no `::before`/`::after` content on a `<text>`. So the runtime draws them itself, as raw-texts at the start and end of the `<q>`'s `<text>` that Angular never sees (`LynxElement.markQuote`): “ ” for an outermost `<q>` and ‘ ’ for one inside another, as Chrome's `quotes: auto` draws English. They're English whatever the language, and CSS `quotes` doesn't change them.
 

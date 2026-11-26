@@ -46,11 +46,17 @@ import { sanitizeSvgContent } from './svg-content';
 import {
   ALL_TEXT_PROPERTIES,
   ANONYMOUS_TEXT_CLASS,
+  FONT_SIZE_FLAG,
   INHERITANCE_CLASS,
   LYNX_TEXT_INHERITANCE_CLASS,
   LAYOUT_FLAG,
+  LOWERED_FLAG,
   NOT_BLOCK_CONTAINERS,
+  RAISED_FLAG,
+  SMALLER_FLAG,
+  VERTICAL_ALIGN_FLAG,
   TAKES_RAW_TEXT,
+  baselineShiftFor,
   hasAncestorTextRules,
   inheritanceStyleFor,
   isBlankText,
@@ -58,6 +64,7 @@ import {
   isRowOrientation,
   ancestorTextRulesRead,
   matchedStyleFlagsFor,
+  smallerClassFor,
   styleFlagsFor,
 } from './text-flow';
 import {
@@ -489,6 +496,27 @@ const flushesBefore = (first: ElementRef, second: ElementRef): boolean => {
 };
 
 /**
+ * The inline styles that change how far a `<sub>` or `<sup>` moves the HTML
+ * text tags inside it (see LynxElement's #inlineShiftFlags).
+ */
+const SHIFT_STYLES = new Set(['font-size', 'vertical-align']);
+
+/**
+ * The inline `vertical-align` that moves an HTML text tag inside a `<sub>`
+ * or `<sup>` off the baseline as far as the tags around it do together,
+ * which Lynx doesn't do for it (see baselineShiftFor), from the flags of its
+ * rules and theirs. None where nothing above moves it, and none in the web
+ * preview, whose browser moves it already, so it would move twice. An `em`
+ * inline resolves against the tag's own size (iOS 27 Simulator and Android
+ * API 34 emulator, November 2026).
+ */
+const baselineShiftStyle = (chain: readonly number[]): string => {
+  if (__WEB__) return '';
+  const shift = baselineShiftFor(chain);
+  return shift === null ? '' : `vertical-align: ${shift}em`;
+};
+
+/**
  * Whether this is Lynx's iOS renderer. On the native main thread there is no
  * global `SystemInfo`, only `lynx.SystemInfo` (see isAndroid).
  */
@@ -831,6 +859,10 @@ export class LynxElement implements BaseLynxElement {
    * text-flow.ts). An element written as a Lynx `<text>` doesn't.
    */
   #webText = false;
+  /**
+   * The class for its level of `<small>`s it has (see #setSmallerClass).
+   */
+  #smallerClass: string | null = null;
   /**
    * The inline declarations that give a #webText element the text styles
    * it inherits: one `var()` for each property its own rules don't set.
@@ -1569,6 +1601,7 @@ export class LynxElement implements BaseLynxElement {
     if (this.#setsVariables) this.#rewriteInlineStyle();
     else __AddInlineStyle(this.element, key, forNative(value));
     if (LAYOUT_STYLES.has(key)) this.#layoutChanged();
+    if (SHIFT_STYLES.has(key)) this.#shiftStylesChanged();
     // A style set outside change detection, as a transition's last frame is
     // from a timer, reaches native only with a flush (see scheduleSettleFlush).
     scheduleSettleFlush();
@@ -1579,9 +1612,16 @@ export class LynxElement implements BaseLynxElement {
       return;
     }
     this.#inlineStyleKeys?.delete(key);
-    if (this.#setsVariables) this.#rewriteInlineStyle();
-    else __AddInlineStyle(this.element, key, null);
+    // Removing the key natively would remove the runtime's own declaration
+    // of it too, such as an inherited `color` or a <sup>'s offset (see
+    // #withRuntimeStyle), which the binding only covered.
+    if (this.#setsVariables || this.#runtimeDeclares(key)) {
+      this.#rewriteInlineStyle();
+    } else {
+      __AddInlineStyle(this.element, key, null);
+    }
     if (LAYOUT_STYLES.has(key)) this.#layoutChanged();
+    if (SHIFT_STYLES.has(key)) this.#shiftStylesChanged();
     scheduleSettleFlush();
   }
   /**
@@ -1614,9 +1654,45 @@ export class LynxElement implements BaseLynxElement {
     // the string as well (see #setsVariables).
     if (whole && VARIABLE_DECLARATION.test(whole)) this.#setsVariables = true;
     __SetInlineStyles(this.element, whole);
+    const before = this.#inlineStyleWhole;
     this.#inlineStyleWhole = inlineStyle;
     this.#layoutChanged();
+    for (const property of SHIFT_STYLES) {
+      if (
+        inlineDeclaration(before, property) !==
+        inlineDeclaration(inlineStyle, property)
+      ) {
+        this.#shiftStylesChanged();
+        break;
+      }
+    }
     scheduleSettleFlush();
+  }
+
+  /**
+   * Whether the runtime's own inline declarations (see #withRuntimeStyle)
+   * set this property.
+   */
+  #runtimeDeclares(property: string): boolean {
+    return (
+      inlineDeclaration(
+        [
+          this.#hidden ? HIDDEN_STYLE : '',
+          this.#inheritStyle,
+          this.#runtimeStyle,
+        ].join('; '),
+        property,
+      ) !== undefined
+    );
+  }
+
+  /**
+   * An inline `font-size` or `vertical-align` came or went: the HTML text
+   * tags from here down work out again how far a `<sub>` or `<sup>` moves
+   * them (see #inlineShiftFlags).
+   */
+  #shiftStylesChanged(): void {
+    if (this.#webText) this.#inheritAgain();
   }
 
   /**
@@ -1717,17 +1793,41 @@ export class LynxElement implements BaseLynxElement {
    */
   #laysOutLines(): boolean {
     if (NOT_BLOCK_CONTAINERS.has(this.tagName)) return false;
-    const inline = (property: string): unknown =>
-      this.#inlineStyleKeys?.get(property) ??
-      inlineDeclaration(this.#inlineStyleWhole, property);
-    if (!isBlockDisplay(inline('display'))) return false;
+    if (!isBlockDisplay(this.#inlineStyle('display'))) return false;
     if (
-      isRowOrientation(inline('linear-orientation')) ||
-      isRowOrientation(inline('linear-direction'))
+      isRowOrientation(this.#inlineStyle('linear-orientation')) ||
+      isRowOrientation(this.#inlineStyle('linear-direction'))
     ) {
       return false;
     }
     return !(styleFlagsFor(this.#styleTokens()) & LAYOUT_FLAG);
+  }
+
+  /**
+   * The app's inline value of a property: its `[style.x]` binding's, or its
+   * style="..." attribute's.
+   */
+  #inlineStyle(property: string): unknown {
+    return (
+      this.#inlineStyleKeys?.get(property) ??
+      inlineDeclaration(this.#inlineStyleWhole, property)
+    );
+  }
+
+  /**
+   * The style index flags this element's inline style stands for in
+   * baselineShiftFor, which the index can't see: a size of its own, and a
+   * `vertical-align` of its own, by a distance the runtime doesn't read.
+   */
+  #inlineShiftFlags(): number {
+    const has = (property: string): boolean => {
+      const value = this.#inlineStyle(property);
+      return value != null && value !== '';
+    };
+    return (
+      (has('font-size') ? FONT_SIZE_FLAG : 0) |
+      (has('vertical-align') ? VERTICAL_ALIGN_FLAG : 0)
+    );
   }
 
   /**
@@ -1747,9 +1847,32 @@ export class LynxElement implements BaseLynxElement {
    * in the web preview), which is again what the web draws.
    */
   #applyInheritance(): void {
-    const style = inheritanceStyleFor(
-      this.#ownTextStyles(true) | this.#drawnAtDefault(),
+    // A <small>'s own rule divides the size around it once: the text inside
+    // it, or a second <small>, needs a class that divides it more (see
+    // #sizeChain). The class sets the size, so it reads no variable.
+    const elements = this.#sizeChain();
+    const chain = elements.map(([, flags]) => flags);
+    const levels = chain.filter((flags) => flags & SMALLER_FLAG).length;
+    const ownLevel = this.#ruleFlags(false) & SMALLER_FLAG ? 1 : 0;
+    const smaller = levels > ownLevel ? smallerClassFor(levels) : null;
+    this.#setSmallerClass(smaller);
+    const inherited = inheritanceStyleFor(
+      this.#ownTextStyles(true) |
+        this.#drawnAtDefault() |
+        (smaller ? FONT_SIZE_FLAG : 0),
     );
+    // Only a <sub> or <sup> above it moves the tag, and only then do the
+    // inline styles of those between count (see #inlineShiftFlags).
+    const shift = chain.some((flags) => flags & (RAISED_FLAG | LOWERED_FLAG))
+      ? baselineShiftStyle(
+          elements.map(
+            ([element, flags]) => flags | element.#inlineShiftFlags(),
+          ),
+        )
+      : '';
+    const style = shift
+      ? [inherited, shift].filter(Boolean).join('; ')
+      : inherited;
     if (style === this.#inheritStyle) return;
     this.#inheritStyle = style;
     // One removed this cycle gets it when it's rebuilt (see #recreateSubtree).
@@ -1771,10 +1894,93 @@ export class LynxElement implements BaseLynxElement {
    * `inState` is true (see matchedStyleFlagsFor).
    */
   #ownTextStyles(inState: boolean): number {
+    const flags = this.#ruleFlags(inState);
+    // A <small>'s rule sets its size too, from the size around it.
+    return (
+      (flags & ALL_TEXT_PROPERTIES) |
+      (flags & SMALLER_FLAG ? FONT_SIZE_FLAG : 0)
+    );
+  }
+
+  /**
+   * The style index flags of this element's own rules (see #ownTextStyles):
+   * none for an anonymous `<text>`, and an HTML text tag's leave out the
+   * rules whose selector names `text`. Each rule is checked against the
+   * elements above it, and a rule for a state counts when `inState` is true
+   * (see #matchedStyleFlags).
+   */
+  #ruleFlags(inState: boolean): number {
     if (this.#anonymous) return 0;
     const tokens = this.#styleTokens();
     if (this.#webText) tokens.delete('<text>');
-    return this.#matchedStyleFlags(tokens, inState) & ALL_TEXT_PROPERTIES;
+    // The runtime's own class for nested <small>s follows from these flags
+    // (see #setSmallerClass), so it can't count among them.
+    if (this.#smallerClass) tokens.delete(this.#smallerClass);
+    return this.#matchedStyleFlags(tokens, inState);
+  }
+
+  /**
+   * Gives this element the class for its level of `<small>`s (see
+   * smallerClassFor), or none, in place of the one it had. It's kept with the
+   * scope classes, so an app's class binding keeps it, as setRuntimeClass
+   * does. Unlike there, it changes nothing the runtime reads, so it skips
+   * #rulesChanged, which would work this element's inheritance out again.
+   */
+  #setSmallerClass(name: string | null): void {
+    const current = this.#smallerClass;
+    if (current === name) return;
+    this.#smallerClass = name;
+    if (current) {
+      const index = this.#scopeClasses!.indexOf(current);
+      this.#scopeClasses!.splice(index, 1);
+      this.#removeClassName(current);
+    }
+    if (name) {
+      (this.#scopeClasses ??= []).push(name);
+      this.#addClassName(name);
+    }
+  }
+
+  /**
+   * Each of this #webText element and the HTML text tags above it, nearest
+   * first, with the style index flags of its rules: up to the nearest
+   * ancestor whose rules set the size with a copy, which the variable holds.
+   * Those with
+   * SMALLER_FLAG are the `<small>`, `<sub>` and `<sup>` tags that make its
+   * text smaller, itself included, and those with RAISED_FLAG or
+   * LOWERED_FLAG the ones that move it off the baseline (see
+   * baselineShiftFor).
+   *
+   * The build's rule for the tags divides the parent's variable by 1.2 and,
+   * reading the variable it would be copied to, has no copy (see
+   * SMALLER_FLAG). So the text inside a `<small>` read the size around it:
+   * `<small>a <b>b</b></small>` drew the `<b>` at the full size, and a
+   * `<small>` in a `<small>` at the outer one's (issue #663). Each level
+   * divides again, as in a browser.
+   *
+   * Each element's rules are checked against the elements above it (see
+   * #matchedStyleFlags): `.compact .label` with the build's smaller size
+   * makes no level for a `.label` outside `.compact`. It stops at an element
+   * that isn't an HTML text tag, as #drawnAtDefault does: a Lynx `<text>` or
+   * a view sizes its own text. Moving the element or changing an ancestor's
+   * classes works it out again (see #inheritAgain and #ancestorsChanged).
+   */
+  #sizeChain(): [LynxElement, number][] {
+    // A state's rule counts for none of them, as in #drawnAtDefault: the
+    // levels are those of the tags as they usually draw.
+    const own = this.#ruleFlags(false);
+    const chain: [LynxElement, number][] = [[this, own]];
+    if (own & FONT_SIZE_FLAG) return chain;
+    for (
+      let parent = this.#jsParent;
+      parent && parent.#webText;
+      parent = parent.#jsParent
+    ) {
+      const flags = parent.#ruleFlags(false);
+      if (flags & FONT_SIZE_FLAG) break;
+      chain.push([parent, flags]);
+    }
+    return chain;
   }
 
   /**
@@ -2614,6 +2820,16 @@ export class LynxElement implements BaseLynxElement {
    * as it always was.
    */
   removeClass(name: string): void {
+    this.#removeClassName(name);
+    this.#rulesChanged([name]);
+    scheduleSettleFlush();
+  }
+
+  /**
+   * removeClass without what a class change means for the runtime's own
+   * reading of the app's rules (see #rulesChanged), or a flush of its own.
+   */
+  #removeClassName(name: string): void {
     const before = this.#classes;
     if (
       this.#nativeClasses !== false &&
@@ -2647,8 +2863,6 @@ export class LynxElement implements BaseLynxElement {
       // once, it has what #classes says from here.
       this.#nativeClasses = isWholeClassList(joined);
     }
-    this.#rulesChanged([name]);
-    scheduleSettleFlush();
   }
 
   /**

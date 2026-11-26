@@ -53,6 +53,13 @@ describe('enableWebGL2WhereNamed', () => {
     );
   });
 
+  it('picks a name the module doesn’t bind under an escaped spelling either', () => {
+    const code = `import { ɵenableWebGL2 as \\u005f_angularLynxEnableWebGL2 } from '@blotch/angular-lynx';\nexport const gl = (c) => c.getContext('webgl2');`;
+    expect(enableWebGL2WhereNamed(code, '/app/src/scene.ts')).toMatch(
+      /^import \{ ɵenableWebGL2 as __angularLynxEnableWebGL22 \}/,
+    );
+  });
+
   it('keeps a hashbang first, and adds no line, so a source map still fits', () => {
     const esm = `#!/usr/bin/env node\nexport const name = 'webgl2';\n`;
     expect(enableWebGL2WhereNamed(esm, '/app/node_modules/cli/x.js')).toBe(
@@ -66,8 +73,9 @@ describe('enableWebGL2WhereNamed', () => {
     expect(enableWebGL2WhereNamed(bare, '/app/node_modules/cli/z.js')).toBe(
       `#!/usr/bin/env node\n;require("@blotch/angular-lynx").ɵenableWebGL2(); module.exports = 'webgl2';`,
     );
-    // Ended by another line terminator: CR, LS or PS.
-    for (const terminator of ['\r', '\u2028', '\u2029']) {
+    // Ended by another line terminator: CRLF (one, which the call goes
+    // after), CR, LS or PS.
+    for (const terminator of ['\r\n', '\r', '\u2028', '\u2029']) {
       expect(
         enableWebGL2WhereNamed(
           `#!/usr/bin/env node${terminator}export const name = 'webgl2';`,

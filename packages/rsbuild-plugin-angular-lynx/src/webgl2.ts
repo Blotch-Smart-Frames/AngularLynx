@@ -13,8 +13,8 @@ const ENABLE = 'ɵenableWebGL2';
  */
 const LOCAL = '__angularLynxEnableWebGL2';
 
-/** A JavaScript line terminator: LF, CR, LS or PS. */
-const LINE_TERMINATOR = /[\n\r\u2028\u2029]/;
+/** A JavaScript line terminator: CRLF (one, as ECMAScript counts it), LF, CR, LS or PS. */
+const LINE_TERMINATOR = /\r\n|[\n\r\u2028\u2029]/;
 
 /**
  * The name a module asks for the context by. The runtime's `<canvas>` has no
@@ -66,18 +66,20 @@ export const enableWebGL2WhereNamed = (
   // A hashbang must stay first, and the call goes on the line after it. The
   // call never adds a line, so a source map the module carries still fits.
   // A module that is only a hashbang has no code to ask for a context.
-  // Any of JavaScript's line terminators ends the hashbang (`\r\n` at its
-  // `\r`, so the `\n` keeps the line count with the call after it).
-  const head = code.startsWith('#!') ? code.search(LINE_TERMINATOR) + 1 : 0;
-  if (code.startsWith('#!') && head === 0) {
-    return code;
+  // Any of JavaScript's line terminators ends the hashbang, and the call goes
+  // after the whole of it: inside a CRLF it would make two line breaks.
+  let head = 0;
+  if (code.startsWith('#!')) {
+    const end = LINE_TERMINATOR.exec(code);
+    if (!end) return code;
+    head = end.index + end[0].length;
   }
   // An `.mjs` or `.mts` file is an ES module even with no import or export,
   // and has no `require` (strict-esm.ts builds it as one).
   if (ts.isExternalModule(sourceFile) || /\.m[jt]s$/.test(filename)) {
     // Imports are hoisted, so the import can go anywhere; the call goes after
     // the module's own imports, which run first whatever their place.
-    const local = localName(code);
+    const local = localName(code, sourceFile);
     return `${code.slice(0, head)}import { ${ENABLE} as ${local} } from ${specifier}; ${local}(); ${code.slice(head)}`;
   }
   // A CommonJS module (or a script) has no imports. The call goes after its
@@ -97,13 +99,24 @@ export const enableWebGL2WhereNamed = (
 };
 
 /**
- * A name for the import that the module doesn't use.
+ * A name for the import that the module doesn't use: neither in its text nor,
+ * decoded, among its identifiers, which can be written with escapes
+ * (`\u005f_angularLynxEnableWebGL2` is `__angularLynxEnableWebGL2`).
  *
  * @param code - The module's code.
+ * @param sourceFile - The module, parsed.
  */
-const localName = (code: string): string => {
+const localName = (code: string, sourceFile: ts.SourceFile): string => {
+  const identifiers = new Set<string>();
+  const visit = (node: ts.Node): void => {
+    if (ts.isIdentifier(node)) identifiers.add(node.text);
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
   let name = LOCAL;
-  for (let n = 2; code.includes(name); n++) name = `${LOCAL}${n}`;
+  for (let n = 2; code.includes(name) || identifiers.has(name); n++) {
+    name = `${LOCAL}${n}`;
+  }
   return name;
 };
 

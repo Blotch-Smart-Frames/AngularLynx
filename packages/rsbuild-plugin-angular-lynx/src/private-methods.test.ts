@@ -8,9 +8,11 @@ import * as ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import { LAYERS, applyLayers, isAngularLynxPackageModule } from './layers.js';
 import {
+  compilesPrivatesAsProperties,
   hidePrivateMethods,
   isAppModule,
   renamePrivateMethods,
+  splitPrivateChains,
   transformPrivateMethods,
 } from './private-methods.js';
 import { JavaScriptTransformer } from './utils/angular/build-internals.js';
@@ -1382,6 +1384,21 @@ describe('renamePrivateMethods and hidePrivateMethods with an inline source map'
     expect(map).toMatch(/^\/\/# sourceMappingURL=/);
   });
 
+  it('moves columns past the parentheses splitPrivateChains inserts', () => {
+    const line = 'class A { #a; #b() {} f() { return this.#a.#b(); } }';
+    // `class`, the chain's `this`, and its `#b`.
+    const columns = [0, line.indexOf('this'), line.indexOf('#b()')];
+    const result = splitPrivateChains(
+      withMap(line, mapWith([columns.map((column) => [column, 0, 0, column])])),
+      APP_FILE,
+    );
+    const output = result.split('\n')[0]!;
+    expect(output).toContain('return (0, this.#a).#b();');
+    expect(columnsOf(result)).toEqual([
+      [0, output.indexOf('this'), output.indexOf('#b()')],
+    ]);
+  });
+
   it('finds the map before the code the plugin appends after it', () => {
     // As addHotAccept() does in a development build.
     const hot = 'if (import.meta.webpackHot) {}';
@@ -1501,6 +1518,156 @@ describe('isAppModule', () => {
   });
 });
 
+/**
+ * Chained private member reads (`a.#b.#c`), each run natively and after
+ * splitPrivateChains and SWC with each thread's options. Every member stays
+ * private, as it does in a class renamePrivateMethods leaves (one that checks
+ * `#name in object`) or a method hidePrivateMethods can't turn into a
+ * function, so SWC compiles them all.
+ */
+const CHAIN_FIXTURES: Record<string, string> = {
+  // A method called inside an optional chain (`a?.#b.#m()`) is left out:
+  // SWC calls it without its receiver, chain or not (CURRENT_BUILD_ONLY).
+  'a method of a field, a field of a field, and the `this` a call gets': `
+    class Node {
+      #parent;
+      #name;
+      constructor(name, parent) { this.#name = name; this.#parent = parent; }
+      #depth() { return this.#parent ? 1 + this.#parent.#depth() : 0; }
+      #self() { return this; }
+      read() {
+        return [
+          this.#depth(),
+          this.#parent ? this.#parent.#name : null,
+          this.#parent?.#parent?.#name ?? null,
+          this.#parent ? this.#parent.#self() === this.#parent : null,
+          this.#parent && (this.#parent).#name,
+        ];
+      }
+    }
+    const root = new Node('root');
+    const child = new Node('child', root);
+    const leaf = new Node('leaf', child);
+    [root.read(), child.read(), leaf.read()];
+  `,
+  'writes through a chain': `
+    class Box {
+      #inner;
+      #count = 0;
+      constructor(inner) { this.#inner = inner; }
+      bump() {
+        this.#inner.#count = 5;
+        this.#inner.#count += 2;
+        this.#inner.#count++;
+        [this.#inner.#count] = [this.#inner.#count * 2];
+        ({ value: this.#inner.#count } = { value: this.#inner.#count + 1 });
+        return this.#inner.#count;
+      }
+    }
+    new Box(new Box()).bump();
+  `,
+  'three links, over lines and comments': `
+    class Link {
+      #next;
+      #label;
+      constructor(label, next) { this.#label = label; this.#next = next; }
+      third() {
+        return this.#next
+          // the second
+          .#next /* the third */ .#label;
+      }
+      #tag(strings) { return strings[0] + this.#label; }
+      tagged() { return this.#next.#next.#tag\`t:\`; }
+    }
+    const list = new Link('a', new Link('b', new Link('c')));
+    [list.third(), list.tagged()];
+  `,
+  'an optional chain before the chain': `
+    class Maybe {
+      #next;
+      #label = 'm';
+      constructor(next) { this.#next = next; }
+      static read(maybe) { return maybe?.#next.#label; }
+      static deep(maybe) { return maybe?.#next.#next.#label; }
+    }
+    const three = new Maybe(new Maybe(new Maybe()));
+    [Maybe.read(undefined), Maybe.read(three), Maybe.deep(null), Maybe.deep(three)];
+  `,
+};
+
+describe('splitPrivateChains', () => {
+  const split = (code: string, file = APP_FILE) =>
+    splitPrivateChains(code, file);
+
+  it("leaves code SWC can't compile without it", () => {
+    // What it's for: SWC lowers the outer read and leaves the inner one,
+    // whose class no longer declares it.
+    const fixture = CHAIN_FIXTURES['writes through a chain']!;
+    for (const layer of [LAYERS.MAIN_THREAD, LAYERS.BACKGROUND]) {
+      expect(() => runInNewContext(compile(fixture, layer))).toThrow(
+        /Private field '#inner' must be declared in an enclosing class/,
+      );
+    }
+  });
+
+  for (const [name, fixture] of Object.entries(CHAIN_FIXTURES)) {
+    it(`matches native private members: ${name}`, async () => {
+      const expected = runInNewContext(fixture);
+      const result = split(fixture);
+      expect(result.split('\n')).toHaveLength(fixture.split('\n').length);
+      for (const layer of [LAYERS.MAIN_THREAD, LAYERS.BACKGROUND]) {
+        expect(runInNewContext(compile(result, layer))).toEqual(expected);
+      }
+    });
+  }
+
+  it('wraps the object in a comma expression, and nests them for longer chains', () => {
+    expect(split('class A { #a; #b() {} f() { this.#a.#b(); } }')).toBe(
+      'class A { #a; #b() {} f() { (0, this.#a).#b(); } }',
+    );
+    expect(split('class A { #a; f() { return (this.#a).#a.#a; } }')).toBe(
+      'class A { #a; f() { return (0, (0, (this.#a)).#a).#a; } }',
+    );
+  });
+
+  it('turns the next `.` of an optional chain into `?.`', () => {
+    expect(split('class A { #a; f(x) { return x?.#a /* . */ .#a.#a; } }')).toBe(
+      'class A { #a; f(x) { return x?.#a /* . */ ?.#a?.#a; } }',
+    );
+  });
+
+  it('reads through a non-null assertion in a .ts module', () => {
+    expect(
+      split(
+        'class A { #a?: A; f(): A { return this.#a!.#a!; } }',
+        '/app/src/app/a.ts',
+      ),
+    ).toBe('class A { #a?: A; f(): A { return (0, this.#a!).#a!; } }');
+  });
+
+  it('returns the same string when nothing applies', () => {
+    for (const code of [
+      'export const a = 1;',
+      'class A { #a; #b; f() { return [this.#a?.#b, this.#a.x.#b, f(this.#a).#b, this.#a[0].#b]; } }',
+      // A match for the hint that isn't a chain.
+      "const s = '#a.#b';",
+    ]) {
+      expect(split(code)).toBe(code);
+    }
+  });
+});
+
+describe('compilesPrivatesAsProperties', () => {
+  it.each([
+    ['/app/src/app/app.ts', true],
+    ['/app/node_modules/@blotch/angular-lynx/fesm2022/index.mjs', true],
+    ['/repo/packages/runtime/dist/fesm2022/blotch-angular-lynx.mjs', true],
+    ['/app/node_modules/rxjs/dist/esm/index.js', false],
+  ])('%s: %s', (file, expected) => {
+    expect(compilesPrivatesAsProperties(file, '/repo/packages')).toBe(expected);
+  });
+});
+
 describe('transformPrivateMethods', () => {
   const code = 'class A { #m() {} a() { this.#m(); } }';
   const transform = (file: string) =>
@@ -1525,6 +1692,20 @@ describe('transformPrivateMethods', () => {
   it("leaves other packages' as they are", () => {
     expect(transform('/app/node_modules/dep/index.js')).toBe(code);
   });
+
+  it('splits the chains each pass leaves private', () => {
+    // `#a in other` keeps the package's class private (renamePrivateMethods),
+    // and a call on another object keeps the app's method
+    // (hidePrivateMethods).
+    const chain =
+      'class A { #a; #b() {} f(other) { return #a in other && this.#a.#b(); } }';
+    const transformChain = (file: string) =>
+      transformPrivateMethods(chain, file, { root: ROOT }, '/repo/packages');
+    for (const file of [FILE, '/app/src/app/app.ts']) {
+      expect(transformChain(file)).toContain('(0, this.#a).#b()');
+    }
+    expect(transformChain('/app/node_modules/dep/index.js')).toBe(chain);
+  });
 });
 
 describe("over the runtime's build", () => {
@@ -1532,7 +1713,8 @@ describe("over the runtime's build", () => {
 
   /**
    * The runtime's FESM as the main thread compiles it: through Angular's
-   * transformer (transformModule's JavaScript branch), optionally this pass,
+   * transformer (transformModule's JavaScript branch), optionally this pass
+   * (otherwise only splitPrivateChains),
    * and SWC with the main thread's options. `LynxElement` isn't exported, so
    * an export is added for the test.
    */
@@ -1565,7 +1747,11 @@ describe("over the runtime's build", () => {
       return {
         fesm,
         main: compile(
-          withPass ? transformPrivateMethods(code, fesm, { root: ROOT }) : code,
+          withPass
+            ? transformPrivateMethods(code, fesm, { root: ROOT })
+            : // As the background thread compiles it: without the pass, a
+              // chained read (`this.#a.#b()`) still needs splitting.
+              splitPrivateChains(code, fesm),
           LAYERS.MAIN_THREAD,
         ),
       };

@@ -458,3 +458,5 @@ The CSS pipeline minifies `rgba(92, 94, 102, 1)` to `#5c5e66`, and a later token
 ### `this.#field?.()[key]` throws when the field is unset
 
 The Lynx bundle compiles first-party `#private` fields to properties, and that pass puts the `[key]` outside the optional chain's short-circuit, so `this.#onColors?.()[scheme]` throws `Cannot read properties of undefined` instead of giving `undefined`. Split it: `const fn = this.#onColors; const colors = fn ? fn()[scheme] : undefined;`. A local constant in the same shape compiles correctly. The same pass calls `other?.#method()` outside the short-circuit and without its receiver, so it throws for a nullish `other` and runs the method with `this` undefined for any other: write `other == null ? undefined : other.#method()`.
+
+A private member read on another one (`this.#parent.#depth()`, `node.#next.#label = v`) works: the build splits the chain so the pass compiles both. Inside an optional chain, `a?.#b.#c` gives `undefined` when `a.#b` is nullish, where the web throws a TypeError.

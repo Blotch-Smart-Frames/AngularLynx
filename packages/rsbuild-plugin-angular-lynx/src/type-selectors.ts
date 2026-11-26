@@ -141,6 +141,20 @@ const mayBeInlineTag = (compound: readonly SelectorNode[]): boolean => {
  * only where Lynx applies it. Combinators inside `:is()` or `:not()` are left
  * as they are.
  */
+/**
+ * The most selectors throughAnonymousText adds for one selector. The
+ * combinations grow like the Fibonacci numbers with its child combinators: a
+ * selector with five gets at most 12, but one with thirty would get two
+ * million, and run the build out of memory.
+ */
+export const MAX_ANONYMOUS_TEXT_SELECTORS = 32;
+
+/**
+ * The selectors of the current rewrite that had more combinations than
+ * MAX_ANONYMOUS_TEXT_SELECTORS (see rewriteTypeSelectors).
+ */
+let capped: string[] = [];
+
 const throughAnonymousText = (selectors: selectorParser.Root): void => {
   // The selectors as they were: the new ones need no more of their own.
   for (const selector of selectors.nodes.slice()) {
@@ -168,6 +182,7 @@ const throughAnonymousText = (selectors: selectorParser.Root): void => {
     // combinators in a row (see above).
     let combinations: number[][] = [[]];
     for (const index of at) {
+      if (combinations.length > MAX_ANONYMOUS_TEXT_SELECTORS) break;
       combinations = [
         ...combinations,
         ...combinations
@@ -181,6 +196,12 @@ const throughAnonymousText = (selectors: selectorParser.Root): void => {
     // The selector itself is the empty combination; the others follow it,
     // shortest first.
     combinations.shift();
+    if (combinations.length > MAX_ANONYMOUS_TEXT_SELECTORS) {
+      // Too many: one anonymous <text> at a time, which is every path but
+      // one through a block in an inline tag, and a warning that says so.
+      combinations = at.map((index) => [index]);
+      capped.push(selector.toString().trim());
+    }
     combinations.sort((a, b) => a.length - b.length);
     let after: selectorParser.Selector = selector;
     for (const chosen of combinations) {
@@ -219,13 +240,21 @@ const rewriter = selectorParser((selectors) => {
  * the element with: `app-card > view` becomes `._ngtag-app-card > view`. A
  * child combinator in front of what may be an inline tag gains a selector
  * that also matches it in an anonymous `<text>` (see throughAnonymousText).
- * Selectors that can't be parsed are left as they are.
+ * Selectors that can't be parsed are left as they are. `onCapped` hears of
+ * each selector whose combinations were more than
+ * MAX_ANONYMOUS_TEXT_SELECTORS, which gets one anonymous `<text>` at a time.
  */
-export const rewriteTypeSelectors = (selector: string): string => {
+export const rewriteTypeSelectors = (
+  selector: string,
+  onCapped?: (selector: string) => void,
+): string => {
+  capped = [];
   try {
     return rewriter.processSync(selector);
   } catch {
     return selector;
+  } finally {
+    for (const one of capped) onCapped?.(one);
   }
 };
 
@@ -264,10 +293,15 @@ const inKeyframes = (container: Container | undefined): boolean => {
  */
 export const typeSelectorsForLynx: PluginCreator<void> = () => ({
   postcssPlugin: 'angular-lynx-type-selectors',
-  OnceExit(root) {
+  OnceExit(root, { result }) {
     root.walkRules((rule) => {
       if (inKeyframes(rule.parent)) return;
-      const selector = rewriteTypeSelectors(rule.selector);
+      const selector = rewriteTypeSelectors(rule.selector, (one) => {
+        rule.warn(
+          result,
+          `\`${one}\` has too many child combinators to match through every anonymous <text> (see MAX_ANONYMOUS_TEXT_SELECTORS): an inline tag in a block inside another inline tag may miss it on Lynx.`,
+        );
+      });
       if (selector !== rule.selector) rule.selector = selector;
     });
   },

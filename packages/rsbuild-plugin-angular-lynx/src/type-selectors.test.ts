@@ -8,6 +8,7 @@ import {
   applyTypeSelectors,
   INLINE_FLOW_TAGS,
   LYNX_ELEMENT_TAGS,
+  MAX_ANONYMOUS_TEXT_SELECTORS,
   rewriteTypeSelectors,
   typeSelectorsForLynx,
 } from './type-selectors';
@@ -174,6 +175,32 @@ describe('rewriteTypeSelectors', () => {
       expect(rewriteTypeSelectors(selector)).toBe(expected);
     });
 
+    it('crosses one anonymous <text> at a time past the cap, and says so', () => {
+      // Seven child combinators with descendants between them: 127
+      // combinations, past the cap of 32.
+      const selector =
+        '.a > .b .c > .d .e > .f .g > .h .i > .j .k > .l .m > .n';
+      const onCapped = vi.fn();
+      const rewritten = rewriteTypeSelectors(selector, onCapped).split(', ');
+      expect(2 ** 7 - 1).toBeGreaterThan(MAX_ANONYMOUS_TEXT_SELECTORS);
+      expect(rewritten).toHaveLength(1 + 7);
+      expect(rewritten.every((one) => one.split('._ngtext').length <= 2)).toBe(
+        true,
+      );
+      expect(onCapped).toHaveBeenCalledExactlyOnceWith(selector);
+    });
+
+    it('stays under the cap without a word', () => {
+      const onCapped = vi.fn();
+      // Five: 31 combinations.
+      const rewritten = rewriteTypeSelectors(
+        '.a > .b .c > .d .e > .f .g > .h .i > .j',
+        onCapped,
+      ).split(', ');
+      expect(rewritten).toHaveLength(32);
+      expect(onCapped).not.toHaveBeenCalled();
+    });
+
     it.each([
       // Tags that never go in an anonymous <text>, Lynx's or HTML's.
       ['.row > p', '.row > ._ngtag-p'],
@@ -217,6 +244,17 @@ describe('typeSelectorsForLynx', () => {
   it('leaves Lynx elements and classes alone', () => {
     const css = 'view.card > text { color: red } .title { color: blue }';
     expect(process(css)).toBe(css);
+  });
+
+  it('warns of a selector past the cap', () => {
+    const result = postcss([typeSelectorsForLynx()]).process(
+      '.a > .b .c > .d .e > .f .g > .h .i > .j .k > .l .m > .n { color: red }',
+      { from: undefined },
+    );
+    expect(result.css).toContain('.m > ._ngtext > .n');
+    expect(result.warnings().map((warning) => warning.text)).toEqual([
+      expect.stringContaining('MAX_ANONYMOUS_TEXT_SELECTORS'),
+    ]);
   });
 
   it('gives the style index the rule with the anonymous <text> as the tag’s parent', () => {

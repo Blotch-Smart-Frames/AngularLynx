@@ -32,37 +32,52 @@ export class LynxVideoElement extends LynxElement {
   /** The id that pairs this video with its native view. */
   readonly videoId = `${ID_PREFIX}-${nextVideoId++}`;
 
-  readonly HAVE_NOTHING = HAVE_NOTHING;
-  readonly HAVE_METADATA = 1;
-  readonly HAVE_CURRENT_DATA = 2;
-  readonly HAVE_FUTURE_DATA = 3;
-  readonly HAVE_ENOUGH_DATA = HAVE_ENOUGH_DATA;
+  /**
+   * HTMLMediaElement's readyState constants, as getters on the prototype
+   * rather than fields every element would carry.
+   */
+  get HAVE_NOTHING(): number {
+    return HAVE_NOTHING;
+  }
+  get HAVE_METADATA(): number {
+    return 1;
+  }
+  get HAVE_CURRENT_DATA(): number {
+    return 2;
+  }
+  get HAVE_FUTURE_DATA(): number {
+    return 3;
+  }
+  get HAVE_ENOUGH_DATA(): number {
+    return HAVE_ENOUGH_DATA;
+  }
 
   constructor(element: ElementRef) {
     super(element);
     this.tagName = 'video';
-    if (!__WEB__) {
-      // Pairs the native view with the id the canvas contexts read it by.
-      this.setAttribute('video-id', this.videoId);
-      const videoId = this.videoId;
-      Object.defineProperty(this, CANVAS_SOURCE, {
-        // A getter: the frame's size is the shell's, and changes as the
-        // video plays (a new source, a stream changing resolution).
-        get: (): CanvasSource => {
-          const { width, height } = getVideoFrameSize(videoId);
-          return {
-            canvasId: videoId,
-            width,
-            height,
-            readable: true,
-            video: true,
-            // The shell reads the frame when the context's calls run.
-            flush: () => {},
-          };
-        },
-        enumerable: false,
-      });
-    }
+    // Pairs the native view with the id the canvas contexts read it by.
+    if (!__WEB__) this.setAttribute('video-id', this.videoId);
+  }
+
+  /**
+   * The video as an image for the canvas contexts, by its id. A getter, on
+   * the prototype: the frame's size is the shell's, and changes as the video
+   * plays (a new source, a stream changing resolution). None on Lynx for
+   * Web, where the browser's canvas reads the browser's video.
+   */
+  get [CANVAS_SOURCE](): CanvasSource | undefined {
+    if (__WEB__) return undefined;
+    const videoId = this.videoId;
+    const { width, height } = getVideoFrameSize(videoId);
+    return {
+      canvasId: videoId,
+      width,
+      height,
+      readable: true,
+      video: true,
+      // The shell reads the frame when the context's calls run.
+      flush: () => {},
+    };
   }
 
   get #dom(): HTMLVideoElement {

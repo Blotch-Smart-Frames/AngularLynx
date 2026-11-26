@@ -105,11 +105,14 @@ export const wrapPureClasses = (code: string, filename: string): string => {
     if (alias) {
       // From the statement itself, not the trivia before it: written without
       // a semicolon, the class's statement ends where that trivia starts,
-      // which is where `)()` goes, and the comments before it stay.
+      // which is where `)()` goes, and the comments before it stay. A `;`
+      // takes its place, which ends the class's statement if it had no
+      // semicolon of its own: a `(` starting the next statement would
+      // otherwise call what `)()` returns, the class.
       edits.push({
         start: alias.statement.getStart(sourceFile),
         end: alias.statement.end,
-        text: '',
+        text: ';',
       });
     }
   };

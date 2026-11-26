@@ -126,7 +126,7 @@ describe('wrapPureClasses', () => {
       [
         'var _a;',
         'var Element = /*#__PURE__*/ (() => _a = class { static #byId = new Map(); static get(id) { return _a.#byId.get(id); } })();',
-        '',
+        ';',
         'var after = 1;',
       ].join('\n'),
     );
@@ -150,11 +150,25 @@ describe('wrapPureClasses', () => {
         'var _a;',
         'var Element = /*#__PURE__*/ (() => _a = class { #x; get() { return _a; } })()',
         '// Set after the class.',
-        '',
+        ';',
       ].join('\n'),
     );
     const Element = new Function(`${wrap(code)}; return Element;`)();
     expect(new Element().get()).toBe(Element);
+  });
+
+  // Without the `;`, the next statement's `(` would call what the IIFE
+  // returns, the class, which throws.
+  it('keeps the statement after a moved alias its own', () => {
+    const code = [
+      'var _a;',
+      'var Element = class { #x; get() { return _a; } }',
+      '_a = Element;',
+      '(() => { globalThis.done = Element; })();',
+    ].join('\n');
+    const scope: { done?: unknown } = {};
+    new Function('globalThis', wrap(code))(scope);
+    expect(scope.done).toBeTypeOf('function');
   });
 
   // The class's IIFE goes when nothing reads the class, and the assignment

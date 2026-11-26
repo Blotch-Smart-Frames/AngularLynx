@@ -140,7 +140,7 @@ What doesn't carry over:
 
 - **Inline styles don't inherit.** Only classes and stylesheet rules pass text styles down: `<div style="color: red">` colors no text but its own.
 - **An inline tag in a line draws no box.** On iOS and Android, a `<span>` or `<code>` in the middle of a line shows its background behind its letters, without padding, borders or rounded corners. A badge on a line of its own keeps them.
-- **Inline text tags keep their browser text styles.** The build makes `<b>` and `<strong>` bold, `<em>`, `<i>`, `<cite>`, `<dfn>` and `<var>` italic, `<u>` and `<ins>` underlined, and `<s>` and `<del>` struck through, and your own CSS for them wins, as it would in a browser.
+- **Inline text tags keep their browser text styles.** The build makes `<b>` and `<strong>` bold, `<em>`, `<i>`, `<cite>`, `<dfn>` and `<var>` italic, `<u>` and `<ins>` underlined, and `<s>` and `<del>` struck through, and your own CSS for them wins, as it would in a browser. One exception: a `<u>` or `<ins>` inside an `<s>` or `<del>` (or the other way round) gets both lines from a rule with two classes, which beats a single class of yours on either tag of the pair.
 - **There are no other browser styles.** An `<h1>` is the size of any other text, an `<a>` isn't underlined, a `<code>` isn't monospace, and a `<button>` has no border, as with Tailwind's Preflight reset. Style them yourself.
 - **There's no browser behavior.** `<a href>` opens nothing (use `routerLink`), a `<form>` doesn't submit, and `disabled` doesn't stop a `<button>`'s taps.
 - **Other tags don't work.** A `<table>`, `<select>` or `<br>` renders as a plain `<view>`, and the build warns about it.

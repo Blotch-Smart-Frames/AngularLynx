@@ -61,7 +61,12 @@ del {
  *
  * Two classes are more specific than an app's one, so an app's class that
  * sets the decoration of a `<u>` inside an `<s>` loses here, where it would
- * draw over the browser's. Only this pair of nested tags pays that.
+ * draw over the browser's. And the rule goes by the tags alone: an outer
+ * `<u>` whose own line an app's class turns off (`text-decoration: none`)
+ * still gives the `<s>` inside both. Building the value from the outer
+ * tag's inherited one instead would make values a browser rejects
+ * (`line-through none`, a line named twice), and only these nested pairs
+ * pay either cost.
  */
 u s,
 u del,

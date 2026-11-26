@@ -80,7 +80,7 @@ export class Shell {
 ```
 
 - `<ui-nav-drawer-trigger>` is a menu button with a hamburger icon. It only emits `pressed`, so set your `open` signal there. Screen readers announce it as "Open navigation menu", or your own `label`.
-- The drawer covers 80% of the screen width and the full height, over a dimmed backdrop. A backdrop tap closes it.
+- The drawer covers 80% of the screen width and the full height, over a dimmed backdrop. A backdrop tap or Android's back button closes it.
 - Tapping an item emits its `pressed`, then closes the drawer.
 - `[active]` highlights the item for the current page. When the drawer opens, it scrolls the active item into view.
 - An item lays out its content in a row. Put an icon and a `<text>` in it.
@@ -154,10 +154,10 @@ Set `autoClose` to `false` on an item that shouldn't close the drawer, such as o
 | `side`  | `'left' \| 'right'` | `'left'` | The edge the drawer slides in from.               |
 | `class` | `string`            | `''`     | Extra Tailwind classes for the panel.             |
 
-| Output       | Type      | Description                                                                         |
-| ------------ | --------- | ----------------------------------------------------------------------------------- |
-| `openChange` | `boolean` | Emits `false` when an item or a backdrop tap closes the drawer. Part of `[(open)]`. |
-| `closed`     | `void`    | Emits after the close animation finishes.                                           |
+| Output       | Type      | Description                                                                                                |
+| ------------ | --------- | ---------------------------------------------------------------------------------------------------------- |
+| `openChange` | `boolean` | Emits `false` when an item, a backdrop tap or Android's back button closes the drawer. Part of `[(open)]`. |
+| `closed`     | `void`    | Emits after the close animation finishes.                                                                  |
 
 | Method    | Description        |
 | --------- | ------------------ |

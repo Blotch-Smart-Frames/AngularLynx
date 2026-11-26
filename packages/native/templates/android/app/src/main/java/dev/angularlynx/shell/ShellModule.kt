@@ -16,7 +16,8 @@ import com.lynx.tasm.LynxEnv
  * gesture starts whether the app will handle it (predictive back shows a
  * different animation either way). The Angular app can't answer in time, so it
  * tells us ahead of time instead: it enables the back handler while the Router
- * has somewhere to go back to. While enabled, back presses become an
+ * has somewhere to go back to, or something open on top (a popover) takes
+ * back. While enabled, back presses become an
  * `angularLynxBack` global event; while disabled (the default, and whenever the
  * runtime doesn't know about this module) Android's default back behavior
  * applies, which leaves the app.

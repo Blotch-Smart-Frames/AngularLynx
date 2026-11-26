@@ -97,7 +97,7 @@ export class ConfirmDelete {
 - **`<overlay>` floats above the whole app.** It lives in your template, and a signal bound to `visible` shows and hides it.
 - **Give it exactly one child, sized `h-full w-full`.** The overlay itself takes no space. It sizes only its first child, against the screen, and the web preview shows only that first child. Position your content inside that full-size view.
 - **Use `(catchtap)` on the panel.** It stops taps on the panel from reaching the backdrop's close handler. See [Stop an event from bubbling](/guide/elements/event-handling#stop-an-event-from-bubbling).
-- **On Android, the back button fires `(bindrequestclose)`** on the overlay. Close the overlay there.
+- **On Android, the back button fires `(bindrequestclose)`** on the overlay. Close the overlay there. Content that floats without an overlay, such as a `position: fixed` panel, takes back with [`LynxBackButton.on()`](/api/angular-lynx/back-button) while it's open.
 
 <Go example="element-overlay" defaultFile="src/app/app.ts" />
 

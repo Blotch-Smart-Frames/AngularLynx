@@ -38,7 +38,7 @@ A release build signed with the upload key holds only `arm64-v8a` and `armeabi-v
 
 ## Back button
 
-Back is off by default, so it leaves the app like any root screen. The runtime turns it on while the Router has history by calling `NativeModules.AngularLynxShell.setBackHandlerEnabled(true)`, and off again on the first screen (`LynxBackButton` in `packages/runtime/src/lib/router/lynx-back-button.ts`, which `provideRouter()` starts; the call goes through the background thread, where `NativeModules` lives). While it's on, a back press sends the global event `angularLynxBack` instead, which the runtime turns into `Location.back()`. The app has to say beforehand because Android decides synchronously, at the start of the gesture, whether an app handles back (predictive back animates differently). Layer 6's `native/back-button.yaml` checks both ends.
+Back is off by default, so it leaves the app like any root screen. The runtime turns it on while the Router has history or something open on top takes back (a handler registered with `LynxBackButton.on()`, such as a popover's) by calling `NativeModules.AngularLynxShell.setBackHandlerEnabled(true)`, and off again otherwise (`LynxBackButton` in `packages/runtime/src/lib/back-button/back-button.ts`, which `provideRouter()` starts; the call goes through the background thread, where `NativeModules` lives). While it's on, a back press sends the global event `angularLynxBack` instead, which the runtime gives to the handler registered last, or turns into `Location.back()`. The app has to say beforehand because Android decides synchronously, at the start of the gesture, whether an app handles back (predictive back animates differently). Layer 6's `native/back-button.yaml` checks both ends.
 
 ## Splash screen
 

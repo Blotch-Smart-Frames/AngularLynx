@@ -1,0 +1,64 @@
+# LynxBackButton
+
+Hears Android's back button (and the back gesture), so that back closes what's open on top, and otherwise goes back a screen. `import { LynxBackButton, type LynxBackHandler } from '@blotch/angular-lynx';`
+
+## Usage
+
+Register a handler while something that back should close is open, and remove it as that closes:
+
+```typescript
+export class SearchScreen {
+  readonly searching = signal(false);
+
+  constructor() {
+    const backButton = inject(LynxBackButton);
+    effect((onCleanup) => {
+      if (this.searching()) {
+        onCleanup(backButton.on(() => this.searching.set(false)));
+      }
+    });
+  }
+}
+```
+
+`@blotch/ui`'s popovers and anchored action sheets register one while they're open. Its sheets, dialogs and drawers draw in an [`<overlay>`](/api/elements/overlay), which Android gives back to first, as `requestclose`.
+
+## API
+
+### `LynxBackButton`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxBackButton {}
+```
+
+A press goes to the handler registered last with [`on()`](#lynxbackbuttonon). With none, the router goes back a screen, with `Location.back()`, so guards and resolvers run. On the router's first screen, or without [`provideRouter()`](/api/angular-lynx/routing) from `@blotch/angular-lynx`, back is Android's: it leaves the app.
+
+| Host                                                                  | Where presses come from                                                            |
+| --------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Android (`ng build --platform android`)                               | The back button and the back gesture                                               |
+| Your own Android app                                                  | [Whatever sends the same event](/guide/embedding/#connect-the-android-back-button) |
+| iOS, the web preview, Lynx Explorer                                   | Nowhere: no press ever arrives                                                     |
+| Unit tests ([testing library](/api/testing-library/#pressbackbutton)) | `pressBackButton()`                                                                |
+
+- **While an `<overlay>` shows,** Android gives back to it, as its `requestclose` event, and not to these handlers.
+- **Android decides whether the app takes back when the gesture starts,** before JavaScript could answer. So the app tells the shell beforehand: it takes back while a handler is registered or the router has a screen to go back to, and Android has it the rest of the time.
+- **With a `LocationStrategy` of your own,** only the handlers take back: the router's history doesn't.
+
+### `LynxBackButton.on()`
+
+```typescript
+on(
+  handler: LynxBackHandler,
+  options?: { readonly injector?: Injector },
+): () => void;
+
+type LynxBackHandler = () => void;
+```
+
+Gives the back button's presses to `handler` until it's removed. While it's registered, back doesn't go back a screen or leave the app.
+
+- **The handler registered last gets each press,** so what opened last closes first. The others wait their turn.
+- **A handler that throws** is reported to Angular's `ErrorHandler`.
+- **The handler goes with its injection context.** Called from one, such as a constructor, the handler is removed when the component or service is destroyed. Pass `injector` to tie it to another. Outside one, it stays until it's removed.
+- **Returns** a function that removes the handler.

@@ -81,7 +81,8 @@ export class DeleteAccount {
 }
 ```
 
-- Unlike [Dialog](/dolan/dialog), tapping the backdrop does nothing. Your buttons are the only way to close it, so always include one that cancels.
+- Unlike [Dialog](/dolan/dialog), tapping the backdrop does nothing. Your buttons close it, so always include one that cancels.
+- Android's back button cancels it, as it does Material's dialogs: the `cancel` action's `pressed` emits, then the dialog closes. Set `[cancelable]="false"` on an alert that must be answered, and back does nothing while it's open.
 - `[(open)]` two-way binds a signal. Set it to `true` to open the dialog and `false` to close it.
 - The backdrop fades in and the panel scales up. Closing plays the reverse.
 - The dialog draws in an [`<overlay>`](/api/elements/overlay), so it covers the whole screen wherever it sits in your template.
@@ -158,16 +159,17 @@ The default variant, and `<ui-button>`s in its footer, stay as they were. An `<u
 
 ### UiAlertDialog
 
-| Input     | Type                   | Default     | Description                                                  |
-| --------- | ---------------------- | ----------- | ------------------------------------------------------------ |
-| `open`    | `boolean`              | `false`     | Whether the dialog is shown. Supports `[(open)]`.            |
-| `variant` | `'default' \| 'glass'` | `'default'` | `glass` draws the platform's own alert. See [Glass](#glass). |
-| `class`   | `string`               | `''`        | Extra Tailwind classes for the panel.                        |
+| Input        | Type                   | Default     | Description                                                                                              |
+| ------------ | ---------------------- | ----------- | -------------------------------------------------------------------------------------------------------- |
+| `open`       | `boolean`              | `false`     | Whether the dialog is shown. Supports `[(open)]`.                                                        |
+| `variant`    | `'default' \| 'glass'` | `'default'` | `glass` draws the platform's own alert. See [Glass](#glass).                                             |
+| `cancelable` | `boolean`              | `true`      | Whether Android's back button cancels the dialog, running the `cancel` action's `pressed` if it has one. |
+| `class`      | `string`               | `''`        | Extra Tailwind classes for the panel.                                                                    |
 
-| Output       | Type      | Description                                                                                       |
-| ------------ | --------- | ------------------------------------------------------------------------------------------------- |
-| `openChange` | `boolean` | Part of `[(open)]`. Emits `false` when an `<ui-alert-dialog-action>` closes it, and never itself. |
-| `closed`     | `void`    | Emits after the close animation finishes.                                                         |
+| Output       | Type      | Description                                                                                                                   |
+| ------------ | --------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `openChange` | `boolean` | Part of `[(open)]`. Emits `false` when an `<ui-alert-dialog-action>` or Android's back button closes it, and never by itself. |
+| `closed`     | `void`    | Emits after the close animation finishes.                                                                                     |
 
 ### UiAlertDialogFooter
 

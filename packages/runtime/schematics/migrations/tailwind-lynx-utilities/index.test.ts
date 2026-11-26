@@ -80,6 +80,49 @@ describe('the tailwind-lynx-utilities migration', () => {
     );
   });
 
+  it('imports after the end of an @import that spans lines', async () => {
+    workspace();
+    tree.create(
+      'src/styles.css',
+      "@import 'tailwindcss/utilities.css'\n  layer(utilities);\n.a { b: c; }\n",
+    );
+
+    await migrate();
+
+    expect(tree.readText('src/styles.css')).toBe(
+      "@import 'tailwindcss/utilities.css'\n  layer(utilities);\n@import '@blotch/angular-lynx/tailwind.css';\n.a { b: c; }\n",
+    );
+  });
+
+  it('finds a stylesheet that only a build configuration lists', async () => {
+    tree.create(
+      'angular.json',
+      JSON.stringify({
+        version: 1,
+        projects: {
+          app: {
+            root: '',
+            sourceRoot: 'src',
+            projectType: 'application',
+            architect: {
+              build: {
+                builder: 'x',
+                configurations: { production: { styles: ['src/prod.css'] } },
+              },
+            },
+          },
+        },
+      }),
+    );
+    tree.create('src/prod.css', "@import 'tailwindcss';\n");
+
+    await migrate();
+
+    expect(tree.readText('src/prod.css')).toBe(
+      "@import 'tailwindcss';\n@import '@blotch/angular-lynx/tailwind.css';\n",
+    );
+  });
+
   it("finds a project's stylesheet without a sourceRoot", async () => {
     workspace();
     tree.create('projects/other/src/tailwind.css', OLD_STYLESHEET);

@@ -5,10 +5,11 @@ import { LYNX_TAILWIND_IMPORT } from '../../utility/tailwind';
 
 /**
  * An `@import` of Tailwind 4: the one `ng add` writes
- * (`tailwindcss/utilities.css`) or Angular CLI's (`tailwindcss`).
+ * (`tailwindcss/utilities.css`) or Angular CLI's (`tailwindcss`), through the
+ * `;` that ends it, which can be on a later line than the URL.
  */
 const TAILWIND_IMPORT =
-  /^\s*@import\s+(['"])tailwindcss(?:\/utilities\.css)?\1.*$/gm;
+  /^\s*@import\s+(['"])tailwindcss(?:\/utilities\.css)?\1[^;]*;/gm;
 
 /**
  * Imports @blotch/angular-lynx/tailwind.css, Lynx's own utilities and
@@ -27,8 +28,16 @@ export default (): Rule => async (tree: Tree) => {
     // styles.scss. Then whatever else the build lists.
     stylesheets.add(`${sourceRoot}/styles.css`);
     stylesheets.add(`${sourceRoot}/tailwind.css`);
-    const styles = project.targets.get('build')?.options?.['styles'];
-    for (const entry of Array.isArray(styles) ? styles : []) {
+    // A configuration's `styles` replaces the options' (production may list
+    // a stylesheet of its own), so read them all.
+    const build = project.targets.get('build');
+    const styles = [
+      build?.options,
+      ...Object.values(build?.configurations ?? {}),
+    ]
+      .map((options) => options?.['styles'])
+      .flatMap((list) => (Array.isArray(list) ? list : []));
+    for (const entry of styles) {
       const input =
         typeof entry === 'string'
           ? entry

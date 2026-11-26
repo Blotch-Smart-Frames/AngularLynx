@@ -13,7 +13,9 @@ const ITEM_COUNT = 1000;
 @Component({
   selector: 'app-root',
   template: `
-    <view class="h-full flex-col bg-zinc-50 px-6 pt-6 flex">
+    <view
+      class="h-full flex-col bg-zinc-50 px-6 pt-[calc(1.5rem+env(safe-area-inset-top))] flex"
+    >
       <text class="mb-1 text-[28px] font-bold text-zinc-900">
         List Element
       </text>

@@ -10,7 +10,7 @@ type Tab = 'basics' | 'playground';
   selector: 'app-root',
   template: `
     <view class="h-full flex-col bg-zinc-50 flex">
-      <view class="px-6 pt-6">
+      <view class="px-6 pt-[calc(1.5rem+env(safe-area-inset-top))]">
         <text class="mb-1 text-[28px] font-bold text-zinc-900">Blur View</text>
         <text class="mb-4 text-[13px] text-zinc-500">
           Blurs whatever is rendered behind it, like CSS backdrop-filter.
@@ -43,7 +43,7 @@ type Tab = 'basics' | 'playground';
         <app-glass-playground />
       } @else {
         <scroll-view class="flex-1" scroll-orientation="vertical">
-          <view class="px-6 pb-6">
+          <view class="px-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
             <!-- Backdrop blur -->
             <view class="mb-4 rounded-xl border border-zinc-200 bg-white p-4">
               <text

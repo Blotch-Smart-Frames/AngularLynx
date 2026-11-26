@@ -13,7 +13,13 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
   selector: 'app-root',
   imports: [LYNX_ELEMENTS],
   template: `
-    <main>
+    <!--
+      The native shells draw edge to edge, so the page pads its top and bottom
+      by the safe area: without it the card starts under the status bar.
+    -->
+    <main
+      style="padding-top: calc(24px + env(safe-area-inset-top)); padding-bottom: calc(24px + env(safe-area-inset-bottom))"
+    >
       <div class="card">
         <img
           src="https://angular.dev/assets/images/press-kit/angular_icon_gradient.gif"

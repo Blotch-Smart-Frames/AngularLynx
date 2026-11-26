@@ -109,6 +109,12 @@ export const addLibraryPhoto = async (udid: string, logFile: string) => {
 const BOOT_MS = 600_000;
 
 /**
+ * The longest the background job can run: its boot wait and its tries, with
+ * a minute for stopping a command that hit its limit.
+ */
+const JOB_MS = BOOT_MS + TRIES * (TRY_MS + PAUSE_MS) + 60_000;
+
+/**
  * Starts adding the library photo in a process of its own, which waits for
  * `udid` to finish booting first and outlives the caller: CI's "Start the
  * iOS Simulator" step runs prepareIos() and ends long before Layer 6, its
@@ -148,22 +154,17 @@ export const ensureLibraryPhoto = async (udid: string, logFile: string) => {
     console.log(
       `Waiting for the library photo, which the background job (pid ${job.pid}) is adding.`,
     );
-    try {
-      await waitFor(
-        'the background job to add the library photo',
-        () => readJob(udid)?.status !== 'adding' || !isRunning(job.pid),
-        // Its tries, with a minute to spare. Its boot wait is over by now:
-        // Layer 6 waited for the same boot before calling this.
-        { timeoutMs: TRIES * (TRY_MS + PAUSE_MS) + 60_000, intervalMs: 2_000 },
-      );
-    } catch (error) {
-      try {
-        process.kill(-job.pid, 'SIGKILL');
-      } catch {
-        // It ended just now.
-      }
-      throw error;
-    }
+    // The job ends by itself: each of its commands has a limit, and is
+    // stopped there. So this waits out the job's longest possible run rather
+    // than killing it, which would leave its command running (process.ts
+    // starts each in a process group of its own) without the timer that
+    // stops it. Its boot wait is over by now in practice, since Layer 6
+    // waited for the same boot before calling this.
+    await waitFor(
+      'the background job to add the library photo',
+      () => readJob(udid)?.status !== 'adding' || !isRunning(job.pid),
+      { timeoutMs: JOB_MS, intervalMs: 2_000 },
+    );
   }
   const outcome = readJob(udid);
   rmSync(jobFile(udid), { force: true });

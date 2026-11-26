@@ -242,6 +242,7 @@ Leave `tsconfig*.json`, `src/main.ts`, `src/app/app.config.ts`, `src/styles.css`
 
 - Standalone `App` with `imports: [LYNX_ELEMENTS, Ui<Name>, …]`.
 - Wrap everything in `<scroll-view scroll-orientation="vertical" class="h-full">`.
+- Pad its content by the safe area: `<view class="flex-col gap-6 px-4 flex pt-safe-4 pb-safe-4">`. The iOS and Android shells draw edge to edge, so a plain `p-4` puts the title under the status bar, where a tap goes to the system, and the last row under the home indicator. A first row outside the scroll-view (a header, like `ui-nav-drawer`'s) takes the `pt-safe-*` instead. The website preview has no status bar, so it won't show you this: `env(safe-area-inset-*)` is 0 there.
 - Open with a title (`text-2xl font-bold text-foreground`) and a one-line description (`text-sm text-muted-foreground`).
 - One `flex-col gap-3` section per facet: variants, sizes, orientation, disabled, interactive.
 - Show interactivity with a signal (e.g. "Last action: …") so the preview visibly responds to taps.

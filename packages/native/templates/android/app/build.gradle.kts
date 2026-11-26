@@ -202,6 +202,17 @@ dependencies {
     // The umbrella declares its modules for runtime only. EdgeToEdgeOverlay
     // extends <overlay>'s classes, so that module is compiled against too.
     implementation("org.lynxsdk.lynx:xelement-overlay:$lynxVersion")
+    // cspell:words servalsvg libserval
+    // ServalSVG, the engine <svg> draws with. xelement-svg asks for 0.0.2,
+    // whose AAR has libserval_svg.so for arm64-v8a, armeabi-v7a and x86 but
+    // not x86_64, so on an x86_64 emulator every <svg> is blank and Lynx's
+    // SVG thread throws UnsatisfiedLinkError. 0.2.4 ships all four ABIs,
+    // 16 KB-aligned on 64-bit, and keeps the Java API xelement-svg calls;
+    // Gradle's conflict resolution moves xelement-svg onto it. It's also the
+    // version the iOS frameworks link (build-lynx-ios-frameworks.sh), so
+    // both platforms draw with the same engine. Drop this once xelement-svg
+    // depends on a release with x86_64.
+    implementation("org.lynxsdk.lynx:servalsvg:0.2.4")
     // XElement's modules depend on appcompat and material 1.0.0, which bring
     // vectordrawable 1.0.0 and vectordrawable-animated 1.0.0. Those two share
     // the namespace androidx.vectordrawable, and AGP 9's manifest merger

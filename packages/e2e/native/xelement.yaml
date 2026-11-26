@@ -4,6 +4,9 @@
 # something only the real element produces: the svg is found by its label,
 # the overlay's content shows only once it is opened, and the typed text
 # comes back through the input's bindinput event.
+# The label is there even when the svg draws nothing, so on Android the
+# harness also counts the circle's pixels in a screenshot (android.ts, issue
+# #693).
 #
 # Typing comes last, so the keyboard never has to be hidden: Maestro's iOS
 # hideKeyboard is a short swipe at the middle of the screen, which Lynx takes

@@ -153,27 +153,31 @@ const PRIVATE_ACCESS =
 
 /**
  * Two private member accesses (see {@link PRIVATE_ACCESS}) anywhere in the
- * module: every chain {@link splitPrivateChains} rewrites has them, with
- * whatever is between (comments, parentheses, a type assertion). A module
- * with at most one is left without being parsed. Coarse on purpose: a hint
- * that followed the chain's syntax between the two (repeated, overlapping
- * comment alternatives) backtracked exponentially on a run of slashes or
- * comments, and this one only scans forward to the second access.
+ * module: a chain {@link splitPrivateChains} splits has them, with whatever
+ * is between (comments, parentheses, a type assertion). Coarse on purpose: a
+ * hint that followed the chain's syntax between the two (repeated,
+ * overlapping comment alternatives) backtracked exponentially on a run of
+ * slashes or comments, and this one only scans forward to the second access.
  */
 const PRIVATE_CHAIN_HINT = new RegExp(
   `${PRIVATE_ACCESS}[\\s\\S]*?${PRIVATE_ACCESS}`,
   'u',
 );
 
+/** One private member access, as in {@link PRIVATE_ACCESS}. */
+const PRIVATE_ACCESS_HINT = new RegExp(PRIVATE_ACCESS, 'u');
+
 /**
- * Rewrites a private member read on the result of another private member
- * read (`a.#b.#c`, `a.#b.#c()`, `(a.#b).#c = v`) so SWC compiles both. The
- * modules whose private members SWC compiles to properties (layers.ts) need
- * it (see {@link compilesPrivatesAsProperties}), on both threads:
- * {@link transformPrivateMethods} runs it on the main thread's.
+ * Rewrites the private member reads SWC compiles wrong, so it compiles them
+ * as they run natively. The modules whose private members SWC compiles to
+ * properties (layers.ts) need it (see {@link compilesPrivatesAsProperties}),
+ * on both threads: {@link transformPrivateMethods} runs it on the main
+ * thread's. A module with neither two private accesses nor a `?.` and one is
+ * left without being parsed. It fixes three things.
  *
- * With `privateFieldsAsProperties`, SWC (1.16, and rspack 2.2's) lowers the
- * outer access and leaves the inner one as it was:
+ * **A private member read on another one** (`a.#b.#c`, `a.#b.#c()`,
+ * `(a.#b).#c = v`). With `privateFieldsAsProperties`, SWC (1.16, and rspack
+ * 2.2's) lowers the outer access and leaves the inner one as it was:
  * `_class_private_field_loose_base(a.#b, _c)[_c]`. The class's `#b` is gone,
  * so swc-loader fails the module ("private name #b is not defined"), and
  * code that gets past it is a SyntaxError when it loads ("Private field '#b'
@@ -182,12 +186,31 @@ const PRIVATE_CHAIN_HINT = new RegExp(
  * same value, read once, and nothing added or removed changes what `this` a
  * call of it gets.
  *
- * Inside an optional chain (`a?.#b.#c`) the parentheses would end it, so a
- * nullish `a` would throw instead of giving `undefined`. There the outer `.`
- * becomes `?.` (`a?.#b?.#c`), which SWC compiles: the result differs only
- * when `a.#b` is itself nullish, where natively reading `#c` of it throws a
- * TypeError and here it gives `undefined`. An access that has its own `?.`
- * (`a.#b?.#c`) compiles as it is.
+ * **What follows a private member inside an optional chain.** SWC, in both
+ * of its private-member compiles, ends the chain's short-circuit at the
+ * private member: `a?.#b.c` comes out as `(a == null ? void 0 : <a.#b>).c`,
+ * which throws for a nullish `a` where natively it gives `undefined`. So the
+ * next link gets its own `?.` (`a?.#b?.c`, `a?.#b?.[k]`, `a?.#b?.#c`), which
+ * SWC compiles: the result differs only when `a.#b` is itself nullish, where
+ * natively the next link throws a TypeError and here it gives `undefined`.
+ * Parentheses (`(0, a?.#b).#c`) would end the chain, so a chained read inside
+ * one gets the `?.` too.
+ *
+ * **A call of a private member inside an optional chain, or with its own
+ * `?.`** (`a?.#m(x)`, `a?.#b.#m(x)`, `a.#m?.(x)[k]`). SWC calls it outside
+ * the short-circuit, and inside a chain without its receiver:
+ * `(a == null ? void 0 : <a.#m>)(x)`. So the call becomes one of `call`,
+ * itself optional, which SWC compiles: `this.#m?.call(this, x)`. Any
+ * receiver but `this` is read once, into a variable, before the member is
+ * (`(__receiver0 = a)?.#m?.call(__receiver0, x)`): the receiver could have
+ * side effects, and a private getter that runs as the member is read could
+ * assign a new value to a name. The variable is declared in the function
+ * the call is in (see {@link receiverScope}), so a call that runs again
+ * before this one has read it back, from such a getter, has its own. The
+ * arguments stay inside the short-circuit, as they're evaluated only when
+ * the call is made. The result differs only when the member is nullish or
+ * the receiver part of the chain is (`a?.b.#m(x)` with `a.b` nullish):
+ * natively the call throws a TypeError, and here it gives `undefined`.
  *
  * Edits never add or remove a line, and an inline source map's columns are
  * moved to match, as for the passes before it.
@@ -197,43 +220,318 @@ const PRIVATE_CHAIN_HINT = new RegExp(
  * @returns The rewritten code, or `code` itself when nothing applies.
  */
 export const splitPrivateChains = (code: string, filename: string): string => {
-  if (!PRIVATE_CHAIN_HINT.test(code)) {
+  if (
+    !PRIVATE_CHAIN_HINT.test(code) &&
+    !(code.includes('?.') && PRIVATE_ACCESS_HINT.test(code))
+  ) {
     return code;
   }
   const sourceFile = parse(code, filename);
   const edits: Edit[] = [];
-  const visit = (node: ts.Node): void => {
-    if (
+  // Where a `?` goes, before a link's `.`: a set, as two rules can ask for
+  // the same one (`a?.#b.#m()`).
+  const questionMarks = new Set<number>();
+  // The receivers' variables, by the scope that declares them.
+  const receivers = new Map<ts.Node, string[]>();
+  let receiverCount = 0;
+  // A name nothing in the module uses, so it can't take another's place.
+  let prefix = '__receiver';
+  while (code.includes(prefix)) prefix = `_${prefix}`;
+
+  /**
+   * Visits `node`. `yielding` is whether it's in a destructuring's default
+   * value that has a `yield` or an `await` (see {@link yieldingDefault}).
+   */
+  const visit = (node: ts.Node, yielding: boolean): void => {
+    const inYielding = yielding || yieldingDefault(node);
+    if (ts.isCallExpression(node)) {
+      const callee = skipNonNull(node.expression);
+      if (
+        !inYielding &&
+        isPrivateAccess(callee) &&
+        (node.questionDotToken || ts.isOptionalChain(callee))
+      ) {
+        // Before the edits inside the receiver, which visiting it adds:
+        // edits at one place are made in the order they're pushed, so an
+        // inner `(0, ` comes after the `(__receiver0 = `.
+        const receiver = callee.expression;
+        let text: string;
+        if (receiver.kind === ts.SyntaxKind.ThisKeyword) {
+          text = 'this';
+        } else {
+          text = `${prefix}${receiverCount++}`;
+          const scope = receiverScope(node);
+          receivers.set(scope, [...(receivers.get(scope) ?? []), text]);
+          const start = receiver.getStart(sourceFile);
+          edits.push(
+            { start, end: start, text: `(${text} = ` },
+            { start: receiver.end, end: receiver.end, text: ')' },
+          );
+          // The parentheses end the chain, so the member's `.` must start
+          // one again.
+          if (!callee.questionDotToken && ts.isOptionalChain(callee)) {
+            questionMarks.add(dotOf(callee, sourceFile));
+          }
+        }
+        const end = node.expression.end;
+        edits.push({ start: end, end, text: '?.call' });
+        if (node.questionDotToken) {
+          edits.push({
+            start: node.questionDotToken.getStart(sourceFile),
+            end: node.questionDotToken.end,
+            text: '',
+          });
+        }
+        edits.push({
+          start: node.arguments.pos,
+          end: node.arguments.pos,
+          text: node.arguments.length > 0 ? `${text}, ` : text,
+        });
+      }
+    } else if (
+      (ts.isPropertyAccessExpression(node) ||
+        ts.isElementAccessExpression(node)) &&
+      ts.isOptionalChain(node) &&
+      !node.questionDotToken
+    ) {
+      // A link right after a private member of the same chain. A private
+      // one is split even in a default value with a `yield` or an `await`:
+      // without the `?.` SWC leaves the inner read and fails the module
+      // (see above), and with it the default value still compiles and runs
+      // (checked in the tests).
+      const inner = skipNonNull(node.expression);
+      if (
+        isPrivateAccess(inner) &&
+        ts.isOptionalChain(inner) &&
+        (!inYielding ||
+          (ts.isPropertyAccessExpression(node) &&
+            ts.isPrivateIdentifier(node.name)))
+      ) {
+        const at = dotOf(node, sourceFile);
+        if (ts.isPropertyAccessExpression(node)) {
+          questionMarks.add(at);
+        } else {
+          edits.push({ start: at, end: at, text: '?.' });
+        }
+      }
+    } else if (
       ts.isPropertyAccessExpression(node) &&
       ts.isPrivateIdentifier(node.name) &&
-      !node.questionDotToken
+      !node.questionDotToken &&
+      // Inside a chain the rule above gives it a `?.`.
+      !ts.isOptionalChain(node)
     ) {
       // Through parentheses, which SWC drops, leaving the same shape, and
       // type assertions, should a .ts module still have them.
       const inner = skipWrappers(node.expression);
-      if (
-        ts.isPropertyAccessExpression(inner) &&
-        ts.isPrivateIdentifier(inner.name)
-      ) {
-        if (ts.isOptionalChain(node)) {
-          const dot = dotOf(node, sourceFile);
-          edits.push({ start: dot, end: dot, text: '?' });
-        } else {
-          // Outer edits come first, so `a.#b.#c.#d` gets `(0, (0, ` where
-          // both start.
-          const start = node.expression.getStart(sourceFile);
-          edits.push(
-            { start, end: start, text: '(0, ' },
-            { start: node.expression.end, end: node.expression.end, text: ')' },
-          );
-        }
+      if (isPrivateAccess(inner)) {
+        // Outer edits come first, so `a.#b.#c.#d` gets `(0, (0, ` where
+        // both start.
+        const start = node.expression.getStart(sourceFile);
+        edits.push(
+          { start, end: start, text: '(0, ' },
+          { start: node.expression.end, end: node.expression.end, text: ')' },
+        );
       }
     }
-    ts.forEachChild(node, visit);
+    ts.forEachChild(node, (child) => visit(child, inYielding));
   };
-  visit(sourceFile);
-  return applyEdits(code, edits, sourceFile);
+  visit(sourceFile, false);
+  for (const at of questionMarks) {
+    edits.push({ start: at, end: at, text: '?' });
+  }
+  // A scope's opening edit goes before, and its closing edit after, the
+  // edits at the same place inside it (`(__receiver0 = ` where an arrow
+  // function's body starts, `)` where it ends): edits at one place are made
+  // in the order they're pushed. Two scopes can end at one place (a field
+  // whose initializer ends with an arrow function), so the one that starts
+  // later, inside the other, closes first.
+  const opening: Edit[] = [];
+  const closing: Array<Edit & { scopeStart: number }> = [];
+  for (const [scope, names] of receivers) {
+    const declaration = `var ${names.join(', ')};`;
+    if (ts.isSourceFile(scope)) {
+      // After the last statement, on its line, so no line moves.
+      const end = scope.statements[scope.statements.length - 1]!.end;
+      edits.push({ start: end, end, text: `;${declaration}` });
+    } else if (ts.isBlock(scope)) {
+      // After any directives (`'use strict'`), which must come first. The
+      // statement with the call isn't one, so there's always a statement
+      // after them.
+      const directives = scope.statements.findIndex(
+        (statement) =>
+          !ts.isExpressionStatement(statement) ||
+          !ts.isStringLiteral(statement.expression),
+      );
+      const at =
+        directives > 0
+          ? scope.statements[directives - 1]!.end
+          : scope.getStart(sourceFile) + 1;
+      opening.push({
+        start: at,
+        end: at,
+        // A directive written without its `;` needs one.
+        text:
+          directives > 0 && code[at - 1] !== ';'
+            ? `; ${declaration}`
+            : ` ${declaration}`,
+      });
+    } else {
+      // An arrow function's expression body becomes a block that declares
+      // them, and an initializer (a field's, or a default value's) an arrow
+      // function called at once, which keeps its `this` and `arguments`.
+      // The expression stays on the line it was on, so `return` can't end
+      // before it.
+      const wrapped = !ts.isArrowFunction(scope.parent);
+      const start = scope.getStart(sourceFile);
+      opening.push({
+        start,
+        end: start,
+        text: `${wrapped ? '(() => ' : ''}{ ${declaration} return `,
+      });
+      closing.push({
+        start: scope.end,
+        end: scope.end,
+        text: wrapped ? ' })()' : ' }',
+        scopeStart: start,
+      });
+    }
+  }
+  closing.sort((a, b) => b.scopeStart - a.scopeStart);
+  return applyEdits(
+    code,
+    [
+      ...opening,
+      ...edits,
+      ...closing.map(({ start, end, text }) => ({ start, end, text })),
+    ],
+    sourceFile,
+  );
 };
+
+/**
+ * Where the variable for a receiver the call reads (see
+ * {@link splitPrivateChains}) is declared: the body of the function, method
+ * or static block the call is in, so each run of it has its own. An arrow
+ * function's expression body, a field's initializer and a default value
+ * in a parameter list (a parameter's, or one in its destructuring), which
+ * run once per call or instance, are given one: a parameter's default
+ * value can't see the function body's variables. A default value in a
+ * destructuring elsewhere is in the function's body, which keeps its
+ * `await` and `yield` in their function, as a wrapper wouldn't. A call in a computed key, `extends` or a decorator is in the
+ * scope around them, and one outside any function, which runs once, in the
+ * module.
+ */
+const receiverScope = (call: ts.Node): ts.Node => {
+  let child = call;
+  for (let parent = call.parent; parent; parent = parent.parent) {
+    if (
+      ((ts.isFunctionLike(parent) ||
+        ts.isClassStaticBlockDeclaration(parent)) &&
+        (parent as { body?: ts.Node }).body === child) ||
+      ((ts.isPropertyDeclaration(parent) ||
+        ts.isParameter(parent) ||
+        (ts.isBindingElement(parent) && inParameter(parent))) &&
+        parent.initializer === child)
+    ) {
+      return child;
+    }
+    child = parent;
+  }
+  return child;
+};
+
+/**
+ * Whether a node is a destructuring's default value (`[a = v] = …`,
+ * `{ a = v } = …`, in a declaration or an assignment) with a `yield` or an
+ * `await` of its function in it. SWC (1.16) compiles such a default value
+ * that has an optional chain it needs a variable for into an arrow function
+ * called at once, where the `yield` or `await` is a SyntaxError, whatever
+ * the chain reads. The rewritten calls and links need one, where SWC's own
+ * compile of them doesn't, so there they're left to SWC: the module loads,
+ * with SWC's short-circuit and receiver, rather than failing to.
+ */
+const yieldingDefault = (node: ts.Node): boolean => {
+  const parent = node.parent;
+  const isDefault =
+    parent !== undefined &&
+    ((ts.isBindingElement(parent) && parent.initializer === node) ||
+      (ts.isShorthandPropertyAssignment(parent) &&
+        parent.objectAssignmentInitializer === node) ||
+      (ts.isBinaryExpression(parent) &&
+        parent.right === node &&
+        parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        (ts.isArrayLiteralExpression(parent.parent) ||
+          ts.isPropertyAssignment(parent.parent))));
+  if (!isDefault) return false;
+  /**
+   * Whether `test` holds for any of the node's children.
+   */
+  const any = (node: ts.Node, test: (child: ts.Node) => boolean): boolean =>
+    ts.forEachChild(node, (child) => test(child) || undefined) ?? false;
+  /**
+   * Whether what runs as the default value is evaluated has a `yield` or an
+   * `await`: a function's computed name, but not its body or parameters,
+   * and a class's `extends`, decorators and computed member names, but not
+   * its members' bodies or initializers.
+   */
+  const yields = (inner: ts.Node): boolean => {
+    if (ts.isYieldExpression(inner) || ts.isAwaitExpression(inner)) {
+      return true;
+    }
+    if (ts.isClassLike(inner)) {
+      return any(inner, (child) =>
+        ts.isClassElement(child)
+          ? any(child, (part) =>
+              ts.isDecorator(part) || ts.isComputedPropertyName(part)
+                ? yields(part)
+                : false,
+            )
+          : yields(child),
+      );
+    }
+    if (ts.isFunctionLike(inner)) {
+      return (
+        inner.name !== undefined &&
+        ts.isComputedPropertyName(inner.name) &&
+        yields(inner.name)
+      );
+    }
+    return any(inner, yields);
+  };
+  return yields(node);
+};
+
+/**
+ * Whether a destructuring's element is in a parameter list, rather than in
+ * a variable declaration, an assignment's target or a `catch` clause.
+ */
+const inParameter = (element: ts.BindingElement): boolean => {
+  let node: ts.Node = element;
+  while (
+    ts.isBindingElement(node) ||
+    ts.isObjectBindingPattern(node) ||
+    ts.isArrayBindingPattern(node)
+  ) {
+    node = node.parent;
+  }
+  return ts.isParameter(node);
+};
+
+/**
+ * Whether a node is a private member access (`a.#b` or `a?.#b`).
+ */
+const isPrivateAccess = (
+  node: ts.Node,
+): node is ts.PropertyAccessExpression & { name: ts.PrivateIdentifier } =>
+  ts.isPropertyAccessExpression(node) && ts.isPrivateIdentifier(node.name);
+
+/**
+ * The expression inside any non-null assertions (`a!`), which stay in an
+ * optional chain where parentheses would end it.
+ */
+const skipNonNull = (node: ts.Expression): ts.Expression =>
+  ts.isNonNullExpression(node) ? skipNonNull(node.expression) : node;
 
 /**
  * The expression inside any parentheses and type assertions around it.
@@ -248,11 +546,11 @@ const skipWrappers = (node: ts.Expression): ts.Expression =>
     : node;
 
 /**
- * Where the `.` of a property access is: the first token after its object,
- * past any comments.
+ * Where the `.` of a property access is, or the `[` of an element access:
+ * the first token after its object, past any comments.
  */
 const dotOf = (
-  node: ts.PropertyAccessExpression,
+  node: ts.PropertyAccessExpression | ts.ElementAccessExpression,
   sourceFile: ts.SourceFile,
 ): number => {
   const scanner = ts.createScanner(

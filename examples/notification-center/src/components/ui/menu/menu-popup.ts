@@ -594,7 +594,7 @@ export class UiMenuPopup implements OnDestroy, MenuDragTarget {
     // Only a menu that's open or opening closes: `open` turning false again
     // reaches here only after it turned true, which ends any closing.
     if (phase === 'closed') return;
-    this.#rowOffsets.clear();
+    this.#rowOffsets = new Map();
     this.rows()?.highlighted.set(null);
     this.rows()?.shown.set(false);
     if (phase === 'measuring') {
@@ -614,38 +614,51 @@ export class UiMenuPopup implements OnDestroy, MenuDragTarget {
   /** The screen's pixels per app pixel, as the menu opened (#areaWidth). */
   #scale = 1;
   /** Where each row is in the menu's content, once measured. */
-  readonly #rowOffsets = new Map<MenuRow, RowOffset>();
+  #rowOffsets = new Map<MenuRow, RowOffset>();
+  /** The rows' version (see MenuRows) that #rowOffsets is for. */
+  #measuredVersion = -1;
 
   /**
    * Measures each row against the menu's content. The content keeps its
    * size as the menu grows and ends up at the menu's frame, so that's where
-   * each row will be.
+   * each row will be. Until the answer comes, no row is chosen: the old
+   * boxes may be other rows' places now.
    */
   async #measureRows(run: number): Promise<void> {
-    const rows = this.rows()?.all() ?? [];
+    const menuRows = this.rows();
+    if (!menuRows) return;
+    const version = menuRows.version;
+    this.#measuredVersion = version;
+    this.#rowOffsets = new Map();
+    const rows = menuRows.all();
     if (!rows.length) return;
     const [content, ...boxes] = await Promise.all([
       measureMenuElement(this.content().nativeElement),
       ...rows.map((row) => measureMenuElement(row.element())),
     ]);
-    if (run !== this.#run || !content) return;
+    // Dropped if the menu closed, or the rows changed again meanwhile: a
+    // newer measurement is on its way.
+    if (run !== this.#run || version !== menuRows.version || !content) return;
+    const offsets = new Map<MenuRow, RowOffset>();
     rows.forEach((row, index) => {
       const box = boxes[index];
       if (!box) return;
-      this.#rowOffsets.set(row, {
+      offsets.set(row, {
         left: (box.left - content.left) / this.#scale,
         top: (box.top - content.top) / this.#scale,
         width: box.width / this.#scale,
         height: box.height / this.#scale,
       });
     });
+    this.#rowOffsets = offsets;
   }
 
   /**
    * The row under `point`, in the window's coordinates, once the menu is
    * open and its rows measured. Only inside the menu's frame: a tall menu
-   * clips the rows past it. And only a row the menu still has, since an
-   * app can take one away while the finger is down.
+   * clips the rows past it. An app can add or take away a row while the
+   * finger is down, which moves the rows after it: then none is chosen
+   * until they're measured again.
    */
   #rowAt(rows: MenuRows, point: MenuPoint): MenuRow | null {
     const frame = this.placement()?.frame;
@@ -653,10 +666,12 @@ export class UiMenuPopup implements OnDestroy, MenuDragTarget {
     const x = point.x / this.#scale - this.#areaRect.left - frame.left;
     const y = point.y / this.#scale - this.#areaRect.top - frame.top;
     if (x < 0 || y < 0 || x >= frame.width || y >= frame.height) return null;
-    const current = rows.all();
+    if (rows.version !== this.#measuredVersion) {
+      void this.#measureRows(this.#run);
+      return null;
+    }
     for (const [row, box] of this.#rowOffsets) {
       if (
-        current.includes(row) &&
         x >= box.left &&
         x < box.left + box.width &&
         y >= box.top &&
@@ -714,7 +729,7 @@ export class UiMenuPopup implements OnDestroy, MenuDragTarget {
     }
     this.placeholder.set(null);
     this.placement.set(null);
-    this.#rowOffsets.clear();
+    this.#rowOffsets = new Map();
     const rows = this.rows();
     if (rows) {
       rows.highlighted.set(null);

@@ -40,6 +40,15 @@ describe('MenuRows', () => {
     expect(rows.all()).toEqual([second]);
   });
 
+  it('counts each change to its rows', () => {
+    const rows = new MenuRows();
+    const start = rows.version;
+    const remove = rows.add(aRow());
+    expect(rows.version).toBe(start + 1);
+    remove();
+    expect(rows.version).toBe(start + 2);
+  });
+
   it('turns the highlight off when the lit row goes', () => {
     const rows = new MenuRows();
     const lit = aRow();

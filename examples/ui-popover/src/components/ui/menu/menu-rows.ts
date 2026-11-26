@@ -42,6 +42,9 @@ export class MenuRows {
   /** Whether a submenu is open over the menu, which fades its rows. */
   readonly covered = signal(false);
 
+  /** Counts changes to the rows, so a menu can tell its measurements are old. */
+  #version = 0;
+
   /** Whether a finger that opened the menu is still down. */
   #pressing = false;
   /** When that finger lifted, in ms. */
@@ -93,10 +96,20 @@ export class MenuRows {
    */
   add(row: MenuRow): () => void {
     this.#rows.add(row);
+    this.#version++;
     return () => {
       this.#rows.delete(row);
+      this.#version++;
       if (this.highlighted() === row) this.highlighted.set(null);
     };
+  }
+
+  /**
+   * Changes each time a row is added or taken away: the rows after it move,
+   * so where the menu measured them no longer holds.
+   */
+  get version(): number {
+    return this.#version;
   }
 
   /**

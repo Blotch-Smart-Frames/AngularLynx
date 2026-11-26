@@ -762,18 +762,49 @@ describe('UiMenuPopup', () => {
       expect(added[0]!.choose).not.toHaveBeenCalled();
     });
 
-    it('chooses nothing in the place of a row the app took away', async () => {
+    it('measures its rows again when the app changes them, choosing nothing meanwhile', async () => {
       const rendered = await renderPopup();
       const menuRows = new MenuRows();
-      const row = itemRow(rendered);
-      const remove = menuRows.add(row);
+      const gone = itemRow(rendered);
+      const remove = menuRows.add(gone);
       rendered.host.rows.set(menuRows);
       await waitForUpdate();
       await openMenu(rendered);
 
+      // The row in its place now hasn't been measured there yet.
       remove();
+      const moved = itemRow(rendered);
+      menuRows.add(moved);
       rendered.host.popup().dropAt(ON_ITEM);
-      expect(row.choose).not.toHaveBeenCalled();
+      expect(gone.choose).not.toHaveBeenCalled();
+      expect(moved.choose).not.toHaveBeenCalled();
+
+      await settle();
+      rendered.host.popup().dropAt(ON_ITEM);
+      expect(moved.choose).toHaveBeenCalledTimes(1);
+      expect(gone.choose).not.toHaveBeenCalled();
+    });
+
+    it('drops a measurement the rows changed during', async () => {
+      const rendered = await renderPopup();
+      const { menuRows, added } = await withRows(rendered, itemRow);
+      await openMenu(rendered);
+
+      menuRows.add(itemRow(rendered));
+      rendered.held.menu = true;
+      rendered.host.popup().dragTo(ON_ITEM);
+      expect(rendered.pendingCount()).toBeGreaterThan(0);
+      menuRows.add(itemRow(rendered));
+      rendered.held.menu = false;
+      rendered.release();
+      await settle();
+
+      // That answer was for rows that have changed since: measured again.
+      rendered.host.popup().dragTo(ON_ITEM);
+      expect(menuRows.highlighted()).toBeNull();
+      await settle();
+      rendered.host.popup().dragTo(ON_ITEM);
+      expect(menuRows.highlighted()).toBe(added[0]);
     });
 
     it("leaves out a row it can't measure", async () => {

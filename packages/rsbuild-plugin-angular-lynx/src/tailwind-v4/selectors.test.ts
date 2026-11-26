@@ -33,6 +33,14 @@ describe('lowerSelectors', () => {
     );
   });
 
+  it('keeps a no-break space that ends a name in an unwrapped list', () => {
+    // The raw selector: PostCSS's own `selectors` getter trims each entry
+    // with String.prototype.trim(), which takes a no-break space too.
+    expect(
+      (lower(':where(.a\u00a0, .b\u00a0) { padding: 1px; }') as Rule).selector,
+    ).toBe('.a\u00a0, .b\u00a0');
+  });
+
   it('inlines a :where() or :is() that holds one compound selector', () => {
     // What Tailwind writes for `group-*`, `peer-*` and `in-*` over a custom
     // variant such as the `ui-open` of @blotch/angular-lynx/tailwind.css.

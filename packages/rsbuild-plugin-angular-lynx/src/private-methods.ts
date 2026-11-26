@@ -117,10 +117,10 @@ export const transformPrivateMethods = (
 };
 
 /**
- * Turns each class's instance `#private` methods, getters and setters into
- * ordinary methods with unique public names, so they're defined once on the
- * prototype instead of on every instance, and its instance `#private`
- * fields into properties keyed by symbols. AngularLynx's own packages use it
+ * Turns each class's `#private` methods, getters and setters into ordinary
+ * methods with unique public names, so an instance one is defined once on
+ * the prototype instead of on every instance, and its `#private` fields into
+ * properties keyed by symbols, static members included. AngularLynx's own packages use it
  * (see {@link transformPrivateMethods}).
  *
  * The main thread compiles to ES2019 with SWC's `privateFieldsAsProperties`
@@ -161,16 +161,37 @@ export const transformPrivateMethods = (
  * `a[__x_<key><n>]` and `a?.#x` becomes `a?.[__x_<key><n>]`, and the module
  * declares the symbols, `var __x_<key><n> = Symbol("x")`, at the start of its
  * first line, before any class that needs them. A symbol-keyed property is
- * left out of `Object.keys()`, `JSON.stringify()`, spreads and `for…in`, as
- * a private field is (and as SWC's non-enumerable one was), and is collected
- * as an ordinary property is. Code that misuses a field sees a difference,
+ * left out of `Object.keys()`, `JSON.stringify()` and `for…in`, as a private
+ * field is (and as SWC's non-enumerable one was), and is collected as an
+ * ordinary property is. An instance's is enumerable, though, so spreading
+ * the instance copies it, under its symbol: making it non-enumerable would
+ * take an `Object.defineProperty()` for each field of each instance, what
+ * this saves. Code that misuses a field sees a difference,
  * as for methods: reading one on an object that isn't an instance gives
  * `undefined` rather than a TypeError. An auto-accessor (`accessor #x`) and
  * a decorated field stay private.
  *
+ * **Static members** are renamed and keyed the same way. A class makes its
+ * static ones once, but each `LynxElement.#registry` read went through
+ * `_class_private_field_loose_base` all the same, and a static private
+ * method was a field holding a function, read through it before each call:
+ * `LynxElement`'s static members are read for every element it makes,
+ * inserts and commits (about 9% of building 5,000 views under
+ * `node --jitless`). A renamed static method is a static method of the
+ * class, so a subclass inherits it and `Object.getOwnPropertyNames()` of the
+ * class lists it, and a subclass reads its base's static fields through its
+ * prototype chain: only code that reaches a static private member through a
+ * subclass, which natively throws a TypeError, sees that. A static field is
+ * made non-enumerable right after it's initialized (`; static {
+ * Object.defineProperty(this, __x_<key><n>, { enumerable: false }); }`, on
+ * the same line), so spreading the class doesn't copy it: once per class,
+ * unlike an instance's.
+ *
  * Left as they are:
  *
- * - Static private members, which are made once anyway.
+ * - The private fields of a module that binds the name `Symbol` (its
+ *   methods are still renamed), as the symbols are made from it, and the
+ *   static private fields of one that binds `Object`, which hides them.
  * - Any class that uses `#name in object`: a public name can't answer it.
  * - A class with `extends` that can be made more than once: one inside a
  *   function that isn't called at once, or is but has a name or uses
@@ -212,12 +233,17 @@ export const renamePrivateMethods = (
   const key = keyForFile(filename, options.root);
   const edits: Edit[] = [];
   const symbols: string[] = [];
+  // The static block that hides a static field calls `Object.defineProperty`
+  // where the field is, so it needs `Object` to be the global there.
+  const globalObject = !bindsName(sourceFile, 'Object');
+  // The symbols are made at the top of the module, from `Symbol`, so a module
+  // that binds the name keeps its private fields as SWC compiles them.
+  const globalSymbol = !bindsName(sourceFile, 'Symbol');
   for (const info of analyzeClasses(sourceFile)) {
     // Every class it makes would share these names, and one made from
     // another would override its base's methods (see above).
     if (info.branded || (info.repeated && info.extendsAnother)) continue;
     for (const [name, declarations] of info.members) {
-      if (declarations.some(isStatic)) continue;
       const text = `__${name.slice(1)}_${key}${info.index}`;
       const uses = info.uses.get(name)!;
       // A getter and setter share one name, and so one new name.
@@ -232,11 +258,28 @@ export const renamePrivateMethods = (
         }
         continue;
       }
-      const fieldEdits = isPlainField(declarations)
-        ? symbolKeyEdits(uses, text, code, sourceFile)
-        : null;
+      const [field] = declarations;
+      const fieldStatic = isStatic(field!);
+      // A static field is hidden with `Object` (below): in a module that
+      // names something else that, it stays private, so a spread of its
+      // class still leaves it out.
+      const fieldEdits =
+        globalSymbol &&
+        (globalObject || !fieldStatic) &&
+        isPlainField(declarations)
+          ? symbolKeyEdits(uses, text, code, sourceFile)
+          : null;
       if (!fieldEdits) continue;
       edits.push(...fieldEdits);
+      if (fieldStatic) {
+        // An empty `;` is a class element of its own, so this follows a
+        // field with or without its semicolon (see above).
+        edits.push({
+          start: field!.end,
+          end: field!.end,
+          text: `; static { Object.defineProperty(this, ${text}, { enumerable: false }); }`,
+        });
+      }
       symbols.push(`${text} = Symbol(${JSON.stringify(name.slice(1))})`);
     }
   }
@@ -690,6 +733,40 @@ const applyEdits = (
   }
   return result + code.slice(last);
 };
+
+/**
+ * The declarations whose `name` binds an identifier in their scope (unlike
+ * a property's or a method's).
+ */
+const BINDING_KINDS = new Set([
+  ts.SyntaxKind.VariableDeclaration,
+  ts.SyntaxKind.Parameter,
+  ts.SyntaxKind.BindingElement,
+  ts.SyntaxKind.FunctionDeclaration,
+  ts.SyntaxKind.FunctionExpression,
+  ts.SyntaxKind.ClassDeclaration,
+  ts.SyntaxKind.ClassExpression,
+  ts.SyntaxKind.ImportClause,
+  ts.SyntaxKind.ImportSpecifier,
+  ts.SyntaxKind.NamespaceImport,
+  ts.SyntaxKind.ImportEqualsDeclaration,
+  ts.SyntaxKind.EnumDeclaration,
+  ts.SyntaxKind.ModuleDeclaration,
+]);
+
+/**
+ * Whether anything in the module binds `name`, in any scope: a variable, a
+ * parameter, a function, a class or an import.
+ */
+const bindsName = (sourceFile: ts.SourceFile, name: string): boolean =>
+  contains(
+    sourceFile,
+    (node) =>
+      ts.isIdentifier(node) &&
+      node.text === name &&
+      BINDING_KINDS.has(node.parent.kind) &&
+      (node.parent as ts.NamedDeclaration).name === node,
+  );
 
 /**
  * Whether a class member is static.

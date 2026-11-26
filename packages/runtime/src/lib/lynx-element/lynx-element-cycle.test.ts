@@ -61,6 +61,8 @@ const installNativeFakes = (): void => {
   g.__GetParent = (n: FakeEl) => n.parent ?? null;
   g.__GetChildren = (n: FakeEl) => n.children.slice();
   g.__FirstElement = (n: FakeEl) => n.children[0] ?? null;
+  g.__NextElement = (n: FakeEl) =>
+    n.parent?.children[n.parent.children.indexOf(n) + 1] ?? null;
 
   // Deliberately NO cycle guard — mirrors the real engine, which happily builds
   // a self-referential tree. detach-then-attach mirrors Lynx auto-reparenting.
@@ -213,6 +215,67 @@ describe('LynxElement reparent cycle safety', () => {
     expect(rootFake.parent).toBe(container.element);
     expect(() => assertAcyclic()).not.toThrow();
   });
+
+  /**
+   * A view in no tree with `size` views under it, the last `depth` of them
+   * a chain under the first ones (a fan of siblings, then the chain); returns
+   * the root and the bottom of the chain.
+   */
+  const detachedTree = (
+    siblings: number,
+    depth: number,
+  ): { root: LynxElement; bottom: LynxElement } => {
+    const root = wrap(makeEl('view'), 'view');
+    for (let i = 0; i < siblings; i++) {
+      root.appendChild(wrap(makeEl('view'), 'view'));
+    }
+    let bottom = root;
+    for (let i = 0; i < depth; i++) {
+      const next = wrap(makeEl('view'), 'view');
+      bottom.appendChild(next);
+      bottom = next;
+    }
+    return { root, bottom };
+  };
+
+  it('refuses an element in no tree under an element of its small subtree', () => {
+    // Found by searching down from the element, which stops short of its
+    // limit.
+    const { root, bottom } = detachedTree(2, 3);
+
+    bottom.appendChild(root);
+
+    expect((bottom.element as unknown as FakeEl).children).toEqual([]);
+    expect((root.element as unknown as FakeEl).parent).toBeNull();
+  });
+
+  it('refuses an element in no tree under an element deep in its large subtree', () => {
+    // More elements than the search down looks at come before it, so the
+    // walk up from the new parent finds the element.
+    const { root, bottom } = detachedTree(20, 10);
+
+    bottom.insertBefore(root, null as unknown as LynxElement);
+
+    expect((bottom.element as unknown as FakeEl).children).toEqual([]);
+    expect((root.element as unknown as FakeEl).parent).toBeNull();
+  });
+
+  it('still inserts an element in no tree with a large subtree', () => {
+    const page = wrap(pageRoot, 'page');
+    const container = wrap(makeEl('view'), 'view');
+    page.appendChild(container);
+    const anchor = wrap(makeEl('view'), 'view');
+    container.appendChild(anchor);
+    const { root } = detachedTree(20, 10);
+
+    container.insertBefore(root, anchor);
+
+    expect((container.element as unknown as FakeEl).children).toEqual([
+      root.element,
+      anchor.element,
+    ]);
+    expect(() => assertAcyclic()).not.toThrow();
+  });
 });
 
 // Angular appends each element right after creating it, before its children,
@@ -276,6 +339,29 @@ describe('LynxElement cycle check cost', () => {
     expect(counts.uid).toBe(400);
     expect((bottom.element as unknown as FakeEl).children.length).toBe(101);
     expect((text.element as unknown as FakeEl).children.length).toBe(100);
+    expect(() => assertAcyclic()).not.toThrow();
+  });
+
+  it('inserts new rows with children 20 levels down without walking its ancestors', () => {
+    // An @for row, built with its children before Angular inserts it before
+    // the @for's anchor.
+    const bottom = chain(20);
+    const anchor = wrap(makeEl('view'), 'view');
+    bottom.appendChild(anchor);
+    const rows = Array.from({ length: 100 }, () => {
+      const row = wrap(makeEl('text'), 'text');
+      row.appendChild(wrap(makeEl('raw-text'), 'raw-text'));
+      return row;
+    });
+    resetCounts();
+
+    for (const row of rows) bottom.insertBefore(row, anchor);
+
+    // Per row, one for #removeIfMoveWouldBeLost and one for the cycle
+    // check's look at the row's parent. Walking up from the new parent
+    // cost 20 more each.
+    expect(counts.parent).toBe(200);
+    expect((bottom.element as unknown as FakeEl).children).toHaveLength(101);
     expect(() => assertAcyclic()).not.toThrow();
   });
 

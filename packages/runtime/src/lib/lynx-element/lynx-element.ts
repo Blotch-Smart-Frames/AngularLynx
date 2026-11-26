@@ -375,9 +375,17 @@ const changedTokens = (
  * - A `candidate` already among `parent`'s children (an `@for` reorder of
  *   rows with children) can't also be one of its ancestors.
  *
- * Both read the native tree, not the wrappers' `#children`: a list's items,
- * anonymous texts and hydrated elements can have native children no wrapper
- * lists.
+ * Otherwise `candidate` has children and no parent of `parent`'s: an `@for`
+ * row going in before its anchor, whose `<text>` or `<view>` was built with
+ * its children before the row was inserted. Walking up from `parent` costs
+ * two reads per level of the screen, for every such row, so a small
+ * `candidate` is searched downwards instead: a cycle means `parent` is in
+ * its subtree. Past {@link SUBTREE_SEARCH_LIMIT} elements, it walks up after
+ * all, so moving a whole screen costs no more than it did.
+ *
+ * All of these read the native tree, not the wrappers' `#children`: a
+ * list's items, anonymous texts and hydrated elements can have native
+ * children no wrapper lists.
  *
  * Compares by unique ID rather than ref identity: native refs must not be used
  * as map/Set keys (hashing one crashes the Lepus engine — see
@@ -388,11 +396,47 @@ const wouldFormCycle = (parent: ElementRef, candidate: ElementRef): boolean => {
   const candidateId = __GetElementUniqueID(candidate);
   const parentId = __GetElementUniqueID(parent);
   if (parentId === candidateId) return true;
-  if (!__FirstElement(candidate)) return false;
+  const first = __FirstElement(candidate);
+  if (!first) return false;
   const current = __GetParent(candidate);
   if (current && __GetElementUniqueID(current) === parentId) return false;
+  const inSubtree = subtreeHolds(first, parentId);
+  if (inSubtree !== undefined) return inSubtree;
   for (let cur = __GetParent(parent); cur; cur = __GetParent(cur)) {
     if (__GetElementUniqueID(cur) === candidateId) return true;
+  }
+  return false;
+};
+
+/**
+ * How many elements wouldFormCycle searches below a candidate before it
+ * walks up from the parent instead. An `@for` row is a few elements, and a
+ * screen is a few levels of component hosts and containers deep, a dozen
+ * or more in an app's real screens.
+ */
+const SUBTREE_SEARCH_LIMIT = 16;
+
+/**
+ * Whether the element with unique id `id` is `first`, one of its following
+ * siblings, or inside one of them: so, with `first` a candidate's first
+ * child, inside the candidate. Undefined once it has looked at
+ * {@link SUBTREE_SEARCH_LIMIT} elements without finding it.
+ */
+const subtreeHolds = (first: ElementRef, id: number): boolean | undefined => {
+  const pending: ElementRef[] = [first];
+  let seen = 0;
+  while (pending.length > 0) {
+    // Each pending element stands for itself and its following siblings.
+    for (
+      let element: ElementRef | null = pending.pop()!;
+      element;
+      element = __NextElement(element)
+    ) {
+      if (++seen > SUBTREE_SEARCH_LIMIT) return undefined;
+      if (__GetElementUniqueID(element) === id) return true;
+      const child = __FirstElement(element);
+      if (child) pending.push(child);
+    }
   }
   return false;
 };

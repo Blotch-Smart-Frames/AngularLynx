@@ -1664,6 +1664,10 @@ On iOS it does, and so does the web preview. On Android (Lynx Explorer 4.1, API 
 
 Both platforms take the first family in the list they find. iOS looks each name up as a font family or font name (`LynxFontFaceManager`), so `Menlo` is found and `monospace`, which isn't a font there, falls through to the system font. Android only finds families from `@font-face` rules and from providers the host app registers (`TypefaceCache.addLazyProvider`, `FontFaceManager.getTypeface` returns null for anything else), never Android's own `monospace`, `serif` or `sans-serif`, so it draws the default font (Lynx Explorer 4.1, API 34 emulator, November 2026). `<code>` is monospace on iOS and the web, but not on Android (issue #649).
 
+### Workaround
+
+The Android shell registers a provider (`SystemFontFamilies.kt` in `packages/native`, issue #661) that answers CSS's generic families (`serif`, `sans-serif`, `monospace`, `cursive`, `system-ui`), fonts.xml's aliases of `sans-serif` (`arial`, `helvetica`, `tahoma`, `verdana`, which come back as the default `Typeface` itself and so can't be told from a missing name) and, on Android 9+, any family in the system's fonts.xml, with `Typeface.create`. It returns null for a name Android doesn't have, so Lynx goes on to the app's `@font-face` rules and the next family in the list. Lynx asks the providers before `@font-face`, so a `@font-face` named `serif` loses to Android's. Lynx Explorer has no such provider, so it still draws the default font.
+
 ---
 
 ## `letter-spacing` does not accept the `normal` keyword

@@ -12,6 +12,7 @@ import com.lynx.service.image.LynxImageService
 import com.lynx.service.log.LynxLogService
 import com.lynx.tasm.LynxEnv
 import com.lynx.tasm.base.LLog
+import com.lynx.tasm.behavior.shadow.text.TypefaceCache
 import com.lynx.tasm.service.LynxServiceCenter
 
 /**
@@ -38,6 +39,11 @@ class ShellApplication : Application() {
         // No global template provider or custom elements: MainActivity passes
         // its loaders to the LynxView it builds.
         LynxEnv.inst().init(this, null, null, null)
+
+        // Android's own font families (`monospace`, `serif`...), which Lynx
+        // doesn't find by itself (SystemFontFamilies.kt). Before the first
+        // LynxView, so its first text finds them.
+        TypefaceCache.addLazyProvider(SystemFontFamilies)
 
         // Lynx's libraries are built for release, where Lynx logs at INFO: a
         // line for every touch, flush, layout, event listener and main-thread

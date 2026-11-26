@@ -137,6 +137,8 @@ class AngularLynxShell(context: Context, param: Any?) : LynxModule(context, para
 }
 ```
 
+To have a `<lynx-stack-outlet>` follow Android's predictive back gesture as the finger moves, as the generated app does, also override `handleOnBackStarted`, `handleOnBackProgressed` and `handleOnBackCancelled`, and send each step as the `angularLynxBackGesture` global event, with a map: `{ phase: "started" | "progressed", progress, edge }` from `handleOnBackStarted` and `handleOnBackProgressed`, with `BackEventCompat.progress` and its `swipeEdge` as `"left"` or `"right"`, and `{ phase: "canceled" }` alone from `handleOnBackCancelled`, which has no `BackEventCompat`. A gesture that ends in back still calls `handleOnBackPressed()`, which sends `angularLynxBack`. Android sends these on Android 14 and later, and before Android 16 (or to an app that doesn't target API 36) only to an app that opts in: set `android:enableOnBackInvokedCallback="true"` on the manifest's `<application>`, as the generated app does.
+
 Without the module, the back button does whatever your app already does. iOS has no back button, so there's nothing to connect there.
 
 ## Free the memory screens leave behind

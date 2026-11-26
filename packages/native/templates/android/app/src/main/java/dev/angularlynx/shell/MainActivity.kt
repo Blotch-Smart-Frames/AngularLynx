@@ -15,6 +15,7 @@ import android.provider.Settings
 import android.util.Log
 import android.view.accessibility.AccessibilityManager
 import android.widget.FrameLayout
+import androidx.activity.BackEventCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.PickVisualMediaRequest
@@ -27,6 +28,7 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.lynx.react.bridge.JavaOnlyArray
+import com.lynx.react.bridge.JavaOnlyMap
 import com.lynx.tasm.LynxBooleanOption
 import com.lynx.tasm.LynxError
 import com.lynx.tasm.LynxView
@@ -71,10 +73,50 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
 
     // Disabled until the Angular app enables it (see ShellModule), so by
     // default back leaves the app like any other root screen.
+    //
+    // While it's enabled, Android's predictive back gesture reaches the app
+    // as it goes, not only once it's done: a stack in the app moves its top
+    // page with the finger, as Android's own screens do, and brings it back
+    // if the gesture is canceled. Android sends these only for the gesture,
+    // on Android 14 and later; a press of the 3-button bar's back, or of a
+    // key, calls handleOnBackPressed() alone.
     private val backHandler = object : OnBackPressedCallback(false) {
+        override fun handleOnBackStarted(backEvent: BackEventCompat) {
+            sendBackGesture("started", backEvent)
+        }
+
+        override fun handleOnBackProgressed(backEvent: BackEventCompat) {
+            sendBackGesture("progressed", backEvent)
+        }
+
+        override fun handleOnBackCancelled() {
+            sendBackGesture("canceled", null)
+        }
+
         override fun handleOnBackPressed() {
             lynxView.sendGlobalEvent(ShellModule.BACK_EVENT, JavaOnlyArray())
         }
+    }
+
+    /**
+     * Sends a step of the back gesture as an `angularLynxBackGesture` global
+     * event: its phase, how far it's gone (0 to 1, eased by Android as its
+     * own screens use it) and the edge it came from.
+     */
+    private fun sendBackGesture(phase: String, backEvent: BackEventCompat?) {
+        val event = JavaOnlyMap()
+        event.putString("phase", phase)
+        if (backEvent != null) {
+            event.putDouble("progress", backEvent.progress.toDouble())
+            event.putString(
+                "edge",
+                if (backEvent.swipeEdge == BackEventCompat.EDGE_RIGHT) "right" else "left",
+            )
+        }
+        lynxView.sendGlobalEvent(
+            ShellModule.BACK_GESTURE_EVENT,
+            JavaOnlyArray().apply { pushMap(event) },
+        )
     }
 
     // The open sign-in (see WebAuthModule): the scheme its page returns to,

@@ -33,6 +33,11 @@ import {
   RouterOutlet,
 } from '@angular/router';
 import { LynxAccessibilitySettings } from '../../accessibility/accessibility-settings';
+import {
+  type BackGestureEdge,
+  type BackGestureFollower,
+  BackGestures,
+} from '../../back-button/back-gesture';
 import { afterFrame } from '../../animation/after-frame';
 import { isAndroid } from '../../lynx-document/android-blur-capture';
 import { LynxElement } from '../../lynx-element/lynx-element';
@@ -188,11 +193,20 @@ type TransitionStart = 'drawn' | 'now';
  */
 type Transition = { finish(): void; stop(): void };
 
-/** A finger dragging the top page back. */
+/**
+ * A finger dragging the top page back: in the app, or Android's back gesture
+ * from the screen's edge.
+ */
 type Swipe = {
-  readonly tracker: SwipeTracker;
-  /** The touch it follows, or null for a mouse. */
+  /** What follows the finger in the app, or null for Android's gesture. */
+  readonly tracker: SwipeTracker | null;
+  /** The touch it follows, or null for a mouse or Android's gesture. */
   readonly touch: number | null;
+  /**
+   * The edge the finger comes from: the left for one in the app, either for
+   * Android's gesture.
+   */
+  readonly edge: BackGestureEdge;
   readonly top: Page;
   readonly under: Page;
   /** Whether the pages are following the finger yet. */
@@ -225,6 +239,15 @@ type PointerEvent = {
 
 /** The elements a finger swipes sideways in on its own. */
 const SIDEWAYS_ELEMENTS = new Set(['viewpager', 'swiper', 'x-swiper']);
+
+/**
+ * How long the pages take to go the `rest` (0 to 1) of the way once
+ * Android's back gesture ends. Android reports no speed, and has already
+ * eased the progress back toward 0 when it cancels one, so the time is the
+ * share of a whole transition the way left is, within reason.
+ */
+const settleDuration = (rest: number): number =>
+  Math.round(Math.max(150, rest * IOS_MOTION.duration));
 
 /**
  * The injector a page's component gets, as RouterOutlet's OutletInjector
@@ -409,6 +432,10 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
     hidesPushed: computed(() => this.hideBottomBar() === 'pushed'),
   };
   readonly #unfollow = follow(this.#chrome, this.#claim);
+  /** Has Android's back gesture ask the outlet whether it follows it. */
+  readonly #unregisterGesture = inject(BackGestures).register((edge) =>
+    this.#followBackGesture(edge),
+  );
 
   constructor() {
     super();
@@ -455,9 +482,13 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
     this.#destroyed = true;
     this.#dropsParked.unsubscribe();
     this.#transition?.stop();
+    // A back gesture the outlet follows moves nothing more: its pages go,
+    // and back goes as a press then (see #followBackGesture).
+    this.#swipe = null;
     // Before the pages go, and their views are released.
     this.#homeBars();
     this.#unfollow();
+    this.#unregisterGesture();
     super.ngOnDestroy();
   }
 
@@ -1407,7 +1438,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
 
   #touchMove(event: PointerEvent): void {
     const swipe = this.#swipe;
-    if (!swipe) return;
+    if (!swipe?.tracker) return;
     // pointerIdOf, as Lynx's own identifier for a single touch changes from
     // one event to the next on iOS.
     const touch = Array.from(event.touches).find(
@@ -1418,7 +1449,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
 
   #touchEnd(event: PointerEvent, canceled = false): void {
     const swipe = this.#swipe;
-    if (!swipe) return;
+    if (!swipe?.tracker) return;
     const lifted = Array.from(event.changedTouches).some(
       (t) => pointerIdOf(t) === swipe.touch,
     );
@@ -1432,7 +1463,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
   }
 
   #mouseMove(event: PointerEvent): void {
-    if (!this.#swipe || this.#swipe.touch !== null) return;
+    if (!this.#swipe?.tracker || this.#swipe.touch !== null) return;
     // No button held: the button came up outside the Lynx view, which
     // web-core doesn't listen in. The first move back in is the release.
     if (event.buttons === 0) {
@@ -1448,21 +1479,10 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
    * A finger (or the mouse) went down: it may be starting a swipe back.
    */
   #begin(x: number, y: number, touch: number | null, target: unknown): void {
-    const top = this.#stack.at(-1);
-    const under = this.#stack.at(-2);
+    const pages = this.#draggable();
     const box = boxInLynxView(this.#host);
-    if (
-      !this.swipeBack() ||
-      !this.#animates ||
-      !top ||
-      !under ||
-      top !== this.#active ||
-      this.#transition ||
-      this.#swiped ||
-      box.width <= 0
-    ) {
-      return;
-    }
+    if (!this.swipeBack() || !pages) return;
+    const [top, under] = pages;
     const tracker = new SwipeTracker(
       x - box.left,
       y - box.top,
@@ -1474,6 +1494,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
     this.#swipe = {
       tracker,
       touch,
+      edge: 'left',
       top,
       under,
       dragging: false,
@@ -1482,27 +1503,128 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
     };
   }
 
+  /**
+   * The top page and the one under it, if a finger can drag the top one
+   * back now: the outlet moves its pages, has two, the router has the top
+   * one, nothing moves them already, and the outlet has been laid out.
+   */
+  #draggable(): [Page, Page] | null {
+    const top = this.#stack.at(-1);
+    const under = this.#stack.at(-2);
+    if (
+      !this.#animates ||
+      !top ||
+      !under ||
+      top !== this.#active ||
+      this.#transition ||
+      this.#swipe ||
+      this.#swiped ||
+      boxInLynxView(this.#host).width <= 0
+    ) {
+      return null;
+    }
+    return [top, under];
+  }
+
   #move(x: number, y: number): void {
     const swipe = this.#swipe!;
+    const tracker = swipe.tracker!;
     const box = boxInLynxView(this.#host);
-    const state = swipe.tracker.move(x - box.left, y - box.top, Date.now());
+    const state = tracker.move(x - box.left, y - box.top, Date.now());
     if (state === 'ignored') {
       this.#swipe = null;
       return;
     }
     if (state !== 'dragging') return;
-    if (!swipe.dragging) {
-      swipe.dragging = true;
-      // The top page may go: only the page under it carries a bar.
-      this.#carryBars(swipe.top, swipe.under, this.#motion, [swipe.under]);
-      swipe.corners = this.#cornersFor(this.#motion);
-      swipe.radius = cornerStyle(swipe.corners);
-      this.#uncover(swipe.under);
-      this.#raise(swipe.top, this.#motion, swipe.corners);
-      this.#placeScrim(swipe.top);
-      this.#shield(true);
+    if (!swipe.dragging) this.#startDragging(swipe);
+    this.#drag(swipe, tracker.progress);
+  }
+
+  /**
+   * Has the pages follow the finger from here: the top one raised over the
+   * page under it, which shows.
+   */
+  #startDragging(swipe: Swipe): void {
+    swipe.dragging = true;
+    // The top page may go: only the page under it carries a bar.
+    this.#carryBars(swipe.top, swipe.under, this.#motion, [swipe.under]);
+    swipe.corners = this.#cornersFor(this.#motion);
+    swipe.radius = cornerStyle(swipe.corners);
+    this.#uncover(swipe.under);
+    this.#raise(swipe.top, this.#motion, swipe.corners);
+    this.#placeScrim(swipe.top);
+    this.#shield(true);
+  }
+
+  /**
+   * Follows Android's predictive back gesture (see LynxBackButton) if back
+   * goes to the page under the top one: the router's history is at the top
+   * page's entry, so the entry before it is the page under it. A stack
+   * whose top page holds the stack the gesture goes back in is further back
+   * in the history, and leaves the gesture to that one.
+   *
+   * The gesture is Android's, not the app's, so it follows even with
+   * `swipeBack` off, which only turns off the finger in the app.
+   */
+  #followBackGesture(edge: BackGestureEdge): BackGestureFollower | null {
+    const pages = this.#draggable();
+    const strategy = this.#strategy;
+    if (
+      !pages ||
+      !(strategy instanceof LynxLocationStrategy) ||
+      pages[0].historyIndex !== strategy.historyIndex
+    ) {
+      return null;
     }
-    this.#drag(swipe, swipe.tracker.progress);
+    const [top, under] = pages;
+    const swipe: Swipe = {
+      tracker: null,
+      touch: null,
+      edge,
+      top,
+      under,
+      dragging: false,
+      corners: SQUARE,
+      radius: null,
+    };
+    this.#swipe = swipe;
+    this.#startDragging(swipe);
+    this.#drag(swipe, 0);
+    let progress = 0;
+    /**
+     * Whether it's still the swipe: a navigation lets go of it (see
+     * #cancelSwipe), and the gesture then moves nothing.
+     */
+    const current = (): boolean => this.#swipe === swipe;
+    return {
+      progress: (value) => {
+        if (!current()) return;
+        progress = Math.min(1, Math.max(0, value));
+        this.#drag(swipe, progress);
+      },
+      cancel: () => {
+        if (!current()) return;
+        this.#swipe = null;
+        this.#letGo(swipe, progress, false, settleDuration(progress));
+      },
+      commit: () => {
+        if (!current()) return false;
+        this.#swipe = null;
+        this.#letGo(swipe, progress, true, settleDuration(1 - progress));
+        return true;
+      },
+    };
+  }
+
+  /**
+   * The top page as a finger `progress` of the way has it. Android's
+   * predictive back edges the page toward the side the finger moves to, so
+   * a gesture from the right edge moves it left.
+   */
+  #draggedLook(swipe: Swipe, look: PageLook): PageLook {
+    return swipe.edge === 'right' && this.#motion.animation === 'material'
+      ? { ...look, x: -look.x }
+      : look;
   }
 
   /**
@@ -1513,7 +1635,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
     const width = this.#width;
     this.#setStyles(
       swipe.top.frame,
-      lookStyles(motion.dragged(progress), width),
+      lookStyles(this.#draggedLook(swipe, motion.dragged(progress)), width),
     );
     this.#setStyles(
       swipe.under.frame,
@@ -1547,20 +1669,14 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
    */
   #release(canceled: boolean): void {
     const swipe = this.#swipe;
+    // Android's back gesture isn't the finger's to let go of: it ends on
+    // its own (see #followBackGesture).
+    const tracker = swipe?.tracker;
+    if (!tracker) return;
     this.#swipe = null;
-    if (!swipe?.dragging) return;
-    const { tracker, top, under } = swipe;
+    if (!swipe.dragging) return;
     const completes = !canceled && tracker.completes();
-    const motion = this.#motion;
     const progress = tracker.progress;
-    const at = {
-      top: motion.dragged(progress),
-      under: mixLooks(motion.covered, AT_REST, progress),
-      scrim: motion.dim * (1 - progress),
-    };
-    const to = completes
-      ? { top: motion.dismissed, under: AT_REST, scrim: 0 }
-      : { top: AT_REST, under: motion.covered, scrim: motion.dim };
     // The rest of the way takes as long as the finger's speed would, at the
     // start of the spring's curve, which leaves at about twice its average
     // speed (so the page doesn't jump or stall as the finger lets go), within
@@ -1573,6 +1689,34 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
         Math.max(150, speed > 0.05 ? (2 * left) / speed : IOS_MOTION.duration),
       ),
     );
+    this.#letGo(swipe, progress, completes, duration);
+  }
+
+  /**
+   * Sends the pages a finger left `progress` of the way the rest of the way
+   * over `duration` ms: on to the page under, and back through the router,
+   * if it `completes`, or back to the top page.
+   */
+  #letGo(
+    swipe: Swipe,
+    progress: number,
+    completes: boolean,
+    duration: number,
+  ): void {
+    const { top, under } = swipe;
+    const motion = this.#motion;
+    const at = {
+      top: this.#draggedLook(swipe, motion.dragged(progress)),
+      under: mixLooks(motion.covered, AT_REST, progress),
+      scrim: motion.dim * (1 - progress),
+    };
+    const to = completes
+      ? {
+          top: this.#draggedLook(swipe, motion.dismissed),
+          under: AT_REST,
+          scrim: 0,
+        }
+      : { top: AT_REST, under: motion.covered, scrim: motion.dim };
     this.#run(
       top,
       under,

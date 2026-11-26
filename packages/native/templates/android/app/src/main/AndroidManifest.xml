@@ -25,11 +25,17 @@
     <!--
       Auto Backup leaves out LynxSecureStorage's file (SecureStorageModule):
       dataExtractionRules from Android 12, fullBackupContent before.
+
+      enableOnBackInvokedCallback opts in to predictive back on Android 13
+      to 15, which Android 16 turns on for an app that targets API 36:
+      without it, Android 14 sends MainActivity's back handler only the
+      finished gesture, so a stack can't move its page with the finger.
     -->
     <application
         android:name=".ShellApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
+        android:enableOnBackInvokedCallback="true"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"

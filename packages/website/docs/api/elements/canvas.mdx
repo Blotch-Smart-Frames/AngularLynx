@@ -167,13 +167,17 @@ A [`<video>`](/api/elements/video) is an image too. **`VideoTexture`** plays it 
 ```ts
 const video = this.video().nativeElement as unknown as HTMLVideoElement;
 const texture = new THREE.VideoTexture(video);
-// Or one frame, once it shows (bindfirstframe):
-context.drawImage(video, 0, 0);
+// Or one frame, once there is one:
+if (video.readyState >= video.HAVE_CURRENT_DATA) {
+  context.drawImage(video, 0, 0);
+}
 ```
 
 - The phone reads the frame the video shows; the pixels never pass through JavaScript.
-- Before its first frame, `videoWidth` is 0 and nothing is drawn, as in a browser.
+- Before its first frame, `videoWidth` is 0, `readyState` is `HAVE_NOTHING`, and nothing is drawn, as in a browser. `VideoTexture` waits for the frame by itself.
+- To grab one frame, draw it from `bindfirstframe` on the phone, or check `readyState` first: the web preview never sends `bindfirstframe`.
 - On Android, a video with `display: none` has no frame. Hide it with `opacity: 0` instead.
+- The web preview doesn't take a template's `<video>` in `drawImage()` or `texImage2D()` yet ([#732](https://github.com/Blotch-Smart-Frames/AngularLynx/issues/732)).
 
 ## Save it as an image
 

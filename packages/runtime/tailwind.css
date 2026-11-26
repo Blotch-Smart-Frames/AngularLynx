@@ -1,0 +1,242 @@
+/*
+ * Lynx's own utilities and variants, for Tailwind CSS 4. Import it after
+ * Tailwind:
+ *
+ *   @import '@blotch/angular-lynx/tailwind.css';
+ *
+ * Tailwind 3 apps get these from @lynx-js/tailwind-preset, which can't run
+ * on Tailwind 4, so this restates what the preset adds with Tailwind 4's
+ * `@utility` and `@custom-variant`. Tailwind writes a rule only for a class
+ * the app uses, so the ones an app doesn't use cost nothing.
+ */
+
+/* Lynx's layouts beside flex and grid: linear, its default, and relative. */
+@utility linear {
+  display: linear;
+}
+@utility display-relative {
+  display: relative;
+}
+
+/*
+ * The writing direction. `normal` takes it from the text. `lynx-rtl`, which
+ * Lynx deprecates, also swaps physical left and right, to mirror a page laid
+ * out for left to right only.
+ */
+@utility normal {
+  direction: normal;
+}
+@utility ltr {
+  direction: ltr;
+}
+@utility rtl {
+  direction: rtl;
+}
+@utility lynx-rtl {
+  direction: lynx-rtl;
+}
+
+/*
+ * Transforms written as one function, without Tailwind's variables, for Lynx
+ * versions before 3.4, which can't animate a variable. Each sets the whole
+ * `transform`, so two on one element don't combine. The spacing is inlined,
+ * and the build folds the `calc()`, because Lynx doesn't evaluate it
+ * everywhere a transform function takes a value.
+ */
+@utility solo-translate-x-* {
+  transform: translateX(calc(--theme(--spacing inline) * --value(number)));
+  transform: translateX(calc(--value(ratio) * 100%));
+  transform: translateX(--value([length], [percentage]));
+}
+@utility -solo-translate-x-* {
+  transform: translateX(calc(--theme(--spacing inline) * --value(number) * -1));
+  transform: translateX(calc(--value(ratio) * -100%));
+  transform: translateX(calc(--value([length], [percentage]) * -1));
+}
+@utility solo-translate-y-* {
+  transform: translateY(calc(--theme(--spacing inline) * --value(number)));
+  transform: translateY(calc(--value(ratio) * 100%));
+  transform: translateY(--value([length], [percentage]));
+}
+@utility -solo-translate-y-* {
+  transform: translateY(calc(--theme(--spacing inline) * --value(number) * -1));
+  transform: translateY(calc(--value(ratio) * -100%));
+  transform: translateY(calc(--value([length], [percentage]) * -1));
+}
+/* No percentage: an element has no depth for one to be of. */
+@utility solo-translate-z-* {
+  transform: translateZ(calc(--theme(--spacing inline) * --value(number)));
+  transform: translateZ(--value([length]));
+}
+@utility -solo-translate-z-* {
+  transform: translateZ(calc(--theme(--spacing inline) * --value(number) * -1));
+  transform: translateZ(calc(--value([length]) * -1));
+}
+@utility solo-translate-x-full {
+  transform: translateX(100%);
+}
+@utility -solo-translate-x-full {
+  transform: translateX(-100%);
+}
+@utility solo-translate-x-px {
+  transform: translateX(1px);
+}
+@utility -solo-translate-x-px {
+  transform: translateX(-1px);
+}
+@utility solo-translate-y-full {
+  transform: translateY(100%);
+}
+@utility -solo-translate-y-full {
+  transform: translateY(-100%);
+}
+@utility solo-translate-y-px {
+  transform: translateY(1px);
+}
+@utility -solo-translate-y-px {
+  transform: translateY(-1px);
+}
+@utility solo-rotate-* {
+  transform: rotate(calc(--value(number) * 1deg));
+  transform: rotate(--value([angle]));
+}
+@utility -solo-rotate-* {
+  transform: rotate(calc(--value(number) * -1deg));
+  transform: rotate(calc(--value([angle]) * -1));
+}
+@utility solo-rotate-x-* {
+  transform: rotateX(calc(--value(number) * 1deg));
+  transform: rotateX(--value([angle]));
+}
+@utility -solo-rotate-x-* {
+  transform: rotateX(calc(--value(number) * -1deg));
+  transform: rotateX(calc(--value([angle]) * -1));
+}
+@utility solo-rotate-y-* {
+  transform: rotateY(calc(--value(number) * 1deg));
+  transform: rotateY(--value([angle]));
+}
+@utility -solo-rotate-y-* {
+  transform: rotateY(calc(--value(number) * -1deg));
+  transform: rotateY(calc(--value([angle]) * -1));
+}
+@utility solo-rotate-z-* {
+  transform: rotateZ(calc(--value(number) * 1deg));
+  transform: rotateZ(--value([angle]));
+}
+@utility -solo-rotate-z-* {
+  transform: rotateZ(calc(--value(number) * -1deg));
+  transform: rotateZ(calc(--value([angle]) * -1));
+}
+@utility solo-skew-* {
+  transform: skew(calc(--value(number) * 1deg));
+  transform: skew(--value([angle]));
+}
+@utility -solo-skew-* {
+  transform: skew(calc(--value(number) * -1deg));
+  transform: skew(calc(--value([angle]) * -1));
+}
+@utility solo-skew-x-* {
+  transform: skewX(calc(--value(number) * 1deg));
+  transform: skewX(--value([angle]));
+}
+@utility -solo-skew-x-* {
+  transform: skewX(calc(--value(number) * -1deg));
+  transform: skewX(calc(--value([angle]) * -1));
+}
+@utility solo-skew-y-* {
+  transform: skewY(calc(--value(number) * 1deg));
+  transform: skewY(--value([angle]));
+}
+@utility -solo-skew-y-* {
+  transform: skewY(calc(--value(number) * -1deg));
+  transform: skewY(calc(--value([angle]) * -1));
+}
+/* `solo-scale-50` is half size, as `scale-50` is. */
+@utility solo-scale-* {
+  transform: scale(calc(--value(number) / 100));
+  transform: scale(--value([number]));
+}
+@utility -solo-scale-* {
+  transform: scale(calc(--value(number) / -100));
+  transform: scale(calc(--value([number]) * -1));
+}
+@utility solo-scale-x-* {
+  transform: scaleX(calc(--value(number) / 100));
+  transform: scaleX(--value([number]));
+}
+@utility -solo-scale-x-* {
+  transform: scaleX(calc(--value(number) / -100));
+  transform: scaleX(calc(--value([number]) * -1));
+}
+@utility solo-scale-y-* {
+  transform: scaleY(calc(--value(number) / 100));
+  transform: scaleY(--value([number]));
+}
+@utility -solo-scale-y-* {
+  transform: scaleY(calc(--value(number) / -100));
+  transform: scaleY(calc(--value([number]) * -1));
+}
+
+/*
+ * Component states, as classes. Lynx has no attribute selectors, so in place
+ * of `data-[state=open]:`, a component adds a `ui-open` class and styles
+ * itself with `ui-open:`. Tailwind's own `group-*`, `peer-*` and `in-*`
+ * compound with these (`group-ui-open:`, `peer-ui-checked/name:`), and
+ * `parent-ui-*:` matches the direct parent's state. For a state not listed,
+ * add a variant of your own the same way:
+ *
+ *   @custom-variant ui-expanded (&.ui-expanded);
+ */
+@custom-variant ui-active (&.ui-active);
+@custom-variant ui-disabled (&.ui-disabled);
+@custom-variant ui-readonly (&.ui-readonly);
+@custom-variant ui-checked (&.ui-checked);
+@custom-variant ui-selected (&.ui-selected);
+@custom-variant ui-indeterminate (&.ui-indeterminate);
+@custom-variant ui-invalid (&.ui-invalid);
+@custom-variant ui-initial (&.ui-initial);
+@custom-variant ui-open (&.ui-open);
+@custom-variant ui-closed (&.ui-closed);
+@custom-variant ui-leaving (&.ui-leaving);
+@custom-variant ui-entering (&.ui-entering);
+@custom-variant ui-animating (&.ui-animating);
+@custom-variant ui-busy (&.ui-busy);
+@custom-variant ui-focused (&.ui-focused);
+@custom-variant ui-complete (&.ui-complete);
+@custom-variant ui-filled (&.ui-filled);
+@custom-variant ui-dragging (&.ui-dragging);
+@custom-variant ui-side-left (&.ui-side-left);
+@custom-variant ui-side-right (&.ui-side-right);
+@custom-variant ui-side-top (&.ui-side-top);
+@custom-variant ui-side-bottom (&.ui-side-bottom);
+@custom-variant ui-align-start (&.ui-align-start);
+@custom-variant ui-align-end (&.ui-align-end);
+@custom-variant ui-align-center (&.ui-align-center);
+
+/* The direct parent's state. */
+@custom-variant parent-ui-active (.ui-active > &);
+@custom-variant parent-ui-disabled (.ui-disabled > &);
+@custom-variant parent-ui-readonly (.ui-readonly > &);
+@custom-variant parent-ui-checked (.ui-checked > &);
+@custom-variant parent-ui-selected (.ui-selected > &);
+@custom-variant parent-ui-indeterminate (.ui-indeterminate > &);
+@custom-variant parent-ui-invalid (.ui-invalid > &);
+@custom-variant parent-ui-initial (.ui-initial > &);
+@custom-variant parent-ui-open (.ui-open > &);
+@custom-variant parent-ui-closed (.ui-closed > &);
+@custom-variant parent-ui-leaving (.ui-leaving > &);
+@custom-variant parent-ui-entering (.ui-entering > &);
+@custom-variant parent-ui-animating (.ui-animating > &);
+@custom-variant parent-ui-busy (.ui-busy > &);
+@custom-variant parent-ui-focused (.ui-focused > &);
+@custom-variant parent-ui-complete (.ui-complete > &);
+@custom-variant parent-ui-filled (.ui-filled > &);
+@custom-variant parent-ui-dragging (.ui-dragging > &);
+@custom-variant parent-ui-side-left (.ui-side-left > &);
+@custom-variant parent-ui-side-right (.ui-side-right > &);
+@custom-variant parent-ui-side-top (.ui-side-top > &);
+@custom-variant parent-ui-side-bottom (.ui-side-bottom > &);
+@custom-variant parent-ui-align-start (.ui-align-start > &);
+@custom-variant parent-ui-align-end (.ui-align-end > &);
+@custom-variant parent-ui-align-center (.ui-align-center > &);

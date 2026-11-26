@@ -62,6 +62,7 @@ import {
 import { POINTER_EVENT_NAMES, PointerEventSource } from './pointer-events';
 import { setPendingClassWriter } from './class-writes';
 import { setScriptStyleWriter } from './script-styles';
+import { setScriptFieldTextNoter } from './script-field-text';
 import { noteReleased, scheduleCollection } from './collect-garbage';
 import { removeNativeHandler } from './remove-native-handler';
 import { addNativeEvent } from './event-registration';
@@ -658,8 +659,6 @@ export class LynxElement implements BaseLynxElement {
   #addedTraits: string[] | null = null;
   /** Every listener Angular added, in the order it added them. */
   #listeners: Listener[] | null = null;
-  /** How many main-thread directive handlers hold each event (see holdNativeEvent). */
-  #heldEvents: Map<string, number> | null = null;
   /** Recognizes long presses on Lynx for Web (see #listenForWebLongPress). */
   #webLongPress: WebLongPress | null = null;
   /** Turns touches into pointer events, once a pointer listener is added. */
@@ -987,6 +986,11 @@ export class LynxElement implements BaseLynxElement {
         target.#setScriptStyles(styles);
         return true;
       });
+      // And the text a script sets on a field (see script-field-text.ts).
+      setScriptFieldTextNoter((ref, text) => {
+        const target = LynxElement.#registered(__GetElementUniqueID(ref));
+        if (target) target.#noteFieldText(text);
+      });
     }
     this.#nativeRef = element;
     // Register as the canonical wrapper for this native ref. #canonicalFor()
@@ -1090,12 +1094,10 @@ export class LynxElement implements BaseLynxElement {
    * text back after each keystroke, and setting it again would only disturb
    * the user's typing. #dispatch keeps #fieldText up with what's typed, so
    * the runtime listens to the field's `input` itself: Lynx sends a field's
-   * events only to a handler, and the app may have none. While a main-thread
-   * directive has the field's `input` (see holdNativeEvent), the runtime
-   * doesn't hear it, and sets the text whatever it was.
+   * events only to a handler, and the app may have none.
    */
   #setFieldText(text: string): void {
-    if (text === this.#fieldText && !this.#heldEvents?.has('input')) return;
+    if (text === this.#fieldText) return;
     if (this.#fieldText === null) {
       this.addEventListener('bindinput', () => {});
     }
@@ -1895,14 +1897,11 @@ export class LynxElement implements BaseLynxElement {
    * After a move on Lynx for Web: gets `layoutchange` firing again on this
    * element and each element inside it that has a handler for it, which the
    * move stopped (see restartWebLayoutChange). A main-thread directive's
-   * handler (`[mainThreadBindlayoutchange]`) counts too: the event stopped
-   * for it the same way.
+   * script (`[mainThreadBindlayoutchange]`) is one of the handler's
+   * listeners, so it counts too.
    */
   #restartWebLayoutChanges(): void {
-    if (
-      this.#nativeHandlers?.has('layoutchange') ||
-      this.#heldEvents?.has('layoutchange')
-    ) {
+    if (this.#nativeHandlers?.has('layoutchange')) {
       restartWebLayoutChange(this.element);
     }
     for (const child of this.#children) child.#restartWebLayoutChanges();
@@ -3016,8 +3015,8 @@ export class LynxElement implements BaseLynxElement {
     // The app setting a field's text itself, which a `value` set to the
     // same text afterwards mustn't take for the text the field has (see
     // #setFieldText).
-    if (methodName === 'setValue' && this.#fieldText !== null) {
-      this.#fieldText = String(params?.['value'] ?? '');
+    if (methodName === 'setValue') {
+      this.#noteFieldText(String(params?.['value'] ?? ''));
     }
     const call = (): boolean => {
       let made = true;
@@ -3031,6 +3030,16 @@ export class LynxElement implements BaseLynxElement {
     } else {
       afterNextFlush(call);
     }
+  }
+
+  /**
+   * Notes the text the app or a main-thread script set on the field with
+   * `setValue`, which a `value` set to the same text afterwards mustn't take
+   * for the text the field has (see #setFieldText). Nothing to note for a
+   * field whose text the runtime doesn't track yet.
+   */
+  #noteFieldText(text: string): void {
+    if (this.#fieldText !== null) this.#fieldText = text;
   }
 
   /**
@@ -3355,8 +3364,6 @@ export class LynxElement implements BaseLynxElement {
    */
   #syncNativeHandler(entry: Listener): void {
     const key = nativeEventKey(entry.eventType, entry.eventName);
-    // A main-thread directive has the event's one handler (see holdNativeEvent).
-    if (this.#heldEvents?.has(key)) return;
     const listeners = this.#listenersLike(entry);
     const current = this.#nativeHandlers?.get(key);
     const eventType = listeners.length ? combinedEventType(listeners) : null;
@@ -3394,48 +3401,6 @@ export class LynxElement implements BaseLynxElement {
       type: 'worklet',
       value: handler.dispatch,
     });
-  }
-
-  /**
-   * Leaves the element's handler for `eventName` to a main-thread directive
-   * (`[mainThreadBindscroll]` and the like), which registers its own with
-   * `__AddEvent`. Lynx keeps one handler per event name (see nativeEventKey),
-   * so registering the element's own afterwards would replace the
-   * directive's: an IntersectionObserver with options, listening for a
-   * scroll-view's scroll events, would stop the app's main-thread scroll
-   * handler. Until releaseNativeEvent, the element's listeners for the event
-   * aren't registered natively, and don't hear it, as they didn't when the
-   * directive registered after them. Counted, as `mainThreadBindscroll` and
-   * `mainThreadCatchscroll` share one.
-   */
-  holdNativeEvent(eventName: string): void {
-    const heldEvents = (this.#heldEvents ??= new Map());
-    heldEvents.set(eventName, (heldEvents.get(eventName) ?? 0) + 1);
-    // The directive's handler replaces the element's natively.
-    this.#nativeHandlers?.delete(eventName);
-  }
-
-  /**
-   * Hands `eventName` back once the directive has removed its handler, and
-   * registers the element's own for the listeners it has for it.
-   */
-  releaseNativeEvent(eventName: string): void {
-    const heldEvents = this.#heldEvents;
-    const held = heldEvents?.get(eventName);
-    // Not held: the element's handler is registered already.
-    if (held === undefined) return;
-    // Held, so heldEvents has it.
-    if (held > 1) {
-      heldEvents!.set(eventName, held - 1);
-      return;
-    }
-    heldEvents!.delete(eventName);
-    const entry = this.#listeners?.find(
-      (listener) =>
-        listener.eventName === eventName &&
-        listener.eventType !== 'global-bindEvent',
-    );
-    if (entry) this.#syncNativeHandler(entry);
   }
 
   /**
@@ -3551,12 +3516,26 @@ export class LynxElement implements BaseLynxElement {
       this.#fieldText = event.detail.value;
     }
     let result: unknown;
+    // The stop-propagation bits any listener asked for (see eventResultBits).
+    let stopBits = 0;
+    // The first error a listener threw, rethrown once the others have run.
+    let failure: { error: unknown } | null = null;
     // As a DOM event does: the listeners are those registered when the event
     // fires, so one that removes itself doesn't make the next one skip, and a
     // listener an earlier one removed (an @if hiding part of the element, say)
-    // doesn't run.
+    // doesn't run. A listener that throws doesn't stop the others either, as
+    // a browser reports a listener's error and goes on: a main-thread script
+    // that throws would otherwise silence the template's listener and an
+    // IntersectionObserver's after it. Angular's own listener wrapper catches
+    // what a template listener throws, so this matters for the rest.
     for (const other of this.#listenersLike(entry)) {
-      if (this.#listeners!.includes(other)) result = other.listener(event);
+      if (!this.#listeners!.includes(other)) continue;
+      try {
+        result = other.listener(event);
+        stopBits |= eventResultBits(result);
+      } catch (error) {
+        failure ??= { error };
+      }
     }
     // Native events are delivered straight to this callback by the Lynx SDK —
     // OUTSIDE Angular's begin()/end() change-detection cycle. So a handler that
@@ -3589,9 +3568,29 @@ export class LynxElement implements BaseLynxElement {
       // still does.
       queueMicrotask(checkDispatchWrites);
     }
+    // To native, as when the listener had the handler to itself: Lynx
+    // reports an error a handler throws.
+    if (failure) throw failure.error;
+    // A main-thread script can return the bits native stops the event with.
+    // A later listener's result mustn't drop them.
+    if (stopBits && eventResultBits(result) !== stopBits) {
+      return { eventReturnResult: stopBits };
+    }
     return result;
   }
 }
+
+/**
+ * The bits of Lynx's `EventResult` a handler's result asks for: native reads
+ * `eventReturnResult` from what a worklet handler returns, 1 to stop the
+ * event's propagation and 2 to stop it immediately
+ * (TouchEventHandler::FireElementWorklet). 0 for any other result.
+ */
+const eventResultBits = (result: unknown): number => {
+  const bits = (result as { eventReturnResult?: unknown } | null | undefined)
+    ?.eventReturnResult;
+  return typeof bits === 'number' ? bits : 0;
+};
 
 /**
  * Commits all queued genuine element removals — a free-function wrapper over

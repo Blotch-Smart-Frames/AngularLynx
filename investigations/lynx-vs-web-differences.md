@@ -2292,6 +2292,7 @@ Multiple `text-decoration` layers can be stacked via comma separation. `text-dec
 
 - Only **one decoration layer** is supported; multiple comma-separated values are ignored.
 - `text-decoration-thickness` is **not supported**.
+- Both lines in one value do work, though Lynx's docs say it draws one: `text-decoration: underline line-through` draws a line under and a line through, on iOS, Android and the web preview. Its parser collects every line keyword (`CSSStringParser::ParseTextDecoration`) and `ComputedCSSStyle::SetTextDecoration` sets a flag for each. The build's rule for a `<u>` inside an `<s>` relies on it (issue #643).
 
 ---
 
@@ -6226,7 +6227,7 @@ Checked in Lynx Explorer 4.1 on iOS and Android, and in Lynx for Web (Chromium),
 
 ### What we do about it
 
-The build plugin (`packages/rsbuild-plugin-angular-lynx/src/tailwind-v4/`) rewrites every stylesheet that `@tailwindcss/postcss` compiled into CSS with the same meaning that Lynx reads, for both the native and the web bundle: it flattens nesting and layers, turns `@property` initial values into a `*` rule, converts colors to `rgb()`/`rgba()` (gamut-mapping as CSS Color 4 does), writes logical properties as physical ones (left-to-right), composes `translate`/`rotate`/`scale` into one `transform`, rewrites `space-*`/`divide-*` to `* + *`, resolves the `var()`s Lynx can't inside custom properties, completes keyframes, and drops properties and keywords Lynx doesn't have, so the web preview matches the device.
+The build plugin (`packages/rsbuild-plugin-angular-lynx/src/tailwind-v4/`) rewrites every stylesheet that `@tailwindcss/postcss` compiled into CSS with the same meaning that Lynx reads, for both the native and the web bundle: it flattens nesting and layers, turns `@property` initial values into a `*` rule, converts colors to `rgb()`/`rgba()` (gamut-mapping as CSS Color 4 does), writes logical properties as physical ones (left-to-right), composes `translate`/`rotate`/`scale` into one `transform`, rewrites `space-*`/`divide-*` to `* + *`, inlines a `:where()` or `:is()` that holds one compound selector (so Tailwind's `group-*`, `peer-*` and `in-*` variants, written as `:where(.group).ui-open .x`, become `.group.ui-open .x`; the selector gains the specificity `:where()` hid, so it can now beat an equally specific rule that came after it), resolves the `var()`s Lynx can't inside custom properties, completes keyframes, and drops properties and keywords Lynx doesn't have, so the web preview matches the device.
 
 ---
 
@@ -6942,7 +6943,7 @@ Until #261, that listener also kept every screen with a scroll-view alive after 
 
 ---
 
-## An element's listener replaced a main-thread directive's handler for the same event
+## A main-thread directive's handler and the element's own listeners fought over one native handler
 
 ### What you'd expect (web)
 
@@ -6950,13 +6951,15 @@ Any number of listeners for an event on one element all run.
 
 ### What Lynx does
 
-Lynx keeps one main-thread handler per event name on an element (`AttributeHolder::SetWorkletEvent` assigns into `lepus_events_` by name, whatever the bind/catch type). `LynxElement` registers its listeners as one such handler, and so does `LynxMainThreadEvent` (`[mainThreadBindscroll]` and the rest), each with `__AddEvent`, so whichever registers last wins. The directive registers in `ngOnChanges`, after the template's own listeners, so it always won. But a listener added later, such as an `IntersectionObserver` with options listening for its scroll-view's scroll events, replaced the app's main-thread scroll handler.
+Lynx keeps one main-thread handler per event name on an element (`AttributeHolder::SetWorkletEvent` assigns into `lepus_events_` by name, whatever the bind/catch type). `LynxElement` registers its listeners as one such handler, and `LynxMainThreadEvent` (`[mainThreadBindscroll]` and the rest) used to register its own, each with `__AddEvent`, so whichever registered last won. The directive registers in `ngOnChanges`, after the template's own listeners, so a `(bindtap)` beside a `[mainThreadBindtap]` never ran. A listener added later, such as an `IntersectionObserver` with options listening for its scroll-view's scroll events, replaced the app's main-thread scroll handler.
+
+A first fix (#239) kept the element's listeners off an event while the directive had a handler for it. The script kept running, but the element's own listeners went deaf: the observers inside a `[mainThreadBindscroll]` scroll-view measured only on layout and exposure (issue #471).
 
 ### The fix
 
-The directive holds the event on its element while it has a handler for it (`LynxElement.holdNativeEvent`, counted for `bind` and `catch`). Meanwhile, the element registers none of its own for that event, and hands it back once the directive's handler has gone (`releaseNativeEvent`), registering its own for the listeners it has. The element's listeners for a held event don't hear it, as they didn't before when the directive registered after them.
+The directive adds each script to the element as a listener (`LynxElement.addEventListener`, with the input's `bind…`/`catch…` name), so the one native handler the element registers runs it beside every other listener for the event, in the order they were added. The script still gets `MainThreadElement` targets: the directive passes it the event through `transformParams`, as `runWorklet` did, and the other listeners get the event itself. Native puts an `elementRefptr` in the targets of any event a worklet handler gets, whatever the worklet's value (`TouchEventHandler::GetTargetInfo` leaves it out only for a background-thread event), so the element's function handler gets them as the directive's `_wkltId` worklet did. A `catch` script makes the element's handler a `catch` one, so the event stops at the element after all its listeners have run.
 
-Checked on the iOS 27 Simulator and the Android API 34 emulator with a `[mainThreadBindscroll]` on a scroll-view whose cards had observers with thresholds. The main-thread handler kept running through every scroll. The observers there reported only what layout and exposure told them.
+The E2E fixture's "Main taps" text has a `[mainThreadBindtap]` and a `(bindtap)`, and the iOS flow checks both counts.
 
 ---
 
@@ -7151,21 +7154,23 @@ An HTML inline tag in a Lynx `<text>` reads a variable only for the properties t
 
 ---
 
-## `<b>` and `<strong>` aren't bold: Lynx has no user agent stylesheet
+## `<b>`, `<em>`, `<u>` and `<s>` have no text styles: Lynx has no user agent stylesheet
 
 ### What you'd expect (web)
 
-A browser's user agent stylesheet gives `<b>` and `<strong>` `font-weight: bolder`, so `<text class="blue">blue <b>bold blue</b></text>` draws "bold blue" bold, in blue.
+A browser's user agent stylesheet gives `<b>` and `<strong>` `font-weight: bolder`, so `<text class="blue">blue <b>bold blue</b></text>` draws "bold blue" bold, in blue. It makes `<em>`, `<i>`, `<cite>`, `<dfn>` and `<var>` italic, underlines `<u>` and `<ins>`, and strikes through `<s>` and `<del>`.
 
 ### What Lynx does
 
-Lynx has no user agent stylesheet: an element draws only the styles the app's CSS gives it. AngularLynx renders `<b>` as a `<text>` (see "Text styles reach HTML text tags through CSS variables" above), which took the blue from its parent and stayed at the normal weight, on iOS, Android and the web preview alike (issue #611). Lynx for Web is no exception: it draws each `<text>` in a custom element (`<x-text>`), which the browser's own `b` rule never matches.
+Lynx has no user agent stylesheet: an element draws only the styles the app's CSS gives it. AngularLynx renders `<b>` as a `<text>` (see "Text styles reach HTML text tags through CSS variables" above), which took the blue from its parent and stayed at the normal weight, on iOS, Android and the web preview alike (issue #611). An `<em>` was upright and a `<u>` had no line the same way (issue #643). Lynx for Web is no exception: it draws each `<text>` in a custom element (`<x-text>`), which the browser's own `b` rule never matches.
 
 ### The fix
 
-The build plugin adds a stylesheet of its own to both bundles, ahead of the app's (`src/styles/html-text-tags.css`): `b, strong { font-weight: bold }`. `bolder` becomes `bold`, since Lynx has no relative weights (see "`font-weight` does not support `lighter` or `bolder`"). Its type selectors become the tag classes the runtime marks elements with (`._ngtag-b`), the text inheritance step copies the weight to `--angular-lynx-font-weight` for text inside, and the style index lists the rule, so the runtime doesn't give the element its parent's weight inline, which would beat it. An app's own class or type selector for the weight comes later and wins, as it would against a browser's. Measured with Lynx Explorer 4.1 on the iOS 27 Simulator and the Android API 34 emulator, and in the web preview, where the `<b>` drew at 700 in its parent's color, and at 300 with a class setting that.
+The build plugin adds a stylesheet of its own to both bundles, ahead of the app's (`src/styles/html-text-tags.css`): `b, strong { font-weight: bold }`, `em, i, cite, dfn, var { font-style: italic }`, `u, ins { text-decoration: underline }` and `s, del { text-decoration: line-through }`. `bolder` becomes `bold`, since Lynx has no relative weights (see "`font-weight` does not support `lighter` or `bolder`"). Its type selectors become the tag classes the runtime marks elements with (`._ngtag-b`), the text inheritance step copies each declaration to its variable (`--angular-lynx-font-weight`) for text inside, and the style index lists the rule, so the runtime doesn't give the element its parent's value inline, which would beat it. An app's own class or type selector for the weight comes later and wins, as it would against a browser's. Measured with Lynx Explorer 4.1 on the iOS 27 Simulator and the Android API 34 emulator, and in the web preview, where the `<b>` drew at 700 in its parent's color, and at 300 with a class setting that.
 
-The other tags with a browser style (`<em>`, `<i>`, `<u>`, `<s>`, `<h1>`…) still have none.
+A browser draws a decoration across everything inside the element rather than inheriting it, so a `<u>` inside an `<s>` has both lines. Here `text-decoration` is one inherited value, which the inner tag's own rule would replace, so the stylesheet gives each such pair (`u s`, `s u`, `ins del`…) `text-decoration: underline line-through`, which Lynx draws as both lines (see "`text-decoration` supports only one layer" above). Its two classes beat an app's single class for that pair alone. Measured the same way as the bold, on the iOS 27 Simulator, the Android API 34 emulator and the web preview.
+
+Other tags with a browser style (`<a>`'s underline, `<code>`'s monospace font, `<small>`, `<mark>`, `<sub>`, `<sup>`, `<h1>`…) still have none.
 
 ---
 

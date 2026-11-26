@@ -33,12 +33,72 @@ describe('lowerSelectors', () => {
     );
   });
 
-  it('leaves a :where() or :is() inside a longer selector', () => {
+  it('keeps a no-break space that ends a name in an unwrapped list', () => {
+    // The raw selector: PostCSS's own `selectors` getter trims each entry
+    // with String.prototype.trim(), which takes a no-break space too.
+    expect(
+      (lower(':where(.a\u00a0, .b\u00a0) { padding: 1px; }') as Rule).selector,
+    ).toBe('.a\u00a0, .b\u00a0');
+  });
+
+  it('inlines a :where() or :is() that holds one compound selector', () => {
+    // What Tailwind writes for `group-*`, `peer-*` and `in-*` over a custom
+    // variant such as the `ui-open` of @blotch/angular-lynx/tailwind.css.
+    const cases: [string, string][] = [
+      [
+        ':is(:where(.group).ui-open .group-ui-open\\:flex)',
+        '.group.ui-open .group-ui-open\\:flex',
+      ],
+      [
+        ':is(:where(.group\\/menu).ui-open .group-ui-open\\/menu\\:flex)',
+        '.group\\/menu.ui-open .group-ui-open\\/menu\\:flex',
+      ],
+      [
+        ':is(:where(.peer).ui-checked ~ .peer-ui-checked\\:hidden)',
+        '.peer.ui-checked ~ .peer-ui-checked\\:hidden',
+      ],
+      // An arbitrary group variant, with an :is() of its own.
+      [
+        ':is(:where(.group):is(.is-open) .group-\\[\\.is-open\\]\\:flex)',
+        '.group.is-open .group-\\[\\.is-open\\]\\:flex',
+      ],
+      [':where(.ui-open) .in-ui-open\\:flex', '.ui-open .in-ui-open\\:flex'],
+      // A type selector can go first in its compound.
+      [':where(view).a > :is(*)', 'view.a > *'],
+      ['.a\\+ + :is(view)', '.a\\+ + view'],
+      // A no-break space is part of a name, so this is one compound.
+      ['.a:is(.b\u00a0.c)', '.a.b\u00a0.c'],
+      // Nor is one at the end of a name trimmed away.
+      ['.a:is(.b\u00a0.c\u00a0) .x', '.a.b\u00a0.c\u00a0 .x'],
+      ['.a:not(:where(.b))', '.a:not(.b)'],
+    ];
+    for (const [selector, lowered] of cases) {
+      expect((lower(`${selector} { color: red; }`) as Rule).selector).toBe(
+        lowered,
+      );
+    }
+  });
+
+  it('leaves a :where() or :is() it cannot inline', () => {
     for (const selector of [
-      '.group-hover\\:x:is(:where(.group):hover *)',
-      ':where(.a) .b',
+      // A complex selector, a list, and a type selector after a class.
+      '.group-hover\\:x:is(.group:hover *)',
+      '.ltr\\:x:where(:dir(ltr), [dir="ltr"])',
+      '.a:is(view)',
+      // The `+` is part of the class name, not a combinator.
+      '.a\\+:is(view) .x',
+      // The space ends the `\\31` escape, so it can't be trimmed away.
+      '.a:is(.b\\31 ) .x',
+      // Nor can one be written after it.
+      '.a:is(.b\\31) .x',
+      // A no-break space is part of a name too: CSS whitespace is only
+      // space, tab, newline, form feed and carriage return.
+      '.a\u00a0:is(view) .x',
+      // An escaped colon is part of a class name.
+      '.a\\:where\\(b\\)',
       // Unbalanced, which PostCSS wouldn't parse, but a rule can hold.
       ':is(.a',
+      '.b:is(.a',
     ]) {
       const rule = postcss.rule({ selector });
       rule.append({ prop: 'color', value: 'red' });

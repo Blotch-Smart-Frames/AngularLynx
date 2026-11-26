@@ -445,8 +445,12 @@ jobs:
           key: lynx-explorer-${{ steps.explorer.outputs.version }}-ios-${{ hashFiles('packages/e2e/src/native/explorer.ts') }}
       # Booting the simulator is the slowest step, so start it first (run-
       # native.ts needs only Node). The simulator keeps booting while the
-      # steps below run; the test step waits for it to finish. Its log goes
-      # to its own folder, which the test step doesn't empty.
+      # steps below run; the test step waits for it to finish. So does a
+      # background job that adds photo.yaml's photo to the library once the
+      # boot ends: adding a photo can hang for minutes on these runners
+      # (#624), and here that overlaps with the steps below rather than
+      # coming out of the test step's limit. Its logs go to their own
+      # folder, which the test step doesn't empty.
       - name: Start the iOS Simulator
         timeout-minutes: 10
         run: >-

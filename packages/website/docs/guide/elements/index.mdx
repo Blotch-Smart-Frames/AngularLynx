@@ -130,6 +130,7 @@ What carries over:
 
 - **Text tags hold text.** Text shows inside them, and a tag inside one runs inline, so `<p>Joined <strong>today</strong></p>` reads as one line.
 - **Text and inline tags share a line.** In a block tag or a `<view>`, text and the inline tags beside it (`span`, `a`, `strong` and the like, not `p` or `button`) run on as one line: `<div>Hi <b>there</b>, <a>friend</a></div>`. In a flex or grid container, each is an item of its own, as on the web.
+- **A space alone between two tags is dropped, as in any Angular app.** Angular's compiler deletes whitespace-only text by default, so `<b>Name:</b> <span>{{ name }}</span>` reads "Name:Ada" in a browser too. Write the space as `&ngsp;` (`<b>Name:</b>&ngsp;<span>…</span>`), put it inside a tag, or set `preserveWhitespaces: true` on the component.
 - **Text styles inherit.** A `color`, `font-size`, `font-weight`, `line-height` or `text-align` that an ancestor's class or stylesheet rule sets reaches the text tags and the loose text inside it, as on the web. A `<text>` you write as a Lynx element doesn't inherit, as before.
 - **An `<img>` takes its picture's size,** until CSS gives it one. Its `alt` is what screen readers say.
 - **Type selectors still match.** `p { margin-bottom: 8px; }` styles every `<p>`.
@@ -141,8 +142,8 @@ What doesn't carry over:
 - **Inline styles don't inherit.** Only classes and stylesheet rules pass text styles down: `<div style="color: red">` colors no text but its own.
 - **An inline tag in a `<text>` you write matches that `<text>`.** That `<text>` inherits nothing, so the tag takes only the styles the `<text>` sets itself. `<text>Total: <b>{{ sum }}</b></text>` stays one size, whatever the page's font size.
 - **An inline tag in a line draws no box.** On iOS and Android, a `<span>` or `<code>` in the middle of a line shows its background behind its letters, without padding, borders or rounded corners. A badge on a line of its own keeps them.
-- **`<b>` and `<strong>` are bold.** The build gives them the browser's bold weight, and your own CSS for them wins, as it would in a browser.
-- **There are no other browser styles.** An `<h1>` is the size of any other text, an `<em>` isn't italic, and a `<button>` has no border, as with Tailwind's Preflight reset. Style them yourself.
+- **Inline text tags keep their browser text styles.** The build makes `<b>` and `<strong>` bold, `<em>`, `<i>`, `<cite>`, `<dfn>` and `<var>` italic, `<u>` and `<ins>` underlined, and `<s>` and `<del>` struck through, and your own CSS for them wins, as it would in a browser. One exception: a `<u>` or `<ins>` inside an `<s>` or `<del>` (or the other way round) gets both lines from a rule with two classes, which beats a single class of yours on either tag of the pair.
+- **There are no other browser styles.** An `<h1>` is the size of any other text, an `<a>` isn't underlined, a `<code>` isn't monospace, and a `<button>` has no border, as with Tailwind's Preflight reset. Style them yourself.
 - **There's no browser behavior.** `<a href>` opens nothing (use `routerLink`), a `<form>` doesn't submit, and `disabled` doesn't stop a `<button>`'s taps.
 - **Other tags don't work.** A `<table>`, `<select>` or `<br>` renders as a plain `<view>`, and the build warns about it.
 

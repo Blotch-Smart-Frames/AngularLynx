@@ -14,7 +14,7 @@ It sets up Tailwind 4, as `ng new --style=tailwind` does:
 
 - Installs `tailwindcss` and `@tailwindcss/postcss` as dev dependencies.
 - Writes `.postcssrc.json`, which runs `@tailwindcss/postcss`.
-- **Replaces** `src/styles.css` with Tailwind's imports. Copy out any global styles you want to keep first.
+- **Replaces** `src/styles.css` with Tailwind's imports and Lynx's own utilities. Copy out any global styles you want to keep first.
 
 An app that already depends on Tailwind 3 keeps it. Pass `--tailwind-version=3` or `4` to choose.
 
@@ -36,15 +36,16 @@ An app that already depends on Tailwind 3 keeps it. Pass `--tailwind-version=3` 
    }
    ```
 
-3. Import Tailwind in your global stylesheet:
+3. Import Tailwind in your global stylesheet, then Lynx's own utilities:
 
    ```css title="src/styles.css"
    @layer theme, base, components, utilities;
    @import 'tailwindcss/theme.css' layer(theme);
    @import 'tailwindcss/utilities.css' layer(utilities);
+   @import '@blotch/angular-lynx/tailwind.css';
    ```
 
-This imports Tailwind without **Preflight**, its reset for HTML elements such as `h1` and `button`. A Lynx app has none of them, and the web preview would apply the reset where the device doesn't.
+This imports Tailwind without **Preflight**, its reset for HTML elements such as `h1` and `button`. A Lynx app has none of them, and the web preview would apply the reset where the device doesn't. The last import adds the [Lynx utilities and variants](#lynx-utilities-and-variants).
 
 :::tip From `ng new --style=tailwind`
 Running `ng add @blotch/angular-lynx` in an app made that way keeps its Tailwind 4 and its `.postcssrc.json`, and replaces `@import 'tailwindcss';` with the imports above.
@@ -86,6 +87,44 @@ export class Counter {
 
 <Go example="tailwind-4" defaultFile="src/app/app.ts" />
 
+## Lynx utilities and variants
+
+`@blotch/angular-lynx/tailwind.css` adds what Lynx's Tailwind 3 preset adds for Lynx's own CSS. `ng add` imports it. Tailwind writes CSS only for the classes you use, so the rest cost nothing.
+
+| Class                                    | CSS                                                 |
+| ---------------------------------------- | --------------------------------------------------- |
+| `linear`                                 | `display: linear`, Lynx's default layout            |
+| `display-relative`                       | `display: relative`                                 |
+| `normal`, `ltr`, `rtl`, `lynx-rtl`       | `direction`                                         |
+| `solo-translate-{x,y,z}-*`               | `transform: translateX(…)`, one function            |
+| `solo-rotate-*`, `solo-rotate-{x,y,z}-*` | `transform: rotate(…)`                              |
+| `solo-scale-*`, `solo-scale-{x,y}-*`     | `transform: scale(…)`, where `solo-scale-50` halves |
+| `solo-skew-*`, `solo-skew-{x,y}-*`       | `transform: skew(…)`                                |
+
+The `solo-*` classes each set the whole `transform` with one function, without Tailwind's variables. Lynx before 3.4 can't animate a variable, so use them to animate a transform there. Two on one element don't combine, and neither do they with `translate-*` or `rotate-*`. Each takes a negative (`-solo-rotate-45`) and an arbitrary value (`solo-translate-x-[10px]`).
+
+### State variants
+
+Lynx has no attribute selectors, so `data-[state=open]:` can't match. Give the element a `ui-*` class for its state, and style it with the variant of the same name:
+
+```html
+<view class="group" [class.ui-open]="open()">
+  <view class="bg-muted parent-ui-open:bg-primary"></view>
+  <text class="text-muted-foreground group-ui-open:text-foreground">
+    Details
+  </text>
+</view>
+```
+
+- **`ui-<state>:`** applies while the element has the `ui-<state>` class. The states are `active`, `disabled`, `readonly`, `checked`, `selected`, `indeterminate`, `invalid`, `initial`, `open`, `closed`, `leaving`, `entering`, `animating`, `busy`, `focused`, `complete`, `filled` and `dragging`, plus `ui-side-{left,right,top,bottom}` and `ui-align-{start,end,center}`.
+- **`parent-ui-<state>:`** applies while the element's direct parent has it.
+- **Tailwind's `group-*`, `peer-*` and `in-*`** combine with them: `group-ui-open:` under a `group ui-open` ancestor, `peer-ui-checked:` after a `peer ui-checked` sibling, and named groups such as `group-ui-open/menu:`.
+- **For a state of your own**, add a variant in `src/styles.css`, after the import:
+
+  ```css title="src/styles.css"
+  @custom-variant ui-expanded (&.ui-expanded);
+  ```
+
 ## How Tailwind 4 works on Lynx
 
 Tailwind 4 writes CSS for current browsers: `oklch()` colors, cascade layers, `color-mix()` for opacity modifiers, `padding-inline` for `px-*`, and the `translate`, `rotate` and `scale` properties. Lynx drops all of these, while the web preview, which runs in a browser, shows them.
@@ -100,6 +139,7 @@ So the build rewrites the CSS Tailwind writes into CSS with the same meaning tha
 | `translate`, `rotate`, `scale`     | one `transform` they all compose into         |
 | `opacity: 50%`                     | `opacity: 0.5`                                |
 | `@layer`, nesting, `@property`     | plain rules, with the variables' start values |
+| `:where(.group).ui-open .x`        | `.group.ui-open .x`                           |
 
 It also leaves out the properties and values Lynx doesn't have, such as `text-transform`, so the web preview doesn't show styles the device won't. There's nothing to configure: the build does this for every stylesheet Tailwind 4 compiles.
 
@@ -169,7 +209,7 @@ These are the gaps you'll notice first:
 
 ## Tailwind 3
 
-Apps made before Tailwind 4 support use Tailwind 3 with **`@lynx-js/tailwind-preset`**, which limits Tailwind's utilities to the CSS Lynx supports. They keep working: the build runs Tailwind 3 when it finds a `tailwind.config.ts`.
+Apps made before Tailwind 4 support use Tailwind 3 with **`@lynx-js/tailwind-preset`**, which limits Tailwind's utilities to the CSS Lynx supports and adds the [Lynx utilities and variants](#lynx-utilities-and-variants). They keep working: the build runs Tailwind 3 when it finds a `tailwind.config.ts`.
 
 ```typescript title="tailwind.config.ts"
 import type { Config } from 'tailwindcss';
@@ -201,12 +241,13 @@ To set Tailwind 3 up in a new app, run `ng generate @blotch/angular-lynx:add-tai
    @layer theme, base, components, utilities;
    @import 'tailwindcss/theme.css' layer(theme);
    @import 'tailwindcss/utilities.css' layer(utilities);
+   @import '@blotch/angular-lynx/tailwind.css';
    @import './styles/default.css';
    @import './styles/dark.css';
    @import './styles/tailwind.css';
    ```
 
-   Keep them above the `@theme` from step 2: CSS ignores an `@import` that comes after other rules. Then run `npx dolan update`. It copies `tailwind.css` into the theme and deletes the Tailwind 3 plugin, `tailwind-plugin.ts`, with its test. It asks first about a file you edited.
+   Keep them above the `@theme` from step 2: CSS ignores an `@import` that comes after other rules. The preset's `ui-*` and `solo-*` classes keep working through `@blotch/angular-lynx/tailwind.css`. For a state you added with `createLynxPreset()`'s `uiVariants` option, add a `@custom-variant` (see [State variants](#state-variants)). Then run `npx dolan update`. It copies `tailwind.css` into the theme and deletes the Tailwind 3 plugin, `tailwind-plugin.ts`, with its test. It asks first about a file you edited.
 
 Tailwind's own `npx @tailwindcss/upgrade` can't read a config that uses the Lynx preset, so remove the preset from `presets` before running it.
 

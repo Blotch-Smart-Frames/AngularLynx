@@ -210,6 +210,26 @@ describe('MainThreadElement', () => {
       );
     });
 
+    it("sets a field's text before any LynxElement exists to note it", async () => {
+      // No element module has installed its hook in this file (see
+      // script-field-text.ts), so there's nothing to note the text for.
+      vi.mocked(__InvokeUIMethod).mockImplementation(
+        (_el, _method, _params, callback) => {
+          callback({ code: 0, data: undefined });
+        },
+      );
+      const el = new MainThreadElement(fakeRef);
+
+      await el.invoke('setValue', { value: 'Ada' });
+
+      expect(__InvokeUIMethod).toHaveBeenCalledWith(
+        fakeRef,
+        'setValue',
+        { value: 'Ada' },
+        expect.any(Function),
+      );
+    });
+
     it('defaults params to an empty object when omitted', async () => {
       vi.mocked(__InvokeUIMethod).mockImplementation(
         (_el, _method, _params, callback) => {

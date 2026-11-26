@@ -18,6 +18,11 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
  * Its `dark:` color applies while the app is drawn dark. Tailwind writes the
  * variant as a `prefers-color-scheme` query, which Lynx drops, and the build
  * turns it into a rule under `page.dark` (issue #460).
+ *
+ * Its `group-ui-open:` variant is Lynx's, from @lynx-js/tailwind-preset on
+ * Tailwind 3 and @blotch/angular-lynx/tailwind.css on Tailwind 4, which the
+ * app imports from the installed package (issue #461). Tailwind 4 writes it
+ * with `:where(.group)`, which the build inlines for Lynx.
  */
 @Component({
   selector: 'app-tailwind-card',

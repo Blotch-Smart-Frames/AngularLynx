@@ -250,15 +250,22 @@ In a pnpm monorepo, they go in the workspace root's `pnpm-workspace.yaml`: `ng a
 
 ## Tailwind CSS
 
-New apps use **Tailwind CSS 4**, set up as Angular CLI does: `.postcssrc.json` runs `@tailwindcss/postcss`, and the global stylesheet imports Tailwind's theme and utilities, without Preflight:
+New apps use **Tailwind CSS 4**, set up as Angular CLI does: `.postcssrc.json` runs `@tailwindcss/postcss`, and the global stylesheet imports Tailwind's theme and utilities, without Preflight, then Lynx's own utilities and variants:
 
 ```css
 @layer theme, base, components, utilities;
 @import 'tailwindcss/theme.css' layer(theme);
 @import 'tailwindcss/utilities.css' layer(utilities);
+@import '@blotch/angular-lynx/tailwind.css';
 ```
 
 Tailwind 4 writes CSS Lynx drops (cascade layers, `oklch()`, `color-mix()`, `padding-inline`, the `translate`/`rotate`/`scale` properties, `@property`). The plugin rewrites every stylesheet `@tailwindcss/postcss` compiled into CSS with the same meaning that Lynx reads, for the native and the web bundle, and leaves out properties and keywords Lynx doesn't have. Nothing to configure. Tailwind 4 finds classes in the project's files itself; add `@source` for a folder outside it. The variables Tailwind registers with `@property` (`--tw-shadow`, `--tw-translate-x`, …) get their starting values only on elements with a class that reads them, not on every element as Tailwind's `*` fallback does for browsers without `@property` (see styling-and-css.md for why). CSS of your own that reads one on another element gets no value: give its `var()` a fallback.
+
+`@blotch/angular-lynx/tailwind.css` adds on Tailwind 4 what `@lynx-js/tailwind-preset` adds on Tailwind 3. An app made before it was there gets the import from `ng update @blotch/angular-lynx`.
+
+- **Layout and direction:** `linear` (`display: linear`), `display-relative`, and `normal`, `ltr`, `rtl`, `lynx-rtl` (`direction`).
+- **`solo-translate-{x,y,z}-*`, `solo-rotate-*`, `solo-scale-*`, `solo-skew-*`** (and their axes and negatives) each set `transform` to one function, without variables, for animating a transform on Lynx before 3.4. Two don't combine on one element.
+- **State variants:** Lynx has no attribute selectors, so `data-[state=open]:` never matches. Bind a `ui-*` class (`[class.ui-open]="open()"`) and style with `ui-open:`, `parent-ui-open:` (direct parent), or Tailwind's `group-ui-open:`, `peer-ui-checked:` and `in-ui-busy:`. The states are `active`, `disabled`, `readonly`, `checked`, `selected`, `indeterminate`, `invalid`, `initial`, `open`, `closed`, `leaving`, `entering`, `animating`, `busy`, `focused`, `complete`, `filled`, `dragging`, `side-{left,right,top,bottom}` and `align-{start,end,center}`. For another, add `@custom-variant ui-expanded (&.ui-expanded);` after the import.
 
 **Tailwind CSS 3** still works: if a `tailwind.config.js` or `tailwind.config.ts` is present, the plugin runs the app's Tailwind 3 as a PostCSS plugin, with `@lynx-js/tailwind-preset` in the config. Tailwind 3 generates CSS for the classes in the files its `content` globs match, so keep `./src/**/*.{html,ts}` there: classes in an `.html` template the glob misses get no CSS.
 

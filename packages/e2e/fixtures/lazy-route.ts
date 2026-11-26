@@ -47,6 +47,10 @@ type Emitter = {
  * view, whose tap handler sets the input to null, so a second tap must leave
  * the count at 1. Native Lynx ignored the `undefined` the directive used to
  * pass to remove a main-thread handler, while the web didn't (issue #55).
+ * The second number counts the text's own `(bindtap)`, which runs beside the
+ * script, so it reads 1 after the first tap and 2 after the second. Lynx
+ * keeps one native handler per event on an element, and the directive used
+ * to take it, so the template's listener never ran (issue #471).
  * The checks live on this page because the counter page has no room left on
  * a small screen (see counter.ts).
  *
@@ -78,7 +82,8 @@ type Emitter = {
           <text
             flatten="false"
             [mainThreadBindtap]="mainTapsOn() ? countMainTap : null"
-            >Main taps: {{ mainTaps() }}</text
+            (bindtap)="templateTaps.set(templateTaps() + 1)"
+            >Main taps: {{ mainTaps() }}/{{ templateTaps() }}</text
           >
         </view>
       </view>
@@ -97,6 +102,7 @@ type Emitter = {
 export class LazyRoute implements OnInit {
   readonly mainTaps = mainTaps;
   readonly mainTapsOn = signal(true);
+  readonly templateTaps = signal(0);
   readonly countMainTap = countMainTap;
   readonly initRuns = initRuns;
   readonly echo = signal('');

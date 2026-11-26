@@ -277,9 +277,32 @@ const runAttw = async (
   // must be), so CommonJS resolution failing is expected. What matters is that
   // TypeScript finds the types under both `node16` and `bundler` resolution,
   // which is what `ng new` projects and Rsbuild configs use.
+  // A stylesheet export, such as @blotch/angular-lynx/tailwind.css, has no
+  // types for TypeScript to find, so attw would report it unresolved.
+  const manifest = await run(
+    'tar',
+    ['-xzOf', path.basename(tarball), 'package/package.json'],
+    { cwd: path.dirname(tarball), echo: false },
+  );
+  const { exports = {} } = JSON.parse(manifest.output) as {
+    exports?: Record<string, unknown>;
+  };
+  const stylesheets = Object.keys(exports).filter((entry) =>
+    entry.endsWith('.css'),
+  );
   const { code, output } = await runAllowFailure(
     process.execPath,
-    [attw, tarball, '--profile', 'esm-only', '--format', 'ascii'],
+    [
+      attw,
+      tarball,
+      '--profile',
+      'esm-only',
+      '--format',
+      'ascii',
+      ...(stylesheets.length > 0
+        ? ['--exclude-entrypoints', ...stylesheets]
+        : []),
+    ],
     { cwd: context.workDir, logFile: context.logFile, echo: false },
   );
   check(

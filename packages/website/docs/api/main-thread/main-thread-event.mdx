@@ -81,6 +81,7 @@ In the handler, `event.target` and `event.currentTarget` are [`MainThread.Elemen
 - **The web preview fires mouse events, not touch events.** A desktop browser never fires touch events, so bind the `mouse*` inputs too for a drag that works there. Phones fire touch events, plus a `mousedown` and `mouseup` after a tap.
 - **A handler doesn't run change detection.** Change the element directly, through `event.currentTarget`.
 - **Each input takes one handler.** Binding a new one replaces the old one, and `null` removes it.
+- **A script runs beside the element's other listeners for its event.** A `(bindtap)` next to a `[mainThreadBindtap]` runs too, in the order Angular added them, and so does a listener added later, such as an `IntersectionObserver`'s. A `Catch` input stops the event at the element after all of them have run.
 
 ## Types
 

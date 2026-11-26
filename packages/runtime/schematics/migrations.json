@@ -20,6 +20,11 @@
       "version": "22.2.3",
       "description": "Adds .dev-logs, where ng serve writes LynxLogger's output, to .gitignore",
       "factory": "./migrations/dev-logs-gitignore/index"
+    },
+    "tailwind-lynx-utilities": {
+      "version": "22.3.2",
+      "description": "Imports @blotch/angular-lynx/tailwind.css, Lynx's own utilities and variants, after Tailwind 4",
+      "factory": "./migrations/tailwind-lynx-utilities/index"
     }
   }
 }

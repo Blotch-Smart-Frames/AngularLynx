@@ -106,7 +106,6 @@ const nearEnd = new IntersectionObserver(
 - **`root`** is an element around the observed one, such as a `<scroll-view>` or `<list>`. The element is checked against the root, clipped by the scroll containers between them, and not against the screen.
 - **`rootMargin` grows only the root**, as in the browser, and not the scroll containers inside it. To load ahead in a `<scroll-view>` or `<list>`, make it the root, as `nearEnd` does above.
 - **With any of these options, the observer measures the element itself**: when it's laid out, when it comes into view or leaves, and 20 times a second while a scroll container between it and the root scrolls. That's a measurement per observed element each time, so leave the options out when all you need is to know when an element comes into view and leaves.
-- **A scroll container with a `mainThreadBindscroll` or `mainThreadCatchscroll` handler keeps its scroll events for that handler.** Lynx gives an element one handler per event, so the observer doesn't hear that container scroll, and measures only when the element is laid out, comes into view or leaves.
 - **In tests**, `fireEvent.uiappear()` brings all of the element into view (an `intersectionRatio` of 1), and `fireEvent.uidisappear()` takes all of it out, since the test environment has no layout to measure.
 
 ## Track impressions across the page

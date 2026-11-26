@@ -230,6 +230,39 @@ describe('scanCompiledOutputForStructuralIssues', () => {
     expect(result[0]!.category).toBe('structural');
   });
 
+  it('leaves alone a component whose host is a list, among its selectors', () => {
+    const fileCache = new Map<string, string>();
+    fileCache.set(
+      '/src/app/bar-scroll.ts',
+      `
+      static ɵcmp = i0.ɵɵdefineComponent({ type: BarScroll, selectors: [["scroll-view", "ui-bar-scroll", ""], ["list", "ui-bar-scroll", ""]], decls: 2 });
+      i0.ɵɵelementStart(0, "list-item");
+      i0.ɵɵelementEnd();
+    `,
+    );
+    fileCache.set(
+      '/src/app/feed.ts',
+      `
+      static ɵcmp = i0.ɵɵdefineComponent({ type: Feed, selectors: [["list", "app-feed", ""]], decls: 2 });
+      i0.ɵɵelementStart(0, "list-item");
+      i0.ɵɵelementEnd();
+    `,
+    );
+    // A list elsewhere in the selector, or another element's, doesn't count.
+    fileCache.set(
+      '/src/app/row.ts',
+      `
+      static ɵcmp = i0.ɵɵdefineComponent({ type: Row, selectors: [["app-row"], ["view", "list", ""]], decls: 2 });
+      i0.ɵɵelementStart(0, "list-item");
+      i0.ɵɵelementEnd();
+    `,
+    );
+
+    const result = scanCompiledOutputForStructuralIssues(fileCache);
+
+    expect(result.map((d) => d.file)).toEqual(['/src/app/row.ts']);
+  });
+
   it('detects list-item without list from Uint8Array contents', () => {
     const fileCache = new Map<string, string | Uint8Array>();
     const code = `

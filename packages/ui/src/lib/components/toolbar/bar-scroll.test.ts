@@ -1,4 +1,10 @@
-import { Component, type Provider, signal } from '@angular/core';
+import {
+  Component,
+  ElementRef,
+  type Provider,
+  signal,
+  viewChild,
+} from '@angular/core';
 import {
   fireEvent,
   render,
@@ -13,7 +19,12 @@ import {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
 import { provideGlass } from '../glass/glass-design';
-import { injectBarState, UiBarScroll, UiBarState } from './bar-scroll';
+import {
+  BAR_SCROLL_ITEM_KEYS,
+  injectBarState,
+  UiBarScroll,
+  UiBarState,
+} from './bar-scroll';
 
 @Component({
   imports: [LYNX_ELEMENTS, UiBarScroll],
@@ -49,6 +60,44 @@ class ScrollHost {
   `,
 })
 class AccessoryHost {}
+
+/**
+ * A long feed in a `<list>`, under the bars, with something beside its large
+ * title.
+ */
+@Component({
+  imports: [LYNX_ELEMENTS, UiBarScroll],
+  template: `
+    <list ui-bar-scroll id="feed" scroll-orientation="vertical">
+      <text largeTitleAccessory>3 unread</text>
+      @for (row of rows(); track row) {
+        <list-item [attr.item-key]="row"
+          ><text>{{ row }}</text></list-item
+        >
+      }
+    </list>
+  `,
+})
+class ListHost {
+  readonly rows = signal(['first', 'second']);
+  readonly list = viewChild.required(UiBarScroll, { read: ElementRef });
+}
+
+/**
+ * A `<list>` that says itself how often it sends `scroll`.
+ */
+@Component({
+  imports: [LYNX_ELEMENTS, UiBarScroll],
+  template: `
+    <list
+      ui-bar-scroll
+      id="feed"
+      scroll-orientation="vertical"
+      [scroll-event-throttle]="100"
+    ></list>
+  `,
+})
+class ThrottledListHost {}
 
 const IOS_26 = { platform: 'iOS', osVersion: '26.0' };
 const IOS_18 = { platform: 'iOS', osVersion: '18.5' };
@@ -96,8 +145,8 @@ const renderScroll = async (
   /**
    * The spacers the scroll view puts at its ends for the bars.
    */
-  const topSpacer = () => scrollView().firstElementChild as HTMLElement;
-  const bottomSpacer = () => scrollView().lastElementChild as HTMLElement;
+  const topSpacer = () => firstShown(scrollView());
+  const bottomSpacer = () => lastShown(scrollView());
   const update = async (change: () => void) => {
     change();
     await waitForUpdate();
@@ -134,6 +183,17 @@ const renderScroll = async (
     layOut,
   };
 };
+
+/**
+ * The children of `parent` that are drawn: Angular's anchors for `@if` and
+ * the like are hidden views, which may come before a spacer or after it.
+ */
+const shown = (parent: Element): HTMLElement[] =>
+  (Array.from(parent.children) as HTMLElement[]).filter(
+    (child) => child.style.display !== 'none',
+  );
+const firstShown = (parent: Element): HTMLElement => shown(parent)[0]!;
+const lastShown = (parent: Element): HTMLElement => shown(parent).at(-1)!;
 
 /**
  * A mask's [how much shows, where] stops, however the DOM writes it back:
@@ -425,7 +485,7 @@ describe('UiBarScroll', () => {
     fireEvent.layoutchange(scrollView, {
       detail: { width: 402, height: 1000 },
     });
-    fireEvent.layoutchange(scrollView.firstElementChild!, {
+    fireEvent.layoutchange(firstShown(scrollView), {
       detail: { width: 402, height: 100 },
     });
     await waitForUpdate();
@@ -640,5 +700,199 @@ describe('UiBarScroll under a bar whose title opens a menu', () => {
     const button = getByRole('button', { name: 'Inbox' });
     expect(() => fireEvent.tap(button)).not.toThrow();
     expect(button.querySelector('text')?.textContent).toBe('Inbox');
+  });
+});
+
+describe('UiBarScroll on a <list>', () => {
+  const renderList = async (
+    platform: { platform: string; osVersion: string } = IOS_26,
+  ) => {
+    vi.stubGlobal('SystemInfo', platform);
+    const result = await render(ListHost);
+    const host = result.componentRef.instance as ListHost;
+    const state = result.componentRef.injector.get(UiBarState);
+    const list = () => result.container.querySelector<HTMLElement>('#feed')!;
+    /**
+     * The list's items in order. A unit test doesn't play native's part,
+     * which asks for them (componentAtIndex), so they're read from the
+     * list's own record of them rather than the element tree.
+     */
+    const items = () =>
+      (
+        host.list().nativeElement as { getUIChildren(): HTMLElement[] }
+      ).getUIChildren();
+    const item = (key: string) =>
+      items().find((each) => each.getAttribute('item-key') === key)!;
+    const keys = () => items().map((each) => each.getAttribute('item-key'));
+    /**
+     * The spacer each end's list item holds.
+     */
+    const topSpacer = () =>
+      item(BAR_SCROLL_ITEM_KEYS.top).firstElementChild as HTMLElement;
+    const bottomSpacer = () =>
+      item(BAR_SCROLL_ITEM_KEYS.bottom).firstElementChild as HTMLElement;
+    const update = async (change: () => void) => {
+      change();
+      await waitForUpdate();
+    };
+    return {
+      ...result,
+      host,
+      state,
+      list,
+      items,
+      item,
+      keys,
+      topSpacer,
+      bottomSpacer,
+      update,
+    };
+  };
+
+  it('puts the room for the bars in list items of their own, before the list’s items and after them', async () => {
+    const { state, keys, item, topSpacer, bottomSpacer, update } =
+      await renderList();
+    expect(keys()).toEqual([
+      BAR_SCROLL_ITEM_KEYS.top,
+      'first',
+      'second',
+      BAR_SCROLL_ITEM_KEYS.bottom,
+    ]);
+
+    await update(() => {
+      state.topBar.set(topBar());
+      state.bottomBar.set(bottomBar());
+    });
+    expect(topSpacer().style.height).toContain('44px');
+    expect(topSpacer().style.height).toContain('env(safe-area-inset-top)');
+    expect(bottomSpacer().style.height).toContain('52px');
+    expect(bottomSpacer().style.height).toContain(
+      'env(safe-area-inset-bottom)',
+    );
+    // Each takes a whole row in a list of columns.
+    expect(item(BAR_SCROLL_ITEM_KEYS.top).getAttribute('full-span')).toBe(
+      'true',
+    );
+    expect(item(BAR_SCROLL_ITEM_KEYS.bottom).getAttribute('full-span')).toBe(
+      'true',
+    );
+  });
+
+  it('keeps the list’s items between them as they change', async () => {
+    const { host, keys, update } = await renderList();
+    await update(() => host.rows.set(['zero', 'first', 'second', 'third']));
+    expect(keys()).toEqual([
+      BAR_SCROLL_ITEM_KEYS.top,
+      'zero',
+      'first',
+      'second',
+      'third',
+      BAR_SCROLL_ITEM_KEYS.bottom,
+    ]);
+  });
+
+  it('puts the large title, with its accessory, in an item after the top bar’s room', async () => {
+    const { state, keys, item, update, list } = await renderList();
+    await update(() => state.topBar.set(topBar('Inbox')));
+    expect(keys()).toEqual([
+      BAR_SCROLL_ITEM_KEYS.top,
+      BAR_SCROLL_ITEM_KEYS.largeTitle,
+      'first',
+      'second',
+      BAR_SCROLL_ITEM_KEYS.bottom,
+    ]);
+    const titleItem = item(BAR_SCROLL_ITEM_KEYS.largeTitle);
+    expect(titleItem.getAttribute('full-span')).toBe('true');
+    const band = titleItem.firstElementChild as HTMLElement;
+    expect(band.className).toContain('h-[52px]');
+    const title = band.querySelector('text')!;
+    expect(title.textContent).toBe('Inbox');
+    expect(title.getAttribute('accessibility-traits')).toBe('header');
+    expect(band.textContent).toContain('3 unread');
+
+    // It scrolls away into the bar, as on a scroll view.
+    fireEvent.scroll(list(), { detail: { scrollTop: 44, scrollHeight: 2000 } });
+    expect(state.scrolledUnderTop()).toBe(true);
+    expect(state.largeTitleUnder()).toBe(true);
+
+    await update(() => state.topBar.set(topBar()));
+    expect(keys()).not.toContain(BAR_SCROLL_ITEM_KEYS.largeTitle);
+  });
+
+  it('makes a title that opens a menu a button there too', async () => {
+    const { state, item, update } = await renderList();
+    const bar = menuBar('Inbox');
+    await update(() => state.topBar.set(bar));
+    const button = item(BAR_SCROLL_ITEM_KEYS.largeTitle).querySelector(
+      '[accessibility-label="Inbox"]',
+    )!;
+    expect(button.getAttribute('accessibility-traits')).toContain('button');
+    fireEvent.tap(button);
+    expect(bar.titlePressed).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends scroll about every frame, unless the list says how often', async () => {
+    const { list } = await renderList();
+    expect(list().getAttribute('scroll-event-throttle')).toBe('16');
+    expect(list().getAttribute('need-layout-complete-info')).toBe('true');
+
+    vi.stubGlobal('SystemInfo', IOS_26);
+    const own = await render(ThrottledListHost);
+    expect(
+      own.container
+        .querySelector('#feed')
+        ?.getAttribute('scroll-event-throttle'),
+    ).toBe('100');
+  });
+
+  it('leaves a scroll view’s own events as they are', async () => {
+    const { scrollView } = await renderScroll();
+    expect(scrollView().getAttribute('scroll-event-throttle')).toBeNull();
+    expect(scrollView().getAttribute('need-layout-complete-info')).toBeNull();
+  });
+
+  it('says whether content continues under the bottom bar from the list’s layout, before anything scrolls', async () => {
+    const { state, list } = await renderList();
+    fireEvent.layoutchange(list(), { detail: { width: 402, height: 800 } });
+    // A layout without the scroll info (an older engine) says nothing.
+    fireLynxEvent(list(), 'layoutcomplete', { detail: {} });
+    expect(state.scrolledUnderBottom()).toBe(false);
+
+    fireLynxEvent(list(), 'layoutcomplete', {
+      detail: { scrollInfo: { scrollTop: 0, scrollHeight: 2000 } },
+    });
+    expect(state.scrolledUnderBottom()).toBe(true);
+    fireEvent.scroll(list(), {
+      detail: { scrollTop: 1200, scrollHeight: 2000 },
+    });
+    expect(state.scrolledUnderBottom()).toBe(false);
+  });
+
+  it('fades content out under glass bars, from its items’ measured room', async () => {
+    const { state, list, topSpacer, bottomSpacer, update } = await renderList();
+    await update(() => {
+      state.topBar.set(topBar());
+      state.bottomBar.set(bottomBar());
+    });
+    fireEvent.layoutchange(list(), { detail: { width: 402, height: 1000 } });
+    fireEvent.layoutchange(topSpacer(), {
+      detail: { width: 402, height: 100 },
+    });
+    fireEvent.layoutchange(bottomSpacer(), {
+      detail: { width: 402, height: 50 },
+    });
+    await waitForUpdate();
+    expect(maskStops(list())).toEqual(
+      asWritten([
+        [0, '0.00%'],
+        [0, '7.00%'],
+        [0.12, '9.00%'],
+        [1, '10.00%'],
+        [1, '95.00%'],
+        [0.12, '95.50%'],
+        [0, '96.50%'],
+        [0, '100.00%'],
+      ]),
+    );
   });
 });

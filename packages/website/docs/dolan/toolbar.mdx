@@ -90,14 +90,24 @@ Put a `<ui-toolbar>` after the screen's `<scroll-view>`, and `ui-bar-scroll` on 
 
 ### The scroll view
 
-`ui-bar-scroll` on a `<scroll-view>` is what connects the content to the bars over it:
+`ui-bar-scroll` on a `<scroll-view>` or a `<list>` is what connects the content to the bars over it:
 
 - **It makes room** for the navigation bar and the status bar at the top, and the toolbar and the home indicator at the bottom.
 - **It draws the large title** of a navigation bar with `largeTitle`, as a button when the bar has a [title menu](/dolan/navigation-bar#title-menu), with an element marked `largeTitleAccessory` [beside it](/dolan/navigation-bar#beside-the-large-title).
 - **It fades content out** under glass bars, iOS 26's scroll edge effect. Android's scroll view takes no mask, so there the glass bars fade content to the theme's `background` color themselves.
 - **It tells the bars where the content is**: the frosted bars turn opaque, and Material's top app bar changes color, as content scrolls under them.
 
-It reads the scroll view's events itself rather than through a template listener, so it updates the bars only when they change. Only a `<scroll-view>` takes it; a `<list>` can't hold the spacers.
+It reads the scroll view's events itself rather than through a template listener, so it updates the bars only when they change.
+
+A long feed is a `<list>`, which takes it too. Everything in a list is a list item, so the room for the bars and the large title are items of their own, before the list's items and after them, each a whole row of a `flow` or `waterfall` list (`full-span`). Their keys are `ui-bar-scroll-top`, `ui-bar-scroll-large-title` and `ui-bar-scroll-bottom` (`BAR_SCROLL_ITEM_KEYS`), so don't give your items those. A list sends `scroll` every 200 ms by default, which would bring the large title into the bar late, so it sends it about every frame unless you set `scroll-event-throttle` yourself:
+
+```html
+<list ui-bar-scroll scroll-orientation="vertical" class="h-full w-full">
+  @for (note of notes(); track note.id) {
+  <list-item [attr.item-key]="note.id">…</list-item>
+  }
+</list>
+```
 
 ## API
 
@@ -125,11 +135,11 @@ It reads the scroll view's events itself rather than through a template listener
 
 ### UiBarScroll and UiBarState
 
-| Name               | Kind                                    | Description                                                                                                                                                                |
-| ------------------ | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `UiBarScroll`      | Component, `scroll-view[ui-bar-scroll]` | Makes room for the bars, draws the large title, fades content under glass bars and tells the bars where the content is.                                                    |
-| `UiBarState`       | Root service                            | What the bars and the scroll view tell each other. Provide one on a component to give its bars their own (see [Two bars at once](/dolan/navigation-bar#two-bars-at-once)). |
-| `injectBarState()` | Function                                | The `UiBarState` of the screen a bar is on: a component's own, a stack screen's, or the root's. For a bar of your own.                                                     |
+| Name               | Kind                                                           | Description                                                                                                                                                                |
+| ------------------ | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `UiBarScroll`      | Component, `scroll-view[ui-bar-scroll]`, `list[ui-bar-scroll]` | Makes room for the bars, draws the large title, fades content under glass bars and tells the bars where the content is.                                                    |
+| `UiBarState`       | Root service                                                   | What the bars and the scroll view tell each other. Provide one on a component to give its bars their own (see [Two bars at once](/dolan/navigation-bar#two-bars-at-once)). |
+| `injectBarState()` | Function                                                       | The `UiBarState` of the screen a bar is on: a component's own, a stack screen's, or the root's. For a bar of your own.                                                     |
 
 ## Accessibility
 

@@ -488,6 +488,102 @@ describe('LynxListElement', () => {
       expect(payload.removeAction).toHaveLength(0);
     });
 
+    /**
+     * A `<list-item>` element child, as a template's makes one.
+     */
+    const makeItem = (): LynxElement => {
+      const item = makeChild();
+      item.tagName = 'list-item';
+      return item;
+    };
+
+    it("sends an element item's layout attributes, which native reads only from update-list-info", () => {
+      const list = makeList();
+      const plain = makeItem();
+      const header = makeItem();
+      // As a template sets them: a static attribute's string, a binding's
+      // boolean or number.
+      header.setAttribute('full-span', 'true');
+      header.setAttribute('sticky-top', true);
+      header.setAttribute('estimated-main-axis-size-px', '120');
+      header.setAttribute('recyclable', 'false');
+      // They're set on the element all the same.
+      expect(globalThis.__SetAttribute).toHaveBeenCalledWith(
+        header.element,
+        'full-span',
+        'true',
+      );
+      list.appendChild(header);
+      list.appendChild(plain);
+      vi.clearAllMocks();
+
+      list._processUpdate();
+
+      const [info] = sentInfo() as {
+        insertAction: Record<string, unknown>[];
+      }[];
+      expect(info!.insertAction[0]).toMatchObject({
+        position: 0,
+        type: 'list-item',
+        'full-span': true,
+        'sticky-top': true,
+        'estimated-main-axis-size-px': 120,
+        recyclable: false,
+      });
+      // An item without any sends only what it did.
+      expect(Object.keys(info!.insertAction[1]!).sort()).toEqual([
+        'item-key',
+        'position',
+        'type',
+      ]);
+    });
+
+    it("updates an element item in place when its layout attributes change, and leaves another element's alone", () => {
+      const list = makeList();
+      const item = makeItem();
+      const view = makeChild();
+      list.appendChild(item);
+      list.appendChild(view);
+      list._processUpdate();
+      vi.clearAllMocks();
+
+      // A <view> isn't an item native lays out by them.
+      view.setAttribute('full-span', true);
+      expect(processPendingListUpdates).not.toThrow();
+      expect(sentInfo()).toEqual([]);
+
+      item.setAttribute('full-span', true);
+      processPendingListUpdates();
+      const [info] = sentInfo() as {
+        insertAction: unknown[];
+        updateAction: Record<string, unknown>[];
+      }[];
+      expect(info!.insertAction).toEqual([]);
+      expect(info!.updateAction).toEqual([
+        expect.objectContaining({
+          from: 0,
+          to: 0,
+          flush: false,
+          'full-span': true,
+        }),
+      ]);
+
+      // Taking it away updates it again, without it.
+      vi.clearAllMocks();
+      item.setAttribute('full-span', null);
+      processPendingListUpdates();
+      const [after] = sentInfo() as {
+        updateAction: Record<string, unknown>[];
+      }[];
+      expect(after!.updateAction[0]).not.toHaveProperty('full-span');
+    });
+
+    it('notes the attributes of an item before it joins a list', () => {
+      const item = makeItem();
+      item.setAttribute('sticky-bottom', '');
+      expect(item._listItemAttributes).toEqual({ 'sticky-bottom': true });
+    });
+
     it('sends removeAction for children removed since last commit', () => {
       const list = makeList();
       const child = makeChild();

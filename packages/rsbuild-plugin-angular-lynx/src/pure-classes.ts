@@ -3,7 +3,29 @@ import * as ts from 'typescript';
 type Edit = { start: number; end: number; text: string };
 
 /** Built-in constructors that create a value and do nothing else. */
-const PURE_CONSTRUCTORS = new Set(['Map', 'Set', 'WeakMap', 'WeakSet']);
+const PURE_CONSTRUCTORS = new Set([
+  'Map',
+  'Set',
+  'WeakMap',
+  'WeakSet',
+  // Registers nothing until register() is called: the runtime's LynxElement
+  // keeps one, behind a check that the engine has it.
+  'FinalizationRegistry',
+  'WeakRef',
+]);
+
+/**
+ * Operators whose result is computed from their operands alone, with no
+ * conversion that could call the app's code when both are primitives or
+ * the operator doesn't convert (`===`, `typeof x === 'function'`).
+ */
+const PURE_OPERATORS = new Set([
+  ts.SyntaxKind.EqualsEqualsEqualsToken,
+  ts.SyntaxKind.ExclamationEqualsEqualsToken,
+  ts.SyntaxKind.AmpersandAmpersandToken,
+  ts.SyntaxKind.BarBarToken,
+  ts.SyntaxKind.QuestionQuestionToken,
+]);
 
 /**
  * Wraps each top-level class with private or static members in a pure IIFE,
@@ -47,15 +69,29 @@ export const wrapPureClasses = (code: string, filename: string): string => {
   );
 
   const edits: Edit[] = [];
-  const wrap = (classNode: ts.ClassLikeDeclaration): void => {
+  const aliases = findClassAliases(sourceFile);
+  const wrap = (classNode: ts.ClassLikeDeclaration, name: string): void => {
+    // A class that names itself inside its body can come with an alias the
+    // package's build added: `var _a;` above it and `_a = X;` after it, for
+    // the body to use. That assignment is a statement of its own, which kept
+    // the class (the runtime's LynxElement, and everything it uses) in the
+    // background bundle. Made inside the pure IIFE, it goes with the class.
+    const alias = aliases.get(name);
     edits.push(
       {
         start: classNode.getStart(sourceFile),
         end: classNode.getStart(sourceFile),
-        text: '/*#__PURE__*/ (() => ',
+        text: `/*#__PURE__*/ (() => ${alias ? `${alias.name} = ` : ''}`,
       },
       { start: classNode.end, end: classNode.end, text: ')()' },
     );
+    if (alias) {
+      edits.push({
+        start: alias.statement.getFullStart(),
+        end: alias.statement.end,
+        text: '',
+      });
+    }
   };
 
   for (const statement of sourceFile.statements) {
@@ -68,7 +104,7 @@ export const wrapPureClasses = (code: string, filename: string): string => {
         ts.isClassExpression(value) &&
         isLoweredPureClass(value)
       ) {
-        wrap(value);
+        wrap(value, declaration.name.getText(sourceFile));
       }
       continue;
     }
@@ -121,6 +157,52 @@ export const wrapPureClasses = (code: string, filename: string): string => {
 };
 
 /**
+ * The aliases a package's build gives a class that names itself in its body,
+ * keyed by the class's variable: each `alias = X;` statement at the top level
+ * whose alias is a top-level `var alias;` that nothing else assigns.
+ */
+const findClassAliases = (
+  sourceFile: ts.SourceFile,
+): Map<string, { name: string; statement: ts.Statement }> => {
+  const declared = new Set<string>();
+  const assignments = new Map<
+    string,
+    { target: string; statement: ts.Statement }[]
+  >();
+  for (const statement of sourceFile.statements) {
+    if (ts.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations) {
+        if (ts.isIdentifier(declaration.name) && !declaration.initializer) {
+          declared.add(declaration.name.text);
+        }
+      }
+      continue;
+    }
+    if (
+      ts.isExpressionStatement(statement) &&
+      ts.isBinaryExpression(statement.expression) &&
+      statement.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isIdentifier(statement.expression.left) &&
+      ts.isIdentifier(statement.expression.right)
+    ) {
+      const alias = statement.expression.left.text;
+      assignments.set(alias, [
+        ...(assignments.get(alias) ?? []),
+        { target: statement.expression.right.text, statement },
+      ]);
+    }
+  }
+  const aliases = new Map<string, { name: string; statement: ts.Statement }>();
+  for (const [name, assigned] of assignments) {
+    const [only, ...others] = assigned;
+    if (declared.has(name) && only && others.length === 0) {
+      aliases.set(only.target, { name, statement: only.statement });
+    }
+  }
+  return aliases;
+};
+
+/**
  * Whether SWC's lowering would make the class a side effect (it has private or
  * static members) while the class itself has none (its `extends` and static
  * initializers are pure).
@@ -147,7 +229,14 @@ const isLoweredPureClass = (node: ts.ClassLikeDeclaration): boolean => {
       ?.some((modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword);
     const isPrivate = member.name && ts.isPrivateIdentifier(member.name);
     if (member.name && ts.isComputedPropertyName(member.name)) {
-      return false;
+      // A well-known symbol, such as `[Symbol.iterator]()`, is the only key
+      // that's computed without converting anything. SWC lowers any computed
+      // key to a `_to_property_key()` call outside the class, so the class
+      // is lowered too.
+      if (!isWellKnownSymbol(member.name.expression)) {
+        return false;
+      }
+      lowered = true;
     }
     if (isStatic || isPrivate) {
       lowered = true;
@@ -168,7 +257,13 @@ const isPureReference = (node: ts.Expression): boolean =>
   ts.isIdentifier(node) ||
   (ts.isPropertyAccessExpression(node) && isPureReference(node.expression));
 
-const isPure = (node: ts.Expression): boolean => {
+const isWellKnownSymbol = (node: ts.Expression): boolean =>
+  ts.isPropertyAccessExpression(node) &&
+  ts.isIdentifier(node.expression) &&
+  node.expression.text === 'Symbol' &&
+  ts.isIdentifier(node.name);
+
+export const isPure = (node: ts.Expression): boolean => {
   if (
     ts.isLiteralExpression(node) ||
     ts.isNoSubstitutionTemplateLiteral(node) ||
@@ -184,6 +279,20 @@ const isPure = (node: ts.Expression): boolean => {
   if (ts.isVoidExpression(node)) return isPure(node.expression);
   if (ts.isParenthesizedExpression(node)) return isPure(node.expression);
   if (ts.isPrefixUnaryExpression(node)) return isPure(node.operand);
+  // `typeof` of an undeclared name is `'undefined'`, not a ReferenceError.
+  if (ts.isTypeOfExpression(node)) return isPure(node.expression);
+  if (ts.isConditionalExpression(node)) {
+    return (
+      isPure(node.condition) && isPure(node.whenTrue) && isPure(node.whenFalse)
+    );
+  }
+  if (ts.isBinaryExpression(node)) {
+    return (
+      PURE_OPERATORS.has(node.operatorToken.kind) &&
+      isPure(node.left) &&
+      isPure(node.right)
+    );
+  }
   if (ts.isArrayLiteralExpression(node)) {
     return node.elements.every(
       (element) => !ts.isSpreadElement(element) && isPure(element),

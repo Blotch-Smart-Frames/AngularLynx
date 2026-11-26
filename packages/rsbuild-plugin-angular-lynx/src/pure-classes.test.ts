@@ -75,6 +75,10 @@ describe('wrapPureClasses', () => {
       'static n = new WeakMap([[1, 2]]);',
       'static o;',
       'static q = new Set;',
+      "static r = typeof FinalizationRegistry === 'function' ? new FinalizationRegistry((id) => id) : null;",
+      'static s = a && b || c ?? d;',
+      'static t = new WeakRef(name);',
+      '[Symbol.iterator]() {}',
       'static p() {}',
     ].join(' ');
     expect(wrap(`var X = class { ${code} };`)).toContain('/*#__PURE__*/');
@@ -93,9 +97,60 @@ describe('wrapPureClasses', () => {
     ['a method in an object', 'static a = { m() {} };'],
     ['a static block', 'static { init(); }'],
     ['a computed member name', '[key] = 1; static a = 1;'],
+    ['a computed member name read from an object', '[keys.a]() {}'],
+    ['a comparison that converts', 'static a = b < c;'],
+    ['a conditional with a call', 'static a = b ? make() : null;'],
   ])('leaves a class alone with %s', (_label, members) => {
     const code = `var X = class { ${members} };`;
     expect(wrap(code)).toBe(code);
+  });
+
+  // A well-known symbol's key is computed, which SWC lowers to a call outside
+  // the class, so the class needs the IIFE as much as a private member does.
+  it('wraps a class whose only lowered member is a well-known symbol key', () => {
+    expect(wrap('var Headers = class { [Symbol.iterator]() {} };')).toBe(
+      'var Headers = /*#__PURE__*/ (() => class { [Symbol.iterator]() {} })();',
+    );
+  });
+
+  // The package's build names a class that refers to itself `_a` as well, and
+  // assigns that after it. The assignment kept the runtime's LynxElement.
+  it("moves a class's alias assignment into its IIFE", () => {
+    const code = [
+      'var _a;',
+      'var Element = class { static #byId = new Map(); static get(id) { return _a.#byId.get(id); } };',
+      '_a = Element;',
+      'var after = 1;',
+    ].join('\n');
+    expect(wrap(code)).toBe(
+      [
+        'var _a;',
+        'var Element = /*#__PURE__*/ (() => _a = class { static #byId = new Map(); static get(id) { return _a.#byId.get(id); } })();',
+        'var after = 1;',
+      ].join('\n'),
+    );
+    const Element = new Function(`${wrap(code)}; return Element;`)();
+    expect(Element.get(1)).toBeUndefined();
+  });
+
+  it('leaves an alias alone that is assigned more than once', () => {
+    const code = [
+      'var _a;',
+      'var Element = class { #x; };',
+      '_a = Element;',
+      '_a = other;',
+    ].join('\n');
+    expect(wrap(code)).toContain('\n_a = Element;');
+  });
+
+  it('leaves an assignment alone to a variable that has a value', () => {
+    const code = [
+      'var _a = 1;',
+      'var Element = class { #x; };',
+      '_a = Element;',
+    ].join('\n');
+    expect(wrap(code)).toContain('\n_a = Element;');
+    expect(wrap(code)).toContain('(() => class');
   });
 
   it('leaves a class alone whose base is computed', () => {

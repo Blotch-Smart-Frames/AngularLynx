@@ -10,7 +10,7 @@ import {
 import type { BackgroundEntries } from './background-entry.js';
 import { applyBudgets } from './budgets-plugin.js';
 import { applyFileReplacements } from './file-replacements.js';
-import { LAYERS } from './layers.js';
+import { isAngularLynxPackageModule, LAYERS } from './layers.js';
 import { buildLynxSchemaSourceFileCache } from './build-schema-source-file-cache.js';
 import {
   createTransformStylesheet,
@@ -28,6 +28,7 @@ import {
 } from './angular-diagnostics.js';
 import { transformPrivateMethods } from './private-methods.js';
 import { wrapPureClasses } from './pure-classes.js';
+import { wrapPureInitializers } from './pure-initializers.js';
 import { markHostElementsPure } from './pure-host-elements.js';
 import { seedCompilationSourceFiles } from './seed-compilation-source-files.js';
 import { addEntryHotAccept, hotUpdatesEnabled } from './hot-updates.js';
@@ -634,10 +635,17 @@ export const applyAngularRules = async (
           }),
         };
       }
-      const wrapped = wrapPureClasses(
+      const classesWrapped = wrapPureClasses(
         markHostElementsPure(code, context.resourcePath),
         context.resourcePath,
       );
+      // AngularLynx's own packages also get their module-level values made
+      // droppable (see pure-initializers.ts): the background thread uses
+      // almost none of the runtime's. After the class pass, whose IIFEs
+      // count as pure.
+      const wrapped = isAngularLynxPackageModule(context.resourcePath)
+        ? wrapPureInitializers(classesWrapped, context.resourcePath)
+        : classesWrapped;
       // The generated background entry takes every hot update the
       // background thread's modules pass on to it: running it again runs the
       // updated modules again, which registers their background functions

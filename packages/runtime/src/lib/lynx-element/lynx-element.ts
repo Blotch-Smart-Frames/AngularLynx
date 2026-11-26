@@ -2913,10 +2913,11 @@ export class LynxElement implements BaseLynxElement {
    */
   #regroup(): void {
     // Angular's order of the children: each anonymous <text> opened up.
-    // Only an element that has had loose text or an inline tag as a child
-    // regroups (see #hasFlow), so it has its #children, and so does each of
-    // its anonymous texts, which is made for the members it's given.
-    const children = this.#children!;
+    // An element regroups once loose text or an inline tag has gone into it
+    // (see #hasFlow), but one whose insert was refused as a cycle (see
+    // #appendPrepared) never took it, and may have no children at all. Each
+    // anonymous text has its members: it's made for them.
+    const children = this.#children ?? NO_CHILDREN;
     const nodes: LynxElement[] = [];
     for (const child of children) {
       if (child.#anonymous) nodes.push(...child.#children!);

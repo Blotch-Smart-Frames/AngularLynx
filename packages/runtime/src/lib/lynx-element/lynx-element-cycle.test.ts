@@ -90,6 +90,10 @@ const installNativeFakes = (): void => {
   g.__SetClasses = (n: FakeEl, s: string | undefined) => {
     n.classes = new Set((s ?? '').split(/\s+/).filter(Boolean));
   };
+  g.__AddClass = (n: FakeEl, name: string) => {
+    n.classes.add(name);
+  };
+  g.__SetInlineStyles = () => {};
   g.__AddInlineStyle = (n: FakeEl, key: string, value: unknown) => {
     if (value == null) n.styles.delete(key);
     else n.styles.set(key, value);
@@ -147,6 +151,27 @@ describe('LynxElement reparent cycle safety', () => {
     expect(() => assertAcyclic()).not.toThrow();
     // parent was NOT moved under child.
     expect(childFake.children).not.toContain(parentFake);
+  });
+
+  // The refused insert still marks the parent as one whose loose text and
+  // inline tags regroup at the end of the cycle (#flowInsert), though it
+  // never took the child, so it has no children to regroup.
+  it('regroups a childless element an inline tag was refused from', () => {
+    const spanFake = makeEl('text');
+    const viewFake = makeEl('view');
+    const span = wrap(spanFake, 'text');
+    span.markWebText(true);
+    const view = wrap(viewFake, 'view');
+
+    wrap(pageRoot, 'page').appendChild(span);
+    span.appendChild(view); // page > span > view
+
+    // The <span> under its own child would form a cycle.
+    view.appendChild(span);
+
+    expect(() => LynxElement.commitPendingFlow()).not.toThrow();
+    expect(() => assertAcyclic()).not.toThrow();
+    expect(viewFake.children).toEqual([]);
   });
 
   it('refuses insertBefore of an element into its own descendant', () => {

@@ -52,6 +52,22 @@ static void *const kAngularLynxVideoItemContext = (void *)&kAngularLynxVideoItem
   }
 }
 
+/// Takes over another's output and the frame it last read, for a video
+/// whose id changed: a paused video's output gives its frame only once.
+- (void)takeOutputAndFrameFrom:(AngularLynxVideoFrames *)other {
+  AVPlayerItemVideoOutput *output;
+  CVPixelBufferRef frame;
+  @synchronized(other) {
+    output = other->_output;
+    frame = other->_frame ? CVPixelBufferRetain(other->_frame) : NULL;
+  }
+  @synchronized(self) {
+    _output = output;
+    CVPixelBufferRelease(_frame);
+    _frame = frame;
+  }
+}
+
 /// The frame showing now, retained, or NULL before the first.
 - (CVPixelBufferRef)copyFrame CF_RETURNS_RETAINED {
   @synchronized(self) {
@@ -149,8 +165,13 @@ LYNX_PROP_SETTER("video-id", setVideoId, NSString *) {
   _videoId = [videoId copy];
   _frames = videoId ? [[AngularLynxVideoFrames alloc] initWithVideoId:videoId] : nil;
   AngularLynxVideoFrames *frames = _frames;
-  // A new id on the same item: its frames read the output already there.
-  [frames setOutput:_output];
+  // A new id on the same item: its frames read the output already there,
+  // from the frame the old ones last read.
+  if (oldFrames) {
+    [frames takeOutputAndFrameFrom:oldFrames];
+  } else {
+    [frames setOutput:_output];
+  }
   [self onEngineThread:^{
     if (old && [AngularLynxCanvasRegistry contextForCanvasId:old] == oldFrames) {
       [AngularLynxCanvasRegistry setContext:nil forCanvasId:old];

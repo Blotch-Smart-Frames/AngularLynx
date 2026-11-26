@@ -10,4 +10,5 @@
  */
 export const environment = {
   httpDataUrl: 'http://127.0.0.1:3210/e2e-http.json',
+  videoUrl: 'http://127.0.0.1:3210/e2e-video.mp4',
 };

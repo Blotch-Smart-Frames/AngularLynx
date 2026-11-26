@@ -5,6 +5,9 @@ import {
 } from '../testing/fake-webgl-bridge';
 import { CANVAS_SOURCE } from './canvas-source';
 import { NATIVE_IMAGE } from './native-image';
+import { LynxVideoElement } from './video-element';
+import { setVideoFrameSizeForTesting } from './webgl-bridge';
+import type { ElementRef } from '../types/lynx';
 import { WEBGL2_CONSTANTS as GL } from './webgl-constants';
 import { OP } from './webgl-ops';
 import {
@@ -1823,22 +1826,40 @@ describe('textures', () => {
     ).toEqual([OP.texImage2D]);
   });
 
-  it('says a video can’t be uploaded yet', () => {
-    expect(() =>
+  it('uploads a video’s frame by its id, at the frame’s size', () => {
+    globalThis.__SetAttribute = vi.fn();
+    let uid = 1;
+    globalThis.__GetElementUniqueID = vi.fn(() => uid++);
+    setVideoFrameSizeForTesting(() => ({ width: 32, height: 18 }));
+    try {
+      const video = new LynxVideoElement({} as ElementRef);
+      gl.pixelStorei(GL.UNPACK_FLIP_Y_WEBGL, true);
+      const before = bridge.batches.length;
       gl.texImage2D(
         GL.TEXTURE_2D,
         0,
         GL.RGBA,
-        1,
-        1,
+        GL.RGBA,
+        GL.UNSIGNED_BYTE,
+        video,
+      );
+      // Sent at once, so the frame is the one showing now.
+      expect(bridge.batches.length).toBe(before + 1);
+      expect(bridge.batches.at(-1)!.slice(-10)).toEqual([
+        OP.texImage2D,
+        GL.TEXTURE_2D,
+        0,
+        GL.RGBA,
+        32,
+        18,
         0,
         GL.RGBA,
         GL.UNSIGNED_BYTE,
-        {
-          tagName: 'video',
-        },
-      ),
-    ).toThrow(/<video> can not be a texture source on Lynx yet/);
+        { canvas: video.videoId, flipY: true, premultiply: false },
+      ]);
+    } finally {
+      setVideoFrameSizeForTesting(undefined);
+    }
   });
 
   it('refuses a source it can’t upload', () => {

@@ -14,6 +14,27 @@ const MIME_TYPES: Record<string, string> = {
   // WebAssembly.instantiateStreaming refuses any other content type.
   '.wasm': 'application/wasm',
   '.json': 'application/json',
+  '.mp4': 'video/mp4',
+};
+
+/**
+ * The byte range a `Range: bytes=start-end` header asks of a file of `size`
+ * bytes, or undefined for none or one it can't serve (a list of ranges).
+ */
+export const byteRange = (
+  header: string | undefined,
+  size: number,
+): { start: number; end: number } | undefined => {
+  const match = /^bytes=(\d*)-(\d*)$/.exec(header ?? '');
+  if (!match || (match[1] === '' && match[2] === '')) return undefined;
+  if (match[1] === '') {
+    // The last n bytes.
+    const start = Math.max(0, size - Number(match[2]));
+    return { start, end: size - 1 };
+  }
+  const start = Number(match[1]);
+  const end = match[2] === '' ? size - 1 : Math.min(Number(match[2]), size - 1);
+  return start <= end ? { start, end } : undefined;
 };
 
 /**
@@ -116,15 +137,33 @@ export const serveStatic = (
       response.writeHead(404).end();
       return;
     }
-    onRequest?.(`200 ${request.method} ${request.url}`);
-    response.writeHead(200, {
+    const headers = {
       'Content-Type':
         MIME_TYPES[path.extname(file)] ?? 'application/octet-stream',
       'Cache-Control': 'no-store',
       // The web render tests load fixtures/http-data.json from another port
       // than the page's (see HTTP_DATA in this file).
       'Access-Control-Allow-Origin': '*',
-    });
+      'Accept-Ranges': 'bytes',
+    };
+    // iOS's AVPlayer plays an MP4 over HTTP only from a server that serves
+    // byte ranges: it asks for the first two bytes, then the rest in parts.
+    const size = statSync(file).size;
+    const range = byteRange(request.headers.range, size);
+    if (range) {
+      onRequest?.(
+        `206 ${request.method} ${request.url} ${range.start}-${range.end}`,
+      );
+      response.writeHead(206, {
+        ...headers,
+        'Content-Range': `bytes ${range.start}-${range.end}/${size}`,
+        'Content-Length': String(range.end - range.start + 1),
+      });
+      createReadStream(file, range).pipe(response);
+      return;
+    }
+    onRequest?.(`200 ${request.method} ${request.url}`);
+    response.writeHead(200, { ...headers, 'Content-Length': String(size) });
     createReadStream(file).pipe(response);
   });
   return new Promise((resolve, reject) => {
@@ -134,8 +173,9 @@ export const serveStatic = (
 };
 
 /**
- * The JSON the counter fixture loads through HttpClient and httpResource, and
- * the echo it posts JSON to (fixtures/counter.ts), and where. The fixture's
+ * The JSON the counter fixture loads through HttpClient and httpResource, the
+ * echo it posts JSON to (fixtures/counter.ts), the canvas fixture's video,
+ * and where. The fixture's
  * URLs are fixed (the JSON's in fixtures/environment.e2e.ts), since Lynx has
  * no page URL to resolve a relative one against, so every layer that renders
  * the app serves them there.
@@ -146,6 +186,12 @@ export const HTTP_DATA = {
     {
       path: '/e2e-http.json',
       file: path.join(import.meta.dirname, '../fixtures/http-data.json'),
+    },
+    // The canvas fixture's video, which its canvases read frames of: the
+    // native players play only http(s) URLs.
+    {
+      path: '/e2e-video.mp4',
+      file: path.join(import.meta.dirname, '../fixtures/video.mp4'),
     },
     { echo: '/e2e-echo' },
   ],

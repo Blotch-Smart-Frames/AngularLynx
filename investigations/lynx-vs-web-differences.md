@@ -3409,7 +3409,23 @@ Lynx has no canvas, and until issue #469 AngularLynx's had only WebGL2: `getCont
 
 ### What to do
 
-Use `getContext('2d')` as on the web, in an app built with `ng build --platform ios|android` or the web preview (Lynx Explorer has no canvas). `filter` is kept but not applied; `wordSpacing`, `fontKerning`, `fontStretch`, `fontVariantCaps` and `textRendering` are kept but don't change the text. A `<video>` can't be drawn or uploaded yet, `OffscreenCanvas` has no `transferToImageBitmap()`, and `createImageBitmap()` doesn't take a canvas: draw the canvas itself.
+Use `getContext('2d')` as on the web, in an app built with `ng build --platform ios|android` or the web preview (Lynx Explorer has no canvas). `filter` is kept but not applied; `wordSpacing`, `fontKerning`, `fontStretch`, `fontVariantCaps` and `textRendering` are kept but don't change the text. A `<video>` is drawn or uploaded from its first frame on (see the next section), `OffscreenCanvas` has no `transferToImageBitmap()`, and `createImageBitmap()` doesn't take a canvas: draw the canvas itself.
+
+---
+
+## A `<video>` is read as an image by the shell, from its player's latest frame (issue #696)
+
+On the web, `drawImage(video)`, `createPattern(video)` and `texImage2D(…, video)` read the frame an HTMLVideoElement shows, which three.js's `VideoTexture` uploads each frame. Lynx's `<video>` (XElement's) shows its frames in a native view the app can't read: on iOS an `AVPlayerLayer`, on Android media3's `PlayerView` drawing into a `SurfaceView`.
+
+- **The shells read the frame.** The runtime makes each `<video>` a `LynxVideoElement` (`canvas/video-element.ts`) and gives it a `video-id`. The shells register the element under that id in the canvas registry, as a canvas's context is, so the contexts read it by id (`{ canvas: id }`) like another canvas, and the pixels never cross the bridge. iOS (`AngularLynxVideo.m`) adds an `AVPlayerItemVideoOutput` to each item the player plays and converts the frame it hands over with VideoToolbox; Android (`VideoUI.kt`) copies the `SurfaceView`'s frame with `PixelCopy`. Both subclass XElement's element and register it for `video`.
+- **No frame before the first.** `videoWidth`, `videoHeight` and `readyState` come from the shell (the module's `videoSize`): 0, 0 and `HAVE_NOTHING` until the player has drawn its first frame, then the frame's size and `HAVE_ENOUGH_DATA`. Lynx's player doesn't say how much is buffered, so the states between aren't told apart. Before the first frame, `drawImage()` draws nothing and `createPattern()` returns null, as browsers do for a video with no data. A paused video keeps its last frame.
+- **Android needs the surface.** A `SurfaceView` has a surface only while it's laid out with a size, so a `<video>` with `display: none` has nothing to read and draws nothing; one hidden with `opacity: 0` or behind other elements still draws. iOS reads its output whether the video shows or not. The copy waits for `PixelCopy` (a few milliseconds a frame) on the main thread.
+- **Not handled:** a video whose track is turned by its metadata (a phone recording in portrait) is read as it's stored, unturned, on iOS. Lynx Explorer has neither the module nor the element, so a video there has no frame.
+- **Measured** with the E2E canvas flow (fixtures/canvas.ts): a paused video, red above and blue below, drawn on a 2D canvas and read back at the top and the bottom, and uploaded as a texture and read back.
+
+### What to do
+
+Draw or upload the video once its first frame shows (`bindfirstframe`), or each frame while it plays, as on the web: three.js's `VideoTexture` works as it is. On Android, hide a video you only read with `opacity: 0`, not `display: none`.
 
 ---
 

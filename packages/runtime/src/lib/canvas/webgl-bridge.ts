@@ -272,6 +272,62 @@ const lookUpCanvas2DBridge = (): Canvas2DBridge | null => {
   };
 };
 
+/** A `<video>`'s latest frame's size: 0 by 0 before it has one. */
+export type VideoFrameSize = { width: number; height: number };
+
+const NO_FRAME: VideoFrameSize = { width: 0, height: 0 };
+
+let overrideVideo: ((videoId: string) => VideoFrameSize) | null | undefined;
+let cachedVideoModule: LynxModuleHandle | null | undefined;
+
+/**
+ * Replaces the shell's answer to `videoSize`, for tests. `undefined`
+ * restores the real one.
+ */
+export const setVideoFrameSizeForTesting = (
+  answer: ((videoId: string) => VideoFrameSize) | null | undefined,
+): void => {
+  overrideVideo = answer;
+};
+
+/**
+ * The size of the frame the shell's `<video>` with this id shows, which it
+ * keeps for the canvas contexts to read (see video-element.ts). 0 by 0
+ * before the first frame, and on a host without the module, or with a shell
+ * from before `<video>` could be read, where a canvas draws nothing from it.
+ */
+export const getVideoFrameSize = (videoId: string): VideoFrameSize => {
+  if (overrideVideo !== undefined) {
+    return overrideVideo ? overrideVideo(videoId) : NO_FRAME;
+  }
+  if (cachedVideoModule === undefined) cachedVideoModule = lookUpModule();
+  if (!cachedVideoModule) return NO_FRAME;
+  let size: Partial<VideoFrameSize> | undefined;
+  try {
+    size = cachedVideoModule.invoke('videoSize', videoId) as
+      | Partial<VideoFrameSize>
+      | undefined;
+  } catch {
+    // A shell from before videoSize, which Lynx may answer by throwing.
+  }
+  const width = Number(size?.width) || 0;
+  const height = Number(size?.height) || 0;
+  return width > 0 && height > 0 ? { width, height } : NO_FRAME;
+};
+
+const lookUpModule = (): LynxModuleHandle | null => {
+  const lynxGlobal = (globalThis as { lynx?: { module?: unknown } }).lynx;
+  if (typeof lynxGlobal?.module !== 'function') return null;
+  try {
+    const module = (lynxGlobal.module as (name: string) => LynxModuleHandle)(
+      WEBGL_MODULE_NAME,
+    );
+    return module && typeof module.invoke === 'function' ? module : null;
+  } catch {
+    return null;
+  }
+};
+
 /** The bytes a typed array or buffer views, as a Uint8Array over them. */
 export const bytesOf = (
   data: ArrayBufferView | ArrayBuffer,

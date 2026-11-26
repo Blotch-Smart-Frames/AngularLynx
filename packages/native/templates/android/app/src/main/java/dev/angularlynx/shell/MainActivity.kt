@@ -291,6 +291,8 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
             if (edgeToEdge) addBehavior(EdgeToEdgeOverlay.behavior())
             // The shell's own <canvas> (CanvasUI.kt): Lynx has none.
             addBehavior(CanvasUI.behavior())
+            // XElement's <video>, with frames a canvas can read (VideoUI.kt).
+            addBehavior(VideoUI.behavior())
             // Live reload, in the debug build: it renders the bundle again
             // after every edit.
             DevServer.register(this) { lynxView.renderTemplateUrl(bundleUrl, "") }

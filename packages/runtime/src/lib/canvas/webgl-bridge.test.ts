@@ -228,3 +228,68 @@ describe('bytesOf', () => {
 });
 
 const OP_CLEAR = 23;
+
+describe('getVideoFrameSize', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('asks the shell for the frame a video shows, once it has one', async () => {
+    const invoke = vi.fn((_method: string, id: string) =>
+      id === 'v-1' ? { width: 640, height: 360 } : { width: 0, height: 0 },
+    );
+    const module = vi.fn(() => ({ invoke }));
+    vi.stubGlobal('lynx', { module });
+    const { getVideoFrameSize, WEBGL_MODULE_NAME } = await load();
+    expect(getVideoFrameSize('v-1')).toEqual({ width: 640, height: 360 });
+    expect(getVideoFrameSize('v-2')).toEqual({ width: 0, height: 0 });
+    expect(invoke).toHaveBeenCalledWith('videoSize', 'v-1');
+    // The module is looked up once.
+    expect(module).toHaveBeenCalledOnce();
+    expect(module).toHaveBeenCalledWith(WEBGL_MODULE_NAME);
+  });
+
+  it('is no frame where the shell can’t say', async () => {
+    vi.stubGlobal('lynx', undefined);
+    expect((await load()).getVideoFrameSize('v-1')).toEqual({
+      width: 0,
+      height: 0,
+    });
+    vi.stubGlobal('lynx', { module: () => undefined });
+    expect((await load()).getVideoFrameSize('v-1').width).toBe(0);
+    vi.stubGlobal('lynx', {
+      module: () => {
+        throw new Error('no module');
+      },
+    });
+    expect((await load()).getVideoFrameSize('v-1').width).toBe(0);
+    // A shell from before videoSize: Lynx throws, or answers nothing, or
+    // half a size.
+    vi.stubGlobal('lynx', {
+      module: () => ({
+        invoke: () => {
+          throw new Error('no method');
+        },
+      }),
+    });
+    expect((await load()).getVideoFrameSize('v-1').width).toBe(0);
+    vi.stubGlobal('lynx', { module: () => ({ invoke: () => undefined }) });
+    expect((await load()).getVideoFrameSize('v-1').width).toBe(0);
+    vi.stubGlobal('lynx', {
+      module: () => ({ invoke: () => ({ width: 4 }) }),
+    });
+    expect((await load()).getVideoFrameSize('v-1')).toEqual({
+      width: 0,
+      height: 0,
+    });
+  });
+
+  it('answers as a test says', async () => {
+    const { getVideoFrameSize, setVideoFrameSizeForTesting } = await load();
+    setVideoFrameSizeForTesting(() => ({ width: 2, height: 1 }));
+    expect(getVideoFrameSize('v-1')).toEqual({ width: 2, height: 1 });
+    setVideoFrameSizeForTesting(null);
+    expect(getVideoFrameSize('v-1')).toEqual({ width: 0, height: 0 });
+    setVideoFrameSizeForTesting(undefined);
+  });
+});

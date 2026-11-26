@@ -53,6 +53,9 @@ const isLynxElement = (value: unknown): value is LayoutElement =>
  *   holding its scene, after the canvas had gone.
  * - `HTMLCanvasElement`: a template's `<canvas>` and a canvas made with
  *   `document.createElement('canvas')` are instances of it.
+ * - `HTMLVideoElement`: a template's `<video>` is an instance of it, as
+ *   three.js checks before sizing a VideoTexture by its `videoWidth` and
+ *   `videoHeight` (see video-element.ts).
  * - `document.createElement('canvas')`, `OffscreenCanvas`, and the 2D
  *   context's classes (`CanvasRenderingContext2D`, `CanvasGradient`,
  *   `CanvasPattern`, `TextMetrics`, `ImageData`, `Path2D`): see
@@ -82,6 +85,7 @@ export const installCanvasGlobals = (target: Record<string, any>): void => {
   install('ProgressEvent', LynxProgressEvent);
   install('HTMLElement', LynxHTMLElement);
   install('HTMLCanvasElement', LynxHTMLCanvasElement);
+  install('HTMLVideoElement', LynxHTMLVideoElement);
   install('OffscreenCanvas', LynxOffscreenCanvas);
   install('CanvasRenderingContext2D', LynxCanvasRenderingContext2D);
   install('OffscreenCanvasRenderingContext2D', LynxCanvasRenderingContext2D);
@@ -192,14 +196,30 @@ class LynxHTMLElement {
   }
 }
 
+/**
+ * Whether the value is a template's `<video>`, read as an image too.
+ */
+const isVideoElement = (value: unknown): boolean =>
+  typeof value === 'object' &&
+  value !== null &&
+  CANVAS_SOURCE in value &&
+  (value as { tagName?: unknown }).tagName === 'video';
+
 class LynxHTMLCanvasElement {
   static [Symbol.hasInstance](value: unknown): boolean {
     return (
       typeof value === 'object' &&
       value !== null &&
       CANVAS_SOURCE in value &&
-      !(value instanceof LynxOffscreenCanvas)
+      !(value instanceof LynxOffscreenCanvas) &&
+      !isVideoElement(value)
     );
+  }
+}
+
+class LynxHTMLVideoElement {
+  static [Symbol.hasInstance](value: unknown): boolean {
+    return isVideoElement(value);
   }
 }
 

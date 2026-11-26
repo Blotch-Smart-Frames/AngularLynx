@@ -200,8 +200,14 @@ dependencies {
         exclude(group = "org.lynxsdk.lynx", module = "xelement-markdown")
     }
     // The umbrella declares its modules for runtime only. EdgeToEdgeOverlay
-    // extends <overlay>'s classes, so that module is compiled against too.
+    // extends <overlay>'s classes, so that module is compiled against too,
+    // as is <video>'s.
     implementation("org.lynxsdk.lynx:xelement-overlay:$lynxVersion")
+    // VideoUI extends <video>'s classes and reads its media3 PlayerView, at
+    // the media3 version xelement-video depends on.
+    implementation("org.lynxsdk.lynx:xelement-video:$lynxVersion")
+    implementation("androidx.media3:media3-ui:1.0.2")
+    implementation("androidx.media3:media3-common:1.0.2")
     // cspell:words servalsvg libserval
     // ServalSVG, the engine <svg> draws with. xelement-svg asks for 0.0.2,
     // whose AAR has libserval_svg.so for arm64-v8a, armeabi-v7a and x86 but

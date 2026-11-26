@@ -28,7 +28,7 @@ import {
   type WebGLObjectHandle,
 } from './webgl-objects';
 import { OP } from './webgl-ops';
-import { canvasSourceOf, isVideo } from './canvas-source';
+import { canvasSourceOf } from './canvas-source';
 import { nativeImageOf } from './native-image';
 
 /** The `<canvas>` a context draws into, as the context needs it. */
@@ -344,8 +344,12 @@ let constantsAssigned = false;
  *   canvas's pixels, which the shell reads by the canvas's id, as three.js's
  *   CanvasTexture does for text drawn on a 2D canvas.
  *
+ * - Videos: `texImage2D` with a `<video>` uploads the frame it's showing,
+ *   which the shell reads by the video's id (see video-element.ts), as
+ *   three.js's VideoTexture does each frame.
+ *
  * Not there: context loss and restore (only `WEBGL_lose_context`'s loss,
- * which three.js calls on dispose), a video as a texture source, and object answers from `getVertexAttrib` and `getIndexedParameter`
+ * which three.js calls on dispose), and object answers from `getVertexAttrib` and `getIndexedParameter`
  * (they return null).
  */
 // The interface below adds the constants, which the first constructor puts on
@@ -2260,6 +2264,10 @@ export class LynxWebGL2RenderingContext {
   #sourceSize(source: unknown): { width: number; height: number } {
     const image = nativeImageOf(source);
     if (image) return { width: image.width, height: image.height };
+    // A canvas, or a <video>, whose size is its frame's, which the shell
+    // knows (it has no width and height of its own to read).
+    const canvas = canvasSourceOf(source);
+    if (canvas) return { width: canvas.width, height: canvas.height };
     const sized = source as { width?: number; height?: number } | null;
     if (sized && typeof sized.width === 'number') {
       return { width: sized.width, height: sized.height ?? 0 };
@@ -2325,11 +2333,6 @@ export class LynxWebGL2RenderingContext {
         flipY: this.#flipY,
         premultiply: this.#premultiplyAlpha,
       };
-    }
-    if (isVideo(source)) {
-      throw new TypeError(
-        'texImage: a <video> can not be a texture source on Lynx yet; use an ImageBitmap, an image, a canvas or a typed array',
-      );
     }
     if (image) {
       return {

@@ -611,6 +611,20 @@ static BOOL reducesAlpha(NSInteger composite) {
                                            premultiplied:YES];
 }
 
+/// After transferToImageBitmap() took the bitmap: a new one, transparent
+/// black, or opaque black without alpha (premultiplied black is all zeros
+/// but its alpha). Cleared byte by byte, so the clip and the state stay.
+- (void)clearForTransfer {
+  if (!_cg) return;
+  uint8_t *bytes = _data.mutableBytes;
+  NSUInteger length = _data.length;
+  memset(bytes, 0, length);
+  if (!_alpha) {
+    for (NSUInteger i = 3; i < length; i += 4) bytes[i] = 255;
+  }
+  if (_target) [self present];
+}
+
 - (NSDictionary *)encodeImageOfType:(NSString *)type quality:(double)quality {
   if (!_cg) return @{@"error" : @"The canvas has no pixels"};
   BOOL jpeg = [type isEqualToString:@"image/jpeg"];

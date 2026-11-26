@@ -11,6 +11,7 @@ import { LynxCanvasRenderingContext2D } from './canvas-2d-context';
 import { OP } from './canvas-2d-ops';
 import { canvasSourceOf } from './canvas-source';
 import { LynxDetachedCanvas, LynxOffscreenCanvas } from './detached-canvas';
+import { LynxImageBitmap } from './image';
 import {
   setCanvas2DBridgeForTesting,
   setWebGLBridgeForTesting,
@@ -261,8 +262,49 @@ describe('LynxOffscreenCanvas', () => {
     await expect(canvas.convertToBlob()).rejects.toMatchObject({
       name: 'IndexSizeError',
     });
+  });
+
+  it('hands its image over with transferToImageBitmap(), which clears it', () => {
+    const canvas = new LynxOffscreenCanvas(8, 4);
+    // A canvas with no context has no image to hand over.
     expect(() => canvas.transferToImageBitmap()).toThrow(
-      /not available on Lynx/,
+      expect.objectContaining({ name: 'InvalidStateError' }),
     );
+    const context = canvas.getContext('2d') as LynxCanvasRenderingContext2D;
+    context.fillRect(0, 0, 1, 1);
+    const bitmap = canvas.transferToImageBitmap();
+    expect(bitmap).toBeInstanceOf(LynxImageBitmap);
+    expect([bitmap.width, bitmap.height]).toEqual([8, 4]);
+    // Synchronously, with the fillRect sent first, and the bitmap cleared
+    // by the shell after it's read.
+    expect(bridge2D.batches.length).toBe(1);
+    expect(bridgeGL.imageFromCanvas).toHaveBeenCalledWith(
+      expect.any(Number),
+      canvasSourceOf(canvas)!.canvasId,
+      {
+        imageOrientation: 'from-image',
+        premultiplyAlpha: 'default',
+        resizeWidth: 0,
+        resizeHeight: 0,
+        width: 8,
+        height: 4,
+        transfer: true,
+      },
+    );
+    // No pixels: an ImageBitmap of none, which the shell keeps nothing for.
+    canvas.width = 0;
+    const empty = canvas.transferToImageBitmap();
+    expect([empty.width, empty.height]).toEqual([0, 0]);
+    expect(bridgeGL.imageFromCanvas).toHaveBeenCalledOnce();
+  });
+
+  it('transfers a WebGL drawing buffer too', () => {
+    const canvas = new LynxOffscreenCanvas(2, 2);
+    canvas.getContext('webgl2');
+    const bitmap = canvas.transferToImageBitmap();
+    expect(bitmap.width).toBe(2);
+    expect(bridgeGL.imageFromCanvas.mock.calls[0][2]).toMatchObject({
+      transfer: true,
+    });
   });
 });

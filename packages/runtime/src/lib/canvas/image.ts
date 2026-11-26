@@ -1,5 +1,6 @@
 import { blobForURL, decodeDataURL, LynxBlob } from '../network/blob';
-import { getWebGLBridge, toWords } from './webgl-bridge';
+import { type CanvasSource, canvasSourceOf } from './canvas-source';
+import { type WebGLBridge, getWebGLBridge, toWords } from './webgl-bridge';
 import {
   NATIVE_IMAGE,
   type NativeImage,
@@ -14,6 +15,8 @@ import {
  * The shell's `AngularLynxWebGL` module decodes the file (`decodeImage`) and
  * keeps the pixels, which `texImage2D` uploads by id (see webgl2-context.ts),
  * so the pixels never travel through JavaScript; the file's bytes do, once.
+ * An ImageBitmap of a canvas is a copy the shell makes of the canvas's pixels
+ * (`imageFromCanvas`), so nothing at all crosses the bridge but the ids.
  * Where there's no module (Lynx Explorer, tests), decoding fails as a broken
  * image does: `createImageBitmap()` rejects and an `<img>` fires `error`.
  *
@@ -40,18 +43,26 @@ type DecodeOptions = {
 };
 
 /**
- * Decodes a file's bytes in the shell, into a new image id.
+ * The module that keeps decoded images, or why there's none.
  */
-const decode = (
-  bytes: Uint8Array,
-  options: DecodeOptions,
-): { id: number; width: number; height: number } => {
+const imageBridge = (): WebGLBridge => {
   const bridge = getWebGLBridge();
   if (!bridge) {
     throw new Error(
       'Decoding images needs the AngularLynxWebGL module, which apps built with `ng build --platform ios|android` have',
     );
   }
+  return bridge;
+};
+
+/**
+ * Decodes a file's bytes in the shell, into a new image id.
+ */
+const decode = (
+  bytes: Uint8Array,
+  options: DecodeOptions,
+): { id: number; width: number; height: number } => {
+  const bridge = imageBridge();
   const id = nextNativeImageId();
   const decoded = bridge.decodeImage(id, toWords(bytes), {
     imageOrientation: options.imageOrientation ?? 'from-image',
@@ -117,8 +128,47 @@ export class LynxImageBitmap {
 }
 
 /**
- * `createImageBitmap()`, from a Blob (a file's bytes) or an image that has
- * loaded. Cropping (the `sx, sy, sw, sh` arguments) isn't supported.
+ * An ImageBitmap of a canvas's pixels as they are now, with
+ * createImageBitmap()'s options applied. The shell copies them, by the
+ * canvas's id, from its 2D bitmap or its WebGL drawing buffer, into a new
+ * image of its own, which is the bitmap's; the canvas can go on drawing, or
+ * go. With `transfer`, the canvas's bitmap is cleared after it's read, as
+ * `OffscreenCanvas.transferToImageBitmap()` hands its image over.
+ *
+ * @internal For createImageBitmap() and transferToImageBitmap().
+ */
+export const imageBitmapOfCanvas = (
+  canvas: CanvasSource,
+  options: DecodeOptions,
+  transfer: boolean,
+): LynxImageBitmap => {
+  const bridge = imageBridge();
+  // The calls the canvas's context has recorded go first, so the copy is of
+  // the canvas as the app has drawn it so far, as a browser reads it.
+  canvas.flush();
+  const id = nextNativeImageId();
+  const image = bridge.imageFromCanvas(id, canvas.canvasId, {
+    imageOrientation: options.imageOrientation ?? 'from-image',
+    premultiplyAlpha: options.premultiplyAlpha ?? 'default',
+    resizeWidth: options.resizeWidth ?? 0,
+    resizeHeight: options.resizeHeight ?? 0,
+    // For a canvas without a context, which the shell has no pixels of: its
+    // image is transparent black, of its size, as in a browser.
+    width: canvas.width,
+    height: canvas.height,
+    transfer,
+  });
+  if (image.error || !image.width || !image.height) {
+    throw new Error(image.error ?? 'The canvas could not be read');
+  }
+  return new LynxImageBitmap(id, image.width, image.height);
+};
+
+/**
+ * `createImageBitmap()`, from a Blob (a file's bytes), an image that has
+ * loaded, or a canvas (`<canvas>`, `document.createElement('canvas')` or an
+ * OffscreenCanvas). Cropping (the `sx, sy, sw, sh` arguments) isn't
+ * supported.
  */
 export const createImageBitmap = async (
   source: unknown,
@@ -128,6 +178,19 @@ export const createImageBitmap = async (
     throw new Error('createImageBitmap() cropping is not supported on Lynx');
   }
   const options = (rest[0] ?? {}) as DecodeOptions;
+  const canvas = canvasSourceOf(source);
+  if (canvas) {
+    // Read before anything is awaited, so the bitmap is of the canvas as it
+    // is at the call, as a browser takes it.
+    if (canvas.width === 0 || canvas.height === 0) {
+      const error = new Error(
+        `Failed to execute 'createImageBitmap' on 'Window': The source image ${canvas.width === 0 ? 'width' : 'height'} is 0.`,
+      );
+      error.name = 'InvalidStateError';
+      throw error;
+    }
+    return imageBitmapOfCanvas(canvas, options, false);
+  }
   let bytes: Uint8Array;
   if (source instanceof LynxBlob) {
     bytes = source.bytesSync();
@@ -137,7 +200,7 @@ export const createImageBitmap = async (
     bytes = new Uint8Array(await (source as Blob).arrayBuffer());
   } else {
     throw new TypeError(
-      'createImageBitmap() on Lynx takes a Blob or a loaded Image',
+      'createImageBitmap() on Lynx takes a Blob, a loaded Image or a canvas',
     );
   }
   const { id, width, height } = decode(bytes, options);

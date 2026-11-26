@@ -668,6 +668,14 @@ static NSUInteger componentsOf(GLenum format) {
                                            premultiplied:_premultipliedAlpha || !_alpha];
 }
 
+/// After transferToImageBitmap() took the drawing buffer, it's cleared as a
+/// shown frame's is: unless the app asked to keep it.
+- (void)clearForTransfer {
+  if (_context == EGL_NO_CONTEXT || _preserveDrawingBuffer) return;
+  [self makeCurrent];
+  [self clearDrawingBuffer];
+}
+
 /// The drawing buffer as an image file, for the runtime's canvas.toBlob() and
 /// toDataURL(): `{ base64, type }`, or `{ error }`.
 ///

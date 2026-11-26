@@ -1,24 +1,39 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createObjectURL, LynxBlob } from '../network/blob';
 import {
+  createFakeCanvas2DBridge,
+  type FakeCanvas2DBridge,
+} from '../testing/fake-canvas-2d-bridge';
+import {
   createFakeWebGLBridge,
   type FakeWebGLBridge,
 } from '../testing/fake-webgl-bridge';
+import type { LynxCanvasRenderingContext2D } from './canvas-2d-context';
+import { canvasSourceOf } from './canvas-source';
+import { LynxDetachedCanvas, LynxOffscreenCanvas } from './detached-canvas';
 import { createImageBitmap, LynxImageBitmap, LynxImageElement } from './image';
 import { NATIVE_IMAGE, type NativeImage } from './native-image';
-import { fromWords, setWebGLBridgeForTesting } from './webgl-bridge';
+import {
+  fromWords,
+  setCanvas2DBridgeForTesting,
+  setWebGLBridgeForTesting,
+} from './webgl-bridge';
 
 const PNG = new Uint8Array([137, 80, 78, 71]);
 
 let bridge: FakeWebGLBridge;
+let bridge2D: FakeCanvas2DBridge;
 
 beforeEach(() => {
   bridge = createFakeWebGLBridge();
   setWebGLBridgeForTesting(bridge);
+  bridge2D = createFakeCanvas2DBridge();
+  setCanvas2DBridgeForTesting(bridge2D);
 });
 
 afterEach(() => {
   setWebGLBridgeForTesting(undefined);
+  setCanvas2DBridgeForTesting(undefined);
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -103,6 +118,104 @@ describe('createImageBitmap', () => {
     );
     setWebGLBridgeForTesting(null);
     await expect(createImageBitmap(new LynxBlob([PNG]))).rejects.toThrow(
+      /AngularLynxWebGL module/,
+    );
+  });
+});
+
+describe('createImageBitmap of a canvas', () => {
+  it('copies the canvas’s pixels in the shell, after its calls, with the options baked in', async () => {
+    const canvas = new LynxDetachedCanvas();
+    const context = canvas.getContext('2d') as LynxCanvasRenderingContext2D;
+    context.fillRect(0, 0, 1, 1);
+    let sentFirst = 0;
+    bridge.imageFromCanvas.mockImplementationOnce(() => {
+      sentFirst = bridge2D.batches.length;
+      return { width: 10, height: 5 };
+    });
+    const bitmap = await createImageBitmap(canvas, {
+      imageOrientation: 'flipY',
+      premultiplyAlpha: 'premultiply',
+      resizeWidth: 10,
+      resizeHeight: 5,
+    });
+    // The fillRect was sent before the shell read the canvas.
+    expect(sentFirst).toBe(1);
+    const [id, canvasId, options] = bridge.imageFromCanvas.mock.calls[0];
+    expect(canvasId).toBe(canvasSourceOf(canvas)!.canvasId);
+    expect(options).toEqual({
+      imageOrientation: 'flipY',
+      premultiplyAlpha: 'premultiply',
+      resizeWidth: 10,
+      resizeHeight: 5,
+      width: 300,
+      height: 150,
+      transfer: false,
+    });
+    expect(native(bitmap)).toEqual({
+      id,
+      width: 10,
+      height: 5,
+      bakedOptions: true,
+    });
+    // Nothing is decoded: no file's bytes cross the bridge.
+    expect(bridge.decodeImage).not.toHaveBeenCalled();
+    bitmap.close();
+    expect(bridge.releaseImage).toHaveBeenCalledWith(id);
+  });
+
+  it('reads the canvas at the call, before anything is awaited', () => {
+    const canvas = new LynxOffscreenCanvas(4, 3);
+    canvas.getContext('2d');
+    void createImageBitmap(canvas);
+    expect(bridge.imageFromCanvas).toHaveBeenCalledOnce();
+    expect(bridge.imageFromCanvas.mock.calls[0][2]).toEqual({
+      imageOrientation: 'from-image',
+      premultiplyAlpha: 'default',
+      resizeWidth: 0,
+      resizeHeight: 0,
+      width: 4,
+      height: 3,
+      transfer: false,
+    });
+  });
+
+  it('makes a transparent image of a canvas with no context, its size', async () => {
+    const bitmap = await createImageBitmap(new LynxOffscreenCanvas(6, 2));
+    expect([bitmap.width, bitmap.height]).toEqual([6, 2]);
+    expect(bridge.imageFromCanvas.mock.calls[0][2]).toMatchObject({
+      width: 6,
+      height: 2,
+    });
+  });
+
+  it('refuses a canvas with no pixels, as a browser does', async () => {
+    await expect(
+      createImageBitmap(new LynxOffscreenCanvas(0, 2)),
+    ).rejects.toMatchObject({
+      name: 'InvalidStateError',
+      message: expect.stringMatching(/width is 0/),
+    });
+    await expect(
+      createImageBitmap(new LynxOffscreenCanvas(2, 0)),
+    ).rejects.toThrow(/height is 0/);
+    expect(bridge.imageFromCanvas).not.toHaveBeenCalled();
+  });
+
+  it('fails when the shell can’t read it, or there’s no shell', async () => {
+    const canvas = new LynxOffscreenCanvas(2, 2);
+    bridge.imageFromCanvas.mockReturnValueOnce({
+      width: 0,
+      height: 0,
+      error: 'Too old',
+    });
+    await expect(createImageBitmap(canvas)).rejects.toThrow('Too old');
+    bridge.imageFromCanvas.mockReturnValueOnce({ width: 0, height: 0 });
+    await expect(createImageBitmap(canvas)).rejects.toThrow(
+      /could not be read/,
+    );
+    setWebGLBridgeForTesting(null);
+    await expect(createImageBitmap(canvas)).rejects.toThrow(
       /AngularLynxWebGL module/,
     );
   });

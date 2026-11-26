@@ -5,7 +5,8 @@
 # linked the shader, took the vertex buffer and uniforms, decoded and
 # uploaded the image, and read the pixels back. Under it, the 2D line checks
 # getContext('2d'), drawImage() of one canvas on another, getImageData(), and
-# a 2D canvas uploaded as a WebGL texture. Lynx Explorer has no canvas.
+# a 2D canvas uploaded as a WebGL texture, and the Bitmap line ImageBitmaps
+# of canvases. Lynx Explorer has no canvas.
 appId: ${APP_ID}
 ---
 - runFlow: open-app.yaml
@@ -18,5 +19,11 @@ appId: ${APP_ID}
 # getImageData(), and uploaded as a texture and read back.
 - extendedWaitUntil:
     visible: '2D: 0,128,0,255'
+    timeout: 15000
+# ImageBitmaps of canvases (issue #697): createImageBitmap() of the WebGL
+# canvas and of an OffscreenCanvas, transferToImageBitmap(), which clears the
+# OffscreenCanvas, and a bitmap uploaded as a texture.
+- extendedWaitUntil:
+    visible: 'Bitmap: 0,128,0,255 255,0,0,255 0,0,255,255 0,0,0,0 255,0,0,255'
     timeout: 15000
 - takeScreenshot: canvas

@@ -96,6 +96,11 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)targetDidLayOut:(AngularLynxCanvasTarget *)target;
 /// The canvas's pixels now, rows top to bottom, or nil when it has none.
 - (nullable AngularLynxDecodedImage *)snapshot;
+/// After `OffscreenCanvas.transferToImageBitmap()` took the pixels: a 2D
+/// bitmap is cleared to transparent black (opaque black without alpha), and
+/// a WebGL drawing buffer as a shown frame's is, unless preserveDrawingBuffer
+/// keeps it. The context's state stays.
+- (void)clearForTransfer;
 @end
 
 /// One WebGL context: an EGL context on ANGLE's Metal display, with an

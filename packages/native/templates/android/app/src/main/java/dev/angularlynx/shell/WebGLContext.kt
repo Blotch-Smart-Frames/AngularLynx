@@ -412,6 +412,19 @@ class WebGLContext(override val canvasId: String, attributes: ReadableMap?) : Ca
     }
 
     /**
+     * After transferToImageBitmap() took the drawing buffer, it's cleared as
+     * a shown frame's is: unless the app asked to keep it.
+     */
+    @Synchronized
+    override fun clearForTransfer() {
+        if (destroyed || preserveDrawingBuffer) return
+        withCurrent {
+            clearDrawingBuffer()
+            restoreFramebuffers()
+        }
+    }
+
+    /**
      * Shows the finished frame: copies the default framebuffer (resolving it
      * when it's multisampled) into the TextureView's surface, scaled to its
      * size, and swaps. Without a surface, the frame waits for one.

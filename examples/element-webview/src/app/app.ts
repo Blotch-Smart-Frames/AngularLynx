@@ -20,7 +20,7 @@ const SAMPLE_HTML = `
   selector: 'app-root',
   template: `
     <view class="h-full flex-col bg-zinc-50 flex">
-      <view class="p-6 pb-3">
+      <view class="px-6 pb-3 pt-[calc(1.5rem+env(safe-area-inset-top))]">
         <text class="mb-1 text-[28px] font-bold text-zinc-900">WebView</text>
         <text class="mb-4 text-[13px] text-zinc-500">
           A native web view that loads a URL or inline HTML.
@@ -54,7 +54,7 @@ const SAMPLE_HTML = `
       </view>
 
       <view
-        class="mx-6 mb-6 flex-1 rounded-xl border border-zinc-200 bg-white overflow-hidden"
+        class="mx-6 mb-[calc(1.5rem+env(safe-area-inset-bottom))] flex-1 rounded-xl border border-zinc-200 bg-white overflow-hidden"
       >
         <!--
           Only one of src/html is bound at a time: when both are set, src

@@ -185,6 +185,18 @@ export const infoPlistEntries = (
     '<key>AngularLynxEdgeToEdge</key>',
     app.edgeToEdge ? '<true/>' : '<false/>',
   );
+  // Read by LynxViewController, which sets the LynxView's font scale from
+  // Dynamic Type, capped at the max, or keeps it at 1.
+  lines.push(
+    '<key>AngularLynxTextScaling</key>',
+    app.textScaling.enabled ? '<true/>' : '<false/>',
+  );
+  if (app.textScaling.max !== undefined) {
+    lines.push(
+      '<key>AngularLynxMaxTextScale</key>',
+      `<real>${app.textScaling.max}</real>`,
+    );
+  }
 
   // The share sheet LynxShare opens has Save Image for an image, which adds
   // it to the photo library, and iOS ends an app that does so without a

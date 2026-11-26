@@ -558,13 +558,35 @@ describe('LynxDocument', () => {
       );
     });
 
-    it('creates a title-bar-view element via __CreateElement', () => {
-      doc.createElement('title-bar-view');
-      expect(asMock(globalThis.__CreateElement)).toHaveBeenCalledWith(
-        'title-bar-view',
-        expect.any(Number),
-      );
-    });
+    // Only the desktop renderers have these. Elsewhere they're views, which
+    // keep their content on screen (create-desktop-only-element.test.ts).
+    it.each(['title-bar-view', 'cover-view'] as const)(
+      'creates a native %s element on the desktop',
+      (tag) => {
+        vi.stubGlobal('SystemInfo', { platform: 'macOS' });
+        doc.createElement(tag);
+        expect(asMock(globalThis.__CreateElement)).toHaveBeenCalledWith(
+          tag,
+          expect.any(Number),
+        );
+        vi.unstubAllGlobals();
+      },
+    );
+
+    it.each(['title-bar-view', 'cover-view'] as const)(
+      'creates a %s as a view on iOS, keeping its tag name',
+      (tag) => {
+        vi.stubGlobal('SystemInfo', { platform: 'iOS' });
+        const viewCallsBefore = asMock(globalThis.__CreateView).mock.calls
+          .length;
+        const el = doc.createElement(tag);
+        expect(asMock(globalThis.__CreateView).mock.calls.length).toBe(
+          viewCallsBefore + 1,
+        );
+        expect(el.tagName).toBe(tag);
+        vi.unstubAllGlobals();
+      },
+    );
 
     // Tags below aren't Angular template primitives — they're only reachable
     // via `createElement(tag)` (typically from LynxElement's subtree-recreate
@@ -592,7 +614,7 @@ describe('LynxDocument', () => {
     // Each of these must reach the native engine under its OWN tag. Before
     // they had explicit cases they hit the unknown-tag fallback and became
     // plain views, so their attributes (blur-radius, src, …) did nothing.
-    it.each(['blur-view', 'webview', 'video', 'cover-view'] as const)(
+    it.each(['blur-view', 'webview', 'video'] as const)(
       'creates a native %s element instead of falling back to a view',
       (tag) => {
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});

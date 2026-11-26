@@ -10,29 +10,26 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
         Only the title is inside <title-bar-view>: dragging it moves the
         window, while the close button beside it stays a plain view so a tap
         on it isn't taken as the start of a drag.
-        justify-between keeps the button at the right edge where
-        <title-bar-view> doesn't exist (iOS, Android, the web preview) and
-        flex-1 can't stretch it.
+        iOS, Android and the web preview have no <title-bar-view>, so it's a
+        plain view there: the title stays, and dragging it does nothing.
+        justify-between keeps the button at the right edge there too.
       -->
       <view
-        class="h-11 flex-row items-center border-b border-zinc-200 bg-white flex justify-between"
+        class="flex-row items-center border-b border-zinc-200 bg-white pt-[env(safe-area-inset-top)] flex justify-between"
       >
         <title-bar-view
           [moveable]="true"
-          class="h-full flex-1 flex-row items-center flex"
+          class="h-11 flex-1 flex-row items-center flex"
         >
           <text class="pl-4 text-sm font-semibold text-zinc-900">My App</text>
         </title-bar-view>
-        <view
-          class="h-full w-11 items-center justify-center"
-          (bindtap)="close()"
-        >
+        <view class="h-11 w-11 items-center justify-center" (bindtap)="close()">
           <text class="text-sm text-zinc-500">✕</text>
         </view>
       </view>
 
       <scroll-view class="flex-1" scroll-orientation="vertical">
-        <view class="p-6">
+        <view class="px-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-6">
           <text class="mb-1 text-[28px] font-bold text-zinc-900">
             Title Bar View
           </text>

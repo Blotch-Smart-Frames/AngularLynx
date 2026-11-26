@@ -20,7 +20,9 @@ import com.lynx.tasm.LynxEnv
  * back. While enabled, back presses become an
  * `angularLynxBack` global event; while disabled (the default, and whenever the
  * runtime doesn't know about this module) Android's default back behavior
- * applies, which leaves the app.
+ * applies, which leaves the app. While enabled, the predictive back gesture
+ * also arrives as it goes, as `angularLynxBackGesture` global events, so a
+ * stack in the app can move its page with the finger.
  *
  * `collectGarbage` runs a full collection of the main thread's JavaScript
  * heap. PrimJS, which runs it, collects as the app runs, but those collections
@@ -76,6 +78,11 @@ class ShellModule(context: Context, param: Any?) : LynxModule(context, param) {
     companion object {
         const val NAME = "AngularLynxShell"
         const val BACK_EVENT = "angularLynxBack"
+
+        // Android's predictive back gesture as it goes (see MainActivity's
+        // backHandler): it starts, moves, or is canceled. One that ends in
+        // back sends BACK_EVENT, as a press does.
+        const val BACK_GESTURE_EVENT = "angularLynxBackGesture"
 
         // Lynx's MemoryPressureLevel values, from a package the app doesn't
         // compile against.

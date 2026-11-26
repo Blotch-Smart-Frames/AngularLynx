@@ -1543,7 +1543,7 @@ For most elements the uniform 12.5% shrink is harmless (everything scales togeth
 
 When an element's geometry must be pixel-exact and self-consistent with px transforms/positions, size it in **explicit px** via Tailwind arbitrary values (`w-[44px]`, `h-[20px]`) rather than the rem scale (`w-11`, `h-5`). Arbitrary px values compile straight to `width: 44px` and are immune to the root font-size. (Alternatively, set a `16px` font-size on `page` to make rem match web — but that would resize all existing rem-based layouts.)
 
-**Update, 2026-11-13: the `@blotch/ui` theme now sets it.** `default.css` has `page { font-size: 16px; --rem-unit: 16px; }`. Measured in Lynx Explorer 4.1 on iOS 27 (simulator) and Android (API 34 emulator): with it, `h-10` is 40pt and `p-4` 16pt, and a `<text>` with no font size of its own draws at 16px too, so the root font size is also the default text size. `--rem-unit` is for a web page that embeds the app with web-core's `transformREM` (see "`rem` is 14px on native Lynx, but Lynx for Web resolves it against the host page"): `page` is inside the `<lynx-view>`, so its value wins over the host's for everything in the app. An app without the theme is still at 14px on native.
+**Update, 2026-11-13: the `@blotch/ui` theme now sets it.** `default.css` has `page { font-size: 16px; --rem-unit: 16px; }`. Measured in Lynx Explorer 4.1 on iOS 27 (simulator) and Android (API 34 emulator): with it, `h-10` is 40pt and `p-4` 16pt, and a `<text>` with no font size of its own draws at 16px too, so the root font size is also the default text size. (Correction, 2026-11-27: on the iOS 27 Simulator a `<text>` with no font size drew at 14px beside a 16px `text-base`, with the theme's `page { font-size: 16px }`, and didn't follow the page's size when it grew. Only `rem`, HTML text tags and loose text follow the root; see issue #673.) `--rem-unit` is for a web page that embeds the app with web-core's `transformREM` (see "`rem` is 14px on native Lynx, but Lynx for Web resolves it against the host page"): `page` is inside the `<lynx-view>`, so its value wins over the host's for everything in the app. An app without the theme is still at 14px on native.
 
 ---
 
@@ -1663,6 +1663,10 @@ On iOS it does, and so does the web preview. On Android (Lynx Explorer 4.1, API 
 ### What Lynx does
 
 Both platforms take the first family in the list they find. iOS looks each name up as a font family or font name (`LynxFontFaceManager`), so `Menlo` is found and `monospace`, which isn't a font there, falls through to the system font. Android only finds families from `@font-face` rules and from providers the host app registers (`TypefaceCache.addLazyProvider`, `FontFaceManager.getTypeface` returns null for anything else), never Android's own `monospace`, `serif` or `sans-serif`, so it draws the default font (Lynx Explorer 4.1, API 34 emulator, November 2026). `<code>` is monospace on iOS and the web, but not on Android (issue #649).
+
+### Workaround
+
+The Android shell registers a provider (`SystemFontFamilies.kt` in `packages/native`, issue #661) that answers CSS's generic families (`serif`, `sans-serif`, `monospace`, `cursive`, `system-ui`), fonts.xml's aliases of `sans-serif` (`arial`, `helvetica`, `tahoma`, `verdana`, which come back as the default `Typeface` itself and so can't be told from a missing name) and, on Android 9+, any family in the system's fonts.xml, with `Typeface.create`. It returns null for a name Android doesn't have, so Lynx goes on to the app's `@font-face` rules and the next family in the list. Lynx asks the providers before `@font-face`, so a `@font-face` named `serif` loses to Android's. Lynx Explorer has no such provider, so it still draws the default font.
 
 ---
 
@@ -6193,6 +6197,8 @@ Lynx gives JavaScript no back event. On Android, the press goes to the activity 
 
 The Android app `ng build --platform android` generates registers an `AngularLynxShell` native module with `setBackHandlerEnabled(enabled)`, and while that's enabled sends each press as the `angularLynxBack` global event (`ShellModule.kt`, `MainActivity.kt`). `LynxBackButton` (`packages/runtime/src/lib/back-button/back-button.ts`, which `provideRouter()` starts) keeps the handler enabled while a handler registered with `LynxBackButton.on()` is open on top (a popover's) or `LynxLocationStrategy.canGoBack()` is true. Each event goes to the handler registered last, or else to `Location.back()`, which navigates in a `setTimeout`. The router then navigates as for `popstate`, guards included, and back leaves the app from the first screen. Layer 6's `native/back-button.yaml` checks both ends on the Android shell (issue #59). An app embedding the bundle in its own Android app can register the same module and send the same event (`/guide/embedding/#connect-the-android-back-button`).
 
+The predictive back gesture has the same gap while it moves: Lynx passes none of it to JavaScript, so a page couldn't follow the finger, and the stack played its whole pop only once the finger let go (issue #474). The shell's callback also overrides `handleOnBackStarted`, `handleOnBackProgressed` and `handleOnBackCancelled` (called for the gesture only, on Android 14 and later, the 3-button bar's back calls `handleOnBackPressed()` alone) and sends each as the `angularLynxBackGesture` global event with the phase, `BackEventCompat.progress` and the edge. `LynxBackButton` hands the gesture to the `<lynx-stack-outlet>` back goes back in (`back-button/back-gesture.ts`: the innermost one whose top page is at the history's current entry), which drives the same predictive back drag a finger in the app does, and finishes or undoes it at the end. Android eases `progress` itself, and on a cancel animates it back toward 0 before `handleOnBackCancelled`, so the outlet uses it as it comes. Android 14 and 15 send the steps only to an app whose manifest sets `android:enableOnBackInvokedCallback="true"` (Android 16 defaults to it for an app targeting API 36), so the shell's manifest sets it: without it, an API 34 emulator drew its own back arrow over a page that didn't move. Checked on an API 34 emulator with the stack-navigation example: from either edge the page shrinks and edges toward the finger over the page under it, comes back when the gesture is canceled, and goes back when it's let go; a key press still pops the page, and back on the first screen still leaves the app.
+
 ## An `Error`'s `stack` holds only the frames, not its name and message
 
 ### What you'd expect (web)
@@ -7641,3 +7647,19 @@ Native lays a list out from its `update-list-info`: each item's `type`, `item-ke
 ### The fix
 
 `LynxElement.setAttribute` records those attributes on a `<list-item>`'s wrapper (`_listItemAttributes`), and `LynxListElement` sends them in each element item's insert action, and an update action when they change, as it already did for a `*lynxListFor` run's (`itemAttributes`). `ui-bar-scroll` needed it: on a `<list>`, its spacers and large title are `full-span` items.
+
+## Lynx's font scale grows every `px` font size, not `rem`, unless the page says otherwise
+
+### What you'd expect (web)
+
+A browser's text size setting changes the root font size: everything in `rem` grows with it, and a size in `px` stays as written. iOS's Dynamic Type and Android's `sp` follow the same idea, a scale the person sets that the app's text sizes are written against.
+
+### What Lynx does
+
+A LynxView has a font scale (`LynxViewBuilder.fontScale`, `LynxView.updateFontScale()`), 1 unless the host sets it. By default Lynx multiplies every font-relevant length by it: `font-size`, `line-height` and `letter-spacing` in `px`, `rpx` and `ppx` (`CSSStyleUtils::ToLength` in `core/renderer/css/css_style_utils.cc`, `non_sp_font_scale`). So a label sized in `px` grows, and a box sized in `rem` grows only through the root's px font size. With the page config `fontScaleEffectiveOnlyOnSp: true`, only an `sp` length is multiplied (`font_scale_sp_only_`), which no browser has.
+
+A `<text>` with no `font-size` of its own draws at Lynx's default, 14px, whatever the page's font size, and isn't multiplied with `fontScaleEffectiveOnlyOnSp`.
+
+### The fix
+
+The generated apps set the font scale from Dynamic Type or Android's font scale (`textScale` in the global props too), and the build turns on `fontScaleEffectiveOnlyOnSp` (`angular-webpack-plugin.ts`) and writes a `page` rule's `px` font size in `sp` in the native bundle (`text-scale.ts`), adding `page { font-size: 14px }` before the app's styles for an app without one. The root grows by the scale, every `rem` with it, and `px` stays as written, as on the web. Measured in a generated app on the iOS 27 Simulator (2026-11-27): at the largest accessibility size the scale is 2.82, an `h-12` box 135pt and `text-base` 45pt, a 48px box and 16px text unchanged, and the page followed a change made while the app was open, both ways. A `<text>` with no size class stayed at 14px.

@@ -48,7 +48,9 @@ const handleTouchEnd = mainThreadFn((event: MainThread.TouchEvent) => {
   selector: 'app-root',
   template: `
     <scroll-view class="h-full bg-zinc-50" scroll-orientation="vertical">
-      <view class="p-6">
+      <view
+        class="px-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-[calc(1.5rem+env(safe-area-inset-top))]"
+      >
         <text class="mb-1 text-[28px] font-bold text-zinc-900">
           Main Thread Scripts
         </text>

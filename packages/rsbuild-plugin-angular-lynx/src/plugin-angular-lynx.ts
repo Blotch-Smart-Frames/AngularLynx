@@ -11,6 +11,7 @@ import { applyLayers } from './layers.js';
 import { applyNestedCalc } from './nested-calc.js';
 import { applyResolve } from './resolve.js';
 import { applySafeArea } from './safe-area.js';
+import { applyTextScale } from './text-scale.js';
 import { applyDevLogger } from './logger/dev-logger.js';
 import { applySplitChunksRule } from './split-chunks.js';
 import { applyStrictEsm } from './strict-esm.js';
@@ -62,6 +63,9 @@ export const pluginAngularLynx = (
       // The same: each env(safe-area-inset-*) reads the inset a generated
       // app's shell sends (see safe-area.ts).
       applySafeArea(api);
+      // The same: the page's px font size becomes sp, which follows the
+      // phone's text size, in the native bundle (see text-scale.ts).
+      applyTextScale(api);
       // Writes each calc() nested in another as parentheses, which Lynx reads
       // (see nested-calc.ts). After applyTailwind, so it runs after Tailwind
       // 4's lowering at OnceExit.

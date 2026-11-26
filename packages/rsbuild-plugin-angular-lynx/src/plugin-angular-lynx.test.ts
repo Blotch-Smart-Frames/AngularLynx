@@ -15,6 +15,7 @@ vi.mock('./nested-calc.js', () => ({ applyNestedCalc: vi.fn() }));
 vi.mock('./resolve.js', () => ({ applyResolve: vi.fn() }));
 vi.mock('./safe-area.js', () => ({ applySafeArea: vi.fn() }));
 vi.mock('./text-inheritance.js', () => ({ applyTextInheritance: vi.fn() }));
+vi.mock('./text-scale.js', () => ({ applyTextScale: vi.fn() }));
 vi.mock('./logger/dev-logger.js', () => ({ applyDevLogger: vi.fn() }));
 vi.mock('./split-chunks.js', () => ({ applySplitChunksRule: vi.fn() }));
 vi.mock('./strict-esm.js', () => ({ applyStrictEsm: vi.fn() }));
@@ -46,6 +47,7 @@ import { applyLayers } from './layers.js';
 import { applyNestedCalc } from './nested-calc.js';
 import { applyResolve } from './resolve.js';
 import { applySafeArea } from './safe-area.js';
+import { applyTextScale } from './text-scale.js';
 import { applyTextInheritance } from './text-inheritance.js';
 import { applyDevLogger } from './logger/dev-logger.js';
 import { applySplitChunksRule } from './split-chunks.js';
@@ -170,6 +172,11 @@ describe('pluginAngularLynx', () => {
       plugin.setup(mockApi);
 
       expect(applyDisplay).toHaveBeenCalledWith(mockApi);
+    });
+
+    it('calls applyTextScale with api', () => {
+      pluginAngularLynx().setup(mockApi);
+      expect(applyTextScale).toHaveBeenCalledWith(mockApi);
     });
 
     it('calls applySafeArea with api', () => {

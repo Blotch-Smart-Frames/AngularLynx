@@ -38,7 +38,7 @@ type Notification = {
   template: `
     <view class="h-screen flex-col bg-background flex">
       <view
-        class="flex-row items-center border-b border-border bg-card px-5 py-4 flex justify-between"
+        class="flex-row items-center border-b border-border bg-card px-5 pb-4 flex justify-between pt-safe-4"
       >
         <view class="flex-row items-center gap-2.5 flex">
           <text class="text-[22px] font-bold text-foreground"
@@ -65,7 +65,7 @@ type Notification = {
             />
           </view>
         } @else {
-          <view class="flex-col gap-2 p-4 flex">
+          <view class="flex-col gap-2 px-4 pt-4 flex pb-safe-4">
             @for (n of notifications(); track n.id) {
               <!-- Was (longpress), which silently did nothing on long-press: Lynx
                    event names need a propagation prefix (bind/catch/...), and the

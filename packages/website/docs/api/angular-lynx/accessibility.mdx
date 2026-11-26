@@ -115,6 +115,7 @@ class LynxAccessibilitySettings {
   readonly reduceMotion: Signal<boolean>;
   readonly reduceTransparency: Signal<boolean>;
   readonly increaseContrast: Signal<boolean>;
+  readonly textScale: Signal<number>;
 }
 ```
 
@@ -130,15 +131,16 @@ readonly duration = computed(() => (this.#settings.reduceMotion() ? 0 : 300));
 - **`reduceMotion()`:** the user asked for less motion. Replace slides and bounces with a fade or an instant change.
 - **`reduceTransparency()`:** the user asked for less transparency. Draw blurred and translucent surfaces opaque.
 - **`increaseContrast()`:** the user asked for more contrast. Strengthen edges and use full-strength text colors.
+- **`textScale()`:** how much larger than the system's default the user's text is: `1` at the default, `1.5` for text half as large again, and below `1` at iOS's smaller sizes. The app's text already follows it (see [Follow the phone's text size](/guide/accessibility#follow-the-phones-text-size)), so read it only to change a layout that can't simply grow.
 
-Lynx has no API for these, so they come from the [host app](/guide/glossary#host-app), as the theme does, in the `reduceMotion`, `reduceTransparency` and `increaseContrast` [global props](/guide/embedding/host-data). Each is off unless it's `true`.
+Lynx has no API for these, so they come from the [host app](/guide/glossary#host-app), as the theme does, in the `reduceMotion`, `reduceTransparency`, `increaseContrast` and `textScale` [global props](/guide/embedding/host-data). Each switch is off unless it's `true`, and `textScale` is `1` unless it's a positive number.
 
-| Where the app runs                             | Where the settings come from                                                                                                       |
-| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Apps from `ng build --platform`, iOS           | Reduce Motion, Reduce Transparency and Increase Contrast, sent again when they change                                              |
-| Apps from `ng build --platform`, Android       | Remove animations, and contrast above standard (Android 14) or high contrast text (Android 16). Android has no Reduce Transparency |
-| [Web preview](/guide/glossary#web-preview)     | The browser's `prefers-reduced-motion`, `prefers-reduced-transparency` and `prefers-contrast: more`                                |
-| [Lynx Explorer](/guide/glossary#lynx-explorer) | None: add them to the bundle URL to try them, such as `?reduceMotion=true`                                                         |
+| Where the app runs                             | Where the settings come from                                                                                                                      |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Apps from `ng build --platform`, iOS           | Reduce Motion, Reduce Transparency, Increase Contrast and Dynamic Type's text size, sent again when they change                                   |
+| Apps from `ng build --platform`, Android       | Remove animations, contrast above standard (Android 14) or high contrast text (Android 16), and the font size. Android has no Reduce Transparency |
+| [Web preview](/guide/glossary#web-preview)     | The browser's `prefers-reduced-motion`, `prefers-reduced-transparency` and `prefers-contrast: more`. `textScale()` is `1`                         |
+| [Lynx Explorer](/guide/glossary#lynx-explorer) | None: add them to the bundle URL to try them, such as `?reduceMotion=true` or `?textScale=1.5` (which sets the signal, not the text)              |
 
 iOS 27's Liquid Glass setting (clear or tinted glass) has no public API, so it isn't here. iOS's own glass follows it.
 

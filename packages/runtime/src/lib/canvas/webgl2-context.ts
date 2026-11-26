@@ -28,7 +28,7 @@ import {
   type WebGLObjectHandle,
 } from './webgl-objects';
 import { OP } from './webgl-ops';
-import { canvasSourceOf } from './canvas-source';
+import { type CanvasSource, canvasSourceOf } from './canvas-source';
 import { nativeImageOf } from './native-image';
 
 /** The `<canvas>` a context draws into, as the context needs it. */
@@ -1909,7 +1909,7 @@ export class LynxWebGL2RenderingContext {
         number,
         unknown,
       ];
-      const { width, height } = this.#sourceSize(source);
+      const { width, height, canvas } = this.#sourceSize(source);
       this.#upload(
         OP.texImage2D,
         target,
@@ -1920,7 +1920,7 @@ export class LynxWebGL2RenderingContext {
         0,
         format,
         type,
-        this.#pixels(source, 0, width, height, 1, format, type),
+        this.#pixels(source, 0, width, height, 1, format, type, canvas),
       );
       return;
     }
@@ -1968,7 +1968,7 @@ export class LynxWebGL2RenderingContext {
         number,
         unknown,
       ];
-      const { width, height } = this.#sourceSize(source);
+      const { width, height, canvas } = this.#sourceSize(source);
       this.#upload(
         OP.texSubImage2D,
         target,
@@ -1979,7 +1979,7 @@ export class LynxWebGL2RenderingContext {
         height,
         format,
         type,
-        this.#pixels(source, 0, width, height, 1, format, type),
+        this.#pixels(source, 0, width, height, 1, format, type, canvas),
       );
       return;
     }
@@ -2261,13 +2261,23 @@ export class LynxWebGL2RenderingContext {
     );
   }
 
-  #sourceSize(source: unknown): { width: number; height: number } {
+  #sourceSize(source: unknown): {
+    width: number;
+    height: number;
+    /**
+     * The canvas source the size was read from, which the upload then uses
+     * as it is: a video's size is the shell's, read once per upload, so the
+     * size checked is the size uploaded even while the video changes
+     * resolution.
+     */
+    canvas?: CanvasSource;
+  } {
     const image = nativeImageOf(source);
     if (image) return { width: image.width, height: image.height };
     // A canvas, or a <video>, whose size is its frame's, which the shell
     // knows (it has no width and height of its own to read).
     const canvas = canvasSourceOf(source);
-    if (canvas) return { width: canvas.width, height: canvas.height };
+    if (canvas) return { width: canvas.width, height: canvas.height, canvas };
     const sized = source as { width?: number; height?: number } | null;
     if (sized && typeof sized.width === 'number') {
       return { width: sized.width, height: sized.height ?? 0 };
@@ -2297,6 +2307,7 @@ export class LynxWebGL2RenderingContext {
     depth: number,
     format: number,
     type: number,
+    canvas: CanvasSource | null = canvasSourceOf(source),
   ): unknown {
     if (source === null || source === undefined) return null;
     if (typeof source === 'number') return source;
@@ -2306,7 +2317,6 @@ export class LynxWebGL2RenderingContext {
       this.#fail(GL.INVALID_OPERATION);
       return REFUSED;
     }
-    const canvas = canvasSourceOf(source);
     const image = canvas ? null : nativeImageOf(source);
     if (canvas || image) {
       // A canvas or an image is one picture: it can't fill a 3D upload's

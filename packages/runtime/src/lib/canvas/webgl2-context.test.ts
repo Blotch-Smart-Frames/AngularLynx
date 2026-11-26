@@ -1862,6 +1862,45 @@ describe('textures', () => {
     }
   });
 
+  it('reads a video’s size once an upload, so a new resolution can’t refuse it', () => {
+    globalThis.__SetAttribute = vi.fn();
+    let uid = 1;
+    globalThis.__GetElementUniqueID = vi.fn(() => uid++);
+    // The video changes resolution between any two reads of its size.
+    const sizes = [
+      { width: 32, height: 18 },
+      { width: 16, height: 9 },
+    ];
+    let reads = 0;
+    setVideoFrameSizeForTesting(() => sizes[reads++ % 2]!);
+    try {
+      const video = new LynxVideoElement({} as ElementRef);
+      gl.texImage2D(
+        GL.TEXTURE_2D,
+        0,
+        GL.RGBA,
+        GL.RGBA,
+        GL.UNSIGNED_BYTE,
+        video,
+      );
+      expect(reads).toBe(1);
+      expect(gl.getError()).toBe(GL.NO_ERROR);
+      gl.texSubImage2D(
+        GL.TEXTURE_2D,
+        0,
+        0,
+        0,
+        GL.RGBA,
+        GL.UNSIGNED_BYTE,
+        video,
+      );
+      expect(reads).toBe(2);
+      expect(gl.getError()).toBe(GL.NO_ERROR);
+    } finally {
+      setVideoFrameSizeForTesting(undefined);
+    }
+  });
+
   it('refuses a source it can’t upload', () => {
     expect(() =>
       gl.texImage2D(GL.TEXTURE_2D, 0, GL.RGBA, GL.RGBA, GL.UNSIGNED_BYTE, {}),

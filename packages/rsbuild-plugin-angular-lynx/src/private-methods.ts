@@ -78,6 +78,22 @@ export const isAppModule = (
   !THIRD_PARTY.test(file) && !isAngularLynxPackageModule(file, packagesDir);
 
 /**
+ * Whether SWC compiles the module's `#private` members to properties
+ * (`privateFieldsAsProperties`, layers.ts): AngularLynx's packages and the
+ * app's own code, on both threads. Such a module needs
+ * {@link splitPrivateChains}.
+ *
+ * @param file - The module's path.
+ * @param packagesDir - The folder this plugin's package is in.
+ */
+export const compilesPrivatesAsProperties = (
+  file: string,
+  packagesDir: string = PACKAGES_DIR,
+): boolean =>
+  isAngularLynxPackageModule(file, packagesDir) ||
+  isAppModule(file, packagesDir);
+
+/**
  * Compiles a main-thread module's instance `#private` methods so they're no
  * longer defined on every instance: {@link renamePrivateMethods} for
  * AngularLynx's own packages (see {@link isAngularLynxPackageModule}), which
@@ -107,13 +123,148 @@ export const transformPrivateMethods = (
   options: PrivateMethodsOptions,
   packagesDir: string = PACKAGES_DIR,
 ): string => {
+  // Last, on what the pass left private: a chain it turned into symbol keys
+  // and renamed methods needs nothing more.
   if (isAngularLynxPackageModule(filename, packagesDir)) {
-    return renamePrivateMethods(code, filename, options);
+    return splitPrivateChains(
+      renamePrivateMethods(code, filename, options),
+      filename,
+    );
   }
   if (isAppModule(filename, packagesDir)) {
-    return hidePrivateMethods(code, filename, options);
+    return splitPrivateChains(
+      hidePrivateMethods(code, filename, options),
+      filename,
+    );
   }
   return code;
+};
+
+/**
+ * A `.` (or `?.`) and then a private name, maybe with spaces and comments
+ * between (`this./* c *\/#a`). Each comment matches exactly one way, a
+ * block comment up to its first `*\/` and a line comment only up to its
+ * line's end (the lookahead keeps it from stopping at a later `//` on the
+ * line), so a run of them can't backtrack exponentially.
+ */
+const PRIVATE_ACCESS =
+  /\.(?:\s|\/\*(?:[^*]|\*(?!\/))*\*\/|\/\/[^\n\r\u2028\u2029]*(?![^\n\r\u2028\u2029]))*#[\p{ID_Start}$_\\]/u
+    .source;
+
+/**
+ * Two private member accesses (see {@link PRIVATE_ACCESS}) anywhere in the
+ * module: every chain {@link splitPrivateChains} rewrites has them, with
+ * whatever is between (comments, parentheses, a type assertion). A module
+ * with at most one is left without being parsed. Coarse on purpose: a hint
+ * that followed the chain's syntax between the two (repeated, overlapping
+ * comment alternatives) backtracked exponentially on a run of slashes or
+ * comments, and this one only scans forward to the second access.
+ */
+const PRIVATE_CHAIN_HINT = new RegExp(
+  `${PRIVATE_ACCESS}[\\s\\S]*?${PRIVATE_ACCESS}`,
+  'u',
+);
+
+/**
+ * Rewrites a private member read on the result of another private member
+ * read (`a.#b.#c`, `a.#b.#c()`, `(a.#b).#c = v`) so SWC compiles both. The
+ * modules whose private members SWC compiles to properties (layers.ts) need
+ * it (see {@link compilesPrivatesAsProperties}), on both threads:
+ * {@link transformPrivateMethods} runs it on the main thread's.
+ *
+ * With `privateFieldsAsProperties`, SWC (1.16, and rspack 2.2's) lowers the
+ * outer access and leaves the inner one as it was:
+ * `_class_private_field_loose_base(a.#b, _c)[_c]`. The class's `#b` is gone,
+ * so swc-loader fails the module ("private name #b is not defined"), and
+ * code that gets past it is a SyntaxError when it loads ("Private field '#b'
+ * must be declared in an enclosing class"). It lowers any other object
+ * (`a.#b.x.#c`, `f(a.#b).#c`), so `a.#b.#c` becomes `(0, a.#b).#c`: the
+ * same value, read once, and nothing added or removed changes what `this` a
+ * call of it gets.
+ *
+ * Inside an optional chain (`a?.#b.#c`) the parentheses would end it, so a
+ * nullish `a` would throw instead of giving `undefined`. There the outer `.`
+ * becomes `?.` (`a?.#b?.#c`), which SWC compiles: the result differs only
+ * when `a.#b` is itself nullish, where natively reading `#c` of it throws a
+ * TypeError and here it gives `undefined`. An access that has its own `?.`
+ * (`a.#b?.#c`) compiles as it is.
+ *
+ * Edits never add or remove a line, and an inline source map's columns are
+ * moved to match, as for the passes before it.
+ *
+ * @param code - The module's code, before SWC.
+ * @param filename - The module's path, for the parser.
+ * @returns The rewritten code, or `code` itself when nothing applies.
+ */
+export const splitPrivateChains = (code: string, filename: string): string => {
+  if (!PRIVATE_CHAIN_HINT.test(code)) {
+    return code;
+  }
+  const sourceFile = parse(code, filename);
+  const edits: Edit[] = [];
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isPropertyAccessExpression(node) &&
+      ts.isPrivateIdentifier(node.name) &&
+      !node.questionDotToken
+    ) {
+      // Through parentheses, which SWC drops, leaving the same shape, and
+      // type assertions, should a .ts module still have them.
+      const inner = skipWrappers(node.expression);
+      if (
+        ts.isPropertyAccessExpression(inner) &&
+        ts.isPrivateIdentifier(inner.name)
+      ) {
+        if (ts.isOptionalChain(node)) {
+          const dot = dotOf(node, sourceFile);
+          edits.push({ start: dot, end: dot, text: '?' });
+        } else {
+          // Outer edits come first, so `a.#b.#c.#d` gets `(0, (0, ` where
+          // both start.
+          const start = node.expression.getStart(sourceFile);
+          edits.push(
+            { start, end: start, text: '(0, ' },
+            { start: node.expression.end, end: node.expression.end, text: ')' },
+          );
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return applyEdits(code, edits, sourceFile);
+};
+
+/**
+ * The expression inside any parentheses and type assertions around it.
+ */
+const skipWrappers = (node: ts.Expression): ts.Expression =>
+  ts.isParenthesizedExpression(node) ||
+  ts.isAsExpression(node) ||
+  ts.isSatisfiesExpression(node) ||
+  ts.isTypeAssertionExpression(node) ||
+  ts.isNonNullExpression(node)
+    ? skipWrappers(node.expression)
+    : node;
+
+/**
+ * Where the `.` of a property access is: the first token after its object,
+ * past any comments.
+ */
+const dotOf = (
+  node: ts.PropertyAccessExpression,
+  sourceFile: ts.SourceFile,
+): number => {
+  const scanner = ts.createScanner(
+    ts.ScriptTarget.Latest,
+    true,
+    sourceFile.languageVariant,
+    sourceFile.text,
+    undefined,
+    node.expression.end,
+  );
+  scanner.scan();
+  return scanner.getTokenStart();
 };
 
 /**
@@ -518,16 +669,8 @@ const contains = (node: ts.Node, test: (node: ts.Node) => boolean): boolean =>
  * can't make an instance: a literal or a function, maybe in parentheses or
  * a type assertion.
  */
-const isInert = (node: ts.Expression): boolean => {
-  if (
-    ts.isParenthesizedExpression(node) ||
-    ts.isAsExpression(node) ||
-    ts.isSatisfiesExpression(node) ||
-    ts.isTypeAssertionExpression(node) ||
-    ts.isNonNullExpression(node)
-  ) {
-    return isInert(node.expression);
-  }
+const isInert = (expression: ts.Expression): boolean => {
+  const node = skipWrappers(expression);
   return (
     ts.isLiteralExpression(node) ||
     ts.isNoSubstitutionTemplateLiteral(node) ||

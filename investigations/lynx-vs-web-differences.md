@@ -7177,6 +7177,20 @@ A private method called through an optional chain on its receiver, `object?.#met
 
 ---
 
+## `this.#a.#b()` failed the build, or the bundle's load
+
+### What you'd expect (web)
+
+A private member read on the result of another (`this.#parent.#depth()`, `node.#next.#label = v`) works like any other.
+
+### What Lynx does
+
+Nothing; it's the build. With `privateFieldsAsProperties` (see above), SWC lowers the outer read and leaves the inner one as written: `_class_private_field_loose_base(this.#parent, _depth)[_depth]()`. The class no longer declares `#parent`, so SWC fails the module ("private name #parent is not defined"), or, where the inner read survives into the bundle, loading it throws `SyntaxError: Private field '#parent' must be declared in an enclosing class`. It's the same in SWC 1.16.22. In the app's own code it failed the build on both threads; in AngularLynx's packages the main thread's private-member pass had already turned both reads into symbol keys and renamed methods, but the background thread, which skips that pass, had the same problem (issue #689, found in #687's `this.#jsParent.#quoteDepth()`).
+
+The build now rewrites the chain before SWC (`splitPrivateChains` in `packages/rsbuild-plugin-angular-lynx/src/private-methods.ts`) to `(0, this.#parent).#depth()`, which SWC compiles, on both threads. Inside an optional chain (`a?.#b.#c`) the parentheses would end the chain, so there the `.` becomes `?.` instead: the only difference is that a nullish `a.#b` gives `undefined` where natively reading `#c` of it throws a TypeError.
+
+---
+
 ## An element at `opacity: 0` never comes into view on a phone
 
 ### What you'd expect (web)

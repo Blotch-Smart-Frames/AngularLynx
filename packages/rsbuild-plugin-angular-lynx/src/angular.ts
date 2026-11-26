@@ -26,7 +26,11 @@ import {
   filterAngularDiagnostics,
   toAngularDiagnosticError,
 } from './angular-diagnostics.js';
-import { transformPrivateMethods } from './private-methods.js';
+import {
+  compilesPrivatesAsProperties,
+  splitPrivateChains,
+  transformPrivateMethods,
+} from './private-methods.js';
 import { wrapPureClasses } from './pure-classes.js';
 import { markHostElementsPure } from './pure-host-elements.js';
 import { seedCompilationSourceFiles } from './seed-compilation-source-files.js';
@@ -68,6 +72,16 @@ import {
   scanSourcesForUnsupportedPatterns,
 } from './lynx-diagnostics.js';
 import type { NormalizedPluginAngularLynxOptions } from './utils/options.js';
+
+/**
+ * A background-thread module with its chained private member reads split
+ * (see splitPrivateChains). The main thread's get it from
+ * transformPrivateMethods; the background thread runs none of that pass, but
+ * SWC compiles its modules' private members the same way, and a chain it
+ * can't compile fails the whole background bundle.
+ */
+const splitBackgroundPrivateChains = (code: string, file: string): string =>
+  compilesPrivatesAsProperties(file) ? splitPrivateChains(code, file) : code;
 
 /**
  * Wires Angular's AOT/JIT compilation pipeline into the rsbuild/rspack build
@@ -635,7 +649,10 @@ export const applyAngularRules = async (
         };
       }
       const wrapped = wrapPureClasses(
-        markHostElementsPure(code, context.resourcePath),
+        markHostElementsPure(
+          splitBackgroundPrivateChains(code, context.resourcePath),
+          context.resourcePath,
+        ),
         context.resourcePath,
       );
       // The generated background entry takes every hot update the
@@ -716,16 +733,19 @@ export const applyAngularRules = async (
     return {
       code: wrapPureClasses(
         markHostElementsPure(
-          Buffer.from(
-            await javascriptTransformer.transformData(
-              context.resourcePath,
-              code,
-              {
-                skipLinker: true,
-                sideEffects: () => Promise.resolve(false),
-              },
-            ),
-          ).toString(),
+          splitBackgroundPrivateChains(
+            Buffer.from(
+              await javascriptTransformer.transformData(
+                context.resourcePath,
+                code,
+                {
+                  skipLinker: true,
+                  sideEffects: () => Promise.resolve(false),
+                },
+              ),
+            ).toString(),
+            context.resourcePath,
+          ),
           context.resourcePath,
         ),
         context.resourcePath,

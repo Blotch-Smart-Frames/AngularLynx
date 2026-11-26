@@ -101,11 +101,11 @@ type Subject = {
  * last compound, and of each compound before it, back to the first sibling
  * combinator (`+`, `~`). A part the runtime can't check (an attribute, `*`,
  * a pseudo-class other than a state's, a sibling) is left out, so a rule can
- * be counted for an element it doesn't style. Most of the runtime reads only
- * the last compound's tokens, where that only ever makes it leave the
- * element's text as it is; it checks the ancestors where counting a rule
- * that doesn't apply would let an inline tag take its ancestors' text style
- * (see the runtime's matchedStyleFlagsFor).
+ * be counted for an element it doesn't style. For layout the runtime reads
+ * only the last compound's tokens, where that only ever makes it leave the
+ * element's children as they are. For text styles it checks the ancestors
+ * too, since a rule counted where it doesn't apply keeps an HTML text tag
+ * from inheriting (see the runtime's matchedStyleFlagsFor).
  */
 const subjectsOf = (selectorList: string): Subject[] => {
   const subjects: Subject[] = [];

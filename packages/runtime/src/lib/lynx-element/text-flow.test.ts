@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   ALL_TEXT_PROPERTIES,
+  ancestorTextRulesRead,
   hasAncestorTextRules,
   inheritanceStyleFor,
   isBlankText,
@@ -144,6 +145,12 @@ describe('matchedStyleFlagsFor', () => {
     expect(styleFlagsFor(new Set(['a']))).toBe(1);
   });
 
+  it('counts a state’s rule when asked, still checking its ancestors', () => {
+    setIndex([[['a'], 1, [[' ', ['card']]], 1]]);
+    expect(matchedStyleFlagsFor(new Set(['a']), up(['card']), true)).toBe(1);
+    expect(matchedStyleFlagsFor(new Set(['a']), up(['row']), true)).toBe(0);
+  });
+
   it('guesses as styleFlagsFor does without an index', () => {
     expect(matchedStyleFlagsFor(new Set(['title']), up())).toBe(
       ALL_TEXT_PROPERTIES,
@@ -161,6 +168,30 @@ describe('hasAncestorTextRules', () => {
     expect(hasAncestorTextRules()).toBe(false);
     setIndex([[['a'], 1, [[' ', ['card']]]]]);
     expect(hasAncestorTextRules()).toBe(true);
+  });
+});
+
+describe('ancestorTextRulesRead', () => {
+  it('says whether a text property’s rule requires a token of an ancestor', () => {
+    expect(ancestorTextRulesRead(['card'])).toBe(false);
+    setIndex([
+      [['a'], 1, [[' ', ['row']]]],
+      [
+        ['b'],
+        1,
+        [
+          ['>', ['cell', '#main']],
+          [' ', ['card']],
+        ],
+      ],
+      [['c'], LAYOUT_FLAG, [[' ', ['dark']]]],
+    ]);
+    expect(ancestorTextRulesRead(['row'])).toBe(true);
+    expect(ancestorTextRulesRead(['x', '#main'])).toBe(true);
+    expect(ancestorTextRulesRead(new Set(['card']))).toBe(true);
+    // Neither a layout rule's ancestor nor a rule's own tokens count.
+    expect(ancestorTextRulesRead(['dark', 'a', 'b'])).toBe(false);
+    expect(ancestorTextRulesRead([])).toBe(false);
   });
 });
 

@@ -134,6 +134,11 @@ type IndexedRules = {
    * text styles can change when its ancestors' classes do.
    */
   readonly hasAncestorRules: boolean;
+  /**
+   * The tokens those rules require of an ancestor: a class change can change
+   * which of them apply below the element only if it adds or removes one.
+   */
+  readonly ancestorTokens: ReadonlySet<string>;
 };
 
 let indexed: IndexedRules | null | undefined;
@@ -145,6 +150,7 @@ const readIndex = (): IndexedRules | null => {
   if (!index) return (indexed = null);
   let any = 0;
   let hasAncestorRules = false;
+  const ancestorTokens = new Set<string>();
   const anyRules: IndexedRule[] = [];
   const byToken = new Map<string, IndexedRule[]>();
   for (const [tokens, flags, ancestors = [], inState] of index.rules) {
@@ -152,6 +158,9 @@ const readIndex = (): IndexedRules | null => {
     const rule = { rest, flags, ancestors, inState: inState === 1 };
     if (ancestors.length && flags & ALL_TEXT_PROPERTIES) {
       hasAncestorRules = true;
+      for (const [, required] of ancestors) {
+        for (const token of required) ancestorTokens.add(token);
+      }
     }
     if (first === undefined) {
       any |= flags;
@@ -162,7 +171,13 @@ const readIndex = (): IndexedRules | null => {
       byToken.set(first, list);
     }
   }
-  return (indexed = { any, anyRules, byToken, hasAncestorRules });
+  return (indexed = {
+    any,
+    anyRules,
+    byToken,
+    hasAncestorRules,
+    ancestorTokens,
+  });
 };
 
 /**
@@ -200,10 +215,11 @@ const isRendererClass = (name: string): boolean =>
 /**
  * The flags of every rule in the app's CSS that may apply to an element with
  * these tokens (classes, `#id`, `<tag>`). It can say a rule applies when its
- * selector needs an ancestor or a state the element hasn't: it only ever errs
- * towards the element setting a style itself, which for its own styles
- * leaves it at what it sets, rather than inheriting. Where that guess would
- * cost more, matchedStyleFlagsFor checks the rest of the selector.
+ * selector needs an ancestor or a state the element hasn't. LynxElement reads
+ * it for layout, where counting such a rule only keeps an element's children
+ * as they are rather than regrouping them into lines. For text styles, where
+ * it would keep an element from inheriting, matchedStyleFlagsFor checks the
+ * rest of the selector.
  */
 export const styleFlagsFor = (tokens: ReadonlySet<string>): number => {
   const index = readIndex();
@@ -221,23 +237,32 @@ export const styleFlagsFor = (tokens: ReadonlySet<string>): number => {
  * The flags of the rules in the app's CSS that apply to an element with
  * these tokens, whose ancestors, nearest first, have the tokens
  * `ancestorAt` gives (undefined past the root). Unlike styleFlagsFor, a rule
- * whose selector needs an ancestor the element hasn't, or a state such as
- * `:active`, doesn't count. What it can't check (a sibling, an attribute, a
- * structural pseudo-class such as `:first-child`) it still counts.
+ * whose selector needs an ancestor the element hasn't doesn't count. What it
+ * can't check (a sibling, an attribute, a structural pseudo-class such as
+ * `:first-child`) it still counts.
  *
- * LynxElement's #drawnAtDefault asks it about a Lynx `<text>`, where
- * counting a rule that doesn't apply lets an inline tag in it take its
- * ancestors' text style (issue #652). Elsewhere styleFlagsFor's guess is
- * enough, and needs nothing redone when an ancestor's classes change.
+ * A rule that applies only in a state such as `:active`, which the runtime
+ * can't see, counts when `inState` is true. LynxElement's #applyInheritance
+ * asks so for an HTML text tag's own rules: one it doesn't count gets the
+ * inherited value inline, which would win over the rule while the state
+ * holds. #drawnAtDefault doesn't, for a Lynx `<text>` around an inline tag:
+ * one it counts lets the tag take its ancestors' text style while the
+ * `<text>` draws at the default (issue #652).
+ *
+ * Both are worked out again when an ancestor's classes change (see
+ * LynxElement's #ancestorsChanged). Counting a rule whose ancestor isn't
+ * there left an HTML text tag at Lynx's default rather than inheriting
+ * (issue #667).
  */
 export const matchedStyleFlagsFor = (
   tokens: ReadonlySet<string>,
   ancestorAt: (index: number) => ReadonlySet<string> | undefined,
+  inState = false,
 ): number => {
   const index = readIndex();
   if (!index) return fallbackFlags(tokens);
   const matches = (rule: IndexedRule): boolean =>
-    !rule.inState &&
+    (inState || !rule.inState) &&
     rule.rest.every((other) => tokens.has(other)) &&
     ancestorsMatch(rule.ancestors, 0, 0, ancestorAt);
   let flags = 0;
@@ -286,6 +311,22 @@ const ancestorsMatch = (
  */
 export const hasAncestorTextRules = (): boolean =>
   readIndex()?.hasAncestorRules ?? false;
+
+/**
+ * Whether a rule that sets a text property requires one of these tokens of
+ * an ancestor: only then can adding or removing them on an element change
+ * which rules apply to the elements below it (see matchedStyleFlagsFor). The
+ * page's `dark` class, which most apps' rules require of no ancestor, then
+ * sends nothing down the tree.
+ */
+export const ancestorTextRulesRead = (tokens: Iterable<string>): boolean => {
+  const required = readIndex()?.ancestorTokens;
+  if (!required?.size) return false;
+  for (const token of tokens) {
+    if (required.has(token)) return true;
+  }
+  return false;
+};
 
 const fallbackFlags = (tokens: ReadonlySet<string>): number => {
   let flags = 0;

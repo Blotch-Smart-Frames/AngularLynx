@@ -1614,6 +1614,24 @@ describe('loose text, element by element', () => {
       expect(style(bold)).not.toContain(FONT_SIZE);
     });
 
+    it('keeps a [style.x] text style and its copy when the whole style changes', () => {
+      const text = doc.createElement('text');
+      page.appendChild(text);
+      const bold = doc.createElement('b');
+      text.appendChild(bold);
+      text.setStyle('font-size', '20px');
+      commit();
+
+      text.setAttribute('style', 'color: red');
+      commit();
+      // The declaration itself, not only its copy.
+      expect(style(text)).toMatch(/(^|; )font-size: 20px/);
+      expect(style(text)).toContain('--angular-lynx-font-size: 20px');
+      expect(style(text)).toContain('--angular-lynx-color: red');
+      expect(style(bold)).toContain(FONT_SIZE);
+      expect(style(bold)).toContain(COLOR);
+    });
+
     it('leaves a <text> that never had a text style as it is when one goes', () => {
       const text = doc.createElement('text');
       page.appendChild(text);

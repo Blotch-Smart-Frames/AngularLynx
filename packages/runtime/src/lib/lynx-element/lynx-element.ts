@@ -1544,12 +1544,14 @@ export class LynxElement implements BaseLynxElement {
     const textStyles = this.#readsInlineTextStyles()
       ? this.#inlineTextFlags()
       : -1;
-    const whole = this.#inlineStyleFor(inlineStyle);
-    // A style="--x: …" makes the [style.x] styles that come after it go into
-    // the string as well (see #setsVariables).
-    if (whole && VARIABLE_DECLARATION.test(whole)) this.#setsVariables = true;
-    __SetInlineStyles(this.element, whole);
     this.#inlineStyleWhole = inlineStyle;
+    // Written as #rewriteInlineStyle writes it, with the [style.x] styles
+    // the app hasn't removed: __SetInlineStyles replaces them all, and the
+    // copies of its text styles read them (see #inlineTextCopies), so a
+    // `[style.font-size]` lost here left its copy for the tags inside to
+    // draw at a size the element no longer had. A style="--x: …" makes the
+    // [style.x] styles go into the string (see #setsVariables).
+    this.#rewriteInlineStyle();
     if (textStyles >= 0) this.#inlineTextStylesChanged(textStyles);
     this.#layoutChanged();
     scheduleSettleFlush();

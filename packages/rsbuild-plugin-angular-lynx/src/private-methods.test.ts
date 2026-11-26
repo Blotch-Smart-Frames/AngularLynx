@@ -1867,6 +1867,27 @@ describe('splitPrivateChains', () => {
         expect(() => runInNewContext(compile(code, layer))).not.toThrow();
       }
     }
+    // What runs as the default value is evaluated counts: a class's
+    // `extends`, decorators and computed member names, and a method's
+    // computed name.
+    for (const code of [
+      'class A { #m() {} async f(x) { const { y = [x?.#m(), class extends (await Promise.resolve(Object)) {}] } = {}; return y; } }',
+      'class A { #m() {} async f(x) { const { y = [x?.#m(), class { [await 1]() {} }] } = {}; return y; } }',
+      'class A { #m() {} async f(x) { const { y = [x?.#m(), class { static [await 1] = 2; }] } = {}; return y; } }',
+      'class A { #m() {} async f(x) { const { y = [x?.#m(), { [await 1]() {} }] } = {}; return y; } }',
+    ]) {
+      expect(split(code)).toBe(code);
+      for (const layer of [LAYERS.MAIN_THREAD, LAYERS.BACKGROUND]) {
+        expect(() => runInNewContext(compile(code, layer))).not.toThrow();
+      }
+    }
+    // Its members' bodies and initializers, and a function's parameters, have their own.
+    for (const code of [
+      'class A { #m() {} f(x) { const { y = [x?.#m(), class { async g() { await 1; } static h = async () => await 1; }] } = {}; return y; } }',
+      'class A { #m() {} f(x) { const { y = [x?.#m(), { async g(a = 1) { await a; } }] } = {}; return y; } }',
+    ]) {
+      expect(split(code)).toContain('?.#m?.call(');
+    }
     // A `yield` in another element doesn't count.
     const other = split(
       'class A { #a; *f(x) { let y; [y = x?.#a.length, y] = [undefined, yield]; return y; } }',

@@ -462,12 +462,41 @@ const yieldingDefault = (node: ts.Node): boolean => {
         (ts.isArrayLiteralExpression(parent.parent) ||
           ts.isPropertyAssignment(parent.parent))));
   if (!isDefault) return false;
-  const yields = (inner: ts.Node): boolean =>
-    ts.isYieldExpression(inner) ||
-    ts.isAwaitExpression(inner) ||
-    (!ts.isFunctionLike(inner) &&
-      !ts.isClassLike(inner) &&
-      (ts.forEachChild(inner, (child) => yields(child) || undefined) ?? false));
+  /**
+   * Whether `test` holds for any of the node's children.
+   */
+  const any = (node: ts.Node, test: (child: ts.Node) => boolean): boolean =>
+    ts.forEachChild(node, (child) => test(child) || undefined) ?? false;
+  /**
+   * Whether what runs as the default value is evaluated has a `yield` or an
+   * `await`: a function's computed name, but not its body or parameters,
+   * and a class's `extends`, decorators and computed member names, but not
+   * its members' bodies or initializers.
+   */
+  const yields = (inner: ts.Node): boolean => {
+    if (ts.isYieldExpression(inner) || ts.isAwaitExpression(inner)) {
+      return true;
+    }
+    if (ts.isClassLike(inner)) {
+      return any(inner, (child) =>
+        ts.isClassElement(child)
+          ? any(child, (part) =>
+              ts.isDecorator(part) || ts.isComputedPropertyName(part)
+                ? yields(part)
+                : false,
+            )
+          : yields(child),
+      );
+    }
+    if (ts.isFunctionLike(inner)) {
+      return (
+        inner.name !== undefined &&
+        ts.isComputedPropertyName(inner.name) &&
+        yields(inner.name)
+      );
+    }
+    return any(inner, yields);
+  };
   return yields(node);
 };
 

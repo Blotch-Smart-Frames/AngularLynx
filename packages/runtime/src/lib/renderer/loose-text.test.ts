@@ -514,7 +514,8 @@ class RaisedHost {
       >n<b class="in-exp">2</b><sup class="sup-in-exp">m</sup></span
     >
     y<span class="lift" [style.vertical-align]="lift()"
-      ><b class="in-lift">b</b><sup class="sup-in-lift">s</sup></span
+      ><b class="in-lift">b</b
+      ><sup class="sup-in-lift">s<b class="in-sup-in-lift">t</b></sup></span
     >
     <span [class.note]="note()"
       ><sup class="note-sup">a<b class="in-note-sup">b</b></sup></span
@@ -1272,6 +1273,9 @@ describe('loose text', () => {
     fixture.detectChanges();
     expect(style('in-lift')).toContain('vertical-align: 4px');
     expect(style('sup-in-lift')).not.toContain('vertical-align');
+    // The tags inside the <sup> still rise with its own text (review of
+    // #735).
+    expect(style('in-sup-in-lift')).toContain('vertical-align: 0.4em');
     fixture.componentInstance.lift.set(null);
     fixture.detectChanges();
     expect(style('in-lift')).not.toContain('vertical-align');

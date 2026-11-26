@@ -212,6 +212,31 @@ export const baselineShiftFor = (
   return moved ? [round(em), round(px)] : null;
 };
 
+/**
+ * The distance to write inline on the first tag of `chain` (see
+ * baselineShiftFor): that of the whole chain, or where the runtime can't
+ * tell it or Lynx can't take it, that of the longest part of the chain from
+ * the tag up that it can. Lynx drops an inline `vertical-align:
+ * calc(0.4em + 10px)`, which drew the tag on the line (iOS 27 Simulator,
+ * Lynx Explorer, November 2026), and the tag's size in pixels isn't known
+ * here to add the two up, so a distance in both units is one it can't take.
+ *
+ * A `<b>` in a `<sup>` inside a tag the runtime can't follow (one raised by
+ * `super`, or by `0.5em` above a tag with a size of its own, or by `10px`)
+ * still rises with the `<sup>`'s own text, which its rule moves: a tag that
+ * shared none of the distance would sit on the line on iOS (review of
+ * #735). The `<sup>` itself, which nothing between moves, keeps its rule's.
+ */
+export const inlineBaselineShift = (
+  chain: readonly ShiftLink[],
+): BaselineDistance | null => {
+  for (let length = chain.length; length > 1; length--) {
+    const shift = baselineShiftFor(chain.slice(0, length));
+    if (shift && !(shift[0] && shift[1])) return shift;
+  }
+  return null;
+};
+
 /** The `font-size` bit in the style index. */
 export const FONT_SIZE_FLAG =
   1 << INHERITED_TEXT_PROPERTIES.indexOf('font-size');

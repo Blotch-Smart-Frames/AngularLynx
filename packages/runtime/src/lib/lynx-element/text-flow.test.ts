@@ -8,6 +8,7 @@ import {
   VERTICAL_ALIGN_FLAG,
   hasAncestorTextRules,
   inheritanceStyleFor,
+  inlineBaselineShift,
   isBlankText,
   isBlockDisplay,
   isRowOrientation,
@@ -341,6 +342,43 @@ describe('baselineShiftFor', () => {
     ],
   ])('leaves the text alone with %s', (_, chain) => {
     expect(baselineShiftFor(chain)).toBeNull();
+  });
+});
+
+describe('inlineBaselineShift', () => {
+  const sup: ShiftLink = [SMALLER_FLAG | VERTICAL_ALIGN_FLAG, [0.4, 0]];
+  const plain: ShiftLink = [0, undefined];
+  const sized: ShiftLink = [FONT_SIZE_FLAG, undefined];
+  const exp: ShiftLink = [VERTICAL_ALIGN_FLAG, [0.5, 0]];
+  const pixels: ShiftLink = [VERTICAL_ALIGN_FLAG, [0, 4]];
+  const unknown: ShiftLink = [VERTICAL_ALIGN_FLAG, null];
+
+  it.each<[string, ShiftLink[], [number, number] | null]>([
+    ['the whole chain where it can', [plain, sup, exp], [1, 0]],
+    ['a distance in pixels alone', [plain, pixels], [0, 4]],
+    // Review of #735: a <b> in a <sup> inside a tag the runtime can't follow
+    // rises with the <sup>'s own text.
+    [
+      'the <sup>’s distance, below one in pixels',
+      [plain, sup, pixels],
+      [0.4, 0],
+    ],
+    [
+      'the <sup>’s distance, below one it can’t copy',
+      [plain, sup, unknown],
+      [0.4, 0],
+    ],
+    [
+      'the <sup>’s distance, below an em one above a size',
+      [plain, sup, sized, exp],
+      [0.4, 0],
+    ],
+    // The <sup> itself keeps its rule's distance.
+    ['nothing on the <sup> below one in pixels', [sup, pixels], null],
+    ['nothing below a distance it can’t copy', [plain, unknown, sup], null],
+    ['nothing for a tag alone', [sup], null],
+  ])('writes %s', (_, chain, shift) => {
+    expect(inlineBaselineShift(chain)).toEqual(shift);
   });
 });
 

@@ -56,8 +56,8 @@ import {
   type ShiftLink,
   VERTICAL_ALIGN_FLAG,
   TAKES_RAW_TEXT,
-  baselineShiftFor,
   hasAncestorTextRules,
+  inlineBaselineShift,
   inheritanceStyleFor,
   isBlankText,
   isBlockDisplay,
@@ -514,14 +514,9 @@ const SHIFT_STYLES = new Set(['font-size', 'vertical-align']);
  */
 const baselineShiftStyle = (chain: readonly ShiftLink[]): string => {
   if (__WEB__) return '';
-  const shift = baselineShiftFor(chain);
+  const shift = inlineBaselineShift(chain);
   if (!shift) return '';
   const [em, px] = shift;
-  // Lynx drops an inline `vertical-align: calc(0.4em + 10px)`, which drew
-  // the tag on the line (iOS 27 Simulator, Lynx Explorer, November 2026),
-  // and the tag's size in pixels isn't known here to add the two up. So a
-  // tag moved by both is left to its own rule.
-  if (em && px) return '';
   return `vertical-align: ${px ? `${px}px` : `${em}em`}`;
 };
 

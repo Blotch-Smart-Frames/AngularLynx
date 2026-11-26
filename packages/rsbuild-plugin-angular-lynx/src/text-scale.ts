@@ -14,6 +14,16 @@ export const TEXT_SCALE_STYLESHEET = path.resolve(
   './styles/text-scale.css',
 );
 
+/**
+ * The `text { font-size: 1rem }` rule for an app where `font-size` doesn't
+ * inherit (see the file). Only the native bundle gets it, ahead of the app's
+ * own stylesheets, and only then (see entry.ts).
+ */
+export const TEXT_DEFAULT_SIZE_STYLESHEET = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  './styles/text-default-size.css',
+);
+
 /** A plain length in px, such as `16px` or `17.5px`. */
 const PX = /^(\d*\.?\d+)px$/i;
 

@@ -41,7 +41,11 @@ import {
   INHERITED_TEXT_PROPERTIES,
   textInheritanceForLynx,
 } from './text-inheritance';
-import { TEXT_SCALE_STYLESHEET } from './text-scale';
+import {
+  TEXT_DEFAULT_SIZE_STYLESHEET,
+  TEXT_SCALE_STYLESHEET,
+} from './text-scale';
+import { normalizeOptions } from './utils/options';
 import { typeSelectorsForLynx } from './type-selectors';
 import { ZeroBigIntLiteralsPlugin } from './zero-bigint-literals';
 
@@ -452,24 +456,21 @@ describe('applyEntry', () => {
   });
 
   it("starts the main thread from the app's entry, with the blur-view stylesheet first on native and the system font first on web, then the HTML text tags' bold on both", () => {
-    const imports = (name: string) => {
+    const imports = (name: string, options = entryOptions) => {
       const { api, triggerChain } = createMockApi();
       const { chain, entryBuilders } = createMockChain({
         entries: { main: { values: () => ['./src/styles.css', './main.ts'] } },
       });
-      applyEntry(
-        api as never,
-        entryOptions,
-        createBackgroundEntries(),
-        new Set(),
-      );
+      applyEntry(api as never, options, createBackgroundEntries(), new Set());
       triggerChain(chain, { name, config: {} }, false);
       const [mainThread] = entryBuilders['main__main-thread'].add.mock.calls[0];
       expect(mainThread.layer).toBe(LAYERS.MAIN_THREAD);
       return mainThread.import;
     };
 
-    expect(imports('lynx')).toEqual([
+    // By default font-size inherits, so a <text> with no size of its own
+    // takes its parent's, and needs no rule of its own (issue #685).
+    expect(imports('lynx', normalizeOptions())).toEqual([
       BLUR_VIEW_STYLESHEET,
       TEXT_SCALE_STYLESHEET,
       HTML_TEXT_TAGS_STYLESHEET,
@@ -482,6 +483,47 @@ describe('applyEntry', () => {
       './src/styles.css',
       './main.ts',
     ]);
+    expect(imports('web', normalizeOptions())).toEqual(imports('web'));
+  });
+
+  // An app that turns inheritance off, or leaves font-size out of its list,
+  // gets `text { font-size: 1rem }`, so such a <text> still takes the page's
+  // size rather than Lynx's 14px (issue #673).
+  it("gives the native bundle a <text>'s font size where font-size doesn't inherit", () => {
+    const imports = (options: object) => {
+      const { api, triggerChain } = createMockApi();
+      const { chain, entryBuilders } = createMockChain({
+        entries: { main: { values: () => ['./main.ts'] } },
+      });
+      applyEntry(
+        api as never,
+        normalizeOptions(options),
+        createBackgroundEntries(),
+        new Set(),
+      );
+      triggerChain(chain, { name: 'lynx', config: {} }, false);
+      return entryBuilders['main__main-thread'].add.mock.calls[0][0].import;
+    };
+
+    for (const options of [
+      { enableCSSInheritance: false },
+      { customCSSInheritanceList: ['color'] },
+    ]) {
+      expect(imports(options)).toEqual([
+        BLUR_VIEW_STYLESHEET,
+        TEXT_SCALE_STYLESHEET,
+        TEXT_DEFAULT_SIZE_STYLESHEET,
+        HTML_TEXT_TAGS_STYLESHEET,
+        './main.ts',
+      ]);
+    }
+    for (const options of [
+      {},
+      { enableCSSInheritance: true },
+      { customCSSInheritanceList: ['color', 'font-size'] },
+    ]) {
+      expect(imports(options)).not.toContain(TEXT_DEFAULT_SIZE_STYLESHEET);
+    }
   });
 
   // Angular runs on the main thread only, so the background thread gets the
@@ -796,6 +838,46 @@ describe('applyEntry', () => {
     triggerChain(chain, { name: 'lynx', config: {} }, false);
 
     expect((pluginUses[0].args[0] as any).enableA11y).toBe(false);
+  });
+
+  // Native inherits only font-size by default, so a <text> takes its
+  // parent's size (issue #685). Lynx for Web ignores the list and would pass
+  // color and every other text style down too, which native doesn't, so the
+  // web bundle gets the flag only for an app that asks for more than
+  // font-size: the browser passes font-size down without it.
+  it('turns on font-size inheritance for native, and on the web only for more than font-size', () => {
+    const inheritance = (name: string, options: object) => {
+      const { api, triggerChain } = createMockApi();
+      const { chain, pluginUses } = createMockChain({
+        entries: { main: { values: () => ['./src/main.ts'] } },
+      });
+      applyEntry(
+        api as never,
+        normalizeOptions(options),
+        createBackgroundEntries(),
+        new Set(),
+      );
+      triggerChain(chain, { name, config: {} }, false);
+      const { enableCSSInheritance, customCSSInheritanceList } = pluginUses[0]
+        .args[0] as any;
+      return { enableCSSInheritance, customCSSInheritanceList };
+    };
+
+    expect(inheritance('lynx', {})).toEqual({
+      enableCSSInheritance: true,
+      customCSSInheritanceList: ['font-size'],
+    });
+    expect(inheritance('web', {}).enableCSSInheritance).toBe(false);
+    expect(
+      inheritance('web', { enableCSSInheritance: true }).enableCSSInheritance,
+    ).toBe(true);
+    expect(
+      inheritance('web', { customCSSInheritanceList: ['font-size', 'color'] })
+        .enableCSSInheritance,
+    ).toBe(true);
+    expect(
+      inheritance('lynx', { enableCSSInheritance: false }).enableCSSInheritance,
+    ).toBe(false);
   });
 
   it('passes the defaultOverflowVisible option to the template plugin', () => {

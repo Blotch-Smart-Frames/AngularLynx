@@ -64,7 +64,7 @@ Lynx shrinks a hidden element and everything in it to 0×0, but on iOS what's in
 
 ### No CSS inheritance
 
-Every element must declare its own `font-size`, `color`, etc. Exceptions: nested `<text>` inherits `color`/`font-family` from the `<text>` directly around it (a `<view>` in between stops it: text inside a `<view>` you project into a component's `<text>` draws black), CSS variables (`--x`) inherit, and HTML text tags (`<p>`, `<span>`…) and loose text take the text styles their ancestors' classes set, through variables the build adds (see [lynx-elements.md](lynx-elements.md)).
+Every element must declare its own `color`, `line-height`, etc. Exceptions: `font-size` inherits (the build turns on Lynx's inheritance for it alone, so a `<text>` with no size takes its parent's), nested `<text>` inherits `color`/`font-family` from the `<text>` directly around it (a `<view>` in between stops it: text inside a `<view>` you project into a component's `<text>` draws black), CSS variables (`--x`) inherit, and HTML text tags (`<p>`, `<span>`…) and loose text take the text styles their ancestors' classes set, through variables the build adds (see [lynx-elements.md](lynx-elements.md)).
 
 ### A hidden view in a `<text>` leaves a gap on iOS
 
@@ -107,11 +107,11 @@ Lynx draws text only inside `<text>`, so the runtime draws raw text whose parent
 
 ### Default `font-size` is 14px (not 16px), and so is `1rem`
 
-Every `rem` size is an eighth smaller than in a browser: Tailwind's `h-12` is 42px, not 48px. `page { font-size: 16px; }` makes `1rem` 16px (the dolan UI theme sets it), and so the text of HTML text tags, loose text and a `<text>` with no font size of its own (in the native bundle the build gives `<text>` `font-size: 1rem`, which any class or `text` rule of the app's replaces). No keyword sizes (`small`, `medium`, `large`).
+Every `rem` size is an eighth smaller than in a browser: Tailwind's `h-12` is 42px, not 48px. `page { font-size: 16px; }` makes `1rem` 16px (the dolan UI theme sets it), and so the text of HTML text tags, loose text and a `<text>` with no font size of its own, which inherits it, or its parent's (see "No CSS inheritance"). No keyword sizes (`small`, `medium`, `large`).
 
 ### Text follows the phone's text size through `rem`, not `px`
 
-The `ng build --platform` apps follow Dynamic Type (iOS) and the font size (Android), at launch and when it changes: the native build writes a `page` rule's px `font-size` in `sp` (adding `page { font-size: 14px }` for an app without one), and only `sp` takes the phone's scale, so `1rem`, and everything sized in `rem` (Tailwind's `text-base`, `h-12`, `p-4`, the dolan components), grows by it. A size in `px` stays as written: use it only for what mustn't grow. A `<text>` with no font size of its own is `1rem`, so it grows too. Lay out for growth: a fixed `px` height around `rem` text overflows at the large sizes, which reach about 3.1 on iOS. `inject(LynxAccessibilitySettings).textScale()` is the scale (1 at the default) for a layout that has to change. `"textScaling": false` in the build target's options keeps the default size, and `{ "max": 1.6 }` caps it. The web preview and Lynx Explorer stay at 1.
+The `ng build --platform` apps follow Dynamic Type (iOS) and the font size (Android), at launch and when it changes: the native build writes a `page` rule's px `font-size` in `sp` (adding `page { font-size: 14px }` for an app without one), and only `sp` takes the phone's scale, so `1rem`, and everything sized in `rem` (Tailwind's `text-base`, `h-12`, `p-4`, the dolan components), grows by it. A size in `px` stays as written: use it only for what mustn't grow. A `<text>` with no font size of its own inherits its parent's (the page's, unless an element above sets one), so it grows too, nested in another `<text>` as well. Lay out for growth: a fixed `px` height around `rem` text overflows at the large sizes, which reach about 3.1 on iOS. `inject(LynxAccessibilitySettings).textScale()` is the scale (1 at the default) for a layout that has to change. `"textScaling": false` in the build target's options keeps the default size, and `{ "max": 1.6 }` caps it. The web preview and Lynx Explorer stay at 1.
 
 ### `line-height` only works on `<text>` elements
 

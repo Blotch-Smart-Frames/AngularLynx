@@ -1906,6 +1906,27 @@ describe('splitPrivateChains', () => {
     expect(
       split('class A { #a; *f(x) { const [y = x?.#a.#a, z = yield] = []; } }'),
     ).toBe('class A { #a; *f(x) { const [y = x?.#a?.#a, z = yield] = []; } }');
+    // With the `yield` in the same default value, SWC needs no variable for
+    // it, so it still runs as natively.
+    const sameDefault = `
+      class A {
+        #a;
+        constructor(a) { this.#a = a; }
+        static *f(x) { const [y = [x?.#a.#a, yield 'asked']] = []; return y; }
+      }
+      const run = (x) => { const it = A.f(x); it.next(); return it.next('v').value; };
+      [run(new A(new A(1))), run(null)];
+    `;
+    const expected = runInNewContext(sameDefault);
+    expect(expected).toEqual([
+      [1, 'v'],
+      [undefined, 'v'],
+    ]);
+    for (const layer of [LAYERS.MAIN_THREAD, LAYERS.BACKGROUND]) {
+      expect(runInNewContext(compile(split(sameDefault), layer))).toEqual(
+        expected,
+      );
+    }
   });
 
   it('gives the link after a private member in an optional chain its own `?.`', () => {

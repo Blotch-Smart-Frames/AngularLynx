@@ -295,8 +295,10 @@ export const splitPrivateChains = (code: string, filename: string): string => {
       !node.questionDotToken
     ) {
       // A link right after a private member of the same chain. A private
-      // one is split even where SWC then can't compile the default value,
-      // as without the `?.` SWC fails the module (see above).
+      // one is split even in a default value with a `yield` or an `await`:
+      // without the `?.` SWC leaves the inner read and fails the module
+      // (see above), and with it the default value still compiles and runs
+      // (checked in the tests).
       const inner = skipNonNull(node.expression);
       if (
         isPrivateAccess(inner) &&

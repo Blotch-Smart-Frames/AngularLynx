@@ -306,13 +306,16 @@ const subjectsOf = (selectorList: string): Subject[] => {
         }
         // An outermost compound with nothing we can check, as in
         // `:root .a`, or none at all, as in a nested rule's `> .b`, requires
-        // no ancestor we can tell.
+        // no ancestor we can tell. It still requires an ancestor to be there:
+        // `* > * > .a` doesn't match an `.a` with one ancestor, so the rule
+        // isn't exact.
         while (
           compounds.length > 1 &&
           !compounds[compounds.length - 1]!.length
         ) {
           compounds.pop();
           combinators.pop();
+          exact = false;
         }
         const [tokens, ...ancestors] = compounds.map((c) => c.sort());
         subjects.push({

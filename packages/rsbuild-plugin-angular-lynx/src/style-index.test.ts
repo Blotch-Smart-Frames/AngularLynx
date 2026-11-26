@@ -294,6 +294,8 @@ describe('verticalAligns', () => {
     ['a structural pseudo-class', '.a:first-child'],
     ['a sibling', '.b + .a'],
     ['an ancestor it can’t check', ':root .a'],
+    // Each `*` requires an ancestor (review of #735).
+    ['ancestors of any kind', '* > * > .a'],
   ])('can’t copy the distance of a rule with %s', (_, selector) => {
     expect(
       verticalAligns(`${selector} { vertical-align: 1px }`)![0]![2],
@@ -312,8 +314,24 @@ describe('verticalAligns', () => {
   });
 
   it('copies the distance of a rule for any element', () => {
-    expect(verticalAligns('* { vertical-align: 1px }')).toEqual([
+    expect(
+      verticalAligns(
+        '* { vertical-align: 1px }',
+        '.b * .a { vertical-align: 2px }',
+      ),
+    ).toEqual([
       [[], [], [0, 1], 0, 0, 0],
+      [
+        ['a'],
+        [
+          [' ', []],
+          [' ', ['b']],
+        ],
+        [0, 2],
+        2000,
+        1,
+        1,
+      ],
     ]);
   });
 

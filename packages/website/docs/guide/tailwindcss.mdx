@@ -109,7 +109,7 @@ Lynx has no attribute selectors, so `data-[state=open]:` can't match. Give the e
 
 ```html
 <view class="group" [class.ui-open]="open()">
-  <view class="bg-muted ui-open:bg-primary"></view>
+  <view class="bg-muted parent-ui-open:bg-primary"></view>
   <text class="text-muted-foreground group-ui-open:text-foreground">
     Details
   </text>

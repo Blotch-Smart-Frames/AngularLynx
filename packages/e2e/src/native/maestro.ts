@@ -232,8 +232,9 @@ const DRIVER_STARTUP_TIMEOUT_MS = Number(
 /**
  * The longest one flow may take. The slowest to pass in ten iOS and Android
  * CI jobs' logs took 97s. One that fails stops at the wait it failed on, the
- * longest of which (open-app.yaml's for Explorer, tried three times) takes
- * about 90s.
+ * longest of which is webview.yaml's 120s for WebKit's processes to start
+ * (issue #633), after about 15s of opening the app and its pages; the next
+ * is open-app.yaml's for Explorer, tried three times, at about 90s.
  */
 const FLOW_TIMEOUT_MS = 4 * 60_000;
 

@@ -62,7 +62,13 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
     // (onTopResumedActivityChanged, which older Androids never call).
     private var appState = "inactive"
     private var resumed = false
-    private var topResumed = true
+
+    // Whether this is the top resumed activity. Android 10 and later call
+    // onTopResumedActivityChanged(true) after onResume once it is, but never
+    // say false first, so it starts false there: an activity started without
+    // the focus in split screen stays "inactive". Older Androids never call
+    // it, so a resumed activity is the one with the focus.
+    private var topResumed = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q
 
     // Sends the accessibility settings again when the user changes one while
     // the app is open: Remove animations (the animator duration scale), the

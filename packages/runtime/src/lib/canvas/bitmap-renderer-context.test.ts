@@ -327,7 +327,7 @@ describe('a canvas with a bitmaprenderer context', () => {
     await expect(offscreen.convertToBlob()).resolves.toBeInstanceOf(Blob);
   });
 
-  it('hands its bitmap over with transferToImageBitmap(), and is blank after', () => {
+  it('hands its bitmap over with transferToImageBitmap(), and is blank after at the bitmap’s size', () => {
     const canvas = new LynxOffscreenCanvas(8, 4);
     const context = contextOf(canvas);
     context.transferFromImageBitmap(new LynxImageBitmap(7, 3, 2));
@@ -338,18 +338,39 @@ describe('a canvas with a bitmaprenderer context', () => {
       height: 2,
       transfer: true,
     });
+    // The spec's new bitmap has the dimensions of the one taken, not the
+    // canvas's, so the next transfer is of the same size.
     expect(bridge.transferToBitmapRenderer).toHaveBeenLastCalledWith(
       contextIdOf(),
       0,
-      8,
-      4,
+      3,
+      2,
     );
-    expect(canvasSourceOf(canvas)!.width).toBe(8);
-    // A bitmap of no pixels hands over none, and leaves the canvas blank.
+    expect(canvasSourceOf(canvas)!.width).toBe(3);
+    const next = canvas.transferToImageBitmap();
+    expect([next.width, next.height]).toEqual([3, 2]);
+    // The context's bitmap mode stays as it was: a resize leaves the size.
+    canvas.width = 16;
+    expect(canvasSourceOf(canvas)!.width).toBe(3);
+    // A bitmap of no pixels hands over none, and the canvas stays empty.
     context.transferFromImageBitmap(new LynxImageBitmap(0, 0, 0));
     const empty = canvas.transferToImageBitmap();
     expect([empty.width, empty.height]).toEqual([0, 0]);
-    expect(bridgeGL.imageFromCanvas).toHaveBeenCalledOnce();
-    expect(canvasSourceOf(canvas)!.width).toBe(8);
+    expect(bridgeGL.imageFromCanvas).toHaveBeenCalledTimes(2);
+    expect(canvasSourceOf(canvas)!.width).toBe(0);
+  });
+
+  it('converts to a Blob by the size of what it shows, not the canvas’s', async () => {
+    // A canvas of no size showing a bitmap encodes the bitmap.
+    const sized = new LynxOffscreenCanvas(8, 4);
+    contextOf(sized).transferFromImageBitmap(new LynxImageBitmap(7, 3, 2));
+    sized.width = 0;
+    await expect(sized.convertToBlob()).resolves.toBeInstanceOf(Blob);
+    // A canvas showing a bitmap of no pixels has nothing to encode.
+    const empty = new LynxOffscreenCanvas(8, 4);
+    contextOf(empty).transferFromImageBitmap(new LynxImageBitmap(0, 0, 0));
+    await expect(empty.convertToBlob()).rejects.toMatchObject({
+      name: 'IndexSizeError',
+    });
   });
 });

@@ -165,7 +165,7 @@ static AngularLynxDecodedImage *overBlack(AngularLynxDecodedImage *image) {
 }
 
 /// After OffscreenCanvas.transferToImageBitmap() took the image: the canvas
-/// is blank, as the runtime then says again with the canvas's size.
+/// is blank, as the runtime then says again with the size of the bitmap taken.
 - (void)clearForTransfer {
   _image = nil;
   if (_target) [self present];

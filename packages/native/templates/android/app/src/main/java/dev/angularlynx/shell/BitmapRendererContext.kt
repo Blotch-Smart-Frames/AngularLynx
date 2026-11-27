@@ -125,7 +125,7 @@ class BitmapRendererContext(override val canvasId: String, attributes: ReadableM
 
     /**
      * After OffscreenCanvas.transferToImageBitmap() took the bitmap: the
-     * canvas is blank, as the runtime then says again with the canvas's size.
+     * canvas is blank, as the runtime then says again with the size of the bitmap taken.
      */
     @Synchronized
     override fun clearForTransfer() {

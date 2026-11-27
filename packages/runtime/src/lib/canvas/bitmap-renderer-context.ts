@@ -180,10 +180,18 @@ export class LynxImageBitmapRenderingContext {
 
   /**
    * @internal `OffscreenCanvas.transferToImageBitmap()` took what the canvas
-   * showed: it's blank now.
+   * showed. The HTML spec gives the canvas a new transparent bitmap "of the
+   * same dimensions" as the one taken, which is the bitmap's size, not the
+   * canvas's, and leaves the context's bitmap mode as it was: a canvas that
+   * showed a bitmap keeps that size when it's resized, as it would have.
    */
   didTransfer(): void {
-    this.#showBlank();
+    this.#bridge.transferToBitmapRenderer(
+      this.#id,
+      0,
+      this.#width,
+      this.#height,
+    );
   }
 
   /**

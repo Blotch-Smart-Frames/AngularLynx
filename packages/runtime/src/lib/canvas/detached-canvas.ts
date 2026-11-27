@@ -139,7 +139,10 @@ export class LynxOffscreenCanvas extends LynxCanvasBase {
   }
 
   convertToBlob(options?: { type?: string; quality?: number }): Promise<Blob> {
-    if (this.width === 0 || this.height === 0) {
+    // The size of what's encoded: a bitmaprenderer context's bitmap, whose
+    // size needn't be the canvas's (see CanvasSurface.source).
+    const source = this.surface.source;
+    if (source.width === 0 || source.height === 0) {
       const error = new Error(
         "Failed to execute 'convertToBlob' on 'OffscreenCanvas': The size of the OffscreenCanvas is zero.",
       );

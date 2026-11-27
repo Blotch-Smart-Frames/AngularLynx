@@ -206,7 +206,7 @@ dependencies {
     // VideoUI extends <video>'s classes and reads its media3 PlayerView, at
     // the media3 version xelement-video depends on.
     implementation("org.lynxsdk.lynx:xelement-video:$lynxVersion")
-    implementation("androidx.media3:media3-ui:1.0.2")
+    implementation("androidx.media3:media3-ui:1.11.1")
     implementation("androidx.media3:media3-common:1.0.2")
     // cspell:words servalsvg libserval
     // ServalSVG, the engine <svg> draws with. xelement-svg asks for 0.0.2,

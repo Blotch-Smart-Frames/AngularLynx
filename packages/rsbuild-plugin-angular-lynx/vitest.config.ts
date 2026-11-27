@@ -8,6 +8,10 @@ export default defineConfig({
   },
   test: {
     include: ['src/**/*.test.ts'],
+    // FormatJS reads a host's default locale and time zone once, as its
+    // modules load, so the Intl runtime's tests load them afresh for each
+    // phone (runtime.test.ts). vi.resetModules() reaches inlined modules only.
+    server: { deps: { inline: [/[\\/]@formatjs[\\/]/] } },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],

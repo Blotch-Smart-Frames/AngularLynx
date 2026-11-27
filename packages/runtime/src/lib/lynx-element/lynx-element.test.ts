@@ -1155,25 +1155,13 @@ describe('LynxElement', () => {
     });
 
     /**
-     * Loads LynxElement again under a FinalizationRegistry whose callbacks
-     * the test runs, and WeakRefs whose targets the test can collect, as
-     * the engine would once nothing else holds them.
+     * Loads LynxElement again under WeakRefs whose targets the test can
+     * collect, as the engine would once nothing else holds them, and which
+     * count how often they're read.
      */
     const withCollection = async () => {
       const collected = new Set<object>();
-      const finalizers: { target: object; held: unknown }[] = [];
-      let cleanup: (held: unknown) => void = () => {};
-      vi.stubGlobal(
-        'FinalizationRegistry',
-        class {
-          constructor(callback: (held: unknown) => void) {
-            cleanup = callback;
-          }
-          register(target: object, held: unknown): void {
-            finalizers.push({ target, held });
-          }
-        },
-      );
+      const reads = { count: 0 };
       vi.stubGlobal(
         'WeakRef',
         class<T extends object> {
@@ -1182,6 +1170,7 @@ describe('LynxElement', () => {
             this.#target = target;
           }
           deref(): T | undefined {
+            reads.count++;
             return collected.has(this.#target) ? undefined : this.#target;
           }
         },
@@ -1189,15 +1178,12 @@ describe('LynxElement', () => {
       vi.resetModules();
       const fresh = await import('./lynx-element');
       /**
-       * Collects `target` and runs the callbacks registered for it.
+       * Collects `target`, as the engine would.
        */
       const collect = (target: object): void => {
         collected.add(target);
-        for (const finalizer of finalizers) {
-          if (finalizer.target === target) cleanup(finalizer.held);
-        }
       };
-      return { LynxElement: fresh.LynxElement, collect };
+      return { LynxElement: fresh.LynxElement, collect, reads };
     };
 
     it('no longer finds it', async () => {
@@ -1225,12 +1211,30 @@ describe('LynxElement', () => {
       expect(Fresh.byUniqueId(id)).toBe(newer);
     });
 
-    it('still registers elements where the engine has no FinalizationRegistry', async () => {
-      vi.stubGlobal('FinalizationRegistry', undefined);
-      vi.resetModules();
-      const { LynxElement: Fresh } = await import('./lynx-element');
-      const registered = new Fresh(fakeRef);
-      expect(Fresh.byUniqueId(__GetElementUniqueID(fakeRef))).toBe(registered);
+    // Without a FinalizationRegistry, the collected wrappers' entries are
+    // swept out as the registry grows, so it doesn't keep one for every
+    // element the app ever made.
+    it('sweeps out the entries of collected elements as it grows', async () => {
+      const { LynxElement: Fresh, collect, reads } = await withCollection();
+      const elements = Array.from(
+        { length: 1024 },
+        () => new Fresh({} as ElementRef),
+      );
+      for (const dropped of elements.slice(0, 1000)) collect(dropped);
+      // Not swept yet: refreshSafeAreaInsets reads every entry.
+      reads.count = 0;
+      Fresh.refreshSafeAreaInsets();
+      expect(reads.count).toBe(1024);
+
+      // One more is past what it holds before sweeping.
+      const added = new Fresh({} as ElementRef);
+      reads.count = 0;
+      Fresh.refreshSafeAreaInsets();
+      expect(reads.count).toBe(25);
+      expect(Fresh.byUniqueId(__GetElementUniqueID(added.element))).toBe(added);
+      expect(
+        Fresh.byUniqueId(__GetElementUniqueID(elements[1023]!.element)),
+      ).toBe(elements[1023]);
     });
   });
 

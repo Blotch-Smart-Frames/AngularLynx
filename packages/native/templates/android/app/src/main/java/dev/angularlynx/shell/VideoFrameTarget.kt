@@ -44,10 +44,14 @@ class VideoFrameTarget private constructor(
     /** The surface the player draws into. */
     val surface = Surface(surfaceTexture)
 
-    // The latest frame's state, kept on the target's thread. `hasImage` is
-    // also read on the engine thread, where `videoWidth` asks for it.
+    // Whether the latest frame is current: set on the target's thread, read
+    // on the engine thread (`videoWidth` asks), and cleared by a reset on
+    // the UI thread, under the lock so a latch can't set it back after.
+    private val readiness = Any()
     @Volatile
     private var hasImage = false
+    /** A reset hasn't reached the target's thread yet. */
+    private var resetPending = false
     /** The timestamp of the frame the last reset forgot, which a latch with nothing new keeps. */
     private var staleTimestamp = 0L
     private var released = false
@@ -66,9 +70,17 @@ class VideoFrameTarget private constructor(
      * frame comes there's nothing current to copy.
      */
     fun reset() {
-        handler.post {
+        // Not current from here on, though the thread may be busy: a latch
+        // it runs before the post below takes a frame from before the reset.
+        synchronized(readiness) {
+            resetPending = true
             hasImage = false
-            staleTimestamp = surfaceTexture.timestamp
+        }
+        handler.post {
+            synchronized(readiness) {
+                staleTimestamp = surfaceTexture.timestamp
+                resetPending = false
+            }
         }
     }
 
@@ -120,7 +132,9 @@ class VideoFrameTarget private constructor(
         // only if it came after the last reset. The player stamps each frame
         // with the time it's released to be shown, so two never share one.
         val timestamp = surfaceTexture.timestamp
-        if (timestamp != 0L && timestamp != staleTimestamp) hasImage = true
+        synchronized(readiness) {
+            if (!resetPending && timestamp != 0L && timestamp != staleTimestamp) hasImage = true
+        }
     }
 
     private fun readNow(width: Int, height: Int): DecodedImage? {

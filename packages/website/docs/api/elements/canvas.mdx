@@ -176,6 +176,7 @@ if (video.readyState >= video.HAVE_CURRENT_DATA) {
 ```
 
 - The phone reads the frame the video shows; the pixels never pass through JavaScript.
+- `createImageBitmap(video)` keeps a copy of the frame, as on the web.
 - Before its first frame, `videoWidth` is 0, `readyState` is `HAVE_NOTHING`, and nothing is drawn, as in a browser. `VideoTexture` waits for the frame by itself.
 - To grab one frame, draw it from `bindfirstframe` on the phone, or check `readyState` first: the web preview never sends `bindfirstframe`.
 - On Android, a video with `display: none` has no frame. Hide it with `opacity: 0` instead.

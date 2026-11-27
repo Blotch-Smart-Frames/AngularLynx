@@ -36,7 +36,6 @@ import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
-import kotlin.math.sqrt
 
 /**
  * `<canvas>`'s 2D context for the AngularLynx runtime: the bitmap the
@@ -603,18 +602,25 @@ class Canvas2DContext(
      *
      * Android draws an operation like source-in only where the shape covers;
      * the canvas spec composites the whole canvas. So for those the shape is
-     * drawn into a layer, which is composited with the operation. With a
-     * shadow too, the shadow and the shape are composited apart (see
-     * compositeFiltered), which the paint's shadow layer can't do.
+     * drawn into a layer, which is composited with the operation.
+     *
+     * A shadow is cast from a layer too (compositeFiltered), never with the
+     * paint's setShadowLayer(). Android's shadow pass only swaps the paint's
+     * color for the shadow's, so it takes neither the shape's alpha (a
+     * see-through color, or globalAlpha) nor its shape's colors (an image,
+     * gradient or pattern casts a copy of itself), and the smallest blur it
+     * draws is half a pixel's deviation, so a shadowBlur of 0 isn't sharp.
+     * The spec casts the shadow from the alpha of the shape as drawn, which
+     * the layer has. It costs a canvas-sized layer per shadowed draw, as
+     * Core Graphics' transparency layer does on iOS.
      */
     private fun composite(paint: Paint, matrix: Matrix?, draw: (Canvas) -> Unit) {
         val c = canvas ?: return
         val s = state
-        if (s.filterSteps.isNotEmpty() || (s.composite in UNBOUNDED && shadowVisible())) {
+        if (s.filterSteps.isNotEmpty() || shadowVisible()) {
             compositeFiltered(c, matrix, draw)
             return
         }
-        if (shadowVisible()) applyShadow(paint, matrix)
         val unbounded = s.composite in UNBOUNDED
         if (unbounded) {
             val layer = Paint()
@@ -639,8 +645,8 @@ class Canvas2DContext(
      * filter are applied to the layer's pixels (CanvasFilter). The layer is
      * then drawn over the canvas with the operation and the shadow, inside
      * the clip, in the canvas spec's order.
-     * An operation like copy with a shadow (and no filter) draws this way
-     * too, for the shadow made apart from the shape.
+     * Any draw with a shadow (and no filter) draws this way too, for the
+     * shadow cast from the shape's alpha (see composite).
      */
     private fun compositeFiltered(c: Canvas, matrix: Matrix?, draw: (Canvas) -> Unit) {
         val s = state
@@ -653,10 +659,8 @@ class Canvas2DContext(
         var shadow: Bitmap? = null
         try {
             val pixels = filteredLayer(shapeRect, matrix, draw)
-            // The canvas shadow, cast from the filtered layer and drawn
-            // before it, as the spec has it. It's made here rather than with
-            // the paint's shadow layer, which, for a bitmap with colors, casts
-            // the shadow in the bitmap's colors, not the shadow's.
+            // The canvas shadow, cast from the filtered layer's alpha and
+            // drawn before it, as the spec has it.
             if (shadowVisible()) {
                 val source = layers.shadow?.let { filteredLayer(it, matrix, draw) } ?: pixels
                 val color = s.shadowColor
@@ -803,32 +807,6 @@ class Canvas2DContext(
         if (!changed) return
         pixels.rewind()
         target.copyPixelsFromBuffer(pixels)
-    }
-
-    /**
-     * The canvas's shadow on the paint. Its offset and blur are in the
-     * canvas's pixels, but Android's go through the matrix the shape is drawn
-     * under, so they're taken back through it.
-     */
-    private fun applyShadow(paint: Paint, matrix: Matrix?) {
-        val s = state
-        var dx = s.shadowOffsetX
-        var dy = s.shadowOffsetY
-        // The canvas's blur is twice the Gaussian's deviation; Android's
-        // radius is turned into one as radius * 0.57735 + 0.5.
-        var radius = max(0.001f, (s.shadowBlur / 2f - 0.5f) / 0.57735f)
-        if (matrix != null) {
-            val m = s.transform
-            val det = m[0] * m[3] - m[1] * m[2]
-            if (det != 0f) {
-                val ix = (m[3] * dx - m[2] * dy) / det
-                val iy = (-m[1] * dx + m[0] * dy) / det
-                dx = ix
-                dy = iy
-                radius /= sqrt(abs(det))
-            }
-        }
-        paint.setShadowLayer(radius, dx, dy, s.shadowColor)
     }
 
     // --- Shapes --------------------------------------------------------------

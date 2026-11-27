@@ -78,6 +78,14 @@ const ANGLE_UNITS: Record<string, number> = {
   turn: Math.PI * 2,
 };
 
+/**
+ * A table's own entry for a name, so a name like `constructor` (in
+ * `constructor()` or `1constructor`) isn't found on Object's prototype.
+ * hasOwnProperty rather than Object.hasOwn, which older engines lack.
+ */
+const own = <T>(table: Record<string, T>, key: string): T | undefined =>
+  Object.prototype.hasOwnProperty.call(table, key) ? table[key] : undefined;
+
 const NUMBER = /^([-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?)([a-z%]*)$/;
 
 /**
@@ -88,7 +96,7 @@ const lengthOf = (token: string): number | null => {
   if (!match) return null;
   const value = Number(match[1]);
   if (match[2] === '') return value === 0 ? 0 : null;
-  const unit = LENGTH_UNITS[match[2]];
+  const unit = own(LENGTH_UNITS, match[2]);
   return unit === undefined ? null : value * unit;
 };
 
@@ -100,7 +108,7 @@ const angleOf = (token: string): number | null => {
   if (!match) return null;
   const value = Number(match[1]);
   if (match[2] === '') return value === 0 ? 0 : null;
-  const unit = ANGLE_UNITS[match[2]];
+  const unit = own(ANGLE_UNITS, match[2]);
   return unit === undefined ? null : value * unit;
 };
 
@@ -317,7 +325,7 @@ const stepOf = (name: string, args: string[]): Step | null => {
     };
   }
   if (name === 'drop-shadow') return dropShadowOf(args);
-  const matrix = MATRICES[name];
+  const matrix = own(MATRICES, name);
   if (!matrix || args.length > 1) return null;
   const amount = args.length ? amountOf(args[0]) : 1;
   if (amount === null || amount < 0) return null;

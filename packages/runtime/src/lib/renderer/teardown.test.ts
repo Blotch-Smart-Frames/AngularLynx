@@ -96,6 +96,10 @@ type FakeEl = {
   // The handler the element holds for each event, as Lynx 4.1's
   // AttributeHolder keeps them (see __AddEvent below).
   events: Map<string, unknown>;
+  // The DOM listeners on it, as on Lynx for Web, where it's a DOM element.
+  domListeners: Map<string, unknown[]>;
+  addEventListener(name: string, listener: unknown): void;
+  removeEventListener(name: string, listener: unknown): void;
   // Whether this node still has a live native painting node (a rendered UI
   // view). Cleared by __FlushElementTree for a node removed and not reinserted
   // in the same flush — see the two-layer model below.
@@ -162,6 +166,21 @@ const makeEl = (tag: string, text?: string): FakeEl => {
     classes: new Set(),
     styles: new Map(),
     events: new Map(),
+    domListeners: new Map(),
+    addEventListener(name, listener) {
+      this.domListeners.set(name, [
+        ...(this.domListeners.get(name) ?? []),
+        listener,
+      ]);
+    },
+    removeEventListener(name, listener) {
+      this.domListeners.set(
+        name,
+        (this.domListeners.get(name) ?? []).filter(
+          (other) => other !== listener,
+        ),
+      );
+    },
     hasPaintingNode: true,
   };
   created.push(el);
@@ -2560,6 +2579,33 @@ describe('renderer teardown', () => {
 
       // One run of text, in one anonymous <text>, as the item has gone.
       expect(texts().map((child) => child.tag)).toEqual(['text']);
+    });
+
+    it('keeps its web pointer listeners on one rebuilt', () => {
+      vi.stubGlobal('__WEB__', true);
+      const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
+      const page = document.createRootElement();
+      const view = document.createElement('view');
+      const list = document.createElement('list');
+      const item = document.createElement('list-item');
+      page.appendChild(view);
+      page.appendChild(list);
+      view.appendChild(item);
+      const down = vi.fn();
+      const remove = item.addEventListener('pointerdown', down) as () => void;
+
+      // An insert alone: rebuilt for the list (see above).
+      list.appendChild(item);
+      processPendingRemovals();
+      const rebuilt = item.element as unknown as FakeEl;
+      expect(rebuilt.domListeners.get('pointerdown')).toContain(down);
+      expect(rebuilt.domListeners.get('pointerup')).toHaveLength(1);
+
+      // And removed from it, not the old one.
+      remove();
+      expect(rebuilt.domListeners.get('pointerdown')).not.toContain(down);
+      vi.unstubAllGlobals();
+      vi.stubGlobal('__MAIN_THREAD__', true);
     });
   });
 });

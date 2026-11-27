@@ -980,6 +980,14 @@ export class LynxElement implements BaseLynxElement {
    * whose pointer events are the browser's (see #addPointerListener).
    */
   #webPointer: { offsetX: number; offsetY: number } | null = null;
+
+  /**
+   * On Lynx for Web, the pointer listeners on this element's DOM element
+   * (see #addPointerListener), which a rebuild puts on the new one (see
+   * #recreateSubtree), as #nativeHandlers does for the native events.
+   */
+  #webPointerListeners: { name: string; cb: (event: any) => any }[] | null =
+    null;
   /** The element's layout, once something needs it (see layout.ts). */
   #layout: LayoutTracker | null = null;
   /**
@@ -4634,6 +4642,13 @@ export class LynxElement implements BaseLynxElement {
         });
       }
     }
+    // On Lynx for Web, the pointer listeners on the old DOM element.
+    if (__WEB__ && this.#webPointerListeners) {
+      this.#recordWebPointer();
+      for (const { name, cb } of this.#webPointerListeners) {
+        (fresh as unknown as EventTarget).addEventListener(name, cb);
+      }
+    }
     // A <q>'s quotation marks went with its old element, and come back
     // around its children (see markQuote).
     const marks = this.#quoteMarks;
@@ -4894,7 +4909,7 @@ export class LynxElement implements BaseLynxElement {
   removeEventListener(name: string, cb: (event: any) => any): void {
     if (POINTER_EVENT_NAMES.has(name)) {
       if (__WEB__) {
-        (this.element as unknown as EventTarget).removeEventListener(name, cb);
+        this.#removeWebPointerListener(name, cb);
       } else {
         this.#pointerEvents?.remove(name, cb);
       }
@@ -4918,18 +4933,14 @@ export class LynxElement implements BaseLynxElement {
    */
   #addPointerListener(name: string, cb: (event: any) => any): () => void {
     if (__WEB__) {
-      const target = this.element as unknown as EventTarget;
-      if (!this.#webPointer) {
+      if (!this.#webPointerListeners) {
+        this.#webPointerListeners = [];
         this.#webPointer = { offsetX: 0, offsetY: 0 };
-        const record = (event: Event) => {
-          const { offsetX, offsetY } = event as PointerEvent;
-          this.#webPointer = { offsetX, offsetY };
-        };
-        target.addEventListener('pointerdown', record);
-        target.addEventListener('pointerup', record);
+        this.#recordWebPointer();
       }
-      target.addEventListener(name, cb);
-      return () => target.removeEventListener(name, cb);
+      this.#webPointerListeners.push({ name, cb });
+      (this.element as unknown as EventTarget).addEventListener(name, cb);
+      return () => this.#removeWebPointerListener(name, cb);
     }
     this.#pointerEvents ??= new PointerEventSource({
       uid: __GetElementUniqueID(this.element),
@@ -4940,6 +4951,34 @@ export class LynxElement implements BaseLynxElement {
     // Offsets for touches on a child come from the element's layout.
     this.#layoutTracker().start();
     return this.#pointerEvents.add(name, cb);
+  }
+
+  /**
+   * On Lynx for Web: keeps where the pointer went down and lifted on this
+   * element's DOM element, for clicks (see #webPointer).
+   */
+  #recordWebPointer(): void {
+    const target = this.element as unknown as EventTarget;
+    const record = (event: Event) => {
+      const { offsetX, offsetY } = event as PointerEvent;
+      this.#webPointer = { offsetX, offsetY };
+    };
+    target.addEventListener('pointerdown', record);
+    target.addEventListener('pointerup', record);
+  }
+
+  /**
+   * On Lynx for Web: takes a pointer listener off the DOM element this
+   * element has now, which a rebuild may have changed (see
+   * #webPointerListeners).
+   */
+  #removeWebPointerListener(name: string, cb: (event: any) => any): void {
+    const listeners = this.#webPointerListeners;
+    const i =
+      listeners?.findIndex((entry) => entry.name === name && entry.cb === cb) ??
+      -1;
+    if (i >= 0) listeners!.splice(i, 1);
+    (this.element as unknown as EventTarget).removeEventListener(name, cb);
   }
 
   /**

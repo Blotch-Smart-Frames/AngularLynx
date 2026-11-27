@@ -219,10 +219,10 @@ export class CanvasRoute {
    * spec's 21% gray; drop-shadow() puts a blue copy of one beside it, and
    * shows through one half see-through (globalAlpha comes first); a
    * filtered square off the canvas casts its canvas shadow onto it; a square
-   * far off the canvas casts its shadow onto it, with a filter and without
-   * (issue #755); and blur() softens a black square's edge to partly
-   * see-through. A string that isn't a filter leaves the last one. Gives
-   * "ok", or the reads.
+   * far off the canvas casts its shadow onto it, with a filter and without,
+   * and one off a corner draws once over its shadow (issue #755); and
+   * blur() softens a black square's edge to partly see-through. A string
+   * that isn't a filter leaves the last one. Gives "ok", or the reads.
    */
   #drawFilters(): string {
     const make = (width: number, height: number) => {
@@ -278,6 +278,22 @@ export class CanvasRoute {
       return pixel(far, 1, 0);
     });
 
+    // A shadow whose shape lies diagonally off a corner, so its layer is
+    // drawn apart from the shape's though it overlaps the canvas: the half
+    // see-through black corner on the canvas is drawn once, over its red
+    // shadow (85, 0, 0, 191; twice would be darker), and the shadow beside
+    // it is half red.
+    const cornerReads = [false, true].flatMap((filtered) => {
+      const corner = make(8, 8);
+      if (filtered) corner.filter = 'grayscale(1)';
+      corner.shadowColor = 'rgb(255, 0, 0)';
+      corner.shadowOffsetX = 4;
+      corner.shadowOffsetY = 4;
+      corner.fillStyle = 'rgba(0, 0, 0, 0.5)';
+      corner.fillRect(-4, -4, 6, 6);
+      return [pixel(corner, 1, 1), pixel(corner, 4, 4)];
+    });
+
     const blur = make(12, 12);
     blur.filter = 'blur(2px)';
     blur.fillRect(0, 0, 6, 12);
@@ -293,6 +309,15 @@ export class CanvasRoute {
       Math.abs(fadedAlpha - 191) <= 3 &&
       near(offCanvasRead, [255, 0, 0, 255]) &&
       farReads.every((read) => near(read, [255, 0, 0, 255])) &&
+      cornerReads.every((read, index) =>
+        read.every(
+          (value, channel) =>
+            Math.abs(
+              value -
+                (index % 2 === 0 ? [85, 0, 0, 191] : [255, 0, 0, 128])[channel],
+            ) <= 4,
+        ),
+      ) &&
       edge >= 64 &&
       edge <= 160;
     return ok
@@ -304,6 +329,7 @@ export class CanvasRoute {
           fadedAlpha,
           offCanvasRead,
           ...farReads,
+          ...cornerReads,
           edge,
         ].join(' ');
   }

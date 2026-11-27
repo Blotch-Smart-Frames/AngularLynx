@@ -690,7 +690,7 @@ class Canvas2DContext(
         val layers = layers()
         val shapeRect = layers.shape
         // The shadow is cast from the shape's layer, or from a layer of its
-        // own when it comes from far off the canvas.
+        // own when one round both would be bigger than the two (see layers).
         val sourceRect = layers.shadow ?: shapeRect
         var layer: Bitmap? = null
         var shadow: Bitmap? = null
@@ -781,6 +781,9 @@ class Canvas2DContext(
      */
     private class Layers(val shape: Rect, val shadow: Rect?)
 
+    /** A rectangle's area, as a Long: a layer's sides multiplied can pass an Int. */
+    private fun area(rect: Rect): Long = rect.width().toLong() * rect.height()
+
     /**
      * The layers a filtered draw goes into. The shape's is the canvas grown
      * by the filter's reach, so a shape just off the canvas still blurs onto
@@ -788,12 +791,12 @@ class Canvas2DContext(
      * onto the canvas: the canvas moved back by the shadow's offset, grown by
      * its blur (three of its deviations, which are half the blur) and the
      * filter's reach, capped at 256 pixels, as css-filter.ts caps the
-     * filter's, so a huge blur makes no huge layer. When that part reaches
-     * the canvas, the shape's layer grows to take it in. When it doesn't,
-     * it's a second layer: one rectangle round both would be the offset's
-     * size, and a shadow cast from far off the canvas (shadowOffsetX = 10000
-     * and a shape at x = -10000) would make a huge layer, or, capped, cut the
-     * shape away.
+     * filter's, so a huge blur makes no huge layer. When one rectangle round
+     * both is no bigger than the two, the shape's layer grows to take that
+     * part in. Otherwise it's a second layer: one rectangle round both would
+     * grow with the offset, and a shadow cast from far off the canvas
+     * (shadowOffsetX = 10000 and a shape at x = -10000) would make a huge
+     * layer, or, capped, cut the shape away.
      */
     private fun layers(): Layers {
         val s = state
@@ -811,9 +814,9 @@ class Canvas2DContext(
         // canvas's pixels, which are floats, can still place a shape.
         if (listOf(left, top, right, bottom).any { abs(it) > MAX_LAYER_OFFSET }) return Layers(shape, null)
         val source = Rect(left.toInt(), top.toInt(), right.toInt(), bottom.toInt())
-        if (!Rect.intersects(source, canvasRect)) return Layers(shape, source)
-        shape.union(source)
-        return Layers(shape, null)
+        val both = Rect(shape).apply { union(source) }
+        if (area(both) > area(shape) + area(source)) return Layers(shape, source)
+        return Layers(both, null)
     }
 
     /**

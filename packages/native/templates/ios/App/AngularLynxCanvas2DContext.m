@@ -1142,15 +1142,19 @@ static BOOL reducesAlpha(NSInteger composite) {
 /// back by the shadow's offset, grown by its blur (three of its deviations,
 /// which are half the blur) and the filter's reach, capped at 256 pixels, as
 /// css-filter.ts caps the filter's, so a huge blur makes no huge layer.
-/// When that part reaches the canvas, `shape` grows to take it in, and
-/// `shadow` is CGRectNull. When it doesn't, it's `shadow`, a second layer:
-/// one rectangle round both would be the offset's size, and a shadow cast
-/// from far off the canvas (shadowOffsetX = 10000 and a shape at x = -10000)
-/// would make a huge layer, or, capped, cut the shape away.
+/// When one rectangle round both is no bigger than the two, `shape` grows to
+/// take that part in, and `shadow` is CGRectNull. Otherwise it's `shadow`, a
+/// second layer: one rectangle round both would grow with the offset, and a
+/// shadow cast from far off the canvas (shadowOffsetX = 10000 and a shape at
+/// x = -10000) would make a huge layer, or, capped, cut the shape away.
 typedef struct {
   CGRect shape;
   CGRect shadow;
 } ALLayers;
+
+static CGFloat area(CGRect rect) {
+  return rect.size.width * rect.size.height;
+}
 
 - (ALLayers)layers {
   ALCanvas2DState *s = _state;
@@ -1162,8 +1166,9 @@ typedef struct {
   // Whole pixels, so the layer's pixels line up with the canvas's.
   CGRect source = CGRectIntegral(CGRectInset(
       CGRectOffset(canvas, -s.shadowOffsetX, -s.shadowOffsetY), -reach, -reach));
-  if (!CGRectIntersectsRect(source, canvas)) return (ALLayers){shape, source};
-  return (ALLayers){CGRectUnion(shape, source), CGRectNull};
+  CGRect both = CGRectUnion(shape, source);
+  if (area(both) > area(shape) + area(source)) return (ALLayers){shape, source};
+  return (ALLayers){both, CGRectNull};
 }
 
 /// What `draw` draws over `rect` of the canvas's pixels, as an image: drawn
@@ -1251,31 +1256,36 @@ static CGRect bitmapRect(CGRect rect, size_t height) {
   CGContextSaveGState(c);
   CGContextSetAlpha(c, filtered ? 1 : s.globalAlpha);
   CGContextSetBlendMode(c, BLEND_MODES[s.composite]);
+  CGColorRef shadowColor =
+      shadow ? CGColorCreateSRGB(s.shadowR / 255, s.shadowG / 255, s.shadowB / 255, s.shadowA)
+             : NULL;
   if (shadow) {
-    CGColorRef color = CGColorCreateSRGB(s.shadowR / 255, s.shadowG / 255, s.shadowB / 255,
-                                         s.shadowA);
     // A shadow's offset is in the bitmap's own space, y up, whatever the
     // transform, as the canvas's is in its pixels, y down. Its blur is
     // twice the Gaussian's deviation, as the canvas's is.
     CGContextSetShadowWithColor(c, CGSizeMake(s.shadowOffsetX, -s.shadowOffsetY), s.shadowBlur,
-                                color);
-    CGColorRelease(color);
+                                shadowColor);
   }
   // The layers' images are drawn in the bitmap's own space, where their rows
   // already lie top to bottom.
   CGContextScaleCTM(c, 1, -1);
   CGContextTranslateCTM(c, 0, -(CGFloat)_height);
   if (shadowImage) {
-    // The shadow's layer lies off the canvas, so drawn in its place only its
-    // shadow lands on it (Core Graphics casts the shadow of what's drawn off
-    // the bitmap). Then the shape's layer is drawn without one, as the spec
-    // composites the shadow, then the shape.
-    CGContextDrawImage(c, bitmapRect(layers.shadow, _height), shadowImage);
+    // Only the shadow's layer's shadow is drawn: the layer is moved left off
+    // the bitmap, and the shadow's offset right by as much, which Core
+    // Graphics casts to the same pixels (it casts the shadow of what's drawn
+    // off the bitmap). Then the shape's layer is drawn without one, as the
+    // spec composites the shadow, then the shape.
+    CGFloat away = MAX(0, CGRectGetMaxX(layers.shadow));
+    CGContextSetShadowWithColor(c, CGSizeMake(s.shadowOffsetX + away, -s.shadowOffsetY),
+                                s.shadowBlur, shadowColor);
+    CGContextDrawImage(c, CGRectOffset(bitmapRect(layers.shadow, _height), -away, 0), shadowImage);
     CGContextSetShadowWithColor(c, CGSizeZero, 0, NULL);
     CGImageRelease(shadowImage);
   }
   CGContextDrawImage(c, bitmapRect(layers.shape, _height), image);
   CGContextRestoreGState(c);
+  CGColorRelease(shadowColor);
   CGImageRelease(image);
   [self keepOpaque];
 }

@@ -86,15 +86,15 @@ def table(order, samples, metrics, failed):
 
 
 def main(paths):
-    samples = defaultdict(lambda: defaultdict(list))
-    failed = defaultdict(int)
-    order = []
-    scroll = False
+    # Launch and scroll CSVs measure different things, so each kind gets its
+    # own table when both are given.
+    launch = (defaultdict(lambda: defaultdict(list)), defaultdict(int), [])
+    scroll = (defaultdict(lambda: defaultdict(list)), defaultdict(int), [])
     for path in paths:
         with open(path, newline="") as file:
             rows = list(csv.DictReader(file))
         if rows and "swipe" in rows[0]:
-            scroll = True
+            samples, _, order = scroll
             for app, values in scroll_runs(rows):
                 if app not in order:
                     order.append(app)
@@ -102,6 +102,7 @@ def main(paths):
                     if value is not None:
                         samples[app][metric].append(value)
             continue
+        samples, failed, order = launch
         ordered = sorted(rows, key=lambda row: row["timestamp"])
         previous = None
         for row in ordered:
@@ -118,7 +119,16 @@ def main(paths):
             for metric in METRICS:
                 if row.get(metric):
                     samples[app][metric].append(float(row[metric]))
-    table(order, samples, SCROLL_METRICS if scroll else METRICS, failed)
+    both = launch[2] and scroll[2]
+    for title, (samples, failed, order), metrics in (
+        ("Launches", launch, METRICS),
+        ("Scrolling", scroll, SCROLL_METRICS),
+    ):
+        if not order:
+            continue
+        if both:
+            print(f"\n{title}\n")
+        table(order, samples, metrics, failed)
 
 
 if __name__ == "__main__":

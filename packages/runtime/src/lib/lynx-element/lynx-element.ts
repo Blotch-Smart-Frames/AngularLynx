@@ -4206,14 +4206,16 @@ export class LynxElement implements BaseLynxElement {
 
   /**
    * Whether this element is `root` or under it, through the parents Angular
-   * gave it (a list's items through their list).
+   * gave it. A list's item goes through its list first, as parentNode()
+   * does: one moved in from another parent keeps that one as its JS parent
+   * until its removal from it commits.
    */
   #isInSubtreeOf(root: LynxElement): boolean {
     if (this === root) return true;
     for (
-      let el = this.#jsParent ?? this._virtualParent;
+      let el = this._virtualParent ?? this.#jsParent;
       el;
-      el = el.#jsParent ?? el._virtualParent
+      el = el._virtualParent ?? el.#jsParent
     ) {
       if (el === root) return true;
     }

@@ -1926,6 +1926,27 @@ describe('renderer teardown', () => {
       expect(writes).toEqual(['remove turn']);
     });
 
+    it('ends them in an item moved into a list, through the list', () => {
+      const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
+      const page = document.createRootElement();
+      const view = document.createElement('view');
+      const list = document.createElement('list');
+      const item = document.createElement('list-item');
+      item.setAttribute('enable-new-animator', 'false');
+      page.appendChild(view);
+      page.appendChild(list);
+      view.appendChild(item);
+
+      // Moved into the list in the same cycle: its removal from the view
+      // hasn't committed, so the view is still its JS parent.
+      item.remove();
+      list.appendChild(item);
+      list.markDestroyed();
+
+      // A copy: the settle flush that commits the move writes after this.
+      expect([...writes]).toEqual(['list-item animation: none']);
+    });
+
     it('starts them again when the element goes back in the tree', () => {
       const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
       const page = document.createRootElement();

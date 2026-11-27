@@ -168,7 +168,14 @@ if (
 // Angular to pre-existing native elements on subsequent loads (hydrate). The
 // callback bodies live in ssr/ssr-callbacks.ts (unit-tested there); this only
 // wires them onto the engine globals when SSR is enabled.
-if (__ENABLE_SSR__) {
+//
+// Main thread only: the engine calls ssrHydrate on the main thread's VM
+// (PageProxy in Lynx's core), where the element tree is, and React Lynx
+// installs both from its main-thread entry. On the background thread the two
+// assignments were side effects the minifier had to keep, and through them the
+// runtime's element layer, event layer and opcode serializer stayed in the
+// background script for nothing (issue #742).
+if (__ENABLE_SSR__ && __MAIN_THREAD__) {
   (globalThis as any).ssrEncode = ssrEncode;
   (globalThis as any).ssrHydrate = ssrHydrate;
 }

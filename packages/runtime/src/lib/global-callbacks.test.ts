@@ -466,13 +466,25 @@ describe('global-callbacks', () => {
   });
 
   describe('SSR callback registration', () => {
-    it('registers ssrEncode/ssrHydrate when __ENABLE_SSR__ is enabled', async () => {
+    it('registers ssrEncode/ssrHydrate on the main thread when __ENABLE_SSR__ is enabled', async () => {
+      delete (globalThis as any).ssrEncode;
+      delete (globalThis as any).ssrHydrate;
+      vi.stubGlobal('__ENABLE_SSR__', true);
+      await load({ mainThread: true });
+      expect((globalThis as any).ssrEncode).toBeTypeOf('function');
+      expect((globalThis as any).ssrHydrate).toBeTypeOf('function');
+    });
+
+    // The engine calls both on the main thread's VM only, where the element
+    // tree is. Installed on the background thread too, they kept the
+    // runtime's element layer in its script for nothing (issue #742).
+    it('does not register SSR callbacks on the background thread', async () => {
       delete (globalThis as any).ssrEncode;
       delete (globalThis as any).ssrHydrate;
       vi.stubGlobal('__ENABLE_SSR__', true);
       await load({ mainThread: false });
-      expect((globalThis as any).ssrEncode).toBeTypeOf('function');
-      expect((globalThis as any).ssrHydrate).toBeTypeOf('function');
+      expect((globalThis as any).ssrEncode).toBeUndefined();
+      expect((globalThis as any).ssrHydrate).toBeUndefined();
     });
 
     it('does not register SSR callbacks when __ENABLE_SSR__ is disabled', async () => {

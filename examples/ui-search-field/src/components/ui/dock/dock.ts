@@ -52,7 +52,13 @@ import { cn } from '@blotch/dolan/utils/cn';
 import { type GlassShape, UiGlass, UiGlassGroup } from '../glass/glass';
 import { type GlassDesign, injectGlassDesign } from '../glass/glass-design';
 import { injectIconColor, UI_ICON_COLOR } from '../icon/icon-theme';
-import { type IconName, ICONS, iconMarkup, paintIcon } from '../icon/icons';
+import { xIcon } from '../icon/icon-set';
+import {
+  type IconName,
+  iconSvg,
+  injectIconMarkup,
+  paintIcon,
+} from '../icon/icons';
 import {
   KEYBOARD_GAP,
   keyboardLift,
@@ -1023,7 +1029,7 @@ export class UiDock implements SearchFieldContainer {
   });
 
   protected readonly cancelIcon = computed(() =>
-    paintIcon(ICONS.x, this.#resolveColor('var(--glass-foreground)')),
+    paintIcon(iconSvg(xIcon), this.#resolveColor('var(--glass-foreground)')),
   );
 
   protected readonly cancelIconStyle = computed(() => ({
@@ -1342,7 +1348,10 @@ const navigationOver = (event: RouterEvent): boolean =>
   `,
 })
 export class UiDockItem {
-  /** An icon from the set (see `ICONS`). Give this or `svg`. */
+  /**
+   * An icon from the set, registered with `provideIcons()`. Give this or
+   * `svg`.
+   */
   readonly icon = input<IconName | undefined>(undefined);
   /**
    * SVG markup to draw instead of an icon from the set, such as the app's
@@ -1366,6 +1375,7 @@ export class UiDockItem {
 
   readonly #dock = inject(UiDock);
   readonly #resolveColor = injectIconColor();
+  readonly #iconMarkup = injectIconMarkup();
   // The host, not an inner view, shrinks on a press: it's the whole tap
   // target, and injecting it needs no view query.
   readonly #host = inject<ElementRef<BaseLynxElement>>(ElementRef);
@@ -1439,7 +1449,7 @@ export class UiDockItem {
    * draws the selected item's icon too, in the primary color.
    */
   readonly markup = computed(() =>
-    iconMarkup(
+    this.#iconMarkup(
       this.icon(),
       this.svg(),
       '<ui-dock-item> needs an icon or an svg, not both.',
@@ -1569,7 +1579,10 @@ export class UiDockItem {
   />`,
 })
 export class UiDockAction {
-  /** An icon from the set (see `ICONS`). Give this or `svg`. */
+  /**
+   * An icon from the set, registered with `provideIcons()`. Give this or
+   * `svg`.
+   */
   readonly icon = input<IconName | undefined>(undefined);
   /**
    * SVG markup to draw instead of an icon from the set. `currentColor` in it
@@ -1586,6 +1599,7 @@ export class UiDockAction {
   readonly #dock = inject(UiDock);
   readonly #settings = inject(LynxAccessibilitySettings);
   readonly #resolveColor = injectIconColor();
+  readonly #iconMarkup = injectIconMarkup();
   readonly #host = inject(ElementRef);
   readonly #link = inject(RouterLink);
   #pressAnim?: AnimationHandle;
@@ -1609,7 +1623,7 @@ export class UiDockAction {
           ? 'var(--glass-foreground)'
           : 'var(--primary)';
     return paintIcon(
-      iconMarkup(
+      this.#iconMarkup(
         this.icon(),
         this.svg(),
         '<ui-dock-action> needs an icon or an svg, not both.',

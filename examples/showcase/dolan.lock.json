@@ -6,13 +6,19 @@
         "hash": "50e014b3350839f8"
       },
       "icon.ts": {
-        "hash": "932973521d0bb99b"
+        "hash": "7fdbd570d02e2647"
       },
       "icons.ts": {
-        "hash": "88653f16f41b688b"
+        "hash": "9c4233735666d5c3"
       },
       "index.ts": {
-        "hash": "d175df85291c8009"
+        "hash": "925ca2b25ff64004"
+      },
+      "all-icons.ts": {
+        "hash": "67baf8dfc7537de8"
+      },
+      "icon-set.ts": {
+        "hash": "087467f089b093e4"
       }
     },
     "glass": {
@@ -37,7 +43,7 @@
         "hash": "e24a944f111c87fc"
       },
       "search-field.ts": {
-        "hash": "a31ec383eaf79636"
+        "hash": "a578e0c048c4df71"
       }
     },
     "dock": {
@@ -45,7 +51,7 @@
         "hash": "7cfb722532832474"
       },
       "dock.ts": {
-        "hash": "741329065ac37de2"
+        "hash": "a4d7067fcb86ea02"
       },
       "index.ts": {
         "hash": "771649c459fc9906"

@@ -38,21 +38,27 @@
     },
     "icon": {
       "icon.ts": {
-        "hash": "932973521d0bb99b"
+        "hash": "7fdbd570d02e2647"
       },
       "icons.ts": {
-        "hash": "88653f16f41b688b"
+        "hash": "9c4233735666d5c3"
       },
       "index.ts": {
-        "hash": "d175df85291c8009"
+        "hash": "925ca2b25ff64004"
       },
       "icon-theme.ts": {
         "hash": "50e014b3350839f8"
+      },
+      "all-icons.ts": {
+        "hash": "67baf8dfc7537de8"
+      },
+      "icon-set.ts": {
+        "hash": "087467f089b093e4"
       }
     },
     "empty-state": {
       "empty-state.ts": {
-        "hash": "1f2b285d1c7af4bc"
+        "hash": "ad6d35e5ace9af65"
       },
       "index.ts": {
         "hash": "a30d82497191f4e9"
@@ -102,13 +108,13 @@
         "hash": "8fff6e9c2e1f0a60"
       },
       "menu.ts": {
-        "hash": "fd233bb864af5863"
+        "hash": "21929ec90bd72806"
       },
       "menu-rows.ts": {
         "hash": "ec1e01de25aa05cc"
       },
       "menu-submenu.ts": {
-        "hash": "2445e176b42b2f05"
+        "hash": "aec5cde3f1d16c98"
       }
     },
     "popover": {

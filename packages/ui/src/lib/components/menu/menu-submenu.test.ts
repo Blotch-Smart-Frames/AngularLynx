@@ -12,8 +12,14 @@ import { DURATION } from '../../utils/animate';
 import { UiMenu, UiMenuItem, UiMenuSection, UiMenuTrigger } from './menu';
 import { SUBMENU_REST_DELAY } from './menu-popup';
 import { UiMenuSubmenu } from './menu-submenu';
+import { arrowDownIcon } from '../icon/icon-set';
+import { provideIcons } from '../icon/icons';
+
+// The icons these specs draw by name, registered as an app registers its own.
+const TEST_ICONS = provideIcons({ arrowDownIcon });
 
 @Component({
+  providers: [TEST_ICONS],
   imports: [
     LYNX_ELEMENTS,
     UiMenu,

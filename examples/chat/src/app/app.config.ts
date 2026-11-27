@@ -9,9 +9,28 @@ import {
   provideRouter,
 } from '@blotch/angular-lynx';
 import { routes } from './app.routes';
+import {
+  cameraIcon,
+  chevronLeftIcon,
+  copyIcon,
+  replyIcon,
+  searchIcon,
+  sendIcon,
+  xIcon,
+  provideIcons,
+} from '../components/ui/icon';
 
 export const appConfig: ApplicationConfig = {
   providers: [
+    provideIcons({
+      cameraIcon,
+      chevronLeftIcon,
+      copyIcon,
+      replyIcon,
+      searchIcon,
+      sendIcon,
+      xIcon,
+    }),
     provideZonelessChangeDetection(),
     provideRenderer(),
     // Airmail is light, as paper is, whatever the phone's setting: its palette

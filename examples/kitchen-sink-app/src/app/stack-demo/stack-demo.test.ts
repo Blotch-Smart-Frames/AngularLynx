@@ -14,6 +14,7 @@ import {
   StackDemoFolders,
   StackDemoMessage,
 } from './stack-demo';
+import { provideAllIcons } from '../../components/ui/icon';
 
 // The demo's links are relative, so it has to be a route's component, as it
 // is in the app, for them to resolve under /stack-demo.
@@ -60,7 +61,7 @@ describe('StackDemo', () => {
     const { componentRef, container, queryByText, getByText } = await render(
       Shell,
       {
-        providers: [provideRouter(routes)],
+        providers: [provideRouter(routes), provideAllIcons()],
       },
     );
     const router = componentRef.injector.get(Router);

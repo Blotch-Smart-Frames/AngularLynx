@@ -21,7 +21,13 @@ import { cn } from '../../utils/cn';
 import { UiGlass } from '../glass/glass';
 import { type GlassDesign, injectGlassDesign } from '../glass/glass-design';
 import { UiIcon } from '../icon/icon';
-import { type IconName, optionalIconMarkup } from '../icon/icons';
+import { checkIcon } from '../icon/icon-set';
+import {
+  type IconName,
+  injectIconMarkup,
+  optionalIconMarkup,
+  provideIcons,
+} from '../icon/icons';
 import { type MenuElement, UiMenuPopup } from './menu-popup';
 import { type MenuRow, MenuPress, MenuRows } from './menu-rows';
 
@@ -123,6 +129,11 @@ const optionalBooleanAttribute = (value: unknown): boolean | undefined =>
 @Component({
   selector: 'ui-menu-item',
   imports: [LYNX_ELEMENTS, UiIcon],
+  // The icons its own template draws, registered here so an app that doesn't
+  // draw them itself needn't. viewProviders, not providers: content an app
+  // projects in finds only the icons the app registered, as it would
+  // anywhere else.
+  viewProviders: [provideIcons({ checkIcon })],
   encapsulation: ViewEncapsulation.None,
   template: `
     <!-- A checked item is selected to a screen reader, which iOS reads.
@@ -170,6 +181,7 @@ const optionalBooleanAttribute = (value: unknown): boolean | undefined =>
 })
 export class UiMenuItem {
   readonly #menu = inject(UI_MENU);
+  readonly #markupOf = injectIconMarkup();
   readonly #design = injectGlassDesign();
 
   /** What the item does, which is also what a screen reader reads. */
@@ -239,6 +251,7 @@ export class UiMenuItem {
    */
   readonly #iconMarkup = computed(() =>
     optionalIconMarkup(
+      this.#markupOf,
       this.icon(),
       this.svg(),
       '<ui-menu-item> takes an icon or an svg, not both.',

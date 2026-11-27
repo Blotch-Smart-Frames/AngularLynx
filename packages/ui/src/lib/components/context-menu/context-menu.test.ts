@@ -15,8 +15,14 @@ import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
 import { DURATION } from '../../utils/animate';
 import { UiMenuItem, UiMenuSeparator } from '../menu/menu';
 import { UiContextMenu } from './context-menu';
+import { trashIcon, uploadIcon } from '../icon/icon-set';
+import { provideIcons } from '../icon/icons';
+
+// The icons these specs draw by name, registered as an app registers its own.
+const TEST_ICONS = provideIcons({ trashIcon, uploadIcon });
 
 @Component({
+  providers: [TEST_ICONS],
   imports: [LYNX_ELEMENTS, UiContextMenu, UiMenuItem, UiMenuSeparator],
   template: `
     <ui-context-menu

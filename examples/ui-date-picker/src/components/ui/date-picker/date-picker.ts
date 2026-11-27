@@ -18,6 +18,8 @@ import { UiBottomSheet } from '../bottom-sheet/bottom-sheet';
 import { UiButton } from '../button/button';
 import { type Weekday, UiCalendar } from '../calendar/calendar';
 import { UiIcon } from '../icon/icon';
+import { calendarIcon } from '../icon/icon-set';
+import { provideIcons } from '../icon/icons';
 
 /**
  * A field that shows a day and opens a bottom sheet with a calendar to pick
@@ -34,6 +36,11 @@ import { UiIcon } from '../icon/icon';
 @Component({
   selector: 'ui-date-picker',
   imports: [LYNX_ELEMENTS, UiBottomSheet, UiButton, UiCalendar, UiIcon],
+  // The icons its own template draws, registered here so an app that doesn't
+  // draw them itself needn't. viewProviders, not providers: content an app
+  // projects in finds only the icons the app registered, as it would
+  // anywhere else.
+  viewProviders: [provideIcons({ calendarIcon })],
   encapsulation: ViewEncapsulation.None,
   host: {
     '[class]': 'hostClass()',

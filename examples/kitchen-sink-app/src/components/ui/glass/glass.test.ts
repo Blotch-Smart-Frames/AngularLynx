@@ -16,8 +16,14 @@ import {
   type GlassVariant,
 } from './glass';
 import { provideGlass } from './glass-design';
+import { playIcon } from '../icon/icon-set';
+import { provideIcons } from '../icon/icons';
+
+// The icons these specs draw by name, registered as an app registers its own.
+const TEST_ICONS = provideIcons({ playIcon });
 
 @Component({
+  providers: [TEST_ICONS],
   imports: [LYNX_ELEMENTS, UiGlass, UiGlassGroup, UiIcon],
   template: `
     <blur-view ui-glass-group [spacing]="spacing()" class="flex-row gap-2">

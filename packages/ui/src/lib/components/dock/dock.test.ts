@@ -29,10 +29,28 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
 import { lynxMainThread } from '../../../test-utils/lynx-main-thread';
 import { UiIcon } from '../icon/icon';
-import { type IconName } from '../icon/icons';
+import { type IconName, provideIcons } from '../icon/icons';
 import { provideGlass } from '../glass/glass-design';
 import { UiDock, UiDockAccessory, UiDockAction, UiDockItem } from './dock';
 import { UiDockState } from './dock-scroll';
+import {
+  homeIcon,
+  inboxIcon,
+  playIcon,
+  plusIcon,
+  searchIcon,
+  userIcon,
+} from '../icon/icon-set';
+
+// The icons these specs draw by name, registered as an app registers its own.
+const TEST_ICONS = provideIcons({
+  homeIcon,
+  inboxIcon,
+  playIcon,
+  plusIcon,
+  searchIcon,
+  userIcon,
+});
 
 /**
  * `value` as the DOM writes it back for `property`. jsdom 31 serializes
@@ -100,6 +118,7 @@ const gatedRoutes: Routes = routes.map((route) =>
 );
 
 @Component({
+  providers: [TEST_ICONS],
   imports: [
     LYNX_ELEMENTS,
     RouterOutlet,
@@ -155,6 +174,7 @@ class DockHost {
 }
 
 @Component({
+  providers: [TEST_ICONS],
   imports: [UiDock, UiDockItem],
   template: `
     <ui-dock>
@@ -168,6 +188,7 @@ class StaticClassHost {}
  * A dock with only an action of the app's own, and no items.
  */
 @Component({
+  providers: [TEST_ICONS],
   imports: [LYNX_ELEMENTS, UiDock, UiDockAction],
   template: `
     <ui-dock>
@@ -197,6 +218,7 @@ const TWO_COLOR_MARK =
  * logo on the Home item.
  */
 @Component({
+  providers: [TEST_ICONS],
   imports: [RouterOutlet, UiDock, UiDockAction, UiDockItem],
   template: `
     <router-outlet />
@@ -222,6 +244,7 @@ class SvgDockHost {
  * An item and an action whose icon and svg a test sets, to get them wrong.
  */
 @Component({
+  providers: [TEST_ICONS],
   imports: [UiDock, UiDockAction, UiDockItem],
   template: `
     <ui-dock>

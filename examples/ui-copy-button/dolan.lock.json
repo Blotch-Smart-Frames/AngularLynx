@@ -17,7 +17,7 @@
         "hash": "4f62bf89082a34d2"
       },
       "copy-button.ts": {
-        "hash": "5718cc5aaff77b71"
+        "hash": "ebfb43a8b3f8144a"
       },
       "copy-button.test.ts": {
         "hash": "0"
@@ -42,13 +42,19 @@
         "hash": "50e014b3350839f8"
       },
       "icon.ts": {
-        "hash": "932973521d0bb99b"
+        "hash": "7fdbd570d02e2647"
       },
       "icons.ts": {
-        "hash": "88653f16f41b688b"
+        "hash": "9c4233735666d5c3"
       },
       "index.ts": {
-        "hash": "d175df85291c8009"
+        "hash": "925ca2b25ff64004"
+      },
+      "all-icons.ts": {
+        "hash": "67baf8dfc7537de8"
+      },
+      "icon-set.ts": {
+        "hash": "087467f089b093e4"
       }
     },
     "spinner": {

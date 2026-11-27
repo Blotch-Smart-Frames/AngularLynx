@@ -19,6 +19,11 @@ import { provideGlass } from '../glass/glass-design';
 import { UiBarScroll, UiBarState } from '../toolbar/bar-scroll';
 import { UiToolbarItem } from '../toolbar/toolbar';
 import { UiNavigationBar } from './navigation-bar';
+import { plusIcon } from '../icon/icon-set';
+import { provideIcons } from '../icon/icons';
+
+// The icons these specs draw by name, registered as an app registers its own.
+const TEST_ICONS = provideIcons({ plusIcon });
 
 @Component({
   selector: 'notes-page',
@@ -40,6 +45,7 @@ const routes: Routes = [
 ];
 
 @Component({
+  providers: [TEST_ICONS],
   imports: [
     LYNX_ELEMENTS,
     RouterOutlet,

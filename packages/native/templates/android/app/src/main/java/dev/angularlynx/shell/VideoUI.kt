@@ -1,6 +1,7 @@
 package dev.angularlynx.shell
 
 import android.graphics.Bitmap
+import android.net.Uri
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
@@ -86,6 +87,9 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
      */
     private var heldFirstFrame: Long? = null
 
+    /** The source the held first-frame event is for. */
+    private var heldSource: Uri? = null
+
     /** How many times the frame was drawn again since the player last went to the target. */
     private var redraws = 0
 
@@ -147,6 +151,11 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
             // browser.
             hasFrame = false
             target?.reset()
+            // A held first-frame event is the last source's: XElement sends
+            // the new one's itself (its setSrc lets it send another). XElement's
+            // `stop` and `play` rebuild the same item without that, so the
+            // event is kept for the same source.
+            if (mediaItem?.localConfiguration?.uri != heldSource) heldFirstFrame = null
         }
 
         override fun onRenderedFirstFrame() {
@@ -323,6 +332,7 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
     override fun onFirstFrame(durationMs: Long) {
         if (drawingOffscreen && target?.frameIsCurrent() != true) {
             heldFirstFrame = durationMs
+            heldSource = playerView?.player?.currentMediaItem?.localConfiguration?.uri
             expectTargetFrame()
             return
         }

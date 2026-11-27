@@ -12,7 +12,7 @@ import {
 } from 'vitest';
 import { callOnBackground } from '../background-call';
 import { fetchForMainThread, type RelayedRequest } from './background-fetch';
-import { installNetworkGlobals } from './index';
+import { installNetworkGlobals, installXMLHttpRequest } from './index';
 
 vi.mock('../background-call', () => ({ callOnBackground: vi.fn() }));
 
@@ -54,13 +54,17 @@ afterAll(async () => {
   await new Promise((resolve) => server.close(resolve));
 });
 
-/** The main thread's globals, as installNetworkGlobals() puts them on Lynx's. */
+/**
+ * The main thread's globals, as the runtime puts them on Lynx's in an app that
+ * uses XMLHttpRequest.
+ */
 let main: Record<string, any>;
 
 beforeEach(() => {
   requests.length = 0;
   main = {};
   installNetworkGlobals(main);
+  installXMLHttpRequest(main);
   const nodeFetch = globalThis.fetch;
   // XHR calls `globalThis.fetch`, which is the relayed one on the main thread.
   vi.stubGlobal('fetch', main['fetch']);

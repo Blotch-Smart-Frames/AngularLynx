@@ -32,13 +32,13 @@ import {
   fetchForMainThread,
   type RelayedRequest,
 } from './background-fetch';
-import { installNetworkGlobals } from './index';
+import { installNetworkGlobals, installXMLHttpRequest } from './index';
 
 vi.mock('../background-call', () => ({ callOnBackground: vi.fn() }));
 
 /**
- * Angular's own HTTP stack on the globals installNetworkGlobals() puts on
- * Lynx's main thread, with a stand-in background thread: each relayed call
+ * Angular's own HTTP stack on the network globals the runtime puts on Lynx's
+ * main thread, with a stand-in background thread: each relayed call
  * runs fetchForMainThread() against `server` below, with the request and
  * response copied as JSON, as the real relay does.
  */
@@ -91,6 +91,9 @@ describe('HttpClient on the main thread', () => {
   beforeEach(() => {
     const target: Record<string, unknown> = {};
     installNetworkGlobals(target);
+    // What an app that provides HttpClient gets (the build plugin's
+    // on-demand.ts): fetch for FetchBackend, and XMLHttpRequest with withXhr().
+    installXMLHttpRequest(target);
     for (const [name, value] of Object.entries(target)) {
       // Node's Response, which the fake server answers with, needs Node's
       // ReadableStream. The main thread's responses are LynxResponses, whose

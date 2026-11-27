@@ -17,6 +17,7 @@ import {
   fromWords,
   setCanvas2DBridgeForTesting,
   setWebGLBridgeForTesting,
+  toWords,
 } from './webgl-bridge';
 
 const PNG = new Uint8Array([137, 80, 78, 71]);
@@ -320,6 +321,18 @@ describe('LynxImageElement', () => {
     expect(await settled(remote)).toBe('load');
     expect(onload).toHaveBeenCalledWith({ type: 'load', target: remote });
     expect(fetch).toHaveBeenCalledWith('https://example.com/a.png');
+  });
+
+  it('loads from a URL without fetch, where the main thread has none', async () => {
+    // Most apps' main threads have no fetch (network/enable.ts).
+    vi.stubGlobal('fetch', undefined);
+    vi.stubGlobal('lynx', {
+      module: () => ({ invoke: () => toWords(PNG) }),
+    });
+    const image = new LynxImageElement();
+    image.src = '/static/a.png';
+    expect(await settled(image)).toBe('load');
+    expect([image.naturalWidth, image.naturalHeight]).toEqual([4, 2]);
   });
 
   it('fires error when the file doesn’t load or decode', async () => {

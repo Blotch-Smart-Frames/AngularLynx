@@ -3706,6 +3706,23 @@ describe('<q>, element by element', () => {
       expect(drawn(q)).toEqual(['“', '”']);
     });
 
+    it('trims the spaces at the edges of a line again when the marks go', () => {
+      const p = doc.createElement('p');
+      page.appendChild(p);
+      const q = makeQ();
+      p.appendChild(q);
+      q.appendChild(doc.createText(' hi '));
+      commit();
+      expect(drawn(q)).toEqual(['“', ' hi ', '”']);
+
+      q.setStyle('quotes', 'none');
+      commit();
+      expect(drawn(q)).toEqual(['', 'hi', '']);
+      q.removeStyle('quotes');
+      commit();
+      expect(drawn(q)).toEqual(['“', ' hi ', '”']);
+    });
+
     it('keeps the language of an auto inside a quotes', () => {
       quotesRules([['fancy'], [], `"<" ">"`, 1000, 0, 0]);
       const view = doc.createElement('view');

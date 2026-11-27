@@ -2893,6 +2893,11 @@ export class LynxElement implements BaseLynxElement {
     this.#rawText = text;
     this.#text = text;
     __SetAttribute(this.element, 'text', text);
+    // The marks are text of the line (see #collectRawTextLeaves), so the
+    // spaces beside them are trimmed again: `quotes: none` leaves the space
+    // in `<q> hi </q>` at the edge of the line, where a browser drops it, and
+    // marks that come back keep it again.
+    if (this.#jsParent) LynxElement.#enqueueTextNormalization(this.#jsParent);
   }
 
   /**

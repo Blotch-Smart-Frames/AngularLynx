@@ -403,7 +403,8 @@ const verticalAlignOf = (rule: Rule): BaselineDistance | null => {
   rule.each((node) => {
     if (node.type === 'decl' && node.prop.toLowerCase() === 'vertical-align') {
       value = node.value;
-      important ||= node.important;
+      // PostCSS leaves it undefined on a declaration without `!important`.
+      important ||= node.important === true;
     }
   });
   if (important || rule.parent?.type !== 'root') return null;

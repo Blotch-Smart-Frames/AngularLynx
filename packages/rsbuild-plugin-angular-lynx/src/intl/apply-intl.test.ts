@@ -77,6 +77,14 @@ describe('renderIntlModule', () => {
         path.join(formatJs, 'intl-getcanonicallocales/index.js'),
       )};`,
     );
+    // And the phone's language as the host's default, which FormatJS's
+    // locale matcher reads once, when the first polyfill after it loads it.
+    expect(module.canonicalLocalesSource).toContain(
+      'import { useAppLocaleAsHostDefault } from "/plugin/dist/intl-runtime.js";',
+    );
+    expect(module.canonicalLocalesSource).toMatch(
+      /\nuseAppLocaleAsHostDefault\(\);\n$/,
+    );
     expect(module.dataFiles.get('DateTimeFormat')?.get('zh-TW')).toBe(
       path.join(formatJs, 'intl-datetimeformat/locale-data/zh-Hant.js'),
     );
@@ -288,10 +296,10 @@ describe('applyIntl', () => {
         ],
       },
     ]);
-    const listFormat = path.join(formatJs, 'intl-listformat/polyfill.js');
-    // What SWC makes of FormatJS's has no escape PrimJS can't compile.
+    // What SWC makes of a package's escape has none PrimJS can't compile:
+    // here the one FormatJS's ListFormat 9.0 had, for Hebrew's "and".
     const { code } = await rspack.experiments.swc.transform(
-      fs.readFileSync(listFormat, 'utf8'),
+      'export const hebrew = (next) => /^\\p{Script=Hebrew}/u.test(next);',
       UNICODE_PROPERTY_REGEX_SWC_OPTIONS,
     );
     expect(code).not.toMatch(/\\p\{/);

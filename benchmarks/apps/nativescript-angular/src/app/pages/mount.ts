@@ -58,8 +58,9 @@ export type MountKind = 'view' | 'text' | 'image';
 export class Mount {
   readonly #params = inject(ActivatedRoute).snapshot.queryParamMap;
   protected readonly kind = (this.#params.get('kind') ?? 'view') as MountKind;
+  // 1500 only when the link has no count: an explicit 0 is an empty screen.
   protected readonly indices = Array.from(
-    { length: Number(this.#params.get('count')) || 1500 },
+    { length: Number(this.#params.get('count') ?? 1500) || 0 },
     (_, i) => i,
   );
   protected readonly sprites = this.indices.map((i) => `${SPRITES}/${(i % 300) + 1}.png`);

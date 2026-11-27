@@ -4,13 +4,12 @@ import {
   ancestorTextRulesRead,
   baselineShiftFor,
   FONT_SIZE_FLAG,
-  LOWERED_FLAG,
-  RAISED_FLAG,
   SMALLER_FLAG,
   VERTICAL_ALIGN_FLAG,
   hasAncestorTextRules,
   inheritanceCopiesFor,
   inheritanceStyleFor,
+  inlineBaselineShift,
   inlineTextStyles,
   splitDeclarations,
   isBlankText,
@@ -18,7 +17,10 @@ import {
   isRowOrientation,
   LAYOUT_FLAG,
   matchedStyleFlagsFor,
+  matchedVerticalAlignFor,
+  parseVerticalAlign,
   resetStyleIndex,
+  type ShiftLink,
   smallerClassFor,
   styleFlagsFor,
   textPropertyBit,
@@ -30,10 +32,22 @@ type Rule =
   | [string[], number, ['>' | ' ', string[]][]]
   | [string[], number, ['>' | ' ', string[]][], 1];
 
-const setIndex = (rules: Rule[]): void => {
+type VerticalAlignRule = [
+  string[],
+  ['>' | ' ', string[]][],
+  [number, number] | null,
+  number,
+  number,
+  number,
+];
+
+const setIndex = (
+  rules: Rule[],
+  verticalAligns?: VerticalAlignRule[],
+): void => {
   (
     globalThis as { __angularLynxStyleIndex?: unknown }
-  ).__angularLynxStyleIndex = { rules };
+  ).__angularLynxStyleIndex = { rules, verticalAligns };
   resetStyleIndex();
 };
 
@@ -334,52 +348,251 @@ describe('smallerClassFor', () => {
 });
 
 describe('baselineShiftFor', () => {
-  // Issue #682: the build's <sup> and <sub> rules, as the index flags them.
-  const sup = SMALLER_FLAG | RAISED_FLAG;
-  const sub = SMALLER_FLAG | LOWERED_FLAG;
+  // Issue #682: the build's <sup> and <sub> rules, as the index has them.
+  const sup: ShiftLink = [SMALLER_FLAG | VERTICAL_ALIGN_FLAG, [0.4, 0]];
+  const sub: ShiftLink = [SMALLER_FLAG | VERTICAL_ALIGN_FLAG, [-0.24, 0]];
+  const plain: ShiftLink = [0, undefined];
+  const small: ShiftLink = [SMALLER_FLAG, undefined];
+  const sized: ShiftLink = [FONT_SIZE_FLAG, undefined];
+  // Issue #715: an app's own rules, such as `.exp { vertical-align: 0.5em }`.
+  const exp: ShiftLink = [VERTICAL_ALIGN_FLAG, [0.5, 0]];
+  const pixels: ShiftLink = [VERTICAL_ALIGN_FLAG, [0, 4]];
 
-  it.each([
+  it.each<[string, ShiftLink[], [number, number] | null]>([
     // A tag that moves alone draws where its own rule puts it.
     ['a <sup> alone', [sup], null],
-    ['text in nothing that moves', [0, 0], null],
+    ['text in nothing that moves', [plain, plain], null],
     // A <b> in a <sup> is as small as it, so its em is the <sup>'s.
-    ['a <b> in a <sup>', [0, sup], 0.4],
-    ['an <i> in a <sub>', [0, sub], -0.24],
+    ['a <b> in a <sup>', [plain, sup], [0.4, 0]],
+    ['an <i> in a <sub>', [plain, sub], [-0.24, 0]],
     // A <small> in a <sup> is 1.2 times smaller, so the <sup>'s distance is
     // 1.2 times as many of its em.
-    ['a <small> in a <sup>', [SMALLER_FLAG, sup], 0.48],
+    ['a <small> in a <sup>', [small, sup], [0.48, 0]],
     // A <sup> in a <sup> rises by both, as in a browser.
-    ['a <sup> in a <sup>', [sup, sup], 0.88],
-    ['a <b> in a <sup> in a <sup>', [0, sup, sup], 0.88],
-    ['a <sup> in a <sub>', [sup, sub], 0.112],
+    ['a <sup> in a <sup>', [sup, sup], [0.88, 0]],
+    ['a <b> in a <sup> in a <sup>', [plain, sup, sup], [0.88, 0]],
+    ['a <sup> in a <sub>', [sup, sub], [0.112, 0]],
     // A size of its own above the tags that move it changes nothing.
-    ['a <b> in a <sup> in a sized tag', [0, sup, FONT_SIZE_FLAG], 0.4],
+    ['a <b> in a <sup> in a sized tag', [plain, sup, sized], [0.4, 0]],
     // Past MAX_SMALLER_LEVELS the text stays the same size.
     [
       'a <b> in a <sup> in five <small>s',
-      [0, sup, ...Array<number>(5).fill(SMALLER_FLAG)],
-      0.4,
+      [plain, sup, ...Array<ShiftLink>(5).fill(small)],
+      [0.4, 0],
     ],
-  ])('moves %s by %s em', (_, chain, shift) => {
-    expect(baselineShiftFor(chain)).toBe(shift);
+    // Issue #715: an app's own distance moves the tags inside, in em...
+    ['a <b> in an app’s tag', [plain, exp], [0.5, 0]],
+    ['a <sup> in an app’s tag', [sup, exp], [1, 0]],
+    ['a <b> in a <sup> in an app’s tag', [plain, sup, exp], [1, 0]],
+    // ...or in pixels, which a smaller tag inside doesn't scale.
+    ['a <b> in a tag raised 4px', [plain, pixels], [0, 4]],
+    ['a <sup> in a tag raised 4px', [sup, pixels], [0.4, 4]],
+    ['a <b> in a sized tag raised 4px', [plain, sized, pixels], [0, 4]],
+    // A tag that sets its size passes it to the tags inside, which measure
+    // its em by it.
+    [
+      'a <b> in an app’s tag with a size',
+      [plain, [FONT_SIZE_FLAG | VERTICAL_ALIGN_FLAG, [0.5, 0]]],
+      [0.5, 0],
+    ],
+    [
+      'a <small> in an app’s tag with a size',
+      [small, [FONT_SIZE_FLAG | VERTICAL_ALIGN_FLAG, [0.5, 0]]],
+      [0.6, 0],
+    ],
+    [
+      'a <b> in a <sup> with a size',
+      [plain, [FONT_SIZE_FLAG | VERTICAL_ALIGN_FLAG, [0.4, 0]]],
+      [0.4, 0],
+    ],
+    // A tag's own distance that brings it back to the line, and one of
+    // `baseline` above it, which moves nothing.
+    [
+      'a <sub> back on the line in a <sup>',
+      [[SMALLER_FLAG | VERTICAL_ALIGN_FLAG, [0, 0]], sup],
+      [0.48, 0],
+    ],
+    [
+      'a <sup> in a tag on the baseline',
+      [sup, [VERTICAL_ALIGN_FLAG, [0, 0]]],
+      null,
+    ],
+  ])('moves %s by %j', (_, chain, shift) => {
+    expect(baselineShiftFor(chain)).toEqual(shift);
   });
 
-  // An app's own vertical-align moves the text by a distance the runtime
-  // doesn't know, and a size of the tag's own isn't one it can measure the
-  // outer tags' em against.
-  it.each([
-    ['an app’s vertical-align on the tag', [VERTICAL_ALIGN_FLAG, sup]],
-    ['an app’s vertical-align above it', [0, VERTICAL_ALIGN_FLAG | sup]],
-    ['a size of its own', [FONT_SIZE_FLAG, sup]],
-    ['no flags at all', []],
-    // An app's rule for the tag sets the other distance too (review of #714).
-    ['both distances on a tag above it', [0, sup | LOWERED_FLAG]],
+  // A distance the runtime can't copy, and a size it can't measure the outer
+  // tags' em against.
+  it.each<[string, ShiftLink[]]>([
+    ['a distance it can’t copy on the tag', [[VERTICAL_ALIGN_FLAG, null], sup]],
+    [
+      'a distance it can’t copy above it',
+      [plain, [VERTICAL_ALIGN_FLAG, null], sup],
+    ],
+    ['a size of its own', [sized, sup]],
+    ['no tags at all', []],
     // A tag between with a size of its own: the outer <sup>'s em is of a
     // size the runtime doesn't know.
-    ['a size of its own between them', [0, FONT_SIZE_FLAG, sup]],
-    ['a size of its own on the tag that moves it', [0, FONT_SIZE_FLAG | sup]],
+    ['a size of its own between them', [plain, sized, sup]],
+    ['an em distance above a sized tag', [plain, sized, exp]],
   ])('leaves the text alone with %s', (_, chain) => {
     expect(baselineShiftFor(chain)).toBeNull();
+  });
+});
+
+describe('inlineBaselineShift', () => {
+  const sup: ShiftLink = [SMALLER_FLAG | VERTICAL_ALIGN_FLAG, [0.4, 0]];
+  const plain: ShiftLink = [0, undefined];
+  const sized: ShiftLink = [FONT_SIZE_FLAG, undefined];
+  const exp: ShiftLink = [VERTICAL_ALIGN_FLAG, [0.5, 0]];
+  const pixels: ShiftLink = [VERTICAL_ALIGN_FLAG, [0, 4]];
+  const unknown: ShiftLink = [VERTICAL_ALIGN_FLAG, null];
+
+  it.each<[string, ShiftLink[], [number, number] | null]>([
+    ['the whole chain where it can', [plain, sup, exp], [1, 0]],
+    ['a distance in pixels alone', [plain, pixels], [0, 4]],
+    // Review of #735: a <b> in a <sup> inside a tag the runtime can't follow
+    // rises with the <sup>'s own text.
+    [
+      'the <sup>’s distance, below one in pixels',
+      [plain, sup, pixels],
+      [0.4, 0],
+    ],
+    [
+      'the <sup>’s distance, below one it can’t copy',
+      [plain, sup, unknown],
+      [0.4, 0],
+    ],
+    [
+      'the <sup>’s distance, below an em one above a size',
+      [plain, sup, sized, exp],
+      [0.4, 0],
+    ],
+    // The <sup> itself keeps its rule's distance.
+    ['nothing on the <sup> below one in pixels', [sup, pixels], null],
+    ['nothing below a distance it can’t copy', [plain, unknown, sup], null],
+    ['nothing for a tag alone', [sup], null],
+  ])('writes %s', (_, chain, shift) => {
+    expect(inlineBaselineShift(chain)).toEqual(shift);
+  });
+});
+
+describe('parseVerticalAlign', () => {
+  it.each<[string, [number, number] | null]>([
+    ['0.4em', [0.4, 0]],
+    [' -0.24EM ', [-0.24, 0]],
+    ['.5em', [0.5, 0]],
+    ['+3px', [0, 3]],
+    ['-2.5px', [0, -2.5]],
+    ['0', [0, 0]],
+    ['-0em', [0, 0]],
+    ['baseline', [0, 0]],
+    ['super', null],
+    ['middle', null],
+    ['50%', null],
+    ['1rem', null],
+    ['calc(1em + 2px)', null],
+    ['var(--x)', null],
+    ['em', null],
+  ])('reads %s', (value, distance) => {
+    expect(parseVerticalAlign(value)).toEqual(distance);
+  });
+});
+
+describe('matchedVerticalAlignFor', () => {
+  const none = (): undefined => undefined;
+  const ancestors =
+    (...list: string[][]) =>
+    (index: number) =>
+      list[index] && new Set(list[index]);
+
+  it('reads nothing without an index', () => {
+    expect(matchedVerticalAlignFor(new Set(['a']), none)).toBeUndefined();
+  });
+
+  it('reads nothing where no rule matches', () => {
+    setIndex([], [[['a'], [], [0.5, 0], 1000, 0, 0]]);
+    expect(matchedVerticalAlignFor(new Set(['b']), none)).toBeUndefined();
+    expect(matchedVerticalAlignFor(new Set(), none)).toBeUndefined();
+  });
+
+  it('reads the distance of the rule that matches', () => {
+    setIndex(
+      [],
+      [
+        [['a', 'b'], [], [0.5, 0], 2000, 0, 0],
+        [[], [], [0, 2], 0, 0, 1],
+      ],
+    );
+    expect(matchedVerticalAlignFor(new Set(['a', 'b']), none)).toEqual([
+      0.5, 0,
+    ]);
+    expect(matchedVerticalAlignFor(new Set(['a']), none)).toEqual([0, 2]);
+  });
+
+  it('checks what the rule requires of the ancestors', () => {
+    setIndex([], [[['sup'], [[' ', ['note']]], [0.3, 0], 2000, 0, 0]]);
+    expect(
+      matchedVerticalAlignFor(new Set(['sup']), ancestors(['p'], ['note'])),
+    ).toEqual([0.3, 0]);
+    expect(
+      matchedVerticalAlignFor(new Set(['sup']), ancestors(['p'])),
+    ).toBeUndefined();
+  });
+
+  // As Lynx ranks them: by specificity, then by their order in a stylesheet.
+  it('takes the rule that wins', () => {
+    setIndex(
+      [],
+      [
+        // `.note sup` wins over the build's `sup`, whatever their order.
+        [['sup'], [[' ', ['note']]], [0.3, 0], 2000, 0, 0],
+        [['sup'], [], [0.4, 0], 1000, 0, 1],
+        // A rule with the same specificity later in the stylesheet wins.
+        [['sub'], [], [-0.24, 0], 1000, 0, 2],
+        [['sub'], [], [-0.1, 0], 1000, 0, 3],
+        // Whichever the runtime comes to first.
+        [['y'], [], [0, 1], 1000, 0, 4],
+        [['x'], [], [0, 2], 1000, 0, 5],
+      ],
+    );
+    expect(
+      matchedVerticalAlignFor(new Set(['sup']), ancestors(['note'])),
+    ).toEqual([0.3, 0]);
+    expect(matchedVerticalAlignFor(new Set(['sup']), none)).toEqual([0.4, 0]);
+    expect(matchedVerticalAlignFor(new Set(['sub']), none)).toEqual([-0.1, 0]);
+    expect(matchedVerticalAlignFor(new Set(['x', 'y']), none)).toEqual([0, 2]);
+  });
+
+  it('can’t tell the winner of two stylesheets that disagree', () => {
+    setIndex(
+      [],
+      [
+        [['a'], [], [0.5, 0], 1000, 0, 0],
+        [['a'], [], [0.3, 0], 1000, 1, 1],
+        [['b'], [], [0.5, 0], 1000, 0, 2],
+        [['b'], [], [0.5, 0], 1000, 1, 3],
+      ],
+    );
+    expect(matchedVerticalAlignFor(new Set(['a']), none)).toBeNull();
+    // Two that agree draw the same either way.
+    expect(matchedVerticalAlignFor(new Set(['b']), none)).toEqual([0.5, 0]);
+  });
+
+  it('can’t tell a distance the build couldn’t copy', () => {
+    setIndex(
+      [],
+      [
+        [['a'], [], null, 1000, 0, 0],
+        // One that loses to a rule it can tell doesn't count.
+        [['b'], [], null, 1000, 0, 1],
+        [['b', 'c'], [], [0.5, 0], 2000, 0, 2],
+      ],
+    );
+    expect(matchedVerticalAlignFor(new Set(['a']), none)).toBeNull();
+    expect(matchedVerticalAlignFor(new Set(['b', 'c']), none)).toEqual([
+      0.5, 0,
+    ]);
   });
 });
 

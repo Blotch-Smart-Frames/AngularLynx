@@ -91,81 +91,142 @@ export const LAYOUT_FLAG = 1 << INHERITED_TEXT_PROPERTIES.length;
 export const SMALLER_FLAG = LAYOUT_FLAG << 1;
 
 /**
- * The bits in a style index entry for a rule that moves its text off the
- * baseline with a `vertical-align` length: RAISED_FLAG for the build's
- * `<sup>` rule, `0.4em`, LOWERED_FLAG for its `<sub>` rule, `-0.24em`, and
- * VERTICAL_ALIGN_FLAG for any other value, by a distance the runtime doesn't
- * know. LynxElement gives the HTML text tags inside a `<sub>` or `<sup>`
- * the whole distance from them (see baselineShiftFor). Above SMALLER_FLAG,
- * as in the build plugin's style-index.ts.
+ * The bit in a style index entry for a rule that sets a `vertical-align`.
+ * The index's `verticalAligns` holds each such rule's distance, which
+ * LynxElement gives the HTML text tags inside the tag it moves (see
+ * baselineShiftFor). Above SMALLER_FLAG, as in the build plugin's
+ * style-index.ts.
  */
-export const RAISED_FLAG = SMALLER_FLAG << 1;
-export const LOWERED_FLAG = RAISED_FLAG << 1;
-export const VERTICAL_ALIGN_FLAG = LOWERED_FLAG << 1;
+export const VERTICAL_ALIGN_FLAG = SMALLER_FLAG << 1;
 
 /**
- * What a rule with RAISED_FLAG or LOWERED_FLAG moves its text by, in the
- * element's own `em`: the build's `vertical-align` for `<sup>` and `<sub>`
- * (styles/html-text-tags.css in the build plugin).
+ * How far a `vertical-align` moves the text off the baseline: the `em` of
+ * the element's own size, plus pixels (see the build plugin's
+ * style-index.ts).
  */
-const RAISED_EM = 0.4;
-const LOWERED_EM = -0.24;
+export type BaselineDistance = readonly [em: number, px: number];
+
+/**
+ * The distance a `vertical-align` value moves the text by, or null for one
+ * with no fixed length: a keyword such as `super` or `middle`, which Lynx
+ * places by the line, a percentage of the line height, a `calc()` or a
+ * `var()`, or any other unit. `baseline` and `0` don't move it. The build
+ * plugin reads the stylesheet's values the same way (its
+ * parseVerticalAlign), and a test keeps the two the same.
+ */
+export const parseVerticalAlign = (value: string): BaselineDistance | null => {
+  const length = value.trim().toLowerCase();
+  if (length === 'baseline' || length === '0') return [0, 0];
+  const match = /^([+-]?(?:\d+(?:\.\d*)?|\.\d+))(em|px)$/.exec(length);
+  if (!match) return null;
+  const amount = Number(match[1]) + 0;
+  return match[2] === 'em' ? [amount, 0] : [0, amount];
+};
+
+/**
+ * One of the HTML text tags in baselineShiftFor's chain: the style index
+ * flags of its rules and of its inline size, and its `vertical-align`'s
+ * distance (undefined where it sets none, null where the runtime can't tell
+ * it, see matchedVerticalAlignFor).
+ */
+export type ShiftLink = readonly [
+  flags: number,
+  distance: BaselineDistance | null | undefined,
+];
 
 /**
  * How far a browser moves the text of an HTML text tag off the line's
- * baseline, in the tag's own `em`, from its rules' flags and those of the
- * HTML text tags above it, nearest first (`chain[0]` is the tag's own), up
- * to the nearest whose rules set the size with a copy. Null when it can't
- * tell, or no tag above it moves it.
+ * baseline, from its own `vertical-align` and those of the HTML text tags
+ * above it, nearest first (`chain[0]` is the tag's own): in the tag's own
+ * `em`, plus pixels. Null when it can't tell, or no tag above it moves it.
  *
  * A browser moves an inline box relative to its parent's baseline, so the
  * text inside a `<sup>` rises with it, and a `<sup>` in a `<sup>` rises by
  * both. Lynx doesn't: on iOS a `vertical-align` moves only the text of the
  * `<text>` that has it, so in `x<sup>n<b>2</b></sup>` the "2" stayed on the
  * line, and on iOS and Android an inner `<text>`'s offset replaces the one
- * around it (issue #682). Each offset is in the element's own `em`, so an
- * outer tag's counts for more in a tag that's smaller than it: 1.2 times for
- * each `<small>`, `<sub>` or `<sup>` between them (see smallerClassFor),
- * past which MAX_SMALLER_LEVELS keeps the text the same size.
+ * around it (issue #682). An app's own rule, such as `.exp {
+ * vertical-align: 0.5em }`, does the same (issue #715).
  *
- * It can't tell when the app sets a `vertical-align` of its own on one of
- * them (VERTICAL_ALIGN_FLAG, or both RAISED_FLAG and LOWERED_FLAG), or a size
- * of its own (FONT_SIZE_FLAG) on the tag or one between it and a tag that
- * moves it, whose distance would then need measuring against that size. The
- * caller adds those flags for the tags' inline styles, which the index
- * doesn't see.
+ * A pixel distance moves the tag as far whatever its size. One in `em` is
+ * in the size of the tag that has it, so it counts for more in a tag that's
+ * smaller: 1.2 times for each `<small>`, `<sub>` or `<sup>` between them
+ * (see smallerClassFor), past which MAX_SMALLER_LEVELS keeps the text the
+ * same size. A tag whose rules or inline style set its size
+ * (FONT_SIZE_FLAG) passes the size to the tags inside it, through its copy,
+ * so they're measured from it, but the runtime doesn't know its size against
+ * the tags above it: an `em` distance from above it can't be measured.
+ *
+ * It can't tell when one of them sets a `vertical-align` it can't copy (a
+ * null distance), such as `super`.
  */
-export const baselineShiftFor = (chain: readonly number[]): number | null => {
-  const levels = chain.filter((flags) => flags & SMALLER_FLAG).length;
-  const ownLevel = Math.min(levels, MAX_SMALLER_LEVELS);
-  let shift = 0;
+export const baselineShiftFor = (
+  chain: readonly ShiftLink[],
+): BaselineDistance | null => {
+  // Each tag's level of smaller tags below the nearest one above it that
+  // sets its size, itself included, and that tag's place in the chain (the
+  // chain's length where none does): two tags with the same one have sizes
+  // the runtime knows against each other.
+  const levels: number[] = [];
+  const sizedBy: number[] = [];
+  let sizer = chain.length;
+  let count = 0;
+  for (let index = chain.length - 1; index >= 0; index--) {
+    const flags = chain[index]![0];
+    if (flags & FONT_SIZE_FLAG) {
+      sizer = index;
+      count = 0;
+    } else if (flags & SMALLER_FLAG) count++;
+    levels[index] = Math.min(count, MAX_SMALLER_LEVELS);
+    sizedBy[index] = sizer;
+  }
+  let em = 0;
+  let px = 0;
   // Whether a tag above moves it: a tag that moves alone has its own rule,
   // which draws it where a browser does.
   let moved = false;
-  // Whether a tag from here down sets its own size, so the distances from
-  // here up can't be measured in the first tag's em.
-  let sized = false;
-  let below = 0;
-  for (const [index, flags] of chain.entries()) {
-    if (flags & VERTICAL_ALIGN_FLAG) return null;
-    // Both distances: an app's rule for the tag sets the other one, and the
-    // index can't tell which wins.
-    if (flags & RAISED_FLAG && flags & LOWERED_FLAG) return null;
-    if (flags & FONT_SIZE_FLAG) sized = true;
-    const em =
-      flags & RAISED_FLAG ? RAISED_EM : flags & LOWERED_FLAG ? LOWERED_EM : 0;
-    if (em && index > 0) {
-      if (sized) return null;
-      moved = true;
+  for (const [index, [, distance]] of chain.entries()) {
+    if (distance === null) return null;
+    if (distance) {
+      const [ownEm, ownPx] = distance;
+      if (index > 0 && (ownEm || ownPx)) moved = true;
+      if (ownEm && index > 0) {
+        if (sizedBy[index] !== sizedBy[0]) return null;
+        em += ownEm * 1.2 ** (levels[0]! - levels[index]!);
+      } else em += ownEm;
+      px += ownPx;
     }
-    if (em) {
-      const level = Math.min(levels - below, MAX_SMALLER_LEVELS);
-      shift += em * 1.2 ** (ownLevel - level);
-    }
-    if (flags & SMALLER_FLAG) below++;
   }
-  // Rounded, so the same distance always writes the same style.
-  return moved ? Math.round(shift * 10000) / 10000 : null;
+  const round = (n: number): number =>
+    // Rounded, so the same distance always writes the same style, and
+    // without a -0.
+    Math.round(n * 10000) / 10000 + 0;
+  return moved ? [round(em), round(px)] : null;
+};
+
+/**
+ * The distance to write inline on the first tag of `chain` (see
+ * baselineShiftFor): that of the whole chain, or where the runtime can't
+ * tell it or Lynx can't take it, that of the longest part of the chain from
+ * the tag up that it can. Lynx drops an inline `vertical-align:
+ * calc(0.4em + 10px)`, which drew the tag on the line (iOS 27 Simulator,
+ * Lynx Explorer, November 2026), and the tag's size in pixels isn't known
+ * here to add the two up, so a distance in both units is one it can't take.
+ *
+ * A `<b>` in a `<sup>` inside a tag the runtime can't follow (one raised by
+ * `super`, or by `0.5em` above a tag with a size of its own, or by `10px`)
+ * still rises with the `<sup>`'s own text, which its rule moves: a tag that
+ * shared none of the distance would sit on the line on iOS (review of
+ * #735). The `<sup>` itself, which nothing between moves, keeps its rule's.
+ */
+export const inlineBaselineShift = (
+  chain: readonly ShiftLink[],
+): BaselineDistance | null => {
+  for (let length = chain.length; length > 1; length--) {
+    const shift = baselineShiftFor(chain.slice(0, length));
+    if (shift && !(shift[0] && shift[1])) return shift;
+  }
+  return null;
 };
 
 /** The `font-size` bit in the style index. */
@@ -344,6 +405,30 @@ type StyleIndex = {
     ancestors?: readonly AncestorStep[],
     inState?: 1,
   ])[];
+  /**
+   * Each rule that sets a `vertical-align`, with its distance (null when the
+   * runtime can't copy it) and its place in the cascade: its specificity,
+   * the stylesheet it's in and its place there (see the build plugin's
+   * VerticalAlignRule).
+   */
+  readonly verticalAligns?: readonly (readonly [
+    tokens: readonly string[],
+    ancestors: readonly AncestorStep[],
+    distance: BaselineDistance | null,
+    specificity: number,
+    sheet: number,
+    order: number,
+  ])[];
+};
+
+/** A `vertical-align` rule, by the first token it requires. */
+type IndexedVerticalAlign = {
+  readonly rest: readonly string[];
+  readonly ancestors: readonly AncestorStep[];
+  readonly distance: BaselineDistance | null;
+  readonly specificity: number;
+  readonly sheet: number;
+  readonly order: number;
 };
 
 /** A rule, by the first token it requires: what else it requires. */
@@ -371,6 +456,13 @@ type IndexedRules = {
    * which of them apply below the element only if it adds or removes one.
    */
   readonly ancestorTokens: ReadonlySet<string>;
+  /** The `vertical-align` rules whose selector's last part requires nothing. */
+  readonly anyVerticalAligns: readonly IndexedVerticalAlign[];
+  /** The others, by the first token each requires. */
+  readonly verticalAlignsByToken: ReadonlyMap<
+    string,
+    readonly IndexedVerticalAlign[]
+  >;
 };
 
 let indexed: IndexedRules | null | undefined;
@@ -394,12 +486,7 @@ const readIndex = (): IndexedRules | null => {
     // it move (see baselineShiftFor).
     if (
       ancestors.length &&
-      flags &
-        (ALL_TEXT_PROPERTIES |
-          SMALLER_FLAG |
-          RAISED_FLAG |
-          LOWERED_FLAG |
-          VERTICAL_ALIGN_FLAG)
+      flags & (ALL_TEXT_PROPERTIES | SMALLER_FLAG | VERTICAL_ALIGN_FLAG)
     ) {
       hasAncestorRules = true;
       for (const [, required] of ancestors) {
@@ -415,12 +502,33 @@ const readIndex = (): IndexedRules | null => {
       byToken.set(first, list);
     }
   }
+  const anyVerticalAligns: IndexedVerticalAlign[] = [];
+  const verticalAlignsByToken = new Map<string, IndexedVerticalAlign[]>();
+  for (const [
+    tokens,
+    ancestors,
+    distance,
+    specificity,
+    sheet,
+    order,
+  ] of index.verticalAligns ?? []) {
+    const [first, ...rest] = tokens;
+    const rule = { rest, ancestors, distance, specificity, sheet, order };
+    if (first === undefined) anyVerticalAligns.push(rule);
+    else {
+      const list = verticalAlignsByToken.get(first) ?? [];
+      list.push(rule);
+      verticalAlignsByToken.set(first, list);
+    }
+  }
   return (indexed = {
     any,
     anyRules,
     byToken,
     hasAncestorRules,
     ancestorTokens,
+    anyVerticalAligns,
+    verticalAlignsByToken,
   });
 };
 
@@ -520,6 +628,62 @@ export const matchedStyleFlagsFor = (
     }
   }
   return flags;
+};
+
+/**
+ * The distance of the `vertical-align` that applies to an element with these
+ * tokens, whose ancestors are as `ancestorAt` gives (see
+ * matchedStyleFlagsFor): undefined where no rule sets one, and null where
+ * the runtime can't tell it. Of the rules that match, the one with the
+ * highest specificity wins, as in Lynx, and of those, the last in the
+ * stylesheet; in two stylesheets whose order the runtime can't know, they
+ * must agree. So an app's `.note sup { vertical-align: 0.3em }` wins over
+ * the build's `sup` rule, and a `sup` rule later in the app's stylesheet
+ * does too. A rule for a state, such as `:active`, isn't in the index's
+ * list (see #sizeChain).
+ */
+export const matchedVerticalAlignFor = (
+  tokens: ReadonlySet<string>,
+  ancestorAt: (index: number) => ReadonlySet<string> | undefined,
+): BaselineDistance | null | undefined => {
+  const index = readIndex();
+  if (!index) return undefined;
+  // The winner so far in each stylesheet, at the highest specificity seen.
+  let specificity = -1;
+  const winners = new Map<number, IndexedVerticalAlign>();
+  const consider = (rule: IndexedVerticalAlign): void => {
+    if (
+      rule.specificity < specificity ||
+      !rule.rest.every((other) => tokens.has(other)) ||
+      !ancestorsMatch(rule.ancestors, 0, 0, ancestorAt)
+    ) {
+      return;
+    }
+    if (rule.specificity > specificity) {
+      specificity = rule.specificity;
+      winners.clear();
+    }
+    const winner = winners.get(rule.sheet);
+    if (!winner || rule.order > winner.order) winners.set(rule.sheet, rule);
+  };
+  for (const rule of index.anyVerticalAligns) consider(rule);
+  for (const token of tokens) {
+    for (const rule of index.verticalAlignsByToken.get(token) ?? []) {
+      consider(rule);
+    }
+  }
+  let distance: BaselineDistance | null | undefined;
+  for (const winner of winners.values()) {
+    if (!winner.distance) return null;
+    if (
+      distance &&
+      (distance[0] !== winner.distance[0] || distance[1] !== winner.distance[1])
+    ) {
+      return null;
+    }
+    distance = winner.distance;
+  }
+  return distance;
 };
 
 /**

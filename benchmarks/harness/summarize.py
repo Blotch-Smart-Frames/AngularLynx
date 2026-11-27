@@ -4,11 +4,14 @@ table, from one or more of the harness's CSVs.
 
     python3 summarize.py ../results/ios/launch-*.csv
     python3 summarize.py ../results/ios/scroll-*.csv
+    python3 summarize.py ../results/android-emulator/launch-*.csv
 
 Each app's launches are split by what ran before: "again" right after its
 own last launch (iOS still has its files in memory, about 80 ms faster) and
 "after other" after the other app's. The harness alternates A B, B A, so each
-app has about half of each. The order comes from each row's timestamp.
+app has about half of each. The order comes from each row's timestamp, or
+from its previous_app column (android_launch.py), which also counts the
+launches the CSV doesn't hold.
 
 A scroll CSV (ios_scroll.py, a row per swipe) is summed per launch first,
 as the website charts it: hitch milliseconds per second scrolled, frames
@@ -113,10 +116,16 @@ def main(paths):
         ordered = sorted(rows, key=lambda row: row["timestamp"])
         previous = None
         for row in ordered:
-            condition = "again" if row["app"] == previous else "after other"
-            first = previous is None
+            # android_launch.py records the app launched before each run,
+            # which may be a warm-up or a run dropped over --max-load that
+            # the CSV doesn't hold. The other CSVs only have the row before.
+            if "previous_app" in row:
+                before = row["previous_app"] or None
+            else:
+                before = previous
+            condition = "again" if row["app"] == before else "after other"
             previous = row["app"]
-            if first:
+            if before is None:
                 continue
             app = f"{row['app']} ({condition})"
             if app not in order:

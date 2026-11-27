@@ -16,10 +16,10 @@ frameworks never touch the monorepo's build.
 | `apps/react-native` | [Software Mansion's `launchperf-poke-rn`](https://github.com/software-mansion-labs/launchperf-poke-rn) (MIT), with only the API's base URL changed, and the scene life cycle iOS 27 requires: Expo 54, React Native 0.81 |
 | `apps/react-native-0.88` | The same app on Expo SDK 58 / React Native 0.88, the base Angular Native uses |
 | `apps/angular-lynx` | The port to AngularLynx, on this repository's packages |
-| `apps/react-lynx` | The port to ReactLynx, in the same native shell as the AngularLynx app |
+| `apps/react-lynx` | The port to ReactLynx, in the same native shell as the AngularLynx app, on iOS and Android |
 | `apps/angular-native` | The port to Angular Native (Expo SDK 58) |
 | `fixtures/` | Recorded PokeAPI responses and sprites, and the server that hands them to the apps |
-| `harness/` | The scripts that launch the apps under Instruments and read the traces, and the UI test that scrolls them (`ios-scroll/`) |
+| `harness/` | The scripts that launch the apps under Instruments and read the traces, the UI test that scrolls them (`ios-scroll/`), and the ones that launch them on Android with adb (`android_*`) |
 | `results/` | Every run, as CSV |
 
 ## The app
@@ -55,6 +55,8 @@ Two things the runs showed, which shape how they're read:
 - **A launch right after the same app is about 80 ms faster** than one after the other app, for every app: iOS still has its files in memory. The A B, B A order gives each app about half of each, and the charts and `summarize.py` split them (`again`, `after other`) by each row's timestamp.
 
 The first session, run while the Mac was building the other apps, is in `results/ios/pilot` and isn't charted.
+
+[`results/android-emulator`](results/android-emulator) holds AngularLynx against ReactLynx on an Android emulator (below), with what its session showed in its README. It isn't charted either.
 
 ## Running it
 
@@ -152,3 +154,51 @@ slows it by 5–30%: the harness waits until the Mac's load average is under
 `--max-load` (half its cores by default) before each launch, and drops and
 repeats a run whose load went over it. With more than two apps, the order
 rotates as well as reversing, so each app follows each of the others in turn.
+
+## On an Android emulator
+
+AngularLynx and ReactLynx build for Android in the same shell (the project
+`ng build --platform android` generates), so the two Lynx apps compare on
+Android too. Until a phone is measured (issue #842), the runs go on an
+emulator, the same way the Simulator runs go:
+
+```sh
+# The fixture server, on the Mac, and an emulator (the E2E tests' AVD: a
+# Pixel-sized phone on Android 14, arm64)
+node fixtures/server.mjs
+emulator -avd angular-lynx-e2e -no-window -no-audio -no-boot-anim -no-snapshot
+
+# Build each app's release .apk and install it
+adb install -r "$(sh harness/build_android_app.sh angular-lynx com.angularlynx.bench.angularlynx)"
+adb install -r "$(sh harness/build_android_app.sh react-lynx com.angularlynx.bench.reactlynx)"
+
+# Launch them in turn
+python3 harness/android_launch.py --device emulator-5554 --runs 20 \
+  --app angular-lynx=com.angularlynx.bench.angularlynx \
+  --app react-lynx=com.angularlynx.bench.reactlynx \
+  --out results/android-emulator/launch-<date>-react-lynx.csv
+
+# The screens of many elements (the rival goes on com.angularlynx.bench.rival)
+python3 harness/android_mount.py --device emulator-5554 --rival react-lynx --runs 10
+
+python3 harness/summarize.py results/android-emulator/launch-*.csv
+```
+
+`android_launch.py` points the device's `localhost:8787` at the Mac's with
+`adb reverse`: both shells let plain HTTP reach only `localhost`, so the same
+`.apk` works on an emulator and on a phone over USB. Each launch is
+`am start -S -W`, a new process with the file caches warm (what Android calls
+a cold launch). It records `am start -W`'s TotalTime as the first frame,
+logcat's `Fully drawn` line (the shells' `Activity.reportFullyDrawn()`) as
+fully drawn, and `dumpsys meminfo`'s total PSS and RSS 6 s into the launch
+as memory, with the device's battery and thermal status and the Mac's load
+average. Each app is launched once unmeasured first, so the work after an
+install isn't in any run. Android reports a `reportFullyDrawn()` made
+before the first frame at the first frame's time, so the two are equal when
+an app had its screen complete before it let its splash screen go.
+
+The emulator runs on the Mac's cores, so as on the Simulator the harness
+waits for the Mac's load average to be under `--max-load` before each
+launch, records it with every run, and repeats a run whose load went over.
+Its numbers aren't a phone's, so `results/android-emulator` isn't charted
+either; within a session they compare.

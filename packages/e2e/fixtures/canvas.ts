@@ -287,8 +287,10 @@ export class CanvasRoute {
    * and one off a corner draws once over its shadow (issue #755), whose
    * strength follows the shape's alpha (issue #792), with a filter and
    * without; a faded square's shadow takes globalAlpha and, with no blur,
-   * has sharp edges (issue #796); and blur() softens a black square's edge
-   * to partly see-through.
+   * has sharp edges (issue #796); a green image, and a square filled with a
+   * green gradient and with a green pattern, each cast a red shadow, and so
+   * does a green image far off the canvas (issue #759); and blur() softens a
+   * black square's edge to partly see-through.
    * A string that isn't a filter leaves the last one. Then a shadow drawn
    * with an operation that clears what it doesn't cover (issue #763), with
    * a filter and without, see #shadowComposites. Gives "ok", or the reads.
@@ -378,6 +380,45 @@ export class CanvasRoute {
       return [pixel(faded, 3, 0), pixel(faded, 4, 1)];
     })();
 
+    // An image, a gradient and a pattern each cast their shadow in
+    // shadowColor, not in their own colors (issue #759): Android's paint
+    // shadow only swapped the paint's color, so they cast a green copy.
+    const green = document.createElement('canvas');
+    green.width = 2;
+    green.height = 2;
+    const greenContext = green.getContext('2d')!;
+    greenContext.fillStyle = 'rgb(0, 128, 0)';
+    greenContext.fillRect(0, 0, 2, 2);
+    const ownColorReads = (['image', 'gradient', 'pattern'] as const).map(
+      (kind) => {
+        const cast = make(6, 2);
+        cast.shadowColor = 'rgb(255, 0, 0)';
+        cast.shadowOffsetX = 3;
+        if (kind === 'image') {
+          cast.drawImage(green, 0, 0);
+        } else {
+          if (kind === 'gradient') {
+            const gradient = cast.createLinearGradient(0, 0, 2, 0);
+            gradient.addColorStop(0, 'rgb(0, 128, 0)');
+            gradient.addColorStop(1, 'rgb(0, 128, 0)');
+            cast.fillStyle = gradient;
+          } else {
+            cast.fillStyle = cast.createPattern(green, 'repeat')!;
+          }
+          cast.fillRect(0, 0, 2, 2);
+        }
+        return [pixel(cast, 0, 0), pixel(cast, 4, 0)];
+      },
+    );
+    // An image 300 pixels off the canvas, past the reach of a filter's
+    // layer, still casts its red shadow onto it, from the shadow's own
+    // layer: nothing shows left of the shadow, and inside it is red.
+    const far = make(8, 2);
+    far.shadowColor = 'rgb(255, 0, 0)';
+    far.shadowOffsetX = 303;
+    far.drawImage(green, -300, 0, 4, 2);
+    const farImageReads = [pixel(far, 1, 0), pixel(far, 5, 0)];
+
     const blur = make(12, 12);
     blur.filter = 'blur(2px)';
     blur.fillRect(0, 0, 6, 12);
@@ -403,6 +444,12 @@ export class CanvasRoute {
         ),
       ) &&
       fadedShadowReads.every((read) => near(read, [255, 0, 0, 128])) &&
+      ownColorReads.every(
+        ([shape, cast]) =>
+          near(shape, [0, 128, 0, 255]) && near(cast, [255, 0, 0, 255]),
+      ) &&
+      farImageReads[0][3] === 0 &&
+      near(farImageReads[1], [255, 0, 0, 255]) &&
       edge >= 64 &&
       edge <= 160;
     const composites = this.#shadowComposites();
@@ -417,6 +464,8 @@ export class CanvasRoute {
           ...farReads,
           ...cornerReads,
           ...fadedShadowReads,
+          ...ownColorReads.flat(),
+          ...farImageReads,
           edge,
           composites,
         ].join(' ');

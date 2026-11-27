@@ -125,6 +125,7 @@ xcrun devicectl device install app --device <device UDID> \
 
 ### Android
 
+`npm install @capacitor/android@8.6.3` (it isn't a dependency, since the benchmark is iOS-only), then
 `npx cap add android`, then a release build in Android Studio. The benchmark doesn't run Android
 yet, and this app has no Android project.
 

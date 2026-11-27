@@ -44,8 +44,9 @@ export type PlatformGenerator = {
   ) => void;
   /**
    * Takes the shells' optional native code the app doesn't use out of the
-   * fresh copy, after `configure`. Eject doesn't call it: an ejected project
-   * is the user's to grow, so it keeps everything.
+   * fresh copy, after `configure`. Eject keeps everything unless its caller
+   * says otherwise (renderEjectedProject's `features`): an ejected project is
+   * the user's to grow.
    */
   readonly leaveOut: (dir: string, features: NativeFeatures) => void;
   /** Where the Lynx bundle and its assets go inside the native project. */

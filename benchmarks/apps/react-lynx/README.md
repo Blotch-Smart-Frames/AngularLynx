@@ -20,7 +20,7 @@ xcrun simctl install <udid> build/ios/com.angularlynx.bench.reactlynx/LaunchPerf
 xcrun simctl launch <udid> com.angularlynx.bench.reactlynx
 ```
 
-`scripts/build-ios.mjs` runs `rspeedy build` (→ `dist/main.lynx.bundle`), renders the shell project into `build/native/ios`, and builds it with `buildNativeApp()`, the function the AngularLynx builder calls (details in the script's header). Environment variables:
+`scripts/build-ios.mjs` runs `rspeedy build` (→ `dist/main.lynx.bundle`), renders the shell project into `build/native/ios`, and builds it with `buildNativeApp()`, the function the AngularLynx builder calls (details in the script's header). It renders the project without the canvas, WebGL and video frame code and ANGLE's frameworks (`renderEjectedProject()`'s `features`), which the AngularLynx app's shell leaves out because it draws on no canvas (issue #837): `buildNativeApp()` builds an ejected project as it is, so it wouldn't leave them out itself (issue #858). Environment variables:
 
 | Variable         | Default                            | What it sets                                                                 |
 | ---------------- | ---------------------------------- | ---------------------------------------------------------------------------- |
@@ -75,7 +75,7 @@ adb shell am start -n com.angularlynx.bench.reactlynx/dev.angularlynx.shell.Main
 Two things differ from the iOS script:
 
 - **No ejected project.** The iOS script renders and ejects the project only to add `NSLocalNetworkUsageDescription`. Android has no such key, and the release shell already lets plain HTTP reach `localhost` (its `network_security_config.xml`), so the default `FIXTURE_ORIGIN` works on an emulator and on a phone over USB once `adb reverse` forwards the port. A LAN address would be refused as cleartext.
-- **The shell leaves out the canvas.** The AngularLynx build plugin writes `.angular-lynx-native.json` beside the bundle, saying the app draws on no canvas, and the builder then leaves the canvas, WebGL and video frame code out of its shell (issue #837). rspeedy with ReactLynx's plugin writes no such file, and without one the builder keeps it all, so the script writes the file (`canvas: false`): neither app draws on a canvas, and both shells are built from the same code.
+- **The features file says the shell leaves out the canvas.** The AngularLynx build plugin writes `.angular-lynx-native.json` beside the bundle, saying the app draws on no canvas, and the builder then leaves the canvas, WebGL and video frame code out of the project it generates (issue #837). rspeedy with ReactLynx's plugin writes no such file, and without one the builder keeps it all, so the script writes the file (`canvas: false`): neither app draws on a canvas, and both shells are built from the same code. The iOS script, whose project is ejected, passes the same to `renderEjectedProject()` instead.
 
 ## What it marks
 

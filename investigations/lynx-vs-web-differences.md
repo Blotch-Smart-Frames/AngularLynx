@@ -1115,10 +1115,10 @@ Lynx's PrimJS JavaScript runtime **does not provide** `AbortController`, `AbortS
 
 ### The fix
 
-Polyfill both before Angular bootstraps. The build plugin's `polyfills.js` (`packages/rsbuild-plugin-angular-lynx/src/`), the first module of each thread's script, installs `AbortController`/`AbortSignal`; `queueMicrotask` is in both it and the runtime's `lib/polyfills.ts`:
+Polyfill both before Angular bootstraps. The build plugin's `polyfills.js` (`packages/rsbuild-plugin-angular-lynx/src/`), the first module of each thread's script, installs both. The runtime's `lib/polyfills.ts` kept copies until #765 and #780, which never installed anything, since the plugin's were there first:
 
 - `AbortController`/`AbortSignal`: implement the minimal subset (`signal.aborted`, `signal.reason`, `addEventListener/removeEventListener`, `controller.abort()`).
-- `queueMicrotask`: implement as `Promise.resolve().then(fn)`.
+- `queueMicrotask`: on the background thread, `lynx.queueMicrotask` (Lynx 3.1+), as React Lynx uses. That's Lynx's own microtask queue, and the thread's `Promise` can be Lynx's polyfill, whose callbacks wait for a `setTimeout(0)` unless the page sets `enableMicrotaskPromisePolyfill`. The main thread's `lynx` has no `queueMicrotask`, so there it's `Promise.resolve().then(fn)`, and an error `fn` throws is thrown again from a `setTimeout`, so it's reported as the web's `queueMicrotask` reports one rather than left as an unhandled rejection.
 
 ---
 
@@ -1174,7 +1174,7 @@ None of these exist in Lynx. `window` itself is not a global (though we shim it 
 
 ### The fix
 
-- Shim `window = globalThis` and a `document` at startup (see `polyfills.ts`). On the main thread, `document` and `window`'s `addEventListener` / `removeEventListener` are real ones that hear the screen's events (see "Lynx elements have no `ownerDocument`" below); the background thread keeps no-ops.
+- Shim `window = globalThis` and a `document` at startup (the build plugin's `polyfills.js`, which in the web preview also points web-core's wrapper's `let window` at `globalThis`). On the main thread, the runtime's `polyfills.ts` replaces the placeholders: `document` and `window`'s `addEventListener` / `removeEventListener` are real ones that hear the screen's events (see "Lynx elements have no `ownerDocument`" below); the background thread keeps no-ops.
 - Implement a custom `LynxPlatformLocation` that stores the current path in a signal and provides manual URL string parsing, bypassing the `URL` constructor entirely (see `packages/runtime/src/lib/lynx-platform-location.ts`).
 - Polyfill `URL` and `URLSearchParams` (see `packages/runtime/src/lib/url/`), because Angular itself calls them. Since 22.2, `DefaultUrlSerializer.serialize()` runs every URL through `new URL(url, 'http://fake')` to reject protocol-relative URLs, and treats the `ReferenceError` as such a URL. Every URL then serialized to `/`, so every navigation on the main thread looked like a navigation to the current URL and was skipped (`NavigationSkipped`, no error). No route could be opened on device, lazy or not, while the web build (which has a real `URL`) worked. HttpClient and `NgOptimizedImage`'s loaders call `URL` too. The polyfill follows the WHATWG URL Standard and is checked against Node's `URL` in its tests.
 

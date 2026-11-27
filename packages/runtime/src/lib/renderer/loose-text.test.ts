@@ -1885,6 +1885,40 @@ describe('loose text, element by element', () => {
     expect(level()).toBe(false);
   });
 
+  // Review of #751: a Lynx <text>'s inline size going from relative to
+  // absolute keeps the same properties, but changes the relative bit in its
+  // flags, so the tags inside work out their levels again.
+  it("gives the text in a <small> its level again when a Lynx <text>'s inline size stops being relative", () => {
+    (
+      globalThis as { __angularLynxStyleIndex?: unknown }
+    ).__angularLynxStyleIndex = {
+      rules: [
+        [['sm'], SMALLER_FLAG],
+        [['_ngsmaller-1'], SMALLER_FLAG],
+      ],
+    };
+    const text = doc.createElement('text');
+    page.appendChild(text);
+    const small = doc.createElement('small');
+    small.addClass('sm');
+    text.appendChild(small);
+    const bold = doc.createElement('b');
+    small.appendChild(bold);
+    bold.appendChild(doc.createText('b'));
+    text.setInlineStyles('font-size: 2em');
+    commit();
+    const level = () => native(bold).classes.has('_ngsmaller-1');
+    expect(level()).toBe(false);
+
+    text.setInlineStyles('font-size: 20px');
+    commit();
+    expect(level()).toBe(true);
+
+    text.setStyle('font-size', '150%');
+    commit();
+    expect(level()).toBe(false);
+  });
+
   it('reads a flex container by its id from the style index', () => {
     (
       globalThis as { __angularLynxStyleIndex?: unknown }

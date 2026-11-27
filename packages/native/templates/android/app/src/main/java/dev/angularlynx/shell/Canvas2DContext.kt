@@ -34,6 +34,7 @@ import java.nio.ByteOrder
 import java.util.WeakHashMap
 import kotlin.math.abs
 import kotlin.math.ceil
+import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -679,51 +680,37 @@ class Canvas2DContext(
 
     /**
      * Draws with a filter, which works on pixels: the shape is drawn into a
-     * layer, bigger than the canvas by how far the filter reaches (so a shape
-     * just off the canvas blurs, or casts its shadow, onto it), and the
-     * alpha and then the filter are applied to the layer's pixels
-     * (CanvasFilter). The layer is then drawn over the canvas with the
-     * operation and the shadow, inside the clip, in the canvas spec's order.
+     * layer over the canvas (see [layers]), and the alpha and then the
+     * filter are applied to the layer's pixels (CanvasFilter). The layer is
+     * then drawn over the canvas with the operation and the shadow, inside
+     * the clip, in the canvas spec's order.
      */
     private fun compositeFiltered(c: Canvas, matrix: Matrix?, draw: (Canvas) -> Unit) {
         val s = state
-        val pad = layerPadding()
-        val layerWidth = width + pad * 2
-        val layerHeight = height + pad * 2
+        val layers = layers()
+        val shapeRect = layers.shape
+        // The shadow is cast from the shape's layer, or from a layer of its
+        // own when one round both would be bigger than the two (see layers).
+        val sourceRect = layers.shadow ?: shapeRect
         var layer: Bitmap? = null
         var shadow: Bitmap? = null
         try {
-            layer = Bitmap.createBitmap(layerWidth, layerHeight, Bitmap.Config.ARGB_8888)
-            val layerCanvas = Canvas(layer)
-            layerCanvas.translate(pad.toFloat(), pad.toFloat())
-            if (matrix != null) layerCanvas.concat(matrix)
-            draw(layerCanvas)
-            // The bytes as stored, premultiplied RGBA, which is what the
-            // filter works on.
-            val pixels = ByteBuffer.allocate(layerWidth * layerHeight * 4)
-            layer.copyPixelsToBuffer(pixels)
-            // globalAlpha goes on first, then the filter, then the shadow is
-            // cast and the layer composited, as the canvas spec has it (since
-            // whatwg/html#10674): so a drop-shadow() shows through a
-            // see-through shape.
-            CanvasFilter.scaleAlpha(pixels.array(), s.globalAlpha.toDouble())
-            CanvasFilter.apply(pixels.array(), layerWidth, layerHeight, s.filterSteps)
+            val pixels = filteredLayer(shapeRect, matrix, draw)
             // The canvas shadow, cast from the filtered layer and drawn
             // before it, as the spec has it. It's made here rather than with
             // the paint's shadow layer, which, for a bitmap with colors, casts
             // the shadow in the bitmap's colors, not the shadow's.
             if (shadowVisible()) {
+                val source = layers.shadow?.let { filteredLayer(it, matrix, draw) } ?: pixels
                 val color = s.shadowColor
                 val shadowBytes = CanvasFilter.shadowOf(
-                    pixels.array(), layerWidth, layerHeight, 0.0, 0.0, s.shadowBlur / 2.0,
+                    source, sourceRect.width(), sourceRect.height(), 0.0, 0.0, s.shadowBlur / 2.0,
                     Color.red(color).toDouble(), Color.green(color).toDouble(), Color.blue(color).toDouble(),
                     Color.alpha(color) / 255.0,
                 )
-                shadow = Bitmap.createBitmap(layerWidth, layerHeight, Bitmap.Config.ARGB_8888)
-                shadow.copyPixelsFromBuffer(ByteBuffer.wrap(shadowBytes))
+                shadow = bitmapOf(shadowBytes, sourceRect)
             }
-            pixels.rewind()
-            layer.copyPixelsFromBuffer(pixels)
+            layer = bitmapOf(pixels, shapeRect)
             val paint = Paint(Paint.FILTER_BITMAP_FLAG)
             val unbounded = s.composite in UNBOUNDED
             if (unbounded) {
@@ -733,18 +720,20 @@ class Canvas2DContext(
             } else {
                 setBlend(paint, s.composite)
             }
-            // Its offset is in the canvas's pixels, which the layer is in.
-            shadow?.let { c.drawBitmap(it, s.shadowOffsetX - pad, s.shadowOffsetY - pad, paint) }
-            c.drawBitmap(layer, -pad.toFloat(), -pad.toFloat(), paint)
+            // Its offset is in the canvas's pixels, which the layers are in.
+            shadow?.let {
+                c.drawBitmap(it, sourceRect.left + s.shadowOffsetX, sourceRect.top + s.shadowOffsetY, paint)
+            }
+            c.drawBitmap(layer, shapeRect.left.toFloat(), shapeRect.top.toFloat(), paint)
             if (unbounded) c.restore()
         } catch (_: OutOfMemoryError) {
-            // The layer, its bytes or the filter's scratch copies didn't fit:
+            // A layer, its bytes or the filter's scratch copies didn't fit:
             // this draw is left out, and the batch goes on, as a browser's
             // canvas that can't hold its size draws nothing.
-            Log.w(TAG, "The filter's ${layerWidth}x$layerHeight layer is too big to draw with")
+            Log.w(TAG, "The filter's ${shapeRect.width()}x${shapeRect.height()} layer is too big to draw with")
             return
         } catch (_: IllegalArgumentException) {
-            Log.w(TAG, "The filter's ${layerWidth}x$layerHeight layer is too big to allocate")
+            Log.w(TAG, "The filter's ${shapeRect.width()}x${shapeRect.height()} layer is too big to allocate")
             return
         } finally {
             layer?.recycle()
@@ -754,19 +743,80 @@ class Canvas2DContext(
     }
 
     /**
-     * How far past the canvas, on every side, a filter's layer reaches: the
-     * filter's padding, and the shadow's offset and blur (three of its
-     * deviations, which are half the blur), so a shape just off the canvas
-     * still blurs, or casts its shadow, onto it. Capped at 256 pixels, as
-     * css-filter.ts caps the filter's, so a far shadow makes no huge layer.
+     * What `draw` draws over `rect` of the canvas's pixels, through
+     * globalAlpha and then the filter: the bytes as stored, premultiplied
+     * RGBA, which is what the filter works on. globalAlpha goes on first, as
+     * the canvas spec has it (since whatwg/html#10674), so a drop-shadow()
+     * shows through a see-through shape.
      */
-    private fun layerPadding(): Int {
+    private fun filteredLayer(rect: Rect, matrix: Matrix?, draw: (Canvas) -> Unit): ByteArray {
         val s = state
-        var pad = s.filterPadding.toDouble()
-        if (shadowVisible()) {
-            pad += ceil(max(abs(s.shadowOffsetX), abs(s.shadowOffsetY)) + s.shadowBlur * 1.5f).toDouble()
+        val bitmap = Bitmap.createBitmap(rect.width(), rect.height(), Bitmap.Config.ARGB_8888)
+        try {
+            val layerCanvas = Canvas(bitmap)
+            layerCanvas.translate(-rect.left.toFloat(), -rect.top.toFloat())
+            if (matrix != null) layerCanvas.concat(matrix)
+            draw(layerCanvas)
+            val pixels = ByteBuffer.allocate(rect.width() * rect.height() * 4)
+            bitmap.copyPixelsToBuffer(pixels)
+            CanvasFilter.scaleAlpha(pixels.array(), s.globalAlpha.toDouble())
+            CanvasFilter.apply(pixels.array(), rect.width(), rect.height(), s.filterSteps)
+            return pixels.array()
+        } finally {
+            bitmap.recycle()
         }
-        return min(pad, 256.0).toInt()
+    }
+
+    /** A layer's bytes, premultiplied RGBA, as a bitmap to draw over `rect` of the canvas. */
+    private fun bitmapOf(bytes: ByteArray, rect: Rect): Bitmap {
+        val bitmap = Bitmap.createBitmap(rect.width(), rect.height(), Bitmap.Config.ARGB_8888)
+        bitmap.copyPixelsFromBuffer(ByteBuffer.wrap(bytes))
+        return bitmap
+    }
+
+    /**
+     * Where a filter's layers lie, in the canvas's pixels: [shape] is the
+     * layer the shape is drawn into, and [shadow] a second one the shadow is
+     * cast from, or null.
+     */
+    private class Layers(val shape: Rect, val shadow: Rect?)
+
+    /** A rectangle's area, as a Long: a layer's sides multiplied can pass an Int. */
+    private fun area(rect: Rect): Long = rect.width().toLong() * rect.height()
+
+    /**
+     * The layers a filtered draw goes into. The shape's is the canvas grown
+     * by the filter's reach, so a shape just off the canvas still blurs onto
+     * it. With a shadow, the shadow needs the part of the shape that casts
+     * onto the canvas: the canvas moved back by the shadow's offset, grown by
+     * its blur (three of its deviations, which are half the blur) and the
+     * filter's reach, capped at 256 pixels, as css-filter.ts caps the
+     * filter's, so a huge blur makes no huge layer. When one rectangle round
+     * both is no bigger than the two, the shape's layer grows to take that
+     * part in. Otherwise it's a second layer: one rectangle round both would
+     * grow with the offset, and a shadow cast from far off the canvas
+     * (shadowOffsetX = 10000 and a shape at x = -10000) would make a huge
+     * layer, or, capped, cut the shape away.
+     */
+    private fun layers(): Layers {
+        val s = state
+        val canvasRect = Rect(0, 0, width, height)
+        val filterReach = min(s.filterPadding, 256)
+        val shape = Rect(canvasRect).apply { inset(-filterReach, -filterReach) }
+        if (!shadowVisible()) return Layers(shape, null)
+        val reach = min(filterReach + ceil(s.shadowBlur * 1.5f).toInt(), 256)
+        // Whole pixels, so the layer's pixels line up with the canvas's.
+        val left = floor(-s.shadowOffsetX.toDouble()) - reach
+        val top = floor(-s.shadowOffsetY.toDouble()) - reach
+        val right = ceil(width - s.shadowOffsetX.toDouble()) + reach
+        val bottom = ceil(height - s.shadowOffsetY.toDouble()) + reach
+        // An offset past what a Rect holds casts no shadow anywhere the
+        // canvas's pixels, which are floats, can still place a shape.
+        if (listOf(left, top, right, bottom).any { abs(it) > MAX_LAYER_OFFSET }) return Layers(shape, null)
+        val source = Rect(left.toInt(), top.toInt(), right.toInt(), bottom.toInt())
+        val both = Rect(shape).apply { union(source) }
+        if (area(both) > area(shape) + area(source)) return Layers(shape, source)
+        return Layers(both, null)
     }
 
     /**
@@ -1261,6 +1311,13 @@ class Canvas2DContext(
     companion object {
         private const val TAG = "AngularLynxCanvas2D"
         private const val COMPOSITE_COUNT = 26
+
+        /**
+         * How far off the canvas a shadow's layer can lie: 2^24 pixels, past
+         * which a float, as the canvas's pixels are, no longer holds every
+         * whole pixel, and well inside what a Rect's ints hold.
+         */
+        private const val MAX_LAYER_OFFSET = 16_777_216.0
 
         /** The operations that clear what the shape doesn't cover. */
         private val UNBOUNDED = setOf(1, 2, 5, 7, 9)

@@ -4492,6 +4492,9 @@ export class LynxElement implements BaseLynxElement {
     if (this.#attrs) {
       for (const [name, value] of this.#attrs) {
         __SetAttribute(fresh, name, value);
+        // Its release took it out of the elements whose animations end
+        // with them (see #endPlatformAnimations).
+        if (name === 'enable-new-animator') this.#notePlatformAnimator(value);
       }
     }
     // A field's text, which the destroyed UI took with it.

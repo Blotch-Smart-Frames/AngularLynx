@@ -1947,6 +1947,25 @@ describe('renderer teardown', () => {
       expect([...writes]).toEqual(['list-item animation: none']);
     });
 
+    it('ends them again in an element rebuilt after its release', () => {
+      const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
+      const page = document.createRootElement();
+      const el = document.createElement('view');
+      el.setAttribute('enable-new-animator', 'false');
+      page.appendChild(el);
+      el.markDestroyed();
+      el.remove();
+      processPendingRemovals();
+
+      // Shown again after all (content a surviving view projected): rebuilt
+      // from its caches, with a new native element.
+      page.appendChild(el);
+      writes.length = 0;
+      el.markDestroyed();
+
+      expect(writes).toEqual(['view animation: none']);
+    });
+
     it('starts them again when the element goes back in the tree', () => {
       const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
       const page = document.createRootElement();

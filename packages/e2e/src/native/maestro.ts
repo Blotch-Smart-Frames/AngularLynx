@@ -362,6 +362,12 @@ export type FlowRunOptions = {
    * it, a flow that failed isn't run again.
    */
   readonly appLog?: () => string;
+  /**
+   * Brings the device back after Maestro lost it (see
+   * {@link DEVICE_LOST_RETRIES}), before the flows it failed run again. The
+   * iOS Simulator restarts.
+   */
+  readonly recover?: () => Promise<void>;
 };
 
 /**
@@ -450,6 +456,30 @@ const STALL_RETRIES = 1;
 const DEVICE_FAULT_RETRIES = 1;
 
 /**
+ * What Maestro reports for a flow when it lost the device: its XCTest driver
+ * stopped answering, so the command it was running, and every flow after it,
+ * failed without reaching the app. Maestro prints no reason for these on its
+ * result lines, only in the JUnit report.
+ */
+const DEVICE_LOST = /DeviceUnreachableException|Device became unreachable/;
+
+/**
+ * How many times the flows that failed in a session where Maestro lost the
+ * device run again, after {@link FlowRunOptions.recover}. Once, as for
+ * {@link DEVICE_FAULT_RETRIES}. On a PR's run of 2026-11-27 (#862), the app
+ * the simulator launched for the first flow sat on a blank screen and logged
+ * nothing at all, the simulator having taken 24 seconds to start its
+ * process. The flow failed, the driver timed out trying to stop the app for
+ * the next one, and every flow after it failed in a second, so 18 of 18
+ * failed. The same commit passed on a re-run. That counts every failure of
+ * the session, not just the ones Maestro blamed on the device: the flows
+ * before it can have failed on the same stall, as app.yaml did. A flow still
+ * runs again at most {@link DEVICE_FAULT_RETRIES} times for either kind of
+ * device fault.
+ */
+const DEVICE_LOST_RETRIES = 1;
+
+/**
  * Runs `flows` against a booted simulator or emulator in one Maestro session.
  * Maestro is a standalone CLI (https://maestro.mobile.dev), installed by CI
  * with its install script; it isn't an npm package.
@@ -514,9 +544,36 @@ const runMaestro = (
 };
 
 /**
- * The flows Maestro reported on in `output`, with how each went.
+ * Each failed flow's message in Maestro's JUnit report, by the flow's name,
+ * or an empty map if there's no report. The report has a reason for every
+ * failure, where Maestro's result lines leave some out (see
+ * {@link DEVICE_LOST}).
  */
-const parseResults = (output: string, flows: readonly Flow[]) => {
+const reportFailures = (report: string): Map<string, string> => {
+  const failures = new Map<string, string>();
+  if (!existsSync(report)) {
+    return failures;
+  }
+  const testCase =
+    /<testcase id="([^"]+)"[^>]*>\s*<failure>([\s\S]*?)<\/failure>/g;
+  for (const [, id, message] of readFileSync(report, 'utf8').matchAll(
+    testCase,
+  )) {
+    failures.set(id!, message!.trim());
+  }
+  return failures;
+};
+
+/**
+ * The flows Maestro reported on in `output`, with how each went. A failure
+ * with no reason on its result line takes the first line of its message in
+ * `reported` (from {@link reportFailures}).
+ */
+const parseResults = (
+  output: string,
+  flows: readonly Flow[],
+  reported: ReadonlyMap<string, string> = new Map(),
+) => {
   const results = new Map<Flow, FlowOutcome>();
   for (const line of stripVTControlCharacters(output).split('\n')) {
     const match = RESULT_LINE.exec(line.trim());
@@ -530,7 +587,13 @@ const parseResults = (output: string, flows: readonly Flow[]) => {
         flow,
         match[1] === 'Passed'
           ? { status: 'passed' }
-          : { status: 'failed', reason: match[3] ?? 'Maestro gave no reason' },
+          : {
+              status: 'failed',
+              reason:
+                match[3] ??
+                reported.get(match[2]!)?.split('\n')[0] ??
+                'Maestro gave no reason',
+            },
       );
     }
   }
@@ -604,8 +667,11 @@ const reportStall = async (
  *
  * A flow that ran and failed an assertion also runs again, up to
  * {@link DEVICE_FAULT_RETRIES} times, when its {@link Flow.deviceFault}
- * finds the device at fault in the app's log. Only these infrastructure
- * errors are retried: any other failed flow fails the run as before.
+ * finds the device at fault in the app's log. And every flow that failed in
+ * a session where Maestro lost the device runs again, once (see
+ * {@link DEVICE_LOST_RETRIES}), after the device is brought back. Only these
+ * infrastructure errors are retried: any other failed flow fails the run as
+ * before.
  */
 export const runFlows = async (
   flows: readonly Flow[],
@@ -614,6 +680,7 @@ export const runFlows = async (
   const outcomes = new Map<Flow, FlowOutcome>();
   let driverRetries = 0;
   let stallRetries = 0;
+  let deviceLostRetries = 0;
   const deviceFaultRetries = new Map<Flow, number>();
   // The failure each flow running again for a device fault had, which stands
   // if the session ends before it runs.
@@ -627,8 +694,14 @@ export const runFlows = async (
     const appLogStart = options.appLog?.().length ?? 0;
     const result = await runMaestro(pending, options, run);
     const output = result.timedOut?.output ?? result.output;
+    const reported = reportFailures(
+      path.join(options.outputDir, `report-${run}.xml`),
+    );
+    const deviceLost =
+      deviceLostRetries < DEVICE_LOST_RETRIES &&
+      [...reported.values()].some((message) => DEVICE_LOST.test(message));
     const deviceFaulted: Flow[] = [];
-    for (const [flow, outcome] of parseResults(output, pending)) {
+    for (const [flow, outcome] of parseResults(output, pending, reported)) {
       // Failed before touching the app, so it runs again.
       if (
         outcome.status === 'failed' &&
@@ -636,11 +709,18 @@ export const runFlows = async (
       ) {
         continue;
       }
+      // One allowance per flow for both kinds of device fault, so a flow
+      // run again because Maestro lost the device doesn't get another run
+      // when its log then shows a slow launch: a flow that fails twice
+      // fails the run. The second failure is the one reported, as for any
+      // device fault: it happened on a device that answered, where the
+      // first can be only Maestro's DeviceUnreachableException. (The first
+      // stands only when the session ends before the flow runs again.)
       const retries = deviceFaultRetries.get(flow) ?? 0;
       if (outcome.status === 'failed' && retries < DEVICE_FAULT_RETRIES) {
-        const fault = flow.deviceFault?.(
-          options.appLog?.().slice(appLogStart) ?? '',
-        );
+        const fault = deviceLost
+          ? 'Maestro lost the device in that session'
+          : flow.deviceFault?.(options.appLog?.().slice(appLogStart) ?? '');
         if (fault) {
           deviceFaultRetries.set(flow, retries + 1);
           deviceFaultFailures.set(flow, outcome);
@@ -652,6 +732,13 @@ export const runFlows = async (
         }
       }
       outcomes.set(flow, outcome);
+    }
+    if (deviceLost && deviceFaulted.length > 0) {
+      deviceLostRetries++;
+      console.warn(
+        `! Maestro lost the device; ${deviceFaulted.length} flow(s) failed in that session, and run again in a new one once the device is back (${deviceLostRetries} of ${DEVICE_LOST_RETRIES}).`,
+      );
+      await options.recover?.();
     }
     const unfinished = pending.filter(
       (flow) => !outcomes.has(flow) && !deviceFaulted.includes(flow),

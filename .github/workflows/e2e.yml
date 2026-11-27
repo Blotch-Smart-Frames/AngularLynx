@@ -359,8 +359,9 @@ jobs:
           node packages/e2e/src/run.ts "${args[@]}"
       # The app without node_modules: angular.json (for the app id), dist/
       # with the bundle Explorer loads, and the APK. Not the AAB, which is for
-      # Google Play.
-      - uses: actions/upload-artifact@v7
+      # Google Play. The ios job waits for this step by its name.
+      - name: Upload the app
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-app-${{ needs.setup.outputs.registry }}
           path: |
@@ -482,6 +483,14 @@ jobs:
       # the wait ended 43 seconds before build-app had uploaded the app. A
       # failed jobs query would have ended the step instead, since bash -e
       # exits on a failed assignment. The step's timeout still bounds the wait.
+      #
+      # The API lists the artifact a moment before it can be downloaded, while
+      # build-app's upload step is still finishing it: on a PR's run of
+      # 2026-11-27 (#862), download-artifact found no artifact of that name
+      # in the second the listing showed it, and the upload step ended. So the
+      # wait also needs that step done. On a re-run that didn't re-run
+      # build-app, the jobs API answers with build-app's latest attempt,
+      # whose upload is done.
       - name: Wait for build-app's app
         timeout-minutes: 25
         env:
@@ -489,17 +498,24 @@ jobs:
           ARTIFACT: e2e-app-${{ needs.setup.outputs.registry }}
         run: |
           runs="repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          build_app='.jobs[] | select(.name == "build-app" or (.name | endswith(" / build-app")))'
           while :; do
             if count=$(gh api "$runs/artifacts?name=$ARTIFACT" --jq .total_count); then
               if [ "${count:-0}" != 0 ]; then
-                break
+                if uploaded=$(gh api --paginate "$runs/jobs" --jq "$build_app
+                  | .steps[] | select(.name == \"Upload the app\") | .conclusion"); then
+                  if [ "$uploaded" = success ]; then
+                    break
+                  fi
+                else
+                  echo "Couldn't list the run's jobs, so asking again."
+                fi
               fi
             else
               echo "Couldn't list the run's artifacts, so asking again."
             fi
-            if conclusion=$(gh api --paginate "$runs/jobs" --jq '.jobs[]
-              | select(.name == "build-app" or (.name | endswith(" / build-app")))
-              | select(.status == "completed") | .conclusion'); then
+            if conclusion=$(gh api --paginate "$runs/jobs" --jq "$build_app
+              | select(.status == \"completed\") | .conclusion"); then
               if [ -n "$conclusion" ] && [ "$conclusion" != success ]; then
                 echo "::error::build-app ended with $conclusion, so there's no app to test."
                 exit 1

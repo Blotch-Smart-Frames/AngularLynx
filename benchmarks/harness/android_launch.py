@@ -225,9 +225,10 @@ def wait_for_load(max_load):
         time.sleep(5)
 
 
-def launch(device, watcher, package, activity, seconds, memory_after):
+def launch(device, watcher, package, activity, seconds, memory_after, on_start):
     """Launches the app once from a stopped process, and returns what it
-    measured. The app is stopped again at the end."""
+    measured. The app is stopped again at the end. on_start is called once
+    the app has started, even if what follows fails."""
     since = watcher.mark()
     started = time.monotonic()
     # -S stops the app first, -W waits for its first frame and prints the
@@ -238,6 +239,7 @@ def launch(device, watcher, package, activity, seconds, memory_after):
     )
     if values.get("Status") != "ok":
         raise RuntimeError(f"am start: {output.strip()[-300:]}")
+    on_start()
     # Memory first, at the same moment of every launch: waiting for Fully
     # drawn first would move a slow or missing one's reading later. The
     # watcher keeps every line it sees, so one logged meanwhile isn't lost.
@@ -317,16 +319,23 @@ def main():
     # dropped over --max-load, which the CSV doesn't hold: summarize.py
     # splits each app's launches by it ("again" or "after other").
     previous = ""
+
+    def started(app):
+        nonlocal previous
+        previous = app
+
     try:
         for _ in range(args.warmup):
             for app, package in apps:
                 if args.max_load:
                     wait_for_load(args.max_load)
                 try:
-                    launch(device, watcher, package, activities[package], args.seconds, args.memory_after)
+                    launch(
+                        device, watcher, package, activities[package], args.seconds, args.memory_after,
+                        lambda: started(app),
+                    )
                 except (RuntimeError, subprocess.CalledProcessError) as error:
                     print(f"{app} warm-up: {error}", file=sys.stderr, flush=True)
-                previous = app
                 time.sleep(args.rest)
         for run in range(1, args.runs + 1):
             for app, package in run_order(apps, run):
@@ -347,7 +356,10 @@ def main():
                         "charging": charging,
                     }
                     try:
-                        values = launch(device, watcher, package, activities[package], args.seconds, args.memory_after)
+                        values = launch(
+                            device, watcher, package, activities[package], args.seconds, args.memory_after,
+                            lambda: started(app),
+                        )
                     except (RuntimeError, subprocess.CalledProcessError) as error:
                         print(f"{app} run {run}: {error}", file=sys.stderr, flush=True)
                         values = {}
@@ -356,7 +368,6 @@ def main():
                     # covers it, the one before covers the minute before.
                     load = os.getloadavg()[0]
                     row["host_load"] = f"{max(before, load):.1f}"
-                    previous = app
                     if not args.max_load or load <= args.max_load:
                         break
                     print(

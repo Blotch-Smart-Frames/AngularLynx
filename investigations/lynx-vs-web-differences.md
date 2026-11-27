@@ -3490,7 +3490,7 @@ On the web, `drawImage(video)`, `createPattern(video)` and `texImage2D(…, vide
 
 ### What to do
 
-Draw or upload the video once it has a frame (`readyState >= HAVE_CURRENT_DATA`, or from `bindfirstframe` on the phone, where the shell has the frame before it sends the event), or each frame while it plays, as on the web: three.js's `VideoTexture` works as it is. The web preview never sends `bindfirstframe`: check `readyState` there. A video you only read can be hidden with `display: none`, as on the web.
+Draw or upload the video once it has a frame (`readyState >= HAVE_CURRENT_DATA`, or from `bindfirstframe` on the phone, where the shell has the frame before it sends the event, except on Android when a hidden video's frame never reaches the shell's texture after three redraws: check `videoWidth` before reading), or each frame while it plays, as on the web: three.js's `VideoTexture` works as it is. The web preview never sends `bindfirstframe`: check `readyState` there. A video you only read can be hidden with `display: none`, as on the web.
 
 ---
 

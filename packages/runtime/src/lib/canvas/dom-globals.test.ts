@@ -12,6 +12,7 @@ import { LynxImageBitmapRenderingContext } from './bitmap-renderer-context';
 import { createImageBitmap, LynxImageBitmap, LynxImageElement } from './image';
 import { LynxPath2D } from './path';
 import { CANVAS_SOURCE } from './canvas-source';
+import { WEBGL2_CONTEXT } from './webgl2-brand';
 import type { LayoutRect } from '../lynx-element/layout';
 
 /**
@@ -99,6 +100,33 @@ describe('installCanvasGlobals', () => {
     ).toBe(false);
   });
 
+  it('makes a WebGL2 context a WebGL2RenderingContext, and nothing a WebGLRenderingContext', () => {
+    const target: Record<string, any> = {};
+    installCanvasGlobals(target);
+    // The runtime's context, as the global tells one apart: by its mark.
+    const context = { [WEBGL2_CONTEXT]: true };
+    expect(context instanceof target['WebGL2RenderingContext']).toBe(true);
+    expect({} instanceof target['WebGL2RenderingContext']).toBe(false);
+    expect(
+      { [WEBGL2_CONTEXT]: false } instanceof target['WebGL2RenderingContext'],
+    ).toBe(false);
+    expect(null instanceof target['WebGL2RenderingContext']).toBe(false);
+    // A 2D context, without the bridge and canvas a real one is made with.
+    const context2D = Object.create(LynxCanvasRenderingContext2D.prototype);
+    expect(context2D).toBeInstanceOf(LynxCanvasRenderingContext2D);
+    expect(context2D instanceof target['WebGL2RenderingContext']).toBe(false);
+    // As in a browser, a WebGL2 context isn't a WebGL1 one.
+    expect(context instanceof target['WebGLRenderingContext']).toBe(false);
+    expect({} instanceof target['WebGLRenderingContext']).toBe(false);
+    // Contexts come from getContext(), as in a browser.
+    expect(() => new target['WebGL2RenderingContext']()).toThrow(
+      'Illegal constructor',
+    );
+    expect(() => new target['WebGLRenderingContext']()).toThrow(
+      'Illegal constructor',
+    );
+  });
+
   it('fires progress events', () => {
     const target: Record<string, any> = {};
     installCanvasGlobals(target);
@@ -139,14 +167,20 @@ describe('installCanvasGlobals', () => {
   it('keeps what the runtime has (the web preview)', () => {
     const own = { now: () => 1 };
     const createElement = () => 'div';
+    class WebGL2RenderingContext {}
+    class WebGLRenderingContext {}
     const target: Record<string, any> = {
       performance: own,
       crypto: own,
       devicePixelRatio: 2,
       document: { createElement },
+      WebGL2RenderingContext,
+      WebGLRenderingContext,
     };
     installCanvasGlobals(target);
     expect(target['performance']).toBe(own);
+    expect(target['WebGL2RenderingContext']).toBe(WebGL2RenderingContext);
+    expect(target['WebGLRenderingContext']).toBe(WebGLRenderingContext);
     expect(target['crypto']).toBe(own);
     expect(target['devicePixelRatio']).toBe(2);
     expect(target['document'].createElement).toBe(createElement);

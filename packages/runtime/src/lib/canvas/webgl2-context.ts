@@ -31,6 +31,7 @@ import { OP } from './webgl-ops';
 import { type CanvasSource, canvasSourceOf } from './canvas-source';
 import { nativeImageOf } from './native-image';
 import { markBatchPending, markBatchSent } from './pending-batches';
+import { WEBGL2_CONTEXT } from './webgl2-brand';
 
 /** The `<canvas>` a context draws into, as the context needs it. */
 export type WebGLCanvasHost = {
@@ -427,6 +428,16 @@ export class LynxWebGL2RenderingContext {
   /** Where an upload of part of an image starts, which the shell crops at. */
   readonly #unpackSkip = { pixels: 0, rows: 0 };
   readonly #pack = { alignment: 4, rowLength: 0, skipPixels: 0, skipRows: 0 };
+
+  /**
+   * What makes the context `instanceof WebGL2RenderingContext`, the global
+   * `installCanvasGlobals` puts in place on iOS and Android (see
+   * webgl2-brand.ts). A getter on the prototype, so it's part of the class
+   * rather than a statement the module runs.
+   */
+  get [WEBGL2_CONTEXT](): true {
+    return true;
+  }
 
   constructor(
     bridge: WebGLBridge,

@@ -2023,6 +2023,36 @@ describe('renderer teardown', () => {
       expect([...writes]).toEqual(['list-item animation: none']);
     });
 
+    it('leaves an element moved out of a destroyed view alone once it has gone too', () => {
+      const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
+      const page = document.createRootElement();
+      const view = document.createElement('view');
+      const other = document.createElement('view');
+      const el = document.createElement('view');
+      el.setAttribute('enable-new-animator', 'false');
+      el.setAttribute('style', 'animation: turn 1600ms linear infinite;');
+      page.appendChild(view);
+      page.appendChild(other);
+      view.appendChild(el);
+      const ref = el.element as unknown as FakeEl;
+
+      // Moved into another view destroyed in the same cycle, whose release
+      // comes first and takes the element with it.
+      view.markDestroyed();
+      el.remove();
+      other.appendChild(el);
+      other.markDestroyed();
+      ref.styles.delete('__inline');
+      other.remove();
+      view.remove();
+      processPendingRemovals();
+
+      // Not shown, so its styles aren't written again, nor is it kept for
+      // its animation.
+      expect(registered([ref])).toEqual([false]);
+      expect(ref.styles.has('__inline')).toBe(false);
+    });
+
     it('starts them again when the element goes back in the tree', () => {
       const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
       const page = document.createRootElement();

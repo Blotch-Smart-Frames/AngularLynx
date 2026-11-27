@@ -4208,14 +4208,15 @@ export class LynxElement implements BaseLynxElement {
    * Starts the animations markDestroyed ended again in the elements moved
    * out of this one before it was released, as CDK's DomPortal hands its
    * element back when its view is destroyed: they're still shown. The ones
-   * still under it go with it.
+   * still under it go with it, and so does one released already, with
+   * another element destroyed in the same cycle that it moved into.
    */
   #restoreAnimationsMovedOut(): void {
     const ended = LynxElement.#endedAnimations.get(this);
     if (!ended) return;
     LynxElement.#endedAnimations.delete(this);
     for (const el of ended) {
-      if (el.#isInSubtreeOf(this)) continue;
+      if (el.#paintingDead || el.#isInSubtreeOf(this)) continue;
       el.#rewriteInlineStyle();
       LynxElement.#platformAnimated.add(el);
     }

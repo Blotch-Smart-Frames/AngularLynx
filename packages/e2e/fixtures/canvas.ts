@@ -174,7 +174,8 @@ export class CanvasRoute {
    * The filter check (issue #698): `filter` applied to what's drawn, read
    * back with getImageData(). A red square through grayscale(1) is the
    * spec's 21% gray; drop-shadow() puts a blue copy of one beside it, and
-   * shows through one half see-through (globalAlpha comes first); and
+   * shows through one half see-through (globalAlpha comes first); a
+   * filtered square off the canvas casts its canvas shadow onto it; and
    * blur() softens a black square's edge to partly see-through. A string
    * that isn't a filter leaves the last one. Gives "ok", or the reads.
    */
@@ -211,6 +212,15 @@ export class CanvasRoute {
     faded.fillRect(0, 0, 2, 2);
     const fadedAlpha = pixel(faded, 0, 0)[3];
 
+    // A filtered shape just off the canvas still casts its canvas shadow
+    // onto it: the filter's layer grows by the shadow's reach.
+    const offCanvas = make(8, 2);
+    offCanvas.filter = 'grayscale(1)';
+    offCanvas.shadowColor = 'rgb(255, 0, 0)';
+    offCanvas.shadowOffsetX = 6;
+    offCanvas.fillRect(-4, 0, 4, 2);
+    const offCanvasRead = pixel(offCanvas, 3, 0);
+
     const blur = make(12, 12);
     blur.filter = 'blur(2px)';
     blur.fillRect(0, 0, 6, 12);
@@ -224,11 +234,19 @@ export class CanvasRoute {
       near(shadowReads[0], [255, 0, 0, 255]) &&
       near(shadowReads[1], [0, 0, 255, 255]) &&
       Math.abs(fadedAlpha - 191) <= 3 &&
+      near(offCanvasRead, [255, 0, 0, 255]) &&
       edge >= 64 &&
       edge <= 160;
     return ok
       ? 'ok'
-      : [gray.filter, grayRead, ...shadowReads, fadedAlpha, edge].join(' ');
+      : [
+          gray.filter,
+          grayRead,
+          ...shadowReads,
+          fadedAlpha,
+          offCanvasRead,
+          edge,
+        ].join(' ');
   }
 
   /**

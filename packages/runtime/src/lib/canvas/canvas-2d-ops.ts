@@ -15,6 +15,8 @@
  * (0 linear, 1 radial, 2 conic), six numbers, and its stops as one array of
  * offset, red, green, blue, alpha. A pattern's image is made once in the
  * shell (`createPattern`), and its transform crosses with the style.
+ * A filter crosses as its padding and its steps as one array (see
+ * css-filter.ts).
  */
 export const OP = {
   save: 1,
@@ -43,6 +45,7 @@ export const OP = {
   setDirection: 28,
   setLetterSpacing: 29,
   setImageSmoothing: 30,
+  setFilter: 31,
   createPattern: 44,
   releaseObject: 46,
   clearPath: 50,

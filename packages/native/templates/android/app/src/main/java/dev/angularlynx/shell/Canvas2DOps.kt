@@ -36,6 +36,7 @@ internal object Canvas2DOps {
     const val SET_DIRECTION = 28
     const val SET_LETTER_SPACING = 29
     const val SET_IMAGE_SMOOTHING = 30
+    const val SET_FILTER = 31
     const val CREATE_PATTERN = 44
     const val RELEASE_OBJECT = 46
     const val CLEAR_PATH = 50

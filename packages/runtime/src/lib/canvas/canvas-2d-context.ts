@@ -13,6 +13,7 @@ import {
 } from './canvas-2d-ops';
 import { canvasSourceOf, isVideo } from './canvas-source';
 import { type RGBA, parseColor, serializeColor } from './css-color';
+import { parseFilter } from './css-filter';
 import { type CanvasFont, DEFAULT_FONT, parseFont } from './css-font';
 import { nativeImageOf } from './native-image';
 import {
@@ -497,7 +498,7 @@ const FILL_RULES = ['nonzero', 'evenodd'];
  * transform), and the current path, built here in the canvas's pixels as the
  * spec has it (see path.ts).
  *
- * Not there: `filter` (kept, but nothing is filtered), the text properties
+ * Not there: the text properties
  * Lynx's shells don't draw (`wordSpacing`, `fontKerning`, `fontStretch`,
  * `fontVariantCaps`, `textRendering` are kept and ignored), a `<video>` as
  * an image, and focus rings (`drawFocusIfNeeded()` does nothing).
@@ -787,9 +788,13 @@ export class LynxCanvasRenderingContext2D {
     return this.#state.filter;
   }
   set filter(value: string) {
-    // Kept for code that reads it back, but not applied: the shells have no
-    // filters.
+    // Parsed here, as `font` is, so the shells get the steps they apply to
+    // what's drawn (see css-filter.ts). A string that isn't a filter is
+    // ignored, as in browsers; the getter gives back the string as it was set.
+    const filter = parseFilter(value);
+    if (!filter) return;
     this.#state.filter = String(value);
+    this.#cmd(OP.setFilter, filter.padding, filter.steps.slice());
   }
 
   /**

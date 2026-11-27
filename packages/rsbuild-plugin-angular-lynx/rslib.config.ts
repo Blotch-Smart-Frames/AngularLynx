@@ -39,6 +39,10 @@ export default defineConfig({
     // go through the app's own CSS pipeline, not this library's.
     copy: [
       { from: './src/styles', to: 'styles' },
+      // The ES built-ins the build imports into the modules that name them
+      // (src/es-builtins.ts), as the ES modules they are: one bundle would
+      // carry them all.
+      { from: './src/es-builtins', to: 'es-builtins' },
       // The hot update clients' wiring, which only the app's development
       // build can compile (see each file).
       {

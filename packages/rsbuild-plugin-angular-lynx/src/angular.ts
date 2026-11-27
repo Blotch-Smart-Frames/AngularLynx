@@ -37,6 +37,7 @@ import {
 } from './private-methods.js';
 import { wrapPureClasses } from './pure-classes.js';
 import { wrapPureInitializers } from './pure-initializers.js';
+import { importEsBuiltinsWhereNamed } from './es-builtins.js';
 import { enableOnDemand, resolveRuntimeEntry } from './on-demand.js';
 import { markHostElementsPure } from './pure-host-elements.js';
 import { seedCompilationSourceFiles } from './seed-compilation-source-files.js';
@@ -811,14 +812,26 @@ export const applyAngularRules = async (
     };
   };
 
+  /**
+   * A module compiled for one thread, with the ES built-ins it names imported
+   * at its top (see es-builtins.ts). From its final code, which is what runs.
+   */
+  const transformForThread = async (
+    context: Parameters<typeof transformModule>[0],
+    background: boolean,
+  ): Promise<{ code: string }> => {
+    const { code } = await transformModule(context, background);
+    return { code: importEsBuiltinsWhereNamed(code, context.resourcePath) };
+  };
+
   // One transform per layer, as the background layer compiles the app's
   // modules differently (see transformModule).
   api.transform(
     { test: /\.[cm]?[jt]sx?$/, issuerLayer: LAYERS.MAIN_THREAD },
-    (context) => transformModule(context, false),
+    (context) => transformForThread(context, false),
   );
   api.transform(
     { test: /\.[cm]?[jt]sx?$/, issuerLayer: LAYERS.BACKGROUND },
-    (context) => transformModule(context, true),
+    (context) => transformForThread(context, true),
   );
 };

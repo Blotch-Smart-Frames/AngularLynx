@@ -70,7 +70,8 @@ src/
   resolve.ts                           # Resolves imports to a package's ES module build (no `require` condition)
   strict-esm.ts                        # Builds .mjs and "type": "module" .js files as strict ES modules, which Rsbuild's JS rule overrides
   polyfills.js                         # The first preEntry module: browser globals Angular expects (AbortController, Node, document…)
-  es-builtins.js                       # ES2021–ES2026 built-ins the engines lack, imported by polyfills.js; a plain script so tests run it in a vm realm
+  es-builtins.ts                       # Imports the ES built-ins each module names (Babel's `useBuiltIns: 'usage'`), from es-builtins/
+  es-builtins/                         # ES2021–ES2026 built-ins the engines lack, a module each (copied to dist as they are); tests bundle them with esbuild and run them in a vm realm
   vacated-slots.js                     # pop()/shift()/splice() that clear the slots an array gives up, which PrimJS keeps alive; imported by polyfills.js
   intl/                                # The `intl` option: Intl APIs Lynx lacks, added to the lynx environment's preEntry
     apis.ts                            # The option's API names, the FormatJS package each loads and the APIs each calls

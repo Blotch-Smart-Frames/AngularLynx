@@ -6150,9 +6150,11 @@ Libraries that call them throw "not a function", often at module load, where it 
 
 ### The fix
 
-The build's preEntry (`packages/rsbuild-plugin-angular-lynx/src/polyfills.js`) imports `es-builtins.js`, which defines every built-in up to ES2026 that JavaScript can define next to the engine's own, on both threads, before any of the app's modules. Each is added only where it's missing, non-enumerable, as a method (so it has the spec's name and length and isn't a constructor). Only when `Intl` is missing, it also replaces `Number.prototype.toLocaleString` with one that formats like en-US by default (grouping, up to three decimals, `minimumFractionDigits` / `maximumFractionDigits` / `useGrouping`); apps that need real localization use the `intl` build option, whose `NumberFormat` replaces it (see the `Intl` section).
+The build plugin's `es-builtins/` folder (`packages/rsbuild-plugin-angular-lynx/src/es-builtins/`) defines every built-in up to ES2026 that JavaScript can define next to the engine's own, a module per built-in or per few that come together. The build imports a module at the top of each of the app's modules (its packages' and AngularLynx's included) that names one of its methods (`es-builtins.ts`), on both threads, so it's defined before that module's code runs, at module load too. Each is added only where it's missing, non-enumerable, as a method (so it has the spec's name and length and isn't a constructor). Only when `Intl` is missing, it also replaces `Number.prototype.toLocaleString` with one that formats like en-US by default (grouping, up to three decimals, `minimumFractionDigits` / `maximumFractionDigits` / `useGrouping`); apps that need real localization use the `intl` build option, whose `NumberFormat` replaces it (see the `Intl` section).
 
-It's written out rather than taken from core-js: `core-js/es` adds about 400 kB, and also replaces `Promise`, `Set` or `RegExp#exec` wherever core-js judges the engine's own lacking. These add about 22 kB minified (7 kB gzipped) to each thread's bundle. The engine-level features above stay missing.
+It's written out rather than taken from core-js: `core-js/es` adds about 400 kB, and also replaces `Promise`, `Set` or `RegExp#exec` wherever core-js judges the engine's own lacking. All of them are about 18 kB minified. They used to load with the build's first preEntry, so every app's main-thread script carried all of them, and PrimJS reads a script's whole bytecode as it loads it (issue #720). Now an app carries only those its code names: `examples/hello-world` carries `.at()`, `Object.hasOwn`, `Promise.allSettled` (Angular's `@defer` and animations), the iterator helpers (whose names, `map`, `filter` and the rest, are the array methods' too, so every app has them) and a few small ones whose names Angular and the runtime use for something else (`normalize`, `any`, `escape`, `isError`), and its main-thread script is 10 kB smaller.
+
+A method counts as named when it's read as a property (`a.at(-1)`, `a?.at(-1)`), taken apart (`const { hasOwn } = Object`) or given as one, or a string holds its name anywhere it could be used as one (`a['at']`, `Reflect.get(a, 'at')`, `const method = 'toSorted'`), much as Babel's `useBuiltIns: 'usage'` finds them; `Iterator` counts anywhere. Strings that are only data don't count: a list's items, a property's value, or what a comparison or `case` matches. A name put together as the code runs (`'to' + 'Sorted'`), or taken from that data (`Uint8Array[codec.decode]` with `{ decode: 'fromHex' }`), isn't seen, so a module that calls a method that way should name it somewhere too. The engine-level features above stay missing.
 
 To check them on the devices, an app ran one case per method on both threads and compared each result with Node's own built-ins: all 51 matched on iOS and Android, once `Array.fromAsync` stopped using `for await` for sync iterables (see the next section).
 
@@ -6160,7 +6162,7 @@ To check them on the devices, an app ran one case per method on both threads and
 
 `normalize()` is ES2015, so the probe above didn't list it, but the main thread lacks it as well. three.js 0.187's `LoadingManager.resolveURL()` calls `url.normalize('NFC')` on every URL, so `TextureLoader`, `ImageLoader` and `GLTFLoader` threw "not a function" on iOS and Android while the web preview, a browser, drew the textures. Found by the solar system example (`examples/solar-system`), whose planet maps stayed black natively.
 
-`es-builtins.js` now adds it: the form is checked as the spec says (a `RangeError` for anything but NFC, NFD, NFKC or NFKD), ASCII comes back exactly as every form leaves it, and other text comes back as given. A real normalizer needs Unicode's decomposition and composition tables, tens of kilobytes in every app, for a method whose callers here pass URLs, and text is almost always stored composed (NFC) already. So `'café'.normalize('NFD')` doesn't decompose the é on Lynx.
+The build plugin's `es-builtins/string-normalize.js` now adds it: the form is checked as the spec says (a `RangeError` for anything but NFC, NFD, NFKC or NFKD), ASCII comes back exactly as every form leaves it, and other text comes back as given. A real normalizer needs Unicode's decomposition and composition tables, tens of kilobytes in every app, for a method whose callers here pass URLs, and text is almost always stored composed (NFC) already. So `'café'.normalize('NFD')` doesn't decompose the é on Lynx.
 
 ---
 
@@ -6918,7 +6920,7 @@ Found when the device check of the polyfills above showed `Array.fromAsync([1, P
 
 ### The fix
 
-Await each value yourself: `for (const promise of promises) { const value = await promise; … }`, or `await Promise.all(promises)`. The polyfilled `Array.fromAsync` (`es-builtins.js`) does the former for sync iterables, and `for...of` still closes the iterator when a value rejects, as the spec does.
+Await each value yourself: `for (const promise of promises) { const value = await promise; … }`, or `await Promise.all(promises)`. The polyfilled `Array.fromAsync` (`es-builtins/array-from-async.js`) does the former for sync iterables, and `for...of` still closes the iterator when a value rejects, as the spec does.
 
 ---
 

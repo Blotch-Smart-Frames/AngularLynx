@@ -71,7 +71,7 @@ Angular's own pipes, such as `DatePipe` and `CurrencyPipe`, use Angular's locale
 
 Write modern TypeScript as usual. The build compiles new syntax, such as `?.` and `??`, down to what Lynx supports.
 
-Lynx's engine has fewer built-in methods than a browser: the main thread supports ES2019 and some later additions. AngularLynx adds the rest, up to ES2026, before your app starts. So your code and libraries written for current browsers can call them:
+Lynx's engine has fewer built-in methods than a browser: the main thread supports ES2019 and some later additions. AngularLynx adds the rest, up to ES2026. The build adds each one to the files that call it, your libraries' included, so it's there before their code runs, and your app carries only the ones its code calls. So your code and libraries written for current browsers can call them:
 
 ```ts
 const last = items.at(-1);
@@ -83,6 +83,16 @@ const firstTen = users
   .filter((user) => user.active)
   .take(10)
   .toArray();
+```
+
+The build looks for the method's name in each file: called as a method, or in a string that could be the name you call it by. It can't see a name your code puts together as it runs, or keeps as data: in a list, or as an object's value (`{ decode: 'fromHex' }`). Write the name out in the file that calls it:
+
+```ts
+// Seen: the names are in the code.
+const sorted = items.toSorted();
+const method = descending ? 'toReversed' : 'toSorted';
+// Not seen: nothing in the file names toSorted.
+const name = ['to', 'Sorted'].join('');
 ```
 
 These are still missing, because they need the engine itself, or they're browser APIs rather than JavaScript:

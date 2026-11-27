@@ -261,7 +261,10 @@ test('copies text to the clipboard and reads it back', async ({
 // #211; native/canvas.yaml checks the app's own iOS and Android builds,
 // where the runtime's context draws through the shell). The canvas page
 // draws a texture createImageBitmap() decoded through a shader, then shows a
-// pixel it read back.
+// pixel it read back. It shows the pixel only once the template's <canvas>
+// and <video> and the canvas's context are `instanceof` the browser's
+// classes, the iframe's the app runs in, though they're the page's (issue
+// #788).
 test('a canvas draws with WebGL2', async ({ page }) => {
   const errors = collectErrors(page);
   await page.goto('/');

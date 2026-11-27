@@ -10,6 +10,7 @@ import {
 import { LynxDetachedCanvas, LynxOffscreenCanvas } from './detached-canvas';
 import { createImageBitmap, LynxImageBitmap, LynxImageElement } from './image';
 import { LynxPath2D } from './path';
+import { CANVAS_SOURCE } from './canvas-source';
 import type { LayoutRect } from '../lynx-element/layout';
 
 /**
@@ -306,6 +307,34 @@ describe('the canvas APIs on the web', () => {
     };
     context.drawImage(video, 0, 0);
     expect(drawImage).toHaveBeenCalledWith(video.element, 0, 0);
+  });
+
+  it('take a template’s <video> as an instance of the browser’s class', () => {
+    vi.stubGlobal('__WEB__', true);
+    /**
+     * The page's video, of the window web-core's iframe is in.
+     */
+    class PageVideo {}
+    const page = { HTMLVideoElement: PageVideo };
+    class HTMLVideoElement {}
+    installCanvasGlobals({ HTMLVideoElement, parent: page });
+    const video = Object.assign(element(), { element: new PageVideo() });
+    expect(video).toBeInstanceOf(HTMLVideoElement);
+  });
+
+  it('keep what the runtime’s classes take, where the realm has none', () => {
+    vi.stubGlobal('__WEB__', true);
+    // The runtime's classes go in first, then take the page's instances too:
+    // what they took before, they still do.
+    const target: Record<string, any> = {};
+    installCanvasGlobals(target);
+    const detached = new LynxDetachedCanvas();
+    expect(element()).toBeInstanceOf(target['HTMLElement']);
+    expect(detached).toBeInstanceOf(target['HTMLElement']);
+    expect(detached).toBeInstanceOf(target['HTMLCanvasElement']);
+    expect({ [CANVAS_SOURCE]: {}, tagName: 'video' }).toBeInstanceOf(
+      target['HTMLVideoElement'],
+    );
   });
 
   it('are left alone on Lynx, whose own take one already', () => {

@@ -180,6 +180,15 @@ const FIXTURES: Record<string, string> = {
     };
     [run(null), run({ m(x) { return x; } }), log];
   `,
+  'a call of a chain in parentheses, with Reflect and Function bound by the module': `
+    async function g(Reflect, Function, a) {
+      const { v = (a?.m)(await 1) } = {};
+      const [w = (a?.tag)\`\${await 2}\`] = [];
+      return [v, w];
+    }
+    const a = { m(x) { return [this === a, x]; }, tag(strings, x) { return [this === a, x]; } };
+    g(null, null, a);
+  `,
   '`delete` of a chain': `
     async function g(a) {
       const [d = delete a?.b.c[await 'c']] = [];
@@ -357,7 +366,7 @@ describe('lowerYieldingDefaultChains', () => {
   it('gives a chain in parentheses that is called its receiver', () => {
     // The last link's read is the object.
     expect(lower('async (a) => { const [v = (a?.m)(await 1)] = []; }')).toBe(
-      'async (a) => { var __chain0, __chain1; const [v = Reflect.apply((((__chain1 = a) == null ? void 0 : (__chain0 = __chain1).m)), __chain0, [await 1])] = []; }',
+      'async (a) => { var __chain0, __chain1; const [v = (() => {}).apply.call((((__chain1 = a) == null ? void 0 : (__chain0 = __chain1).m)), __chain0, [await 1])] = []; }',
     );
     // The object is read where the last link's part of the chain starts.
     expect(
@@ -372,7 +381,7 @@ describe('lowerYieldingDefaultChains', () => {
         'async (a) => { const [v = (a?.[0])`${await 1}`, w = (a?.f())(await 1)] = []; }',
       ),
     ).toBe(
-      'async (a) => { var __chain0, __chain1, __chain2; const [v = ((f, r) => function () { return Reflect.apply(f, r, arguments); })((((__chain1 = a) == null ? void 0 : (__chain0 = __chain1)[0])), __chain0)`${await 1}`, w = (((__chain2 = a) == null ? void 0 : __chain2.f()))(await 1)] = []; }',
+      'async (a) => { var __chain0, __chain1, __chain2; const [v = ((f, r) => function () { return (() => {}).apply.call(f, r, arguments); })((((__chain1 = a) == null ? void 0 : (__chain0 = __chain1)[0])), __chain0)`${await 1}`, w = (((__chain2 = a) == null ? void 0 : __chain2.f()))(await 1)] = []; }',
     );
     // Outside such a default value, it's left alone.
     expect(lower('async (a) => { const [v = (a?.m)()] = [await 1]; }')).toBe(
@@ -382,7 +391,7 @@ describe('lowerYieldingDefaultChains', () => {
     expect(
       lower('async (a) => { const [v = (a?.m)() + (await 1)] = []; }'),
     ).toBe(
-      'async (a) => { var __chain0, __chain1; const [v = Reflect.apply((((__chain1 = a) == null ? void 0 : (__chain0 = __chain1).m)), __chain0, []) + (await 1)] = []; }',
+      'async (a) => { var __chain0, __chain1; const [v = (() => {}).apply.call((((__chain1 = a) == null ? void 0 : (__chain0 = __chain1).m)), __chain0, []) + (await 1)] = []; }',
     );
   });
 

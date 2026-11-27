@@ -1587,9 +1587,11 @@ export class LynxElement implements BaseLynxElement {
           .filter(Boolean),
       );
       // What it had, to tell which classes changed (see #rulesChanged):
-      // unknown while native has classes the string doesn't.
-      const before =
-        this.#nativeClasses === false ? undefined : splitClasses(this.#classes);
+      // unknown while native has classes the string doesn't. Kept as the
+      // string, and split only if #rulesChanged asks which changed, as it
+      // does for few elements: the split and the comparison were a tenth of
+      // the runtime's work for each `@for` row.
+      const before = this.#nativeClasses === false ? undefined : this.#classes;
       // The split's names are plain, and the scope classes Angular and the
       // runtime name are too; an odd one an app gave setRuntimeClass leaves
       // the set to the next addClass.
@@ -1621,7 +1623,11 @@ export class LynxElement implements BaseLynxElement {
       }
       this.#classes = classes;
       this.#classesListed = plain;
-      this.#rulesChanged(before && changedTokens(before, names));
+      this.#rulesChanged(
+        before === undefined
+          ? undefined
+          : () => changedTokens(splitClasses(before), names),
+      );
     } else if (name === 'style') {
       this.setInlineStyles(value);
     } else if (name === 'id') {
@@ -2016,7 +2022,12 @@ export class LynxElement implements BaseLynxElement {
    * `changed` holds the tokens added or removed (see #styleTokens), when
    * they're known.
    */
-  #rulesChanged(changed?: Iterable<string>): void {
+  #rulesChanged(changed?: Iterable<string> | (() => Iterable<string>)): void {
+    // Which tokens changed, worked out the first time it's read, if it is
+    // (read only while they're known, `changed` given).
+    let tokens = changed;
+    const read = (): Iterable<string> =>
+      typeof tokens === 'function' ? (tokens = tokens()) : tokens!;
     // A Lynx <text>'s rules decide which styles the HTML text tags inside it
     // inherit, and an HTML text tag's decide its own and those of the tags
     // inside it (see #drawnAtDefault).
@@ -2029,9 +2040,12 @@ export class LynxElement implements BaseLynxElement {
     // changed token of an ancestor can have changed: matching them all
     // again below a page that toggles `dark` cost a few milliseconds for
     // every 2,000 tags.
+    // (#ancestorsChanged does nothing for an element without either flag,
+    // so it's checked before the tokens are.)
     if (
       !this.#anonymous &&
-      (changed === undefined || ancestorTextRulesRead(changed))
+      (this.#webText || this.#passesTextStyles) &&
+      (tokens === undefined || ancestorTextRulesRead(read()))
     ) {
       this.#ancestorsChanged();
     }
@@ -2043,7 +2057,8 @@ export class LynxElement implements BaseLynxElement {
     // a changed token (see #ownQuotes): through every element below it, as
     // a lang does (see #setLang), since a wrapper made after a hydrated <q>
     // has no flag for it.
-    if (quotesRulesRead(changed)) this.#refreshQuotes(true);
+    if (quotesRulesRead(tokens === undefined ? undefined : read))
+      this.#refreshQuotes(true);
   }
 
   /**

@@ -46,7 +46,7 @@ export type WebGL2ContextFactory = (
  * `<canvas>`, `document.createElement('canvas')` and `OffscreenCanvas` has a
  * surface, whatever the app draws with. Through this slot only the modules
  * that name `'webgl2'`, as code that asks for the context does, bring it: the
- * build plugin calls `ɵenableWebGL2()` at the top of each one (webgl2.ts
+ * build plugin calls `ɵenableWebGL2()` at the top of each one (on-demand.ts
  * there).
  */
 let webGL2ContextFactory: WebGL2ContextFactory | null = null;

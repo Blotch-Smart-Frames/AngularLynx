@@ -9,6 +9,7 @@ import { blobForURL, decodeDataURL, LynxBlob } from './blob';
 import { readBundledAsset, typeOfAsset } from './bundled-asset';
 import { LynxHeaders, type HeadersInit } from './headers';
 import { isDisturbed, LynxReadableStream } from './readable-stream';
+import { isRelative, nextRelayId } from './relay';
 import { LynxTextDecoder, LynxTextEncoder } from './text-codec';
 
 /**
@@ -315,12 +316,6 @@ const parseUrl = (input: string): string => {
 };
 
 /**
- * A relative URL: one with no scheme.
- */
-const isRelative = (url: string): boolean =>
-  !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url);
-
-/**
  * Only for checking that a relative URL parses: it's never fetched or shown.
  */
 const PLACEHOLDER_BASE = 'http://placeholder.invalid/';
@@ -578,8 +573,6 @@ export class LynxResponse extends LynxBody {
   }
 }
 
-let nextFetchId = 0;
-
 /**
  * The response to a request for a relative URL: for a GET, the file the app
  * bundles at that URL, read by the shell (see bundled-asset.ts). Lynx has no
@@ -671,7 +664,7 @@ export const relayFetch = (
       else reject(local);
       return;
     }
-    const id = nextFetchId++;
+    const id = nextRelayId();
     let settled = false;
     /**
      * Removed once the request settles, so it only runs while in flight.

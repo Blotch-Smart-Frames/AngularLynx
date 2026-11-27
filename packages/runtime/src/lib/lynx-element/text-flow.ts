@@ -100,6 +100,45 @@ export const SMALLER_FLAG = LAYOUT_FLAG << 1;
 export const VERTICAL_ALIGN_FLAG = SMALLER_FLAG << 1;
 
 /**
+ * The bit in a style index entry for a rule whose `font-size` is relative
+ * to the parent's (see isRelativeFontSize), which it has with the
+ * `font-size` bit. Its copy is `1em` (see relativeSizeCopy), so the text
+ * inside reads the size of its own parent, not that of the tag the rule
+ * styles: the runtime gives none of it a class for its level of `<small>`s
+ * (see smallerClassFor), whose division counts from that tag. Above
+ * VERTICAL_ALIGN_FLAG, as in the build plugin's style-index.ts.
+ */
+export const RELATIVE_SIZE_FLAG = VERTICAL_ALIGN_FLAG << 1;
+
+/**
+ * Whether a `font-size` is relative to the parent's size: a length in `em`
+ * or a percentage, alone or in a `calc()`, but not `rem`, which is the
+ * root's. The build plugin reads the stylesheet's values the same way (its
+ * isRelativeFontSize), and a test keeps the two the same.
+ */
+export const isRelativeFontSize = (value: string): boolean =>
+  /(?:^|[^\w.-])[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:em|%)(?![\w-])/i.test(value);
+
+/**
+ * What a declaration's value is copied to its inheritance variable as (see
+ * inheritanceCopiesFor): as written, but `1em` for a relative `font-size`.
+ *
+ * A custom property keeps its value as written, so a copy of `2em` made each
+ * HTML text tag that reads it twice its parent's size: in `<p style=
+ * "font-size: 2em">Total: <b>12</b></p>` the `<b>` drew at four times the
+ * size around the `<p>`, and a tag inside it at eight (issue #701). The copy
+ * can't be the size it makes either: it would have to read the variable from
+ * above, which on the element that sets it is its own, a cycle that leaves it
+ * unset on iOS, Android and the web alike. `1em` is the size of the parent of
+ * the tag that reads it, which is the size the tag would inherit: the `<p>`'s
+ * for the `<b>`, the `<b>`'s for a tag inside it, each the `<p>`'s size. A
+ * `<view>` between them passes the size down too, as the build has Lynx
+ * inherit `font-size` (`customCSSInheritanceList`, issue #685).
+ */
+export const relativeSizeCopy = (property: string, value: string): string =>
+  property === 'font-size' && isRelativeFontSize(value) ? '1em' : value;
+
+/**
  * How far a `vertical-align` moves the text off the baseline: the `em` of
  * the element's own size, plus pixels (see the build plugin's
  * style-index.ts).
@@ -348,13 +387,23 @@ export const inlineTextStyles = (
   return styles;
 };
 
-/** The properties in `styles` (see inlineTextStyles), as a bitmask. */
+/**
+ * The properties in `styles` (see inlineTextStyles), as a bitmask, with
+ * RELATIVE_SIZE_FLAG for a relative `font-size`.
+ */
 export const textPropertyFlags = (
   styles: ReadonlyMap<string, string> | null,
 ): number => {
   let flags = 0;
-  if (styles)
-    for (const property of styles.keys()) flags |= textPropertyBit(property);
+  if (!styles) return flags;
+  for (const property of styles.keys()) flags |= textPropertyBit(property);
+  // A relative size passes `1em` down, as a rule's does (see
+  // RELATIVE_SIZE_FLAG). With the bit, a change from `2em` to `20px` changes
+  // the flags, so the tags inside work out their level of `<small>`s again.
+  const size = styles.get('font-size');
+  if (size !== undefined && isRelativeFontSize(size)) {
+    flags |= RELATIVE_SIZE_FLAG;
+  }
   return flags;
 };
 
@@ -366,7 +415,8 @@ export const textPropertyFlags = (
  * 18px">` passed nothing down to the `<b>` inside (issue #690). As there, a
  * copy drops `!important`, which a variable can't have, and a value that
  * reads its own variable has none: it would refer to itself, which is
- * invalid, and hide the value from above too.
+ * invalid, and hide the value from above too. A relative `font-size` is
+ * copied as `1em` (see relativeSizeCopy).
  */
 export const inheritanceCopiesFor = (
   styles: ReadonlyMap<string, string> | null,
@@ -376,7 +426,11 @@ export const inheritanceCopiesFor = (
   for (const [property, value] of styles) {
     const variable = inheritanceVariable(property);
     if (new RegExp(`var\\(\\s*${variable}\\s*[,)]`, 'i').test(value)) continue;
-    copies.push(`${variable}: ${value.replace(/\s*!important\s*$/i, '')}`);
+    const copy = relativeSizeCopy(
+      property,
+      value.replace(/\s*!important\s*$/i, ''),
+    );
+    copies.push(`${variable}: ${copy}`);
   }
   return copies.join('; ');
 };

@@ -58,14 +58,13 @@ export const installBase64Globals = (target: Record<string, unknown>): void => {
 };
 
 /**
- * Installs the web's network APIs on `target`, Lynx's main thread, where
- * they're missing: `fetch` (relayed to the background thread's), `Headers`,
- * `Request`, `Response`, `ReadableStream`, `XMLHttpRequest`, `TextEncoder`
- * and `TextDecoder`. With them, `provideHttpClient()` works as it does in a
- * browser, whichever backend it uses (`FetchBackend` by default, or
- * `HttpXhrBackend` with `withXhr()`), and so do `httpResource` and libraries
- * that call `fetch` or XHR. `DOMException`, which Angular's HTTP backends
- * throw on a timeout, comes from installBase64Globals(), on both threads.
+ * Installs the web's body and encoding APIs on `target`, Lynx's main thread,
+ * where they're missing: `TextEncoder`, `TextDecoder`, `ReadableStream`,
+ * `Blob`, and `URL.createObjectURL()` / `revokeObjectURL()`.
+ *
+ * Every app has these, unlike `fetch` and `XMLHttpRequest` (see
+ * installFetch()): the canvas's images and `toBlob()` use the same classes,
+ * so they're in every main-thread script already.
  *
  * Each is installed only where it's missing, so the web preview, whose main
  * thread is a browser frame, keeps its own. Takes the global as a parameter
@@ -83,15 +82,6 @@ export const installNetworkGlobals = (
   // a response's `body` as a stream, and Firestore's WebChannel drops a
   // response it reads any other way (readable-stream.ts).
   install('ReadableStream', LynxReadableStream);
-  // The classes go together: the relayed fetch builds a LynxResponse, and
-  // Angular checks `headers instanceof Headers`.
-  if (typeof target['fetch'] === 'undefined') {
-    install('fetch', relayFetch);
-    install('Headers', LynxHeaders);
-    install('Request', LynxRequest);
-    install('Response', LynxResponse);
-  }
-  install('XMLHttpRequest', LynxXMLHttpRequest);
   // three.js's glTF loader makes a Blob and an object URL of each image a
   // .glb holds, then loads the URL (see blob.ts).
   install('Blob', LynxBlob);
@@ -102,4 +92,47 @@ export const installNetworkGlobals = (
     url.createObjectURL = createObjectURL;
     url.revokeObjectURL = revokeObjectURL;
   }
+};
+
+/**
+ * Installs `fetch`, relayed to the background thread's, on `target`, Lynx's
+ * main thread, where it's missing, with `Headers`, `Request` and `Response`.
+ * With them, `provideHttpClient()` works as it does in a browser
+ * (`FetchBackend` is its default), and so do `httpResource` and libraries
+ * that call `fetch`. `DOMException`, which Angular's HTTP backends throw on a
+ * timeout, comes from installBase64Globals(), on both threads.
+ *
+ * Not every app gets it: the build plugin calls ɵenableFetch(), which calls
+ * this, in each module that names one of these (see enable.ts). Each is
+ * installed only where it's missing, so the web preview keeps its own.
+ *
+ * @param target - The global object.
+ */
+export const installFetch = (target: Record<string, unknown>): void => {
+  // The classes go together: the relayed fetch builds a LynxResponse, and
+  // Angular checks `headers instanceof Headers`.
+  if (typeof target['fetch'] !== 'undefined') return;
+  const install = installer(target);
+  install('fetch', relayFetch);
+  install('Headers', LynxHeaders);
+  install('Request', LynxRequest);
+  install('Response', LynxResponse);
+};
+
+/**
+ * Installs `XMLHttpRequest` on `target`, Lynx's main thread, where it's
+ * missing, for `HttpXhrBackend` (`provideHttpClient(withXhr())`) and the
+ * libraries that use XHR. It sends each request through `fetch`, so that
+ * comes too (installFetch()).
+ *
+ * Not every app gets it: the build plugin calls ɵenableXMLHttpRequest() in
+ * each module that names it (see enable.ts).
+ *
+ * @param target - The global object.
+ */
+export const installXMLHttpRequest = (
+  target: Record<string, unknown>,
+): void => {
+  installFetch(target);
+  installer(target)('XMLHttpRequest', LynxXMLHttpRequest);
 };

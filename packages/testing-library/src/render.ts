@@ -36,9 +36,23 @@ import {
 } from '@testing-library/dom';
 import {
   provideRenderer,
+  ɵenableFetch,
+  ɵenableIntersectionObserver,
+  ɵenableXMLHttpRequest,
   ɵhideSplashScreenUnlessProvided,
 } from '@blotch/angular-lynx';
 import { type BoundLynxQueries, type LynxQueries, queries } from './queries.js';
+
+// An app's build gives its main thread fetch, XMLHttpRequest and
+// IntersectionObserver only where a module names them (the build plugin's
+// on-demand.ts). Tests aren't built by the plugin, so they get all three, as
+// the runtime gave every app before: a component that observes its elements,
+// or one with `@defer (on viewport)`, renders as it does in the app. Each
+// keeps the environment's own where it has one (jsdom's XMLHttpRequest,
+// Node's fetch).
+ɵenableFetch();
+ɵenableXMLHttpRequest();
+ɵenableIntersectionObserver();
 
 /**
  * The value an input takes from a test: what a signal input or model accepts

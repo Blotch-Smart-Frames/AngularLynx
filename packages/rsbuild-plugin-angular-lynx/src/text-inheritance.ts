@@ -48,6 +48,15 @@ const readsVariable = (value: string, variable: string): boolean =>
   new RegExp(`var\\(\\s*${variable}\\s*[,)]`, 'i').test(value);
 
 /**
+ * Whether a `font-size` is relative to the parent's size: a length in `em`
+ * or a percentage, alone or in a `calc()`, but not `rem`, which is the
+ * root's. A copy of `isRelativeFontSize` in the runtime's
+ * lynx-element/text-flow.ts, kept the same by a test.
+ */
+export const isRelativeFontSize = (value: string): boolean =>
+  /(?:^|[^\w.-])[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:em|%)(?![\w-])/i.test(value);
+
+/**
  * The class the runtime gives each element that has an HTML text tag or
  * loose text inside it, the only elements whose copies anything reads. A copy
  * of `INHERITANCE_CLASS` in the runtime's lynx-element/text-flow.ts, kept the
@@ -218,7 +227,20 @@ export const textInheritanceForLynx: PluginCreator<void> = () => ({
         // it keeps that one.
         if (readsVariable(node.value, variable)) return;
         own.add(variable);
-        const copy = node.clone({ prop: variable, important: false });
+        // A custom property keeps its value as written, so a copy of `2em`
+        // made each HTML text tag that reads it twice the size of its parent,
+        // which is already twice the size around it (issue #701). `1em` is the
+        // size of the reading tag's parent, the size it would inherit. A
+        // copy can't hold the size `2em` makes instead: it would read the
+        // variable from above, which here is its own, a cycle. The runtime
+        // copies inline styles the same way (its relativeSizeCopy).
+        const copy = node.clone({
+          prop: variable,
+          important: false,
+          ...(property === 'font-size' && isRelativeFontSize(node.value)
+            ? { value: '1em' }
+            : {}),
+        });
         delete copy.raws.important;
         copies.push(copy);
       });

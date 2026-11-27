@@ -40,6 +40,7 @@
  * The web preview's main thread, a browser frame, keeps the browser's own,
  * wrapped to take a Lynx element, as `ResizeObserver` is (canvas/dom-globals.ts).
  */
+import { isMainThread } from '../background-call';
 import {
   type LayoutRect,
   type LynxDOMRect,
@@ -880,5 +881,24 @@ export const installIntersectionObserver = (
     target['IntersectionObserver'] = LynxIntersectionObserver;
   } else if (!native.forLynxElements) {
     target['IntersectionObserver'] = wrapIntersectionObserver(native);
+  }
+};
+
+/**
+ * Gives Lynx's main thread `IntersectionObserver`, from Lynx's exposure
+ * events, and makes the web preview's take Lynx elements
+ * (installIntersectionObserver()).
+ *
+ * Apps don't call this: the build plugin calls it at the top of every
+ * main-thread module that names `IntersectionObserver` or compiles an
+ * `@defer (on viewport)` block (`ɵɵdeferOnViewport` and its prefetch and
+ * hydrate forms), so the observer is in the bundle only when something can
+ * make one. PrimJS reads a script's whole bytecode as it loads it, so every
+ * app used to pay for it in memory (#719). A module that reaches it by a name
+ * built at runtime can call this first. Calling it again changes nothing.
+ */
+export const ɵenableIntersectionObserver = (): void => {
+  if (isMainThread()) {
+    installIntersectionObserver(globalThis as unknown as Record<string, any>);
   }
 };

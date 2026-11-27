@@ -1327,6 +1327,13 @@ export class LynxElement implements BaseLynxElement {
   static #endedAnimations = new Map<LynxElement, LynxElement[]>();
 
   /**
+   * The elements whose animations start again at the end of the cycle,
+   * because the destroyed element they were ended for was put back (see
+   * #keepIfDestroyed and #commitPendingRestarts).
+   */
+  static #pendingRestarts = new Set<LynxElement>();
+
+  /**
    * Set when Angular destroys this element, until it's released (see
    * #release) or put back in the tree.
    */
@@ -3917,6 +3924,7 @@ export class LynxElement implements BaseLynxElement {
       }
     }
     LynxElement.#commitPendingReleases();
+    LynxElement.#commitPendingRestarts();
     scheduleCollection();
   }
 
@@ -4157,15 +4165,29 @@ export class LynxElement implements BaseLynxElement {
     if (!this.#destroyed) return;
     this.#destroyed = false;
     LynxElement.#pendingReleases.delete(this);
-    // The animations markDestroyed ended run again (see #restartAnimation),
-    // but not in an element released since, with another destroyed element
-    // it moved into.
+    // The animations markDestroyed ended run again, at the end of the cycle
+    // (see #commitPendingRestarts): this runs before the element is put in
+    // its new parent, which may be going too.
     const ended = LynxElement.#endedAnimations.get(this);
     if (ended) {
       LynxElement.#endedAnimations.delete(this);
-      for (const el of ended) {
-        if (el.#isRegistered()) el.#restartAnimation();
-      }
+      for (const el of ended) LynxElement.#pendingRestarts.add(el);
+    }
+  }
+
+  /**
+   * Starts again the animations of the elements a destroyed element put
+   * back in the tree had ended (see #keepIfDestroyed), once the cycle's moves
+   * are done and their parents are what they'll be: not in one released
+   * since, with another destroyed element it went into, and as the record of
+   * one that's in a destroyed element now (see #restartAnimation).
+   */
+  static #commitPendingRestarts(): void {
+    if (LynxElement.#pendingRestarts.size === 0) return;
+    const elements = [...LynxElement.#pendingRestarts];
+    LynxElement.#pendingRestarts.clear();
+    for (const el of elements) {
+      if (el.#isRegistered()) el.#restartAnimation();
     }
   }
 

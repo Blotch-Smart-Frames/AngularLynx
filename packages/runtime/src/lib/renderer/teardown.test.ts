@@ -2214,6 +2214,32 @@ describe('renderer teardown', () => {
       expect(ref.styles.has('__inline')).toBe(false);
     });
 
+    it('keeps it ended in a destroyed element put into another destroyed view', () => {
+      const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
+      const page = document.createRootElement();
+      const other = document.createElement('view');
+      const el = document.createElement('view');
+      el.setAttribute('enable-new-animator', 'false');
+      el.setAttribute('style', 'animation: turn 1600ms linear infinite;');
+      page.appendChild(el);
+      page.appendChild(other);
+      const ref = el.element as unknown as FakeEl;
+
+      // Put back, but into a view that's going too: it goes with it.
+      el.markDestroyed();
+      other.markDestroyed();
+      ref.styles.delete('__inline');
+      el.remove();
+      other.appendChild(el);
+      other.remove();
+      processPendingRemovals();
+
+      // Moved as it is, and its animation never started again.
+      expect(el.element).toBe(ref);
+      expect(registered([ref])).toEqual([false]);
+      expect(ref.styles.has('__inline')).toBe(false);
+    });
+
     it('leaves an element moved out of a destroyed view alone once it has gone too', () => {
       const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
       const page = document.createRootElement();

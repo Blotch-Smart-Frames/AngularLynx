@@ -452,6 +452,15 @@ export class CanvasRoute {
       moved.fillRect(-1000, index === 0 ? 0 : -1000, 4, index === 0 ? 8 : 4);
       return [pixel(moved, 1, index === 0 ? 4 : 1), pixel(moved, 5, 5)];
     });
+    // Moved by half a pixel more, the shadow keeps the half: its first and
+    // last columns read half red, as in Chromium, rather than its edges
+    // rounding to whole pixels.
+    const halfShadowReads = (() => {
+      const moved = make(8, 8);
+      moved.filter = 'drop-shadow(1000.5px 0 0 red)';
+      moved.fillRect(-1000, 0, 4, 8);
+      return [pixel(moved, 0, 4), pixel(moved, 4, 4)];
+    })();
 
     // A shape faded with globalAlpha casts a shadow faded as much, and a
     // shadow with no blur has sharp edges (issue #796): both of the 2 px
@@ -552,6 +561,11 @@ export class CanvasRoute {
       near(farShadowReads[0][0], [255, 0, 0, 255]) &&
       near(farShadowReads[1][0], [0, 0, 255, 255]) &&
       farShadowReads.every(([, beside]) => beside[3] === 0) &&
+      halfShadowReads.every((read) =>
+        read.every(
+          (value, channel) => Math.abs(value - [255, 0, 0, 128][channel]) <= 4,
+        ),
+      ) &&
       fadedShadowReads.every((read) => near(read, [255, 0, 0, 128])) &&
       ownColorReads.every(
         ([shape, cast]) =>
@@ -575,6 +589,7 @@ export class CanvasRoute {
           wideBlurRead,
           ...widerReads.flat(),
           ...farShadowReads.flat(),
+          ...halfShadowReads,
           ...fadedShadowReads,
           ...ownColorReads.flat(),
           ...farImageReads,

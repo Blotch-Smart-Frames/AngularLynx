@@ -834,9 +834,12 @@ class Canvas2DContext(
      * so a wide one is worked out in a smaller layer as any blur is (see
      * [planFor]), and the shadow is the alpha that leaves, in its color: a
      * blur blurs each channel alike, so that's the alpha blurred, as
-     * [CanvasFilter.shadowOf] casts it. On a layer at the canvas's
-     * resolution, the offset is moved to the nearest pixel, as shadowOf
-     * moves it, so the layer stays on whole pixels.
+     * [CanvasFilter.shadowOf] casts it. The offset isn't rounded: the
+     * moved layer needn't lie on whole pixels, as only its bytes are used,
+     * each landing on the pixel of `layer` it's moved onto, so a fractional
+     * offset draws the shape between pixels there, as it lands on the
+     * canvas. A wide shadow's offset, resampled from the smaller layer, kept
+     * its fraction before this too.
      */
     private fun farShadow(layer: Layer, steps: List<CanvasFilter.Step>, matrix: Matrix?, draw: (Canvas) -> Unit): ByteArray {
         val before = steps.subList(0, steps.size - 1)
@@ -845,9 +848,7 @@ class Canvas2DContext(
         // Past where a shadow's layer can lie, the canvas's pixels, which are
         // floats, place no shape the shadow could be cast from.
         if (abs(v[0]) > MAX_LAYER_OFFSET || abs(v[1]) > MAX_LAYER_OFFSET) return shape
-        val dx = if (layer.scale == 1.0) v[0].roundToInt().toDouble() else v[0]
-        val dy = if (layer.scale == 1.0) v[1].roundToInt().toDouble() else v[1]
-        val cast = over(layer.moved(-dx, -dy), before + CanvasFilter.Step.blur(v[2]), matrix, draw)
+        val cast = over(layer.moved(-v[0], -v[1]), before + CanvasFilter.Step.blur(v[2]), matrix, draw)
         val shadow = CanvasFilter.shadowOf(cast, layer.width, layer.height, 0.0, 0.0, 0.0, v[3], v[4], v[5], v[6])
         CanvasFilter.under(shape, shadow)
         return shape

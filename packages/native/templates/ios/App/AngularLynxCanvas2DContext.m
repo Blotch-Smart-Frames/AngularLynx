@@ -1623,9 +1623,12 @@ static CGFloat area(CGRect rect) {
 /// a wide one is worked out in a smaller layer as any blur is (see
 /// -planFor:...), and the shadow is the alpha that leaves, in its color: a
 /// blur blurs each channel alike, so that's the alpha blurred, as
-/// newShadowBytes casts it. On a layer at the canvas's resolution, the
-/// offset is moved to the nearest pixel, as newShadowBytes moves it, so the
-/// layer stays on whole pixels.
+/// newShadowBytes casts it. The offset isn't rounded: the moved layer
+/// needn't lie on whole pixels, as only its bytes are used, each landing on
+/// the pixel of `layer` it's moved onto, so a fractional offset draws the
+/// shape between pixels there, as it lands on the canvas. A wide shadow's
+/// offset, resampled from the smaller layer, kept its fraction before this
+/// too.
 - (uint8_t *)newFarShadow:(ALLayer)layer
                     steps:(const ALFilterStep *)steps
                     count:(NSUInteger)count
@@ -1637,8 +1640,6 @@ static CGFloat area(CGRect rect) {
   // Past where a shadow's layer can lie, the canvas's pixels place no shape
   // the shadow could be cast from.
   if (fabs(v[0]) > MAX_LAYER_OFFSET || fabs(v[1]) > MAX_LAYER_OFFSET) return shape;
-  double dx = layer.scale == 1 ? lround(v[0]) : v[0];
-  double dy = layer.scale == 1 ? lround(v[1]) : v[1];
   // The steps before the shadow, then its blur.
   ALFilterStep *blurred = malloc(sizeof(ALFilterStep) * count);
   if (!blurred) {
@@ -1647,7 +1648,7 @@ static CGFloat area(CGRect rect) {
   }
   memcpy(blurred, steps, sizeof(ALFilterStep) * before);
   blurred[before] = (ALFilterStep){ALFilterBlur, {v[2]}};
-  uint8_t *cast = [self newOver:movedLayer(layer, -dx, -dy) steps:blurred count:count draw:draw];
+  uint8_t *cast = [self newOver:movedLayer(layer, -v[0], -v[1]) steps:blurred count:count draw:draw];
   free(blurred);
   uint8_t *shadow = cast ? newShadowBytes(cast, layer.width, layer.height, 0, 0, 0, v[3], v[4],
                                           v[5], v[6])

@@ -111,10 +111,10 @@ describe('installCanvasGlobals', () => {
       { [WEBGL2_CONTEXT]: false } instanceof target['WebGL2RenderingContext'],
     ).toBe(false);
     expect(null instanceof target['WebGL2RenderingContext']).toBe(false);
-    expect(
-      new LynxCanvasRenderingContext2D() instanceof
-        target['WebGL2RenderingContext'],
-    ).toBe(false);
+    // A 2D context, without the bridge and canvas a real one is made with.
+    const context2D = Object.create(LynxCanvasRenderingContext2D.prototype);
+    expect(context2D).toBeInstanceOf(LynxCanvasRenderingContext2D);
+    expect(context2D instanceof target['WebGL2RenderingContext']).toBe(false);
     // As in a browser, a WebGL2 context isn't a WebGL1 one.
     expect(context instanceof target['WebGLRenderingContext']).toBe(false);
     expect({} instanceof target['WebGLRenderingContext']).toBe(false);

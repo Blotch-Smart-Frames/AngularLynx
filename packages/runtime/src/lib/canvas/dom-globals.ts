@@ -8,6 +8,7 @@ import {
   LynxTextMetrics,
 } from './canvas-2d-context';
 import { CANVAS_SOURCE } from './canvas-source';
+import { LynxImageBitmapRenderingContext } from './bitmap-renderer-context';
 import { LynxDetachedCanvas, LynxOffscreenCanvas } from './detached-canvas';
 import { createImageBitmap, LynxImageBitmap, LynxImageElement } from './image';
 import { LynxPath2D } from './path';
@@ -62,7 +63,8 @@ const isLynxElement = (value: unknown): value is LayoutElement =>
  *   canvas-2d-context.ts and detached-canvas.ts. Chart and image libraries,
  *   and three.js's text textures, draw on a canvas that's never in the page.
  * - `Image`, `HTMLImageElement`, `ImageBitmap`, `createImageBitmap()`, and
- *   `document.createElement('img')`: see image.ts.
+ *   `document.createElement('img')`: see image.ts. `ImageBitmapRenderingContext`,
+ *   a canvas's `bitmaprenderer` context: see bitmap-renderer-context.ts.
  * - `devicePixelRatio`: from Lynx's SystemInfo, so a 3D scene renders at the
  *   screen's resolution.
  * - `getComputedStyle()`: ngxtension's resize directive reads an element's
@@ -97,6 +99,7 @@ export const installCanvasGlobals = (target: Record<string, any>): void => {
   install('Image', LynxImageElement);
   install('HTMLImageElement', LynxImageElement);
   install('ImageBitmap', LynxImageBitmap);
+  install('ImageBitmapRenderingContext', LynxImageBitmapRenderingContext);
   install('createImageBitmap', createImageBitmap);
   if (typeof target['devicePixelRatio'] === 'undefined') {
     target['devicePixelRatio'] = pixelRatio();

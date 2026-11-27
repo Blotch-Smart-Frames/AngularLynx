@@ -373,6 +373,103 @@ const lookUpModule = (): LynxModuleHandle | null => {
   }
 };
 
+/**
+ * The module's methods for a canvas's `bitmaprenderer` context (see
+ * bitmap-renderer-context.ts): ImageBitmapRenderingContext, which shows an
+ * ImageBitmap in the canvas. The shell keeps a bitmap's pixels by image id
+ * (`decodeImage`, `imageFromCanvas`), so the context is handed the id and
+ * shows those pixels, as a 2D context shows its bitmap.
+ */
+export type BitmapRendererBridge = {
+  /**
+   * Makes the context, showing a blank canvas of `width` by `height`.
+   * `attributes` holds `alpha`, `width` and `height`.
+   */
+  createBitmapRenderer(
+    contextId: number,
+    canvasId: string,
+    attributes: Record<string, unknown>,
+  ): WebGLCreateResult;
+  /**
+   * Shows the decoded image `imageId` in the canvas, which the context then
+   * owns: the shell drops it from its images, as transferFromImageBitmap()
+   * detaches the bitmap, whether or not the context is still there. An
+   * `imageId` of 0 shows a blank canvas of `width` by `height` instead:
+   * transparent black, or opaque black without alpha.
+   */
+  transferToBitmapRenderer(
+    contextId: number,
+    imageId: number,
+    width: number,
+    height: number,
+  ): WebGLCreateResult;
+  destroyBitmapRenderer(contextId: number): void;
+  /** What the canvas shows as a PNG or JPEG file, as `encode2D`. */
+  encodeBitmapRenderer(
+    contextId: number,
+    options: { type: string; quality: number },
+  ): EncodedImage;
+};
+
+let overrideBitmapRenderer: BitmapRendererBridge | null | undefined;
+let cachedBitmapRenderer: BitmapRendererBridge | null | undefined;
+
+/**
+ * Replaces the native bitmaprenderer bridge, for tests. `undefined` restores
+ * the real one.
+ */
+export const setBitmapRendererBridgeForTesting = (
+  bridge: BitmapRendererBridge | null | undefined,
+): void => {
+  overrideBitmapRenderer = bridge;
+};
+
+/**
+ * The bitmaprenderer bridge, or null where there's none: the same hosts as
+ * WebGL's (see getWebGLBridge).
+ */
+export const getBitmapRendererBridge = (): BitmapRendererBridge | null => {
+  if (overrideBitmapRenderer !== undefined) return overrideBitmapRenderer;
+  if (cachedBitmapRenderer === undefined) {
+    cachedBitmapRenderer = lookUpBitmapRendererBridge();
+  }
+  return cachedBitmapRenderer;
+};
+
+const lookUpBitmapRendererBridge = (): BitmapRendererBridge | null => {
+  const handle = lookUpModule();
+  if (!handle) return null;
+  /**
+   * A shell from before the bitmaprenderer context answers its methods with
+   * nothing, or throws: either way the canvas has no such context there.
+   */
+  const invoke = (method: string, ...args: unknown[]): unknown => {
+    try {
+      return handle.invoke(method, ...args);
+    } catch {
+      return undefined;
+    }
+  };
+  const rebuild =
+    "This app's shell has no bitmaprenderer canvas: build it again with `ng build --platform`";
+  return {
+    createBitmapRenderer: (contextId, canvasId, attributes) =>
+      (invoke('createBitmapRenderer', contextId, canvasId, attributes) as
+        | WebGLCreateResult
+        | undefined) ?? { ok: false, error: rebuild },
+    transferToBitmapRenderer: (contextId, imageId, width, height) =>
+      (invoke('transferToBitmapRenderer', contextId, imageId, width, height) as
+        | WebGLCreateResult
+        | undefined) ?? { ok: false, error: rebuild },
+    destroyBitmapRenderer: (contextId) =>
+      void invoke('destroyBitmapRenderer', contextId),
+    encodeBitmapRenderer: (contextId, options) =>
+      (invoke('encodeBitmapRenderer', contextId, options) as
+        | EncodedImage
+        | undefined) ?? { error: rebuild },
+  };
+};
+
 /** The bytes a typed array or buffer views, as a Uint8Array over them. */
 export const bytesOf = (
   data: ArrayBufferView | ArrayBuffer,

@@ -34,6 +34,7 @@ import kotlin.math.roundToInt
 class WebGLModule(context: Context, param: Any?) : LynxModule(context, param) {
     private val contexts = HashMap<Int, WebGLContext>()
     private val contexts2D = HashMap<Int, Canvas2DContext>()
+    private val bitmapRenderers = HashMap<Int, BitmapRendererContext>()
 
     /** The 2D contexts' gradients and patterns, which any of them can paint with. */
     private val canvas2DObjects = HashMap<Int, Any>()
@@ -320,11 +321,85 @@ class WebGLModule(context: Context, param: Any?) : LynxModule(context, param) {
         }
     }
 
+    /**
+     * A bitmaprenderer context for the canvas (see BitmapRendererContext),
+     * showing a blank canvas of the `width` and `height` in [attributes]:
+     * `{ ok }`.
+     */
+    @LynxMethod
+    fun createBitmapRenderer(contextId: Int, canvasId: String, attributes: ReadableMap?): JavaOnlyMap {
+        destroyBitmapRenderer(contextId)
+        val context = BitmapRendererContext(canvasId, attributes)
+        bitmapRenderers[contextId] = context
+        CanvasRegistry.setContext(canvasId, context)
+        return JavaOnlyMap.from(mapOf("ok" to true))
+    }
+
+    /**
+     * transferFromImageBitmap(): shows the decoded image [imageId] in the
+     * canvas, which owns it from then on, or a blank canvas of [width] by
+     * [height] for an id of 0. The image leaves DecodedImages even when the
+     * context has gone, as the runtime's bitmap is detached either way and
+     * nothing else would free it. `{ ok }`, or `{ ok: false, error }`.
+     */
+    @LynxMethod
+    fun transferToBitmapRenderer(contextId: Int, imageId: Int, width: Int, height: Int): JavaOnlyMap {
+        val image = if (imageId != 0) {
+            val taken = DecodedImages.get(imageId)
+            DecodedImages.remove(imageId)
+            taken ?: return transferFailed("The ImageBitmap's pixels are gone")
+        } else {
+            null
+        }
+        val context = bitmapRenderers[contextId] ?: return transferFailed("The canvas has no bitmaprenderer context")
+        return try {
+            if (image != null) context.show(image) else context.showBlank(width, height)
+            JavaOnlyMap.from(mapOf("ok" to true))
+        } catch (_: OutOfMemoryError) {
+            transferFailed("The ImageBitmap is too large to show")
+        }
+    }
+
+    private fun transferFailed(message: String) = JavaOnlyMap.from(mapOf("ok" to false, "error" to message))
+
+    @LynxMethod
+    fun destroyBitmapRenderer(contextId: Int): Boolean {
+        val context = bitmapRenderers.remove(contextId) ?: return true
+        if (CanvasRegistry.context(context.canvasId) === context) CanvasRegistry.setContext(context.canvasId, null)
+        context.destroy()
+        return true
+    }
+
+    /** What the canvas shows as an image file, for canvas.toBlob() and toDataURL(). */
+    @LynxMethod
+    fun encodeBitmapRenderer(contextId: Int, options: ReadableMap?): JavaOnlyMap {
+        val context = bitmapRenderers[contextId] ?: return encodeFailed("The canvas has no bitmaprenderer context")
+        val jpeg = options?.optString("type") == "image/jpeg"
+        val quality = if (options != null && options.hasKey("quality") && options.getType("quality") in NUMBER_TYPES) {
+            options.getDouble("quality")
+        } else {
+            0.92
+        }
+        return try {
+            val file = context.encode(jpeg, quality) ?: return encodeFailed("The canvas couldn't be encoded")
+            JavaOnlyMap.from(
+                mapOf(
+                    "base64" to Base64.encodeToString(file, Base64.NO_WRAP),
+                    "type" to if (jpeg) "image/jpeg" else "image/png",
+                ),
+            )
+        } catch (_: OutOfMemoryError) {
+            encodeFailed("The canvas is too large to encode")
+        }
+    }
+
     override fun destroy() {
         for (context in contexts.values) context.destroy()
         contexts.clear()
         for (context in contexts2D.values) context.destroy()
         contexts2D.clear()
+        for (context in bitmapRenderers.values) context.destroy()
+        bitmapRenderers.clear()
         canvas2DObjects.clear()
         super.destroy()
     }
@@ -410,6 +485,27 @@ interface CanvasContext {
      * stays.
      */
     fun clearForTransfer()
+}
+
+/** Pixels as a bitmap, premultiplied, as Android's canvas draws only those. */
+internal fun bitmapOf(image: DecodedImage): Bitmap {
+    val pixels = image.pixels.duplicate().order(ByteOrder.nativeOrder())
+    pixels.rewind()
+    val bytes = if (image.premultiplied) {
+        pixels
+    } else {
+        val copy = ByteBuffer.allocateDirect(image.width * image.height * 4).order(ByteOrder.nativeOrder())
+        for (i in 0 until image.width * image.height * 4 step 4) {
+            val a = pixels.get(i + 3).toInt() and 0xff
+            for (c in 0 until 3) copy.put(i + c, (((pixels.get(i + c).toInt() and 0xff) * a + 127) / 255).toByte())
+            copy.put(i + 3, a.toByte())
+        }
+        copy
+    }
+    bytes.rewind()
+    return Bitmap.createBitmap(image.width, image.height, Bitmap.Config.ARGB_8888).apply {
+        copyPixelsFromBuffer(bytes)
+    }
 }
 
 internal object DecodedImages {

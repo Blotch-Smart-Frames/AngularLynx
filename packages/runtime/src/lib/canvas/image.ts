@@ -99,12 +99,23 @@ const fetchBytes = async (url: string): Promise<Uint8Array> => {
 };
 
 /**
+ * The key of LynxImageBitmap's method that detaches it and hands over its
+ * decoded image. A symbol, so it isn't on `ImageBitmap`'s public API.
+ */
+export const TAKE_IMAGE = Symbol('takeImage');
+
+/**
  * Decoded pixels in the shell, as `createImageBitmap()` returns: the
  * decode applied its options (orientation, alpha), so WebGL's
  * UNPACK_FLIP_Y_WEBGL and UNPACK_PREMULTIPLY_ALPHA_WEBGL don't touch it.
  */
 export class LynxImageBitmap {
   #image: NativeImage;
+  /**
+   * Closed, or handed to a canvas by transferFromImageBitmap(): the HTML
+   * spec's [[Detached]], which a bitmap of no pixels isn't.
+   */
+  #detached = false;
 
   /**
    * @internal Made by createImageBitmap().
@@ -127,10 +138,26 @@ export class LynxImageBitmap {
   }
 
   close(): void {
+    this.#detached = true;
     if (!this.#image.id) return;
     registry?.unregister(this);
     releaseImage(this.#image.id);
     this.#image = { id: 0, width: 0, height: 0, bakedOptions: true };
+  }
+
+  /**
+   * @internal Detaches the bitmap and gives its decoded image to the
+   * caller, for transferFromImageBitmap(): the shell's pixels are the
+   * caller's to free now, so the bitmap no longer frees them when it's
+   * collected. Null for a bitmap that's detached already.
+   */
+  [TAKE_IMAGE](): NativeImage | null {
+    if (this.#detached) return null;
+    const image = this.#image;
+    this.#detached = true;
+    registry?.unregister(this);
+    this.#image = { id: 0, width: 0, height: 0, bakedOptions: true };
+    return image;
   }
 }
 

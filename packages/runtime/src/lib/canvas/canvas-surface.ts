@@ -1,5 +1,10 @@
 import { base64ToBytes } from '../network/base64';
 import {
+  bitmapRendererSettingsFrom,
+  LynxImageBitmapRenderingContext,
+  type LynxImageBitmapRenderingContextSettings,
+} from './bitmap-renderer-context';
+import {
   canvas2DAttributesFrom,
   type LynxCanvas2DAttributes,
   LynxCanvasRenderingContext2D,
@@ -7,6 +12,7 @@ import {
 import { CANVAS_SOURCE, type CanvasSource } from './canvas-source';
 import {
   type EncodedImage,
+  getBitmapRendererBridge,
   getCanvas2DBridge,
   getWebGLBridge,
   type WebGLBridge,
@@ -162,12 +168,22 @@ export type CanvasOwner = {
 
 export type CanvasContext =
   | LynxWebGL2RenderingContext
-  | LynxCanvasRenderingContext2D;
+  | LynxCanvasRenderingContext2D
+  | LynxImageBitmapRenderingContext;
+
+/** The kinds of context a canvas can have. */
+type ContextType = '2d' | 'webgl2' | 'bitmaprenderer';
+
+const CONTEXT_TYPES: ReadonlySet<string> = new Set<ContextType>([
+  '2d',
+  'webgl2',
+  'bitmaprenderer',
+]);
 
 /**
  * The drawing half of a canvas, on iOS and Android: its size in pixels, its
- * context (WebGL2 or 2D, the one it was first asked for, as a browser's
- * canvas keeps), and its image as a file. `<canvas>` (canvas-element.ts),
+ * context (WebGL2, 2D or bitmaprenderer, the one it was first asked for, as
+ * a browser's canvas keeps), and its image as a file. `<canvas>` (canvas-element.ts),
  * `document.createElement('canvas')` and `OffscreenCanvas` (detached-canvas.ts)
  * each have one; only the element has a view to show it in.
  */
@@ -178,7 +194,7 @@ export class CanvasSurface {
   #width = 300;
   #height = 150;
   #context: CanvasContext | null = null;
-  #contextType: '2d' | 'webgl2' | null = null;
+  #contextType: ContextType | null = null;
   readonly source: CanvasSource;
 
   constructor(owner: CanvasOwner, width = 300, height = 150) {
@@ -192,8 +208,20 @@ export class CanvasSurface {
         flush: () => this.#context?.flush(),
       },
       {
-        width: { get: () => this.#width },
-        height: { get: () => this.#height },
+        // A bitmaprenderer canvas reads as the bitmap it shows, whose size
+        // is the bitmap's, as its bitmap is in a browser.
+        width: {
+          get: () =>
+            this.#context instanceof LynxImageBitmapRenderingContext
+              ? this.#context.bitmapWidth
+              : this.#width,
+        },
+        height: {
+          get: () =>
+            this.#context instanceof LynxImageBitmapRenderingContext
+              ? this.#context.bitmapHeight
+              : this.#height,
+        },
         readable: {
           get: () => !!this.#context && !this.#context.isContextLost(),
         },
@@ -220,21 +248,61 @@ export class CanvasSurface {
   }
 
   getContext(type: string, attributes?: Record<string, unknown>): unknown {
-    if (type !== 'webgl2' && type !== '2d') return null;
+    if (!CONTEXT_TYPES.has(type)) return null;
     // The attributes are read first, as a browser converts them before it
     // looks at the canvas: a getter among them may itself ask for a context.
     const resolved =
       type === '2d'
         ? canvas2DAttributesFrom(attributes as Partial<LynxCanvas2DAttributes>)
-        : contextAttributesFrom(
-            attributes as Partial<LynxWebGLContextAttributes>,
-          );
+        : type === 'bitmaprenderer'
+          ? bitmapRendererSettingsFrom(
+              attributes as Partial<LynxImageBitmapRenderingContextSettings>,
+            )
+          : contextAttributesFrom(
+              attributes as Partial<LynxWebGLContextAttributes>,
+            );
     // A canvas has one kind of context, as in a browser.
     if (this.#contextType && this.#contextType !== type) return null;
     if (this.#context && !this.#context.isContextLost()) return this.#context;
-    return type === '2d'
-      ? this.#create2D(resolved as LynxCanvas2DAttributes)
-      : this.#createWebGL2(resolved as LynxWebGLContextAttributes);
+    if (type === '2d') {
+      return this.#create2D(resolved as LynxCanvas2DAttributes);
+    }
+    if (type === 'bitmaprenderer') {
+      return this.#createBitmapRenderer(
+        resolved as LynxImageBitmapRenderingContextSettings,
+      );
+    }
+    return this.#createWebGL2(resolved as LynxWebGLContextAttributes);
+  }
+
+  #createBitmapRenderer(
+    resolved: LynxImageBitmapRenderingContextSettings,
+  ): LynxImageBitmapRenderingContext | null {
+    const bridge = getBitmapRendererBridge();
+    if (!bridge) return null;
+    const contextId = nextContextId++;
+    const created = bridge.createBitmapRenderer(contextId, this.canvasId, {
+      alpha: resolved.alpha,
+      width: this.#width,
+      height: this.#height,
+    });
+    if (!created.ok) {
+      console.warn(
+        `[angular-lynx] No bitmaprenderer context on this canvas: ${created.error}`,
+      );
+      return null;
+    }
+    const context = new LynxImageBitmapRenderingContext(
+      bridge,
+      contextId,
+      this.#owner,
+    );
+    this.#context = context;
+    this.#contextType = 'bitmaprenderer';
+    contextFinalizer?.register(this.#owner, () =>
+      bridge.destroyBitmapRenderer(contextId),
+    );
+    return context;
   }
 
   #createWebGL2(
@@ -315,6 +383,16 @@ export class CanvasSurface {
   }
 
   /**
+   * `OffscreenCanvas.transferToImageBitmap()` took the canvas's image: the
+   * shell cleared it, and a bitmaprenderer context is blank again.
+   */
+  didTransfer(): void {
+    if (this.#context instanceof LynxImageBitmapRenderingContext) {
+      this.#context.didTransfer();
+    }
+  }
+
+  /**
    * The canvas's image as a `data:` URL: a PNG, or a JPEG for `image/jpeg`
    * with `quality` from 0 to 1 (0.92 otherwise); `data:,` when there's
    * nothing to read.
@@ -367,11 +445,14 @@ export class CanvasSurface {
         ? quality
         : DEFAULT_JPEG_QUALITY;
     const context = this.#context;
-    if (this.#width === 0 || this.#height === 0) return null;
+    // What a bitmaprenderer canvas shows is the bitmap's size, not the
+    // canvas's (see source).
+    if (this.source.width === 0 || this.source.height === 0) return null;
     if (context?.isContextLost()) return null;
     const encoded = !context
       ? this.#encodeBlank(mime, jpegQuality)
-      : context instanceof LynxCanvasRenderingContext2D
+      : context instanceof LynxCanvasRenderingContext2D ||
+          context instanceof LynxImageBitmapRenderingContext
         ? context.encode(mime, jpegQuality)
         : context.encodeDrawingBuffer(mime, jpegQuality);
     if (encoded.base64 === undefined) {

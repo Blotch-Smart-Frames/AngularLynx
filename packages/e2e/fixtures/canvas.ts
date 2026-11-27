@@ -17,10 +17,12 @@ const CYAN_PNG =
 /**
  * What the Bitmap check reads: green, red, blue, the cleared OffscreenCanvas,
  * red through WebGL, then the WebGL OffscreenCanvas's transferred red, the
- * canvas cleared, and its draw buffer kept.
+ * canvas cleared, and its draw buffer kept, then a bitmaprenderer canvas
+ * showing red, the width of the bitmap it was handed, and the canvas after
+ * it's handed null.
  */
 const BITMAP_READS =
-  '0,128,0,255 255,0,0,255 0,0,255,255 0,0,0,0 255,0,0,255 255,0,0,255 0,0,0,0 none';
+  '0,128,0,255 255,0,0,255 0,0,255,255 0,0,0,0 255,0,0,255 255,0,0,255 0,0,0,0 none 255,0,0,255 0 0,0,0,0';
 
 const VERTEX = `#version 300 es
 in vec2 position;
@@ -82,8 +84,13 @@ const colorName = ({ 0: r, 1: g, 2: b }: ArrayLike<number>): string =>
  * uploaded as the WebGL texture, drawn and read back; then a WebGL2
  * OffscreenCanvas cleared red and transferred while it draws to no color
  * buffer (`drawBuffers([NONE])`): its bitmap, the canvas the transfer
- * cleared, and its draw buffer, still NONE. When a read is wrong,
- * the line shows them all. It's in the canvas's row, and short, so the page
+ * cleared, and its draw buffer, still NONE; then an OffscreenCanvas's
+ * `bitmaprenderer` context (issue #730) handed a red bitmap with
+ * `transferFromImageBitmap()`: the canvas drawn (red), the bitmap's width
+ * (0, as the transfer detached it), and the canvas once handed `null`
+ * (transparent). The second canvas in the row shows a red bitmap the same
+ * way, which the flow's screenshot shows. When a read is wrong, the line
+ * shows them all. It's in the canvas's row, and short, so the page
  * is no taller: the links under it stay on the Android emulator's screen,
  * where the flows tap them.
  *
@@ -127,6 +134,12 @@ const colorName = ({ 0: r, 1: g, 2: b }: ArrayLike<number>): string =>
         (bindfirstframe)="drawVideo()"
         (binderror)="resultVideo.set('error')"
       ></video>
+      <canvas
+        #shown
+        width="2"
+        height="2"
+        style="width: 40px; height: 40px; margin-left: 8px;"
+      ></canvas>
       <view style="margin-left: 12px;">
         <text flatten="false">WebGL: {{ result() }}</text>
         <text flatten="false">Bitmap: {{ resultBitmap() }}</text>
@@ -162,6 +175,7 @@ const colorName = ({ 0: r, 1: g, 2: b }: ArrayLike<number>): string =>
 })
 export class CanvasRoute {
   readonly canvas = viewChild.required<ElementRef<LynxCanvasElement>>('canvas');
+  readonly shown = viewChild.required<ElementRef<LynxCanvasElement>>('shown');
   readonly result = signal('…');
   readonly result2D = signal('…');
   readonly resultBitmap = signal('…');
@@ -410,7 +424,7 @@ export class CanvasRoute {
     target.width = 1;
     target.height = 1;
     const context = target.getContext('2d')!;
-    const read = (bitmap: ImageBitmap) => {
+    const read = (bitmap: ImageBitmap | OffscreenCanvas) => {
       context.clearRect(0, 0, 1, 1);
       context.drawImage(bitmap, 0, 0, 1, 1);
       return Array.from(context.getImageData(0, 0, 1, 1).data).join(',');
@@ -465,6 +479,30 @@ export class CanvasRoute {
       Array.from(after).join(','),
       drawBuffer === glSourceContext.NONE ? 'none' : `${drawBuffer}`,
     );
+
+    // A bitmaprenderer context shows an OffscreenCanvas's frame, as web
+    // code does: transferToImageBitmap() off screen, then
+    // transferFromImageBitmap() on the canvas that shows it.
+    const frame = new OffscreenCanvas(2, 2);
+    const frameContext = frame.getContext('2d')!;
+    const redFrame = () => {
+      frameContext.fillStyle = 'rgb(255, 0, 0)';
+      frameContext.fillRect(0, 0, 2, 2);
+      return frame.transferToImageBitmap();
+    };
+    const shownOffscreen = new OffscreenCanvas(2, 2);
+    const renderer = shownOffscreen.getContext('bitmaprenderer');
+    if (!renderer) return 'no bitmaprenderer';
+    const handed = redFrame();
+    renderer.transferFromImageBitmap(handed);
+    reads.push(read(shownOffscreen), `${handed.width}`);
+    renderer.transferFromImageBitmap(null);
+    reads.push(read(shownOffscreen));
+    const shown = this.shown().nativeElement as unknown as HTMLCanvasElement;
+    const shownRenderer = shown.getContext('bitmaprenderer');
+    if (!shownRenderer) return 'no bitmaprenderer on <canvas>';
+    shownRenderer.transferFromImageBitmap(redFrame());
+
     const all = reads.join(' ');
     return all === BITMAP_READS ? 'ok' : all;
   }

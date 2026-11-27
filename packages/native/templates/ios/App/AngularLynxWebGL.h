@@ -138,6 +138,24 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSDictionary *)encodeImageOfType:(NSString *)type quality:(double)quality;
 @end
 
+/// One bitmaprenderer context: ImageBitmapRenderingContext, which shows an
+/// ImageBitmap's decoded pixels in the canvas's view as they are, scaled to
+/// it, and reads as them (see AngularLynxBitmapRendererContext.m).
+@interface AngularLynxBitmapRendererContext : NSObject <AngularLynxCanvasContext>
+@property(nonatomic, readonly, copy) NSString *canvasId;
+/// `attributes` holds `alpha`, and the canvas's `width` and `height`, which
+/// the blank canvas it shows first is.
+- (instancetype)initWithCanvasId:(NSString *)canvasId attributes:(NSDictionary *)attributes;
+/// Shows `image`, which the context owns from then on, without copying its
+/// pixels (but for a context without alpha, which shows them over black).
+- (void)showImage:(AngularLynxDecodedImage *)image;
+/// Shows a blank canvas of `width` by `height`: transparent black, or
+/// opaque black without alpha.
+- (void)showBlankOfWidth:(NSInteger)width height:(NSInteger)height;
+/// What it shows as a PNG or JPEG file: `{ base64, type }`, or `{ error }`.
+- (NSDictionary *)encodeImageOfType:(NSString *)type quality:(double)quality;
+@end
+
 /// Pairs canvases with contexts by canvas id: either can come first, as the
 /// runtime may make the context before Lynx has made the element's view.
 /// Engine thread only, as the contexts are.

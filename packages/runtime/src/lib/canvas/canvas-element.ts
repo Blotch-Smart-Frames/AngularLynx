@@ -71,9 +71,11 @@ const createStyle = (element: LynxElement): Record<string, string> => {
  *   the shell's Core Graphics or `android.graphics.Canvas`, or its OpenGL ES
  *   3.0; on Lynx for Web, the browser's own, since the element is a real
  *   `<canvas>` there. A canvas keeps the kind of context it was first asked
- *   for, as in a browser. They return null on a host without the shell's
- *   `AngularLynxWebGL` module, such as Lynx Explorer. `'webgl'` (WebGL 1)
- *   is null too.
+ *   for, as in a browser. `getContext('bitmaprenderer')` returns an
+ *   ImageBitmapRenderingContext, which shows an ImageBitmap the canvas is
+ *   handed with `transferFromImageBitmap()` (see bitmap-renderer-context.ts).
+ *   They return null on a host without the shell's `AngularLynxWebGL`
+ *   module, such as Lynx Explorer. `'webgl'` (WebGL 1) is null too.
  * - Pointer events (see pointer-events.ts) and `getBoundingClientRect()`
  *   (see layout.ts) work on every element; a canvas keeps its layout from
  *   the start, so `clientWidth` and `clientHeight` are right after its first

@@ -179,11 +179,16 @@ export class LynxOffscreenCanvas extends LynxCanvasBase {
       throw error;
     }
     // A canvas of no pixels gives an ImageBitmap of none, which draws
-    // nothing; the shell keeps no image for it.
-    if (this.width === 0 || this.height === 0) {
+    // nothing; the shell keeps no image for it. The source's size is what a
+    // bitmaprenderer context shows, which needn't be the canvas's.
+    const source = this.surface.source;
+    if (source.width === 0 || source.height === 0) {
+      this.surface.didTransfer();
       return new LynxImageBitmap(0, 0, 0);
     }
-    return imageBitmapOfCanvas(this.surface.source, {}, true);
+    const bitmap = imageBitmapOfCanvas(source, {}, true);
+    this.surface.didTransfer();
+    return bitmap;
   }
 }
 

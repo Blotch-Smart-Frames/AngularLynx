@@ -1794,4 +1794,345 @@ describe('renderer teardown', () => {
       expect(registered([pageRoot])).toEqual([true]);
     });
   });
+
+  describe("ending the platform's animations of a destroyed view (issue #841)", () => {
+    // What reached native, in order: each element's removal from its parent,
+    // and each inline style written. On iOS the platform's animator puts a
+    // stopped animation back every frame even once its view is gone, so the
+    // animation has to end while the element is still in the tree.
+    let writes: string[];
+    beforeEach(() => {
+      writes = [];
+      const g = globalThis as unknown as FakeNativeGlobal<FakeEl>;
+      const remove = g.__RemoveElement;
+      const style = g.__AddInlineStyle;
+      g.__RemoveElement = (parent: FakeEl, child: FakeEl) => {
+        writes.push(
+          `remove ${child.classes.values().next().value ?? child.tag}`,
+        );
+        return remove(parent, child);
+      };
+      g.__AddInlineStyle = (n: FakeEl, key: string, value: unknown) => {
+        if (key === 'animation') {
+          writes.push(`${[...n.classes][0] ?? n.tag} animation: ${value}`);
+        }
+        style(n, key, value);
+      };
+    });
+
+    @Component({
+      selector: 'spinner-host',
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      encapsulation: ViewEncapsulation.None,
+      template: `
+        @if (show()) {
+          <view class="box">
+            <view
+              class="turn"
+              enable-new-animator="false"
+              style="animation: turn 1600ms linear infinite;"
+            ></view>
+            <view class="pulse" style="animation: pulse 1s infinite;"></view>
+          </view>
+        }
+        <view
+          class="kept"
+          enable-new-animator="false"
+          style="animation: turn 1600ms linear infinite;"
+        ></view>
+      `,
+    })
+    class SpinnerHost {
+      readonly show = signal(true);
+    }
+
+    it('ends them before the view leaves the tree, and leaves every other element alone', async () => {
+      const fixture = TestBed.createComponent(SpinnerHost);
+      fixture.detectChanges();
+      expect(writes).toEqual([]);
+
+      fixture.componentInstance.show.set(false);
+      fixture.detectChanges();
+      await flush();
+
+      // The turning view's animation ends, then the box goes. The pulse is
+      // on Lynx's own animator, which stops with its element, and the kept
+      // spinner is still shown.
+      expect(writes).toEqual(['turn animation: none', 'remove box']);
+      expect(findByClass('kept')[0]!.styles.has('animation')).toBe(false);
+    });
+
+    it('ends them in a static <list-item> the list takes out', async () => {
+      @Component({
+        selector: 'list-spinner-host',
+        schemas: [CUSTOM_ELEMENTS_SCHEMA],
+        encapsulation: ViewEncapsulation.None,
+        template: `
+          <list>
+            @if (loading()) {
+              <list-item class="empty" item-key="empty">
+                <view class="turn" enable-new-animator="false"></view>
+                <view class="turn-too" enable-new-animator="false"></view>
+              </list-item>
+            }
+          </list>
+        `,
+      })
+      class ListSpinnerHost {
+        readonly loading = signal(true);
+      }
+      const fixture = TestBed.createComponent(ListSpinnerHost);
+      fixture.detectChanges();
+
+      fixture.componentInstance.loading.set(false);
+      fixture.detectChanges();
+      await flush();
+
+      // Native keeps a list's item after the list's update says it's gone,
+      // so nothing else would have stopped them.
+      expect(writes).toEqual([
+        'turn animation: none',
+        'turn-too animation: none',
+      ]);
+    });
+
+    it('only for the elements that asked for the platform’s animators', async () => {
+      @Component({
+        selector: 'toggled-host',
+        schemas: [CUSTOM_ELEMENTS_SCHEMA],
+        encapsulation: ViewEncapsulation.None,
+        template: `
+          @if (show()) {
+            <view
+              class="turn"
+              [attr.enable-new-animator]="platform() ? 'false' : 'true'"
+            ></view>
+          }
+        `,
+      })
+      class ToggledHost {
+        readonly show = signal(true);
+        readonly platform = signal(true);
+      }
+      const fixture = TestBed.createComponent(ToggledHost);
+      fixture.detectChanges();
+      fixture.componentInstance.platform.set(false);
+      fixture.detectChanges();
+
+      fixture.componentInstance.show.set(false);
+      fixture.detectChanges();
+      await flush();
+
+      expect(writes).toEqual(['remove turn']);
+    });
+
+    /**
+     * A view holding a platform-animated element, and another view beside
+     * it. The tests below drive LynxElement directly, as Angular's renderer
+     * does: a destroyed view's top node is marked destroyed (destroyNode) and
+     * removed, and the cycle's end commits the removals.
+     */
+    const make = (): {
+      page: LynxElement;
+      view: LynxElement;
+      other: LynxElement;
+      el: LynxElement;
+      ref: FakeEl;
+    } => {
+      const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
+      const page = document.createRootElement() as LynxElement;
+      const view = document.createElement('view') as LynxElement;
+      const other = document.createElement('view') as LynxElement;
+      const el = document.createElement('view') as LynxElement;
+      el.setAttribute('enable-new-animator', 'false');
+      el.setAttribute('style', 'animation: turn 1600ms linear infinite;');
+      page.appendChild(view);
+      page.appendChild(other);
+      view.appendChild(el);
+      return { page, view, other, el, ref: el.element as unknown as FakeEl };
+    };
+    const ended = (): string[] => writes.filter((w) => w.endsWith('none'));
+
+    it('ends nothing while a destroyed view is still in the tree', () => {
+      const { view } = make();
+
+      // As when a leave animation holds Angular's removal back.
+      view.markDestroyed();
+      processPendingRemovals();
+
+      expect(writes).toEqual([]);
+    });
+
+    it('ends nothing in an element put back in the tree', () => {
+      const { page, view, other, el } = make();
+
+      // Angular took the view out and put it back (a move), and moved the
+      // element out of it before the view went (CDK's DomPortal).
+      view.markDestroyed();
+      view.remove();
+      page.appendChild(view);
+      processPendingRemovals();
+      el.remove();
+      other.appendChild(el);
+      view.markDestroyed();
+      view.remove();
+      processPendingRemovals();
+
+      // The move into `other`, before the view now, was rebuilt (see
+      // #removeIfMoveWouldBeLost): only the old native element's animation
+      // ended, and the new one turns.
+      expect(ended()).toEqual(['view animation: none']);
+      expect((el.element as unknown as FakeEl).styles.has('animation')).toBe(
+        false,
+      );
+      // Still noted: it ends with the view it's in now.
+      other.markDestroyed();
+      other.remove();
+      processPendingRemovals();
+      expect(writes.slice(-2)).toEqual(['view animation: none', 'remove view']);
+    });
+
+    it('ends it in an element moved into a view destroyed already', () => {
+      const { other, el } = make();
+
+      other.markDestroyed();
+      el.remove();
+      other.appendChild(el);
+      other.remove();
+      processPendingRemovals();
+
+      expect(ended()).toEqual(['view animation: none']);
+    });
+
+    it('ends it in a destroyed element put into another destroyed view', () => {
+      const { other, el } = make();
+
+      el.markDestroyed();
+      other.markDestroyed();
+      el.remove();
+      other.appendChild(el);
+      other.remove();
+      processPendingRemovals();
+
+      expect(ended()).toEqual(['view animation: none']);
+    });
+
+    it('ends it in the old native element of a rebuilt move, and in the new one when its view goes', () => {
+      const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
+      const page = document.createRootElement();
+      const other = document.createElement('view');
+      const view = document.createElement('view');
+      const el = document.createElement('view');
+      el.setAttribute('enable-new-animator', 'false');
+      page.appendChild(other);
+      page.appendChild(view);
+      view.appendChild(el);
+      const old = el.element as unknown as FakeEl;
+
+      // The destination comes first in the tree, so the move is rebuilt
+      // (see #removeIfMoveWouldBeLost): the old native element leaves the
+      // tree, and a new one takes its place.
+      view.markDestroyed();
+      other.markDestroyed();
+      el.remove();
+      other.appendChild(el);
+      const rebuilt = el.element as unknown as FakeEl;
+      expect(rebuilt).not.toBe(old);
+      expect(old.styles.get('animation')).toBe('none');
+      expect(rebuilt.styles.has('animation')).toBe(false);
+
+      // The new one turns while the destination is shown, and ends with it.
+      view.remove();
+      processPendingRemovals();
+      expect(rebuilt.styles.has('animation')).toBe(false);
+      other.remove();
+      processPendingRemovals();
+      expect(rebuilt.styles.get('animation')).toBe('none');
+    });
+
+    it('ends it in a detached view, and starts it again in the view put back', () => {
+      const { page, view, el, ref } = make();
+
+      // Taken out to be put back in a later cycle, as a ViewContainerRef's
+      // detach() does: its native elements go, and come back rebuilt.
+      view.remove();
+      processPendingRemovals();
+      expect(ref.styles.get('animation')).toBe('none');
+      page.appendChild(view);
+      processPendingRemovals();
+
+      const rebuilt = el.element as unknown as FakeEl;
+      expect(rebuilt).not.toBe(ref);
+      expect(rebuilt.styles.has('animation')).toBe(false);
+      expect(rebuilt.styles.get('__inline')).toContain('animation: turn');
+    });
+
+    it('ends it again in an element rebuilt after its release', () => {
+      const { page, view, el } = make();
+      view.markDestroyed();
+      view.remove();
+      processPendingRemovals();
+
+      // Shown again after all (content a surviving view projected): rebuilt
+      // from its caches, with a new native element, and destroyed again.
+      page.appendChild(el);
+      el.markDestroyed();
+      el.remove();
+      processPendingRemovals();
+
+      expect(ended()).toEqual(['view animation: none', 'view animation: none']);
+    });
+
+    it('ends it in a list item moved into a list, as its native element leaves the view', () => {
+      const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
+      const page = document.createRootElement();
+      const view = document.createElement('view');
+      const list = document.createElement('list');
+      const item = document.createElement('list-item');
+      item.setAttribute('enable-new-animator', 'false');
+      page.appendChild(view);
+      page.appendChild(list);
+      view.appendChild(item);
+      const ref = item.element as unknown as FakeEl;
+
+      // Moved into the list in the cycle its old parent is destroyed, before
+      // or after Angular marks it: the old parent's children still name it
+      // until its removal from them commits.
+      view.markDestroyed();
+      item.remove();
+      list.appendChild(item);
+      view.remove();
+      processPendingRemovals();
+
+      // Its removal from the view reached native, as a list's insert doesn't
+      // cancel it, so its native element left the tree, and its animation
+      // ended with it, once.
+      expect(registered([ref])).toEqual([true]);
+      expect(ended()).toEqual(['list-item animation: none']);
+      list.markDestroyed();
+      list.remove();
+      processPendingRemovals();
+      expect(ended()).toEqual(['list-item animation: none']);
+    });
+
+    it('keeps a list item that left a view destroyed after it moved', () => {
+      const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
+      const page = document.createRootElement();
+      const view = document.createElement('view');
+      const list = document.createElement('list');
+      const item = document.createElement('list-item');
+      page.appendChild(view);
+      page.appendChild(list);
+      view.appendChild(item);
+      const ref = item.element as unknown as FakeEl;
+
+      item.remove();
+      list.appendChild(item);
+      view.markDestroyed();
+      view.remove();
+      processPendingRemovals();
+
+      expect(registered([ref])).toEqual([true]);
+    });
+  });
 });

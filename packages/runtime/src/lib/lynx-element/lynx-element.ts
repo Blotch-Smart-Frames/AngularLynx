@@ -1312,6 +1312,15 @@ export class LynxElement implements BaseLynxElement {
   static #pendingReleases = new Set<LynxElement>();
 
   /**
+   * The elements that asked for the platform's animators
+   * (`enable-new-animator` false) and whose native elements are in use: not
+   * removed or released since (see #endPlatformAnimations). A handful
+   * at most: `ui-spinner`'s turning view, a skeleton, an indeterminate
+   * progress bar. See #endPlatformAnimations.
+   */
+  static #platformAnimated = new Set<LynxElement>();
+
+  /**
    * Set when Angular destroys this element, until it's released (see
    * #release) or put back in the tree.
    */
@@ -1564,6 +1573,7 @@ export class LynxElement implements BaseLynxElement {
     // HTML's `lang`, whose language a <q> in it draws the marks of (see
     // #setQuoteDepth). It still goes to native below.
     if (name === 'lang') this.#setLang(value);
+    if (name === 'enable-new-animator') this.#notePlatformAnimator(value);
     // An `<a href>` or `<abbr title>` gets the class the build's browser
     // styles for it match, as Lynx can't match `a[href]` (see
     // ATTRIBUTE_STYLED_TAGS). The attribute still goes to native below.
@@ -4143,6 +4153,72 @@ export class LynxElement implements BaseLynxElement {
   }
 
   /**
+   * Ends the animations of the platform-animated elements in this element's
+   * subtree as its removal commits (see #doRemove), before the removal
+   * reaches native. Its native elements go for good then, whatever becomes
+   * of the element: Angular destroyed it, it moved where the move would be
+   * lost (see #removeIfMoveWouldBeLost), or its view was detached. One that
+   * comes back is rebuilt (see #recreateSubtree), which writes its animation
+   * again and notes it for its next removal.
+   *
+   * On iOS, an element with `enable-new-animator` false is animated by
+   * Lynx's LynxKeyframeAnimator, which hands its `@keyframes` to Core
+   * Animation. When Core Animation stops one of its animations before the
+   * end, as it does once the view leaves the screen, the animator puts it
+   * back on the next frame, from a display link of its own, for as long as
+   * the LynxView is in a window: removing the view, or the element, doesn't
+   * stop it (Lynx 4.1). So a spinner that had gone kept costing the UI
+   * thread a Core Animation commit every frame, for the life of the app:
+   * the benchmark app, whose list showed a spinner while its first page
+   * loaded, used twice ReactLynx's CPU scrolling (issue #841). Ending the
+   * animation (`animation: none`) while the element is still in the tree
+   * stops the animator for good.
+   *
+   * At the commit rather than when Angular destroys the view, because the
+   * cycle's moves are done then: an element moved out of the view (CDK's
+   * DomPortal hands its element back) keeps turning, and one moved in goes
+   * with it. Written straight to native, not to the element's inline styles,
+   * which a rebuild replays.
+   */
+  #endPlatformAnimations(): void {
+    for (const el of LynxElement.#platformAnimated) {
+      if (!el.#isInSubtreeOf(this)) continue;
+      LynxElement.#platformAnimated.delete(el);
+      __AddInlineStyle(el.element, 'animation', 'none');
+    }
+  }
+
+  /**
+   * Whether this element is `root` or under it, through the parents Angular
+   * gave it. A list's item goes through its list first, as parentNode()
+   * does: one moved in from another parent keeps that one as its JS parent
+   * until its removal from it commits.
+   */
+  #isInSubtreeOf(root: LynxElement): boolean {
+    if (this === root) return true;
+    for (
+      let el = this._virtualParent ?? this.#jsParent;
+      el;
+      el = el._virtualParent ?? el.#jsParent
+    ) {
+      if (el === root) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Notes whether this element asked for the platform's animators (see
+   * #endPlatformAnimations).
+   */
+  #notePlatformAnimator(value: unknown): void {
+    if (value === false || value === 'false') {
+      LynxElement.#platformAnimated.add(this);
+    } else {
+      LynxElement.#platformAnimated.delete(this);
+    }
+  }
+
+  /**
    * Before this element moves under `newParent`: removes it for good if Lynx
    * would lose the move, so the insert that follows rebuilds it (see
    * #recreateIfDead) instead.
@@ -4243,6 +4319,9 @@ export class LynxElement implements BaseLynxElement {
     // painting node dies, and the next re-insert rebuilds it from cache (see
     // #recreateSubtree). That is why we mark the whole subtree painting-dead just
     // below rather than "parking" the children somewhere to keep them alive.
+    // While the element is still in the tree, the animations under it that
+    // iOS's platform animator would keep running (see #endPlatformAnimations).
+    if (LynxElement.#platformAnimated.size > 0) this.#endPlatformAnimations();
     __RemoveElement(parent, this.element);
     // The native painting nodes of this element and its entire subtree are now
     // gone (Lynx tears them down for a non-move removal — is_move=false). Unlink
@@ -4294,6 +4373,16 @@ export class LynxElement implements BaseLynxElement {
   #release(): void {
     this.#destroyed = false;
     this.#paintingDead = true;
+    // Released without a removal of its own that ended its animation (see
+    // #doRemove): a static list item the list took out, which native keeps
+    // in the list, or one an ancestor's removal reached through its parents
+    // no longer.
+    if (
+      LynxElement.#platformAnimated.size > 0 &&
+      LynxElement.#platformAnimated.delete(this)
+    ) {
+      __AddInlineStyle(this.element, 'animation', 'none');
+    }
     noteReleased();
     this.deregisterNative();
     if (this.#nativeHandlers) {
@@ -4301,7 +4390,13 @@ export class LynxElement implements BaseLynxElement {
         removeNativeHandler(this.element, eventType, eventName);
       }
     }
-    for (const child of this.#children ?? NO_CHILDREN) child.#release();
+    for (const child of this.#children ?? NO_CHILDREN) {
+      // Moved into a list in the cycle this was destroyed: its removal from
+      // here hasn't committed, but the list shows it now, and releases it
+      // with its own items.
+      if (child._virtualParent && child._virtualParent !== this) continue;
+      child.#release();
+    }
     for (const child of this.virtualChildren()) child.#release();
     if (this.#quoteMarks) {
       for (const mark of this.#quoteMarks) mark.deregisterNative();
@@ -4395,6 +4490,9 @@ export class LynxElement implements BaseLynxElement {
     if (this.#attrs) {
       for (const [name, value] of this.#attrs) {
         __SetAttribute(fresh, name, value);
+        // Its release took it out of the elements whose animations end
+        // with them (see #endPlatformAnimations).
+        if (name === 'enable-new-animator') this.#notePlatformAnimator(value);
       }
     }
     // A field's text, which the destroyed UI took with it.

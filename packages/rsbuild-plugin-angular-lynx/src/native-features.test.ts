@@ -101,7 +101,10 @@ describe('canvasNamed', () => {
       }
     }
     expect(drawing).toEqual([]);
-  });
+    // It reads and checks every module of Angular's packages: about 350 ms
+    // on its own, but 5 to 10 s in CI when a change to the runtime runs the
+    // tests of every package built on it at once.
+  }, 60_000);
 });
 
 const NOTHING = { canvas: false, webgl: false };

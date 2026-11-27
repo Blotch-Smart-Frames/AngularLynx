@@ -247,7 +247,7 @@ export const FLOWS: readonly Flow[] = [
   {
     file: 'canvas.yaml',
     description:
-      'draws a texture with WebGL2, and a 2D canvas on another, as a texture and through filters, and reads them back',
+      'draws a texture with WebGL2, a 2D canvas on another, as a texture and through filters, and a video on both, and reads them back',
     // Only the app's own builds have <canvas> and its WebGL module. Lynx
     // Explorer has neither, and its canvas is an empty view.
     only: { host: 'shell' },

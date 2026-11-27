@@ -17,7 +17,12 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { cn } from '../../utils/cn';
 import { injectGlassDesign } from '../glass/glass-design';
 import { UiIcon } from '../icon/icon';
-import { type IconName } from '../icon/icons';
+import {
+  chevronDownIcon,
+  chevronLeftIcon,
+  chevronRightIcon,
+} from '../icon/icon-set';
+import { type IconName, provideIcons } from '../icon/icons';
 import {
   UI_MENU,
   type UiMenuHost,
@@ -66,6 +71,13 @@ const submenu = (): UiMenuHost => inject(UiMenuSubmenu);
   imports: [LYNX_ELEMENTS, UiIcon, UiMenuPopup, UiMenuSeparator],
   encapsulation: ViewEncapsulation.None,
   providers: [{ provide: UI_MENU, useFactory: submenu }],
+  // The icons its own template draws, registered here so an app that doesn't
+  // draw them itself needn't. viewProviders, not providers: content an app
+  // projects in finds only the icons the app registered, as it would
+  // anywhere else.
+  viewProviders: [
+    provideIcons({ chevronDownIcon, chevronLeftIcon, chevronRightIcon }),
+  ],
   template: `
     <!-- The row in the menu it's in. It hides while the submenu covers it,
          as the trigger of a pull-down menu does. -->

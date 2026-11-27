@@ -7,6 +7,7 @@ import { provideRouter } from '@blotch/angular-lynx';
 import { afterEach, describe, expect, it } from 'vitest';
 import { renderOnce } from '../test-utils/render-once';
 import { App } from './app';
+import { provideAllIcons } from '../components/ui/icon';
 
 // Minimal routes for the drawer's routerLinks to navigate between.
 const routes = [
@@ -44,7 +45,7 @@ afterEach(() => {
 describe('App', () => {
   it('renders the app bar title', async () => {
     const { container, destroy } = await renderOnce(App, {
-      providers: [provideRouter(routes)],
+      providers: [provideRouter(routes), provideAllIcons()],
     });
     destroyApp = destroy;
     expect(container.textContent).toContain('AngularLynx');
@@ -52,7 +53,7 @@ describe('App', () => {
 
   it("starts on the home route, with Home's drawer item active", async () => {
     const { container, destroy } = await renderOnce(App, {
-      providers: [provideRouter(routes)],
+      providers: [provideRouter(routes), provideAllIcons()],
     });
     destroyApp = destroy;
 
@@ -63,7 +64,7 @@ describe('App', () => {
 
   it('openDrawer() opens the nav drawer', async () => {
     const { instance, destroy } = await renderOnce(App, {
-      providers: [provideRouter(routes)],
+      providers: [provideRouter(routes), provideAllIcons()],
     });
     destroyApp = destroy;
 
@@ -74,7 +75,7 @@ describe('App', () => {
 
   it('navigates when a drawer item is tapped, and marks it active', async () => {
     const { container, destroy } = await renderOnce(App, {
-      providers: [provideRouter(routes)],
+      providers: [provideRouter(routes), provideAllIcons()],
     });
     destroyApp = destroy;
     const home = drawerItem(container, 'Home');
@@ -90,7 +91,7 @@ describe('App', () => {
 
   it('groups every route in the nav drawer', async () => {
     const { instance, destroy } = await renderOnce(App, {
-      providers: [provideRouter(routes)],
+      providers: [provideRouter(routes), provideAllIcons()],
     });
     destroyApp = destroy;
 

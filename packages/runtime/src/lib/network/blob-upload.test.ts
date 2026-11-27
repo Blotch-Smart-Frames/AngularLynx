@@ -12,7 +12,7 @@ import {
 } from 'vitest';
 import { callOnBackground } from '../background-call';
 import { fetchForMainThread, type RelayedRequest } from './background-fetch';
-import { installNetworkGlobals, installXMLHttpRequest } from './index';
+import { installXMLHttpRequest } from './index';
 
 vi.mock('../background-call', () => ({ callOnBackground: vi.fn() }));
 
@@ -63,7 +63,6 @@ let main: Record<string, any>;
 beforeEach(() => {
   requests.length = 0;
   main = {};
-  installNetworkGlobals(main);
   installXMLHttpRequest(main);
   const nodeFetch = globalThis.fetch;
   // XHR calls `globalThis.fetch`, which is the relayed one on the main thread.

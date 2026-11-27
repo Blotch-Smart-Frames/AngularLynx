@@ -17,6 +17,11 @@ import {
   UiToggleGroup,
   UiToggleGroupItem,
 } from './toggle';
+import { starIcon } from '../icon/icon-set';
+import { provideIcons } from '../icon/icons';
+
+// The icons these specs draw by name, registered as an app registers its own.
+const TEST_ICONS = provideIcons({ starIcon });
 
 @Component({
   imports: [UiToggle, LYNX_ELEMENTS],
@@ -338,6 +343,7 @@ describe('UiToggleGroup', () => {
 });
 
 @Component({
+  providers: [TEST_ICONS],
   imports: [UiToggleGroup, UiToggleGroupItem, UiIcon, LYNX_ELEMENTS],
   template: `
     <text>{{ check() }}</text>
@@ -399,6 +405,7 @@ class StaticLabelHost {}
 @Component({
   imports: [UiToggleGroup, UiToggleGroupItem, UiIcon, LYNX_ELEMENTS],
   providers: [
+    TEST_ICONS,
     { provide: UI_ICON_COLOR, useValue: signal('var(--primary)').asReadonly() },
   ],
   template: `

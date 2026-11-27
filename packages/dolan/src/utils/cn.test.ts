@@ -14,6 +14,8 @@ const uiLib = resolve(import.meta.dirname, '../../../ui/src/lib');
  * each quoted string in their code and templates that tailwind-merge takes
  * for a class, which is one it merges with a copy of itself. Words in
  * comments and other strings count too, which only errs toward the full list.
+ * The icon set is left out: it's names and path data, no class, and names
+ * such as `'table'` and `'filter'` read as classes.
  */
 const componentClasses = (): string[] => {
   const classes = new Set<string>();
@@ -22,7 +24,10 @@ const componentClasses = (): string[] => {
       const path = join(directory, entry.name);
       if (entry.isDirectory()) {
         read(path);
-      } else if (/(?<!\.test)\.(ts|html)$/.test(entry.name)) {
+      } else if (
+        /(?<!\.test)\.(ts|html)$/.test(entry.name) &&
+        entry.name !== 'icon-set.ts'
+      ) {
         const source = readFileSync(path, 'utf8');
         for (const [, text] of source.matchAll(/['"`]([^'"`\n]*)['"`]/g)) {
           for (const word of text.split(/\s+/)) {

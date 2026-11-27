@@ -4,9 +4,32 @@ import {
 } from '@angular/core';
 import { provideRenderer, provideRouter } from '@blotch/angular-lynx';
 import { routes } from './app.routes';
+import {
+  cameraIcon,
+  ellipsisIcon,
+  folderIcon,
+  heartIcon,
+  listChecksIcon,
+  pencilIcon,
+  searchIcon,
+  share2Icon,
+  trashIcon,
+  provideIcons,
+} from '../components/ui/icon';
 
 export const appConfig: ApplicationConfig = {
   providers: [
+    provideIcons({
+      cameraIcon,
+      ellipsisIcon,
+      folderIcon,
+      heartIcon,
+      listChecksIcon,
+      pencilIcon,
+      searchIcon,
+      share2Icon,
+      trashIcon,
+    }),
     provideZonelessChangeDetection(),
     provideRenderer(),
     // provideRouter from @blotch/angular-lynx, not @angular/router: it keeps

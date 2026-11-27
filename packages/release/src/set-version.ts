@@ -5,6 +5,7 @@ import path from 'node:path';
 import {
   PUBLISHABLE_PACKAGES,
   REPO_ROOT,
+  readInternalPeers,
   readInternalPins,
 } from './packages.ts';
 
@@ -48,17 +49,23 @@ for (const pkg of PUBLISHABLE_PACKAGES) {
 }
 
 // `npm version` leaves other packages' dependencies on the one it versions
-// alone, so move each pin between published packages here, then bring the
-// lockfile in line with them.
+// alone, so move each pin and peer floor between published packages here,
+// then bring the lockfile in line with them. A peer floor moves to this
+// release too: the package imports what this release of its peer exports,
+// and an older floor lets npm install it with a peer that lacks them (#774).
 for (const pkg of PUBLISHABLE_PACKAGES) {
   const pins = readInternalPins(pkg);
-  if (pins.length === 0) {
+  const peers = readInternalPeers(pkg);
+  if (pins.length === 0 && peers.length === 0) {
     continue;
   }
   const file = path.join(REPO_ROOT, pkg.dir, 'package.json');
   const json = JSON.parse(readFileSync(file, 'utf8'));
   for (const { name } of pins) {
     json.dependencies[name] = version;
+  }
+  for (const { name } of peers) {
+    json.peerDependencies[name] = `^${version}`;
   }
   writeFileSync(file, `${JSON.stringify(json, null, 2)}\n`);
 }

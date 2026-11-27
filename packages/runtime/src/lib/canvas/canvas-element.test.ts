@@ -405,6 +405,20 @@ describe('LynxCanvasElement as an image', () => {
     expect(blob).toBeNull();
   });
 
+  it('says how to get a Blob when the app has none, rather than failing later', () => {
+    // A module that names toBlob gets one (network/enable.ts); a call by a
+    // name built at runtime may not.
+    vi.stubGlobal('Blob', undefined);
+    try {
+      const { canvas } = drawn();
+      const callback = vi.fn();
+      expect(() => canvas.toBlob(callback)).toThrow(/ɵenableBlob\(\)/);
+      expect(callback).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('needs a callback, as HTMLCanvasElement’s does', () => {
     const { canvas } = drawn();
     expect(() => canvas.toBlob(undefined as never)).toThrow(TypeError);

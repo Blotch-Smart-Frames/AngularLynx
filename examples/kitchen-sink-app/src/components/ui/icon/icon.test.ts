@@ -10,10 +10,20 @@ import {
   UI_ICON_SIZE,
   provideIconTheme,
 } from './icon-theme';
-import { ICONS, type IconName } from './icons';
+import { provideAllIcons } from './all-icons';
+import * as iconSet from './icon-set';
+import { checkIcon, chevronRightIcon, searchIcon, xIcon } from './icon-set';
+import {
+  type IconName,
+  type UiIconDefinition,
+  iconSvg,
+  paintIcon,
+  provideIcons,
+} from './icons';
 
 @Component({
   imports: [UiIcon],
+  providers: [provideIcons({ checkIcon, xIcon })],
   template: `
     <ui-icon
       [name]="name()"
@@ -159,6 +169,7 @@ describe('UiIcon', () => {
 
 @Component({
   imports: [UiIcon],
+  providers: [provideIcons({ searchIcon })],
   template: `<ui-icon name="search" class="mb-3" />`,
 })
 class StaticClassHost {}
@@ -247,6 +258,7 @@ describe("UiIcon with an app's own svg", () => {
 
 @Component({
   imports: [UiIcon],
+  providers: [provideIcons({ checkIcon })],
   template: `<ui-icon [name]="name()" [svg]="svg()" />`,
 })
 class NameAndSvgHost {
@@ -289,8 +301,171 @@ describe('UiIcon without exactly one of name and svg', () => {
   });
 });
 
-describe('ICONS registry', () => {
-  it('exports at least one icon', () => {
-    expect(Object.keys(ICONS).length).toBeGreaterThan(0);
+@Component({
+  imports: [UiIcon],
+  template: `<ui-icon [name]="name()" />`,
+})
+class NamedIcon {
+  readonly name = signal<IconName>('check');
+}
+
+const renderNamed = async (providers: Parameters<typeof render>[1] = {}) => {
+  const handleError = vi.fn();
+  const result = await render(NamedIcon, {
+    ...providers,
+    providers: [
+      { provide: ErrorHandler, useValue: { handleError } },
+      ...(providers.providers ?? []),
+    ],
+  });
+  return {
+    host: result.componentRef.instance as NamedIcon,
+    content: () =>
+      result.container.querySelector('svg')?.getAttribute('content'),
+    handleError,
+  };
+};
+
+const notRegistered = (name: string, exported: string) =>
+  new Error(
+    `No icon named "${name}" is registered. Register it with provideIcons({ ${exported} }) in the app's config or a component's providers.`,
+  );
+
+describe('provideIcons', () => {
+  it('draws an icon by name once it is registered', async () => {
+    const { content, handleError } = await renderNamed({
+      providers: [provideIcons({ checkIcon })],
+    });
+    expect(handleError).not.toHaveBeenCalled();
+    expect(content()).toContain('d="M20 6 9 17l-5-5"');
+  });
+
+  // An icon nobody registered isn't in the app's scripts, so it can't draw:
+  // the error names the export to register, rather than leaving a blank box.
+  it('reports an icon nobody registered, naming its export', async () => {
+    const { host, handleError } = await renderNamed({
+      providers: [provideIcons({ checkIcon })],
+    });
+    host.name.set('chevron-right');
+    await waitForUpdate();
+    expect(handleError).toHaveBeenCalledWith(
+      notRegistered('chevron-right', 'chevronRightIcon'),
+    );
+  });
+
+  it('reports an icon by name in an app that registers none', async () => {
+    const { handleError } = await renderNamed();
+    expect(handleError).toHaveBeenCalledWith(
+      notRegistered('check', 'checkIcon'),
+    );
+  });
+
+  it('names the export of an icon whose name has a digit', async () => {
+    const { host, handleError } = await renderNamed();
+    host.name.set('undo-2');
+    await waitForUpdate();
+    expect(handleError).toHaveBeenCalledWith(
+      notRegistered('undo-2', 'undo2Icon'),
+    );
+  });
+
+  it('adds the icons of each call in one place', async () => {
+    const { host, content, handleError } = await renderNamed({
+      providers: [provideIcons({ checkIcon }), provideIcons({ xIcon })],
+    });
+    expect(content()).toContain('d="M20 6 9 17l-5-5"');
+    host.name.set('x');
+    await waitForUpdate();
+    expect(handleError).not.toHaveBeenCalled();
+    expect(content()).toContain('d="M18 6 6 18"');
+  });
+
+  it('lets the last call win for a name two calls register', async () => {
+    const mine: UiIconDefinition = { name: 'check', body: '<path d="M1 1"/>' };
+    const { content } = await renderNamed({
+      providers: [provideIcons({ checkIcon }), provideIcons({ mine })],
+    });
+    expect(content()).toContain('d="M1 1"');
+  });
+
+  // A component's registrations add to the app's: what it shows finds both.
+  it("adds a component's icons to those registered above it", async () => {
+    const name = signal<IconName>('chevron-right');
+    @Component({
+      selector: 'app-named-icon-in-section',
+      imports: [UiIcon],
+      template: `<ui-icon [name]="name()" />`,
+    })
+    class InSection {
+      readonly name = name;
+    }
+    @Component({
+      imports: [InSection],
+      providers: [provideIcons({ chevronRightIcon })],
+      template: `<app-named-icon-in-section />`,
+    })
+    class SectionHost {}
+
+    const handleError = vi.fn();
+    const { container } = await render(SectionHost, {
+      providers: [
+        { provide: ErrorHandler, useValue: { handleError } },
+        provideIcons({ checkIcon, xIcon }),
+      ],
+    });
+    const content = () =>
+      container.querySelector('svg')!.getAttribute('content');
+    expect(content()).toContain('d="m9 18 6-6-6-6"');
+
+    name.set('check');
+    await waitForUpdate();
+    expect(content()).toContain('d="M20 6 9 17l-5-5"');
+
+    name.set('search');
+    await waitForUpdate();
+    expect(handleError).toHaveBeenCalledWith(
+      notRegistered('search', 'searchIcon'),
+    );
+  });
+});
+
+describe('provideAllIcons', () => {
+  it('registers every icon in the set', async () => {
+    const { host, content, handleError } = await renderNamed({
+      providers: [provideAllIcons()],
+    });
+    for (const icon of Object.values(iconSet)) {
+      host.name.set(icon.name);
+      await waitForUpdate();
+      // In the theme's foreground, as every icon without a color.
+      expect(content()).toContain(
+        paintIcon(icon.body, ICON_LIGHT_COLORS['foreground']),
+      );
+    }
+    expect(handleError).not.toHaveBeenCalled();
+  });
+});
+
+describe('the icon set', () => {
+  const icons = Object.entries(iconSet);
+
+  it('holds each icon in an export named for it', () => {
+    expect(icons.length).toBeGreaterThan(0);
+    for (const [exported, icon] of icons) {
+      expect(exported).toBe(
+        `${icon.name.replace(/-([a-z0-9])/g, (_, c: string) => c.toUpperCase())}Icon`,
+      );
+    }
+  });
+
+  // The native SVG engine skips a <line> (see icon-set.ts).
+  it('draws no icon with a <line>', () => {
+    for (const [, icon] of icons) expect(icon.body).not.toContain('<line');
+  });
+
+  it("puts an icon's body in the set's root <svg>", () => {
+    expect(iconSvg(checkIcon)).toBe(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+    );
   });
 });

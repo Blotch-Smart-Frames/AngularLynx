@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createObjectURL, LynxBlob } from '../network/blob';
+import { LynxBlob } from '../network/blob';
+import { createObjectURL } from '../network/blob-urls';
 import {
   createFakeCanvas2DBridge,
   type FakeCanvas2DBridge,
@@ -676,12 +677,13 @@ describe('without FinalizationRegistry', () => {
     const bridgeModule = await import('./webgl-bridge');
     bridgeModule.setWebGLBridgeForTesting(bridge);
     const blobModule = await import('../network/blob');
+    const urlsModule = await import('../network/blob-urls');
     const bitmap = await fresh.createImageBitmap(
       new blobModule.LynxBlob([PNG]),
     );
     bitmap.close();
     const image = new fresh.LynxImageElement();
-    image.src = blobModule.createObjectURL(new blobModule.LynxBlob([PNG]));
+    image.src = urlsModule.createObjectURL(new blobModule.LynxBlob([PNG]));
     await settled(image as unknown as LynxImageElement);
     expect(bridge.releaseImage).toHaveBeenCalledOnce();
     bridgeModule.setWebGLBridgeForTesting(undefined);

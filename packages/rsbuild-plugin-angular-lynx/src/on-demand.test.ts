@@ -226,6 +226,43 @@ describe('enableOnDemand, for the main thread’s globals', () => {
     }
   });
 
+  it('gives each of the body and encoding APIs to a module that names it', () => {
+    for (const [code, enable] of [
+      [`export const e = new TextEncoder();`, 'ɵenableTextEncoder'],
+      [`export const d = new TextDecoder();`, 'ɵenableTextDecoder'],
+      [
+        `export const streams = typeof ReadableStream !== 'undefined';`,
+        'ɵenableReadableStream',
+      ],
+      [`export const b = new Blob(['x']);`, 'ɵenableBlob'],
+      // A canvas's toBlob() and convertToBlob() make a Blob.
+      [`export const save = (c, cb) => c.toBlob(cb);`, 'ɵenableBlob'],
+      [`export const save = (c) => c.convertToBlob();`, 'ɵenableBlob'],
+    ] as const) {
+      expect(enableOnDemand(code, '/app/src/x.ts')).toBe(calls(enable) + code);
+    }
+    // Only what it names: a Blob's methods use the others' classes, not the
+    // globals.
+    const both = `export const t = (b) => new TextDecoder().decode(b) + Blob.name;`;
+    expect(enableOnDemand(both, '/app/src/t.ts')).toBe(
+      calls('ɵenableTextDecoder', 'ɵenableBlob') + both,
+    );
+    // A comment or a message isn't a use.
+    const prose = `// Reads a Blob with a TextDecoder.
+export const m = 'Not a Blob';`;
+    expect(enableOnDemand(prose, '/app/src/m.ts')).toBe(prose);
+  });
+
+  it('gives @angular/localize the TextEncoder its message ids are hashed with', () => {
+    const code = `let textEncoder;\nfunction fingerprint(str) { textEncoder ??= new TextEncoder(); }`;
+    expect(
+      enableOnDemand(
+        code,
+        '/app/node_modules/@angular/localize/fesm2022/_localize-chunk.mjs',
+      ),
+    ).toBe(calls('ɵenableTextEncoder') + code);
+  });
+
   it('reads a name spelled with escapes, which is as static as one without', () => {
     for (const code of [
       `export const get = (u) => globalThis['\\u0066etch'](u);`,
@@ -319,6 +356,17 @@ describe('enableOnDemand, for the main thread’s globals', () => {
         '/app/node_modules/@angular/common/fesm2022/_module-chunk.mjs',
         `export class FetchBackend { f = fetch; h = Headers; x = XMLHttpRequest; }\nexport function provideHttpClient() {}`,
       ],
+      [
+        // HttpRequest's body checks and FetchBackend's decoding, which run
+        // only with the fetch that brings them.
+        '/app/node_modules/@angular/common/fesm2022/_module-chunk.mjs',
+        `const isBlob = (v) => typeof Blob !== 'undefined' && v instanceof Blob;\nexport const text = (b) => new TextDecoder().decode(b);`,
+      ],
+      [
+        // The HTTP transfer cache's keys.
+        '/app/node_modules/@angular/common/fesm2022/http.mjs',
+        `export const hash = (v) => new TextEncoder().encode(v);`,
+      ],
     ];
     for (const [file, code] of cases) {
       expect(enableOnDemand(code, file)).toBe(code);
@@ -382,14 +430,40 @@ describe('the globals Angular’s packages name', () => {
       if (names.length > 0) left[module] = names.sort();
     }
     // The compiler compiles `@defer (on viewport)` at run time, where an app
-    // bundles it: such an app does need the observer.
+    // bundles it: such an app does need the observer. It hashes i18n message
+    // ids with a TextEncoder, and so does `$localize` (an app with it needs
+    // one).
     expect(left).toEqual({
       '@angular/compiler/compiler.mjs': [
+        'TextEncoder',
         'ɵɵdeferHydrateOnViewport',
         'ɵɵdeferOnViewport',
         'ɵɵdeferPrefetchOnViewport',
       ],
+      '@angular/localize/_localize-chunk.mjs': ['TextEncoder'],
     });
+  });
+
+  it('name the body APIs, in @angular/common, only in its HTTP modules', () => {
+    // Each read by hand: HttpRequest's body checks (`isBlob()`),
+    // FetchBackend's decoding and `responseType: 'blob'`, the HTTP transfer
+    // cache's keys and the testing backend. Each runs only in an app that
+    // makes requests, whose fetch brings them all (network/index.ts's
+    // installFetch()).
+    const uses = Object.entries(mentions).flatMap(([module, found]) =>
+      module.startsWith('@angular/common/')
+        ? ['TextEncoder', 'TextDecoder', 'ReadableStream', 'Blob']
+            .filter((name) => found.has(name))
+            .map((name) => `${module} ${name}`)
+        : [],
+    );
+    expect(uses).toEqual([
+      '@angular/common/_module-chunk.mjs TextDecoder',
+      '@angular/common/_module-chunk.mjs Blob',
+      '@angular/common/http-testing.mjs Blob',
+      '@angular/common/http.mjs TextEncoder',
+      '@angular/common/http.mjs Blob',
+    ]);
   });
 
   it('name fetch and IntersectionObserver only where an app doesn’t reach them', () => {

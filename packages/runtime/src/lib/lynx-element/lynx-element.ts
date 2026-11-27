@@ -41,7 +41,7 @@ import {
   safeAreaInsetsStyle,
   withSafeAreaInsets,
 } from './safe-area-insets';
-import { dataURLForObjectURL } from '../network/blob';
+import { dataURLForObjectURL } from '../network/blob-urls';
 import { sanitizeSvgContent } from './svg-content';
 import {
   ALL_TEXT_PROPERTIES,

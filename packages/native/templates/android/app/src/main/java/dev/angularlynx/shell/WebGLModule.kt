@@ -65,6 +65,18 @@ class WebGLModule(context: Context, param: Any?) : LynxModule(context, param) {
         return true
     }
 
+    /**
+     * The size of the frame a `<video>` shows (VideoUI), by its `video-id`:
+     * the runtime's videoWidth and videoHeight, and the size a canvas reads
+     * it at. 0 by 0 before its first frame.
+     */
+    @LynxMethod
+    fun videoSize(videoId: String?): JavaOnlyMap {
+        val video = videoId?.let { CanvasRegistry.context(it) } as? VideoUI
+        val (width, height) = video?.frameSize() ?: (0 to 0)
+        return JavaOnlyMap.from(mapOf("width" to width, "height" to height))
+    }
+
     @LynxMethod
     fun decodeImage(imageId: Int, bytes: ReadableArray?, options: ReadableMap?): JavaOnlyMap {
         return try {

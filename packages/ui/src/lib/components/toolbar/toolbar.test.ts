@@ -8,7 +8,7 @@ import { LYNX_ELEMENTS, LynxAccessibilitySettings } from '@blotch/angular-lynx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
 import { provideGlass } from '../glass/glass-design';
-import { type IconName } from '../icon/icons';
+import { type IconName, provideIcons } from '../icon/icons';
 import { UiBarState } from './bar-scroll';
 import {
   UiToolbar,
@@ -16,8 +16,13 @@ import {
   UiToolbarItem,
   UiToolbarSpacer,
 } from './toolbar';
+import { listChecksIcon, pencilIcon, plusIcon } from '../icon/icon-set';
+
+// The icons these specs draw by name, registered as an app registers its own.
+const TEST_ICONS = provideIcons({ listChecksIcon, pencilIcon, plusIcon });
 
 @Component({
+  providers: [TEST_ICONS],
   imports: [
     LYNX_ELEMENTS,
     UiToolbar,

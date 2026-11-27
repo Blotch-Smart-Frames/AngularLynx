@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { globalEvents } from '../global-events';
-import { createObjectURL, LynxBlob, revokeObjectURL } from '../network/blob';
+import { LynxBlob } from '../network/blob';
+import { createObjectURL, revokeObjectURL } from '../network/blob-urls';
 import type { ElementRef } from '../types/lynx';
 import { LynxElement } from './lynx-element';
 import { setSafeAreaInsets } from './safe-area-insets';

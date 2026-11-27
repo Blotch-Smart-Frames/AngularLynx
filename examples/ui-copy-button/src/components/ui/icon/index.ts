@@ -1,2 +1,9 @@
 export { UiIcon } from './icon';
-export { ICONS, type IconName } from './icons';
+export { provideAllIcons } from './all-icons';
+export * from './icon-set';
+export {
+  type IconName,
+  type UiIconDefinition,
+  iconSvg,
+  provideIcons,
+} from './icons';

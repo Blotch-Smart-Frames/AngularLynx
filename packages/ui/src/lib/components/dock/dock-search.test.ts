@@ -16,6 +16,11 @@ import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
 import { UiSearchField } from '../search-field/search-field';
 import { UiDock, UiDockAccessory, UiDockAction, UiDockItem } from './dock';
 import { UiDockState } from './dock-scroll';
+import { homeIcon, inboxIcon, searchIcon } from '../icon/icon-set';
+import { provideIcons } from '../icon/icons';
+
+// The icons these specs draw by name, registered as an app registers its own.
+const TEST_ICONS = provideIcons({ homeIcon, inboxIcon, searchIcon });
 
 @Component({
   selector: 'home-page',
@@ -49,6 +54,7 @@ const routes: Routes = [
  * opens the field over the screen.
  */
 @Component({
+  providers: [TEST_ICONS],
   imports: [
     LYNX_ELEMENTS,
     RouterOutlet,

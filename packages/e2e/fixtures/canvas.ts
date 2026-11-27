@@ -8,6 +8,7 @@ import {
 import { RouterLink } from '@angular/router';
 import { LYNX_ELEMENTS, type LynxCanvasElement } from '@blotch/angular-lynx';
 import { LibraryFrame } from 'e2e-prebuilt-library';
+import { environment } from '../environments/environment';
 
 /** A 1x1 cyan PNG (0, 255, 255). */
 const CYAN_PNG =
@@ -49,6 +50,17 @@ void main() {
 }`;
 
 /**
+ * A video pixel's color by name: a video's colors are near, not exact,
+ * after its YUV encoding.
+ */
+const colorName = ({ 0: r, 1: g, 2: b }: ArrayLike<number>): string =>
+  r > 180 && g < 80 && b < 80
+    ? 'red'
+    : b > 180 && r < 80 && g < 80
+      ? 'blue'
+      : `${r} ${g} ${b}`;
+
+/**
  * E2E fixture for `<canvas>` with WebGL2 (issue #211), loaded through
  * `loadComponent` like storage.ts, whose page links here. It draws the
  * canvas full of a texture through a shader, then reads a pixel back and
@@ -85,6 +97,16 @@ void main() {
  * is no taller: the links under it stay on the Android emulator's screen,
  * where the flows tap them.
  *
+ * On the 2D line, "Video: red,blue / red" checks a `<video>` read as an
+ * image (issue #696): fixtures/video.mp4 is red above and blue below, served
+ * by the E2E static server, and shown in the canvas's row, which a row of its
+ * own would have pushed the links off the Android emulator's screen. When
+ * its first frame shows, paused, it's drawn on a 2D canvas and read back at
+ * the top and the bottom right in bindfirstframe, which also checks it's
+ * upright, then uploaded as the WebGL texture and drawn, and the pixel read
+ * back is the frame's first row, the top. The colors are named rather than
+ * compared, since a video's are near, not exact, after its YUV encoding.
+ *
  * Below it, the prebuilt library fixture (fixtures/prebuilt-library), which
  * the counter page has no room for, and "Open linking" and "Open photo",
  * which open linking.ts and photo.ts.
@@ -102,12 +124,22 @@ void main() {
         height="2"
         style="width: 40px; height: 40px;"
       ></canvas>
+      <video
+        #video
+        [src]="videoUrl"
+        [muted]="true"
+        style="width: 40px; height: 20px; margin-left: 8px;"
+        (bindfirstframe)="drawVideo()"
+        (binderror)="resultVideo.set('error')"
+      ></video>
       <view style="margin-left: 12px;">
         <text flatten="false">WebGL: {{ result() }}</text>
         <text flatten="false">Bitmap: {{ resultBitmap() }}</text>
       </view>
     </view>
-    <text flatten="false">2D: {{ result2D() }}</text>
+    <text flatten="false"
+      >2D: {{ result2D() }}; Video: {{ resultVideo() }}</text
+    >
     <e2e-library-frame />
     <view style="display: flex; flex-direction: row; margin-top: 8px;">
       <view
@@ -138,6 +170,12 @@ export class CanvasRoute {
   readonly result = signal('…');
   readonly result2D = signal('…');
   readonly resultBitmap = signal('…');
+  readonly resultVideo = signal('…');
+  readonly video = viewChild.required<ElementRef<HTMLVideoElement>>('video');
+  readonly videoUrl = environment.videoUrl;
+  #gl: { gl: WebGL2RenderingContext; program: WebGLProgram } | undefined;
+  /** The video check's 2D half, made at bindfirstframe. */
+  #video2D: string | undefined;
 
   constructor() {
     afterNextRender(() => {
@@ -257,6 +295,93 @@ export class CanvasRoute {
           offCanvasRead,
           edge,
         ].join(' ');
+  }
+
+  /**
+   * The video check, once its first frame shows: drawn on a 2D canvas and
+   * read back, and uploaded as a texture into the WebGL context and read
+   * back.
+   */
+  drawVideo(): void {
+    // The docs promise the frame can be drawn from bindfirstframe
+    // (VideoUI.onFirstFrame, AngularLynxVideo.m), so the 2D draw and its
+    // read happen here, at the event, never waited for.
+    try {
+      this.#video2D = this.#drawVideo2D();
+    } catch (error) {
+      this.resultVideo.set(`error ${(error as Error).message}`);
+      return;
+    }
+    if (this.#video2D === undefined) {
+      this.resultVideo.set('no frame at bindfirstframe');
+      return;
+    }
+    this.#uploadVideo();
+  }
+
+  /**
+   * The upload needs the page's WebGL context, made after an async decode,
+   * which the first frame can come before: it waits for it, for up to 2
+   * seconds, and #draw() runs it again once it's there.
+   */
+  #uploadVideo(tries = 20): void {
+    if (!this.#gl && tries > 0) {
+      setTimeout(() => this.#uploadVideo(tries - 1), 100);
+      return;
+    }
+    try {
+      this.resultVideo.set(`${this.#video2D} / ${this.#uploadVideoNow()}`);
+    } catch (error) {
+      this.resultVideo.set(`error ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * The video's colors at the top and the bottom, or undefined without a frame.
+   */
+  #drawVideo2D(): string | undefined {
+    const video = this.video().nativeElement;
+    if (video.videoWidth === 0) return undefined;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const context = canvas.getContext('2d');
+    if (!context) return 'none';
+    context.drawImage(video, 0, 0);
+    const top = colorName(context.getImageData(32, 4, 1, 1).data);
+    const bottom = colorName(
+      context.getImageData(32, canvas.height - 4, 1, 1).data,
+    );
+    return `${top},${bottom}`;
+  }
+
+  /**
+   * The video uploaded as the texture, drawn, and its first row read back.
+   */
+  #uploadVideoNow(): string {
+    const webgl = this.#gl;
+    if (!webgl) return 'no WebGL';
+    const { gl, program } = webgl;
+    const video = this.video().nativeElement;
+    // Blue first: the texture may hold the bitmap check's red, which an
+    // upload that did nothing would leave to be read back.
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      1,
+      1,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      new Uint8Array([0, 0, 255, 255]),
+    );
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
+    gl.uniform4f(gl.getUniformLocation(program, 'tint'), 1, 1, 1, 1);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    const pixel = new Uint8Array(4);
+    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+    return colorName(pixel);
   }
 
   /**
@@ -467,6 +592,10 @@ export class CanvasRoute {
     // whether GL kept the second, is up to the GL.
     if (gl.getError() === gl.NO_ERROR) return 'errors lost';
     while (gl.getError() !== gl.NO_ERROR);
+    this.#gl = { gl, program };
+    // A video check that ran out of tries before the context was there runs
+    // again with it.
+    if (this.resultVideo().endsWith('no WebGL')) this.#uploadVideo();
     try {
       this.result2D.set(this.#draw2D(gl, program));
     } catch (error) {

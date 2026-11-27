@@ -1,5 +1,12 @@
 import { isMainThread } from '../background-call';
-import { installFetch, installXMLHttpRequest } from './index';
+import {
+  installBlob,
+  installFetch,
+  installReadableStream,
+  installTextDecoder,
+  installTextEncoder,
+  installXMLHttpRequest,
+} from './index';
 
 /**
  * Gives Lynx's main thread `fetch`, with `Headers`, `Request` and `Response`
@@ -34,4 +41,53 @@ export const ɵenableFetch = (): void => {
 export const ɵenableXMLHttpRequest = (): void => {
   if (__WEB__ || !isMainThread()) return;
   installXMLHttpRequest(globalThis as unknown as Record<string, unknown>);
+};
+
+/**
+ * Gives Lynx's main thread `TextEncoder` (installTextEncoder()).
+ *
+ * Apps don't call this: the build plugin calls it at the top of every
+ * main-thread module that names `TextEncoder`, such as `@angular/localize`'s
+ * message ids (see ɵenableFetch()). `fetch` brings it too.
+ */
+export const ɵenableTextEncoder = (): void => {
+  if (__WEB__ || !isMainThread()) return;
+  installTextEncoder(globalThis as unknown as Record<string, unknown>);
+};
+
+/**
+ * Gives Lynx's main thread `TextDecoder` (installTextDecoder()).
+ *
+ * Apps don't call this: the build plugin calls it at the top of every
+ * main-thread module that names `TextDecoder` (see ɵenableFetch()). `fetch`
+ * brings it too.
+ */
+export const ɵenableTextDecoder = (): void => {
+  if (__WEB__ || !isMainThread()) return;
+  installTextDecoder(globalThis as unknown as Record<string, unknown>);
+};
+
+/**
+ * Gives Lynx's main thread `ReadableStream` (installReadableStream()).
+ *
+ * Apps don't call this: the build plugin calls it at the top of every
+ * main-thread module that names `ReadableStream` (see ɵenableFetch()).
+ * `fetch` brings it too.
+ */
+export const ɵenableReadableStream = (): void => {
+  if (__WEB__ || !isMainThread()) return;
+  installReadableStream(globalThis as unknown as Record<string, unknown>);
+};
+
+/**
+ * Gives Lynx's main thread `Blob` (installBlob()).
+ *
+ * Apps don't call this: the build plugin calls it at the top of every
+ * main-thread module that names `Blob`, or a canvas's `toBlob()` or
+ * `convertToBlob()`, which make one (see ɵenableFetch()). `fetch` and
+ * LynxImagePicker bring it too.
+ */
+export const ɵenableBlob = (): void => {
+  if (__WEB__ || !isMainThread()) return;
+  installBlob(globalThis as unknown as Record<string, unknown>);
 };

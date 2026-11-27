@@ -146,7 +146,14 @@ export class LynxOffscreenCanvas extends LynxCanvasBase {
       error.name = 'IndexSizeError';
       return Promise.reject(error);
     }
-    const blob = this.surface.blobNow(options?.type, options?.quality);
+    let blob: Blob | null;
+    try {
+      blob = this.surface.blobNow(options?.type, options?.quality);
+    } catch (error) {
+      // A promise-returning method rejects rather than throws (Web IDL),
+      // here when the app has no Blob (canvas-surface.ts's blobClass()).
+      return Promise.reject(error);
+    }
     if (blob) return Promise.resolve(blob);
     const error = new Error(
       "Failed to execute 'convertToBlob' on 'OffscreenCanvas': The canvas couldn't be encoded.",

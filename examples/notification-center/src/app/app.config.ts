@@ -3,7 +3,12 @@ import {
   provideZonelessChangeDetection,
 } from '@angular/core';
 import { provideRenderer } from '@blotch/angular-lynx';
+import { bellIcon, provideIcons } from '../components/ui/icon';
 
 export const appConfig: ApplicationConfig = {
-  providers: [provideZonelessChangeDetection(), provideRenderer()],
+  providers: [
+    provideIcons({ bellIcon }),
+    provideZonelessChangeDetection(),
+    provideRenderer(),
+  ],
 };

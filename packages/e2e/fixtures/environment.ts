@@ -9,4 +9,5 @@
  */
 export const environment = {
   httpDataUrl: 'http://127.0.0.1:3210/environment-not-replaced.json',
+  videoUrl: 'http://127.0.0.1:3210/environment-not-replaced.mp4',
 };

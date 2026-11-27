@@ -21,6 +21,10 @@ import {
 } from '../utils/resolve-paths.js';
 import { formatContent } from '../utils/format.js';
 import { droppedFiles } from '../utils/installed.js';
+import {
+  logIconRegistration,
+  registerAppIcons,
+} from '../utils/icon-registrations.js';
 import { isInteractive } from '../utils/interactive.js';
 import { copiesTests, TESTING_LIBRARY } from '../utils/packages.js';
 import { installComponentPackages } from './install-packages.js';
@@ -210,6 +214,10 @@ export const addCommand = async (
   s.stop('Done!');
 
   installComponentPackages(cwd, resolved);
+
+  // As after an update: an app that already names icons, such as one adding
+  // the icon component back, has them registered.
+  logIconRegistration(registerAppIcons(cwd, componentsDir));
 
   if (!tests) {
     p.log.info(

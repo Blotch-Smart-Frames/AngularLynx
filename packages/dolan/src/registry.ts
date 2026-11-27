@@ -105,7 +105,8 @@ export const registry: RegistryEntry[] = [
   { name: 'collapsible', dependencies: [] },
   // The context menu is a menu that opens on a long press: it shares the
   // menu's items and its overlay.
-  { name: 'context-menu', dependencies: ['menu'] },
+  // Its spec registers the icons its items draw.
+  { name: 'context-menu', dependencies: ['icon', 'menu'] },
   // A button that copies with the runtime's LynxClipboard, and shows the
   // icon set's check once it has.
   { name: 'copy-button', dependencies: ['button', 'icon'] },
@@ -155,8 +156,9 @@ export const registry: RegistryEntry[] = [
   // nav-drawer renders a hamburger trigger via <ui-icon>, so it pulls in `icon`.
   { name: 'nav-drawer', dependencies: ['icon'] },
   // The navigation bar's Back button and items are toolbar items, it shares
-  // the toolbar's scroll view, and the frosted bar's material is glass.
-  { name: 'navigation-bar', dependencies: ['glass', 'toolbar'] },
+  // the toolbar's scroll view, and the frosted bar's material is glass. Its
+  // spec registers the icons its items draw.
+  { name: 'navigation-bar', dependencies: ['glass', 'icon', 'toolbar'] },
   // Pagination and the spinner draw SVGs in theme colors with icon-theme.ts.
   { name: 'pagination', dependencies: ['icon'] },
   // The popover is glass, placed by the menu's placement, and its content

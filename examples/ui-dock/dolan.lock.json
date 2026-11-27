@@ -3,16 +3,22 @@
   "components": {
     "icon": {
       "icon.ts": {
-        "hash": "932973521d0bb99b"
+        "hash": "7fdbd570d02e2647"
       },
       "icons.ts": {
-        "hash": "88653f16f41b688b"
+        "hash": "9c4233735666d5c3"
       },
       "index.ts": {
-        "hash": "d175df85291c8009"
+        "hash": "925ca2b25ff64004"
       },
       "icon-theme.ts": {
         "hash": "50e014b3350839f8"
+      },
+      "all-icons.ts": {
+        "hash": "67baf8dfc7537de8"
+      },
+      "icon-set.ts": {
+        "hash": "087467f089b093e4"
       }
     },
     "glass": {
@@ -31,7 +37,7 @@
     },
     "dock": {
       "dock.ts": {
-        "hash": "4ba0042ea03a9e22"
+        "hash": "f5143ca549964d55"
       },
       "dock-scroll.ts": {
         "hash": "7cfb722532832474"
@@ -48,7 +54,7 @@
         "hash": "e24a944f111c87fc"
       },
       "search-field.ts": {
-        "hash": "3a29d50c1a84e6d2"
+        "hash": "588389da2fc2a165"
       }
     }
   },

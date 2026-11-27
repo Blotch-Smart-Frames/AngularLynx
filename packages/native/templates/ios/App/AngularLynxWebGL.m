@@ -1,5 +1,7 @@
 #import "AngularLynxWebGL.h"
 
+#import "AngularLynxVideo.h"
+
 #import <ImageIO/ImageIO.h>
 #import <Lynx/LynxPropsProcessor.h>
 #import <QuartzCore/QuartzCore.h>
@@ -360,6 +362,7 @@ static NSDictionary *keptImage(NSNumber *imageId, AngularLynxDecodedImage *image
     @"destroy2D" : NSStringFromSelector(@selector(destroy2D:)),
     @"encode2D" : NSStringFromSelector(@selector(encode2D:options:)),
     @"release2D" : NSStringFromSelector(@selector(release2D:)),
+    @"videoSize" : NSStringFromSelector(@selector(videoSize:)),
   };
 }
 
@@ -416,6 +419,20 @@ static NSDictionary *keptImage(NSNumber *imageId, AngularLynxDecodedImage *image
     [_contexts removeObjectForKey:contextId];
   }
   return @YES;
+}
+
+/// The size of the frame a `<video>` shows (AngularLynxVideo.m), by its
+/// `video-id`: the runtime's videoWidth and videoHeight, and the size a
+/// canvas reads it at. Zero before its first frame.
+- (NSDictionary *)videoSize:(NSString *)videoId {
+  CGSize size = CGSizeZero;
+  if ([videoId isKindOfClass:NSString.class]) {
+    id context = [AngularLynxCanvasRegistry contextForCanvasId:videoId];
+    if ([context isKindOfClass:AngularLynxVideoFrames.class]) {
+      size = [(AngularLynxVideoFrames *)context frameSize];
+    }
+  }
+  return @{@"width" : @(size.width), @"height" : @(size.height)};
 }
 
 - (NSDictionary *)decodeImage:(NSNumber *)imageId

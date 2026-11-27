@@ -13,6 +13,14 @@ import {
 } from '../components/ui/icon/icon-theme';
 import { routes } from './app.routes';
 import { AtlasState } from './state/atlas-state';
+import {
+  chartLineIcon,
+  checkIcon,
+  layoutGridIcon,
+  searchIcon,
+  sparklesIcon,
+  provideIcons,
+} from '../components/ui/icon';
 
 /** The paper and ink the icons and glass read, as the stylesheet sets them. */
 const DAY = {
@@ -32,6 +40,13 @@ const NIGHT = {
 
 export const appConfig: ApplicationConfig = {
   providers: [
+    provideIcons({
+      chartLineIcon,
+      checkIcon,
+      layoutGridIcon,
+      searchIcon,
+      sparklesIcon,
+    }),
     provideZonelessChangeDetection(),
     provideRenderer(),
     // AngularLynx's provideRouter: Angular's router on an in-memory location,

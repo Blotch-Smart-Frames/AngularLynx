@@ -270,6 +270,16 @@ describe('LynxOffscreenCanvas', () => {
     });
   });
 
+  it('rejects convertToBlob() when the app has no Blob, as a promise-returning method does', async () => {
+    vi.stubGlobal('Blob', undefined);
+    try {
+      const canvas = new LynxOffscreenCanvas(4, 4);
+      await expect(canvas.convertToBlob()).rejects.toThrow(/ɵenableBlob\(\)/);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('hands its image over with transferToImageBitmap(), which clears it', () => {
     const canvas = new LynxOffscreenCanvas(8, 4);
     // A canvas with no context has no image to hand over.

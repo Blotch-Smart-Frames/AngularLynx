@@ -11,7 +11,7 @@ import {
   TEXT_ALIGNS,
   TEXT_BASELINES,
 } from './canvas-2d-ops';
-import { canvasSourceOf, isVideo } from './canvas-source';
+import { canvasSourceOf } from './canvas-source';
 import { type RGBA, parseColor, serializeColor } from './css-color';
 import { parseFilter } from './css-filter';
 import { type CanvasFont, DEFAULT_FONT, parseFont } from './css-font';
@@ -500,8 +500,7 @@ const FILL_RULES = ['nonzero', 'evenodd'];
  *
  * Not there: the text properties
  * Lynx's shells don't draw (`wordSpacing`, `fontKerning`, `fontStretch`,
- * `fontVariantCaps`, `textRendering` are kept and ignored), a `<video>` as
- * an image, and focus rings (`drawFocusIfNeeded()` does nothing).
+ * `fontVariantCaps`, `textRendering` are kept and ignored), and focus rings (`drawFocusIfNeeded()` does nothing).
  */
 export class LynxCanvasRenderingContext2D {
   readonly canvas: Canvas2DHost;
@@ -1519,6 +1518,11 @@ export class LynxCanvasRenderingContext2D {
     }
     const canvas = canvasSourceOf(image);
     if (canvas) {
+      // A video before its first frame is HAVE_NOTHING: browsers draw
+      // nothing from it, and createPattern() returns null.
+      if (canvas.video && (canvas.width === 0 || canvas.height === 0)) {
+        return null;
+      }
       if (canvas.width === 0 || canvas.height === 0) {
         throw domError(
           'InvalidStateError',
@@ -1544,11 +1548,6 @@ export class LynxCanvasRenderingContext2D {
         height: canvas.height,
         flush: () => canvas.flush(),
       };
-    }
-    if (isVideo(image)) {
-      throw new TypeError(
-        `Failed to execute '${method}' on 'CanvasRenderingContext2D': a <video> can not be drawn on a canvas on Lynx yet.`,
-      );
     }
     throw new TypeError(
       `Failed to execute '${method}' on 'CanvasRenderingContext2D': The provided value is not of type '(HTMLCanvasElement or HTMLImageElement or ImageBitmap or OffscreenCanvas)'.`,

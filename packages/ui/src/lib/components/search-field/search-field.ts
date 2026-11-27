@@ -24,7 +24,8 @@ import { cn } from '../../utils/cn';
 import { UiGlass, UiGlassGroup } from '../glass/glass';
 import { type GlassDesign, injectGlassDesign } from '../glass/glass-design';
 import { injectIconColor } from '../icon/icon-theme';
-import { type IconName, ICONS } from '../icon/icons';
+import { arrowLeftIcon, searchIcon, xIcon } from '../icon/icon-set';
+import { type UiIconDefinition, iconSvg, paintIcon } from '../icon/icons';
 import {
   KEYBOARD_GAP,
   type KeyboardHeightEvent,
@@ -105,11 +106,11 @@ const FADE_TRANSITION = `opacity ${DURATION.fast}ms ${EASING.standard}`;
 type InputEvent = { detail: { value: string } };
 
 /**
- * An icon's markup, drawn in `color`.
+ * An icon's markup, drawn in `color`. The field imports its icons itself, so
+ * an app that never draws them by name needn't register them.
  */
-const iconSvg = (icon: IconName, color: string): string =>
-  // split/join, not replaceAll(), which PrimJS's ES2019 runtime lacks.
-  ICONS[icon].split('currentColor').join(color);
+const paintedIcon = (icon: UiIconDefinition, color: string): string =>
+  paintIcon(iconSvg(icon), color);
 
 /**
  * A search field: a magnifier, the text, and a button that clears it.
@@ -465,11 +466,11 @@ export class UiSearchField implements FormValueControl<string> {
   );
 
   protected readonly searchIcon = computed(() =>
-    iconSvg('search', this.#resolveColor(this.#mutedColor())),
+    paintedIcon(searchIcon, this.#resolveColor(this.#mutedColor())),
   );
 
   protected readonly backIcon = computed(() =>
-    iconSvg('arrow-left', this.#resolveColor('var(--foreground)')),
+    paintedIcon(arrowLeftIcon, this.#resolveColor('var(--foreground)')),
   );
 
   /**
@@ -477,8 +478,8 @@ export class UiSearchField implements FormValueControl<string> {
    * out of its circle, in the color of what's behind.
    */
   protected readonly clearIcon = computed(() =>
-    iconSvg(
-      'x',
+    paintedIcon(
+      xIcon,
       this.#resolveColor(
         this.design() === 'material'
           ? 'var(--muted-foreground)'
@@ -488,7 +489,7 @@ export class UiSearchField implements FormValueControl<string> {
   );
 
   protected readonly closeIcon = computed(() =>
-    iconSvg('x', this.#resolveColor('var(--glass-foreground)')),
+    paintedIcon(xIcon, this.#resolveColor('var(--glass-foreground)')),
   );
 
   protected readonly clearCircleClass = computed(() =>

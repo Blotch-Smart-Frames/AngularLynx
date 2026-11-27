@@ -163,6 +163,53 @@ The phone decodes images, and the pixels go straight to the GPU. A canvas, drawn
 
 `createImageBitmap()` takes a canvas too (a `<canvas>`, `document.createElement('canvas')` or an `OffscreenCanvas`), and `OffscreenCanvas.transferToImageBitmap()` hands over its image and clears it, as on the web. The phone copies the pixels, so keeping a frame costs no trip through JavaScript. It takes an `ImageBitmap` (a copy, flipped, premultiplied or resized as you ask) and an `ImageData` too, and the crop arguments of any source, as on the web: `createImageBitmap(sheet, 32, 0, 32, 32)` cuts a sprite out of a sprite sheet, and the part of the rectangle outside the source is transparent. A bitmap or an `Image` is copied from the pixels the phone already has, so its file isn't sent or decoded again; an `ImageData`'s pixels go to the phone once. Make a WebGL canvas's bitmap in the same function that draws, as with `toBlob()` below: once the frame is on screen, its drawing buffer is cleared, unless you asked for `preserveDrawingBuffer: true`.
 
+## Videos
+
+A [`<video>`](/api/elements/video) is an image too. Draw its frame for a thumbnail or a filter, or play it on a three.js mesh with **`VideoTexture`**:
+
+```typescript title="src/app/thumbnail.ts"
+import { Component, type ElementRef, viewChild } from '@angular/core';
+import { LYNX_ELEMENTS, type LynxCanvasElement } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-thumbnail',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <video
+      #video
+      src="https://example.com/clip.mp4"
+      class="h-[180px] w-full"
+      (bindfirstframe)="grab()"
+    ></video>
+    <canvas #thumb width="160" height="90" class="h-[90px] w-[160px]"></canvas>
+  `,
+})
+export class Thumbnail {
+  readonly video = viewChild.required<ElementRef<HTMLVideoElement>>('video');
+  readonly thumb = viewChild.required<ElementRef<LynxCanvasElement>>('thumb');
+
+  grab(tries = 10): void {
+    const video = this.video().nativeElement;
+    // Draw only once there's a frame: try again a little later until then.
+    if (video.readyState < video.HAVE_CURRENT_DATA) {
+      if (tries > 0) setTimeout(() => this.grab(tries - 1), 100);
+      return;
+    }
+    const canvas = this.thumb().nativeElement as unknown as HTMLCanvasElement;
+    canvas.getContext('2d')!.drawImage(video, 0, 0, 160, 90);
+  }
+}
+```
+
+For a mesh, pass the same element to three.js: `new THREE.VideoTexture(video)`. It waits for the frame by itself.
+
+- The phone reads the frame the video shows; the pixels never pass through JavaScript. `createImageBitmap(video)` keeps a copy of it, as on the web.
+- Before its first frame, `videoWidth` is 0, `readyState` is `HAVE_NOTHING`, and nothing is drawn, as in a browser.
+- Check `readyState` before you draw, and try again if there's no frame yet, as above. On the phone the frame is usually there when `bindfirstframe` arrives, but iOS waits for it for half a second at most, then sends the event anyway. The web preview never sends `bindfirstframe`: draw from a tap or a `bindtimeupdate` there.
+- On Android, a video with `display: none` has no frame. Hide it with `opacity: 0` instead.
+- On iOS, a video whose file says to turn it (a phone recording in portrait) is drawn as it's stored, on its side ([#725](https://github.com/Blotch-Smart-Frames/AngularLynx/issues/725)).
+- The web preview doesn't take a template's `<video>` in `drawImage()`, `texImage2D()` or `createImageBitmap()` yet ([#732](https://github.com/Blotch-Smart-Frames/AngularLynx/issues/732)).
+
 ## Save it as an image
 
 `toBlob()` and `toDataURL()` work as on an HTML canvas: they encode what the canvas shows as a PNG, or a JPEG for `'image/jpeg'`, with a quality from 0 to 1 (0.92 when you don't give one). Any other type gives a PNG, as in browsers.
@@ -215,7 +262,7 @@ The iOS Simulator and the Android emulator both draw on the Mac's GPU, so a scen
 
 - The 2D context's `filter` takes the CSS filter functions (`blur()`, `drop-shadow()`, `grayscale()` and the other color functions), but a `url()` filter is kept and not applied, as Lynx has no SVG filters. A filter works on the pixels of a layer the canvas's size, on the main thread, so each shape drawn with one costs about as much as a canvas-sized image: draw what shares a filter into a canvas of its own and filter that once with `drawImage()`, rather than filtering many small shapes.
 - `wordSpacing`, `fontKerning`, `fontStretch`, `fontVariantCaps` and `textRendering` are kept but don't change the text. Text drawn with a gradient, a pattern or `strokeText()` is drawn from the glyphs' outlines, so color emoji show only with a plain `fillStyle`.
-- A `<video>` can't be drawn on a canvas or be a texture yet.
+- A `<video>` draws its current frame, on a 2D canvas or as a texture, only once it has one (`readyState` at least `HAVE_CURRENT_DATA`). On Android, a video with `display: none` has no frame to draw: hide it with `opacity: 0` or behind other elements instead. On iOS, a portrait phone recording is drawn on its side ([#725](https://github.com/Blotch-Smart-Frames/AngularLynx/issues/725)).
 - `getContext('bitmaprenderer')` is `null`: draw an `ImageBitmap` with a 2D context's `drawImage()` instead.
 - `toBlob()` and `toDataURL()` make the main thread wait while the phone reads and encodes the canvas (tens of milliseconds for a photo), where a browser's `toBlob()` encodes in the background.
 - A lost context isn't restored: make a new renderer.

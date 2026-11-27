@@ -48,10 +48,11 @@ const YIELD_HINT = /\b(?:yield|await)\b/;
  * class member inside the default value are left to SWC, which declares
  * their variables in that function.
  *
- * `delete a?.b` becomes `(t = a) == null ? true : delete t.b`. Left as they
- * are, to SWC: a `delete` of a chain in parentheses (`delete (a?.b)`), and a
- * call of a member read in parentheses on an optional chain
- * (`(a?.b.c)?.()`), whose receiver is inside the other chain.
+ * `delete a?.b` becomes `(t = a) == null ? true : delete t.b`, in
+ * parentheses too. A chain in parentheses that's called (`(a?.m)(x)`,
+ * `(a?.b.c)?.()`) or tags a template keeps its receiver, as natively: the
+ * chain reads the object of its last member into a variable, and the call is
+ * made through `call`, or the tag through `bind`, on it.
  *
  * Edits never add or remove a line, and an inline source map's columns are
  * moved to match, as for the passes after it.
@@ -79,6 +80,10 @@ export const lowerYieldingDefaultChains = (
   // A name nothing in the module uses, so it can't take another's place.
   let prefix = '__chain';
   while (code.includes(prefix)) prefix = `_${prefix}`;
+  // The variable each chain in parentheses that's called or tags a template
+  // reads its last member's object into, for the call's `this` (see
+  // `called` below), by the chain.
+  const captures = new Map<ts.Node, string>();
   const declare = (scope: ts.Node): string => {
     const name = `${prefix}${count++}`;
     variables.set(scope, [...(variables.get(scope) ?? []), name]);
@@ -86,10 +91,9 @@ export const lowerYieldingDefaultChains = (
   };
 
   /**
-   * Compiles one whole chain: `top` is its last link. Returns whether it
-   * could.
+   * Compiles one whole chain: `top` is its last link.
    */
-  const lower = (top: ts.OptionalChain): boolean => {
+  const lower = (top: ts.OptionalChain): void => {
     // Its `?.` links, first to last.
     const links: Array<
       ts.PropertyAccessChain | ts.ElementAccessChain | ts.CallChain
@@ -112,24 +116,29 @@ export const lowerYieldingDefaultChains = (
     }
     // What each call's `call` gets as `this`: nothing, for a call that
     // isn't of a member; what the previous link read, when the member is
-    // that link's (`a?.b?.()`); `this`, for `super`'s; or the member's object,
-    // read into a variable of its own.
+    // that link's (`a?.b?.()`); `this`, for `super`'s; the member's object,
+    // read into a variable of its own; or, for a chain in parentheses
+    // (`(a?.b.c)?.()`), what that chain reads into one (see `captures`).
     type Receiver =
       | null
       | 'previous'
       | 'this'
-      | { object: ts.Expression; name?: string };
+      | { object: ts.Expression; name?: string }
+      | { chain: ts.OptionalChain; name?: string };
     const receivers: Receiver[] = [];
     for (const link of links) {
       if (!ts.isCallExpression(link)) {
         receivers.push(null);
         continue;
       }
+      const chain = calledChain(link.expression);
+      if (chain) {
+        receivers.push({ chain });
+        continue;
+      }
       // Parentheses keep a member's receiver (`(a.b)?.()`), and can only be
       // around what the chain starts with.
       let callee: ts.Expression = link.expression;
-      while (ts.isNonNullExpression(callee)) callee = callee.expression;
-      const parenthesized = ts.isParenthesizedExpression(callee);
       while (
         ts.isParenthesizedExpression(callee) ||
         ts.isNonNullExpression(callee)
@@ -141,9 +150,6 @@ export const lowerYieldingDefaultChains = (
         !ts.isElementAccessExpression(callee)
       ) {
         receivers.push(null);
-      } else if (parenthesized && containsChain(callee)) {
-        // The receiver is inside another chain (`(a?.b.c)?.()`).
-        return false;
       } else if (callee.questionDotToken) {
         receivers.push('previous');
       } else if (callee.expression.kind === ts.SyntaxKind.SuperKeyword) {
@@ -157,8 +163,18 @@ export const lowerYieldingDefaultChains = (
     for (const receiver of receivers) {
       if (typeof receiver === 'object' && receiver) {
         receiver.name = declare(scope);
+        if ('chain' in receiver) captures.set(receiver.chain, receiver.name);
       }
     }
+    // This chain's own last member's object, when it's called in
+    // parentheses: read where the last link starts, in its part of the
+    // chain.
+    const capture = captures.get(top);
+    const captured =
+      capture !== undefined &&
+      (ts.isPropertyAccessExpression(top) || ts.isElementAccessExpression(top))
+        ? top
+        : undefined;
     const receiverName = (index: number): string | undefined => {
       const receiver = receivers[index];
       if (receiver === 'previous') return names[index - 1];
@@ -174,23 +190,28 @@ export const lowerYieldingDefaultChains = (
       const readsReceiver =
         typeof receiver === 'object' &&
         receiver !== null &&
+        'object' in receiver &&
         receiver.object.getStart(sourceFile) === top.getStart(sourceFile);
       return `((${names[index]} = ${readsReceiver ? `(${receiver.name} = ` : ''}`;
     };
 
     const start = top.getStart(sourceFile);
-    // `delete a?.b` moves its `delete` to the last link (see below); in
-    // parentheses (`delete (a?.b)`) it's left to SWC.
-    const deleted = ts.isDeleteExpression(top.parent);
+    // `delete a?.b` moves its `delete` to the last link (see below), and
+    // so does `delete (a?.b)`, whose parentheses stay.
+    let outer = top.parent;
+    while (ts.isParenthesizedExpression(outer)) outer = outer.parent;
+    const deleted = ts.isDeleteExpression(outer);
     if (deleted) {
-      const at = top.parent.getStart(sourceFile);
+      const at = outer.getStart(sourceFile);
       edits.push({ start: at, end: at + 'delete'.length, text: '' });
     }
     edits.push({ start, end: start, text: opening(0) });
     for (const [index, link] of links.entries()) {
       const receiver = receivers[index];
       const object =
-        typeof receiver === 'object' && receiver ? receiver.object : undefined;
+        typeof receiver === 'object' && receiver && 'object' in receiver
+          ? receiver.object
+          : undefined;
       // A receiver inside the parentheses the chain starts with is read
       // where it is.
       if (object && object.getStart(sourceFile) !== start) {
@@ -212,13 +233,28 @@ export const lowerYieldingDefaultChains = (
       } else {
         access = `${name}.`;
       }
+      const last = index === links.length - 1;
+      if (last && captured) {
+        if (captured.questionDotToken) {
+          // The last member's object is what this link read.
+          access = `(${capture} = ${name})${ts.isPropertyAccessExpression(captured) ? '.' : ''}`;
+        } else {
+          // It starts this part of the chain (`(r = t.b).c`).
+          access = `(${capture} = ${access}`;
+          edits.push({
+            start: captured.expression.end,
+            end: captured.expression.end,
+            text: ')',
+          });
+        }
+      }
       edits.push({
         start: token.getStart(sourceFile),
         end: token.end,
         // A `delete` of the chain deletes from the last link, and gives
         // `true` when the chain short-circuits, as natively.
         text: `) == null ? ${deleted ? 'true' : 'void 0'} : ${next}${
-          deleted && index === links.length - 1 ? 'delete ' : ''
+          deleted && last ? 'delete ' : ''
         }${access}`,
       });
       if (ts.isCallExpression(link) && thisArg !== undefined) {
@@ -235,7 +271,34 @@ export const lowerYieldingDefaultChains = (
       end: top.end,
       text: ')'.repeat(links.length),
     });
-    return true;
+  };
+
+  /**
+   * Gives a chain in parentheses that's called (`(a?.m)(x)`) or tags a
+   * template its receiver: natively the call gets the last member's object
+   * as `this`, which a conditional loses.
+   */
+  const called = (node: ts.CallExpression | ts.TaggedTemplateExpression) => {
+    const callee = ts.isCallExpression(node) ? node.expression : node.tag;
+    const chain = calledChain(callee);
+    if (!chain) return;
+    const name = declare(receiverScope(node));
+    captures.set(chain, name);
+    if (ts.isTaggedTemplateExpression(node)) {
+      edits.push({
+        start: callee.end,
+        end: callee.end,
+        text: `.bind(${name})`,
+      });
+      return;
+    }
+    edits.push({ start: callee.end, end: callee.end, text: '.call' });
+    const at = node.arguments.pos;
+    edits.push({
+      start: at,
+      end: at,
+      text: node.arguments.length > 0 ? `${name}, ` : name,
+    });
   };
 
   /**
@@ -243,15 +306,16 @@ export const lowerYieldingDefaultChains = (
    * default value whose chains are compiled here.
    */
   const visit = (node: ts.Node, lowering: boolean): void => {
-    let inDefault = lowering || yieldingDefault(node);
-    if (
-      inDefault &&
-      isChainTop(node) &&
-      (isDeletedInParentheses(node) || !lower(node))
-    ) {
-      // Left to SWC as a whole: compiling the chains inside it would change
-      // what it reads (a call's receiver, what's deleted).
-      inDefault = false;
+    const inDefault = lowering || yieldingDefault(node);
+    if (inDefault) {
+      // A call in a chain (`(a?.m)?.()`) is the chain's to compile.
+      if (
+        (ts.isCallExpression(node) && !ts.isOptionalChain(node)) ||
+        ts.isTaggedTemplateExpression(node)
+      ) {
+        called(node);
+      }
+      if (isChainTop(node)) lower(node);
     }
     ts.forEachChild(node, (child) =>
       visit(child, inDefault && evaluatedWith(node, child)),
@@ -277,22 +341,29 @@ const isChainTop = (node: ts.Node): node is ts.OptionalChain =>
   );
 
 /**
- * Whether a chain is what a `delete` deletes, in parentheses.
+ * The chain in parentheses a call's callee is, when its last link is a
+ * member, whose object the call gets as `this` (`(a?.b.c)(x)`).
  */
-const isDeletedInParentheses = (node: ts.Node): boolean => {
-  let parent = node.parent;
-  if (!ts.isParenthesizedExpression(parent)) return false;
-  while (ts.isParenthesizedExpression(parent)) parent = parent.parent;
-  return ts.isDeleteExpression(parent);
+const calledChain = (
+  callee: ts.Expression,
+): (ts.PropertyAccessChain | ts.ElementAccessChain) | undefined => {
+  if (!ts.isParenthesizedExpression(skipNonNull(callee))) return undefined;
+  let inner = callee;
+  while (ts.isParenthesizedExpression(inner) || ts.isNonNullExpression(inner)) {
+    inner = inner.expression;
+  }
+  return ts.isOptionalChain(inner) &&
+    (ts.isPropertyAccessExpression(inner) ||
+      ts.isElementAccessExpression(inner))
+    ? inner
+    : undefined;
 };
 
 /**
- * Whether `node` has an optional chain in it.
+ * The expression inside any non-null assertions (`a!`).
  */
-const containsChain = (node: ts.Node): boolean =>
-  ts.isOptionalChain(node) ||
-  (ts.forEachChild(node, (child) => containsChain(child) || undefined) ??
-    false);
+const skipNonNull = (node: ts.Expression): ts.Expression =>
+  ts.isNonNullExpression(node) ? skipNonNull(node.expression) : node;
 
 /**
  * Whether `child` runs when `parent` is evaluated, as {@link yieldingDefault}

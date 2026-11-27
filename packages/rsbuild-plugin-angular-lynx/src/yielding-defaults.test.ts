@@ -132,10 +132,39 @@ const FIXTURES: Record<string, string> = {
     };
     [run(new Node('a', new Node('b'))), run(null)];
   `,
+  'chains in parentheses that are called, and tag a template': `
+    'use strict';
+    const node = (name, next) => ({
+      name,
+      next,
+      m(x) { return [this && this.name, x]; },
+      tag(strings, x) { return [this && this.name, strings[0], x]; },
+    });
+    // Calling the chain throws when it's nullish, as natively.
+    async function g(a) {
+      const [p = (a?.m)(await 'p')] = [];
+      const [s = (a?.tag)\`s\${await 's'}\`] = [];
+      return [p, s];
+    }
+    async function h(a) {
+      const [q = (a?.next.m)?.(await 'q')] = [];
+      const [r = (a?.next?.['m'])?.(await 'r')] = [];
+      return [q, r];
+    }
+    const name = (error) => error.constructor.name;
+    (async () => [
+      await g(node('a')),
+      await g(null).catch(name),
+      await h(node('a', node('b'))),
+      await h(null),
+      await h(node('c', null)).catch(name),
+      await h({ next: { m: null } }),
+    ])();
+  `,
   '`delete` of a chain': `
     async function g(a) {
       const [d = delete a?.b.c[await 'c']] = [];
-      const [e = delete a?.x?.y[await 'y']] = [];
+      const [e = delete (a?.x?.y[await 'y'])] = [];
       return [d, e, JSON.stringify(a)];
     }
     (async () => [
@@ -306,13 +335,40 @@ describe('lowerYieldingDefaultChains', () => {
     );
   });
 
-  it("leaves what it can't compile, and modules without such a default value", () => {
+  it('gives a chain in parentheses that is called its receiver', () => {
+    // The last link's read is the object.
+    expect(lower('async (a) => { const [v = (a?.m)(await 1)] = []; }')).toBe(
+      'async (a) => { var __chain0, __chain1; const [v = (((__chain1 = a) == null ? void 0 : (__chain0 = __chain1).m)).call(__chain0, await 1)] = []; }',
+    );
+    // The object is read where the last link's part of the chain starts.
+    expect(
+      lower('async (a) => { const [v = (a?.b.c)?.(await 1)] = []; }'),
+    ).toBe(
+      'async (a) => { var __chain0, __chain1, __chain2; const [v = ((__chain0 = (((__chain2 = a) == null ? void 0 : (__chain1 = __chain2.b).c))) == null ? void 0 : __chain0.call(__chain1, await 1))] = []; }',
+    );
+    // A tag gets it through `bind`, and a call of another kind of link needs
+    // none.
+    expect(
+      lower(
+        'async (a) => { const [v = (a?.[0])`${await 1}`, w = (a?.f())(await 1)] = []; }',
+      ),
+    ).toBe(
+      'async (a) => { var __chain0, __chain1, __chain2; const [v = (((__chain1 = a) == null ? void 0 : (__chain0 = __chain1)[0])).bind(__chain0)`${await 1}`, w = (((__chain2 = a) == null ? void 0 : __chain2.f()))(await 1)] = []; }',
+    );
+    // Outside such a default value, it's left alone.
+    expect(lower('async (a) => { const [v = (a?.m)()] = [await 1]; }')).toBe(
+      'async (a) => { const [v = (a?.m)()] = [await 1]; }',
+    );
+    // A call with no arguments gets only the receiver.
+    expect(
+      lower('async (a) => { const [v = (a?.m)() + (await 1)] = []; }'),
+    ).toBe(
+      'async (a) => { var __chain0, __chain1; const [v = (((__chain1 = a) == null ? void 0 : (__chain0 = __chain1).m)).call(__chain0) + (await 1)] = []; }',
+    );
+  });
+
+  it('leaves modules without such a default value', () => {
     for (const code of [
-      // A `delete` of a chain in parentheses.
-      'async (a) => { const [w = delete (a?.b[await 2])] = []; }',
-      // The receiver is in another chain.
-      'async (a) => { const [v = (a?.b.c)?.(await 1)] = []; }',
-      'async (a) => { const [v = (a?.b)?.(await 1)] = []; }',
       // No `yield` or `await` in it, or none at all.
       'async (a) => { const [v = a?.b] = [await 1]; }',
       'const [v = a?.b] = [];',

@@ -342,6 +342,21 @@ describe('LynxLogger', () => {
       expect(core.handler()).toBeUndefined();
     });
 
+    // The minifier drops the relay of a build without a log server only if
+    // nothing runs before the URL check: it can't tell a read of `fetch`
+    // does nothing (issue #764).
+    it('does not read fetch without a dev server URL', async () => {
+      vi.stubGlobal('__DEV_LOG_URL__', undefined);
+      const read = vi.fn(() => fetchMock);
+      Object.defineProperty(globalThis, 'fetch', {
+        configurable: true,
+        get: read,
+      });
+      await loadModule();
+
+      expect(read).not.toHaveBeenCalled();
+    });
+
     it('is not installed without fetch', async () => {
       vi.stubGlobal('fetch', undefined);
       const core = stubCoreContext();

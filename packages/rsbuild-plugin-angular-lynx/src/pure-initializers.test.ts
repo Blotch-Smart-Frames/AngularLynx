@@ -37,11 +37,6 @@ describe('wrapPureInitializers', () => {
   it.each([
     ['a literal', 'const a = 1;'],
     ['a function', 'const a = () => f();'],
-    ['a collection', 'const a = new Set();'],
-    [
-      'a check',
-      "const a = typeof WeakRef === 'function' ? new WeakRef(b) : null;",
-    ],
     ['a call annotated pure', 'const a = /* @__PURE__ */ f(1);'],
     [
       'a call annotated pure in parentheses',
@@ -104,6 +99,63 @@ describe('wrapPureInitializers', () => {
     expect(wrap('const a = make(async () => await f());')).toContain(
       '/*#__PURE__*/ (() => (make(',
     );
+  });
+
+  // The minifier doesn't know a built-in constructor does nothing else, so
+  // with its constant gone it kept the `new` as a statement, and what its
+  // arguments read: the image registry's `releaseImage()` brought the WebGL
+  // bridge's loader (issue #764).
+  it.each([
+    [
+      'a collection',
+      'const a = new Set();',
+      'const a = /*#__PURE__*/ new Set();',
+    ],
+    [
+      'a check',
+      "const a = typeof FinalizationRegistry === 'function' ? new FinalizationRegistry(release) : null;",
+      "const a = typeof FinalizationRegistry === 'function' ? /*#__PURE__*/ new FinalizationRegistry(release) : null;",
+    ],
+    [
+      'collections inside collections',
+      'const a = new Map([[1, new Set()]]);',
+      'const a = /*#__PURE__*/ new Map([[1, /*#__PURE__*/ new Set()]]);',
+    ],
+    [
+      'collections in an object',
+      'const a = { refs: new WeakMap(), ids: [new WeakSet()] };',
+      'const a = { refs: /*#__PURE__*/ new WeakMap(), ids: [/*#__PURE__*/ new WeakSet()] };',
+    ],
+    [
+      'each declaration of a statement',
+      'let a = new Set(), b = new WeakRef(c);',
+      'let a = /*#__PURE__*/ new Set(), b = /*#__PURE__*/ new WeakRef(c);',
+    ],
+  ])('marks pure the `new` of %s', (_label, code, expected) => {
+    expect(wrap(code)).toBe(expected);
+  });
+
+  it.each([
+    ['already annotated', 'const a = /* @__PURE__ */ new Set();'],
+    ['already annotated with #', 'const a = /*#__PURE__*/ new Set();'],
+    ['inside a function', 'const a = () => new Set();'],
+  ])('leaves alone a collection %s', (_label, code) => {
+    expect(wrap(code)).toBe(code);
+  });
+
+  it("leaves unmarked a wrapped value's collections", () => {
+    // The IIFE's annotation drops the whole value. Only a pure value, which
+    // isn't wrapped, needs its own.
+    expect(wrap('const a = make(new Set());')).toBe(
+      'const a = /*#__PURE__*/ (() => (make(new Set())))();',
+    );
+  });
+
+  it('keeps the annotated value', () => {
+    const code = wrap(
+      "const a = typeof WeakRef === 'function' ? new WeakRef(globalThis) : null;",
+    );
+    expect(new Function(`${code}; return a;`)()?.deref()).toBe(globalThis);
   });
 
   it('wraps a call annotated pure whose arguments are not', () => {

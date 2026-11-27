@@ -1,6 +1,5 @@
 export {
   listenForScrollsFromTheStart,
-  listItemWriteMark,
   LynxElement,
   markTreeFlushed,
   needsTreeFlush,

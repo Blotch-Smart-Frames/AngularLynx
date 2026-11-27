@@ -479,16 +479,20 @@ describe('*lynxListFor', () => {
     expect(metaIn(show(2)!)).toMatch(/^2\/3\s+last even$/);
   });
 
-  it("doesn't flush the whole tree after an item for a cycle that changes nothing", async () => {
+  it('flushes the whole tree with the cycle after an item, then not for a cycle that changes nothing', async () => {
     const { fixture } = await render();
     show(4);
     flushes.length = 0;
+    const appRef = fixture.componentRef.injector.get(ApplicationRef);
 
     // Angular runs a cycle like this after most binds: one for the views a
-    // rebound item's `@if` detached, which refreshes no view.
-    fixture.componentRef.injector.get(ApplicationRef).tick();
+    // rebound item's `@if` detached, which refreshes no view. The item's own
+    // flush committed the item only, and a bind can write outside it.
+    appRef.tick();
+    expect(flushes).toEqual([{ element: undefined, options: undefined }]);
 
-    // The item's own flush committed what it wrote.
+    flushes.length = 0;
+    appRef.tick();
     expect(flushes).toEqual([]);
   });
 

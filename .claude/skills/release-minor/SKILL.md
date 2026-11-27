@@ -104,16 +104,17 @@ It moves:
 - every `@angular/*`, `@angular-devkit/*`, `@schematics/angular` and `ng-packagr` range to
   `^X.Y.0`
 - the `0.MMmm` ones (`@angular-devkit/architect`) to `^0.XXYY.0`
-- the published packages' peer ranges on each other (the testing library's on
-  `@blotch/angular-lynx`), which `set-version` doesn't touch, since it moves only exact pins
+
+The published packages' peer ranges on each other (the testing library's on `@blotch/angular-lynx`)
+aren't in it: `set-version` moves them to `^X.Y.0` with the version, as on every release.
 
 It leaves alone a range that isn't a plain `^` or `~` range, and lists it. The build's
 `>=0.2200.0 <0.2300.0` architect peer covers the whole major, and the matching bounds in
 `renovate.json` and `.github/dependabot.yml` move with `update-angular`. It also checks that npm
 has every version it would move to, and changes nothing if one is missing.
 
-Read the dry run's peer ranges. Every peer each published package has on Angular, and the testing
-library's on the runtime, should be listed and moving to `^X.Y.0`. If one is missing, or anything
+Read the dry run's peer ranges. Every peer each published package has on Angular should be listed
+and moving to `^X.Y.0`. If one is missing, or anything
 else is under "Left alone", find out why before going on. Then write the ranges, set the version
 and install.
 

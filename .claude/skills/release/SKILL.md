@@ -103,10 +103,12 @@ The diff should hold only versions:
 
 - each published package's `version`
 - the exact pins one published package holds on another (see `readInternalPins` in `packages.ts`)
+- the peer floors one holds on another, as `^<version>` (the testing library's on
+  `@blotch/angular-lynx`; see `readInternalPeers`)
 - the lockfile's copies of them
 
 So `--stat` lists `package-lock.json` and the `package.json` of each package in `packages.ts`, and
-every changed line is a version or a pin. If it holds anything else, stop and look. The worktree
+every changed line is a version, a pin or a peer floor. If it holds anything else, stop and look. The worktree
 needs no `npm install`.
 
 Commit it as `chore: Release <version>`, push the branch, and open a PR with that title. Write the
@@ -120,8 +122,8 @@ step with Angular's, naming Angular's `latest`.>
 
 ## What changes
 
-- **Versions.** All <n> published packages are at <version>. So are the exact pins between them.
-  The lockfile changes only those lines.
+- **Versions.** All <n> published packages are at <version>. So are the exact pins between them,
+  and the peer floors between them are `^<version>`. The lockfile changes only those lines.
 - Nothing else.
 
 ## `ng update`
@@ -141,7 +143,7 @@ Since <previous>: <n> features, <n> fixes and <n> <other kind>.
 ## Testing
 
 - `npm run set-version <version>` exits 0.
-- `check-version.ts <version>` passes: every package and pin is at <version>.
+- `check-version.ts <version>` passes: every package, pin and peer floor is at <version>.
 - `publish.yml` runs the full E2E release gate on the tag before it publishes anything.
 ```
 

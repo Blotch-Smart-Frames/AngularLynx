@@ -10,10 +10,10 @@
 //   Angular releases together: ^22.2.5 becomes ^22.3.0. The ones versioned
 //   0.MMmm.p (@angular-devkit/architect, whose 0.2202.x is Angular CLI 22.2.x)
 //   move the same way: ^0.2202.5 becomes ^0.2203.0.
-// - a published package's peer range on another @blotch package (the testing
-//   library's on @blotch/angular-lynx). `npm run set-version` moves only the
-//   exact pins between published packages, so without this the testing
-//   library X.Y.0 would accept a runtime from the old minor.
+//
+// A published package's peer range on another @blotch package (the testing
+// library's on @blotch/angular-lynx) isn't one of them: `npm run set-version`
+// moves it to `^X.Y.0` with the version, as it does on every release.
 //
 // It leaves alone a range that isn't a plain ^ or ~ range (the build's
 // architect peer, >=0.2200.0 <0.2300.0, covers the whole major and moves with
@@ -139,9 +139,7 @@ for (const file of files) {
   const json = readJson(file);
   for (const section of SECTIONS) {
     for (const [name, range] of Object.entries<string>(json[section] ?? {})) {
-      const blotchPeer =
-        section === 'peerDependencies' && name.startsWith('@blotch/');
-      if (!isAngular(name) && !blotchPeer) {
+      if (!isAngular(name)) {
         continue;
       }
       const result = moveRange(range);
@@ -162,15 +160,12 @@ for (const file of files) {
   }
 }
 
-// Every version the moves point at must be on npm. Our own @blotch packages
-// aren't checked: they're published by this release.
+// Every version the moves point at must be on npm.
 const wanted = new Map<string, Set<string>>();
 for (const { name, to } of moves) {
-  if (isAngular(name)) {
-    const versions = wanted.get(name) ?? new Set<string>();
-    versions.add(to.slice(1));
-    wanted.set(name, versions);
-  }
+  const versions = wanted.get(name) ?? new Set<string>();
+  versions.add(to.slice(1));
+  wanted.set(name, versions);
 }
 const missing: string[] = [];
 for (const [name, versions] of wanted) {

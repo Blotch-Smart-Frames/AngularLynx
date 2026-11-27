@@ -46,7 +46,7 @@ export default {
     },
     messages: {
       versionMismatch:
-        'Package version mismatch: {{ detail }}. All published packages must share the same version; set them with `npm run set-version <version>`.',
+        'Package version mismatch: {{ detail }}. All published packages, the pins between them and the floors of their peer ranges on each other must share the same version; set them with `npm run set-version <version>`.',
       packageGroupMismatch:
         'ng-update.packageGroup differs from NG_UPDATE_PACKAGE_GROUP in packages/release/src/packages.ts in: {{ detail }}. Each package `ng update` moves together must list the group in its package.json.',
       angularPeerFloorMismatch:

@@ -180,13 +180,24 @@ internal object CanvasFilter {
     }
 
     /**
-     * drop-shadow(): the alpha of what's drawn, moved by the offset (to the
-     * nearest pixel), blurred and in the color, drawn under it. `values` is
-     * dx, dy, the deviation, red, green, blue (0 to 255) and alpha (0 to 1).
+     * The shadow of what's in `bytes`: its alpha, moved by the offset (to the
+     * nearest pixel), blurred by the deviation and in the color (red, green
+     * and blue 0 to 255, alpha 0 to 1), as new premultiplied bytes.
      */
-    private fun dropShadow(bytes: ByteArray, width: Int, height: Int, values: DoubleArray) {
-        val offsetX = values[0].roundToInt()
-        val offsetY = values[1].roundToInt()
+    fun shadowOf(
+        bytes: ByteArray,
+        width: Int,
+        height: Int,
+        dx: Double,
+        dy: Double,
+        sigma: Double,
+        r: Double,
+        g: Double,
+        b: Double,
+        a: Double,
+    ): ByteArray {
+        val offsetX = dx.roundToInt()
+        val offsetY = dy.roundToInt()
         val shadow = ByteArray(bytes.size)
         if (abs(offsetX) < width && abs(offsetY) < height) {
             for (y in maxOf(0, offsetY) until min(height, height + offsetY)) {
@@ -195,15 +206,26 @@ internal object CanvasFilter {
                 }
             }
         }
-        gaussianBlur(shadow, width, height, values[2])
-        val (r, g, b, a) = listOf(values[3], values[4], values[5], values[6])
-        for (p in 0 until bytes.size step 4) {
+        gaussianBlur(shadow, width, height, sigma)
+        for (p in 0 until shadow.size step 4) {
             val shadowAlpha = shadow.at(p + 3) / 255.0 * a
-            val under = 1 - bytes.at(p + 3) / 255.0
-            bytes[p] = clampByte(bytes.at(p) + r * shadowAlpha * under)
-            bytes[p + 1] = clampByte(bytes.at(p + 1) + g * shadowAlpha * under)
-            bytes[p + 2] = clampByte(bytes.at(p + 2) + b * shadowAlpha * under)
-            bytes[p + 3] = clampByte(bytes.at(p + 3) + 255 * shadowAlpha * under)
+            shadow[p] = clampByte(r * shadowAlpha)
+            shadow[p + 1] = clampByte(g * shadowAlpha)
+            shadow[p + 2] = clampByte(b * shadowAlpha)
+            shadow[p + 3] = clampByte(255 * shadowAlpha)
+        }
+        return shadow
+    }
+
+    /**
+     * drop-shadow(): the shadow of what's drawn (shadowOf), under it. `values`
+     * is dx, dy, the deviation, red, green, blue (0 to 255) and alpha (0 to 1).
+     */
+    private fun dropShadow(bytes: ByteArray, width: Int, height: Int, values: DoubleArray) {
+        val shadow = shadowOf(bytes, width, height, values[0], values[1], values[2], values[3], values[4], values[5], values[6])
+        for (p in 0 until bytes.size) {
+            val under = 1 - bytes.at(p - p % 4 + 3) / 255.0
+            bytes[p] = clampByte(bytes.at(p) + shadow.at(p) * under)
         }
     }
 }

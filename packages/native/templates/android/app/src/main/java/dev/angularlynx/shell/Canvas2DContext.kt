@@ -691,6 +691,7 @@ class Canvas2DContext(
         val layerWidth = width + pad * 2
         val layerHeight = height + pad * 2
         var layer: Bitmap? = null
+        var shadow: Bitmap? = null
         try {
             layer = Bitmap.createBitmap(layerWidth, layerHeight, Bitmap.Config.ARGB_8888)
             val layerCanvas = Canvas(layer)
@@ -707,11 +708,23 @@ class Canvas2DContext(
             // see-through shape.
             CanvasFilter.scaleAlpha(pixels.array(), s.globalAlpha.toDouble())
             CanvasFilter.apply(pixels.array(), layerWidth, layerHeight, s.filterSteps)
+            // The canvas shadow, cast from the filtered layer and drawn
+            // before it, as the spec has it. It's made here rather than with
+            // the paint's shadow layer, which, for a bitmap with colors, casts
+            // the shadow in the bitmap's colors, not the shadow's.
+            if (shadowVisible()) {
+                val color = s.shadowColor
+                val shadowBytes = CanvasFilter.shadowOf(
+                    pixels.array(), layerWidth, layerHeight, 0.0, 0.0, s.shadowBlur / 2.0,
+                    Color.red(color).toDouble(), Color.green(color).toDouble(), Color.blue(color).toDouble(),
+                    Color.alpha(color) / 255.0,
+                )
+                shadow = Bitmap.createBitmap(layerWidth, layerHeight, Bitmap.Config.ARGB_8888)
+                shadow.copyPixelsFromBuffer(ByteBuffer.wrap(shadowBytes))
+            }
             pixels.rewind()
             layer.copyPixelsFromBuffer(pixels)
-            val paint = Paint()
-            // The layer is in the canvas's pixels, so the shadow needs no matrix.
-            if (shadowVisible()) applyShadow(paint, null)
+            val paint = Paint(Paint.FILTER_BITMAP_FLAG)
             val unbounded = s.composite in UNBOUNDED
             if (unbounded) {
                 val layerPaint = Paint()
@@ -720,6 +733,8 @@ class Canvas2DContext(
             } else {
                 setBlend(paint, s.composite)
             }
+            // Its offset is in the canvas's pixels, which the layer is in.
+            shadow?.let { c.drawBitmap(it, s.shadowOffsetX - pad, s.shadowOffsetY - pad, paint) }
             c.drawBitmap(layer, -pad.toFloat(), -pad.toFloat(), paint)
             if (unbounded) c.restore()
         } catch (_: OutOfMemoryError) {
@@ -733,6 +748,7 @@ class Canvas2DContext(
             return
         } finally {
             layer?.recycle()
+            shadow?.recycle()
         }
         if (!alpha && s.composite in REDUCES_ALPHA) keepOpaque()
     }

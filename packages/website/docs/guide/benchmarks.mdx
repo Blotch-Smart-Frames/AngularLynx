@@ -42,6 +42,8 @@ Each app launched, then its Pokédex swiped up fast, always further down the lis
 
 These runs are newer than the launches: 27 November 2026, on iOS 27.2.1. AngularLynx is the tip of master that day (Angular 22.3.0), ReactLynx is `@lynx-js/react` 0.129.4 and React Native 0.81 is on Expo 54.0.38, all else as in the [version table](#the-app). React Native 0.88 and Angular Native aren't measured scrolling yet.
 
+In these runs AngularLynx's app fetched each row's types as its list built the row, while the list scrolled. React Native and ReactLynx fetch every row's types when the row's page arrives, and since 28 November AngularLynx's app does too. On the iOS Simulator that change cut its CPU per swipe by about a fifth; the iPhone hasn't been measured again since.
+
 <ScrollCharts />
 
 ## App size

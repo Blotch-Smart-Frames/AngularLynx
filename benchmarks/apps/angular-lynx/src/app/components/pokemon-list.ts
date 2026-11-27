@@ -1,4 +1,15 @@
-import { Component, computed, input, output, signal } from '@angular/core';
+import {
+  Component,
+  type ElementRef,
+  Renderer2,
+  computed,
+  effect,
+  inject,
+  input,
+  output,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { LYNX_ELEMENTS, type LynxListItemAttributes } from '@blotch/angular-lynx';
 
 import { UiSpinner } from '../../components/ui/spinner';
@@ -29,13 +40,13 @@ const ROW_HEIGHT = 106;
   host: { class: 'list-host' },
   template: `
     <list
+      #list
       class="list"
       list-type="single"
       scroll-orientation="vertical"
       [attr.lower-threshold-item-count]="threshold()"
       (bindscrolltolower)="endReached.emit()"
       (bindlayoutchange)="measure($event.detail.height)"
-      (bindlayoutcomplete)="laidOut.emit()"
     >
       <list-item item-key="header" class="header-item">
         <text class="header">{{ headerText() }}</text>
@@ -121,6 +132,8 @@ export class PokemonList {
   /** What shows while there are no rows. */
   readonly emptyState = input.required<ListEmptyState>();
   readonly fetchingNextPage = input(false);
+  /** Whether to emit `laidOut` after each layout of the list. */
+  readonly watchLayout = input(false);
 
   /** The end of the rows came within half a screen (onEndReached). */
   readonly endReached = output<void>();
@@ -128,6 +141,23 @@ export class PokemonList {
   readonly laidOut = output<void>();
 
   readonly #height = signal(0);
+  protected readonly list = viewChild.required<ElementRef<unknown>>('list');
+
+  constructor() {
+    // Lynx's list sends `layoutcomplete` after every layout, which is every
+    // few rows while it scrolls, and a template listener marks this view and
+    // every view above it for check: each one would cost the app a change
+    // detection of the whole list. The Pokédex needs it only until it's
+    // fully drawn (ReactLynx's app doesn't listen at all), so it listens
+    // through the renderer, only while the parent asks.
+    const renderer = inject(Renderer2);
+    effect((onCleanup) => {
+      if (!this.watchLayout()) return;
+      onCleanup(
+        renderer.listen(this.list().nativeElement, 'bindlayoutcomplete', () => this.laidOut.emit()),
+      );
+    });
+  }
 
   protected readonly empty = computed(() => (this.data().length === 0 ? this.emptyState() : null));
 

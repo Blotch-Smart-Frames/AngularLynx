@@ -27,7 +27,10 @@ size, a color or a behavior, do what `apps/react-native` does.
   in the type's color (`constants/pokemonTypes.ts`), then a 20px heart button.
   **Each row fetches its own detail** (`GET {API}/pokemon/{id}`) for the type
   dots, cached per id (React Query in the original: stale after 5 minutes,
-  retry 2). Tapping the row opens the detail screen.
+  retry 2). In the original every row of a page has fetched its detail soon
+  after the page arrives (FlatList's window covers the page), so a list that
+  builds rows only as they near the screen fetches a page's details when the
+  page arrives. Tapping the row opens the detail screen.
 - **Detail** (`/pokemon/:id`): a sheet (iOS form sheet at 75% height, radius
   16, white) with a handle and a 30px heart, the 200×200 official artwork,
   the capitalized name (26px semibold, centered) and rows Dex №, Type, Height

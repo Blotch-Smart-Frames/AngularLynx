@@ -507,6 +507,9 @@ export class CanvasRoute {
       size(shownOffscreen.transferToImageBitmap()),
       size(shownOffscreen.transferToImageBitmap()),
     );
+    // Red again first: the transfers left the canvas transparent, so null
+    // has to be what clears it.
+    renderer.transferFromImageBitmap(redFrame(2, 1));
     renderer.transferFromImageBitmap(null);
     reads.push(read(shownOffscreen));
     const shown = this.shown().nativeElement as unknown as HTMLCanvasElement;

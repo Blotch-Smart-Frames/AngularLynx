@@ -15,7 +15,7 @@ import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
 import { DURATION } from '../../utils/animate';
 import { UiGlass } from '../glass/glass';
 import { ICON_LIGHT_COLORS } from '../icon/icon-theme';
-import type { IconName } from '../icon/icons';
+import { type IconName, provideIcons } from '../icon/icons';
 import {
   UiMenu,
   UiMenuItem,
@@ -23,6 +23,10 @@ import {
   UiMenuSeparator,
   UiMenuTrigger,
 } from './menu';
+import { starIcon, trashIcon, uploadIcon } from '../icon/icon-set';
+
+// The icons these specs draw by name, registered as an app registers its own.
+const TEST_ICONS = provideIcons({ starIcon, trashIcon, uploadIcon });
 
 /**
  * An app's own one-color mark, with no SVG namespace, as an app writes one.
@@ -31,6 +35,7 @@ const MARK =
   '<svg viewBox="0 0 16 16"><path fill="currentColor" d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0Z"/></svg>';
 
 @Component({
+  providers: [TEST_ICONS],
   imports: [
     LYNX_ELEMENTS,
     UiGlass,

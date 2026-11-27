@@ -2,7 +2,11 @@ import { Component, ViewEncapsulation, computed, input } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 import { cn } from '../../utils/cn';
-import { type IconName, optionalIconMarkup } from '../icon/icons';
+import {
+  type IconName,
+  injectIconMarkup,
+  optionalIconMarkup,
+} from '../icon/icons';
 import { UiIcon } from '../icon/icon';
 
 /**
@@ -38,7 +42,10 @@ import { UiIcon } from '../icon/icon';
   `,
 })
 export class UiEmptyState {
-  /** An icon from the set (see `ICONS`) over the title. Give this or `svg`. */
+  /**
+   * An icon from the set, registered with `provideIcons()`, over the title.
+   * Give this or `svg`.
+   */
   readonly icon = input<IconName | undefined>(undefined);
   /**
    * SVG markup to draw instead of an icon from the set, such as the app's
@@ -51,6 +58,8 @@ export class UiEmptyState {
   readonly description = input('');
   readonly userClass = input<string>('', { alias: 'class' });
 
+  readonly #iconMarkup = injectIconMarkup();
+
   /**
    * The icon's markup, from the set or the app's own, or nothing. The
    * <ui-icon> gets it as its `svg` either way, so the empty state checks for
@@ -58,6 +67,7 @@ export class UiEmptyState {
    */
   protected readonly iconMarkup = computed(() =>
     optionalIconMarkup(
+      this.#iconMarkup,
       this.icon(),
       this.svg(),
       '<ui-empty-state> takes an icon or an svg, not both.',

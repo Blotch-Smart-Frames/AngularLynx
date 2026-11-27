@@ -24,8 +24,12 @@ import {
 } from '@blotch/angular-lynx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireLynxEvent } from '@blotch/dolan/testing/fire-lynx-event';
-import { type IconName } from '../icon/icons';
+import { type IconName, provideIcons } from '../icon/icons';
 import { UiTabBar, UiTabBarItem } from './tab-bar';
+import { homeIcon, inboxIcon, userIcon } from '../icon/icon-set';
+
+// The icons these specs draw by name, registered as an app registers its own.
+const TEST_ICONS = provideIcons({ homeIcon, inboxIcon, userIcon });
 
 @Component({
   selector: 'home-page',
@@ -83,6 +87,7 @@ const gatedRoutes: Routes = [
 ];
 
 @Component({
+  providers: [TEST_ICONS],
   imports: [LYNX_ELEMENTS, RouterOutlet, UiTabBar, UiTabBarItem],
   template: `
     <router-outlet />
@@ -117,6 +122,7 @@ class TabBarHost {
 }
 
 @Component({
+  providers: [TEST_ICONS],
   imports: [UiTabBar, UiTabBarItem],
   template: `
     <ui-tab-bar class="mt-1">
@@ -139,6 +145,7 @@ const TWO_COLOR_MARK =
  * Home tab.
  */
 @Component({
+  providers: [TEST_ICONS],
   imports: [RouterOutlet, UiTabBar, UiTabBarItem],
   template: `
     <router-outlet />
@@ -163,6 +170,7 @@ class SvgHost {
  * A tab whose icon and svg a test sets, to get them wrong.
  */
 @Component({
+  providers: [TEST_ICONS],
   imports: [UiTabBar, UiTabBarItem],
   template: `
     <ui-tab-bar>

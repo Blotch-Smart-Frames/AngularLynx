@@ -19,6 +19,10 @@ import {
   trackedComponents,
   untrackedComponents,
 } from '../utils/installed.js';
+import {
+  logIconRegistration,
+  registerAppIcons,
+} from '../utils/icon-registrations.js';
 import { isInteractive } from '../utils/interactive.js';
 import { copiesTests } from '../utils/packages.js';
 import { installComponentPackages } from './install-packages.js';
@@ -518,6 +522,10 @@ export const updateCommand = async (options: {
 
   // Nothing to do
   if (autoUpdateCount === 0 && conflictCount === 0 && userModifiedCount === 0) {
+    // The icon copy can be the new one already, with the app's icons still
+    // unregistered: a run that took it, then the app's config reverted. It
+    // changes nothing once the app registers icons, so it's safe each time.
+    logIconRegistration(registerAppIcons(cwd, componentsDir));
     p.outro('Everything is up to date.');
     writeLockfile(
       cwd,
@@ -541,6 +549,7 @@ export const updateCommand = async (options: {
     autoUpdateCount === 0 &&
     conflictCount === 0
   ) {
+    logIconRegistration(registerAppIcons(cwd, componentsDir));
     p.outro('Everything is up to date.');
     writeLockfile(
       cwd,
@@ -852,6 +861,12 @@ export const updateCommand = async (options: {
   writeLockfile(cwd, newLockfile);
 
   applySpinner.stop('Done!');
+
+  // An icon copy from before provideIcons() bundled every icon, so an app
+  // drew any of them without registering it. The first update to a copy that
+  // takes registrations registers what the app names, so its screens keep
+  // drawing; after that, the app's registrations are its own.
+  logIconRegistration(registerAppIcons(cwd, componentsDir));
 
   // --- Final summary ---
   if (appliedCount > 0) {

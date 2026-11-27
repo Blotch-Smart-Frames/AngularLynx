@@ -17,8 +17,14 @@ import {
   UiButtonGroupItem,
   buttonGroupItemVariants,
 } from './button-group';
+import { copyIcon } from '../icon/icon-set';
+import { provideIcons } from '../icon/icons';
+
+// The icons these specs draw by name, registered as an app registers its own.
+const TEST_ICONS = provideIcons({ copyIcon });
 
 @Component({
+  providers: [TEST_ICONS],
   imports: [UiButtonGroup, UiButtonGroupItem, UiIcon],
   template: `
     <ui-button-group
@@ -64,6 +70,7 @@ class ButtonGroupHost {
 }
 
 @Component({
+  providers: [TEST_ICONS],
   imports: [UiButtonGroup, UiButtonGroupItem, UiIcon],
   template: `
     <ui-button-group size="icon">

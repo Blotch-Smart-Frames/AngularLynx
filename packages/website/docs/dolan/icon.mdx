@@ -11,10 +11,23 @@ npx @blotch/dolan add icon
 ```
 
 ```typescript
-import { UiIcon } from '../components/ui/icon';
+import { UiIcon, provideIcons } from '../components/ui/icon';
 ```
 
 ## Usage
+
+Register the icons your app draws, then draw them by name:
+
+```typescript title="src/app/app.config.ts"
+import { heartIcon, provideIcons } from '../components/ui/icon';
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    // ...
+    provideIcons({ heartIcon }),
+  ],
+};
+```
 
 ```typescript title="src/app/app.ts"
 import { Component } from '@angular/core';
@@ -27,6 +40,52 @@ import { UiIcon } from '../components/ui/icon';
 })
 export class App {}
 ```
+
+### Register the icons you draw
+
+Each icon is an export of its own, named for the icon with `Icon` on the end: `heart` is `heartIcon`, and `chevron-right` is `chevronRightIcon`. `provideIcons()` registers the ones you pass, and only those go into your app's scripts. A set that every icon came with, whatever an app drew, took about 34 kB of the main-thread script, and Lynx keeps a script's whole bytecode in memory.
+
+- **Register an icon wherever you draw it by name:** `name` on an icon, and `icon` on the items of a [Tab Bar](/dolan/tab-bar), a [Dock](/dolan/dock), a [Menu](/dolan/menu), a [Toolbar](/dolan/toolbar) or a [Navigation Bar](/dolan/navigation-bar), and on an [Empty State](/dolan/empty-state). A name bound from data, as in `[name]="item.icon"`, needs each icon the data can hold.
+- **The components' own icons need nothing.** A calendar's chevrons, a search field's magnifier or a copy button's check are registered by the component that draws them.
+- **Give it in the app's config for the whole app, or in a component's `providers`** for that component and everything it shows. Each `provideIcons()` adds to the icons registered above it, so a feature can register its own icons where it draws them.
+- **An icon nobody registered throws** an error that names its export, such as `No icon named "chevron-right" is registered. Register it with provideIcons({ chevronRightIcon })`, rather than drawing an empty box.
+- **The keys don't matter:** each icon carries its own name, so `provideIcons({ heartIcon })` registers `heart`.
+
+```typescript title="src/app/settings/settings.ts"
+import { Component } from '@angular/core';
+import {
+  UiIcon,
+  bellIcon,
+  lockIcon,
+  provideIcons,
+} from '../../components/ui/icon';
+
+@Component({
+  selector: 'app-settings',
+  imports: [UiIcon],
+  // Only this screen draws these, so it registers them itself.
+  providers: [provideIcons({ bellIcon, lockIcon })],
+  template: `
+    <ui-icon name="bell" />
+    <ui-icon name="lock" />
+  `,
+})
+export class Settings {}
+```
+
+To draw any icon by a name you can't list, such as names from a server, register the whole set with `provideAllIcons()`. It brings every icon back into your app's scripts.
+
+A spec that renders a component without the app's config needs the component's icons registered too: add `provideIcons()` to the providers it renders with.
+
+### From a copy that had every icon
+
+Icon copies before `provideIcons()` came with every icon, so an app drew any of them without registering it. The `dolan update` that brings the new copy registers the icons your app names for you:
+
+- **It looks for icon names in your source:** every quoted string in your `.ts` and `.html` files, outside the components' own folders, that's the name of an icon. That finds `name="check"`, `[name]="done() ? 'check' : 'x'"` and `{ icon: 'home' }`. A string that only happens to be an icon's name, such as `'x'` for an axis, registers an icon you don't draw, which costs a few hundred bytes.
+- **It adds `provideIcons()` with them to the `providers` of your `ApplicationConfig`,** in `app.config.ts`, and says which it registered. Without an `ApplicationConfig`, it prints the call to add.
+- **It does this once.** An app that calls `provideIcons()` or `provideAllIcons()` anywhere is left alone.
+- **A name built at runtime can't be found,** such as `'arrow-' + side`. Drawing it throws the error above, naming the icon to register.
+- **`ICONS` is gone.** `update` lists your files that read it. For an icon's markup, use `iconSvg(chevronRightIcon)`.
 
 ### Colors
 
@@ -112,7 +171,7 @@ The sizes are 16, 20, 24 and 32 pixels square. Without a `size`, an icon is 24px
 
 ### Type-safe names
 
-`IconName` is the union of every icon name. `ICONS` maps each name to its SVG markup, so `Object.keys(ICONS)` lists them all.
+`IconName` is the union of every icon name in the set, registered or not. It's a type, so it adds nothing to your app's scripts.
 
 ```typescript
 import { signal } from '@angular/core';
@@ -121,11 +180,15 @@ import { type IconName } from '../components/ui/icon';
 const current = signal<IconName>('check');
 ```
 
+For an icon's markup, as a string to pass to `svg` or an `<svg>` element's `content`, `iconSvg(checkIcon)` puts the icon's body in its root `<svg>`.
+
 ### Spacing
 
 `class` takes Tailwind classes for the icon, such as `class="mr-2"`.
 
 ### Available icons
+
+Each is the export of its name in camel case with `Icon` on the end: `alert-triangle` is `alertTriangleIcon`, and `undo-2` is `undo2Icon`.
 
 **Common:** `check`, `x`, `plus`, `minus`, `chevron-down`, `chevron-up`, `chevron-left`, `chevron-right`, `arrow-left`, `arrow-right`, `search`, `menu`, `info`, `alert-triangle`, `loader`, `circle`, `ellipsis`, `eye`, `eye-off`, `settings`, `trash`, `heart`, `star`, `bell`
 
@@ -168,6 +231,14 @@ const current = signal<IconName>('check');
 | `class` | `string`                       | `''`        | Extra Tailwind classes for the icon.                                                                                                                        |
 
 No outputs.
+
+### Functions
+
+| Function              | Returns    | Description                                                                                                                                          |
+| --------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `provideIcons(icons)` | `Provider` | Registers the icons in `icons`, an object of the set's exports such as `{ checkIcon, heartIcon }`, for an app's config or a component's `providers`. |
+| `provideAllIcons()`   | `Provider` | Registers every icon in the set, and puts them all in the app's scripts.                                                                             |
+| `iconSvg(icon)`       | `string`   | An icon's markup: its body in the set's root `<svg>`, stroked in `currentColor`.                                                                     |
 
 ## Related
 

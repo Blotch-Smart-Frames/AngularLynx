@@ -27,9 +27,11 @@ import {
   injectSystemDrawsGlass,
 } from '../glass/glass-design';
 import { injectIconColor } from '../icon/icon-theme';
+import { arrowLeftIcon, chevronLeftIcon } from '../icon/icon-set';
 import {
   type IconName,
-  ICONS,
+  iconSvg,
+  injectIconMarkup,
   optionalIconMarkup,
   paintIcon,
 } from '../icon/icons';
@@ -230,6 +232,7 @@ export class UiToolbarItem {
   readonly #systemDrawsGlass = injectSystemDrawsGlass();
   readonly #platform = platformOf(inject(Injector));
   readonly #resolveColor = injectIconColor();
+  readonly #iconMarkup = injectIconMarkup();
 
   readonly #host = inject<ElementRef<BaseLynxElement>>(ElementRef);
 
@@ -252,9 +255,10 @@ export class UiToolbarItem {
    */
   readonly #icon = computed<string | undefined>(() => {
     if (this.back()) {
-      return ICONS[this.#material() ? 'arrow-left' : 'chevron-left'];
+      return iconSvg(this.#material() ? arrowLeftIcon : chevronLeftIcon);
     }
     return optionalIconMarkup(
+      this.#iconMarkup,
       this.icon(),
       this.svg(),
       '<ui-toolbar-item> takes an icon or an svg, not both.',

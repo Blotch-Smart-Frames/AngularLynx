@@ -9,7 +9,7 @@ import { registerHostElement } from '@blotch/angular-lynx';
 
 import { cn } from '@blotch/dolan/utils/cn';
 import { type IconSize, UI_ICON_SIZE, injectIconColor } from './icon-theme';
-import { type IconName, iconMarkup, paintIcon } from './icons';
+import { type IconName, injectIconMarkup, paintIcon } from './icons';
 
 const SIZE_MAP: Readonly<Record<IconSize, number>> = {
   xs: 16,
@@ -45,7 +45,10 @@ const SIZE_MAP: Readonly<Record<IconSize, number>> = {
   template: '',
 })
 export class UiIcon {
-  /** An icon from the set (see `ICONS`). Give this or `svg`. */
+  /**
+   * An icon from the set, registered with `provideIcons()`. Give this or
+   * `svg`.
+   */
   readonly name = input<IconName | undefined>(undefined);
   /**
    * SVG markup to draw instead of an icon from the set. `currentColor` in it
@@ -68,6 +71,7 @@ export class UiIcon {
   readonly userClass = input<string>('', { alias: 'class' });
 
   readonly #resolveColor = injectIconColor();
+  readonly #iconMarkup = injectIconMarkup();
   readonly #inheritedSize = inject(UI_ICON_SIZE, { optional: true });
 
   /**
@@ -81,11 +85,12 @@ export class UiIcon {
    * character. Everything it reads is a signal (the inputs, the color
    * scheme, the theme's colors and the container's `UI_ICON_COLOR`), so it
    * builds the string again only when one of them changes. A mistake
-   * (neither `name` nor `svg`, or both) still throws on each read.
+   * (neither `name` nor `svg`, both, or a name nobody registered) still
+   * throws on each read.
    */
   protected readonly svgContent = computed(() =>
     paintIcon(
-      iconMarkup(
+      this.#iconMarkup(
         this.name(),
         this.svg(),
         '<ui-icon> needs a name or an svg, not both.',

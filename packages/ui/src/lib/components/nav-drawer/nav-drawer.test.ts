@@ -29,8 +29,14 @@ import {
   UiNavDrawerItem,
   UiNavDrawerTrigger,
 } from './nav-drawer';
+import { homeIcon, menuIcon, trashIcon } from '../icon/icon-set';
+import { provideIcons } from '../icon/icons';
+
+// The icons these specs draw by name, registered as an app registers its own.
+const TEST_ICONS = provideIcons({ homeIcon, trashIcon });
 
 @Component({
+  providers: [TEST_ICONS],
   imports: [
     UiNavDrawer,
     UiNavDrawerHeader,
@@ -532,6 +538,15 @@ describe('UiNavDrawerItem', () => {
 });
 
 describe('UiNavDrawerTrigger', () => {
+  // The app registers only the icons it names (here home and trash): the
+  // trigger's menu icon is the component's own.
+  it('draws its menu icon without the app registering it', async () => {
+    const { trigger } = await renderDrawer();
+    expect(trigger().querySelector('svg')!.getAttribute('content')).toContain(
+      menuIcon.body,
+    );
+  });
+
   it('is a labeled button for screen readers', async () => {
     const { trigger, getByRole } = await renderDrawer();
     expect(getByRole('button', { name: 'Open navigation menu' })).toBe(

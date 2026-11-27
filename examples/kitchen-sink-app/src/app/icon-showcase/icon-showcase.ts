@@ -23,7 +23,7 @@ type IconCategory = {
 };
 
 /**
- * Mirrors the category grouping in packages/ui/src/lib/components/icon/icons.ts.
+ * Mirrors the category grouping in packages/ui/src/lib/components/icon/icon-set.ts.
  * There's no runtime metadata linking an icon to its category, so this list is
  * kept in sync by hand — see that file's category comments when adding icons.
  */

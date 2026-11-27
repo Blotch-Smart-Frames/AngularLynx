@@ -13,6 +13,7 @@ import {
   TabBarFeed,
   TabBarSearch,
 } from './tab-bar-demo';
+import { provideAllIcons } from '../../components/ui/icon';
 
 // The demo's tabs are relative routes, so it has to be a route's component,
 // as it is in the app, for them to resolve under /tab-bar-demo.
@@ -56,7 +57,7 @@ describe('TabBarDemo', () => {
 
   it('switches its child routes from its own tab bar', async () => {
     const { container, componentRef, getByText } = await render(Shell, {
-      providers: [provideRouter(routes)],
+      providers: [provideRouter(routes), provideAllIcons()],
     });
     const router = componentRef.injector.get(Router);
     const tab = (label: string) =>

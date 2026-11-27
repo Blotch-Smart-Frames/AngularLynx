@@ -29,8 +29,10 @@ import {
   slideOut,
 } from '../../utils/animate';
 import { cn } from '../../utils/cn';
-import { UiIcon } from '../icon';
+import { UiIcon } from '../icon/icon';
+import { menuIcon } from '../icon/icon-set';
 import { UI_ICON_COLOR } from '../icon/icon-theme';
+import { provideIcons } from '../icon/icons';
 
 @Component({
   selector: 'ui-nav-drawer',
@@ -517,6 +519,9 @@ export class UiNavDrawerFooter {
 @Component({
   selector: 'ui-nav-drawer-trigger',
   imports: [UiIcon],
+  // The icon its own template draws, registered here so an app that doesn't
+  // draw it itself needn't.
+  viewProviders: [provideIcons({ menuIcon })],
   encapsulation: ViewEncapsulation.None,
   // The trigger is only an icon, so it carries the words a screen reader
   // says for it. The label is an attribute binding: a property binding on a

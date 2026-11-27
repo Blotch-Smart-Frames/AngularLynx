@@ -16,8 +16,14 @@ import {
   UiButton,
   buttonVariants,
 } from './button';
+import { arrowRightIcon, searchIcon } from '../icon/icon-set';
+import { provideIcons } from '../icon/icons';
+
+// The icons these specs draw by name, registered as an app registers its own.
+const TEST_ICONS = provideIcons({ arrowRightIcon, searchIcon });
 
 @Component({
+  providers: [TEST_ICONS],
   imports: [UiButton, UiIcon],
   template: `
     <ui-button
@@ -93,6 +99,7 @@ const renderButton = async (
 };
 
 @Component({
+  providers: [TEST_ICONS],
   imports: [UiButton, UiIcon],
   template: `
     <ui-button size="icon" accessibility-label="Search" class="mt-2">
@@ -106,6 +113,7 @@ class StaticAttributesHost {}
  * A sign-in button with the provider's mark, an app's own SVG.
  */
 @Component({
+  providers: [TEST_ICONS],
   imports: [UiButton, UiIcon],
   template: `
     <ui-button variant="outline">
@@ -123,6 +131,7 @@ class OwnSvgHost {
  * A small button whose icon sets its own size.
  */
 @Component({
+  providers: [TEST_ICONS],
   imports: [UiButton, UiIcon],
   template: `
     <ui-button size="sm">

@@ -36,7 +36,7 @@ import {
 } from '../../utils/animate';
 import { cn } from '../../utils/cn';
 import { injectIconColor } from '../icon/icon-theme';
-import { type IconName, iconMarkup, paintIcon } from '../icon/icons';
+import { type IconName, injectIconMarkup, paintIcon } from '../icon/icons';
 
 /**
  * The bar along the bottom of the screen that switches between an app's
@@ -309,7 +309,10 @@ const round = (value: number): number => Math.round(value * 100) / 100;
   `,
 })
 export class UiTabBarItem {
-  /** An icon from the set (see `ICONS`). Give this or `svg`. */
+  /**
+   * An icon from the set, registered with `provideIcons()`. Give this or
+   * `svg`.
+   */
   readonly icon = input<IconName | undefined>(undefined);
   /**
    * SVG markup to draw instead of an icon from the set, such as the app's
@@ -375,6 +378,7 @@ export class UiTabBarItem {
   );
 
   readonly #resolveColor = injectIconColor();
+  readonly #iconMarkup = injectIconMarkup();
 
   // The active tab takes the theme's primary color and the others its muted
   // foreground, like the tint of a native tab bar. They're solid tokens, not
@@ -389,7 +393,7 @@ export class UiTabBarItem {
   // written into the markup (see icon-theme.ts).
   protected readonly iconSvg = computed(() =>
     paintIcon(
-      iconMarkup(
+      this.#iconMarkup(
         this.icon(),
         this.svg(),
         '<ui-tab-bar-item> needs an icon or an svg, not both.',

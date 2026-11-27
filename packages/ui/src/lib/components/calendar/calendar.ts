@@ -21,6 +21,13 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { cn } from '../../utils/cn';
 import { UiButton } from '../button/button';
 import { UiIcon } from '../icon/icon';
+import {
+  chevronDownIcon,
+  chevronLeftIcon,
+  chevronRightIcon,
+  chevronUpIcon,
+} from '../icon/icon-set';
+import { provideIcons } from '../icon/icons';
 
 /** A day of the week, numbered as `Date.getDay()` numbers it: 0 is Sunday. */
 export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
@@ -205,6 +212,18 @@ const rowsOf = <T>(cells: readonly T[], size: number): T[][] =>
 @Component({
   selector: 'ui-calendar',
   imports: [LYNX_ELEMENTS, UiButton, UiIcon],
+  // The icons its own template draws, registered here so an app that doesn't
+  // draw them itself needn't. viewProviders, not providers: content an app
+  // projects in finds only the icons the app registered, as it would
+  // anywhere else.
+  viewProviders: [
+    provideIcons({
+      chevronDownIcon,
+      chevronLeftIcon,
+      chevronRightIcon,
+      chevronUpIcon,
+    }),
+  ],
   encapsulation: ViewEncapsulation.None,
   host: { '[class]': 'hostClass()' },
   template: `

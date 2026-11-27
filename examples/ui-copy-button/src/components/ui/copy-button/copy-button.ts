@@ -23,6 +23,8 @@ import {
   UiButton,
 } from '../button/button';
 import { UiIcon } from '../icon/icon';
+import { checkIcon, copyIcon } from '../icon/icon-set';
+import { provideIcons } from '../icon/icons';
 
 /**
  * Does nothing: a screen reader that couldn't be told about the copy loses
@@ -45,6 +47,11 @@ const ignore = (): void => undefined;
 @Component({
   selector: 'ui-copy-button',
   imports: [LYNX_ELEMENTS, UiButton, UiIcon],
+  // The icons its own template draws, registered here so an app that doesn't
+  // draw them itself needn't. viewProviders, not providers: content an app
+  // projects in finds only the icons the app registered, as it would
+  // anywhere else.
+  viewProviders: [provideIcons({ checkIcon, copyIcon })],
   encapsulation: ViewEncapsulation.None,
   host: { '[class]': 'containerClass()' },
   // The label is text inside the button's <text>, where it's projected: the

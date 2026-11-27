@@ -7,6 +7,7 @@ import {
 } from '@angular/core';
 import { bootstrapApplication } from '@angular/platform-browser';
 import { provideRenderer } from '@blotch/angular-lynx';
+import { provideAllIcons } from '../components/ui/icon';
 
 /**
  * Bootstraps a component with a SINGLE change-detection pass, unlike the
@@ -39,6 +40,8 @@ export const renderOnce = async <T>(
     providers: [
       provideZonelessChangeDetection(),
       provideRenderer(),
+      // The icons the app registers in its config, which a spec doesn't load.
+      provideAllIcons(),
       ...(options.providers ?? []),
     ],
   });

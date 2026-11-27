@@ -3,10 +3,15 @@ import { render, waitForUpdate } from '@blotch/angular-lynx-testing-library';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { describe, expect, it, vi } from 'vitest';
 import { ICON_LIGHT_COLORS } from '../icon/icon-theme';
-import type { IconName } from '../icon/icons';
+import { type IconName, provideIcons } from '../icon/icons';
 import { UiEmptyState } from './empty-state';
+import { searchIcon } from '../icon/icon-set';
+
+// The icons these specs draw by name, registered as an app registers its own.
+const TEST_ICONS = provideIcons({ searchIcon });
 
 @Component({
+  providers: [TEST_ICONS],
   imports: [UiEmptyState, LYNX_ELEMENTS],
   template: `
     <ui-empty-state

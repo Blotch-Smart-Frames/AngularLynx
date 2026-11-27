@@ -30,7 +30,8 @@ import { DURATION, EASING } from '../../utils/animate';
 import { cn } from '../../utils/cn';
 import { type GlassDesign, injectGlassDesign } from '../glass/glass-design';
 import { injectIconColor } from '../icon/icon-theme';
-import { ICONS, paintIcon } from '../icon/icons';
+import { chevronDownIcon } from '../icon/icon-set';
+import { iconSvg, paintIcon } from '../icon/icons';
 
 /**
  * A bar over the top of the screen, as the scroll view under it sees it: a
@@ -193,7 +194,7 @@ export const TITLE_CHEVRON_GAP = 2;
 export const injectTitleMenuChevron = (): Signal<string> => {
   const resolveColor = injectIconColor();
   return computed(() =>
-    paintIcon(ICONS['chevron-down'], resolveColor('var(--foreground)')),
+    paintIcon(iconSvg(chevronDownIcon), resolveColor('var(--foreground)')),
   );
 };
 

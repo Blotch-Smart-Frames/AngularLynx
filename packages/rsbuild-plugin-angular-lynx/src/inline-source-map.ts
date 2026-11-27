@@ -1,10 +1,51 @@
+import * as ts from 'typescript';
+
 /**
- * The inline source maps Angular's compiler and JavaScript transformer append
- * when angular.json asks for script (or vendor) source maps: a `//` comment
- * at the start of a line, holding the map as base64 JSON.
+ * The inline source map Angular's transformer and compiler append when
+ * angular.json asks for script (or vendor) source maps, as the text of a `//`
+ * comment: the map as base64 JSON.
  */
 const INLINE_SOURCE_MAP =
-  /^\/\/# sourceMappingURL=data:application\/json(?:;charset=utf-8)?;base64,([A-Za-z0-9+/]+=*)[ \t]*$/gm;
+  /^\/\/# sourceMappingURL=data:application\/json(?:;charset=utf-8)?;base64,([A-Za-z0-9+/]+=*)/;
+
+/**
+ * Where the module's inline source map is: in the last `//` comment at its
+ * top level that holds one, the one a bundler reads. `comment` is the whole
+ * comment, and `start` and `end` its base64. Only a comment between the
+ * module's statements, or before or after them, counts: the same text in a
+ * template literal or a block comment is the code's own. The map isn't always
+ * the last thing in the module: the plugin appends the code that takes hot
+ * updates, and component scope IDs, after the one Angular's compiler left
+ * (transform-module.ts).
+ */
+export const findInlineSourceMap = (
+  sourceFile: ts.SourceFile,
+):
+  | { start: number; end: number; comment: { start: number; end: number } }
+  | undefined => {
+  const { text } = sourceFile;
+  let found:
+    | { start: number; end: number; comment: { start: number; end: number } }
+    | undefined;
+  const readComments = (position: number) =>
+    ts.forEachLeadingCommentRange(text, position, (start, end, kind) => {
+      const match =
+        kind === ts.SyntaxKind.SingleLineCommentTrivia &&
+        INLINE_SOURCE_MAP.exec(text.slice(start, end));
+      if (match) {
+        found = {
+          start: end - match[1]!.length,
+          end,
+          comment: { start, end },
+        };
+      }
+    });
+  readComments(0);
+  for (const statement of sourceFile.statements) {
+    readComments(statement.end);
+  }
+  return found;
+};
 
 /**
  * A module's final code with its inline source map taken out, and the map,
@@ -23,25 +64,42 @@ const INLINE_SOURCE_MAP =
  * come from (issue #722). The map a module's code does carry, Angular's own,
  * still has to reach SWC, so it goes to the loader chain instead.
  *
- * The last one in the module counts, as for a bundler reading the comment:
- * the plugin appends code after the one Angular left (the scope IDs and hot
- * update code in transform-module.ts). A map that isn't valid JSON is dropped
- * with its comment, as SWC would have ignored it.
+ * Which comment holds it is read from the parsed module, as
+ * {@link findInlineSourceMap} does, so a line of a template literal that
+ * reads like one stays in the string. Only a module whose text holds such a
+ * comment is parsed: with source maps off, none does. A map that isn't valid
+ * JSON is dropped with its comment, as SWC would have ignored it.
+ *
+ * @param code - The module's final code.
+ * @param filename - The module's path, which the parse reports errors by.
  */
 export const takeInlineSourceMap = (
   code: string,
+  filename: string,
 ): { code: string; map?: string } => {
-  let last: RegExpExecArray | undefined;
-  for (const match of code.matchAll(INLINE_SOURCE_MAP)) {
-    last = match;
-  }
-  if (!last) {
+  if (!code.includes('//# sourceMappingURL=data:application/json')) {
     return { code };
   }
-  const start = last.index;
-  const rest = code.slice(start + last[0].length);
-  const withoutMap = code.slice(0, start) + rest;
-  const json = Buffer.from(last[1]!, 'base64').toString('utf8');
+  // The plugin's transforms leave JavaScript, whatever the file's extension.
+  const found = findInlineSourceMap(
+    ts.createSourceFile(
+      filename,
+      code,
+      ts.ScriptTarget.Latest,
+      false,
+      ts.ScriptKind.JS,
+    ),
+  );
+  if (!found) {
+    return { code };
+  }
+  // Only the comment's text goes, so every line stays where it was.
+  const withoutMap =
+    code.slice(0, found.comment.start) + code.slice(found.comment.end);
+  const json = Buffer.from(
+    code.slice(found.start, found.end),
+    'base64',
+  ).toString('utf8');
   try {
     JSON.parse(json);
   } catch {

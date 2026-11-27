@@ -848,6 +848,7 @@ export const applyAngularRules = async (
     const { code } = await transformModule(context, background);
     return takeInlineSourceMap(
       importEsBuiltinsWhereNamed(code, context.resourcePath),
+      context.resourcePath,
     );
   };
 

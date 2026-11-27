@@ -1126,6 +1126,28 @@ static BOOL reducesAlpha(NSInteger composite) {
   return s.shadowA > 0 && (s.shadowBlur > 0 || s.shadowOffsetX != 0 || s.shadowOffsetY != 0);
 }
 
+/// How far past the canvas, on every side, the layer a draw goes into
+/// reaches: the filter's padding, and the shadow's offset and blur (three of
+/// its deviations, which are half the blur), so a shape just off the canvas
+/// still blurs, or casts its shadow, onto it. Capped at 256 pixels, as
+/// css-filter.ts caps the filter's, so a far shadow makes no huge layer.
+- (size_t)layerPadding {
+  ALCanvas2DState *s = _state;
+  CGFloat pad = s.filterSteps.count > 0 ? s.filterPadding : 0;
+  if ([self shadowVisible]) {
+    pad += ceil(MAX(fabs(s.shadowOffsetX), fabs(s.shadowOffsetY)) + s.shadowBlur * 1.5);
+  }
+  return (size_t)MIN(pad, 256);
+}
+
+/// The part of the canvas's pixels a context draws on: the canvas, or the
+/// padded layer's larger area, from the context's own size and transform.
+static CGRect drawableRect(CGContextRef c) {
+  CGRect device =
+      CGRectMake(0, 0, CGBitmapContextGetWidth(c), CGBitmapContextGetHeight(c));
+  return CGRectApplyAffineTransform(device, CGAffineTransformInvert(CGContextGetCTM(c)));
+}
+
 /// Draws with the state's alpha, compositing and shadow. `draw` draws in a
 /// context whose space is the canvas's pixels, with nothing else set.
 ///
@@ -1150,10 +1172,7 @@ static BOOL reducesAlpha(NSInteger composite) {
     [self keepOpaque];
     return;
   }
-  // A filter's layer is bigger than the canvas by how far the filter
-  // reaches, so a shape just off the canvas blurs, or casts its shadow, onto
-  // it.
-  size_t pad = filtered ? (size_t)s.filterPadding : 0;
+  size_t pad = [self layerPadding];
   size_t layerWidth = _width + pad * 2, layerHeight = _height + pad * 2;
   CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
   CGContextRef layer =
@@ -1252,31 +1271,33 @@ static BOOL reducesAlpha(NSInteger composite) {
     pattern.quality = [self interpolationQuality];
     CGFloat width = CGImageGetWidth(pattern.image);
     CGFloat height = CGImageGetHeight(pattern.image);
-    // Pattern space maps to the bitmap's own space (y up), past the
-    // canvas's flip: the pattern's transform, then the canvas's, then the
-    // flip.
-    CGAffineTransform flip = CGAffineTransformMake(1, 0, 0, -1, 0, _height);
-    CGAffineTransform matrix = CGAffineTransformConcat(
-        CGAffineTransformConcat(style.transform, transform), flip);
-    // A step longer than the canvas reaches in pattern space repeats nothing:
-    // no-repeat, and the other axis of repeat-x or repeat-y. The canvas's
-    // corners are taken back into pattern space to find how far that is.
-    CGFloat once = 1;
-    if (invertible(matrix)) {
-      CGAffineTransform back = CGAffineTransformInvert(matrix);
-      CGRect reach = CGRectApplyAffineTransform(CGRectMake(0, 0, _width, _height), back);
-      once = 2 * MAX(MAX(fabs(CGRectGetMinX(reach)), fabs(CGRectGetMaxX(reach))),
-                     MAX(fabs(CGRectGetMinY(reach)), fabs(CGRectGetMaxY(reach)))) +
-             width + height + 1;
-    }
     NSInteger repetition = pattern.repetition;
-    CGFloat xStep = repetition == 0 || repetition == 1 ? width : once;
-    CGFloat yStep = repetition == 0 || repetition == 2 ? height : once;
-    CGPatternCallbacks callbacks = {0, drawPatternCell, NULL};
-    CGPatternRef cg = CGPatternCreate((__bridge void *)pattern, CGRectMake(0, 0, width, height),
-                                      matrix, xStep, yStep, kCGPatternTilingConstantSpacing, true,
-                                      &callbacks);
+    CGAffineTransform patternTransform = CGAffineTransformConcat(style.transform, transform);
     [self composite:^(CGContextRef c) {
+      // Pattern space maps to the bitmap's own space (y up), past the
+      // canvas's flip: the pattern's transform, then the canvas's, then the
+      // context's own, which is the canvas's flip, or the flip of a layer
+      // bigger than the canvas (for a filter or a shadow) and its offset.
+      CGAffineTransform matrix = CGAffineTransformConcat(patternTransform, CGContextGetCTM(c));
+      // A step longer than the bitmap reaches in pattern space repeats
+      // nothing: no-repeat, and the other axis of repeat-x or repeat-y. The
+      // bitmap's corners are taken back into pattern space to find how far
+      // that is.
+      CGFloat once = 1;
+      if (invertible(matrix)) {
+        CGAffineTransform back = CGAffineTransformInvert(matrix);
+        CGRect reach = CGRectApplyAffineTransform(
+            CGRectMake(0, 0, CGBitmapContextGetWidth(c), CGBitmapContextGetHeight(c)), back);
+        once = 2 * MAX(MAX(fabs(CGRectGetMinX(reach)), fabs(CGRectGetMaxX(reach))),
+                       MAX(fabs(CGRectGetMinY(reach)), fabs(CGRectGetMaxY(reach)))) +
+               width + height + 1;
+      }
+      CGFloat xStep = repetition == 0 || repetition == 1 ? width : once;
+      CGFloat yStep = repetition == 0 || repetition == 2 ? height : once;
+      CGPatternCallbacks callbacks = {0, drawPatternCell, NULL};
+      CGPatternRef cg = CGPatternCreate((__bridge void *)pattern, CGRectMake(0, 0, width, height),
+                                        matrix, xStep, yStep, kCGPatternTilingConstantSpacing,
+                                        true, &callbacks);
       CGColorSpaceRef space = CGColorSpaceCreatePattern(NULL);
       CGContextSetFillColorSpace(c, space);
       CGColorSpaceRelease(space);
@@ -1288,8 +1309,8 @@ static BOOL reducesAlpha(NSInteger composite) {
       } else {
         CGContextFillPath(c);
       }
+      CGPatternRelease(cg);
     }];
-    CGPatternRelease(cg);
   }
 }
 
@@ -1332,8 +1353,10 @@ static BOOL reducesAlpha(NSInteger composite) {
                  transform:(CGAffineTransform)transform {
   if (!invertible(transform)) return;
   CGAffineTransform inverse = CGAffineTransformInvert(transform);
-  CGRect bounds = CGRectIntegral(CGRectIntersection(CGContextGetClipBoundingBox(c),
-                                                    CGRectMake(0, 0, _width, _height)));
+  // What the context draws on: the canvas, or the bigger layer of a filter
+  // or a shadow, whose pixels past the canvas can still reach it.
+  CGRect bounds =
+      CGRectIntegral(CGRectIntersection(CGContextGetClipBoundingBox(c), drawableRect(c)));
   if (CGRectIsEmpty(bounds)) return;
   size_t width = (size_t)bounds.size.width;
   size_t height = (size_t)bounds.size.height;

@@ -22,6 +22,8 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.roundToInt
 
 /**
@@ -49,6 +51,14 @@ import kotlin.math.roundToInt
  * The player saying it drew a frame into the target doesn't mean the target
  * has one (issue #805), so `bindfirstframe` waits for the target's frame,
  * and a frame that doesn't come is drawn again: see checkTargetFrame.
+ *
+ * A read is done on another thread (PixelCopy's, or the target's), which the
+ * engine thread waits for, but not for long, and on CI's software-drawn
+ * emulator a busy moment outlasts the wait (issues #806 and #817). So the
+ * element keeps the last frame a read copied, and a read that doesn't come
+ * in time hands that over instead of nothing: late, as a browser's can be,
+ * rather than blank. `bindfirstframe` also waits until a first frame is
+ * kept, so a draw from the event always has one: see frameReady.
  */
 class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
     private var videoId: String? = null
@@ -95,6 +105,40 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
 
     /** Checks the target got the frame the player says it drew: see checkTargetFrame. */
     private val frameCheck = Runnable { checkTargetFrame() }
+
+    /** A frame a read copied: the source it's of, and the read's place in order. */
+    private class KeptFrame(val image: DecodedImage, val source: Int, val order: Int)
+
+    /**
+     * Counts the player's sources, so a frame kept from the last one is never
+     * handed out as this one's.
+     */
+    @Volatile
+    private var source = 0
+
+    /** Numbers the reads, so one that lands late never replaces a newer frame. */
+    private val reads = AtomicInteger()
+
+    /**
+     * The newest frame a read copied, on any thread: what a read that doesn't
+     * come in time hands over.
+     */
+    private val keptFrame = AtomicReference<KeptFrame?>(null)
+
+    // The UI thread's: whether a first frame is being read to keep, and the
+    // try that is, so one given up on or forgotten does nothing when it lands.
+    private var keeping = false
+    private var keepTry = 0
+
+    /**
+     * Sends a held first-frame event without a kept frame, when the read
+     * meant to keep one hasn't landed in KEEP_WAIT_MS.
+     */
+    private val keepGiveUp = Runnable {
+        keepTry++
+        keeping = false
+        releaseFirstFrame()
+    }
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -148,9 +192,10 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             // A new source has nothing to draw until its first frame, as in a
-            // browser.
+            // browser, and the frame kept from the last one isn't its.
             hasFrame = false
             target?.reset()
+            forgetKeptFrame()
             // A held first-frame event is the last source's: XElement sends
             // the new one's itself (its setSrc lets it send another). XElement's
             // `stop` and `play` clear the items (a transition to null) and
@@ -263,7 +308,7 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
         if (drawingOffscreen) return
         hasFrame = true
         readTarget = null
-        releaseFirstFrame()
+        frameReady()
     }
 
     /**
@@ -287,7 +332,74 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
         if (from == null || from !== target || !from.frameIsCurrent()) return
         mainHandler.removeCallbacks(frameCheck)
         redraws = 0
+        frameReady()
+    }
+
+    /**
+     * The frame showing now can be read: a frame of this source is kept, then
+     * a held first-frame event goes out. The read that keeps it runs on its
+     * own thread, which nothing waits for, so a busy moment only makes the
+     * event late; without it, the app's draw at the event waited 250 ms for
+     * the first read and drew nothing when that ran out (issues #806 and
+     * #817). A video that already has a frame kept (shown again, say) sends
+     * the event at once. A source shown after `stop` and `play` keeps one
+     * too, with no event, so its reads have one to fall back on.
+     */
+    private fun frameReady() {
+        if (destroyed) return
+        if (keptFrame.get()?.source == source) {
+            releaseFirstFrame()
+            return
+        }
+        if (keeping) return
+        keeping = true
+        mainHandler.postDelayed(keepGiveUp, KEEP_WAIT_MS)
+        readToKeep(++keepTry, KEEP_TRIES)
+    }
+
+    /**
+     * Starts the read frameReady keeps, `tries` times at most: a copy can
+     * fail just after the player says it drew the frame, before the frame
+     * reaches the surface, so one that lands with nothing is tried again.
+     * One that can't start (no size yet, or no surface) sends the event at
+     * once, as before.
+     */
+    private fun readToKeep(attempt: Int, tries: Int) {
+        if (attempt != keepTry) return
+        val (width, height) = frame
+        val started = width > 0 && height > 0 &&
+            readFrame(width, height) { image -> mainHandler.post { frameKept(attempt, tries, image != null) } }
+        if (!started) finishKeeping(attempt)
+    }
+
+    /** The read readToKeep started landed, with a frame or without. */
+    private fun frameKept(attempt: Int, tries: Int, kept: Boolean) {
+        if (attempt != keepTry) return
+        if (!kept && tries > 1) {
+            mainHandler.postDelayed({ readToKeep(attempt, tries - 1) }, KEEP_RETRY_MS)
+            return
+        }
+        finishKeeping(attempt)
+    }
+
+    /**
+     * Sends the held event, with a frame kept or, after the last try,
+     * without one, as it went out before.
+     */
+    private fun finishKeeping(attempt: Int) {
+        if (attempt != keepTry) return
+        keeping = false
+        mainHandler.removeCallbacks(keepGiveUp)
         releaseFirstFrame()
+    }
+
+    /** Forgets the kept frame and any read that's keeping one, on the UI thread. */
+    private fun forgetKeptFrame() {
+        source++
+        keptFrame.set(null)
+        keepTry++
+        keeping = false
+        mainHandler.removeCallbacks(keepGiveUp)
     }
 
     /**
@@ -313,7 +425,8 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
         if (destroyed || !drawingOffscreen || offscreen == null || offscreen.frameIsCurrent() ||
             player == null || player.playbackState == Player.STATE_IDLE || redraws >= MAX_REDRAWS
         ) {
-            releaseFirstFrame()
+            // A frame that came after all is kept first, as any is.
+            if (offscreen?.frameIsCurrent() == true) frameReady() else releaseFirstFrame()
             return
         }
         redraws++
@@ -336,18 +449,18 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
     /**
      * The player drew its first frame: XElement's element sends
      * `bindfirstframe` from here, so the frame is there for a canvas before
-     * the app hears of it. While the player draws into the target, that
-     * waits for the target to have it.
+     * the app hears of it. That waits for a copy of the frame to be kept
+     * (frameReady), and while the player draws into the target, for the
+     * target to have the frame first.
      */
     override fun onFirstFrame(durationMs: Long) {
-        if (drawingOffscreen && target?.frameIsCurrent() != true) {
-            heldFirstFrame = durationMs
-            heldSource = playerView?.player?.currentMediaItem?.localConfiguration?.uri
-            expectTargetFrame()
-            return
+        heldFirstFrame = durationMs
+        heldSource = playerView?.player?.currentMediaItem?.localConfiguration?.uri
+        when {
+            !drawingOffscreen -> frameRendered()
+            target?.frameIsCurrent() == true -> frameReady()
+            else -> expectTargetFrame()
         }
-        frameRendered()
-        super.onFirstFrame(durationMs)
     }
 
     override val canvasId: String
@@ -379,52 +492,103 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
         return if (readable) width to height else 0 to 0
     }
 
-    /** The frame showing now, as RGBA rows top to bottom, or null without one. */
+    /**
+     * The frame showing now, as RGBA rows top to bottom, or null without one.
+     * The read waits READ_TIMEOUT_MS at most, on Lynx's engine thread; one
+     * that doesn't come in time, or fails, hands over the newest frame kept
+     * instead (issues #806 and #817). Each is a copy of its own, since a
+     * caller may work on the pixels in place (createImageBitmap()'s flip).
+     */
     override fun snapshot(): DecodedImage? {
         val (width, height) = frameSize()
         if (width == 0) return null
-        readTarget?.let { return it.read(width, height) }
-        val surfaceView = surfaceView ?: return null
-        if (!surfaceView.holder.surface.isValid) return null
+        val done = CountDownLatch(1)
+        val read = AtomicReference<DecodedImage?>(null)
+        val started = readFrame(width, height) { image ->
+            read.set(image)
+            done.countDown()
+        }
+        if (started && done.await(READ_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+            read.get()?.let { return it.copy() }
+        }
+        val kept = keptFrame.get() ?: return null
+        if (kept.source != source || kept.image.width != width || kept.image.height != height) return null
+        return kept.image.copy()
+    }
+
+    /**
+     * Reads the frame showing now at `width` by `height`, from the target or
+     * the view's surface, on a thread of the read's own, which nothing it
+     * waits on waits on: keeps it, then hands it to `done` there (null for a
+     * read that failed). False if the read couldn't start.
+     */
+    private fun readFrame(width: Int, height: Int, done: (DecodedImage?) -> Unit): Boolean {
+        val from = source
+        val order = reads.incrementAndGet()
+        val landed: (DecodedImage?) -> Unit = { image ->
+            if (image != null && source == from) {
+                val kept = KeptFrame(image, from, order)
+                // A read can land after a newer one: it never replaces that.
+                while (true) {
+                    val old = keptFrame.get()
+                    if (old != null && old.source == from && old.order > order) break
+                    if (keptFrame.compareAndSet(old, kept)) break
+                }
+            }
+            done(image)
+        }
+        val offscreen = readTarget
+        if (offscreen != null) {
+            offscreen.read(width, height, landed)
+            return true
+        }
+        return copyView(width, height, landed)
+    }
+
+    /**
+     * Copies the view's surface with PixelCopy, which answers on a thread of
+     * its own (the engine thread may be waiting for it, and the UI thread on
+     * the engine thread), and hands the pixels to `done` there. False if the
+     * copy couldn't start.
+     */
+    private fun copyView(width: Int, height: Int, done: (DecodedImage?) -> Unit): Boolean {
+        val surfaceView = surfaceView ?: return false
+        if (!surfaceView.holder.surface.isValid) return false
         val bitmap = try {
             Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         } catch (_: OutOfMemoryError) {
-            return null
+            return false
         }
-        // PixelCopy answers on a thread of the copy's own: the engine thread,
-        // which waits for it here, can't take the answer, and the UI thread
-        // may be waiting on the engine thread.
-        val done = CountDownLatch(1)
-        var result = PixelCopy.ERROR_UNKNOWN
         try {
             PixelCopy.request(surfaceView, bitmap, { copied ->
-                result = copied
-                done.countDown()
+                // The RenderThread is done with the bitmap only here, however
+                // long it took: freeing it while the copy is queued aborts the
+                // app there ("cannot access an invalid/free'd bitmap"), as
+                // CI's software-drawn emulator showed, so it's freed here.
+                val image = if (copied == PixelCopy.SUCCESS) pixelsOf(bitmap) else null
+                bitmap.recycle()
+                done(image)
             }, copyHandler)
         } catch (_: IllegalArgumentException) {
             // The surface went between the check and the copy.
             bitmap.recycle()
+            return false
+        }
+        return true
+    }
+
+    /** A copied frame's pixels, as RGBA rows top to bottom. */
+    private fun pixelsOf(bitmap: Bitmap): DecodedImage? {
+        val pixels = try {
+            ByteBuffer.allocateDirect(bitmap.width * bitmap.height * 4).order(ByteOrder.nativeOrder())
+        } catch (_: OutOfMemoryError) {
             return null
         }
-        if (!done.await(COPY_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
-            // The copy is still queued on the RenderThread, which writes into
-            // the bitmap when it gets to it: recycling it now aborts the app
-            // there ("cannot access an invalid/free'd bitmap"), as CI's
-            // software-rendered emulator showed. It's left for the garbage
-            // collector, once the copy has let go of it.
-            return null
-        }
-        if (result != PixelCopy.SUCCESS) {
-            bitmap.recycle()
-            return null
-        }
-        val pixels = ByteBuffer.allocateDirect(width * height * 4).order(ByteOrder.nativeOrder())
         // ARGB_8888 is R, G, B, A in memory; a video frame is opaque, so
         // premultiplied or not, its colors are the same.
         bitmap.copyPixelsToBuffer(pixels)
-        bitmap.recycle()
         pixels.rewind()
-        return DecodedImage(pixels, width, height, true)
+        return DecodedImage(pixels, bitmap.width, bitmap.height, true)
     }
 
     @LynxProp(name = "video-id")
@@ -442,6 +606,7 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
             player?.removeListener(listener)
             surfaceView?.holder?.removeCallback(surfaceCallback)
             mainHandler.removeCallbacks(frameCheck)
+            forgetKeptFrame()
             heldFirstFrame = null
             readTarget = null
             target?.let { offscreen ->
@@ -463,12 +628,27 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
 
     companion object {
         /**
-         * How long a snapshot waits for its copy. A copy takes a few
-         * milliseconds on a phone, but waits behind whatever the RenderThread
-         * is drawing, which takes far longer on an emulator drawing in
-         * software. A copy that doesn't come in time draws nothing.
+         * How long a snapshot waits for its read, which blocks Lynx's engine
+         * thread meanwhile. A read takes a few milliseconds on a phone, but a
+         * copy waits behind whatever the RenderThread is drawing, which takes
+         * far longer on an emulator drawing in software, and either thread
+         * can be starved there for seconds. One that doesn't come in time
+         * hands over the frame kept last.
          */
-        private const val COPY_TIMEOUT_MS = 250L
+        private const val READ_TIMEOUT_MS = 250L
+
+        /**
+         * How long a held first-frame event waits for its frame to be kept.
+         * A copy lands in milliseconds on a phone; CI's emulator has stalled
+         * for 2.3 seconds. Past this, the event goes out without one.
+         */
+        private const val KEEP_WAIT_MS = 5000L
+
+        /** How many reads a first frame gets to be kept, when they land with nothing. */
+        private const val KEEP_TRIES = 5
+
+        /** How long after a read that landed with nothing the next starts. */
+        private const val KEEP_RETRY_MS = 100L
 
         /**
          * How long after the player says it drew a frame into the target the

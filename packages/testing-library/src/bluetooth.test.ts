@@ -287,6 +287,24 @@ describe('LynxBluetooth under the testing library', () => {
       expect(small.writes.map(({ value }) => value.length)).toEqual([20, 512]);
     });
 
+    it('caps a write without response at an attribute, as the shells do', async () => {
+      addBluetoothDevice({
+        id: 'large',
+        maxWriteLength: 600,
+        services: { fff0: { fff2: { properties: ['writeWithoutResponse'] } } },
+      });
+      const connection = await bluetooth.connect('large');
+
+      expect(connection.maxWriteLength).toBe(512);
+      await expect(
+        connection.write(SETUP, CREDENTIALS, new Uint8Array(513), {
+          withResponse: false,
+        }),
+      ).rejects.toMatchObject({
+        message: 'The value is 513 bytes, and this write takes at most 512.',
+      });
+    });
+
     it('records writes, and delivers what the device answers', async () => {
       const device = frame();
       const connection = await bluetooth.connect('frame');

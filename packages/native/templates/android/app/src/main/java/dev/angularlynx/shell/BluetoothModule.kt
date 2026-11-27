@@ -198,7 +198,8 @@ class BluetoothModule : LynxContextModule {
      * carry `options.scan`, so the runtime can tell them from those of the
      * scan it replaced. A scan already running ends first, without a
      * `scanStopped` event, even when this one can't start: the runtime has
-     * let go of it.
+     * let go of it. It ends again just before this one starts, since another
+     * start waiting on the same permission prompt may have begun meanwhile.
      */
     @LynxMethod
     fun startScan(options: ReadableMap?, callback: Callback) = serve(callback) { reply ->
@@ -221,6 +222,7 @@ class BluetoothModule : LynxContextModule {
             // to appear, and only while it's open.
             val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
             val listener = ScanListener(id)
+            stopScanning()
             // Android lets an app start about five scans in 30 seconds and
             // silently returns nothing from the ones after that: there's no
             // error to report.

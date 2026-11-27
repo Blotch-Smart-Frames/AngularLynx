@@ -203,6 +203,16 @@ const emit = (payload: object): void => {
   }
 };
 
+/**
+ * The most bytes a write without response to `device` carries: never more
+ * than an attribute holds, as the shells cap it however large the MTU.
+ */
+const maxWriteLength = (device: FakeBluetoothDevice): number =>
+  Math.min(
+    device.maxWriteLength ?? DEFAULT_MAX_WRITE_LENGTH,
+    MAX_ATTRIBUTE_LENGTH,
+  );
+
 const sighting = (device: FakeBluetoothDevice, scan: number) => ({
   type: 'device',
   scan,
@@ -351,7 +361,7 @@ export const installBluetoothModule = (threadGlobals: {
       done({
         id,
         name: spec.name ?? null,
-        maxWriteLength: spec.maxWriteLength ?? DEFAULT_MAX_WRITE_LENGTH,
+        maxWriteLength: maxWriteLength(spec),
         services: Object.entries(spec.services ?? {}).map(
           ([uuid, characteristics]) => ({
             uuid: canonical(uuid),
@@ -390,7 +400,7 @@ export const installBluetoothModule = (threadGlobals: {
       const bytes = fromBase64(value);
       const limit = withResponse
         ? MAX_ATTRIBUTE_LENGTH
-        : (found.device.spec.maxWriteLength ?? DEFAULT_MAX_WRITE_LENGTH);
+        : maxWriteLength(found.device.spec);
       if (bytes.length > limit) {
         return done(
           failure(

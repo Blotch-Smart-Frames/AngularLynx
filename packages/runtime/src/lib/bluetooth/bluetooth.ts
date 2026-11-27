@@ -247,7 +247,11 @@ export type BluetoothConnection = {
    * of range or switches off, and after {@link disconnect}.
    */
   readonly connected: Signal<boolean>;
-  /** Reads a characteristic's value. */
+  /**
+   * Reads a characteristic's value. On iOS, while the characteristic is
+   * subscribed, it can resolve with a notification that arrived first,
+   * since iOS reports the two the same way.
+   */
   read(service: string, characteristic: string): Promise<Uint8Array>;
   /** Writes a characteristic's value. */
   write(

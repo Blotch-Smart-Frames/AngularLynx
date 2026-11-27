@@ -254,7 +254,7 @@ await frame.write(SETUP, CREDENTIALS, bytes); // with a response, up to 512 byte
 - **It's a scan, not Web Bluetooth's chooser.** `scan()` streams each device it sees, about once a second while in range, and the app lists them itself. `connect()` takes the `id` (iOS: a UUID iOS makes up for the app; Android: the address).
 - **UUIDs come back as 128-bit lowercase.** Every call takes `'180f'` too; compare with `canonicalBluetoothUUID()`.
 - **`state()` never prompts.** `scan()` and `connect()` ask for permission themselves; call `requestPermission()` to ask after a screen of your own. Android 12+ asks for "Nearby devices", earlier Android for location.
-- **A dropped connection stays dropped.** `connected()` turns `false` and its calls reject with `notConnected`; `connect()` again for a new one. No pairing.
+- **A dropped connection stays dropped.** `connected()` turns `false` and its calls reject with `notConnected`; `connect()` again for a new one. There's no pairing call: a device that needs an encrypted link for a characteristic makes the system pair, with its own prompt, the first time the app uses it.
 - **No background mode.** iOS pauses a scan in the background, but Android keeps scanning: stop it when `LynxAppState`'s `active()` turns `false`.
 - **An advertisement proves nothing.** Anything nearby can advertise the same name and services: before writing a secret such as a Wi-Fi password, check the device holds a key only yours has, and encrypt the secret for it.
 - **Specs** add devices with `addBluetoothDevice()` and change the radio with `setBluetoothState()` (see [build-configuration.md](build-configuration.md)).

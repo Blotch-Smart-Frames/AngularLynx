@@ -1015,13 +1015,21 @@ class Canvas2DContext(
         val within = fullReach <= MAX_REACH
         val reach = if (within) fullReach else 0.0
         // Whole pixels, so the layer's pixels line up with the canvas's.
-        val left = floor(-s.shadowOffsetX.toDouble()) - reach
-        val top = floor(-s.shadowOffsetY.toDouble()) - reach
-        val right = ceil(width - s.shadowOffsetX.toDouble()) + reach
-        val bottom = ceil(height - s.shadowOffsetY.toDouble()) + reach
+        val moved = listOf(
+            floor(-s.shadowOffsetX.toDouble()),
+            floor(-s.shadowOffsetY.toDouble()),
+            ceil(width - s.shadowOffsetX.toDouble()),
+            ceil(height - s.shadowOffsetY.toDouble()),
+        )
         // An offset past what a Rect holds casts no shadow anywhere the
-        // canvas's pixels, which are floats, can still place a shape.
-        if (listOf(left, top, right, bottom).any { abs(it) > MAX_LAYER_OFFSET }) return Layers(shape, null)
+        // canvas's pixels, which are floats, can still place a shape. It's
+        // the canvas moved back by the offset that's checked, not that grown
+        // by the reach: the reach is at most MAX_REACH here, which a Rect
+        // still holds past the limit, and the shadow of a shape the canvas's
+        // floats can place stays, however much the filter reaches.
+        if (moved.any { abs(it) > MAX_LAYER_OFFSET }) return Layers(shape, null)
+        val (left, top) = moved.take(2).map { it - reach }
+        val (right, bottom) = moved.drop(2).map { it + reach }
         val source = Rect(left.toInt(), top.toInt(), right.toInt(), bottom.toInt())
         if (!within) {
             val scale = MAX_REACH / fullReach

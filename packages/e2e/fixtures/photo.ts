@@ -41,7 +41,8 @@ const upload = (blob: Blob): Promise<{ reply: string; bytes: number }> =>
  *
  * "Open web view", beside "Pick photo", opens webview.ts. On CI's 320x640
  * Android emulator, the canvas page's row of links is the last thing on the
- * screen, so there's no room for another there.
+ * screen, so there's no room for another there. "Open video", under the
+ * status, opens video-toggle.ts: the row has no room for it either.
  */
 @Component({
   selector: 'app-photo',
@@ -72,6 +73,16 @@ const upload = (blob: Blob): Promise<{ reply: string; bytes: number }> =>
       </view>
     </view>
     <text flatten="false" style="margin-top: 8px;">Photo: {{ status() }}</text>
+    <view
+      [flatten]="false"
+      [accessibility-element]="true"
+      accessibility-label="Open video"
+      accessibility-traits="button"
+      style="margin-top: 8px; padding: 12px; background-color: #e0e0e0; align-self: flex-start;"
+      routerLink="/video-toggle"
+    >
+      <text>Open video</text>
+    </view>
   `,
 })
 export class PhotoRoute {

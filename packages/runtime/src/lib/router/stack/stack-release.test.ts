@@ -144,17 +144,27 @@ class PlainTab {}
 class Tabs {}
 
 /**
- * Collects garbage, as the engine would. A WeakRef's target stays alive
- * until the task that made or read it ends, so it waits a task first, and
- * collects twice: the first lets go of the keys, and the second of what the
- * entries they leave held.
+ * Collects garbage, as the engine would, until nothing `made` holds is left
+ * or `rounds` collections have run. A WeakRef's target stays alive until the
+ * task that made or read it ends, so each round waits a task first.
+ *
+ * It takes more than one round, and no fixed number is enough (#737). A key
+ * of a ValueHoldingWeakMap goes in one collection, but its value stays until
+ * the map's FinalizationRegistry callback drops it, which V8 runs in a task
+ * of its own, at a time of its choosing, after the collection. Only the next
+ * collection after that callback can let go of what the value held, which
+ * holds the keys of the next map down, and so on. Here it usually takes
+ * three rounds, and two passed only when V8 ran the callbacks early enough.
+ * A page the runtime still holds stays alive however many rounds run, so
+ * the bound only stops a leak from looping forever.
  */
-const collectGarbage = async (): Promise<void> => {
+const collectGarbage = async (rounds = 20): Promise<void> => {
   setFlagsFromString('--expose-gc');
   const gc = runInNewContext('gc') as () => void;
-  for (let i = 0; i < 2; i++) {
+  for (let i = 0; i < rounds; i++) {
     await new Promise((resolve) => setTimeout(resolve));
     gc();
+    if (!made.some((ref) => ref.deref())) return;
   }
 };
 

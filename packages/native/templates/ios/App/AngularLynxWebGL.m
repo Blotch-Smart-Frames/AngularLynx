@@ -337,6 +337,7 @@ static NSDictionary *keptImage(NSNumber *imageId, AngularLynxDecodedImage *image
 @implementation AngularLynxWebGLModule {
   NSMutableDictionary<NSNumber *, AngularLynxWebGLContext *> *_contexts;
   NSMutableDictionary<NSNumber *, AngularLynxCanvas2DContext *> *_contexts2D;
+  NSMutableDictionary<NSNumber *, AngularLynxBitmapRendererContext *> *_bitmapRenderers;
   /// The 2D contexts' gradients and patterns, which any of them can paint
   /// with.
   NSMutableDictionary<NSNumber *, id> *_canvas2DObjects;
@@ -363,6 +364,12 @@ static NSDictionary *keptImage(NSNumber *imageId, AngularLynxDecodedImage *image
     @"encode2D" : NSStringFromSelector(@selector(encode2D:options:)),
     @"release2D" : NSStringFromSelector(@selector(release2D:)),
     @"videoSize" : NSStringFromSelector(@selector(videoSize:)),
+    @"createBitmapRenderer" :
+        NSStringFromSelector(@selector(createBitmapRenderer:canvasId:attributes:)),
+    @"transferToBitmapRenderer" :
+        NSStringFromSelector(@selector(transferToBitmapRenderer:imageId:width:height:)),
+    @"destroyBitmapRenderer" : NSStringFromSelector(@selector(destroyBitmapRenderer:)),
+    @"encodeBitmapRenderer" : NSStringFromSelector(@selector(encodeBitmapRenderer:options:)),
   };
 }
 
@@ -370,6 +377,7 @@ static NSDictionary *keptImage(NSNumber *imageId, AngularLynxDecodedImage *image
   if ((self = [super init])) {
     _contexts = [NSMutableDictionary dictionary];
     _contexts2D = [NSMutableDictionary dictionary];
+    _bitmapRenderers = [NSMutableDictionary dictionary];
     _canvas2DObjects = [NSMutableDictionary dictionary];
   }
   return self;
@@ -384,6 +392,9 @@ static NSDictionary *keptImage(NSNumber *imageId, AngularLynxDecodedImage *image
     [context destroy];
   }
   for (AngularLynxCanvas2DContext *context in _contexts2D.allValues) {
+    [AngularLynxCanvasRegistry setContext:nil forCanvasId:context.canvasId];
+  }
+  for (AngularLynxBitmapRendererContext *context in _bitmapRenderers.allValues) {
     [AngularLynxCanvasRegistry setContext:nil forCanvasId:context.canvasId];
   }
 }
@@ -622,6 +633,76 @@ static NSDictionary *keptImage(NSNumber *imageId, AngularLynxDecodedImage *image
 - (NSDictionary *)encode2D:(NSNumber *)contextId options:(NSDictionary *)options {
   AngularLynxCanvas2DContext *context = _contexts2D[contextId];
   if (!context) return @{@"error" : @"The canvas has no 2D context"};
+  if (![options isKindOfClass:NSDictionary.class]) options = @{};
+  NSString *type = [options[@"type"] isEqual:@"image/jpeg"] ? @"image/jpeg" : @"image/png";
+  NSNumber *quality = options[@"quality"];
+  return [context encodeImageOfType:type
+                            quality:[quality isKindOfClass:NSNumber.class] ? quality.doubleValue
+                                                                           : 0.92];
+}
+
+#pragma mark - Bitmap renderer
+
+/// A bitmaprenderer context for the canvas, showing a blank canvas of the
+/// `width` and `height` in `attributes`: `{ ok }`.
+- (NSDictionary *)createBitmapRenderer:(NSNumber *)contextId
+                              canvasId:(NSString *)canvasId
+                            attributes:(NSDictionary *)attributes {
+  [self destroyBitmapRenderer:contextId];
+  if (![canvasId isKindOfClass:NSString.class]) {
+    return @{@"ok" : @NO, @"error" : @"The canvas has no id"};
+  }
+  AngularLynxBitmapRendererContext *context = [[AngularLynxBitmapRendererContext alloc]
+      initWithCanvasId:canvasId
+            attributes:[attributes isKindOfClass:NSDictionary.class] ? attributes : @{}];
+  _bitmapRenderers[contextId] = context;
+  [AngularLynxCanvasRegistry setContext:context forCanvasId:canvasId];
+  return @{@"ok" : @YES};
+}
+
+/// transferFromImageBitmap(): shows the decoded image `imageId` in the
+/// canvas, which owns it from then on, or a blank canvas of `width` by
+/// `height` for an id of 0. The image leaves the module's images even when
+/// the context has gone, as the runtime's bitmap is detached either way and
+/// nothing else would free it. `{ ok }`, or `{ ok: false, error }`.
+- (NSDictionary *)transferToBitmapRenderer:(NSNumber *)contextId
+                                   imageId:(NSNumber *)imageId
+                                     width:(NSNumber *)width
+                                    height:(NSNumber *)height {
+  AngularLynxDecodedImage *image = nil;
+  if ([imageId isKindOfClass:NSNumber.class] && imageId.integerValue != 0) {
+    image = decodedImages()[imageId];
+    [decodedImages() removeObjectForKey:imageId];
+    if (!image) return @{@"ok" : @NO, @"error" : @"The ImageBitmap's pixels are gone"};
+  }
+  AngularLynxBitmapRendererContext *context = _bitmapRenderers[contextId];
+  if (!context) return @{@"ok" : @NO, @"error" : @"The canvas has no bitmaprenderer context"};
+  if (image) {
+    [context showImage:image];
+  } else {
+    [context showBlankOfWidth:[width isKindOfClass:NSNumber.class] ? width.integerValue : 0
+                       height:[height isKindOfClass:NSNumber.class] ? height.integerValue : 0];
+  }
+  return @{@"ok" : @YES};
+}
+
+- (NSNumber *)destroyBitmapRenderer:(NSNumber *)contextId {
+  AngularLynxBitmapRendererContext *context = _bitmapRenderers[contextId];
+  if (context) {
+    if ([AngularLynxCanvasRegistry contextForCanvasId:context.canvasId] == context) {
+      [AngularLynxCanvasRegistry setContext:nil forCanvasId:context.canvasId];
+    }
+    [context attachTarget:nil];
+    [_bitmapRenderers removeObjectForKey:contextId];
+  }
+  return @YES;
+}
+
+/// What the canvas shows as an image file, for canvas.toBlob() and
+/// toDataURL().
+- (NSDictionary *)encodeBitmapRenderer:(NSNumber *)contextId options:(NSDictionary *)options {
+  AngularLynxBitmapRendererContext *context = _bitmapRenderers[contextId];
+  if (!context) return @{@"error" : @"The canvas has no bitmaprenderer context"};
   if (![options isKindOfClass:NSDictionary.class]) options = @{};
   NSString *type = [options[@"type"] isEqual:@"image/jpeg"] ? @"image/jpeg" : @"image/png";
   NSNumber *quality = options[@"quality"];

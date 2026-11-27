@@ -267,6 +267,93 @@ describe('getCanvas2DBridge', () => {
   });
 });
 
+describe('getBitmapRendererBridge', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('is null without the module', async () => {
+    vi.stubGlobal('lynx', undefined);
+    expect((await load()).getBitmapRendererBridge()).toBeNull();
+    vi.stubGlobal('lynx', { module: () => undefined });
+    expect((await load()).getBitmapRendererBridge()).toBeNull();
+    vi.stubGlobal('lynx', {
+      module: () => {
+        throw new Error('no module');
+      },
+    });
+    expect((await load()).getBitmapRendererBridge()).toBeNull();
+  });
+
+  it('calls the shell’s bitmaprenderer methods, and is the same bridge each time', async () => {
+    const invoke = vi.fn((method: string) =>
+      method === 'encodeBitmapRenderer'
+        ? { base64: 'AQI=', type: 'image/png' }
+        : method === 'destroyBitmapRenderer'
+          ? true
+          : { ok: true },
+    );
+    vi.stubGlobal('lynx', { module: () => ({ invoke }) });
+    const { getBitmapRendererBridge } = await load();
+    const bridge = getBitmapRendererBridge()!;
+    expect(getBitmapRendererBridge()).toBe(bridge);
+    expect(
+      bridge.createBitmapRenderer(1, 'c-1', {
+        alpha: true,
+        width: 4,
+        height: 2,
+      }),
+    ).toEqual({ ok: true });
+    expect(bridge.transferToBitmapRenderer(1, 7, 4, 2)).toEqual({ ok: true });
+    bridge.destroyBitmapRenderer(1);
+    expect(
+      bridge.encodeBitmapRenderer(1, { type: 'image/png', quality: 1 }),
+    ).toEqual({ base64: 'AQI=', type: 'image/png' });
+    expect(invoke.mock.calls).toEqual([
+      ['createBitmapRenderer', 1, 'c-1', { alpha: true, width: 4, height: 2 }],
+      ['transferToBitmapRenderer', 1, 7, 4, 2],
+      ['destroyBitmapRenderer', 1],
+      ['encodeBitmapRenderer', 1, { type: 'image/png', quality: 1 }],
+    ]);
+  });
+
+  it('answers for a shell from before the bitmaprenderer context, which answers nothing or throws', async () => {
+    for (const invoke of [
+      () => undefined,
+      () => {
+        throw new Error('no such method');
+      },
+    ]) {
+      vi.stubGlobal('lynx', { module: () => ({ invoke }) });
+      const bridge = (await load()).getBitmapRendererBridge()!;
+      const rebuild = expect.stringMatching(/no bitmaprenderer canvas/);
+      expect(bridge.createBitmapRenderer(1, 'c', {})).toEqual({
+        ok: false,
+        error: rebuild,
+      });
+      expect(bridge.transferToBitmapRenderer(1, 0, 4, 2)).toEqual({
+        ok: false,
+        error: rebuild,
+      });
+      bridge.destroyBitmapRenderer(1);
+      expect(
+        bridge.encodeBitmapRenderer(1, { type: 'image/png', quality: 1 }),
+      ).toEqual({ error: rebuild });
+    }
+  });
+
+  it('can be replaced, and restored, for tests', async () => {
+    const { getBitmapRendererBridge, setBitmapRendererBridgeForTesting } =
+      await load();
+    vi.stubGlobal('lynx', undefined);
+    const fake = {} as never;
+    setBitmapRendererBridgeForTesting(fake);
+    expect(getBitmapRendererBridge()).toBe(fake);
+    setBitmapRendererBridgeForTesting(undefined);
+    expect(getBitmapRendererBridge()).toBeNull();
+  });
+});
+
 describe('bytesOf', () => {
   it('views the bytes of a buffer or a typed array, by element', async () => {
     const { bytesOf } = await load();

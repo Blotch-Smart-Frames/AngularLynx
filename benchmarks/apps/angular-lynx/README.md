@@ -164,9 +164,11 @@ doesn't. Where AngularLynx can't do the same thing, it does the nearest:
   and `#424242` as the original (theme variables, and `UI_THEME_COLORS` for
   the icons), 12px labels, items 49px tall over the safe area. Its labels are
   weight 500, its icons 24px, its top border `#E4E4E7`; a tapped tab shows
-  selected from the tap, and its icon turns solid when the navigation ends. It
-  brings dolan's whole icon set into the bundle (`icons.ts`, about 39 kB of
-  source), which `iconMarkup()` refers to even for an `[svg]` item.
+  selected from the tap, and its icon turns solid when the navigation ends.
+  Its icons are the original's own SVG (`data/icons.ts`, through `[svg]`), not
+  icons of dolan's set, so the app registers none with `provideIcons()` and
+  the bundle holds none of the set's 195: an icon is in the scripts only once
+  an app registers it.
 - **The detail is @blotch/ui's `<ui-bottom-sheet>`, not UIKit's form sheet.**
   AngularLynx has no native sheet; the bottom sheet is its nearest (an
   `<overlay>` with a backdrop, dragged down or tapped away, moved by Core

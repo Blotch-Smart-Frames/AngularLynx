@@ -23,13 +23,17 @@ const CYAN_PNG =
  * to its bottom (red), and its top again (green, the source untouched); a
  * canvas cropped to its right (blue), and cropped from left of it (clear,
  * then red); a Blob cropped wider than it (cyan, then clear); and an Image
- * cropped (cyan).
+ * cropped (cyan). Then a bitmaprenderer canvas (issue #730) showing red,
+ * the width of the bitmap it was handed, the sizes of its bitmaps (its 2 by
+ * 1 bitmap's, not its 4 by 4 size), and the canvas shown red again, then
+ * after it's handed null.
  */
 const BITMAP_READS = [
   '0,128,0,255 255,0,0,255 0,0,255,255 0,0,0,0 255,0,0,255 255,0,0,255 0,0,0,0 none',
   '0,255,0,255 255,0,0,255 255,0,0,255 0,255,0,255',
   '0,0,255,255 0,0,0,0 255,0,0,255',
   '0,255,255,255 0,0,0,0 0,255,255,255',
+  '255,0,0,255 0 2x1 2x1 2x1 255,0,0,255 0,0,0,0',
 ].join(' ');
 
 const VERTEX = `#version 300 es
@@ -84,7 +88,8 @@ const colorName = ({ 0: r, 1: g, 2: b }: ArrayLike<number>): string =>
  * getImageData(), and uploaded from the second as the WebGL texture, drawn
  * and read back. Both reads have to give the green; when they don't, the line
  * shows each. After them, "filter ok" checks the 2D context's `filter`
- * (issue #698, see #drawFilters).
+ * (issue #698, see #drawFilters), and its shadow with an operation like
+ * copy (issue #763).
  *
  * Beside the canvas, under the WebGL line, "Bitmap: ok" checks ImageBitmaps
  * of canvases (issue #697), each drawn on a 2D canvas and read back: one
@@ -96,10 +101,17 @@ const colorName = ({ 0: r, 1: g, 2: b }: ArrayLike<number>): string =>
  * OffscreenCanvas cleared red and transferred while it draws to no color
  * buffer (`drawBuffers([NONE])`): its bitmap, the canvas the transfer
  * cleared, and its draw buffer, still NONE. Then createImageBitmap()'s crop
- * rectangle and its other sources (issue #731, see #cropBitmaps). When a
- * read is wrong, the line shows them all. It's in the canvas's row, and short, so the page
- * is no taller: the links under the row stay on the Android emulator's
- * screen, where the flows tap them.
+ * rectangle and its other sources (issue #731, see #cropBitmaps). Then an
+ * OffscreenCanvas's `bitmaprenderer` context (issue #730) handed a red
+ * bitmap with `transferFromImageBitmap()`: the canvas drawn (red), the
+ * bitmap's width (0, as the transfer detached it), the sizes of
+ * createImageBitmap() of the canvas and of two transferToImageBitmap()s
+ * (the 2 by 1 bitmap's, not the 4 by 4 canvas's), the canvas shown red
+ * again, and the canvas once handed `null` (transparent). The second canvas
+ * in the row shows a red bitmap the same way, which the flow's screenshot
+ * shows. When a read is wrong, the line shows them all. It's in the
+ * canvas's row, and short, so the page is no taller: the links under the
+ * row stay on the Android emulator's screen, where the flows tap them.
  *
  * On the 2D line, "Video: 32x64 red,blue / red,blue" checks a `<video>`
  * read as an image (issue #696): fixtures/video.mp4, served by the E2E static
@@ -159,6 +171,12 @@ const colorName = ({ 0: r, 1: g, 2: b }: ArrayLike<number>): string =>
         (bindfirstframe)="drawVideo('hidden')"
         (binderror)="setVideoResult('hidden', 'error')"
       ></video>
+      <canvas
+        #shown
+        width="2"
+        height="2"
+        style="width: 40px; height: 40px; margin-left: 8px;"
+      ></canvas>
       <view style="margin-left: 12px;">
         <text flatten="false">WebGL: {{ result() }}</text>
         <text flatten="false">Bitmap: {{ resultBitmap() }}</text>
@@ -194,6 +212,7 @@ const colorName = ({ 0: r, 1: g, 2: b }: ArrayLike<number>): string =>
 })
 export class CanvasRoute {
   readonly canvas = viewChild.required<ElementRef<LynxCanvasElement>>('canvas');
+  readonly shown = viewChild.required<ElementRef<LynxCanvasElement>>('shown');
   readonly result = signal('…');
   readonly result2D = signal('…');
   readonly resultBitmap = signal('…');
@@ -267,8 +286,9 @@ export class CanvasRoute {
    * far off the canvas casts its shadow onto it, with a filter and without,
    * and a filtered one off a corner draws once over its shadow (issue
    * #755); and blur() softens a black square's edge to partly see-through.
-   * A string that isn't a filter leaves the last one. Gives "ok", or the
-   * reads.
+   * A string that isn't a filter leaves the last one. Then a shadow drawn
+   * with an operation that clears what it doesn't cover (issue #763), with
+   * a filter and without, see #shadowComposites. Gives "ok", or the reads.
    */
   #drawFilters(): string {
     const make = (width: number, height: number) => {
@@ -369,7 +389,8 @@ export class CanvasRoute {
       ) &&
       edge >= 64 &&
       edge <= 160;
-    return ok
+    const composites = this.#shadowComposites();
+    return ok && composites === 'ok'
       ? 'ok'
       : [
           gray.filter,
@@ -380,11 +401,78 @@ export class CanvasRoute {
           ...farReads,
           ...cornerReads,
           edge,
+          composites,
         ].join(' ');
   }
 
   setVideoResult(check: VideoCheck, result: string): void {
     this.#videoResults.update((results) => ({ ...results, [check]: result }));
+  }
+
+  /**
+   * A shadow with an operation that clears what the source doesn't cover
+   * (issue #763). The canvas spec composites the shadow and then the shape,
+   * each with the operation over the whole canvas, so the shape's composite
+   * clears the shadow: on a green canvas, a blue square with a red shadow
+   * beside it leaves only the square with copy, source-out and
+   * destination-atop (with copy through grayscale(1), the spec's 7% gray),
+   * and nothing with source-in and destination-in, which the shadow's
+   * composite has already cleared under the square. Then source-in with a
+   * shape far off the canvas, whose shadow keeps part of the canvas for it.
+   * Gives "ok", or each operation's reads of the square and of its shadow.
+   */
+  #shadowComposites(): string {
+    const cases: [GlobalCompositeOperation, string, number[]][] = [
+      ['copy', 'grayscale(1)', [18, 18, 18, 255]],
+      ['copy', 'none', [0, 0, 255, 255]],
+      ['source-in', 'none', [0, 0, 0, 0]],
+      ['source-out', 'none', [0, 0, 255, 255]],
+      ['destination-in', 'none', [0, 0, 0, 0]],
+      ['destination-atop', 'none', [0, 0, 255, 255]],
+    ];
+    const near = (actual: number[], expected: number[]) =>
+      actual.every((value, index) => Math.abs(value - expected[index]) <= 2);
+    let ok = true;
+    const reads = cases.map(([operation, filter, square]) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 12;
+      canvas.height = 4;
+      const context = canvas.getContext('2d')!;
+      context.fillStyle = 'rgb(0, 128, 0)';
+      context.fillRect(0, 0, 12, 4);
+      context.filter = filter;
+      context.globalCompositeOperation = operation;
+      context.shadowColor = 'rgb(255, 0, 0)';
+      context.shadowOffsetX = 6;
+      context.fillStyle = 'rgb(0, 0, 255)';
+      context.fillRect(1, 1, 2, 2);
+      const squareRead = Array.from(context.getImageData(1, 1, 1, 1).data);
+      const shadowRead = Array.from(context.getImageData(7, 1, 1, 1).data);
+      ok &&= near(squareRead, square) && near(shadowRead, [0, 0, 0, 0]);
+      return `${operation}:${squareRead.join(',')}/${shadowRead.join(',')}`;
+    });
+    // The shadow of a shape far off the canvas still takes the shadow's
+    // composite (issue #755). With source-in, the shadow, cast from 400 px
+    // off, keeps the canvas from x = 4 and clears the rest, so the shape,
+    // which covers the whole canvas, draws only from there: a skipped shadow
+    // pass, or one layer for both, leaves it blue at x = 1 too, and a shadow
+    // with no source clears both.
+    const far = document.createElement('canvas').getContext('2d')!;
+    far.canvas.width = 12;
+    far.canvas.height = 4;
+    far.fillStyle = 'rgb(0, 128, 0)';
+    far.fillRect(0, 0, 12, 4);
+    far.globalCompositeOperation = 'source-in';
+    far.shadowColor = 'rgb(255, 0, 0)';
+    far.shadowOffsetX = 400;
+    far.fillStyle = 'rgb(0, 0, 255)';
+    far.fillRect(-396, 0, 408, 4);
+    const farReads = [1, 6].map((x) =>
+      Array.from(far.getImageData(x, 1, 1, 1).data),
+    );
+    ok &&=
+      near(farReads[0], [0, 0, 0, 0]) && near(farReads[1], [0, 0, 255, 255]);
+    return ok ? 'ok' : [...reads, `far:${farReads.join('/')}`].join(' ');
   }
 
   /**
@@ -521,7 +609,7 @@ export class CanvasRoute {
     target.width = 1;
     target.height = 1;
     const context = target.getContext('2d')!;
-    const read = (bitmap: ImageBitmap) => {
+    const read = (bitmap: ImageBitmap | OffscreenCanvas) => {
       context.clearRect(0, 0, 1, 1);
       context.drawImage(bitmap, 0, 0, 1, 1);
       return Array.from(context.getImageData(0, 0, 1, 1).data).join(',');
@@ -577,6 +665,45 @@ export class CanvasRoute {
       drawBuffer === glSourceContext.NONE ? 'none' : `${drawBuffer}`,
       ...(await this.#cropBitmaps()),
     );
+
+    /**
+     * A red frame drawn off screen and taken with transferToImageBitmap(),
+     * which a bitmaprenderer context shows with transferFromImageBitmap(),
+     * as web code shows an OffscreenCanvas's frames.
+     */
+    const redFrame = (width: number, height: number) => {
+      const frame = new OffscreenCanvas(width, height);
+      const frameContext = frame.getContext('2d')!;
+      frameContext.fillStyle = 'rgb(255, 0, 0)';
+      frameContext.fillRect(0, 0, width, height);
+      return frame.transferToImageBitmap();
+    };
+    // A bitmap smaller than its canvas: the canvas reads as the bitmap, at
+    // the bitmap's size, which the shell answers with, and a transfer leaves
+    // it a blank of that size, as the HTML spec has it.
+    const shownOffscreen = new OffscreenCanvas(4, 4);
+    const renderer = shownOffscreen.getContext('bitmaprenderer');
+    if (!renderer) return 'no bitmaprenderer';
+    const handed = redFrame(2, 1);
+    renderer.transferFromImageBitmap(handed);
+    reads.push(read(shownOffscreen), `${handed.width}`);
+    const size = (bitmap: ImageBitmap) => `${bitmap.width}x${bitmap.height}`;
+    reads.push(
+      size(await createImageBitmap(shownOffscreen)),
+      size(shownOffscreen.transferToImageBitmap()),
+      size(shownOffscreen.transferToImageBitmap()),
+    );
+    // Red again, and read as red, first: the transfers left the canvas
+    // transparent, so null has to be what clears it.
+    renderer.transferFromImageBitmap(redFrame(2, 1));
+    reads.push(read(shownOffscreen));
+    renderer.transferFromImageBitmap(null);
+    reads.push(read(shownOffscreen));
+    const shown = this.shown().nativeElement as unknown as HTMLCanvasElement;
+    const shownRenderer = shown.getContext('bitmaprenderer');
+    if (!shownRenderer) return 'no bitmaprenderer on <canvas>';
+    shownRenderer.transferFromImageBitmap(redFrame(2, 2));
+
     const all = reads.join(' ');
     return all === BITMAP_READS ? 'ok' : all;
   }
@@ -650,6 +777,21 @@ export class CanvasRoute {
     const canvas = this.canvas().nativeElement as unknown as HTMLCanvasElement;
     const gl = canvas.getContext('webgl2');
     if (!gl) return 'none';
+    // A template's elements and its canvas's context are instances of the
+    // browser's classes, as libraries check (three.js sizes a VideoTexture by
+    // `instanceof HTMLVideoElement`): on a phone, the runtime's, and in the
+    // web preview, the iframe's the app runs in, though they're the page's
+    // (issue #788). Shown only when one isn't, so the line stays as short.
+    const instances = [
+      canvas instanceof HTMLCanvasElement,
+      canvas instanceof HTMLElement,
+      this.video().nativeElement instanceof HTMLVideoElement,
+      // iOS and Android have no WebGL2RenderingContext global yet.
+      typeof WebGL2RenderingContext === 'undefined' ||
+        gl instanceof WebGL2RenderingContext,
+      gl.canvas instanceof HTMLCanvasElement,
+    ];
+    if (instances.includes(false)) return `instanceof ${instances.join(',')}`;
 
     const shader = (type: number, source: string) => {
       const created = gl.createShader(type)!;

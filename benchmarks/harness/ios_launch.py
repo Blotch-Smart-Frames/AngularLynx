@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Launches benchmark apps on an iPhone, one Instruments trace per launch, and
-appends what each launch measured to a CSV.
+"""Launches benchmark apps on an iPhone, or on the iOS Simulator, one
+Instruments trace per launch, and appends what each launch measured to a CSV.
 
     python3 ios_launch.py --device <UDID> --runs 20 \\
         --app angular-lynx=dev.angularlynx.bench.angularlynx \\
@@ -27,16 +27,43 @@ From each trace:
   against its memory limit, Xcode's memory gauge), in Activity Monitor's last
   sample before the recording ends, and its largest sample.
 
-The apps alternate run by run (ABBA order), so drift over a session (heat,
-battery, background work) falls on every app alike. Battery level, charging,
-thermal state, the OS build and the Mac's load average (the fixture
-server runs on it) are recorded with every run.
+The apps take turns run by run (A B, B A, A B... and with more than two, the
+order also rotates), so drift over a session (heat, battery, background work)
+falls on every app alike. Battery level, charging, thermal state, the OS
+build and the Mac's load average (the fixture server runs on it) are recorded
+with every run.
+
+With --simulator, --device is a booted Simulator's UDID, and each launch is
+the light recording (--light) plus a memory reading:
+
+    python3 ios_launch.py --simulator --device <UDID> --runs 20 \\
+        --app angular-lynx=com.angularlynx.bench.angularlynx \\
+        --app react-lynx=com.angularlynx.bench.rival \\
+        --out ../results/ios-simulator/launch.csv
+
+On the Simulator, the App Launch template records no life-cycle phases and
+Activity Monitor fails, so first_frame_ms and peak_memory_mb stay empty.
+fully_drawn_ms is the light recording's, from dyld's launch of the process.
+memory_mb is `footprint`'s reading of the app's process (every Simulator app
+is a process on the Mac), --memory-after seconds into the recording: 6 by
+default, about 4 s after a Pokédex or mount screen is drawn there. The
+thermal state is the Mac's, and battery and charging are left empty. The
+Simulator runs on the Mac's cores, so a busy Mac slows every launch: the
+harness waits for the Mac's load average to be under --max-load before each
+launch (half the Mac's cores by default), and drops and launches again a
+run whose recording ends over it.
+
+A Simulator's numbers aren't a phone's: every launch takes about 1.45 s
+longer, and memory doesn't rank the apps as a phone does. They compare runs
+of one session with each other, such as two builds of one app, or one app's
+cost per element between two screen sizes.
 """
 
 import argparse
 import concurrent.futures
 import csv
 import datetime
+import json
 import os
 import re
 import shutil
@@ -75,6 +102,61 @@ def device_value(udid, key, domain=None):
         command += ["-q", domain]
     result = subprocess.run(command, capture_output=True, text=True)
     return result.stdout.strip()
+
+
+def simulator_info(udid):
+    """The Simulator's name and its iOS version and build, as the device and
+    os_build columns. ideviceinfo only reaches phones."""
+
+    def simctl_json(*args):
+        return json.loads(
+            subprocess.run(["xcrun", "simctl", "list", *args, "-j"], check=True, capture_output=True, text=True).stdout
+        )
+
+    for runtime, devices in simctl_json("devices")["devices"].items():
+        for device in devices:
+            if device["udid"] != udid:
+                continue
+            if device["state"] != "Booted":
+                raise SystemExit(f"the Simulator {device['name']} ({udid}) isn't booted: xcrun simctl boot {udid}")
+            os_build = next(
+                (
+                    f"{r['version']} ({r['buildversion']})"
+                    for r in simctl_json("runtimes")["runtimes"]
+                    if r["identifier"] == runtime
+                ),
+                runtime,
+            )
+            return f"{device['name']} (Simulator)", os_build
+    raise SystemExit(f"no Simulator has the UDID {udid} (xcrun simctl list devices)")
+
+
+def run_order(apps, run):
+    """The order the apps launch in on a run: as listed on odd runs and
+    reversed on even ones, so each app goes first as often as last. With more
+    than two apps, the list also rotates by one every two runs, so each app
+    follows each of the others in turn: a launch right after another app's
+    pays for that app's work in the file caches, and (on the Simulator) for
+    the Mac's cores it left busy. Rotating two apps is the same as reversing
+    them, which would undo the alternation, so two keep A B, B A."""
+    if len(apps) > 2:
+        turn = (run - 1) // 2 % len(apps)
+        apps = apps[turn:] + apps[:turn]
+    return list(apps) if run % 2 else list(reversed(apps))
+
+
+def wait_for_load(max_load):
+    """Waits until the Mac's 1-minute load average is at most max_load."""
+    waiting_since = None
+    while os.getloadavg()[0] > max_load:
+        if waiting_since is None or time.monotonic() - waiting_since > 60:
+            print(
+                f"the Mac's load average is {os.getloadavg()[0]:.1f}, over --max-load {max_load}: waiting",
+                file=sys.stderr,
+                flush=True,
+            )
+            waiting_since = time.monotonic()
+        time.sleep(5)
 
 
 def of_pid(cell, pid):
@@ -124,10 +206,13 @@ def measure(trace):
     }
 
 
-def measure_light(trace):
+def measure_light(trace, memory=None):
     """A light recording's fully drawn: no App Launch phases, so the process's
     start is dyld's "Launch Executable", which begins about 2 ms after the
-    App Launch template's first phase (measured on one trace with both)."""
+    App Launch template's first phase (measured on one trace with both).
+
+    memory is a Simulator run's (pid, bytes) from footprint, kept only if it
+    read the process the trace launched."""
     data = tables(
         trace,
         "dyld-activity-interval",
@@ -146,10 +231,15 @@ def measure_light(trace):
             fully_drawn = int(r["time"][0]) - start
             break
     thermal = sorted({r["thermal-state"][1] for r in data["device-thermal-state-intervals"]})
+    footprint = None
+    if memory and memory[0] == pid:
+        footprint = memory[1]
+    elif memory:
+        print(f"footprint read pid {memory[0]}, not the launched {pid}: no memory", file=sys.stderr, flush=True)
     return {
         "first_frame_ms": "",
         "fully_drawn_ms": f"{fully_drawn / 1e6:.1f}" if fully_drawn is not None else "",
-        "memory_mb": "",
+        "memory_mb": f"{footprint / 1048576:.1f}" if footprint else "",
         "peak_memory_mb": "",
         "thermal_state": "/".join(thermal),
     }
@@ -183,9 +273,80 @@ def record(udid, bundle_id, trace, seconds, extra_instruments, light=False):
     subprocess.run(command, check=True, capture_output=True, text=True)
 
 
+def simulator_app_pid(udid, bundle_id):
+    """The pid of the app's process on the Simulator, from its launchd, or
+    None while it isn't running. launchd lists an app as
+    UIKitApplication:<bundle ID>[<instance>]..."""
+    listing = subprocess.run(
+        ["xcrun", "simctl", "spawn", udid, "launchctl", "list"], capture_output=True, text=True
+    ).stdout
+    for line in listing.splitlines():
+        fields = line.split("\t")
+        if len(fields) == 3 and fields[2].startswith(f"UIKitApplication:{bundle_id}[") and fields[0].isdigit():
+            return fields[0]
+    return None
+
+
+def footprint(pid):
+    """The process's physical footprint in bytes, as `footprint` reads it:
+    the number Xcode's memory gauge and a phone's Activity Monitor show."""
+    with tempfile.TemporaryDirectory() as folder:
+        path = os.path.join(folder, "footprint.json")
+        subprocess.run(["footprint", "-p", pid, "-j", path], check=True, capture_output=True)
+        with open(path) as file:
+            report = json.load(file)
+    return report["processes"][0]["footprint"] * report.get("bytes per unit", 1)
+
+
+def record_simulator(udid, bundle_id, trace, seconds, memory_after):
+    """Records a launch on the Simulator, and returns the app's (pid, bytes)
+    from footprint memory_after seconds into the recording, or None.
+
+    On the Simulator, the App Launch template records no life-cycle phases
+    and Activity Monitor fails, so this is the light recording, and the
+    memory comes from footprint: a Simulator app is a process on the Mac.
+    It's read once, after the app has drawn and settled rather than during
+    the launch, where footprint's reading would take the Mac's time from it.
+    """
+    command = [
+        "xcrun", "xctrace", "record",
+        "--instrument", "Points of Interest",
+        "--instrument", "dyld Activity",
+        # The Mac's thermal state, which the Simulator runs under.
+        "--instrument", "Thermal State",
+        "--device", udid,
+        "--time-limit", f"{seconds}s",
+        "--output", trace,
+        "--no-prompt",
+        "--launch", "--", bundle_id,
+    ]
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    # xctrace prints this once it has launched the app and started the
+    # recording, about a second after it starts (Xcode 27.2). The time limit
+    # counts from here.
+    output = []
+    for line in process.stdout:
+        output.append(line)
+        if "Ctrl-C to stop" in line:
+            break
+    memory = None
+    if process.poll() is None:
+        time.sleep(memory_after)
+        pid = simulator_app_pid(udid, bundle_id)
+        if pid:
+            try:
+                memory = (pid, footprint(pid))
+            except subprocess.CalledProcessError as error:
+                print(f"footprint failed: {error.stderr.strip()[-300:]}", file=sys.stderr, flush=True)
+    stdout, stderr = process.communicate()
+    if process.returncode:
+        raise subprocess.CalledProcessError(process.returncode, command, "".join(output) + stdout, stderr)
+    return memory
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--device", required=True, help="the iPhone's UDID")
+    parser.add_argument("--device", required=True, help="the iPhone's UDID, or with --simulator a booted Simulator's")
     parser.add_argument("--app", action="append", required=True, help="name=bundle.id, two or more")
     parser.add_argument("--runs", type=int, default=20, help="launches per app")
     parser.add_argument("--seconds", type=int, default=8, help="how long each recording lasts")
@@ -197,11 +358,35 @@ def main():
         action="store_true",
         help="record only fully drawn, without the App Launch template (for the mount screens)",
     )
+    parser.add_argument(
+        "--simulator",
+        action="store_true",
+        help="launch on the iOS Simulator: the light recording, and memory from footprint",
+    )
+    parser.add_argument(
+        "--memory-after",
+        type=float,
+        default=6,
+        help="with --simulator, seconds into the recording to read the app's memory (default 6)",
+    )
+    parser.add_argument(
+        "--max-load",
+        type=float,
+        help="drop a run whose recording ends with the Mac's 1-minute load average over this, and "
+        "launch it again once the load is under it (with --simulator, default: half the Mac's cores)",
+    )
     args = parser.parse_args()
+    if args.simulator and args.max_load is None:
+        args.max_load = (os.cpu_count() or 2) / 2
+    if args.simulator and args.memory_after >= args.seconds:
+        parser.error("--memory-after has to be under --seconds: the app ends with the recording")
 
     apps = [tuple(app.split("=", 1)) for app in args.app]
-    device = device_value(args.device, "ProductType")
-    os_build = f"{device_value(args.device, 'ProductVersion')} ({device_value(args.device, 'BuildVersion')})"
+    if args.simulator:
+        device, os_build = simulator_info(args.device)
+    else:
+        device = device_value(args.device, "ProductType")
+        os_build = f"{device_value(args.device, 'ProductVersion')} ({device_value(args.device, 'BuildVersion')})"
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     new_file = not os.path.exists(args.out)
     work = tempfile.mkdtemp(prefix="ios-launch-")
@@ -211,11 +396,12 @@ def main():
         writer.writeheader()
     lock = threading.Lock()
 
-    def finish(row, trace):
-        # Reading a trace takes about as long as recording one, so it runs
-        # beside the next launch, on the Mac, while the phone records.
+    def finish(row, trace, memory=None):
         try:
-            values = measure_light(trace) if args.light else measure(trace)
+            if args.simulator:
+                values = measure_light(trace, memory)
+            else:
+                values = measure_light(trace) if args.light else measure(trace)
         except Exception as error:  # noqa: BLE001 - one bad run shouldn't end a session
             print(f"{row['app']} run {row['run']}: {error}", file=sys.stderr, flush=True)
             values = {}
@@ -231,37 +417,76 @@ def main():
                 f"{row['app']:>18} run {row['run']:>2}: first frame {values.get('first_frame_ms', '?'):>7} ms, "
                 f"fully drawn {values.get('fully_drawn_ms', '?'):>7} ms, "
                 f"memory {values.get('memory_mb', '?')} MB, {values.get('thermal_state', '?')}, "
-                f"battery {row['battery_percent']}%",
+                f"battery {row.get('battery_percent') or '-'}%, load {row['host_load']}",
                 flush=True,
             )
 
+    def launch(name, bundle_id, run, trace):
+        """Records one launch, and returns its row and (on the Simulator)
+        its memory reading, or (None, None) when xctrace failed. A run that
+        ends over --max-load is dropped and launched again."""
+        while True:
+            if args.max_load is not None:
+                wait_for_load(args.max_load)
+            before = os.getloadavg()[0]
+            row = {
+                "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+                "device": device,
+                "os_build": os_build,
+                "app": name,
+                "bundle_id": bundle_id,
+                "run": run,
+            }
+            if not args.simulator:
+                row["battery_percent"] = device_value(args.device, "BatteryCurrentCapacity", "com.apple.mobile.battery")
+                row["charging"] = device_value(args.device, "BatteryIsCharging", "com.apple.mobile.battery")
+            memory = None
+            try:
+                if args.simulator:
+                    memory = record_simulator(args.device, bundle_id, trace, args.seconds, args.memory_after)
+                else:
+                    record(args.device, bundle_id, trace, args.seconds, [], light=args.light)
+            except subprocess.CalledProcessError as error:
+                print(f"{name} run {run}: xctrace failed: {error.stderr.strip()[-500:]}", file=sys.stderr, flush=True)
+                row["host_load"] = f"{before:.1f}"
+                with lock:
+                    writer.writerow(row)
+                    out.flush()
+                shutil.rmtree(trace, ignore_errors=True)
+                return None, None
+            # The Mac serves the fixtures (a busy Mac answers later) and, on
+            # the Simulator, runs the app. The 1-minute average after the
+            # recording covers the recording; the one before, the minute
+            # before it. A phone's row keeps the one before, as its earlier
+            # sessions do.
+            load = os.getloadavg()[0]
+            row["host_load"] = f"{max(before, load) if args.simulator else before:.1f}"
+            if args.max_load is None or load <= args.max_load:
+                return row, memory
+            print(
+                f"{name} run {run}: dropped, the Mac's load average reached {load:.1f}; launching it again",
+                file=sys.stderr,
+                flush=True,
+            )
+            shutil.rmtree(trace, ignore_errors=True)
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         for run in range(1, args.runs + 1):
-            # ABBA: A B, B A, A B, ...
-            order = apps if run % 2 else list(reversed(apps))
-            for name, bundle_id in order:
+            for name, bundle_id in run_order(apps, run):
                 trace = os.path.join(work, f"{name}-{run}.trace")
-                row = {
-                    "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
-                    "device": device,
-                    "os_build": os_build,
-                    "app": name,
-                    "bundle_id": bundle_id,
-                    "run": run,
-                    "battery_percent": device_value(args.device, "BatteryCurrentCapacity", "com.apple.mobile.battery"),
-                    "charging": device_value(args.device, "BatteryIsCharging", "com.apple.mobile.battery"),
-                    # The Mac serves the fixtures: a busy Mac answers later.
-                    "host_load": f"{os.getloadavg()[0]:.1f}",
-                }
-                try:
-                    record(args.device, bundle_id, trace, args.seconds, [], light=args.light)
-                except subprocess.CalledProcessError as error:
-                    print(f"{name} run {run}: xctrace failed: {error.stderr.strip()[-500:]}", file=sys.stderr, flush=True)
-                    with lock:
-                        writer.writerow(row)
-                        out.flush()
+                row, memory = launch(name, bundle_id, run, trace)
+                if row is None:
                     continue
-                pool.submit(finish, row, trace)
+                if args.simulator:
+                    # Reading a trace keeps the Mac busy, and the Simulator
+                    # launches on the Mac's cores: read it before the next
+                    # launch rather than beside it.
+                    finish(row, trace, memory)
+                else:
+                    # Reading a trace takes about as long as recording one, so
+                    # it runs beside the next launch, on the Mac, while the
+                    # phone records.
+                    pool.submit(finish, row, trace)
                 time.sleep(args.rest)
     out.close()
     shutil.rmtree(work, ignore_errors=True)

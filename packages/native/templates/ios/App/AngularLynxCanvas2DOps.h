@@ -34,6 +34,7 @@ typedef NS_ENUM(NSInteger, ALCanvas2DOp) {
   ALCanvas2DOpSetDirection = 28,
   ALCanvas2DOpSetLetterSpacing = 29,
   ALCanvas2DOpSetImageSmoothing = 30,
+  ALCanvas2DOpSetFilter = 31,
   ALCanvas2DOpCreatePattern = 44,
   ALCanvas2DOpReleaseObject = 46,
   ALCanvas2DOpClearPath = 50,

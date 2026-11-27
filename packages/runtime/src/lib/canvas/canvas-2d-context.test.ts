@@ -15,6 +15,7 @@ import {
   LynxTextMetrics,
 } from './canvas-2d-context';
 import { OP, PATH_OP } from './canvas-2d-ops';
+import { FILTER_STEP, parseFilter } from './css-filter';
 import { CANVAS_SOURCE, type CanvasSource } from './canvas-source';
 import { NATIVE_IMAGE } from './native-image';
 import { LynxPath2D } from './path';
@@ -166,8 +167,6 @@ describe('LynxCanvasRenderingContext2D', () => {
       context.imageSmoothingEnabled,
       context.imageSmoothingQuality,
     ]).toEqual([false, 'high']);
-    context.filter = 'blur(2px)';
-    expect(context.filter).toBe('blur(2px)');
     context.wordSpacing = '2px';
     context.wordSpacing = 'nope';
     expect(context.wordSpacing).toBe('2px');
@@ -298,6 +297,40 @@ describe('LynxCanvasRenderingContext2D', () => {
       OP.setLetterSpacing,
       10,
     ]);
+  });
+
+  it('sends the filter parsed, keeps it as it was set, and ignores one that isn’t a filter', async () => {
+    const context = make();
+    expect(context.filter).toBe('none');
+    context.filter = 'Blur(2px) grayscale(100%)';
+    context.filter = 'nope';
+    context.filter = '';
+    expect(context.filter).toBe('Blur(2px) grayscale(100%)');
+    context.save();
+    context.filter = 'drop-shadow(1px 2px red)';
+    expect(context.filter).toBe('drop-shadow(1px 2px red)');
+    context.restore();
+    expect(context.filter).toBe('Blur(2px) grayscale(100%)');
+    context.filter = 'none';
+    expect(context.filter).toBe('none');
+    const grayscale = parseFilter('grayscale(1)')!.steps;
+    expect(await sent()).toEqual([
+      OP.setFilter,
+      6,
+      [FILTER_STEP.blur, 2, ...grayscale],
+      OP.save,
+      OP.setFilter,
+      2,
+      [FILTER_STEP.dropShadow, 1, 2, 0, 255, 0, 0, 1],
+      OP.restore,
+      OP.setFilter,
+      0,
+      [],
+    ]);
+    // reset() puts it back to none, here and in the shell.
+    context.filter = 'blur(1px)';
+    context.reset();
+    expect(context.filter).toBe('none');
   });
 
   it('dashes lines, repeating an odd list, and draws a list of zeros solid', async () => {

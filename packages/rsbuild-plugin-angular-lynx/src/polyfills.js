@@ -1,7 +1,7 @@
 // The ECMAScript built-ins the engines lack (`.at()`, `toSorted()`,
-// `Object.groupBy()`, the Set methods and the rest), before the platform shims
-// below and before any of the app's modules.
-import './es-builtins.js';
+// `Object.groupBy()`, the Set methods and the rest) aren't here: the build
+// imports each into the modules that name it, this one included (see
+// es-builtins.ts), so an app carries only those its code can call.
 // pop(), shift() and splice() that let go of what they remove, which PrimJS
 // otherwise keeps alive for as long as the array, before any module of the
 // app's or a library's removes anything.

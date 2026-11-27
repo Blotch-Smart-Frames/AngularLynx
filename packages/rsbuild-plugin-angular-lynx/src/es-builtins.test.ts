@@ -1,24 +1,50 @@
-import { readFileSync } from 'node:fs';
+import { buildSync } from 'esbuild';
+import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { createContext, runInContext, type Context } from 'node:vm';
+import * as ts from 'typescript';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  ES_BUILTINS,
+  ES_BUILTINS_DIR,
+  importEsBuiltinsWhereNamed,
+  namedBuiltins,
+} from './es-builtins.js';
+
+/**
+ * The built-ins' modules (`es-builtins/`), bundled into one script as rspack
+ * bundles them into an app. Strict, as the ES modules they are.
+ */
+const bundle = (files: readonly string[]): string =>
+  buildSync({
+    stdin: {
+      contents: files.map((file) => `import './${file}';`).join('\n'),
+      resolveDir: ES_BUILTINS_DIR,
+    },
+    bundle: true,
+    format: 'iife',
+    banner: { js: "'use strict';" },
+    // esbuild renames a function whose name another module's scope uses,
+    // which would change the global Iterator's `name`.
+    keepNames: true,
+    write: false,
+  }).outputFiles[0].text;
 
 /**
  * Node has the built-ins Lynx's engines lack, and Vitest itself calls them, so
  * the natives can't be deleted from the test's own realm. Instead the tests
- * run the preEntry file, as the plain script it is, in a fresh `node:vm` realm
- * (its own Array, String and typed array prototypes) with the methods deleted
- * to look like PrimJS. Most tests then evaluate the same expression in that
- * realm and in one that keeps Node's natives, and expect the same result.
- * Node 24 lacks a few ES2026 methods; those are checked against known answers
- * and independent implementations instead.
+ * run every built-in's module, bundled into a script, in a fresh `node:vm`
+ * realm (its own Array, String and typed array prototypes) with the methods
+ * deleted to look like PrimJS. Most tests then evaluate the same expression
+ * in that realm and in one that keeps Node's natives, and expect the same
+ * result. Node 24 lacks a few ES2026 methods; those are checked against known
+ * answers and independent implementations instead.
  */
-const source = readFileSync(
-  new URL('./es-builtins.js', import.meta.url),
-  'utf8',
-);
+const source = bundle(ES_BUILTINS.map(({ file }) => file));
 
 /**
- * Every method the script defines, with the length the spec gives it. The
+ * Every method the modules define, with the length the spec gives it. The
  * owner is an expression evaluated in the realm.
  */
 const METHODS: [owner: string, name: string, length: number][] = [
@@ -151,7 +177,7 @@ let realm: Context;
 const run = (code: string): unknown => runInContext(code, realm);
 
 /**
- * A realm without the methods, then with the script's versions.
+ * A realm without the methods, then with the modules' versions.
  */
 const polyfilledRealm = (): Context => {
   const context = createContext({});
@@ -1572,5 +1598,268 @@ describe('Number.prototype.toLocaleString without Intl', () => {
     run(source);
     // The realm has Node's Intl, so the native method stays.
     expect(run(`(1234.5).toLocaleString('de-DE')`)).toBe('1.234,5');
+  });
+
+  it('formats like en-US when Intl has no NumberFormat', () => {
+    // As the `intl` build option leaves it with only its other APIs.
+    realm = createContext({});
+    run(
+      `globalThis.Intl = {}; Number.prototype.toLocaleString = function () { return String(this); };`,
+    );
+    run(source);
+    expect(run(`(1234567.891).toLocaleString()`)).toBe('1,234,567.891');
+  });
+});
+
+describe('the modules each name brings in', () => {
+  /**
+   * The modules importEsBuiltinsWhereNamed imports for a module that names
+   * only `name`.
+   */
+  const modulesFor = (name: string): string[] =>
+    ES_BUILTINS.filter(({ names }) => names.includes(name)).map(
+      ({ file }) => file,
+    );
+
+  it('lists every module of the folder', () => {
+    expect(
+      readdirSync(ES_BUILTINS_DIR)
+        .filter((file) => file !== 'shared.js')
+        .sort(),
+    ).toEqual(ES_BUILTINS.map(({ file }) => file).sort());
+  });
+
+  it('defines each method with the modules its name brings in alone', () => {
+    for (const [owner, name] of METHODS) {
+      // Iterator.from() and Iterator.concat() are asked for by `Iterator`.
+      const asked = owner === 'Iterator' ? 'Iterator' : name;
+      realm = createContext({});
+      run(REMOVE_NATIVES);
+      run(bundle(modulesFor(asked)));
+      expect(run(`typeof ${owner}.${name}`), `${owner}.${name}`).toBe(
+        'function',
+      );
+    }
+  });
+
+  it('formats numbers without Intl with the module toLocaleString brings in', () => {
+    realm = createContext({});
+    run(
+      `delete globalThis.Intl; Number.prototype.toLocaleString = function () { return String(this); };`,
+    );
+    run(bundle(modulesFor('toLocaleString')));
+    expect(run(`(1234567.891).toLocaleString()`)).toBe('1,234,567.891');
+  });
+
+  it('defines nothing else with a module', () => {
+    realm = createContext({});
+    run(REMOVE_NATIVES);
+    run(bundle(modulesFor('at')));
+    expect(
+      run(
+        `[typeof [].at, typeof ''.at, typeof new Int8Array().at, typeof [].toSorted, typeof globalThis.Iterator]`,
+      ),
+    ).toEqual(['function', 'function', 'function', 'undefined', 'undefined']);
+  });
+});
+
+describe('namedBuiltins', () => {
+  const named = (code: string): string[] =>
+    [
+      ...namedBuiltins(
+        ts.createSourceFile(
+          'module.js',
+          code,
+          ts.ScriptTarget.Latest,
+          true,
+          ts.ScriptKind.JS,
+        ),
+      ),
+    ].sort();
+
+  it('finds a method read as a property', () => {
+    expect(
+      named(`a.at(-1); b?.toSorted(); Array.prototype.with.call(c);`),
+    ).toEqual(['at', 'toSorted', 'with']);
+  });
+
+  it('finds a method taken apart or given as a property', () => {
+    expect(named(`const { hasOwn } = Object;`)).toEqual(['hasOwn']);
+    expect(named(`const { at: last } = a;`)).toEqual(['at']);
+    expect(named(`({ fromBase64 } = Uint8Array);`)).toEqual(['fromBase64']);
+    expect(named(`({ groupBy: group } = Object);`)).toEqual(['groupBy']);
+    expect(
+      named(
+        `class A { toArray() {} union = 1; get difference() {} set isSubsetOf(v) {} }`,
+      ),
+    ).toEqual(['difference', 'isSubsetOf', 'toArray', 'union']);
+  });
+
+  it('finds a string that can name a property', () => {
+    expect(named(`a['toReversed']();`)).toEqual(['toReversed']);
+    expect(named(`a[\`toSpliced\`]();`)).toEqual(['toSpliced']);
+    expect(named(`'groupBy' in Object;`)).toEqual(['groupBy']);
+    expect(named(`Reflect.get(a, 'replaceAll');`)).toEqual(['replaceAll']);
+    expect(named(`const { ['union']: u } = s;`)).toEqual(['union']);
+    expect(named(`const { 'difference': d } = s;`)).toEqual(['difference']);
+    expect(named(`({ 'intersection': 1 });`)).toEqual(['intersection']);
+    expect(named(`const method = 'toHex';`)).toEqual(['toHex']);
+    expect(named(`a[sorted ? 'toSorted' : 'slice']();`)).toEqual(['toSorted']);
+    expect(named(`const f = () => 'normalize';`)).toEqual(['normalize']);
+  });
+
+  it('finds the Iterator global anywhere', () => {
+    expect(named(`x instanceof Iterator;`)).toEqual(['Iterator']);
+    expect(
+      named(`typeof Iterator === 'function' ? Iterator : Object;`),
+    ).toEqual(['Iterator']);
+  });
+
+  it("doesn't count a variable, data, a keyword or text", () => {
+    expect(
+      named(`
+        // Runs at the top, with a try.
+        const difference = 1;
+        function fromHex() {}
+        fromHex(difference);
+        at.length;
+        ({ key: union });
+        const { key: isError } = a;
+        try {} catch {}
+        const modes = ['difference', 'escape'];
+        const options = { providedIn: 'any' };
+        if (key === 'at' || key == 'with' || key !== 'take' || key != 'drop') {}
+        switch (key) { case 'flatMap': break; }
+        \`f16round \${a}\`;
+      `),
+    ).toEqual([]);
+  });
+});
+
+describe('importEsBuiltinsWhereNamed', () => {
+  const dir = path.join(path.sep, 'plugin', 'dist', 'es-builtins');
+  const specifier = (file: string) => JSON.stringify(path.join(dir, file));
+
+  it('imports the modules an ES module names, in order, before its own imports', () => {
+    const code = `import { x } from 'x';\nexport const last = x.toSorted().at(-1);\n`;
+    const result = importEsBuiltinsWhereNamed(code, '/app/src/main.js', dir);
+    expect(result).toBe(
+      `import ${specifier('at.js')}; import ${specifier('change-array-by-copy.js')}; ${code}`,
+    );
+    // No line added, so the module's source map still fits.
+    expect(result.split('\n')).toHaveLength(code.split('\n').length);
+  });
+
+  it('imports into an .mjs file with no import or export', () => {
+    expect(importEsBuiltinsWhereNamed(`a.at(0);`, '/lib/index.mjs', dir)).toBe(
+      `import ${specifier('at.js')}; a.at(0);`,
+    );
+  });
+
+  it("reads a TypeScript file's compiled code as TypeScript", () => {
+    expect(
+      importEsBuiltinsWhereNamed(
+        `export const f = (a: number[]) => a.at(0);`,
+        '/app/src/app.ts',
+        dir,
+      ),
+    ).toBe(
+      `import ${specifier('at.js')}; export const f = (a: number[]) => a.at(0);`,
+    );
+  });
+
+  it('requires them in a CommonJS module, after its directives', () => {
+    expect(
+      importEsBuiltinsWhereNamed(
+        `'use strict'\nmodule.exports = (a) => Object.hasOwn(a, 'x');`,
+        '/lib/index.js',
+        dir,
+      ),
+    ).toBe(
+      `'use strict';require(${specifier('object-has-own.js')}); \nmodule.exports = (a) => Object.hasOwn(a, 'x');`,
+    );
+    expect(importEsBuiltinsWhereNamed(`a.at(0);`, '/lib/index.cjs', dir)).toBe(
+      `;require(${specifier('at.js')}); a.at(0);`,
+    );
+  });
+
+  it('imports into a .js file of a "type": "module" package, which has no require', () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'es-builtins-'));
+    mkdirSync(path.join(root, 'esm', 'lib', 'deep'), { recursive: true });
+    mkdirSync(path.join(root, 'cjs'));
+    mkdirSync(path.join(root, 'broken'));
+    writeFileSync(path.join(root, 'esm', 'package.json'), '{"type":"module"}');
+    writeFileSync(path.join(root, 'cjs', 'package.json'), '{}');
+    writeFileSync(path.join(root, 'broken', 'package.json'), '{');
+    const code = `globalThis.last = [1].at(0);`;
+    const transform = (file: string) =>
+      importEsBuiltinsWhereNamed(code, path.join(root, file), dir);
+    // From the package.json above, read once per folder.
+    expect(transform('esm/lib/deep/init.js')).toBe(
+      `import ${specifier('at.js')}; ${code}`,
+    );
+    expect(transform('esm/lib/deep/other.js')).toBe(
+      `import ${specifier('at.js')}; ${code}`,
+    );
+    expect(transform('cjs/init.js')).toBe(
+      `;require(${specifier('at.js')}); ${code}`,
+    );
+    expect(transform('broken/init.js')).toBe(
+      `;require(${specifier('at.js')}); ${code}`,
+    );
+    // No package.json up to the root.
+    expect(
+      importEsBuiltinsWhereNamed(
+        code,
+        path.join(path.parse(root).root, 'init.js'),
+        dir,
+      ),
+    ).toBe(`;require(${specifier('at.js')}); ${code}`);
+  });
+
+  it('reads a name written with escapes', () => {
+    expect(
+      importEsBuiltinsWhereNamed(`a.\\u0061t(-1);`, '/lib/index.mjs', dir),
+    ).toBe(`import ${specifier('at.js')}; a.\\u0061t(-1);`);
+  });
+
+  it('keeps a hashbang first, after the whole of its line break', () => {
+    expect(
+      importEsBuiltinsWhereNamed(
+        `#!/usr/bin/env node\r\nexport const f = (a) => a.at(0);`,
+        '/bin/cli.js',
+        dir,
+      ),
+    ).toBe(
+      `#!/usr/bin/env node\r\nimport ${specifier('at.js')}; export const f = (a) => a.at(0);`,
+    );
+  });
+
+  it('leaves a module that names none as it is', () => {
+    expect(importEsBuiltinsWhereNamed(`a.b();`, '/app/a.js', dir)).toBe(
+      `a.b();`,
+    );
+    // Text that only looks like one.
+    expect(
+      importEsBuiltinsWhereNamed(
+        `// at the top\nconst at = 1;`,
+        '/app/a.js',
+        dir,
+      ),
+    ).toBe(`// at the top\nconst at = 1;`);
+  });
+
+  it("leaves the built-ins' own modules alone", () => {
+    const code = `definePolyfills(Array.prototype, { at() {} }); a.at(0);`;
+    expect(importEsBuiltinsWhereNamed(code, path.join(dir, 'at.js'), dir)).toBe(
+      code,
+    );
+    // The plugin's copy, by default.
+    expect(
+      importEsBuiltinsWhereNamed(code, path.join(ES_BUILTINS_DIR, 'at.js')),
+    ).toBe(code);
+    expect(importEsBuiltinsWhereNamed(code, '/app/at.js')).toContain(
+      JSON.stringify(path.join(ES_BUILTINS_DIR, 'at.js')),
+    );
   });
 });

@@ -86,6 +86,7 @@ Lynx can make network requests only from the [background thread](/guide/concepts
 - **Both of Angular's backends work.** `provideHttpClient()` uses `fetch`, and `provideHttpClient(withXhr())` uses `XMLHttpRequest`.
 - **Libraries that call `fetch` or `XMLHttpRequest` work too**, such as axios or a GraphQL client.
 - **In the [web preview](/guide/glossary#web-preview)**, requests use the browser's own `fetch`.
+- **They're in your app's bundle only when it uses them.** The build adds `fetch` where a file of your app or its libraries names it (or `Headers`, `Request`, `Response`) or provides `HttpClient` (`provideHttpClient()`, `HttpClientModule`), and `XMLHttpRequest` where one names it or `withXhr()`. Code that looks either up by a name it builds at runtime finds it missing, unless another file names it: call `ɵenableFetch()` or `ɵenableXMLHttpRequest()` from `@blotch/angular-lynx` first.
 
 ## What's different on a device
 

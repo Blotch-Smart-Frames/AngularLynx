@@ -7,7 +7,7 @@ A diagnostic screen for Lynx's snapshot SSR, which AngularLynx calls instant fir
 ## What it shows
 
 - **`enableSSR`** — `lynx.config.ts` turns it on with `pluginAngularLynx({ enableSSR: true })`. See [`@blotch/angular-lynx-build`](/api/build/).
-- **Two global callbacks** — with SSR on, AngularLynx registers `ssrEncode()` and `ssrHydrate()`. [Lynx](/guide/glossary#lynx) calls the first to save the first render as a snapshot, and the second to reuse it on a later load. The status card checks that both exist.
+- **Two global callbacks** — with SSR on, AngularLynx registers `ssrEncode()` and `ssrHydrate()` on the main thread, where the element tree is. [Lynx](/guide/glossary#lynx) calls the first to save the first render as a snapshot, and the second to reuse it on a later load. The status card checks that both exist.
 - **A snapshot** — Run ssrEncode() turns the current element tree into JSON and shows its opcode count, its size and its first 500 characters.
 - **Updates after hydration** — items you add later are created as usual. The snapshot covers only the first render.
 

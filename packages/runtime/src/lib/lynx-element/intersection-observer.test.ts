@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  ɵenableIntersectionObserver,
   installIntersectionObserver,
   LynxIntersectionObserver,
 } from './intersection-observer';
@@ -1080,6 +1081,26 @@ describe('installIntersectionObserver', () => {
     expect(target['IntersectionObserver']).toBe(LynxIntersectionObserver);
     installIntersectionObserver(target);
     expect(target['IntersectionObserver']).toBe(LynxIntersectionObserver);
+  });
+});
+
+describe('ɵenableIntersectionObserver', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('installs it on the main thread, once', () => {
+    vi.stubGlobal('__MAIN_THREAD__', true);
+    vi.stubGlobal('IntersectionObserver', undefined);
+    ɵenableIntersectionObserver();
+    // Each module that names it calls it again.
+    ɵenableIntersectionObserver();
+    expect(globalThis.IntersectionObserver).toBe(LynxIntersectionObserver);
+  });
+
+  it('leaves the background thread alone', () => {
+    vi.stubGlobal('__MAIN_THREAD__', false);
+    vi.stubGlobal('IntersectionObserver', undefined);
+    ɵenableIntersectionObserver();
+    expect(globalThis.IntersectionObserver).toBeUndefined();
   });
 });
 

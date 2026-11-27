@@ -1599,6 +1599,16 @@ describe('Number.prototype.toLocaleString without Intl', () => {
     // The realm has Node's Intl, so the native method stays.
     expect(run(`(1234.5).toLocaleString('de-DE')`)).toBe('1.234,5');
   });
+
+  it('formats like en-US when Intl has no NumberFormat', () => {
+    // As the `intl` build option leaves it with only its other APIs.
+    realm = createContext({});
+    run(
+      `globalThis.Intl = {}; Number.prototype.toLocaleString = function () { return String(this); };`,
+    );
+    run(source);
+    expect(run(`(1234567.891).toLocaleString()`)).toBe('1,234,567.891');
+  });
 });
 
 describe('the modules each name brings in', () => {

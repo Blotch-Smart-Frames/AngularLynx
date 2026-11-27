@@ -8,7 +8,10 @@ import { definePolyfillOverride } from './shared.js';
 // digits, plus the common `minimumFractionDigits` / `maximumFractionDigits` /
 // `useGrouping` options. Other locales get the same format; apps that need
 // real localization should load an Intl polyfill, which this then defers to.
-if (typeof Intl === 'undefined') {
+// Without NumberFormat, not only without Intl: the `intl` build option makes
+// an `Intl` for its other APIs (`['Collator']`) before the app's modules, so
+// before this module, which loads with the first one that formats a number.
+if (typeof Intl === 'undefined' || typeof Intl.NumberFormat !== 'function') {
   definePolyfillOverride(
     Number.prototype,
     'toLocaleString',

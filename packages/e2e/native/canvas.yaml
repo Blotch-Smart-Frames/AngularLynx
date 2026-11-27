@@ -27,10 +27,12 @@ appId: ${APP_ID}
 - extendedWaitUntil:
     visible: 'Bitmap: ok'
     timeout: 15000
-# A <video> read as an image (issue #696): its first frame, red above and
-# blue below, drawn on a 2D canvas and read back at the top and the bottom,
-# and uploaded as a texture and read back.
+# A <video> read as an image (issue #696): its first frame, stored on its
+# side as a portrait phone recording is and turned by its track's transform
+# (issue #725), so 32 by 64 and red above and blue below, drawn on a 2D
+# canvas and read back at the top and the bottom, and uploaded as a texture
+# and read back at its top right and bottom left.
 - extendedWaitUntil:
-    visible: '.*; Video: red,blue / red'
+    visible: '.*; Video: 32x64 red,blue / red,blue'
     timeout: 20000
 - takeScreenshot: canvas

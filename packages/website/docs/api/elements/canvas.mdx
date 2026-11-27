@@ -144,6 +144,8 @@ Without that code, a `<canvas>` shows nothing and `getContext()` returns `null`.
 
 The development app from `ng serve --platform` always has the native code, since you can add a canvas while it runs.
 
+An ejected project (`ng generate @blotch/angular-lynx:eject`) keeps all of it too, since it's yours to change. So does an app built with Rsbuild's persistent cache (`performance.buildCache`), whose cached modules the build doesn't read again.
+
 ## angular-three
 
 [angular-three](https://github.com/angular-threejs/angular-three) works with its own renderer, as on the web:

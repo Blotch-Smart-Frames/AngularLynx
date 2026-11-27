@@ -213,7 +213,10 @@ describe('trackSourceMap', () => {
   });
 
   it("hands on a map whose mappings it can't read as it came", () => {
-    for (const mappings of ['A!AA', 'g', 'AA']) {
+    // A character that isn't base64, a value that never ends, a segment
+    // with two fields, and a value past 32 bits, which would never finish
+    // encoding.
+    for (const mappings of ['A!AA', 'g', 'AA', `AA${'g'.repeat(204)}QA`]) {
       const map = { version: 3, mappings };
       expect(
         trackSourceMap('a', map, (code) =>

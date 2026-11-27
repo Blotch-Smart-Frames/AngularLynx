@@ -321,6 +321,11 @@ const decodeVlq = (
     value += (digit & 31) * 2 ** shift;
     shift += 5;
   } while (digit & 32);
+  // ECMA-426 caps a value at 32 bits, sign included. A longer one (204
+  // digits reach Infinity) would never finish encoding again.
+  if (value > 0xffffffff) {
+    throw new Error(`Invalid source map segment: ${text}`);
+  }
   // The lowest bit is the sign.
   return [value % 2 ? -(value - 1) / 2 : value / 2, index];
 };

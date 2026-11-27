@@ -38,6 +38,7 @@ import {
   NOT_BLOCK_CONTAINERS,
   INHERITED_TEXT_PROPERTIES,
   resetStyleIndex,
+  RELATIVE_SIZE_FLAG,
   SMALLER_FLAG,
   VERTICAL_ALIGN_FLAG,
 } from '../lynx-element/text-flow';
@@ -458,6 +459,32 @@ class DecoratedHost {}
 })
 class SmallerHost {
   readonly large = signal(false);
+}
+
+@Component({
+  selector: 'relative-smaller-host',
+  encapsulation: ViewEncapsulation.None,
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: `<p
+      class="sizer"
+      [class.rel]="relative()"
+      [style.font-size]="size()"
+      [style.--angular-lynx-font-size]="ownVariable()"
+    >
+      a
+      <small class="outer"
+        >b <b class="in-small">c</b>
+        <small class="inner">d <i class="in-inner">i</i></small></small
+      >
+    </p>
+    <text class="rel lynx-text"
+      >x <small class="in-text">y <b class="in-text-small">z</b></small></text
+    >`,
+})
+class RelativeSmallerHost {
+  readonly relative = signal(true);
+  readonly size = signal<string | null>(null);
+  readonly ownVariable = signal<string | null>(null);
 }
 
 @Component({
@@ -1108,6 +1135,85 @@ describe('loose text', () => {
     expect(smaller('in-inner')).toEqual(['_ngsmaller-2']);
   });
 
+  // Issue #701: a relative size's copy is `1em`, the size of the parent of
+  // the tag that reads it. Each <small>'s own rule divides that once, and the
+  // text inside reads it as it is: a class dividing it for each <small> above
+  // would divide it again.
+  it('gives the text inside a <small> below a relative size no level', () => {
+    const fontSize = 1 << INHERITED_TEXT_PROPERTIES.indexOf('font-size');
+    (
+      globalThis as { __angularLynxStyleIndex?: unknown }
+    ).__angularLynxStyleIndex = {
+      rules: [
+        [['sizer'], fontSize],
+        [['rel'], fontSize | RELATIVE_SIZE_FLAG],
+        [['_ngtag-small'], SMALLER_FLAG],
+        [['_ngsmaller-1'], SMALLER_FLAG],
+        [['_ngsmaller-2'], SMALLER_FLAG],
+      ],
+    };
+    const fixture = TestBed.createComponent(RelativeSmallerHost);
+    fixture.detectChanges();
+    const style = (cls: string): string =>
+      String(byClass(cls).attrs.get('style') ?? '');
+    const smaller = (cls: string): string[] =>
+      [...byClass(cls).classes].filter((name) =>
+        name.startsWith('_ngsmaller-'),
+      );
+    const levels = () =>
+      ['in-small', 'inner', 'in-inner', 'in-text-small'].map(smaller);
+
+    expect(levels()).toEqual([[], [], [], []]);
+    expect(style('in-small')).toContain(
+      'font-size: var(--angular-lynx-font-size)',
+    );
+    expect(style('in-inner')).toContain(
+      'font-size: var(--angular-lynx-font-size)',
+    );
+    // The <small>s' own rule sets their size.
+    expect(style('inner')).not.toContain('font-size');
+
+    // An absolute size's copy is the size itself, which the levels divide.
+    fixture.componentInstance.relative.set(false);
+    fixture.detectChanges();
+    expect(levels().slice(0, 3)).toEqual([
+      ['_ngsmaller-1'],
+      ['_ngsmaller-2'],
+      ['_ngsmaller-2'],
+    ]);
+
+    // An inline size wins over the rules, and is copied as `1em` too.
+    fixture.componentInstance.size.set('150%');
+    fixture.detectChanges();
+    expect(style('sizer')).toContain('--angular-lynx-font-size: 1em');
+    expect(levels().slice(0, 3)).toEqual([[], [], []]);
+
+    fixture.componentInstance.relative.set(true);
+    fixture.componentInstance.size.set('20px');
+    fixture.detectChanges();
+    expect(style('sizer')).toContain('--angular-lynx-font-size: 20px');
+    expect(levels().slice(0, 3)).toEqual([
+      ['_ngsmaller-1'],
+      ['_ngsmaller-2'],
+      ['_ngsmaller-2'],
+    ]);
+
+    // A variable the app sets itself wins over the `1em` copy, so the levels
+    // divide it as any size (review of #751).
+    fixture.componentInstance.size.set('2em');
+    fixture.componentInstance.ownVariable.set('20px');
+    fixture.detectChanges();
+    expect(levels().slice(0, 3)).toEqual([
+      ['_ngsmaller-1'],
+      ['_ngsmaller-2'],
+      ['_ngsmaller-2'],
+    ]);
+
+    fixture.componentInstance.ownVariable.set(null);
+    fixture.detectChanges();
+    expect(levels().slice(0, 3)).toEqual([[], [], []]);
+  });
+
   // A rule with the build's smaller size can require an ancestor, as
   // `.compact .label` does: outside `.compact` the label isn't smaller, and
   // nor is the text inside it.
@@ -1744,6 +1850,73 @@ describe('loose text, element by element', () => {
     view.setInlineStyles('linear-direction: row');
     commit();
     expect(lines(view)).toEqual(['"a"', '"b"']);
+  });
+
+  // Review of #751: a variable the app's style="..." sets itself wins over
+  // the `1em` copy of a relative size, so the levels of <small> divide it.
+  it('gives the text in a <small> its level below a variable an inline style sets', () => {
+    (
+      globalThis as { __angularLynxStyleIndex?: unknown }
+    ).__angularLynxStyleIndex = {
+      rules: [
+        [['sm'], SMALLER_FLAG],
+        [['_ngsmaller-1'], SMALLER_FLAG],
+      ],
+    };
+    const p = doc.createElement('p');
+    page.appendChild(p);
+    const small = doc.createElement('small');
+    small.addClass('sm');
+    p.appendChild(small);
+    const bold = doc.createElement('b');
+    small.appendChild(bold);
+    bold.appendChild(doc.createText('b'));
+    p.setInlineStyles('font-size: 2em');
+    commit();
+    const level = () => native(bold).classes.has('_ngsmaller-1');
+    expect(level()).toBe(false);
+
+    p.setInlineStyles('font-size: 2em; --angular-lynx-font-size: 20px');
+    commit();
+    expect(level()).toBe(true);
+
+    p.setInlineStyles('font-size: 2em');
+    commit();
+    expect(level()).toBe(false);
+  });
+
+  // Review of #751: a Lynx <text>'s inline size going from relative to
+  // absolute keeps the same properties, but changes the relative bit in its
+  // flags, so the tags inside work out their levels again.
+  it("gives the text in a <small> its level again when a Lynx <text>'s inline size stops being relative", () => {
+    (
+      globalThis as { __angularLynxStyleIndex?: unknown }
+    ).__angularLynxStyleIndex = {
+      rules: [
+        [['sm'], SMALLER_FLAG],
+        [['_ngsmaller-1'], SMALLER_FLAG],
+      ],
+    };
+    const text = doc.createElement('text');
+    page.appendChild(text);
+    const small = doc.createElement('small');
+    small.addClass('sm');
+    text.appendChild(small);
+    const bold = doc.createElement('b');
+    small.appendChild(bold);
+    bold.appendChild(doc.createText('b'));
+    text.setInlineStyles('font-size: 2em');
+    commit();
+    const level = () => native(bold).classes.has('_ngsmaller-1');
+    expect(level()).toBe(false);
+
+    text.setInlineStyles('font-size: 20px');
+    commit();
+    expect(level()).toBe(true);
+
+    text.setStyle('font-size', '150%');
+    commit();
+    expect(level()).toBe(false);
   });
 
   it('reads a flex container by its id from the style index', () => {

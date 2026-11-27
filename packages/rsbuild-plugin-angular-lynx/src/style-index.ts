@@ -3,6 +3,7 @@ import selectorParser from 'postcss-selector-parser';
 import {
   INHERITED_TEXT_PROPERTIES,
   inheritanceVariable,
+  isRelativeFontSize,
 } from './text-inheritance.js';
 
 /**
@@ -35,6 +36,16 @@ export const SMALLER_FLAG = LAYOUT_FLAG << 1;
  * in the runtime's text-flow.ts.
  */
 export const VERTICAL_ALIGN_FLAG = SMALLER_FLAG << 1;
+
+/**
+ * The bit for a rule whose `font-size` is relative to the parent's (`2em`,
+ * `150%`), which it has with the `font-size` bit. Its copy is `1em` (see
+ * text-inheritance.ts), the size of the parent of the tag that reads it, so
+ * the runtime gives the text inside no class for its level of `<small>`s,
+ * which would divide that size again for each `<small>` above it (issue
+ * #701). Above VERTICAL_ALIGN_FLAG, as in the runtime's text-flow.ts.
+ */
+export const RELATIVE_SIZE_FLAG = VERTICAL_ALIGN_FLAG << 1;
 
 /**
  * How far a `vertical-align` moves the text off the baseline: the `em` of
@@ -83,6 +94,9 @@ const SMALLER_SIZE = new RegExp(
   `^calc\\(\\s*var\\(\\s*${inheritanceVariable('font-size')}\\s*,\\s*14px\\s*\\)\\s*/\\s*1\\.2\\s*\\)$`,
   'i',
 );
+
+/** The variable a `font-size` is copied to (see text-inheritance.ts). */
+const SIZE_VARIABLE = inheritanceVariable('font-size');
 
 /** The `display` values that lay children out in a column, as a block. */
 const BLOCK_DISPLAYS = new Set(['linear', 'block', 'flow-root', 'none']);
@@ -148,6 +162,9 @@ const flagsOf = (property: string, value: string): number => {
   if (name === 'font-size' && isSmallerSize(value)) return SMALLER_FLAG;
   if (name === 'vertical-align') return VERTICAL_ALIGN_FLAG;
   const bit = INHERITED_TEXT_PROPERTIES.indexOf(name);
+  if (name === 'font-size' && isRelativeFontSize(value)) {
+    return (1 << bit) | RELATIVE_SIZE_FLAG;
+  }
   if (bit >= 0) return 1 << bit;
   const keyword = value.trim().toLowerCase();
   if (name === 'display') return BLOCK_DISPLAYS.has(keyword) ? 0 : LAYOUT_FLAG;
@@ -352,9 +369,16 @@ export const styleIndexOf = (stylesheets: readonly string[]): StyleIndex => {
     root.walkRules((rule) => {
       if (inNonSelectorAtRule(rule)) return;
       let flags = 0;
+      let setsSizeVariable = false;
       rule.each((node) => {
-        if (node.type === 'decl') flags |= flagsOf(node.prop, node.value);
+        if (node.type !== 'decl') return;
+        flags |= flagsOf(node.prop, node.value);
+        if (node.prop.toLowerCase() === SIZE_VARIABLE) setsSizeVariable = true;
       });
+      // A rule that sets the variable itself keeps its own value, with no
+      // copy (see text-inheritance.ts): the variable isn't `1em` there, so
+      // the runtime divides it for each `<small>` as it divides any size.
+      if (setsSizeVariable) flags &= ~RELATIVE_SIZE_FLAG;
       if (!flags) return;
       const distance =
         flags & VERTICAL_ALIGN_FLAG ? verticalAlignOf(rule) : undefined;

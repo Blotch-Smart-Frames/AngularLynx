@@ -10,6 +10,7 @@ import {
   inheritanceCopiesFor,
   inheritanceStyleFor,
   inlineBaselineShift,
+  isRelativeFontSize,
   inlineTextStyles,
   splitDeclarations,
   isBlankText,
@@ -19,6 +20,7 @@ import {
   matchedStyleFlagsFor,
   matchedVerticalAlignFor,
   parseVerticalAlign,
+  RELATIVE_SIZE_FLAG,
   resetStyleIndex,
   type ShiftLink,
   smallerClassFor,
@@ -305,6 +307,29 @@ describe('textPropertyFlags', () => {
       ),
     ).toBe(1 | textPropertyBit('font-size'));
   });
+
+  // Issue #701: its copy is `1em`, which changes the tags' levels of <small>.
+  it('marks a relative size', () => {
+    expect(textPropertyFlags(new Map([['font-size', '2em']]))).toBe(
+      textPropertyBit('font-size') | RELATIVE_SIZE_FLAG,
+    );
+    expect(textPropertyFlags(new Map([['font-size', '120%']]))).toBe(
+      textPropertyBit('font-size') | RELATIVE_SIZE_FLAG,
+    );
+  });
+});
+
+describe('isRelativeFontSize', () => {
+  it.each([
+    ['2em', true],
+    ['150%', true],
+    ['calc(1.2em + 2px)', true],
+    ['1.25rem', false],
+    ['18px', false],
+    ['var(--size-2em)', false],
+  ])('reads %s as %s', (value, expected) => {
+    expect(isRelativeFontSize(value)).toBe(expected);
+  });
 });
 
 describe('inheritanceCopiesFor', () => {
@@ -318,6 +343,22 @@ describe('inheritanceCopiesFor', () => {
       ),
     ).toBe(
       '--angular-lynx-color: var(--primary); --angular-lynx-font-size: 18px',
+    );
+  });
+
+  // Issue #701: a copy of `2em` made each tag that read it twice its
+  // parent's size, the <p>'s twice over. `1em` is its parent's size.
+  it('copies a relative size as 1em', () => {
+    expect(
+      inheritanceCopiesFor(
+        new Map([
+          ['font-size', '2em !important'],
+          ['line-height', '1.5em'],
+        ]),
+      ),
+    ).toBe('--angular-lynx-font-size: 1em; --angular-lynx-line-height: 1.5em');
+    expect(inheritanceCopiesFor(new Map([['font-size', '1.25rem']]))).toBe(
+      '--angular-lynx-font-size: 1.25rem',
     );
   });
 

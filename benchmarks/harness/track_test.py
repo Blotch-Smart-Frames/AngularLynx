@@ -1,5 +1,5 @@
-"""Tests for nightly.py's report: the night's numbers, the sustained change
-rule and the files it writes. The nightly workflow runs them before it
+"""Tests for track.py's report: the day's numbers, the sustained change
+rule and the files it writes. The workflow runs them before it
 builds anything (python3 -m unittest discover -s benchmarks/harness -p
 '*_test.py')."""
 
@@ -13,7 +13,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import nightly  # noqa: E402
+import track  # noqa: E402
 
 FIELDS = ["timestamp", "device", "os_build", "app", "run", "fully_drawn_ms", "memory_mb", "host_load"]
 
@@ -57,17 +57,17 @@ def record(date, ratios):
         "commit": commit_of(date),
         "run": f"https://example.invalid/{date}",
         "metrics": {
-            metric: {nightly.OURS: None if value is None else value * 100, nightly.RIVAL: 100}
+            metric: {track.OURS: None if value is None else value * 100, track.RIVAL: 100}
             for metric, value in ratios.items()
         },
     }
 
 
-def nights(*values, metric="launch.fully_drawn_ms"):
+def days(*values, metric="launch.fully_drawn_ms"):
     return [record(f"2026-11-{day:02d}", {metric: value}) for day, value in enumerate(values, 1)]
 
 
-class NightTest(unittest.TestCase):
+class DayTest(unittest.TestCase):
     def test_medians_and_cost_per_element(self):
         launch = rows({"angular-lynx": [1900, 2000, 2100], "react-lynx": [1500, 1600, 1700]})
         for row, memory in zip(launch, [60, 61, 62, 40, 41, 42]):
@@ -76,7 +76,7 @@ class NightTest(unittest.TestCase):
             ("text", 1500): rows({"angular-lynx": [2000, 2010], "react-lynx": [1800, 1810]}),
             ("text", 5000): rows({"angular-lynx": [2285, 2295], "react-lynx": [1940, 1950]}),
         }
-        result = nightly.night(launch, mount, "2026-11-28", "abc1234", "")
+        result = track.day(launch, mount, "2026-11-28", "abc1234", "")
         self.assertEqual(result["metrics"]["launch.fully_drawn_ms"], {"angular-lynx": 2000, "react-lynx": 1600})
         self.assertEqual(result["metrics"]["launch.memory_mb"], {"angular-lynx": 61, "react-lynx": 41})
         # (2290 - 2005) / 3500 ms and (1945 - 1805) / 3500 ms, in µs.
@@ -90,68 +90,68 @@ class NightTest(unittest.TestCase):
 
     def test_runs_that_drew_nothing_are_left_out_and_counted(self):
         launch = rows({"angular-lynx": [1000, None, 1200], "react-lynx": [900, 1000, None]})
-        result = nightly.night(launch, {}, "2026-11-28", "", "")
+        result = track.day(launch, {}, "2026-11-28", "", "")
         self.assertEqual(result["metrics"]["launch.fully_drawn_ms"], {"angular-lynx": 1100, "react-lynx": 950})
         self.assertEqual(result["failed"], 2)
 
     def test_a_value_that_isnt_a_finite_number_is_no_measurement(self):
         launch = rows({"angular-lynx": ["nan", "inf"], "react-lynx": [900, "x"]})
-        result = nightly.night(launch, {}, "2026-11-28", "", "")
+        result = track.day(launch, {}, "2026-11-28", "", "")
         self.assertEqual(result["metrics"]["launch.fully_drawn_ms"], {"angular-lynx": None, "react-lynx": 900})
         self.assertEqual(result["failed"], 3)
 
     def test_a_cost_of_zero_or_less_has_no_ratio(self):
-        self.assertIsNone(nightly.ratio(record("2026-11-28", {"mount.view.us_per_element": -0.1}), "mount.view.us_per_element"))
+        self.assertIsNone(track.ratio(record("2026-11-28", {"mount.view.us_per_element": -0.1}), "mount.view.us_per_element"))
 
 
 class SustainedChangeTest(unittest.TestCase):
-    def test_three_nights_over_the_threshold_are_a_change(self):
-        history = nights(1.0, 1.02, 0.98, 1.0, 1.15, 1.2, 1.18)
-        [change] = nightly.sustained_changes(history)
+    def test_three_days_over_the_threshold_are_a_change(self):
+        history = days(1.0, 1.02, 0.98, 1.0, 1.15, 1.2, 1.18)
+        [change] = track.sustained_changes(history)
         self.assertEqual(change["metric"], "launch.fully_drawn_ms")
         self.assertEqual(change["direction"], "up")
         self.assertAlmostEqual(change["baseline"], 1.0)
-        self.assertEqual([n["date"] for n in change["nights"]], ["2026-11-05", "2026-11-06", "2026-11-07"])
+        self.assertEqual([n["date"] for n in change["days"]], ["2026-11-05", "2026-11-06", "2026-11-07"])
 
-    def test_one_or_two_nights_are_noise(self):
-        self.assertEqual(nightly.sustained_changes(nights(1.0, 1.0, 1.0, 1.0, 1.0, 1.3)), [])
-        self.assertEqual(nightly.sustained_changes(nights(1.0, 1.0, 1.0, 1.0, 1.3, 1.3)), [])
-        # A night back under the threshold breaks the run.
-        self.assertEqual(nightly.sustained_changes(nights(1.0, 1.0, 1.0, 1.3, 1.05, 1.3)), [])
+    def test_one_or_two_days_are_noise(self):
+        self.assertEqual(track.sustained_changes(days(1.0, 1.0, 1.0, 1.0, 1.0, 1.3)), [])
+        self.assertEqual(track.sustained_changes(days(1.0, 1.0, 1.0, 1.0, 1.3, 1.3)), [])
+        # A day back under the threshold breaks the run.
+        self.assertEqual(track.sustained_changes(days(1.0, 1.0, 1.0, 1.3, 1.05, 1.3)), [])
 
     def test_a_change_the_other_way_is_a_change_too(self):
-        [change] = nightly.sustained_changes(nights(1.0, 1.0, 1.0, 0.85, 0.8, 0.88))
+        [change] = track.sustained_changes(days(1.0, 1.0, 1.0, 0.85, 0.8, 0.88))
         self.assertEqual(change["direction"], "down")
 
     def test_moves_within_the_threshold_are_not(self):
-        self.assertEqual(nightly.sustained_changes(nights(1.0, 1.0, 1.0, 1.09, 1.09, 1.09)), [])
+        self.assertEqual(track.sustained_changes(days(1.0, 1.0, 1.0, 1.09, 1.09, 1.09)), [])
 
-    def test_too_few_nights_for_a_baseline(self):
-        self.assertEqual(nightly.sustained_changes(nights(1.0, 1.0, 1.3, 1.3, 1.3)), [])
+    def test_too_few_days_for_a_baseline(self):
+        self.assertEqual(track.sustained_changes(days(1.0, 1.0, 1.3, 1.3, 1.3)), [])
 
-    def test_the_baseline_is_the_window_before_the_last_nights(self):
-        # 20 nights at 2.0, then 14 at 1.0 and 3 at 1.2: only the 14 count.
+    def test_the_baseline_is_the_window_before_the_last_days(self):
+        # 20 days at 2.0, then 14 at 1.0 and 3 at 1.2: only the 14 count.
         values = [2.0] * 20 + [1.0] * 14 + [1.2] * 3
-        history = [record(f"night-{i:02d}", {"launch.fully_drawn_ms": v}) for i, v in enumerate(values)]
-        [change] = nightly.sustained_changes(history)
+        history = [record(f"day-{i:02d}", {"launch.fully_drawn_ms": v}) for i, v in enumerate(values)]
+        [change] = track.sustained_changes(history)
         self.assertAlmostEqual(change["baseline"], 1.0)
 
-    def test_a_night_without_a_ratio_breaks_the_run(self):
-        # The fifth night's cost came out below zero, so it has no ratio.
-        history = nights(1.0, 1.0, 1.0, 1.3, -0.1, 1.3, 1.3, metric="mount.text.us_per_element")
-        self.assertEqual(nightly.sustained_changes(history), [])
-        # The nights before the run that have no ratio are left out of the
+    def test_a_day_without_a_ratio_breaks_the_run(self):
+        # The fifth day's cost came out below zero, so it has no ratio.
+        history = days(1.0, 1.0, 1.0, 1.3, -0.1, 1.3, 1.3, metric="mount.text.us_per_element")
+        self.assertEqual(track.sustained_changes(history), [])
+        # The days before the run that have no ratio are left out of the
         # baseline, which still needs three.
-        history = nights(1.0, None, 1.0, 1.0, 1.3, 1.3, 1.3, metric="mount.text.us_per_element")
-        [change] = nightly.sustained_changes(history)
+        history = days(1.0, None, 1.0, 1.0, 1.3, 1.3, 1.3, metric="mount.text.us_per_element")
+        [change] = track.sustained_changes(history)
         self.assertEqual(change["since"], history[3]["commit"])
-        history = nights(1.0, None, None, 1.0, 1.3, 1.3, 1.3, metric="mount.text.us_per_element")
-        self.assertEqual(nightly.sustained_changes(history), [])
+        history = days(1.0, None, None, 1.0, 1.3, 1.3, 1.3, metric="mount.text.us_per_element")
+        self.assertEqual(track.sustained_changes(history), [])
 
-    def test_a_night_without_the_metric_says_nothing_about_it(self):
-        history = nights(1.0, 1.0, 1.0, 1.3, 1.3, 1.3)
+    def test_a_day_without_the_metric_says_nothing_about_it(self):
+        history = days(1.0, 1.0, 1.0, 1.3, 1.3, 1.3)
         history.append(record("2026-11-07", {"launch.memory_mb": 1.0}))
-        self.assertEqual(nightly.sustained_changes(history), [])
+        self.assertEqual(track.sustained_changes(history), [])
 
 
 class ReportTest(unittest.TestCase):
@@ -173,15 +173,15 @@ class ReportTest(unittest.TestCase):
             date=None,
             summary=os.path.join(folder, "summary.md"),
             alert=os.path.join(folder, "alert.md"),
-            nights=3,
+            days=3,
             window=14,
             threshold=0.10,
         )
-        nightly.report(args)
+        track.report(args)
         with open(args.summary) as file:
             return file.read()
 
-    def test_appends_the_night_and_alerts_on_a_sustained_change(self):
+    def test_appends_the_day_and_alerts_on_a_sustained_change(self):
         with tempfile.TemporaryDirectory() as folder:
             self.write(folder, "launch.csv", launches({"angular-lynx": [1300, 1300], "react-lynx": [1000, 1000]}))
             for count, (ours, rival) in {1500: (2000, 1800), 5000: (2350, 1940)}.items():
@@ -192,7 +192,7 @@ class ReportTest(unittest.TestCase):
                 )
             history = os.path.join(folder, "history.jsonl")
             with open(history, "w") as file:
-                for past in nights(1.0, 1.0, 1.0, 1.0, 1.25, 1.3):
+                for past in days(1.0, 1.0, 1.0, 1.0, 1.25, 1.3):
                     file.write(json.dumps(past) + "\n")
             text = self.run_report(folder, history)
             with open(history) as file:
@@ -205,13 +205,13 @@ class ReportTest(unittest.TestCase):
             self.assertIn("### Sustained changes", text)
             with open(os.path.join(folder, "alert.md")) as file:
                 text = file.read()
-            self.assertIn("**Pokédex fully drawn**: AngularLynx has been slower against ReactLynx for 3 nights", text)
-            # The commits between the last night at the baseline and the
-            # first night off it.
+            self.assertIn("**Pokédex fully drawn**: AngularLynx has been slower against ReactLynx on the last 3 days it ran", text)
+            # The commits between the last day at the baseline and the
+            # first day off it.
             since, first = commit_of("2026-11-04")[:7], commit_of("2026-11-05")[:7]
             self.assertIn(f"`git log {since}..{first}`", text)
 
-            # The same run again (a re-run) replaces its night, and a night
+            # The same run again (a re-run) replaces its day, and a day
             # back at the baseline removes the alert.
             self.write(folder, "launch.csv", launches({"angular-lynx": [1000], "react-lynx": [1000]}))
             self.run_report(folder, history)
@@ -219,12 +219,12 @@ class ReportTest(unittest.TestCase):
                 self.assertEqual(len(file.readlines()), 7)
             self.assertFalse(os.path.exists(os.path.join(folder, "alert.md")))
 
-    def test_a_second_run_on_a_date_replaces_its_night(self):
+    def test_a_second_run_on_a_date_replaces_its_day(self):
         with tempfile.TemporaryDirectory() as folder:
             self.write(folder, "launch.csv", launches({"angular-lynx": [1300], "react-lynx": [1000]}))
             history = os.path.join(folder, "history.jsonl")
             with open(history, "w") as file:
-                for past in nights(1.0, 1.0, 1.0, 1.0):
+                for past in days(1.0, 1.0, 1.0, 1.0):
                     file.write(json.dumps(past) + "\n")
             for run in (1, 2, 3):
                 self.run_report(folder, history, run_url=f"https://example.invalid/run/{run}")
@@ -232,7 +232,7 @@ class ReportTest(unittest.TestCase):
                 saved = [json.loads(line) for line in file]
             self.assertEqual([r["date"] for r in saved][-2:], ["2026-11-04", "2026-11-28"])
             self.assertEqual(saved[-1]["run"], "https://example.invalid/run/3")
-            # One night off the baseline isn't three.
+            # One day off the baseline isn't three.
             self.assertFalse(os.path.exists(os.path.join(folder, "alert.md")))
 
     def test_without_a_history(self):
@@ -273,7 +273,7 @@ class SimulatorChoiceTest(unittest.TestCase):
                 runtime("27.1", "iPhone Duo"),
             ]
         }
-        choices = [(r["version"], t["name"]) for r, t in nightly.simulator_choices(listing)]
+        choices = [(r["version"], t["name"]) for r, t in track.simulator_choices(listing)]
         self.assertEqual(choices, [("27.0", "iPhone 18 Pro"), ("26.6", "iPhone 17 Pro"), ("27.1", "iPhone Duo")])
 
 

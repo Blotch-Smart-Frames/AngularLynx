@@ -1,31 +1,35 @@
 name: Simulator benchmarks
 
-# Every night, builds the benchmark's AngularLynx app (benchmarks/apps/
-# angular-lynx, on this commit's packages) and its ReactLynx app for the iOS
-# Simulator, launches the two in turn (benchmarks/harness/ios_launch.py and
-# ios_mount.py, --simulator), and tracks AngularLynx / ReactLynx: the
-# Pokédex's fully drawn time and memory, and the cost of each view, text and
-# image on the mount screens. benchmarks/harness/nightly.py writes the job
-# summary, keeps the history (an artifact each night hands to the next) and,
-# when a ratio has been more than 10% off its baseline for three nights in a
-# row, the issue this opens. See benchmarks/README.md, "Every night".
+# On demand, on a Mac runner: builds the benchmark's AngularLynx app
+# (benchmarks/apps/angular-lynx, on this commit's packages) and its ReactLynx
+# app for the iOS Simulator, launches the two in turn (benchmarks/harness/
+# ios_launch.py and ios_mount.py, --simulator), and tracks AngularLynx /
+# ReactLynx: the Pokédex's fully drawn time and memory, and the cost of each
+# view, text and image on the mount screens. benchmarks/harness/track.py
+# writes the job summary, keeps the history (an artifact each run on master
+# hands to the next) and, when a ratio has been more than 10% off its
+# baseline on each of the last three days it ran, the issue this opens. See
+# benchmarks/README.md, "Tracking AngularLynx against ReactLynx".
 #
 # Before #851, nothing ran the benchmark on master: a change that made
 # AngularLynx slower was noticed only when someone happened to compare. A
-# Simulator on a CI runner gives neither a phone's numbers nor steady ones
-# (the host moves them by 5-30%), which is why this tracks ratios, which the
-# host's share mostly cancels out of, and why it isn't a per-PR gate.
+# Simulator gives neither a phone's numbers nor steady ones (the host moves
+# them by 5-30%), which is why this tracks ratios, which the host's share
+# mostly cancels out of, and why it isn't a per-PR gate.
 #
-# A pull request that changes the harness or this workflow runs a short
-# version (fewer launches, the text screens only) without the history or an
-# issue, so a broken nightly shows before it merges.
+# It isn't scheduled, and doesn't run on pull requests, because GitHub's
+# free macOS runner (xcode-27: 3 cores, a load average of 84-303 once the
+# Simulator boots) can't run it: Instruments recorded one launch in four
+# and then hung before recording (#854). It runs on a Mac registered as a
+# self-hosted runner for the run (the README says how), which a pull
+# request from a fork must never reach.
 
 on:
-  schedule:
-    # Before the nightly E2E run (05:00), which uses the same kind of runner.
-    - cron: '0 1 * * *'
   workflow_dispatch:
     inputs:
+      runner:
+        description: "The runner's label: self-hosted for a Mac you've registered, or xcode-27 for GitHub's, which can't record (#854)"
+        default: self-hosted
       runs:
         description: Pokédex launches per app
         default: '20'
@@ -33,52 +37,42 @@ on:
         description: Launches per app of each mount screen
         default: '10'
       max-load:
-        description: "ios_launch.py's --max-load: a load average, or off"
-        default: 'off'
-  pull_request:
-    branches: [master]
-    paths:
-      - .github/workflows/simulator-benchmarks.yml
-      - benchmarks/harness/**
-      - benchmarks/fixtures/**
+        description: "ios_launch.py's --max-load: a load average, off, or empty for half the cores"
+        default: ''
 
+# One run at a time on a runner: two would share its Simulator.
 concurrency:
-  group: simulator-benchmarks-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: simulator-benchmarks-${{ inputs.runner }}
 
 permissions:
   contents: read
 
 jobs:
   benchmark:
-    # Xcode 27, the shell's toolchain, on Apple silicon, as the E2E tests'
-    # iOS job (e2e.yml says why).
-    runs-on: xcode-27
+    # A Mac with Xcode 27, the shell's toolchain, as the E2E tests' iOS job
+    # (e2e.yml says why).
+    runs-on: ${{ inputs.runner }}
     # About 15 minutes of builds while the Simulator boots, 15 of Pokédex
     # launches and 10 for each of the six mount screens.
     timeout-minutes: 180
     permissions:
       contents: read
-      # The history, from the last night's run.
+      # The history, from the last run on master.
       actions: read
-      # The issue for a sustained change, or a failed night.
+      # The issue for a sustained change.
       issues: write
     env:
-      # A night on master keeps the history and opens issues; a pull request
-      # or a run on another branch only measures.
-      NIGHTLY: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/master' }}
-      LAUNCH_RUNS: ${{ github.event_name == 'pull_request' && '4' || inputs.runs || '20' }}
-      MOUNT_RUNS: ${{ github.event_name == 'pull_request' && '4' || inputs.mount-runs || '10' }}
-      # Both text screens give the cost of a text, which is enough to show
-      # that the mount runs and the report work.
-      MOUNT_SCREENS: ${{ github.event_name == 'pull_request' && 'text:1500,text:5000' || '' }}
-      # Off: on this runner (3 cores) the 1-minute load average stayed
-      # between 84 and 207 for the 15 minutes after the Simulator booted
-      # (#854), so half the cores, the harness's default, is never reached,
-      # and the load says little about how busy it is. The apps' order and
-      # the ratio cancel the host's share instead, and each row still
-      # records the load.
-      MAX_LOAD: ${{ inputs.max-load || 'off' }}
+      # A run on master keeps the history and opens issues; a run on
+      # another branch only measures.
+      TRACK: ${{ github.ref == 'refs/heads/master' }}
+      LAUNCH_RUNS: ${{ inputs.runs || '20' }}
+      MOUNT_RUNS: ${{ inputs.mount-runs || '10' }}
+      # Empty is the harness's default, half the cores, which a Mac doing
+      # other work waits for. On GitHub's runner (3 cores) the 1-minute load
+      # average stayed between 84 and 303 after the Simulator booted (#854),
+      # so that needs off: the apps' order and the ratio cancel the host's
+      # share instead, and each row still records the load.
+      MAX_LOAD: ${{ inputs.max-load }}
       # A launch that the load keeps from being measured for 15 minutes ends
       # the step with the load and the limit, rather than wait until the
       # job's timeout with nothing measured.
@@ -90,12 +84,12 @@ jobs:
       # A minute's check before an hour's run.
       - name: Test the report
         run: python3 -m unittest discover -s benchmarks/harness -p '*_test.py'
-      # Booting is the slowest step, and starves the runner for minutes
+      # Booting is the slowest step, and starves GitHub's runner for minutes
       # (e2e.yml's ios job), so it starts first and boots while the steps
       # below install and build. "Wait for the Simulator" picks it up.
       - name: Start the Simulator
         run: |
-          python3 benchmarks/harness/nightly.py boot > "$RUNNER_TEMP/simulator-udid" 2> "$RUNNER_TEMP/simulator-boot.log" &
+          python3 benchmarks/harness/track.py boot > "$RUNNER_TEMP/simulator-udid" 2> "$RUNNER_TEMP/simulator-boot.log" &
           echo $! > "$RUNNER_TEMP/simulator-boot.pid"
       - uses: actions/setup-node@v7
         with:
@@ -158,7 +152,7 @@ jobs:
           xcrun simctl install "$UDID" "$OURS_APP"
           xcrun simctl install "$UDID" "$RIVAL_APP"
       # A runner's cores and load aren't a laptop's (see MAX_LOAD), so
-      # they're printed here for the night's log.
+      # they're printed here for the run's log.
       - name: The host
         run: |
           echo "cores: $(sysctl -n hw.ncpu), memory: $(( $(sysctl -n hw.memsize) / 1073741824 )) GB"
@@ -167,9 +161,11 @@ jobs:
       # xctrace launches each app under Instruments, which attaches to the
       # process it starts: that takes developer tools access and the task
       # port right, which on a Mac ask for an admin's password, a dialog
-      # nobody answers on a runner. Without them, xctrace printed
-      # "Launching process" and nothing more until the step's timeout
-      # (#854). This grants both, then launches the app once on its own
+      # nobody answers on a runner. Without them, xctrace on GitHub's runner
+      # printed "Launching process" and nothing more until the step's
+      # timeout (#854). This grants both there (a Mac of your own has them
+      # once you've recorded with Instruments, and its sudo would ask for
+      # the password), then launches the app once on its own
       # (with a screenshot in the artifacts) and once under xctrace, each
       # under a time limit, so a runner that can't record says so here
       # rather than an hour in.
@@ -179,16 +175,18 @@ jobs:
         env:
           UDID: ${{ steps.simulator.outputs.udid }}
         run: |
-          sudo DevToolsSecurity -enable
-          sudo dseditgroup -o edit -a "$(id -un)" -t user _developer
-          sudo security authorizationdb write system.privilege.taskport allow
+          if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
+            sudo DevToolsSecurity -enable
+            sudo dseditgroup -o edit -a "$(id -un)" -t user _developer
+            sudo security authorizationdb write system.privilege.taskport allow
+          fi
           mkdir -p "$RUNNER_TEMP/instruments"
           xcrun simctl launch "$UDID" com.angularlynx.bench.angularlynx
           sleep 10
           xcrun simctl io "$UDID" screenshot "$RUNNER_TEMP/instruments/launched.png"
           xcrun simctl terminate "$UDID" com.angularlynx.bench.angularlynx
           # Each instrument the harness records with, on its own beside
-          # Points of Interest: on this runner, Points of Interest alone
+          # Points of Interest: on GitHub's runner, Points of Interest alone
           # recorded and the three together never started (#854).
           check() {
             name=$1
@@ -235,36 +233,35 @@ jobs:
         run: >-
           python3 -u benchmarks/harness/ios_mount.py --simulator --device "$UDID"
           --rival react-lynx --runs "$MOUNT_RUNS"
-          ${MOUNT_SCREENS:+--screens "$MOUNT_SCREENS"} ${MAX_LOAD:+--max-load "$MAX_LOAD"} --max-wait "$MAX_WAIT"
+          ${MAX_LOAD:+--max-load "$MAX_LOAD"} --max-wait "$MAX_WAIT"
           ${NO_THERMAL:+"$NO_THERMAL"}
-      # The last night's history, from the newest run of this workflow on
-      # master that finished. Artifacts last 90 days, so a gap that long
-      # starts a new history, as does the first night. A history that's
-      # there but doesn't download fails the step instead: starting again
-      # would throw away every night's baseline.
+      # The history, from the newest run of this workflow on master that
+      # finished. Artifacts last 90 days, so a gap that long starts a new
+      # history, as does the first run. A history that's there but doesn't
+      # download fails the step instead: starting again would throw away
+      # every day's baseline.
       - name: Download the history
-        if: env.NIGHTLY == 'true'
+        if: env.TRACK == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p "$RUNNER_TEMP/history"
           run=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow simulator-benchmarks.yml --branch master \
-            --status success --limit 30 --json databaseId,event \
-            --jq '[.[] | select(.event != "pull_request")][0].databaseId // empty')
+            --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')
           if [ -z "$run" ]; then
-            echo "::warning::No earlier night on master, so this night starts the history."
+            echo "::warning::No earlier run on master, so this run starts the history."
             exit 0
           fi
           artifact=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/artifacts" \
             --jq '.artifacts[] | select(.name == "simulator-benchmark-history" and .expired == false) | .id')
           if [ -z "$artifact" ]; then
-            echo "::warning::Run $run has no history left (expired after 90 days?), so this night starts a new one."
+            echo "::warning::Run $run has no history left (expired after 90 days?), so this run starts a new one."
             exit 0
           fi
           for attempt in 1 2 3; do
             if gh run download "$run" --repo "$GITHUB_REPOSITORY" \
               --name simulator-benchmark-history --dir "$RUNNER_TEMP/history"; then
-              echo "The history of run $run: $(wc -l < "$RUNNER_TEMP/history/history.jsonl") nights"
+              echo "The history of run $run: $(wc -l < "$RUNNER_TEMP/history/history.jsonl") days"
               exit 0
             fi
             echo "Downloading run $run's history failed ($attempt of 3)."
@@ -273,20 +270,20 @@ jobs:
           echo "::error::Run $run's history is there but didn't download."
           exit 1
       # Fails when an app drew nothing for a measure (after writing the
-      # summary), so a night that broke an app reports a failure rather than
+      # summary), so a run that broke an app reports a failure rather than
       # a history with a gap in it.
       - name: Report
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          HISTORY: ${{ env.NIGHTLY == 'true' && format('{0}/history/history.jsonl', runner.temp) || '' }}
+          HISTORY: ${{ env.TRACK == 'true' && format('{0}/history/history.jsonl', runner.temp) || '' }}
         run: >-
-          python3 benchmarks/harness/nightly.py report
+          python3 benchmarks/harness/track.py report
           --launch "$(ls "$RESULTS"/launch-*-react-lynx.csv | tail -n 1)" --mount-dir "$RESULTS"
           ${HISTORY:+--history "$HISTORY"}
           --commit "$GITHUB_SHA" --run-url "$RUN_URL"
           --summary "$GITHUB_STEP_SUMMARY" --alert "$RUNNER_TEMP/alert.md"
       - uses: actions/upload-artifact@v7
-        if: env.NIGHTLY == 'true'
+        if: env.TRACK == 'true'
         with:
           name: simulator-benchmark-history
           path: ${{ runner.temp }}/history/history.jsonl
@@ -302,39 +299,28 @@ jobs:
             ${{ runner.temp }}/instruments/launched.png
             ${{ runner.temp }}/fixtures.log
           retention-days: 30
-      # One open issue at a time: a night that finds the change again
+      # One open issue at a time: a run that finds the change again
       # comments on it, as the nightly E2E run's failures do.
       - name: Open an issue for a sustained change
-        if: env.NIGHTLY == 'true'
+        if: env.TRACK == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           alert="$RUNNER_TEMP/alert.md"
           [ -f "$alert" ] || exit 0
-          title="Nightly Simulator benchmark: AngularLynx has changed against ReactLynx"
-          gh label create benchmark-nightly --color FBCA04 --description "Nightly Simulator benchmark alerts" 2>/dev/null || true
-          existing=$(gh issue list --label benchmark-nightly --state open --search "in:title \"$title\"" --json number --jq '.[0].number')
+          title="Simulator benchmark: AngularLynx has changed against ReactLynx"
+          gh label create benchmark-alert --color FBCA04 --description "Simulator benchmark alerts" 2>/dev/null || true
+          existing=$(gh issue list --label benchmark-alert --state open --search "in:title \"$title\"" --json number --jq '.[0].number')
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --body-file "$alert"
           else
-            gh issue create --title "$title" --label benchmark-nightly --body-file "$alert"
+            gh issue create --title "$title" --label benchmark-alert --body-file "$alert"
           fi
-      # A night that fails measures nothing, so it can't alert either:
-      # say so rather than go quiet.
-      - name: Report a failed night
-        if: failure() && github.event_name == 'schedule'
+      # A Mac of your own keeps its Simulator, which would go on using its
+      # memory and cores after the run.
+      - name: Shut the Simulator down
+        if: always() && steps.simulator.outputs.udid
         env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          title="Nightly Simulator benchmark failed"
-          gh label create benchmark-nightly --color FBCA04 --description "Nightly Simulator benchmark alerts" 2>/dev/null || true
-          existing=$(gh issue list --label benchmark-nightly --state open --search "in:title \"$title\"" --json number --jq '.[0].number')
-          if [ -n "$existing" ]; then
-            gh issue comment "$existing" --body "Failed again: $RUN_URL"
-          else
-            gh issue create --title "$title" --label benchmark-nightly \
-              --body "The nightly Simulator benchmark failed, so it measured nothing and can't tell whether AngularLynx has changed against ReactLynx: $RUN_URL"
-          fi
+          UDID: ${{ steps.simulator.outputs.udid }}
+        run: xcrun simctl shutdown "$UDID" || true

@@ -61,6 +61,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   type BaseLynxElement,
   LynxElement,
+  processPendingListUpdates,
   processPendingRemovals,
 } from '../lynx-element';
 import { LynxDocument } from '../lynx-document';
@@ -2445,6 +2446,48 @@ describe('renderer teardown', () => {
       // Out of the tree: nothing shows it, so it isn't rebuilt.
       expect(item.element as unknown as FakeEl).toBe(ref);
       expect(registered([ref])).toEqual([true]);
+    });
+
+    it('keeps one native already put in the list when its old parent goes', () => {
+      const { view, list, item, ref } = makeMove();
+      const listRef = list.element as unknown as FakeEl;
+
+      // An insert alone, and native asked for the item: it's in the native
+      // list, out of the view.
+      list.appendChild(item);
+      processPendingRemovals();
+      processPendingListUpdates();
+      expect(askForItem(listRef, 0)).toBe(ref);
+
+      view.markDestroyed();
+      view.remove();
+      processPendingRemovals();
+      (globalThis as unknown as FakeNativeGlobal<FakeEl>).__FlushElementTree();
+
+      expect(item.element as unknown as FakeEl).toBe(ref);
+      expect(ref.parent).toBe(listRef);
+      expect(ref.hasPaintingNode).toBe(true);
+      expect(registered([ref])).toEqual([true]);
+    });
+
+    it('tells native about one rebuilt after it was told about the old one', () => {
+      const { view, list, item, ref } = makeMove();
+      const listRef = list.element as unknown as FakeEl;
+
+      // Native knows the item, but hasn't asked for it yet.
+      list.appendChild(item);
+      processPendingRemovals();
+      processPendingListUpdates();
+
+      view.markDestroyed();
+      view.remove();
+      processPendingRemovals();
+      const rebuilt = item.element as unknown as FakeEl;
+      expect(rebuilt).not.toBe(ref);
+
+      // The list's update in this cycle gives native the new one.
+      expect(processPendingListUpdates()).toBe(true);
+      expect(askForItem(listRef, 0)).toBe(rebuilt);
     });
   });
 });

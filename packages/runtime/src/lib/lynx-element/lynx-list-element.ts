@@ -391,6 +391,15 @@ export class LynxListElement extends LynxElement {
    * `#children` a release walks, and a list in a destroyed view must let
    * them go too (see LynxElement.virtualChildren).
    */
+  /**
+   * @internal Whether native has put `child` in the native list
+   * (componentAtIndex appends it), so it's no longer in the native tree of
+   * a parent it moved from (see LynxElement's #markPaintingDead).
+   */
+  override holdsInNativeList(child: LynxElement): boolean {
+    return this.isAppendedToNativeList(child.element);
+  }
+
   override virtualChildren(): LynxElement[] {
     const children: LynxElement[] = [];
     for (

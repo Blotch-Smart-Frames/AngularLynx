@@ -1455,6 +1455,18 @@ export class LynxElement implements BaseLynxElement {
   }
 
   /**
+   * @internal Whether `child`, one of this element's virtual children, is
+   * in the native element already: a list's item native asked for (see
+   * LynxListElement). None here.
+   * v8 ignore start -- only a list is any element's virtual parent, and it
+   * overrides this.
+   */
+  holdsInNativeList(_child: LynxElement): boolean {
+    return false;
+  }
+  /* v8 ignore stop */
+
+  /**
    * The document stand-in (see global-events), as a DOM element's is its
    * document. Angular resolves a `document:` or `body:` host listener's
    * target from it, and a `window:` one from its `defaultView`.
@@ -4457,6 +4469,10 @@ export class LynxElement implements BaseLynxElement {
         el.#jsParent = null;
       }
       el.#recreateIfDead();
+      // Native may have been told about the old native element already (an
+      // insert alone, in an earlier cycle): the list tells it about the new
+      // one with this cycle's flush.
+      (el._virtualParent as { listItemChanged?(): void }).listItemChanged?.();
     }
   }
 
@@ -4467,10 +4483,15 @@ export class LynxElement implements BaseLynxElement {
    * replays onto fresh refs.
    */
   #markPaintingDead(): void {
+    if (this._virtualParent) {
+      // In a list now, and native has put it there (componentAtIndex): it
+      // left the removed subtree natively, and lives on in the list.
+      if (this._virtualParent.holdsInNativeList(this)) return;
+      // Its native element went with a removal from where it was (see
+      // #rebuildDeadListItems).
+      LynxElement.#deadListItems.add(this);
+    }
     this.#paintingDead = true;
-    // In a list now, but its native element went with a removal from where
-    // it was (see #rebuildDeadListItems).
-    if (this._virtualParent) LynxElement.#deadListItems.add(this);
     for (const child of this.#children ?? NO_CHILDREN) {
       child.#markPaintingDead();
     }

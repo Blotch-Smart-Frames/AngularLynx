@@ -158,6 +158,8 @@ constructor() {
 
 On a device it reports each element once observing starts, after the element's first layout, then each time it comes into view or leaves. Entries have `isIntersecting`, `intersectionRatio`, `boundingClientRect`, `intersectionRect`, `rootBounds` and `target`. The boxes are measured just after Lynx notices the change, so an element scrolling in reports a small `intersectionRatio`. The web preview uses the browser's own observer.
 
+The build includes the observer only where a module of the app or its libraries names `IntersectionObserver` or has an `@defer (on viewport)` block. Code that builds the name at runtime finds it missing unless another module names it: write it out, or call `ɵenableIntersectionObserver()` from `@blotch/angular-lynx` first. The testing library's `render()` enables it.
+
 `threshold`, `rootMargin` (px or %) and `root` (an element around the observed one, such as a `<scroll-view>` or `<list>`) work as in the browser. Given any of them, the observer measures the element itself: when it's laid out, when exposure says it came or went, and 20 times a second while a scroll container between it and the root scrolls. It reports each time the visible part crosses a threshold. Points that catch people out:
 
 - `isIntersecting` is `true` only once a threshold is reached, as in Chrome and Safari: with `threshold: 1`, a half-visible element isn't intersecting. Read `intersectionRatio` for the share.

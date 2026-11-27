@@ -79,11 +79,15 @@ python3 harness/ios_launch.py --device <UDID> --runs 20 \
 python3 harness/ios_mount.py --device <UDID> --rival react-native --runs 10
 
 # 5. Scrolling: a UI test swipes up each app's list ten times a launch
-#    (harness/ios-scroll). With a third field, each app's .app, it keeps one
-#    of the two installed at a time, beside the test's own runner app
+#    (harness/ios-scroll). It needs the list, so build both apps again
+#    without a bench screen: step 4 left them built for its last one. With a
+#    third field, each app's .app, it keeps one of the two installed at a
+#    time, beside the test's own runner app
+ours=$(sh harness/build_ios_app.sh angular-lynx com.angularlynx.bench.angularlynx)
+rival=$(sh harness/build_ios_app.sh react-native com.angularlynx.bench.rival)
 python3 harness/ios_scroll.py --device <UDID> --runs 10 \
-  --app angular-lynx=<bundle id>=path/to/LaunchPerfAL.app \
-  --app react-native=<bundle id>=path/to/LaunchPerfRN.app \
+  --app angular-lynx=com.angularlynx.bench.angularlynx="$ours" \
+  --app react-native=com.angularlynx.bench.rival="$rival" \
   --out results/ios/scroll-<date>-react-native.csv
 
 # 6. Sizes, and the medians

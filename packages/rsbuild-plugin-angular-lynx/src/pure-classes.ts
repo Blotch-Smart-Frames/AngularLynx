@@ -367,6 +367,28 @@ const isWellKnownSymbol = (node: ts.Expression): boolean =>
   node.expression.text === 'Symbol' &&
   ts.isIdentifier(node.name);
 
+/**
+ * The `new` expressions of {@link PURE_CONSTRUCTORS} that run as the
+ * expression does: those outside any function or class of its own.
+ *
+ * @param node - The expression, one {@link isPure} accepts.
+ * @returns Each such `new`, outermost first.
+ */
+export const pureConstructions = (node: ts.Node): ts.NewExpression[] => {
+  if (ts.isFunctionLike(node) || ts.isClassLike(node)) return [];
+  const own =
+    ts.isNewExpression(node) &&
+    ts.isIdentifier(node.expression) &&
+    PURE_CONSTRUCTORS.has(node.expression.text)
+      ? [node]
+      : [];
+  const nested: ts.NewExpression[] = [];
+  ts.forEachChild(node, (child) => {
+    nested.push(...pureConstructions(child));
+  });
+  return [...own, ...nested];
+};
+
 export const isPure = (node: ts.Expression): boolean => {
   if (
     ts.isLiteralExpression(node) ||

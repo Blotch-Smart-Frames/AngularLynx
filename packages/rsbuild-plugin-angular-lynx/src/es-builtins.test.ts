@@ -1380,6 +1380,18 @@ describe('ES2021–ES2026 built-in polyfills', () => {
         `Error.isError({ [Symbol.toStringTag]: 'Error' })`,
       ]);
     });
+
+    it('counts a tagged object that only inherits from Error.prototype as an error', () => {
+      // A known difference: only the engine can see that such an object
+      // lacks [[ErrorData]] once its tag hides the mark from
+      // Object.prototype.toString (see error-is-error.js). Native is false.
+      realm = polyfilled;
+      expect(
+        run(
+          `Error.isError(Object.assign(Object.create(Error.prototype), { [Symbol.toStringTag]: 'Custom' }))`,
+        ),
+      ).toBe(true);
+    });
   });
 });
 

@@ -6,6 +6,10 @@ import { definePolyfills, isObject } from './shared.js';
 // string, which no built-in error has but a class can add. For a tagged
 // object, inheriting from Error.prototype is the closest test left: a tagged
 // error is still an error, and an object that's only tagged 'Error' isn't.
+// It's an approximation either way: a tagged object made with
+// Object.create(Error.prototype) counts as an error, which the native method
+// says it isn't. And an untagged object's tag is read twice, here and by
+// toString, which is the only way to read the mark.
 definePolyfills(Error, {
   isError(value) {
     if (!isObject(value)) return false;

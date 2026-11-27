@@ -1,4 +1,4 @@
-import { copyFileSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 import type { PlatformGenerator } from '../generate.ts';
@@ -32,7 +32,8 @@ const ORIENTATIONS: Record<Orientation, readonly string[]> = {
  * between the template's `angular-lynx:info` markers, the shortcuts
  * become App/AppShortcuts.swift, the app link domains become
  * Config/App.entitlements, and the icon and the splash go in the asset
- * catalog.
+ * catalog. The Bluetooth module stays only in an app with the `bluetooth`
+ * permission.
  */
 export const iosGenerator: PlatformGenerator = {
   configure: (dir, app, projectRoot, development = false) => {
@@ -55,6 +56,16 @@ export const iosGenerator: PlatformGenerator = {
         path.join(dir, 'App/AppShortcuts.swift'),
         appShortcutsSwift(app),
       );
+    }
+
+    // App Store Connect flags an app whose code uses CoreBluetooth without
+    // NSBluetoothAlwaysUsageDescription (ITMS-90683), which only the
+    // `bluetooth` permission writes. So an app that doesn't ask for Bluetooth
+    // leaves the module out, and ships no Bluetooth code at all, on Android
+    // as well (see androidGenerator). LynxViewController registers the module
+    // by name only when it's compiled in.
+    if (!app.permissions.bluetooth) {
+      rmSync(path.join(dir, 'App/BluetoothModule.swift'), { force: true });
     }
 
     // In Config/, beside the xcconfig that points the target at it, rather

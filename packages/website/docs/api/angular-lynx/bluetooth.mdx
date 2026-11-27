@@ -1,0 +1,254 @@
+# LynxBluetooth
+
+Finds Bluetooth LE devices nearby and talks to them as a GATT client: what an app needs to set up or control an accessory, such as handing a smart device the Wi-Fi password. Lynx has no `navigator.bluetooth`. `import { LynxBluetooth, BluetoothError, canonicalBluetoothUUID } from '@blotch/angular-lynx';`
+
+## Setup
+
+Add `bluetooth` to the [permissions](/guide/native-apps#permissions) in angular.json, with the reason iOS shows when it asks:
+
+```json title="angular.json"
+"permissions": {
+  "bluetooth": "To find your frame and give it your Wi-Fi."
+}
+```
+
+Without it the app ships no Bluetooth code at all. App Store Connect rejects an app whose code uses Bluetooth without a reason, so the build leaves the module out rather than risk it.
+
+## Usage
+
+```typescript
+const SETUP = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+const CREDENTIALS = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+const STATUS = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+
+export class SetUpFrame {
+  readonly #bluetooth = inject(LynxBluetooth);
+  protected readonly found = signal<readonly BluetoothDevice[]>([]);
+  protected readonly status = signal('');
+
+  constructor() {
+    // Stops by itself when the screen goes.
+    void this.#bluetooth.scan({ services: [SETUP] }, (device) =>
+      this.found.update((found) => [
+        ...found.filter(({ id }) => id !== device.id),
+        device,
+      ]),
+    );
+  }
+
+  protected async setUp(
+    device: BluetoothDevice,
+    wifi: Uint8Array,
+  ): Promise<void> {
+    const frame = await this.#bluetooth.connect(device.id);
+    await frame.subscribe(SETUP, STATUS, (value) =>
+      this.status.set(new TextDecoder().decode(value)),
+    );
+    await frame.write(SETUP, CREDENTIALS, wifi);
+  }
+}
+```
+
+## API
+
+### `LynxBluetooth`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxBluetooth {}
+```
+
+| Platform                                       | Bluetooth                                                                                       |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| iOS                                            | Core Bluetooth                                                                                  |
+| Android                                        | `android.bluetooth`                                                                             |
+| Unit tests with the testing library            | The devices a spec adds with [`addBluetoothDevice()`](/api/testing-library/#addbluetoothdevice) |
+| [Web preview](/guide/glossary#web-preview)     | None: `state` is `unsupported` and every call rejects with `unavailable`                        |
+| [Lynx Explorer](/guide/glossary#lynx-explorer) | None: `state` is `unsupported` and every call rejects with `unavailable`                        |
+
+It works in the foreground only: a scan and its connections end when the app goes. There's no pairing, and the app can't advertise as a device itself.
+
+### `state`
+
+```typescript
+readonly state: Signal<BluetoothState>;
+
+type BluetoothState =
+  | 'unknown'
+  | 'resetting'
+  | 'unsupported'
+  | 'unauthorized'
+  | 'poweredOff'
+  | 'poweredOn';
+```
+
+Where Bluetooth stands, kept up to date as the person turns it on or off or answers the permission prompt. Reading it never asks for permission.
+
+| State          | Meaning                                                                      |
+| -------------- | ---------------------------------------------------------------------------- |
+| `unknown`      | Not known yet, including when the person hasn't been asked for permission.   |
+| `resetting`    | The system's Bluetooth service is restarting.                                |
+| `unsupported`  | No Bluetooth LE here: the iOS Simulator, or a host without the module.       |
+| `unauthorized` | The person refused, or a policy forbids it. Only Settings can change it now. |
+| `poweredOff`   | Bluetooth is off.                                                            |
+| `poweredOn`    | Ready to scan and connect.                                                   |
+
+### `requestPermission()`
+
+```typescript
+requestPermission(): Promise<BluetoothState>;
+```
+
+Asks the person for permission, if they haven't been asked, and resolves with the state after they answer. [`scan()`](#scan) and [`connect()`](#connect) ask by themselves: call this first to ask at a moment you choose, such as after a screen that says what Bluetooth is for.
+
+- **iOS** asks with the `bluetooth` reason from angular.json.
+- **Android 12 and later** ask for "Nearby devices". **Android 11 and earlier** ask for location instead, which scanning needed then; the app is never given the location.
+
+### `scan()`
+
+```typescript
+scan(
+  options: BluetoothScanOptions,
+  onDevice: (device: BluetoothDevice) => void,
+  config?: { readonly injector?: Injector },
+): Promise<BluetoothScan>;
+
+type BluetoothScanOptions = {
+  readonly services?: readonly string[];
+  readonly namePrefix?: string;
+};
+```
+
+Looks for devices advertising nearby. `onDevice` gets each one the first time it's seen, and then about once a second while it's in range, with its latest signal strength. Resolves once the scan has started, and rejects with a [`BluetoothError`](#bluetootherror) when it can't.
+
+- **Give `services`.** Without them the scan sees every device advertising nearby, which on a busy street is a lot.
+- **One scan runs at a time.** Starting another ends the first. Keep one running rather than restarting it: Android quietly gives an app no results after it starts five scans in 30 seconds.
+- **Android 11 and earlier also need Location turned on** to scan, and the scan rejects with `failed` without it.
+- **Stop it once you've found the device:** scanning drains the battery. Called from an injection context, such as a constructor, the scan stops when the component or service is destroyed. Pass an `injector` to tie it to another one.
+
+```typescript
+type BluetoothDevice = {
+  readonly id: string;
+  readonly name: string | null;
+  readonly rssi: number;
+  readonly services: readonly string[];
+  readonly serviceData: ReadonlyMap<string, Uint8Array>;
+  readonly manufacturerData: ReadonlyMap<number, Uint8Array>;
+};
+
+type BluetoothScan = {
+  readonly scanning: Signal<boolean>;
+  readonly error: Signal<BluetoothError | undefined>;
+  stop(): Promise<void>;
+};
+```
+
+A device's `id` is what `connect()` takes. On iOS it's a UUID the system makes up for the app, the same each time it sees the device; on Android it's the device's Bluetooth address. `rssi` is in dBm: closer to 0 is nearer. `manufacturerData` is keyed by the company identifier the Bluetooth SIG assigned, without its two bytes.
+
+A scan's `error` says why it ended on its own, such as Bluetooth being turned off.
+
+### `connect()`
+
+```typescript
+connect(id: string, options?: { readonly timeout?: number }): Promise<BluetoothConnection>;
+```
+
+Connects to a device a scan saw, and discovers every service and characteristic before it resolves. It gives up after `timeout` milliseconds, 10 seconds by default: neither platform gives up on a device that's gone by itself. Connecting to a device that's connected resolves with the connection it has.
+
+### `BluetoothConnection`
+
+```typescript
+type BluetoothConnection = {
+  readonly id: string;
+  readonly name: string | null;
+  readonly services: readonly BluetoothService[];
+  readonly maxWriteLength: number;
+  readonly connected: Signal<boolean>;
+  read(service: string, characteristic: string): Promise<Uint8Array>;
+  write(
+    service: string,
+    characteristic: string,
+    value: Uint8Array,
+    options?: { readonly withResponse?: boolean },
+  ): Promise<void>;
+  subscribe(
+    service: string,
+    characteristic: string,
+    listener: (value: Uint8Array) => void,
+  ): Promise<() => Promise<void>>;
+  disconnect(): Promise<void>;
+};
+
+type BluetoothService = {
+  readonly uuid: string;
+  readonly characteristics: readonly {
+    readonly uuid: string;
+    readonly properties: readonly (
+      'read' | 'write' | 'writeWithoutResponse' | 'notify' | 'indicate'
+    )[];
+  }[];
+};
+```
+
+- **`write()`** waits for the device to confirm by default, and takes up to 512 bytes. With `withResponse: false` it's quicker but carries at most `maxWriteLength` bytes, and a lost write is lost.
+- **`subscribe()`** calls `listener` with each value the characteristic notifies or indicates, and resolves with a function that stops it. The device stops sending once the last listener of the characteristic stops.
+- **`connected`** turns `false` when the device goes out of range or switches off, and after `disconnect()`. A connection that has ended rejects every call with `notConnected`: connect again for a new one.
+
+### `canonicalBluetoothUUID()`
+
+```typescript
+function canonicalBluetoothUUID(uuid: string): string;
+```
+
+Spells a UUID as every call gives it back: 128 bits, lowercase, with hyphens. A 16- or 32-bit UUID, as the Bluetooth specifications give the standard services (`'180f'` for Battery), stands for one on the Bluetooth base UUID. Every call takes either spelling; compare the UUIDs a sighting or a connection gives with this. It throws a `TypeError` for anything else.
+
+### `BluetoothError`
+
+```typescript
+class BluetoothError extends Error {
+  readonly code: BluetoothErrorCode;
+}
+```
+
+| Code                                        | Meaning                                                                                                                        |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `unavailable`                               | The host has no Bluetooth module: angular.json's permissions don't list `bluetooth`, or it's Lynx Explorer or the web preview. |
+| `unsupported`, `unauthorized`, `poweredOff` | As the [state](#state) of the same name.                                                                                       |
+| `notFound`                                  | No device has that id, or the connected device has no such service or characteristic.                                          |
+| `notConnected`                              | The connection has ended.                                                                                                      |
+| `timeout`                                   | The device didn't answer in time.                                                                                              |
+| `busy`                                      | The platform is already doing something it does one at a time.                                                                 |
+| `failed`                                    | Anything else. The message has the platform's reason.                                                                          |
+
+## In tests
+
+Under the [testing library](/guide/testing/), the devices in range are the ones a spec adds with [`addBluetoothDevice()`](/api/testing-library/#addbluetoothdevice), and [`setBluetoothState()`](/api/testing-library/#setbluetoothstate) turns the radio off or refuses permission:
+
+```typescript
+const frame = addBluetoothDevice({
+  id: 'frame',
+  name: 'Blotch - XyZ1',
+  services: {
+    [SETUP]: {
+      [CREDENTIALS]: {
+        properties: ['write'],
+        onWrite: (_value, device) =>
+          device.notify(SETUP, STATUS, new TextEncoder().encode('online')),
+      },
+      [STATUS]: { properties: ['notify'] },
+    },
+  },
+});
+await render(SetUpFrame);
+
+fireEvent.tap(await screen.findByText('Blotch - XyZ1'));
+await waitForUpdate();
+
+expect(frame.writes).toHaveLength(1);
+expect(await screen.findByText('online')).toBeInTheDocument();
+```
+
+## Related
+
+- [Permissions](/guide/native-apps#permissions), where `bluetooth` is declared
+- [`LynxNativeModule`](/api/angular-lynx/native-module), for the host app's own native code

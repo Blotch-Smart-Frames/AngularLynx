@@ -6,6 +6,7 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -24,6 +25,7 @@ import {
   shortcutStringsXml,
   shortcutsXml,
   stringResource,
+  usesPermissions,
 } from './project.ts';
 
 const app = (options = {}) =>
@@ -91,6 +93,62 @@ describe('permissionEntries', () => {
       ].join('\n'),
     );
     expect(permissionEntries(app())).toBe('');
+  });
+
+  it('declares Bluetooth with the permissions each Android version asks for, and its radio as optional', () => {
+    expect(permissionEntries(app({ permissions: { bluetooth: 'x' } }))).toBe(
+      [
+        '<uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />',
+        '<uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />',
+        '<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />',
+        '<uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" tools:targetApi="s" />',
+        '<uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />',
+        '<uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />',
+      ].join('\n'),
+    );
+  });
+
+  it("keeps location on every Android version for an app that asks for it besides Bluetooth's", () => {
+    for (const permissions of [
+      { bluetooth: 'x', location: 'y' },
+      { location: 'y', bluetooth: 'x' },
+    ]) {
+      const entries = permissionEntries(app({ permissions }));
+      expect(entries).toContain(
+        '<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />',
+      );
+      expect(entries.match(/ACCESS_FINE_LOCATION/g)).toHaveLength(1);
+    }
+  });
+});
+
+describe('usesPermissions', () => {
+  it('keeps an attribute only when every declaration of the name has it', () => {
+    expect(
+      usesPermissions([
+        { name: 'a', maxSdkVersion: 28 },
+        { name: 'b', usesPermissionFlags: 'x|y' },
+        { name: 'a', maxSdkVersion: 30 },
+        { name: 'b', usesPermissionFlags: 'y|z' },
+        { name: 'c', maxSdkVersion: 30, usesPermissionFlags: 'x' },
+        'c',
+        { name: 'd', usesPermissionFlags: 'x' },
+        { name: 'd', usesPermissionFlags: 'y' },
+      ]),
+    ).toEqual([
+      '<uses-permission android:name="a" android:maxSdkVersion="30" />',
+      '<uses-permission android:name="b" android:usesPermissionFlags="y" tools:targetApi="s" />',
+      '<uses-permission android:name="c" />',
+      '<uses-permission android:name="d" />',
+    ]);
+  });
+
+  it('escapes names and flags', () => {
+    expect(
+      usesPermissions([{ name: 'a"b', usesPermissionFlags: '<x>' }]),
+    ).toEqual([
+      '<uses-permission android:name="a&quot;b" android:usesPermissionFlags="&lt;x&gt;" tools:targetApi="s" />',
+    ]);
   });
 });
 
@@ -259,6 +317,42 @@ describe('androidGenerator', () => {
     expect(androidGenerator.bundleDir(dir)).toBe(
       path.join(dir, 'app/src/main/assets'),
     );
+  });
+
+  it("declares Bluetooth's permissions in a manifest that knows the tools namespace", () => {
+    androidGenerator.configure(
+      dir,
+      app({ permissions: { bluetooth: 'x' } }),
+      dir,
+    );
+    const manifest = readFileSync(
+      path.join(dir, 'app/src/main/AndroidManifest.xml'),
+      'utf8',
+    );
+    expect(manifest).toContain(
+      'xmlns:tools="http://schemas.android.com/tools"',
+    );
+    expect(manifest).toContain('tools:targetApi="s"');
+    expect(manifest).toContain('android.hardware.bluetooth_le');
+  });
+
+  it('keeps the Bluetooth module only in an app that asks for Bluetooth', () => {
+    const module = path.join(
+      dir,
+      'app/src/main/java/dev/angularlynx/shell/BluetoothModule.kt',
+    );
+    writeFileSync(module, 'class BluetoothModule');
+    androidGenerator.configure(
+      dir,
+      app({ permissions: { bluetooth: 'x' } }),
+      dir,
+    );
+    expect(readFileSync(module, 'utf8')).toBe('class BluetoothModule');
+
+    androidGenerator.configure(dir, app({ permissions: { camera: 'x' } }), dir);
+    expect(existsSync(module)).toBe(false);
+    // Nothing left to remove.
+    expect(() => androidGenerator.configure(dir, app(), dir)).not.toThrow();
   });
 
   it("writes the shortcuts' resources, which the launcher activity points Android to", () => {

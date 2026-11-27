@@ -4,6 +4,13 @@ export type { ComponentRef } from '@angular/core';
 export { setAppState } from './app-state.js';
 export type { AppState } from './app-state.js';
 export { pressBackButton } from './back-button.js';
+export { addBluetoothDevice, setBluetoothState } from './bluetooth.js';
+export type {
+  FakeBluetoothCharacteristic,
+  FakeBluetoothDevice,
+  FakeBluetoothDeviceRef,
+  FakeBluetoothWrite,
+} from './bluetooth.js';
 export { fireEvent, eventMap } from './fire-event.js';
 export { openedURLs, openLink } from './linking.js';
 export type { OpenedURL } from './linking.js';

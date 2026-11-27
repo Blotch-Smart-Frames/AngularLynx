@@ -269,6 +269,10 @@
           "type": "string",
           "description": "Why the app connects to devices or servers on the local network: iOS asks the first time it does. Android needs no permission."
         },
+        "bluetooth": {
+          "type": "string",
+          "description": "Why the app connects to Bluetooth LE devices through LynxBluetooth: iOS asks the first time the app uses Bluetooth. Android asks with its own message, for nearby devices from Android 12 and for location before it. Without it, the app has no Bluetooth code at all."
+        },
         "notifications": {
           "type": "string"
         }

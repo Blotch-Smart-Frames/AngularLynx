@@ -233,6 +233,29 @@ Copy and paste text with `LynxClipboard`: `await clipboard.setString(text)` and 
 
 Tap the phone with `LynxHaptics`: `haptics.impact('light' | 'medium' | 'heavy' | 'soft' | 'rigid')`, `haptics.selection()` for a selection or a value moving one place, and `haptics.notification('success' | 'warning' | 'error')`. It uses UIKit's feedback generators on iOS and `View.performHapticFeedback()` on Android (no permission, and it follows the touch feedback setting), and the page's `navigator.vibrate()` in the web preview. The methods return nothing and never throw: Lynx Explorer and the testing library play nothing. To check feedback in a spec, provide a stand-in: `{ provide: LynxHaptics, useValue: { impact: vi.fn(), selection: vi.fn(), notification: vi.fn() } }`. The dolan slider, switch, context menu and segmented controls give their own.
 
+### No `navigator.bluetooth`
+
+Find and talk to Bluetooth LE devices with `LynxBluetooth`, after adding `"bluetooth": "<reason>"` to angular.json's `permissions` (without it the app has no Bluetooth module, and every call rejects with a `BluetoothError` whose `code` is `unavailable`, as in Lynx Explorer and the web preview, where `state()` is `unsupported`):
+
+```typescript
+const bluetooth = inject(LynxBluetooth);
+
+// One scan at a time; it stops when the injection context it started in is destroyed.
+const scan = await bluetooth.scan({ services: [SETUP] }, (device) =>
+  found.set(device),
+);
+await scan.stop();
+const frame = await bluetooth.connect(device.id); // every service and characteristic discovered
+const stop = await frame.subscribe(SETUP, STATUS, (value) => status.set(value));
+await frame.write(SETUP, CREDENTIALS, bytes); // with a response, up to 512 bytes
+```
+
+- **It's a scan, not Web Bluetooth's chooser.** `scan()` streams each device it sees, about once a second while in range, and the app lists them itself. `connect()` takes the `id` (iOS: a UUID iOS makes up for the app; Android: the address).
+- **UUIDs come back as 128-bit lowercase.** Every call takes `'180f'` too; compare with `canonicalBluetoothUUID()`.
+- **`state()` never prompts.** `scan()` and `connect()` ask for permission themselves; call `requestPermission()` to ask after a screen of your own. Android 12+ asks for "Nearby devices", earlier Android for location.
+- **A dropped connection stays dropped.** `connected()` turns `false` and its calls reject with `notConnected`; `connect()` again for a new one. Foreground only, no pairing.
+- **Specs** add devices with `addBluetoothDevice()` and change the radio with `setBluetoothState()` (see [build-configuration.md](build-configuration.md)).
+
 ### Bundled images need `baseHref` on the web
 
 An imported image (`import logo from './logo.png'`, typed through `/// <reference types="@blotch/angular-lynx-build/client" />`) becomes `static/image/logo.<hash>.png` next to the bundle. On iOS and Android, Lynx resolves it against the bundle, wherever that is. Lynx for Web puts it on an `<img>` in the page, so the browser resolves it against the page that shows the `<lynx-view>`: a bundle at `/apps/shop/main.web.bundle` on a page at `/` asks for `/static/image/…` and gets nothing. Build with `ng build --base-href=/apps/shop/`, which makes the web bundle ask for `/apps/shop/static/image/…` (see [build-configuration.md](build-configuration.md)). `ng serve` needs nothing: its page and bundle share a root. Fonts never have the problem: the build inlines `@font-face` files as data URLs.

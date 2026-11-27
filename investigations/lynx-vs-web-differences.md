@@ -3551,7 +3551,7 @@ Nothing: the main thread's `fetch` (and so `Image`, three.js's loaders and HttpC
 
 ---
 
-## No drag-and-drop, clipboard, file system, or Web Worker APIs
+## No drag-and-drop, clipboard, Bluetooth, file system, or Web Worker APIs
 
 ### What you'd expect (web)
 
@@ -3564,6 +3564,7 @@ None of these web APIs exist in Lynx:
 - **Drag and drop** — no `DragEvent`, no `draggable` attribute, no `DataTransfer`. Implement custom drag via touch events.
 - **Clipboard** — no `navigator.clipboard`. Copy/paste must go through native bridge modules: `LynxClipboard` (issue #303) calls the shells' `AngularLynxClipboard` module. See [the web preview's clipboard needs the page's window](#the-web-previews-clipboard-needs-the-pages-window) for the web side.
 - **Vibration** — no `navigator.vibrate()`, and nothing for the haptic engine. `LynxHaptics` (issue #462) calls the shells' `AngularLynxHaptics` module (UIKit's feedback generators, Android's `View.performHapticFeedback()`), and in the web preview the `navigator.vibrate()` of the page around web-core's main-thread iframe, as the clipboard does. Lynx Explorer has no module, so it plays nothing.
+- **Bluetooth** — no `navigator.bluetooth`. `LynxBluetooth` calls the shells' `AngularLynxBluetooth` module (Core Bluetooth, `android.bluetooth`), which an app gets only when angular.json's `permissions` list `bluetooth`: App Store Connect rejects an app whose code uses Core Bluetooth without `NSBluetoothAlwaysUsageDescription`, so the generator leaves the module's source out of every other app. Its shape differs from Web Bluetooth's on purpose: a browser hands the page one device the person picked in its own chooser (`requestDevice()`), while a phone app scans and lists the devices itself, so `scan()` streams sightings and `connect()` takes a device id. Values cross the threads as base64, since the relay carries only JSON. The web preview has no module.
 - **File system** — no File API, no `<input type="file">`, no `showOpenFilePicker()`. File access requires native bridge.
 - **Web Workers** — not supported. Lynx already has a dual-thread model (main + background), but you cannot spawn additional threads from JS. Use the built-in background thread instead.
 - **SharedWorker / ServiceWorker** — not supported. No offline caching, no background sync.

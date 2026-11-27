@@ -200,6 +200,62 @@ await waitForUpdate();
 expect(screen.getByText('Order 42')).toBeInTheDocument();
 ```
 
+### `addBluetoothDevice()`
+
+```typescript
+function addBluetoothDevice(
+  device: FakeBluetoothDevice,
+): FakeBluetoothDeviceRef;
+```
+
+Puts a Bluetooth LE device in range of the app, for [`LynxBluetooth`](/api/angular-lynx/bluetooth) to find, connect to and talk to as it would a real one. A scan that's running sees it at once, and one that starts later sees it as it starts. A device advertises every service it has unless `advertisedServices` says otherwise, and a characteristic can be read, written and notified unless its `properties` say otherwise. `onWrite` is called with each value the app writes and the device, so the spec can answer as the real device does. Each test starts with no devices and the radio on.
+
+```typescript
+const frame = addBluetoothDevice({
+  id: 'frame',
+  name: 'Blotch - XyZ1',
+  services: {
+    [SETUP]: {
+      [CREDENTIALS]: {
+        properties: ['write'],
+        onWrite: (_value, device) => device.notify(SETUP, STATUS, ONLINE),
+      },
+      [STATUS]: { properties: ['notify'] },
+    },
+  },
+});
+await render(SetUpFrame);
+
+fireEvent.tap(await screen.findByText('Blotch - XyZ1'));
+await waitForUpdate();
+
+expect(frame.writes).toEqual([
+  {
+    service: SETUP,
+    characteristic: CREDENTIALS,
+    value: WIFI,
+    withResponse: true,
+  },
+]);
+```
+
+The device it returns has `connected`, `writes` (what the app wrote, oldest first), `notify(service, characteristic, value)`, which reaches the app while it's subscribed, and `disconnect()`, which ends the connection from the device's side, as going out of range does. UUIDs are spelled either way, as [`canonicalBluetoothUUID()`](/api/angular-lynx/bluetooth#canonicalbluetoothuuid) reads them.
+
+### `setBluetoothState()`
+
+```typescript
+function setBluetoothState(state: BluetoothState): void;
+```
+
+Sets the state of the phone's Bluetooth, as the person turning it off or refusing permission does, so a spec can check what the app shows then. Anything but `'poweredOn'` ends a running scan and every connection, as it does on a phone. `'unknown'` stands for not asked yet: the person allows it when `requestPermission()` asks.
+
+```typescript
+setBluetoothState('poweredOff');
+await render(SetUpFrame);
+
+expect(await screen.findByText('Turn on Bluetooth')).toBeInTheDocument();
+```
+
 ### `setAppState()`
 
 ```typescript

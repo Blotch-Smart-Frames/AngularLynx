@@ -2,13 +2,17 @@ import { describe, expect, it } from 'vitest';
 
 import { renderEjectedProject } from './eject.ts';
 import { EJECT_MARKER } from './generate.ts';
+import type { NativeAppOptions } from './options.ts';
 
-const render = (platform: 'ios' | 'android') =>
+const render = (
+  platform: 'ios' | 'android',
+  options: Omit<NativeAppOptions, 'appId'> = {},
+) =>
   renderEjectedProject({
     platform,
     projectRoot: '/project',
     projectName: 'my-app',
-    app: { appId: 'com.example.ejected' },
+    app: { appId: 'com.example.ejected', ...options },
     generatorVersion: '1.2.3',
   });
 
@@ -37,5 +41,19 @@ describe('renderEjectedProject', () => {
     ).toBe('PK');
     expect(files.get('.gitignore')?.toString()).toContain('local.properties');
     expect(files.has('local.properties')).toBe(false);
+  });
+
+  // angular.json no longer applies to an ejected project, so one ejected
+  // without Bluetooth gets no module to add the permission to later.
+  it('has the Bluetooth module only when the app asks for Bluetooth', () => {
+    for (const [platform, module] of [
+      ['ios', 'App/BluetoothModule.swift'],
+      ['android', 'app/src/main/java/dev/angularlynx/shell/BluetoothModule.kt'],
+    ] as const) {
+      expect(render(platform).has(module)).toBe(false);
+      expect(
+        render(platform, { permissions: { bluetooth: 'x' } }).has(module),
+      ).toBe(true);
+    }
   });
 });

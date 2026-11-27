@@ -176,6 +176,17 @@ describe('infoPlistEntries', () => {
     }
   });
 
+  it("gives Bluetooth the app's reason, only when it asks for Bluetooth", () => {
+    expect(infoPlistEntries(app({}))).not.toContain('NSBluetooth');
+    expect(
+      infoPlistEntries(
+        app({ permissions: { bluetooth: 'Connects to your <heart> monitor' } }),
+      ),
+    ).toContain(
+      '<key>NSBluetoothAlwaysUsageDescription</key>\n<string>Connects to your &lt;heart&gt; monitor</string>',
+    );
+  });
+
   it('tells the shell to keep the page inside the safe area', () => {
     expect(infoPlistEntries(app({ edgeToEdge: false }))).toContain(
       '<key>AngularLynxEdgeToEdge</key>\n<false/>',
@@ -440,6 +451,18 @@ describe('iosGenerator', () => {
     expect(
       readFileSync(path.join(dir, 'App/LynxViewController.swift'), 'utf8'),
     ).toContain('config.register(ShortcutsModule.self)');
+  });
+
+  it('keeps the Bluetooth module only in an app that asks for Bluetooth', () => {
+    const module = path.join(dir, 'App/BluetoothModule.swift');
+    writeFileSync(module, 'final class BluetoothModule {}');
+    iosGenerator.configure(dir, app({ permissions: { bluetooth: 'x' } }), dir);
+    expect(readFileSync(module, 'utf8')).toBe('final class BluetoothModule {}');
+
+    iosGenerator.configure(dir, app({ permissions: { camera: 'x' } }), dir);
+    expect(existsSync(module)).toBe(false);
+    // Nothing left to remove.
+    expect(() => iosGenerator.configure(dir, app(), dir)).not.toThrow();
   });
 
   it('gives the development app the local network reason', () => {

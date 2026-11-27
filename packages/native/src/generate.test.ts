@@ -136,6 +136,25 @@ describe('prepareProject', () => {
     );
   });
 
+  it('brings the Bluetooth module back once the app asks for Bluetooth, and drops it once it stops', () => {
+    for (const [platform, module] of [
+      ['ios', 'App/BluetoothModule.swift'],
+      ['android', 'app/src/main/java/dev/angularlynx/shell/BluetoothModule.kt'],
+    ] as const) {
+      const file = path.join(workDir, platform, module);
+      expect(prepare(platform).regenerated).toBe(true);
+      expect(existsSync(file)).toBe(false);
+      // The permissions are inputs, so the project is generated again from
+      // the template, which has the module.
+      expect(
+        prepare(platform, { permissions: { bluetooth: 'x' } }).regenerated,
+      ).toBe(true);
+      expect(existsSync(file)).toBe(true);
+      expect(prepare(platform).regenerated).toBe(true);
+      expect(existsSync(file)).toBe(false);
+    }
+  });
+
   // Generating the Android icons resizes 1024 px images, which a CI runner
   // measuring coverage can take several seconds over: about 11 s usually, but
   // a slow runner took 55 s. The work is fixed, so the timeout only has to

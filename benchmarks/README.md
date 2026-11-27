@@ -202,3 +202,30 @@ waits for the Mac's load average to be under `--max-load` before each
 launch, records it with every run, and repeats a run whose load went over.
 Its numbers aren't a phone's, so `results/android-emulator` isn't charted
 either; within a session they compare.
+
+## Every night
+
+[`simulator-benchmarks.yml`](../.github/workflows/simulator-benchmarks.yml)
+runs the Simulator benchmark on master every night, on a GitHub macOS runner:
+it builds this commit's AngularLynx app (on the packed packages,
+`scripts/use-local-packages.mjs`) and the ReactLynx app, launches the Pokédex
+20 times each and each of the six mount screens 10 times each, and
+[`harness/nightly.py`](harness/nightly.py) reads the CSVs. It tracks four
+things as AngularLynx / ReactLynx: the Pokédex's fully drawn time and its
+memory, and the cost of a view, a text and an image, (5,000-element screen −
+1,500-element screen) / 3,500. A runner's host moves the times by 5–30% from
+night to night, but it moves both apps of a session alike, so the ratio keeps
+most of a change in AngularLynx and little of the host's.
+
+The job summary has the night's numbers, each ratio against its baseline (the
+median of the 14 nights before) and the last 14 nights. Each night's run
+hands the history to the next as an artifact (`simulator-benchmark-history`,
+kept 90 days), and its CSVs are in `simulator-benchmarks`. A ratio more than
+10% off its baseline, the same way, on each of the last three nights opens an
+issue labeled `benchmark-nightly`, or comments on the one that's open: one
+night is the host, three in a row aren't. A night that fails, or in which an
+app draws nothing, opens one too. A pull request that changes the harness or
+the workflow runs a short version, without the history or an issue.
+
+It isn't a per-PR gate: the host moves a single run too much for that, and a
+change of a few percent needs a quiet Mac (above) to see.

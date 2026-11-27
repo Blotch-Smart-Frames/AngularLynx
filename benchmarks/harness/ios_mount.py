@@ -35,10 +35,12 @@ def build_and_install(device, app, bundle_id, screen, simulator):
     build = ["sh", os.path.join(HERE, "build_ios_app.sh")]
     if simulator:
         build.append("--simulator")
+    # Only stdout, the .app's path: build_ios_app.sh prints why a build
+    # failed on stderr, which goes to this script's.
     built = subprocess.run(
         [*build, app, bundle_id, screen],
         check=True,
-        capture_output=True,
+        stdout=subprocess.PIPE,
         text=True,
     ).stdout.strip().splitlines()[-1]
     install = (

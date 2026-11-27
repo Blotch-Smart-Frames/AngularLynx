@@ -210,12 +210,16 @@ the way its README's "Local packages" section says. Drop Angular from its lockfi
 can't move Angular's packages, which pin each other as exact peers, one at a time from the
 versions it has locked.
 
+In a subshell, so step 6's checks still run at the worktree's root:
+
 ```bash
-cd <worktree>/benchmarks/apps/angular-lynx
-jq '.packages |= with_entries(select(.key | test("(^|/)node_modules/@angular/") | not))' \
-  package-lock.json > package-lock.json.tmp && mv package-lock.json.tmp package-lock.json
-node scripts/use-local-packages.mjs
-npx ng build
+(
+  cd <worktree>/benchmarks/apps/angular-lynx &&
+    jq '.packages |= with_entries(select(.key | test("(^|/)node_modules/@angular/") | not))' \
+      package-lock.json > package-lock.json.tmp && mv package-lock.json.tmp package-lock.json &&
+    node scripts/use-local-packages.mjs &&
+    npx ng build
+)
 ```
 
 Commit its package.json and lockfile, and update the `.angular/cache/<version>/` paths in its

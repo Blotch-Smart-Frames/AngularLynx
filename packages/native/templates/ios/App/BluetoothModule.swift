@@ -18,7 +18,9 @@ import Lynx
 /// Every method calls back once, with its result or `{ error, message }`.
 /// What the app didn't ask for at that moment (a scan's sightings,
 /// notifications, the radio turning off, a device going out of range) arrives
-/// as the `angularLynxBluetooth` global event, an object with a `type`.
+/// as the `angularLynxBluetooth` global event, an object with a `type`. A
+/// scan's `device` and `scanStopped` events carry the `scan` id its
+/// `startScan` was given.
 ///
 /// CoreBluetooth's objects belong to the queue their manager was made with, so
 /// everything here, the methods Lynx calls on its JavaScript thread and
@@ -53,6 +55,9 @@ final class BluetoothModule: NSObject, LynxContextModule, CBCentralManagerDelega
   /// for duplicates, many a second per peripheral, which is how a scan
   /// follows the signal strength, but far more events than an app can use.
   private static let sightingInterval: TimeInterval = 1
+  /// The longest attribute value ATT allows, which caps a write without
+  /// response however large the MTU.
+  private static let maxAttributeLength = 512
 
   /// What CoreBluetooth leaves off a UUID built on the Bluetooth base UUID,
   /// which it names by its 16- or 32-bit short form.
@@ -71,6 +76,10 @@ final class BluetoothModule: NSObject, LynxContextModule, CBCentralManagerDelega
   private var stateWaiters: [() -> Void] = []
 
   private var scanning = false
+  /// The id the runtime gave the running scan, which its `device` and
+  /// `scanStopped` events carry, so it can tell them from those of the scan
+  /// it replaced.
+  private var scanID = 0
   /// Counts `stopScan` calls, so a `startScan` still waiting for the prompt
   /// doesn't start a scan the app stopped meanwhile.
   private var stopCount = 0
@@ -152,6 +161,7 @@ final class BluetoothModule: NSObject, LynxContextModule, CBCentralManagerDelega
   /// every peripheral when it's empty, replacing the scan already running.
   @objc func startScan(_ options: [String: Any]?, callback: @escaping LynxCallbackBlock) {
     let names = options?["services"] as? [String] ?? []
+    let id = (options?["scan"] as? NSNumber)?.intValue ?? 0
     queue.async {
       var services: [CBUUID] = []
       for name in names {
@@ -172,6 +182,7 @@ final class BluetoothModule: NSObject, LynxContextModule, CBCentralManagerDelega
         // A new scan reports each peripheral as soon as it sees it again.
         self.lastSighting.removeAll()
         self.scanning = true
+        self.scanID = id
         central.scanForPeripherals(
           withServices: services.isEmpty ? nil : services,
           options: [CBCentralManagerScanOptionAllowDuplicatesKey: true])
@@ -275,7 +286,7 @@ final class BluetoothModule: NSObject, LynxContextModule, CBCentralManagerDelega
           ).result)
         return
       }
-      let limit = connection.peripheral.maximumWriteValueLength(for: .withoutResponse)
+      let limit = Self.maxWriteLength(connection.peripheral)
       guard data.count <= limit else {
         callback(
           Failure(
@@ -413,6 +424,11 @@ final class BluetoothModule: NSObject, LynxContextModule, CBCentralManagerDelega
     if central.state != .poweredOn {
       lose(Self.failure(for: central.state))
     }
+    // Below poweredOff, every CBPeripheral the manager handed out is invalid:
+    // the next connect retrieves or rediscovers its peripheral.
+    if central.state.rawValue < CBManagerState.poweredOff.rawValue {
+      peripherals.removeAll()
+    }
     if isSettled(central) {
       let waiting = stateWaiters
       stateWaiters.removeAll()
@@ -425,7 +441,9 @@ final class BluetoothModule: NSObject, LynxContextModule, CBCentralManagerDelega
   private func lose(_ failure: Failure) {
     if scanning {
       scanning = false
-      send(["type": "scanStopped", "error": failure.code, "message": failure.message])
+      send([
+        "type": "scanStopped", "scan": scanID, "error": failure.code, "message": failure.message,
+      ])
     }
     for connection in Array(connections.values) {
       let event: [String: Any]? =
@@ -488,7 +506,7 @@ final class BluetoothModule: NSObject, LynxContextModule, CBCentralManagerDelega
       "serviceData": serviceData,
       "manufacturerData": manufacturerData,
     ]
-    send(["type": "device", "device": device])
+    send(["type": "device", "scan": scanID, "device": device])
   }
 
   // MARK: - Connections
@@ -647,28 +665,20 @@ final class BluetoothModule: NSObject, LynxContextModule, CBCentralManagerDelega
   }
 
   func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
-    guard let connection = connections[Self.id(of: peripheral)] else { return }
-    let services = peripheral.services ?? []
-    switch connection.phase {
-    case .discovering:
-      if let error {
-        abandon(connection, Self.failure(for: error))
-        return
-      }
-      connection.servicesLeft = services.count
-      if services.isEmpty {
-        ready(connection)
-        return
-      }
-      services.forEach { peripheral.discoverCharacteristics(nil, for: $0) }
-    case .ready:
-      // The services the peripheral changed, found again.
-      for service in services where service.characteristics == nil {
-        peripheral.discoverCharacteristics(nil, for: service)
-      }
-    default:
+    guard let connection = connections[Self.id(of: peripheral)],
+      connection.phase == .discovering
+    else { return }
+    if let error {
+      abandon(connection, Self.failure(for: error))
       return
     }
+    let services = peripheral.services ?? []
+    connection.servicesLeft = services.count
+    if services.isEmpty {
+      ready(connection)
+      return
+    }
+    services.forEach { peripheral.discoverCharacteristics(nil, for: $0) }
   }
 
   func peripheral(
@@ -687,20 +697,19 @@ final class BluetoothModule: NSObject, LynxContextModule, CBCentralManagerDelega
     }
   }
 
-  /// The peripheral changed its services (a firmware update, say): what was
-  /// waiting on the ones it dropped won't hear back, and the app finds the
-  /// new ones by connecting again.
+  /// The peripheral changed its services (a firmware update, say). The
+  /// app's copy of them, and its subscriptions, are of the old ones, so the
+  /// connection ends: connecting again discovers the new ones.
   func peripheral(_ peripheral: CBPeripheral, didModifyServices invalidatedServices: [CBService]) {
     guard let connection = connections[Self.id(of: peripheral)], connection.phase == .ready,
       !invalidatedServices.isEmpty
     else { return }
     let failure = Failure(code: "failed", message: "The device changed its services.")
-    for service in invalidatedServices {
-      for characteristic in service.characteristics ?? [] {
-        connection.failOperations(on: characteristic, failure)
-      }
-    }
-    peripheral.discoverServices(invalidatedServices.map(\.uuid))
+    send([
+      "type": "disconnected", "id": connection.id, "error": failure.code,
+      "message": failure.message,
+    ])
+    abandon(connection, failure)
   }
 
   private func ready(_ connection: Connection) {
@@ -726,7 +735,7 @@ final class BluetoothModule: NSObject, LynxContextModule, CBCentralManagerDelega
     return [
       "id": connection.id,
       "name": (peripheral.name ?? advertisedNames[connection.id]).map { $0 as Any } ?? NSNull(),
-      "maxWriteLength": peripheral.maximumWriteValueLength(for: .withoutResponse),
+      "maxWriteLength": Self.maxWriteLength(peripheral),
       "services": services,
     ]
   }
@@ -784,7 +793,10 @@ final class BluetoothModule: NSObject, LynxContextModule, CBCentralManagerDelega
   }
 
   func peripheralIsReady(toSendWriteWithoutResponse peripheral: CBPeripheral) {
-    guard let connection = connections[Self.id(of: peripheral)] else { return }
+    // A connection that's closing keeps its writes: they fail as it ends,
+    // rather than reach a peripheral the app let go of.
+    guard let connection = connections[Self.id(of: peripheral)], connection.phase == .ready
+    else { return }
     flushWrites(connection)
   }
 
@@ -800,7 +812,11 @@ final class BluetoothModule: NSObject, LynxContextModule, CBCentralManagerDelega
         Self.outcome(error) {
           ["value": (characteristic.value ?? Data()).base64EncodedString()]
         })
-      return
+      // CoreBluetooth can't tell a read's answer from a notification, so
+      // while the app is subscribed the value reaches its listeners too: a
+      // notification the read took isn't lost, and the listeners also hear
+      // what was read, as Web Bluetooth's do.
+      guard characteristic.isNotifying else { return }
     }
     guard error == nil, connection.phase == .ready, let value = characteristic.value,
       let service = characteristic.service
@@ -889,6 +905,12 @@ final class BluetoothModule: NSObject, LynxContextModule, CBCentralManagerDelega
     default:
       return Failure(code: "failed", message: "Bluetooth isn't ready.")
     }
+  }
+
+  /// The most bytes a write without response carries: what the MTU allows,
+  /// but never more than an attribute holds.
+  private static func maxWriteLength(_ peripheral: CBPeripheral) -> Int {
+    min(peripheral.maximumWriteValueLength(for: .withoutResponse), maxAttributeLength)
   }
 
   private static func names(_ properties: CBCharacteristicProperties) -> [String] {
@@ -999,13 +1021,4 @@ private final class Connection {
     waiting.forEach { $0(failure.result) }
   }
 
-  func failOperations(on characteristic: CBCharacteristic, _ failure: Failure) {
-    let key = ObjectIdentifier(characteristic)
-    var waiting =
-      (reads.removeValue(forKey: key) ?? []) + (writes.removeValue(forKey: key) ?? [])
-      + (subscriptions.removeValue(forKey: key) ?? [])
-    waiting += unsent.filter { $0.characteristic === characteristic }.map(\.callback)
-    unsent.removeAll { $0.characteristic === characteristic }
-    waiting.forEach { $0(failure.result) }
-  }
 }

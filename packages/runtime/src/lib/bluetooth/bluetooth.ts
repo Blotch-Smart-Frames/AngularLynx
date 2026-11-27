@@ -146,7 +146,7 @@ export type BluetoothScanOptions = {
    * of them.
    */
   readonly services?: readonly string[];
-  /** Only devices whose advertised name starts with this. */
+  /** Only devices whose {@link BluetoothDevice.name} starts with this. */
   readonly namePrefix?: string;
 };
 
@@ -158,7 +158,10 @@ export type BluetoothDevice = {
    * it's the device's Bluetooth address.
    */
   readonly id: string;
-  /** The name it advertises, or null when it advertises none. */
+  /**
+   * The name it advertises, or else the name the phone already has for it,
+   * such as from connecting to it before; null when there's neither.
+   */
   readonly name: string | null;
   /** Its signal strength, in dBm: closer to 0 is nearer. */
   readonly rssi: number;
@@ -219,7 +222,10 @@ export type BluetoothWriteOptions = {
 
 /** How {@link LynxBluetooth.connect} connects. */
 export type BluetoothConnectOptions = {
-  /** How long to wait for the device, in milliseconds. */
+  /**
+   * How long to wait for the device, in milliseconds: a positive number, or
+   * the call rejects with a `RangeError`.
+   */
   readonly timeout?: number;
 };
 
@@ -254,7 +260,8 @@ export type BluetoothConnection = {
    * Calls `listener` with each value the characteristic notifies or
    * indicates, from when the promise resolves. Resolves with a function
    * that stops it; the device stops sending once the last listener of the
-   * characteristic stops.
+   * characteristic stops. On iOS a listener also gets what a {@link read}
+   * of the characteristic gets, since iOS reports the two the same way.
    */
   subscribe(
     service: string,
@@ -285,8 +292,12 @@ type NativeConnection = {
 
 type NativeEvent =
   | { readonly type: 'state'; readonly state: string }
-  | { readonly type: 'device'; readonly device: NativeDevice }
-  | ({ readonly type: 'scanStopped' } & NativeError)
+  | {
+      readonly type: 'device';
+      readonly scan: number;
+      readonly device: NativeDevice;
+    }
+  | ({ readonly type: 'scanStopped'; readonly scan: number } & NativeError)
   | ({ readonly type: 'disconnected'; readonly id: string } & NativeError)
   | {
       readonly type: 'value';
@@ -537,7 +548,12 @@ class Scan implements BluetoothScan {
   readonly #ended: () => void;
   #unregister?: () => void;
 
+  /**
+   * @param id - What the shell tags its sightings and its end with, so an
+   *   event about a scan that has since been replaced reaches only that one.
+   */
   constructor(
+    readonly id: number,
     readonly options: BluetoothScanOptions & { readonly services: string[] },
     readonly onDevice: (device: BluetoothDevice) => void,
     ended: () => void,
@@ -593,7 +609,10 @@ class Scan implements BluetoothScan {
  * preview, the {@link state} is `unsupported` and every call rejects with a
  * {@link BluetoothError} whose code is `unavailable`.
  *
- * It's foreground only: a scan and its connections stop when the app goes.
+ * There's no background mode. In the background iOS pauses a scan until the
+ * app is back, while Android carries on scanning, which costs battery: stop
+ * a scan the app doesn't need there (`LynxAppState` says when). A scan and
+ * its connections end when the app closes.
  *
  * @usageNotes
  * ```typescript
@@ -602,9 +621,9 @@ class Scan implements BluetoothScan {
  * const scan = await bluetooth.scan({ services: [SETUP_SERVICE] }, (device) =>
  *   this.found.update((found) => new Map(found).set(device.id, device)),
  * );
- * // …the person picks one…
+ * // …the person picks one of found(), `picked`…
  * await scan.stop();
- * const frame = await bluetooth.connect(device.id);
+ * const frame = await bluetooth.connect(picked.id);
  * await frame.write(SETUP_SERVICE, CREDENTIALS, bytes);
  * const stop = await frame.subscribe(SETUP_SERVICE, STATUS, (value) =>
  *   this.status.set(decode(value)),
@@ -624,6 +643,7 @@ export class LynxBluetooth {
   readonly #connections = new Map<string, Connection>();
   readonly #connecting = new Map<string, Promise<BluetoothConnection>>();
   #scan?: Scan;
+  #scans = 0;
 
   constructor() {
     // On the main thread, where Angular runs, the emitter is a proxy whose
@@ -687,7 +707,14 @@ export class LynxBluetooth {
     // Read before anything waits: the injection context ends at the first
     // await.
     const destroyRef = config?.injector?.get(DestroyRef) ?? currentDestroyRef();
+    // The owner can go while the shell starts the scan, such as while the
+    // permission prompt is open. Angular then refuses a destroy hook, and a
+    // stop sent at once could reach the shell before the start it undoes,
+    // so the owner going is noted now and acted on once the start answers.
+    let ownerGone = false;
+    const leave = destroyRef?.onDestroy(() => (ownerGone = true));
     const scan = new Scan(
+      ++this.#scans,
       {
         ...options,
         services: (options.services ?? []).map(canonicalBluetoothUUID),
@@ -702,12 +729,19 @@ export class LynxBluetooth {
     // Before the call, so sightings that arrive before it answers are kept.
     this.#scan = scan;
     try {
-      await callModule('startScan', [{ services: scan.options.services }]);
+      await callModule('startScan', [
+        { services: scan.options.services, scan: scan.id },
+      ]);
     } catch (error) {
       scan.end();
       throw error;
+    } finally {
+      leave?.();
     }
-    scan.stopOnDestroy(destroyRef);
+    // A scan replaced or ended while it started is already done with:
+    // stop() then leaves the shell alone.
+    if (ownerGone) await scan.stop();
+    else scan.stopOnDestroy(destroyRef);
     return scan;
   }
 
@@ -720,14 +754,20 @@ export class LynxBluetooth {
     id: string,
     options?: BluetoothConnectOptions,
   ): Promise<BluetoothConnection> {
+    const timeout = options?.timeout ?? DEFAULT_CONNECT_TIMEOUT;
+    // Each shell would read another one differently, or wait forever.
+    if (!(Number.isFinite(timeout) && timeout > 0)) {
+      return Promise.reject(
+        new RangeError(
+          `The timeout is ${timeout}: give a positive number of milliseconds.`,
+        ),
+      );
+    }
     const open = this.#connections.get(id);
     if (open) return Promise.resolve(open);
     const connecting =
       this.#connecting.get(id) ??
-      callModule<NativeConnection>('connect', [
-        id,
-        { timeout: options?.timeout ?? DEFAULT_CONNECT_TIMEOUT },
-      ])
+      callModule<NativeConnection>('connect', [id, { timeout }])
         .then((native) => {
           const connection = new Connection(native, this.#errorHandler, () =>
             this.#connections.delete(id),
@@ -745,11 +785,13 @@ export class LynxBluetooth {
       case 'state':
         this.#state.set(toState(event.state));
         break;
-      case 'device':
-        this.#sighted(toDevice(event.device));
+      case 'device': {
+        const scan = this.#running(event.scan);
+        if (scan) this.#sighted(scan, toDevice(event.device));
         break;
+      }
       case 'scanStopped':
-        this.#scan?.end(
+        this.#running(event.scan)?.end(
           event.error === undefined
             ? undefined
             : toError(event.error, event.message),
@@ -770,9 +812,16 @@ export class LynxBluetooth {
     }
   }
 
-  #sighted(device: BluetoothDevice): void {
-    const scan = this.#scan;
-    if (!scan) return;
+  /**
+   * The scan running, if it's the one an event names. The shell may still
+   * be sending events about the one before, as the runtime installs its
+   * replacement before the shell has heard of it.
+   */
+  #running(id: number): Scan | undefined {
+    return this.#scan?.id === id ? this.#scan : undefined;
+  }
+
+  #sighted(scan: Scan, device: BluetoothDevice): void {
     const prefix = scan.options.namePrefix;
     // Neither platform's scan filter takes a prefix, so it's checked here.
     if (prefix !== undefined && !device.name?.startsWith(prefix)) return;

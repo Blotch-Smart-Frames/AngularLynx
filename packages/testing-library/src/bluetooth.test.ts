@@ -190,6 +190,14 @@ describe('LynxBluetooth under the testing library', () => {
       });
     });
 
+    it('refuses a second device with the same id', () => {
+      frame();
+
+      expect(() => frame()).toThrow(
+        'addBluetoothDevice() already added a device with the id frame.',
+      );
+    });
+
     it('rejects a device that is not in range', async () => {
       await expect(bluetooth.connect('nowhere')).rejects.toMatchObject({
         code: 'notFound',
@@ -235,6 +243,48 @@ describe('LynxBluetooth under the testing library', () => {
       await expect(connection.read('fff9', STATUS)).rejects.toMatchObject({
         code: 'notFound',
       });
+    });
+
+    it('refuses a write longer than the device takes, as the shells do', async () => {
+      const writable = {
+        fff0: { fff2: { properties: ['write', 'writeWithoutResponse'] } },
+      } as const;
+      const small = addBluetoothDevice({
+        id: 'small',
+        maxWriteLength: 20,
+        services: writable,
+      });
+      addBluetoothDevice({ id: 'plain', services: writable });
+      const connection = await bluetooth.connect('small');
+      const plain = await bluetooth.connect('plain');
+      const withoutResponse = { withResponse: false };
+
+      await connection.write(
+        SETUP,
+        CREDENTIALS,
+        new Uint8Array(20),
+        withoutResponse,
+      );
+      await connection.write(SETUP, CREDENTIALS, new Uint8Array(512));
+
+      await expect(
+        connection.write(
+          SETUP,
+          CREDENTIALS,
+          new Uint8Array(21),
+          withoutResponse,
+        ),
+      ).rejects.toMatchObject({
+        code: 'failed',
+        message: 'The value is 21 bytes, and this write takes at most 20.',
+      });
+      await expect(
+        connection.write(SETUP, CREDENTIALS, new Uint8Array(513)),
+      ).rejects.toMatchObject({ code: 'failed' });
+      await expect(
+        plain.write(SETUP, CREDENTIALS, new Uint8Array(183), withoutResponse),
+      ).rejects.toMatchObject({ code: 'failed' });
+      expect(small.writes.map(({ value }) => value.length)).toEqual([20, 512]);
     });
 
     it('records writes, and delivers what the device answers', async () => {
@@ -359,6 +409,20 @@ describe('LynxBluetooth under the testing library', () => {
 
       await expect(bluetooth.requestPermission()).resolves.toBe('poweredOn');
       await expect(bluetooth.requestPermission()).resolves.toBe('poweredOn');
+    });
+
+    it('asks as a scan or a connection starts, as the shells do', async () => {
+      frame();
+      setBluetoothState('unknown');
+
+      const { seen } = await scanFor();
+      expect(seen.map(({ id }) => id)).toEqual(['frame']);
+      expect(screen.getByText('Bluetooth is poweredOn')).toBeInTheDocument();
+
+      setBluetoothState('unknown');
+      await expect(bluetooth.connect('frame')).resolves.toMatchObject({
+        id: 'frame',
+      });
     });
   });
 

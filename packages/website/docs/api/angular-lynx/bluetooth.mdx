@@ -38,16 +38,18 @@ export class SetUpFrame {
 
   protected async setUp(
     device: BluetoothDevice,
-    wifi: Uint8Array,
+    sealed: Uint8Array,
   ): Promise<void> {
     const frame = await this.#bluetooth.connect(device.id);
     await frame.subscribe(SETUP, STATUS, (value) =>
       this.status.set(new TextDecoder().decode(value)),
     );
-    await frame.write(SETUP, CREDENTIALS, wifi);
+    await frame.write(SETUP, CREDENTIALS, sealed);
   }
 }
 ```
+
+A name or a service in an advertisement doesn't prove which device sent it: anything nearby can advertise the same. Before writing a secret such as a Wi-Fi password, check that the device holds a key only yours has, and encrypt the secret so only it can read it. Here `sealed` is the Wi-Fi password, encrypted that way.
 
 ## API
 
@@ -66,7 +68,7 @@ class LynxBluetooth {}
 | [Web preview](/guide/glossary#web-preview)     | None: `state` is `unsupported` and every call rejects with `unavailable`                        |
 | [Lynx Explorer](/guide/glossary#lynx-explorer) | None: `state` is `unsupported` and every call rejects with `unavailable`                        |
 
-It works in the foreground only: a scan and its connections end when the app goes. There's no pairing, and the app can't advertise as a device itself.
+There's no background mode. In the background iOS pauses a scan until the app is back, while Android carries on scanning, which costs battery: stop a scan the app doesn't need there, which [`LynxAppState`](/api/angular-lynx/app-state) says when. A scan and its connections end when the app closes. There's no pairing, and the app can't advertise as a device itself.
 
 ### `state`
 
@@ -143,7 +145,7 @@ type BluetoothScan = {
 };
 ```
 
-A device's `id` is what `connect()` takes. On iOS it's a UUID the system makes up for the app, the same each time it sees the device; on Android it's the device's Bluetooth address. `rssi` is in dBm: closer to 0 is nearer. `manufacturerData` is keyed by the company identifier the Bluetooth SIG assigned, without its two bytes.
+A device's `id` is what `connect()` takes. On iOS it's a UUID the system makes up for the app, the same each time it sees the device; on Android it's the device's Bluetooth address. `name` is the name it advertises, or else the name the phone already has for it, such as from connecting to it before; `namePrefix` matches it. `rssi` is in dBm: closer to 0 is nearer. `manufacturerData` is keyed by the company identifier the Bluetooth SIG assigned, without its two bytes.
 
 A scan's `error` says why it ended on its own, such as Bluetooth being turned off.
 
@@ -153,7 +155,7 @@ A scan's `error` says why it ended on its own, such as Bluetooth being turned of
 connect(id: string, options?: { readonly timeout?: number }): Promise<BluetoothConnection>;
 ```
 
-Connects to a device a scan saw, and discovers every service and characteristic before it resolves. It gives up after `timeout` milliseconds, 10 seconds by default: neither platform gives up on a device that's gone by itself. Connecting to a device that's connected resolves with the connection it has.
+Connects to a device a scan saw, and discovers every service and characteristic before it resolves. It gives up after `timeout` milliseconds, 10 seconds by default: neither platform gives up on a device that's gone by itself. A `timeout` that isn't a positive number rejects with a `RangeError`. Connecting to a device that's connected resolves with the connection it has.
 
 ### `BluetoothConnection`
 
@@ -190,8 +192,8 @@ type BluetoothService = {
 };
 ```
 
-- **`write()`** waits for the device to confirm by default, and takes up to 512 bytes. With `withResponse: false` it's quicker but carries at most `maxWriteLength` bytes, and a lost write is lost.
-- **`subscribe()`** calls `listener` with each value the characteristic notifies or indicates, and resolves with a function that stops it. The device stops sending once the last listener of the characteristic stops.
+- **`write()`** waits for the device to confirm by default, and takes up to 512 bytes. With `withResponse: false` it's quicker but carries at most `maxWriteLength` bytes, and a lost write is lost. A longer value rejects with `failed`: split it.
+- **`subscribe()`** calls `listener` with each value the characteristic notifies or indicates, and resolves with a function that stops it. The device stops sending once the last listener of the characteristic stops. On iOS a listener also gets what a `read()` of its characteristic gets, since iOS reports the two the same way.
 - **`connected`** turns `false` when the device goes out of range or switches off, and after `disconnect()`. A connection that has ended rejects every call with `notConnected`: connect again for a new one.
 
 ### `canonicalBluetoothUUID()`

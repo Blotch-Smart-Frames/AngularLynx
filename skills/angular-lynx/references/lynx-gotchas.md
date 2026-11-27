@@ -242,10 +242,11 @@ const bluetooth = inject(LynxBluetooth);
 
 // One scan at a time; it stops when the injection context it started in is destroyed.
 const scan = await bluetooth.scan({ services: [SETUP] }, (device) =>
-  found.set(device),
+  found.update((devices) => new Map(devices).set(device.id, device)),
 );
+// …the person picks one of found(), `picked`…
 await scan.stop();
-const frame = await bluetooth.connect(device.id); // every service and characteristic discovered
+const frame = await bluetooth.connect(picked.id); // every service and characteristic discovered
 const stop = await frame.subscribe(SETUP, STATUS, (value) => status.set(value));
 await frame.write(SETUP, CREDENTIALS, bytes); // with a response, up to 512 bytes
 ```
@@ -253,7 +254,9 @@ await frame.write(SETUP, CREDENTIALS, bytes); // with a response, up to 512 byte
 - **It's a scan, not Web Bluetooth's chooser.** `scan()` streams each device it sees, about once a second while in range, and the app lists them itself. `connect()` takes the `id` (iOS: a UUID iOS makes up for the app; Android: the address).
 - **UUIDs come back as 128-bit lowercase.** Every call takes `'180f'` too; compare with `canonicalBluetoothUUID()`.
 - **`state()` never prompts.** `scan()` and `connect()` ask for permission themselves; call `requestPermission()` to ask after a screen of your own. Android 12+ asks for "Nearby devices", earlier Android for location.
-- **A dropped connection stays dropped.** `connected()` turns `false` and its calls reject with `notConnected`; `connect()` again for a new one. Foreground only, no pairing.
+- **A dropped connection stays dropped.** `connected()` turns `false` and its calls reject with `notConnected`; `connect()` again for a new one. No pairing.
+- **No background mode.** iOS pauses a scan in the background, but Android keeps scanning: stop it when `LynxAppState`'s `active()` turns `false`.
+- **An advertisement proves nothing.** Anything nearby can advertise the same name and services: before writing a secret such as a Wi-Fi password, check the device holds a key only yours has, and encrypt the secret for it.
 - **Specs** add devices with `addBluetoothDevice()` and change the radio with `setBluetoothState()` (see [build-configuration.md](build-configuration.md)).
 
 ### Bundled images need `baseHref` on the web

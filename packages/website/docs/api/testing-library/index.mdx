@@ -208,7 +208,7 @@ function addBluetoothDevice(
 ): FakeBluetoothDeviceRef;
 ```
 
-Puts a Bluetooth LE device in range of the app, for [`LynxBluetooth`](/api/angular-lynx/bluetooth) to find, connect to and talk to as it would a real one. A scan that's running sees it at once, and one that starts later sees it as it starts. A device advertises every service it has unless `advertisedServices` says otherwise, and a characteristic can be read, written and notified unless its `properties` say otherwise. `onWrite` is called with each value the app writes and the device, so the spec can answer as the real device does. Each test starts with no devices and the radio on.
+Puts a Bluetooth LE device in range of the app, for [`LynxBluetooth`](/api/angular-lynx/bluetooth) to find, connect to and talk to as it would a real one. A scan that's running sees it at once, and one that starts later sees it as it starts. A device advertises every service it has unless `advertisedServices` says otherwise, and a characteristic can be read, written and notified unless its `properties` say otherwise. `onWrite` is called with each value the app writes and the device, so the spec can answer as the real device does. A write longer than the device takes is refused, as on a phone: `maxWriteLength` sets the limit without a response. Each test starts with no devices and the radio on, and adding an `id` a second time throws.
 
 ```typescript
 const frame = addBluetoothDevice({
@@ -247,7 +247,7 @@ The device it returns has `connected`, `writes` (what the app wrote, oldest firs
 function setBluetoothState(state: BluetoothState): void;
 ```
 
-Sets the state of the phone's Bluetooth, as the person turning it off or refusing permission does, so a spec can check what the app shows then. Anything but `'poweredOn'` ends a running scan and every connection, as it does on a phone. `'unknown'` stands for not asked yet: the person allows it when `requestPermission()` asks.
+Sets the state of the phone's Bluetooth, as the person turning it off or refusing permission does, so a spec can check what the app shows then. Anything but `'poweredOn'` ends a running scan and every connection, as it does on a phone. `'unknown'` stands for not asked yet: the person allows it when `LynxBluetooth` asks, as `requestPermission()`, `scan()` and `connect()` do.
 
 ```typescript
 setBluetoothState('poweredOff');

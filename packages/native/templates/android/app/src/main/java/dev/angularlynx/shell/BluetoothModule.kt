@@ -59,7 +59,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Each method calls back once: with its result, or with `{ error, message }`,
  * as the iOS module does. The rest arrives as `angularLynxBluetooth` global
  * events, each an object with a `type`: the adapter's `state`, a scanned
- * `device`, a `scanStopped` or a `disconnected` the app didn't ask for, and a
+ * `device` and a `scanStopped`, each with the `scan` id startScan's options
+ * gave it, a `disconnected` the app didn't ask for, and a
  * characteristic's `value` notifications. UUIDs travel as lowercase 128-bit
  * strings (how Java's UUID prints them), bytes as base64, and a device's id
  * is its address, as Android gives it.
@@ -193,11 +194,16 @@ class BluetoothModule : LynxContextModule {
 
     /**
      * Scans for peripherals advertising any of `options.services`, or every
-     * one when it's empty, and answers `{}` once the scan runs. A scan
-     * already running ends first, without a `scanStopped` event.
+     * one when it's empty, and answers `{}` once the scan runs. Its events
+     * carry `options.scan`, so the runtime can tell them from those of the
+     * scan it replaced. A scan already running ends first, without a
+     * `scanStopped` event, even when this one can't start: the runtime has
+     * let go of it.
      */
     @LynxMethod
     fun startScan(options: ReadableMap?, callback: Callback) = serve(callback) { reply ->
+        stopScanning()
+        val id = options?.getDouble("scan", 0.0)?.toInt() ?: 0
         val services = try {
             uuids(options?.getArray("services", null)?.let { list -> (0 until list.size()).map { list.getString(it) } })
         } catch (_: IllegalArgumentException) {
@@ -208,14 +214,13 @@ class BluetoothModule : LynxContextModule {
             // Null while the adapter is off, which whenReady() just ruled out,
             // but it can be turning off.
             val scanner = adapter.bluetoothLeScanner ?: return@whenReady reply.fail(POWERED_OFF, POWERED_OFF_MESSAGE)
-            stopScanning()
             // One filter per service, which Android matches in the radio's
             // firmware where it can, so the app isn't woken for the rest.
             val filters = services.map { ScanFilter.Builder().setServiceUuid(ParcelUuid(it)).build() }
             // Low latency: the app scans while the person waits for a device
             // to appear, and only while it's open.
             val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
-            val listener = ScanListener()
+            val listener = ScanListener(id)
             // Android lets an app start about five scans in 30 seconds and
             // silently returns nothing from the ones after that: there's no
             // error to report.
@@ -353,7 +358,7 @@ class BluetoothModule : LynxContextModule {
         // A write with a response can be long (Android splits it), up to an
         // attribute's largest value; one without has to fit in a packet. A
         // longer one would be cut short without a word.
-        val limit = if (withResponse) MAX_ATTRIBUTE_LENGTH else connection.mtu - ATT_HEADER_LENGTH
+        val limit = if (withResponse) MAX_ATTRIBUTE_LENGTH else maxWriteLength(connection)
         if (bytes.size > limit) {
             return@serve reply.fail(FAILED, "The value is ${bytes.size} bytes, and this write takes at most $limit.")
         }
@@ -517,6 +522,10 @@ class BluetoothModule : LynxContextModule {
         if (askers.size > 1) return
         val host = mParam as? PermissionHost
         main.post {
+            // The page can close first, unregistering the activity's
+            // launcher, which then throws: destroy() has answered the calls
+            // waiting already.
+            if (destroyed) return@post
             val asked = host?.requestPermissions(permissions) { post { answered(Answer.ANSWERED) } } ?: false
             // No host can't ask, which is as good as refused; another
             // module's prompt being open is only for now.
@@ -544,9 +553,10 @@ class BluetoothModule : LynxContextModule {
     /** The adapter is going off: the scan and every connection end with it. */
     private fun poweredOff() {
         val failure = Failure(POWERED_OFF, "Bluetooth was turned off.")
-        if (scan != null) {
+        scan?.let { listener ->
             stopScanning()
             emit("scanStopped") {
+                putInt("scan", listener.id)
                 putString("error", failure.code)
                 putString("message", failure.message)
             }
@@ -570,19 +580,21 @@ class BluetoothModule : LynxContextModule {
         }
     }
 
-    private inner class ScanListener : ScanCallback() {
+    /** A scan's callback, and the id the runtime gave the scan. */
+    private inner class ScanListener(val id: Int) : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) = post {
-            if (scan === this) sighted(result)
+            if (scan === this) sighted(result, id)
         }
 
         override fun onBatchScanResults(results: MutableList<ScanResult>) = post {
-            if (scan === this) results.forEach { sighted(it) }
+            if (scan === this) results.forEach { sighted(it, id) }
         }
 
         override fun onScanFailed(errorCode: Int) = post {
             if (scan !== this) return@post
             scan = null
             emit("scanStopped") {
+                putInt("scan", id)
                 putString("error", FAILED)
                 putString("message", scanFailure(errorCode))
             }
@@ -593,9 +605,9 @@ class BluetoothModule : LynxContextModule {
      * Sends a `device` event for [result]: the first time the scan sees the
      * device, then at most once per [SIGHTING_INTERVAL_MS]. A device
      * advertises many times a second, and the app needs only its latest
-     * signal strength and data.
+     * signal strength and data. [scan] is the id of the scan that saw it.
      */
-    private fun sighted(result: ScanResult) {
+    private fun sighted(result: ScanResult, scan: Int) {
         val device = result.device
         val id = device.address
         val now = SystemClock.elapsedRealtime()
@@ -632,7 +644,10 @@ class BluetoothModule : LynxContextModule {
                 },
             )
         }
-        emit("device") { putMap("device", sighting) }
+        emit("device") {
+            putInt("scan", scan)
+            putMap("device", sighting)
+        }
     }
 
     // Connections
@@ -827,6 +842,14 @@ class BluetoothModule : LynxContextModule {
     }
 
     /**
+     * The most bytes a write without response carries: what fits in a packet
+     * at the connection's MTU, but never more than an attribute holds, which
+     * a large MTU would otherwise allow.
+     */
+    private fun maxWriteLength(connection: Connection) =
+        minOf(connection.mtu - ATT_HEADER_LENGTH, MAX_ATTRIBUTE_LENGTH)
+
+    /**
      * connect()'s answer: `{ id, name, maxWriteLength, services }`, each
      * service with its characteristics and what each one can do.
      */
@@ -835,7 +858,7 @@ class BluetoothModule : LynxContextModule {
         // What the scan saw it advertise, as on iOS, else the name Android
         // keeps for the device.
         putNullableString("name", advertisedNames[connection.id] ?: deviceName(connection.device))
-        putInt("maxWriteLength", connection.mtu - ATT_HEADER_LENGTH)
+        putInt("maxWriteLength", maxWriteLength(connection))
         putArray(
             "services",
             JavaOnlyArray().apply {
@@ -922,9 +945,12 @@ class BluetoothModule : LynxContextModule {
         next(connection)
     }
 
-    /** Starts the next queued operation, unless one is running. */
+    /**
+     * Starts the next queued operation, unless one is running or the
+     * connection is ending: drop() answers those still queued.
+     */
     private fun next(connection: Connection) {
-        while (!connection.closed && connection.current == null) {
+        while (!connection.closed && !connection.disconnecting && connection.current == null) {
             val op = connection.queue.removeFirstOrNull() ?: return
             val gatt = connection.gatt ?: return op.finish(Failure(NOT_CONNECTED, "The device isn't connected."), null)
             val rejected = try {

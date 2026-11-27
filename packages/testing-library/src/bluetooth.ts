@@ -43,7 +43,11 @@ export type FakeBluetoothDevice = {
   readonly services?: Readonly<
     Record<string, Readonly<Record<string, FakeBluetoothCharacteristic>>>
   >;
-  /** The most bytes one write without response carries. */
+  /**
+   * The most bytes one write without response carries. A longer one is
+   * refused, as the shells refuse it, so a spec catches an app that doesn't
+   * split what it writes.
+   */
   readonly maxWriteLength?: number;
 };
 
@@ -83,11 +87,14 @@ type Device = {
 type FakeBluetoothModule = {
   state: BluetoothState;
   readonly devices: Map<string, Device>;
-  /** The services the running scan looks for, or null while none runs. */
-  scanning: string[] | null;
+  /**
+   * The running scan, with the id the runtime tags it with and the services
+   * it looks for, or null while none runs.
+   */
+  scanning: { readonly id: number; readonly services: string[] } | null;
   getState(done: Done): void;
   requestPermission(done: Done): void;
-  startScan(options: { services: string[] }, done: Done): void;
+  startScan(options: { services: string[]; scan: number }, done: Done): void;
   stopScan(done: Done): void;
   connect(id: string, options: unknown, done: Done): void;
   disconnect(id: string, done: Done): void;
@@ -128,6 +135,12 @@ const DEFAULT_PROPERTIES: readonly BluetoothCharacteristicProperty[] = [
   'write',
   'notify',
 ];
+
+/** A device's write-without-response limit when the spec gives none. */
+const DEFAULT_MAX_WRITE_LENGTH = 182;
+
+/** The longest attribute value, and so write with a response, ATT allows. */
+const MAX_ATTRIBUTE_LENGTH = 512;
 
 const BASE_UUID_TAIL = '-0000-1000-8000-00805f9b34fb';
 
@@ -190,8 +203,9 @@ const emit = (payload: object): void => {
   }
 };
 
-const sighting = (device: FakeBluetoothDevice) => ({
+const sighting = (device: FakeBluetoothDevice, scan: number) => ({
   type: 'device',
+  scan,
   device: {
     id: device.id,
     name: device.name ?? null,
@@ -293,23 +307,33 @@ export const installBluetoothModule = (threadGlobals: {
     }
     return { device, characteristic: found };
   };
+  /**
+   * Asks the person for permission when they haven't been asked, as the
+   * shells do before the first scan or connection: they allow it, unless a
+   * spec said otherwise.
+   */
+  const ask = () => {
+    if (module.state !== 'unknown') return;
+    module.state = 'poweredOn';
+    emit({ type: 'state', state: module.state });
+  };
   const module: FakeBluetoothModule = {
     state: 'poweredOn',
     devices,
     scanning: null,
     getState: (done) => done({ state: module.state }),
-    // The person allows it when asked, unless a spec said otherwise.
     requestPermission: (done) => {
-      if (module.state === 'unknown') module.state = 'poweredOn';
+      ask();
       done({ state: module.state });
     },
-    startScan: ({ services }, done) => {
+    startScan: ({ services, scan }, done) => {
+      ask();
       const error = unusable(module.state);
       if (error) return done(error);
-      module.scanning = services;
+      module.scanning = { id: scan, services };
       done({});
       for (const { spec } of devices.values()) {
-        if (matches(spec, services)) emit(sighting(spec));
+        if (matches(spec, services)) emit(sighting(spec, scan));
       }
     },
     stopScan: (done) => {
@@ -317,6 +341,7 @@ export const installBluetoothModule = (threadGlobals: {
       done({});
     },
     connect: (id, _options, done) => {
+      ask();
       const error = unusable(module.state);
       if (error) return done(error);
       const device = devices.get(id);
@@ -326,7 +351,7 @@ export const installBluetoothModule = (threadGlobals: {
       done({
         id,
         name: spec.name ?? null,
-        maxWriteLength: spec.maxWriteLength ?? 182,
+        maxWriteLength: spec.maxWriteLength ?? DEFAULT_MAX_WRITE_LENGTH,
         services: Object.entries(spec.services ?? {}).map(
           ([uuid, characteristics]) => ({
             uuid: canonical(uuid),
@@ -363,6 +388,17 @@ export const installBluetoothModule = (threadGlobals: {
       );
       if (!found) return;
       const bytes = fromBase64(value);
+      const limit = withResponse
+        ? MAX_ATTRIBUTE_LENGTH
+        : (found.device.spec.maxWriteLength ?? DEFAULT_MAX_WRITE_LENGTH);
+      if (bytes.length > limit) {
+        return done(
+          failure(
+            'failed',
+            `The value is ${bytes.length} bytes, and this write takes at most ${limit}.`,
+          ),
+        );
+      }
       found.device.writes.push({
         service,
         characteristic,
@@ -414,7 +450,7 @@ const fakeModule = (caller: string): FakeBluetoothModule => {
  * Puts a Bluetooth LE device in range of the app, for `LynxBluetooth` to
  * find, connect to and talk to as it would a real one. A scan that's running
  * sees it at once, and one that starts later sees it as it starts. Each test
- * starts with none.
+ * starts with none, and adding an id a second time throws.
  *
  * @example
  * ```ts
@@ -442,6 +478,13 @@ export const addBluetoothDevice = (
   device: FakeBluetoothDevice,
 ): FakeBluetoothDeviceRef => {
   const module = fakeModule('addBluetoothDevice');
+  // Replacing it would leave the app's connection to it looking open while
+  // its calls fail.
+  if (module.devices.has(device.id)) {
+    throw new Error(
+      `addBluetoothDevice() already added a device with the id ${device.id}.`,
+    );
+  }
   const writes: FakeBluetoothWrite[] = [];
   const subscribed = new Set<string>();
   const entry: Device = {
@@ -474,8 +517,8 @@ export const addBluetoothDevice = (
     },
   };
   module.devices.set(device.id, entry);
-  if (module.scanning && matches(device, module.scanning)) {
-    emit(sighting(device));
+  if (module.scanning && matches(device, module.scanning.services)) {
+    emit(sighting(device, module.scanning.id));
   }
   return entry.ref;
 };
@@ -485,7 +528,8 @@ export const addBluetoothDevice = (
  * refusing permission does, so a spec can check what the app shows then.
  * Anything but `poweredOn` ends a running scan and every connection, as it
  * does on a phone. `unknown` stands for not asked yet: the person allows it
- * when `LynxBluetooth.requestPermission()` asks.
+ * when `LynxBluetooth` asks, as `requestPermission()`, `scan()` and
+ * `connect()` do.
  *
  * @example
  * ```ts
@@ -501,8 +545,8 @@ export const setBluetoothState = (state: BluetoothState): void => {
   const error = unusable(state);
   if (!error) return;
   if (module.scanning) {
+    emit({ type: 'scanStopped', scan: module.scanning.id, ...error });
     module.scanning = null;
-    emit({ type: 'scanStopped', ...error });
   }
   for (const { ref } of module.devices.values()) ref.disconnect();
 };

@@ -40,6 +40,8 @@ const NATIVE_CONNECTION = {
 
 let listener: Listener | undefined;
 let errors: unknown[];
+/** The id the runtime gave the scan it started last, which events name. */
+let scanId: number | undefined;
 
 /**
  * Stands in for the shells' AngularLynxBluetooth module, as the background
@@ -57,7 +59,10 @@ const stubModule = (answers: Record<string, object | undefined> = {}) => {
   const module = {
     getState: vi.fn(answer('getState')),
     requestPermission: vi.fn(answer('requestPermission')),
-    startScan: vi.fn(answer('startScan')),
+    startScan: vi.fn((options: { scan: number }, done: Done) => {
+      scanId = options.scan;
+      answer('startScan')(options, done);
+    }),
     stopScan: vi.fn(answer('stopScan')),
     connect: vi.fn((...args: unknown[]) =>
       (args.at(-1) as Done)(answers['connect'] ?? NATIVE_CONNECTION),
@@ -112,8 +117,9 @@ const createBluetooth = async () => {
   return bluetooth;
 };
 
-const sighting = (device: object = {}) => ({
+const sighting = (device: object = {}, scan = scanId) => ({
   type: 'device',
+  scan,
   device: {
     id: 'frame',
     name: 'Blotch - XyZ1',
@@ -128,6 +134,7 @@ const sighting = (device: object = {}) => ({
 beforeEach(() => {
   listener = undefined;
   errors = [];
+  scanId = undefined;
   stubEmitter();
 });
 
@@ -261,7 +268,7 @@ describe('LynxBluetooth', () => {
       const scan = await bluetooth.scan({ services: ['FFF0'] }, () => {});
 
       expect(module.startScan).toHaveBeenCalledWith(
-        { services: [SERVICE] },
+        { services: [SERVICE], scan: 1 },
         expect.any(Function),
       );
       expect(scan.scanning()).toBe(true);
@@ -275,7 +282,7 @@ describe('LynxBluetooth', () => {
       await bluetooth.scan({}, () => {});
 
       expect(module.startScan).toHaveBeenCalledWith(
-        { services: [] },
+        { services: [], scan: 1 },
         expect.any(Function),
       );
     });
@@ -411,6 +418,7 @@ describe('LynxBluetooth', () => {
 
       send({
         type: 'scanStopped',
+        scan: scanId,
         error: 'poweredOff',
         message: 'Bluetooth is off.',
       });
@@ -427,10 +435,31 @@ describe('LynxBluetooth', () => {
       const bluetooth = await createBluetooth();
       const scan = await bluetooth.scan({}, () => {});
 
-      send({ type: 'scanStopped' });
+      send({ type: 'scanStopped', scan: scanId });
 
       expect(scan.scanning()).toBe(false);
       expect(scan.error()).toBeUndefined();
+    });
+
+    it('ignores the sightings and the end of the scan it replaced', async () => {
+      const module = stubModule();
+      const bluetooth = await createBluetooth();
+      await bluetooth.scan({ services: ['180f'] }, () => {});
+      const replaced = scanId;
+      const seen = vi.fn();
+      const scan = await bluetooth.scan({ services: ['180d'] }, seen);
+
+      // Sent as the shell was still running the first scan.
+      send(sighting({}, replaced));
+      send({ type: 'scanStopped', scan: replaced, error: 'failed' });
+      send(sighting());
+
+      expect(module.startScan).toHaveBeenLastCalledWith(
+        expect.objectContaining({ scan: 2 }),
+        expect.any(Function),
+      );
+      expect(scan.scanning()).toBe(true);
+      expect(seen).toHaveBeenCalledTimes(1);
     });
 
     it('ignores a stop while no scan runs', async () => {
@@ -454,6 +483,53 @@ describe('LynxBluetooth', () => {
 
       expect(scan.scanning()).toBe(false);
       expect(module.stopScan).toHaveBeenCalledTimes(1);
+    });
+
+    it('stops once it has started when its owner goes while it starts', async () => {
+      const module = stubModule();
+      const bluetooth = await createBluetooth();
+      const parent = Injector.create({ providers: [] }) as EnvironmentInjector;
+      const context = createEnvironmentInjector([], parent);
+      let start: Done | undefined;
+      module.startScan.mockImplementationOnce((_options, done) => {
+        start = done;
+      });
+
+      const starting = runInInjectionContext(context, () =>
+        bluetooth.scan({}, () => {}),
+      );
+      await settle();
+      // As while the permission prompt is open.
+      context.destroy();
+      expect(module.stopScan).not.toHaveBeenCalled();
+      start?.({});
+      const scan = await starting;
+
+      expect(scan.scanning()).toBe(false);
+      expect(module.stopScan).toHaveBeenCalledTimes(1);
+    });
+
+    it('leaves the scan that replaced it when its owner goes while it starts', async () => {
+      const module = stubModule();
+      const bluetooth = await createBluetooth();
+      const parent = Injector.create({ providers: [] }) as EnvironmentInjector;
+      const context = createEnvironmentInjector([], parent);
+      let start: Done | undefined;
+      module.startScan.mockImplementationOnce((_options, done) => {
+        start = done;
+      });
+
+      const starting = runInInjectionContext(context, () =>
+        bluetooth.scan({}, () => {}),
+      );
+      await settle();
+      context.destroy();
+      const replacement = await bluetooth.scan({}, () => {});
+      start?.({});
+      await starting;
+
+      expect(replacement.scanning()).toBe(true);
+      expect(module.stopScan).not.toHaveBeenCalled();
     });
 
     it("stops when the injector it's given is destroyed, and leaves it when stopped first", async () => {
@@ -518,6 +594,18 @@ describe('LynxBluetooth', () => {
         expect.any(Function),
       );
       expect(connection.name).toBeNull();
+    });
+
+    it('rejects a timeout that is not a positive number of milliseconds', async () => {
+      const module = stubModule();
+      const bluetooth = await createBluetooth();
+
+      for (const timeout of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+        await expect(
+          bluetooth.connect('frame', { timeout }),
+        ).rejects.toBeInstanceOf(RangeError);
+      }
+      expect(module.connect).not.toHaveBeenCalled();
     });
 
     it('connects once for calls made together, and hands over the open one after', async () => {

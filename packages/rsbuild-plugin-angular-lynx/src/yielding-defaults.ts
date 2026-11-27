@@ -47,8 +47,9 @@ const YIELD_HINT = /\b(?:yield|await)\b/;
  *
  * Each `?.` reads what's before it into a variable once, and the rest of the
  * chain, up to its end, runs only when that isn't `null` or `undefined`, as
- * natively. A call (`a.b?.()`, `a?.b.c?.()`) is made through `call`, on its
- * receiver, read into a variable of its own before the member is. Object
+ * natively. A call (`a.b?.()`, `a?.b.c?.()`) is made on its receiver, read
+ * into a variable of its own before the member is, through
+ * `Function.prototype.apply` (see {@link APPLY}). Object
  * patterns' default values, which SWC compiles correctly, are compiled the
  * same way, so a private member in any of these default values runs as it
  * does natively rather than with SWC's private-member compile (see
@@ -83,6 +84,10 @@ export const lowerYieldingDefaultChains = (
     true,
   );
   const edits: Edit[] = [];
+  // The `]`s that close an argument list turned into an array, made after
+  // every other edit at their place: a chain that ends the last argument
+  // closes there first (`[x, ((t = a) == null ? void 0 : t.b)]`).
+  const closingBrackets: Edit[] = [];
   const variables = new Map<ts.Node, string[]>();
   let count = 0;
   // A name nothing in the module uses, so it can't take another's place:
@@ -250,7 +255,7 @@ export const lowerYieldingDefaultChains = (
       const thisArg = receiverName(index);
       let access: string;
       if (ts.isCallExpression(link)) {
-        access = thisArg === undefined ? name : `${name}.call`;
+        access = thisArg === undefined ? name : `${APPLY}.call`;
       } else if (ts.isElementAccessExpression(link)) {
         access = name;
       } else {
@@ -281,11 +286,18 @@ export const lowerYieldingDefaultChains = (
         }${access}`,
       });
       if (ts.isCallExpression(link) && thisArg !== undefined) {
-        const at = link.arguments.pos;
+        // `t?.(x)` becomes `<apply>.call(t, r, [x])` (see APPLY), so a
+        // getter or a value at the function's own `call` doesn't run before
+        // the arguments, or at all, as natively.
         edits.push({
-          start: at,
-          end: at,
-          text: link.arguments.length > 0 ? `${thisArg}, ` : thisArg,
+          start: link.arguments.pos,
+          end: link.arguments.pos,
+          text: `${name}, ${thisArg}, [`,
+        });
+        closingBrackets.push({
+          start: link.end - 1,
+          end: link.end - 1,
+          text: ']',
         });
       }
     }
@@ -328,8 +340,8 @@ export const lowerYieldingDefaultChains = (
       return;
     }
     // `(callee)(x, y)` becomes `<apply>.call((callee), r, [x, y])`: the
-    // arguments' parentheses, right before and at the end of them, become
-    // the list's brackets.
+    // arguments' opening parenthesis becomes the list's, and the call's
+    // closes `<apply>.call(`.
     edits.push(
       { start, end: start, text: `${APPLY}.call(` },
       {
@@ -337,8 +349,8 @@ export const lowerYieldingDefaultChains = (
         end: node.arguments.pos,
         text: `, ${name}, [`,
       },
-      { start: node.end - 1, end: node.end, text: '])' },
     );
+    closingBrackets.push({ start: node.end - 1, end: node.end - 1, text: ']' });
   };
 
   /**
@@ -364,7 +376,12 @@ export const lowerYieldingDefaultChains = (
   visit(sourceFile, false);
   return applyEdits(
     code,
-    declareVariables(variables, edits, code, sourceFile),
+    declareVariables(
+      variables,
+      [...edits, ...closingBrackets],
+      code,
+      sourceFile,
+    ),
     sourceFile,
   );
 };

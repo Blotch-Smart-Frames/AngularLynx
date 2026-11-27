@@ -189,6 +189,17 @@ const FIXTURES: Record<string, string> = {
     const a = { m(x) { return [this === a, x]; }, tag(strings, x) { return [this === a, x]; } };
     g(null, null, a);
   `,
+  'a call whose function has its own `call`': `
+    const log = [];
+    const f = function (x) { return [this === a, x]; };
+    Object.defineProperty(f, 'call', { get() { log.push('call'); throw new Error('read'); } });
+    const a = { f };
+    async function g(a) {
+      const [v = a?.f?.(await (log.push('argument'), 1))] = [];
+      return v;
+    }
+    (async () => [await g(a), log])();
+  `,
   '`delete` of a chain': `
     async function g(a) {
       const [d = delete a?.b.c[await 'c']] = [];
@@ -263,27 +274,27 @@ describe('lowerYieldingDefaultChains', () => {
     );
   });
 
-  it('calls a member through `call`, on its receiver, read once', () => {
+  it('calls a member on its receiver, read once', () => {
     expect(lower('async (a) => { const [v = a.b.c?.(await 1)] = []; }')).toBe(
-      'async (a) => { var __chain0, __chain1; const [v = ((__chain0 = (__chain1 = a.b).c) == null ? void 0 : __chain0.call(__chain1, await 1))] = []; }',
+      'async (a) => { var __chain0, __chain1; const [v = ((__chain0 = (__chain1 = a.b).c) == null ? void 0 : (() => {}).apply.call(__chain0, __chain1, [await 1]))] = []; }',
     );
     // The previous link's read is the receiver.
     expect(lower('async (a) => { const [v = a?.b?.(await 1)] = []; }')).toBe(
-      'async (a) => { var __chain0, __chain1; const [v = ((__chain0 = a) == null ? void 0 : ((__chain1 = __chain0.b) == null ? void 0 : __chain1.call(__chain0, await 1)))] = []; }',
+      'async (a) => { var __chain0, __chain1; const [v = ((__chain0 = a) == null ? void 0 : ((__chain1 = __chain0.b) == null ? void 0 : (() => {}).apply.call(__chain1, __chain0, [await 1])))] = []; }',
     );
     // A receiver after a `?.`, in parentheses, of `super`, and none.
     expect(lower('async (a) => { const [v = a?.b.c?.(await 1)] = []; }')).toBe(
-      'async (a) => { var __chain0, __chain1, __chain2; const [v = ((__chain0 = a) == null ? void 0 : ((__chain1 = (__chain2 = __chain0.b).c) == null ? void 0 : __chain1.call(__chain2, await 1)))] = []; }',
+      'async (a) => { var __chain0, __chain1, __chain2; const [v = ((__chain0 = a) == null ? void 0 : ((__chain1 = (__chain2 = __chain0.b).c) == null ? void 0 : (() => {}).apply.call(__chain1, __chain2, [await 1])))] = []; }',
     );
     expect(lower('async (a) => { const [v = (a.b)?.(await 1)] = []; }')).toBe(
-      'async (a) => { var __chain0, __chain1; const [v = ((__chain0 = ((__chain1 = a).b)) == null ? void 0 : __chain0.call(__chain1, await 1))] = []; }',
+      'async (a) => { var __chain0, __chain1; const [v = ((__chain0 = ((__chain1 = a).b)) == null ? void 0 : (() => {}).apply.call(__chain0, __chain1, [await 1]))] = []; }',
     );
     expect(
       lower(
         'class A extends B { async f() { const [v = super.m?.(await 1)] = []; } }',
       ),
     ).toBe(
-      'class A extends B { async f() { var __chain0; const [v = ((__chain0 = super.m) == null ? void 0 : __chain0.call(this, await 1))] = []; } }',
+      'class A extends B { async f() { var __chain0; const [v = ((__chain0 = super.m) == null ? void 0 : (() => {}).apply.call(__chain0, this, [await 1]))] = []; } }',
     );
     expect(
       lower('async (a) => { const [v = a()?.(await 1), w = a?.()] = []; }'),
@@ -298,11 +309,11 @@ describe('lowerYieldingDefaultChains', () => {
     );
     // A non-null assertion, in a .ts module, keeps it.
     expect(lower('async (a) => { const [v = a.b!?.(await 1)] = []; }')).toBe(
-      'async (a) => { var __chain0, __chain1; const [v = ((__chain0 = (__chain1 = a).b!) == null ? void 0 : __chain0.call(__chain1, await 1))] = []; }',
+      'async (a) => { var __chain0, __chain1; const [v = ((__chain0 = (__chain1 = a).b!) == null ? void 0 : (() => {}).apply.call(__chain0, __chain1, [await 1]))] = []; }',
     );
     // A call with no arguments gets only the receiver.
     expect(lower('async (a) => { const [v = (await a).b?.()] = []; }')).toBe(
-      'async (a) => { var __chain0, __chain1; const [v = ((__chain0 = (__chain1 = (await a)).b) == null ? void 0 : __chain0.call(__chain1))] = []; }',
+      'async (a) => { var __chain0, __chain1; const [v = ((__chain0 = (__chain1 = (await a)).b) == null ? void 0 : (() => {}).apply.call(__chain0, __chain1, []))] = []; }',
     );
   });
 
@@ -372,7 +383,7 @@ describe('lowerYieldingDefaultChains', () => {
     expect(
       lower('async (a) => { const [v = (a?.b.c)?.(await 1)] = []; }'),
     ).toBe(
-      'async (a) => { var __chain0, __chain1, __chain2; const [v = ((__chain0 = (((__chain2 = a) == null ? void 0 : (__chain1 = __chain2.b).c))) == null ? void 0 : __chain0.call(__chain1, await 1))] = []; }',
+      'async (a) => { var __chain0, __chain1, __chain2; const [v = ((__chain0 = (((__chain2 = a) == null ? void 0 : (__chain1 = __chain2.b).c))) == null ? void 0 : (() => {}).apply.call(__chain0, __chain1, [await 1]))] = []; }',
     );
     // A tag gets it through a function that passes its arguments on, and a
     // call of another kind of link needs none.

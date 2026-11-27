@@ -11,6 +11,7 @@ import {
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { ALL_NATIVE_FEATURES, type NativeFeatures } from './features.ts';
 import { ICON_BACKGROUND_COLOR, type ResolvedApp } from './options.ts';
 
 export type Platform = 'ios' | 'android';
@@ -41,6 +42,12 @@ export type PlatformGenerator = {
     projectRoot: string,
     development?: boolean,
   ) => void;
+  /**
+   * Takes the shells' optional native code the app doesn't use out of the
+   * fresh copy, after `configure`. Eject doesn't call it: an ejected project
+   * is the user's to grow, so it keeps everything.
+   */
+  readonly leaveOut: (dir: string, features: NativeFeatures) => void;
   /** Where the Lynx bundle and its assets go inside the native project. */
   readonly bundleDir: (dir: string) => string;
 };
@@ -83,6 +90,7 @@ export const prepareProject = ({
   bundleDir,
   packageVersion,
   development = false,
+  features = ALL_NATIVE_FEATURES,
 }: {
   readonly platform: Platform;
   readonly generator: PlatformGenerator;
@@ -98,6 +106,12 @@ export const prepareProject = ({
   readonly packageVersion: string;
   /** The development app `ng serve --platform` runs. */
   readonly development?: boolean;
+  /**
+   * The optional native code the app uses (readNativeFeatures), which is in
+   * the hash: an app that starts drawing on a canvas regenerates its project
+   * with the canvas code back in.
+   */
+  readonly features?: NativeFeatures;
 }): PreparedProject => {
   const ejectedDir = path.join(projectRoot, platform);
   if (existsSync(path.join(ejectedDir, EJECT_MARKER))) {
@@ -106,7 +120,13 @@ export const prepareProject = ({
   }
 
   const dir = path.join(workDir, development ? `${platform}-dev` : platform);
-  const hash = inputHash({ platform, app, projectRoot, packageVersion });
+  const hash = inputHash({
+    platform,
+    app,
+    projectRoot,
+    packageVersion,
+    features,
+  });
   const hashFile = path.join(dir, HASH_FILE);
   const upToDate =
     existsSync(hashFile) && readFileSync(hashFile, 'utf8') === hash;
@@ -116,6 +136,7 @@ export const prepareProject = ({
     mkdirSync(dir, { recursive: true });
     cpSync(path.join(TEMPLATES_DIR, platform), dir, { recursive: true });
     generator.configure(dir, app, projectRoot, development);
+    generator.leaveOut(dir, features);
     writeFileSync(hashFile, hash);
   }
   // Generated projects are build output. `ng new` already ignores Angular's
@@ -182,14 +203,18 @@ const inputHash = ({
   app,
   projectRoot,
   packageVersion,
+  features,
 }: {
   readonly platform: Platform;
   readonly app: ResolvedApp;
   readonly projectRoot: string;
   readonly packageVersion: string;
+  readonly features: NativeFeatures;
 }): string => {
   const hash = createHash('sha256');
-  hash.update(`${packageVersion}\n${platform}\n${JSON.stringify(app)}\n`);
+  hash.update(
+    `${packageVersion}\n${platform}\n${JSON.stringify(app)}\n${JSON.stringify(features)}\n`,
+  );
   for (const file of listFiles(path.join(TEMPLATES_DIR, platform))) {
     hash.update(file.relative);
     hash.update(readFileSync(file.absolute));

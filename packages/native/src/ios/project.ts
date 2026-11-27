@@ -1,7 +1,9 @@
 import { copyFileSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
+import { removeTemplateFiles } from '../features.ts';
 import type { PlatformGenerator } from '../generate.ts';
+import { ANGLE_IOS_FRAMEWORKS } from './frameworks.ts';
 import { readPngSize } from '../png.ts';
 import {
   APP_NAME_PLACEHOLDER,
@@ -81,7 +83,64 @@ export const iosGenerator: PlatformGenerator = {
 
     writeIosSplash(dir, app, projectRoot);
   },
+  leaveOut: (dir, features) => {
+    if (features.canvas) return;
+    removeTemplateFiles(dir, IOS_CANVAS_SOURCES);
+    const projectFile = path.join(dir, PROJECT_FILE);
+    writeFileSync(
+      projectFile,
+      withoutFrameworks(
+        readFileSync(projectFile, 'utf8'),
+        ANGLE_IOS_FRAMEWORKS,
+      ),
+    );
+  },
   bundleDir: (dir) => path.join(dir, 'LynxBundle'),
+};
+
+/**
+ * The shell's `<canvas>`, its `AngularLynxWebGL` module and its contexts, and
+ * `<video>`'s readable frames: about 176 kB of the executable. Swift reaches
+ * them only by name (NSClassFromString in LynxViewController and
+ * XElementRegistry), so without them the shell registers no canvas, keeps
+ * XElement's own `<video>`, and still builds: App/ is a synchronized folder,
+ * which compiles what's in it.
+ */
+export const IOS_CANVAS_SOURCES = [
+  'App/AngularLynxBitmapRendererContext.m',
+  'App/AngularLynxCanvas2DContext.m',
+  'App/AngularLynxCanvas2DOps.h',
+  'App/AngularLynxVideo.h',
+  'App/AngularLynxVideo.m',
+  'App/AngularLynxWebGL.h',
+  'App/AngularLynxWebGL.m',
+  'App/AngularLynxWebGLContext.m',
+  'App/AngularLynxWebGLOps.h',
+] as const;
+
+const PROJECT_FILE = 'App.xcodeproj/project.pbxproj';
+
+/**
+ * The project without the XCFrameworks named, which it then neither links
+ * nor embeds: ANGLE's, about 6 MB of an app, are only for WebGL. Each
+ * reference to a framework is one line of the project (its file, its build
+ * files, and their places in the group, the link phase and the embed phase).
+ */
+export const withoutFrameworks = (
+  project: string,
+  frameworks: readonly string[],
+): string => {
+  const names = frameworks.map((name) => `${name}.xcframework`);
+  // A renamed framework would otherwise stay in every app unnoticed.
+  for (const name of names) {
+    if (!project.includes(name)) {
+      throw new Error(`The project has no ${name} to leave out.`);
+    }
+  }
+  return project
+    .split('\n')
+    .filter((line) => !names.some((name) => line.includes(name)))
+    .join('\n');
 };
 
 /** The app's entitlements, from the project folder (see xcconfig). */

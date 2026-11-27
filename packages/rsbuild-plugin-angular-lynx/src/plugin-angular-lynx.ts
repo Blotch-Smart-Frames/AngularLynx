@@ -9,6 +9,10 @@ import { applyDisplay } from './display.js';
 import { applyEntry } from './entry.js';
 import { applyGenerator } from './generator.js';
 import { applyLayers } from './layers.js';
+import {
+  applyNativeFeatures,
+  createNativeFeaturesCollector,
+} from './native-features.js';
 import { applyNestedCalc } from './nested-calc.js';
 import { applyResolve } from './resolve.js';
 import { applySafeArea } from './safe-area.js';
@@ -92,11 +96,18 @@ export const pluginAngularLynx = (
       // (rspeedy 0.15+) does not, which dropped every global stylesheet.
       // It is started here and awaited last so the synchronous registrations
       // below keep their existing order.
+      // Which of the shells' optional native code the app needs, from what
+      // its main-thread modules name (see native-features.ts): angular.ts's
+      // transform reports each module, and the lynx environment writes the
+      // file ng build --platform reads.
+      const nativeFeatures = createNativeFeaturesCollector();
+      applyNativeFeatures(api, nativeFeatures);
       const angularRules = applyAngularRules(
         api,
         normalizedOptions,
         backgroundEntries,
         appEntries,
+        nativeFeatures,
       );
       applyGenerator(api);
       applySplitChunksRule(api, normalizedOptions);

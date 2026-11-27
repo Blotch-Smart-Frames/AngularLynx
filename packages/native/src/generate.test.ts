@@ -136,6 +136,33 @@ describe('prepareProject', () => {
     );
   });
 
+  it('leaves out the canvas code for an app that never draws, and puts it back when it does', () => {
+    const generate = (canvas: boolean) =>
+      prepareProject({
+        platform: 'ios',
+        generator: iosGenerator,
+        projectRoot: root,
+        workDir,
+        app: app(),
+        bundleDir: dist,
+        packageVersion: '1.0.0',
+        features: { canvas },
+      });
+    const webGL = path.join(workDir, 'ios/App/AngularLynxWebGL.m');
+    const withCanvas = generate(true);
+    expect(existsSync(webGL)).toBe(true);
+    // Everything is the default: the same project as with the canvas.
+    expect(prepare('ios').hash).toBe(withCanvas.hash);
+
+    const withoutCanvas = generate(false);
+    expect(withoutCanvas.regenerated).toBe(true);
+    expect(withoutCanvas.hash).not.toBe(withCanvas.hash);
+    expect(existsSync(webGL)).toBe(false);
+
+    expect(generate(true).regenerated).toBe(true);
+    expect(existsSync(webGL)).toBe(true);
+  });
+
   // Generating the Android icons resizes 1024 px images, which a CI runner
   // measuring coverage can take several seconds over: about 11 s usually, but
   // a slow runner took 55 s. The work is fixed, so the timeout only has to

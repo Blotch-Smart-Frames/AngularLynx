@@ -13,7 +13,7 @@ export type PrivateMethodsOptions = {
   root: string;
 };
 
-type Edit = { start: number; end: number; text: string };
+export type Edit = { start: number; end: number; text: string };
 
 /**
  * One class in a module, as {@link analyzeClasses} found it.
@@ -341,6 +341,31 @@ export const splitPrivateChains = (code: string, filename: string): string => {
   for (const at of questionMarks) {
     edits.push({ start: at, end: at, text: '?' });
   }
+  return applyEdits(
+    code,
+    declareVariables(receivers, edits, code, sourceFile),
+    sourceFile,
+  );
+};
+
+/**
+ * Adds the declarations of the variables a pass reads values into to its
+ * edits, each in the scope {@link receiverScope} gave it, so a module that
+ * already has a name can't be changed.
+ *
+ * @param variables - The variables' names, by the scope that declares them.
+ * @param edits - The pass's own edits, inside those scopes.
+ * @param code - The module's code.
+ * @param sourceFile - The module, parsed.
+ * @returns Every edit, in the order {@link applyEdits} should make the ones
+ *   at the same place.
+ */
+export const declareVariables = (
+  variables: Map<ts.Node, string[]>,
+  edits: Edit[],
+  code: string,
+  sourceFile: ts.SourceFile,
+): Edit[] => {
   // A scope's opening edit goes before, and its closing edit after, the
   // edits at the same place inside it (`(__receiver0 = ` where an arrow
   // function's body starts, `)` where it ends): edits at one place are made
@@ -349,12 +374,13 @@ export const splitPrivateChains = (code: string, filename: string): string => {
   // later, inside the other, closes first.
   const opening: Edit[] = [];
   const closing: Array<Edit & { scopeStart: number }> = [];
-  for (const [scope, names] of receivers) {
+  const trailing: Edit[] = [];
+  for (const [scope, names] of variables) {
     const declaration = `var ${names.join(', ')};`;
     if (ts.isSourceFile(scope)) {
       // After the last statement, on its line, so no line moves.
       const end = scope.statements[scope.statements.length - 1]!.end;
-      edits.push({ start: end, end, text: `;${declaration}` });
+      trailing.push({ start: end, end, text: `;${declaration}` });
     } else if (ts.isBlock(scope)) {
       // After any directives (`'use strict'`), which must come first. The
       // statement with the call isn't one, so there's always a statement
@@ -399,15 +425,12 @@ export const splitPrivateChains = (code: string, filename: string): string => {
     }
   }
   closing.sort((a, b) => b.scopeStart - a.scopeStart);
-  return applyEdits(
-    code,
-    [
-      ...opening,
-      ...edits,
-      ...closing.map(({ start, end, text }) => ({ start, end, text })),
-    ],
-    sourceFile,
-  );
+  return [
+    ...opening,
+    ...edits,
+    ...closing.map(({ start, end, text }) => ({ start, end, text })),
+    ...trailing,
+  ];
 };
 
 /**
@@ -423,7 +446,7 @@ export const splitPrivateChains = (code: string, filename: string): string => {
  * scope around them, and one outside any function, which runs once, in the
  * module.
  */
-const receiverScope = (call: ts.Node): ts.Node => {
+export const receiverScope = (call: ts.Node): ts.Node => {
   let child = call;
   for (let parent = call.parent; parent; parent = parent.parent) {
     if (
@@ -450,9 +473,12 @@ const receiverScope = (call: ts.Node): ts.Node => {
  * called at once, where the `yield` or `await` is a SyntaxError, whatever
  * the chain reads. The rewritten calls and links need one, where SWC's own
  * compile of them doesn't, so there they're left to SWC: the module loads,
- * with SWC's short-circuit and receiver, rather than failing to.
+ * with SWC's short-circuit and receiver, rather than failing to. In the build
+ * lowerYieldingDefaultChains (yielding-defaults.ts) runs first and compiles
+ * these chains itself, so there are none left here; it uses this to find the
+ * same default values.
  */
-const yieldingDefault = (node: ts.Node): boolean => {
+export const yieldingDefault = (node: ts.Node): boolean => {
   const parent = node.parent;
   const isDefault =
     parent !== undefined &&
@@ -1349,7 +1375,7 @@ const analyzeClasses = (sourceFile: ts.SourceFile): ClassInfo[] => {
  * `code` with `edits` made, its inline source map moved to match, or `code`
  * itself when there are none.
  */
-const applyEdits = (
+export const applyEdits = (
   code: string,
   edits: Edit[],
   sourceFile: ts.SourceFile,

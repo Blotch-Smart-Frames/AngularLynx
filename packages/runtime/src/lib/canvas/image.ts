@@ -9,6 +9,7 @@ import {
   getWebGLBridge,
   toWords,
 } from './webgl-bridge';
+import { sendPendingBatches } from './pending-batches';
 import {
   NATIVE_IMAGE,
   type NativeImage,
@@ -194,6 +195,9 @@ export class LynxImageBitmap {
   close(): void {
     this.#detached = true;
     if (!this.#image.id) return;
+    // A drawImage() or texImage2D() of the bitmap recorded earlier in this
+    // task runs before the pixels go, as the web draws it as it was.
+    sendPendingBatches();
     registry?.unregister(this);
     releaseImage(this.#image.id);
     this.#image = { id: 0, width: 0, height: 0, bakedOptions: true };
@@ -207,6 +211,9 @@ export class LynxImageBitmap {
    */
   [TAKE_IMAGE](): NativeImage | null {
     if (this.#detached) return null;
+    // The calls recorded so far that read the bitmap run while the shell
+    // still keeps its pixels where they find them (see close()).
+    if (this.#image.id) sendPendingBatches();
     const image = this.#image;
     this.#detached = true;
     registry?.unregister(this);

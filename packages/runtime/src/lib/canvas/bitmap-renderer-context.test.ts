@@ -4,6 +4,10 @@ import {
   type FakeBitmapRendererBridge,
 } from '../testing/fake-bitmap-renderer-bridge';
 import {
+  createFakeCanvas2DBridge,
+  type FakeCanvas2DBridge,
+} from '../testing/fake-canvas-2d-bridge';
+import {
   createFakeWebGLBridge,
   type FakeWebGLBridge,
 } from '../testing/fake-webgl-bridge';
@@ -12,14 +16,19 @@ import {
   bitmapRendererSettingsFrom,
   LynxImageBitmapRenderingContext,
 } from './bitmap-renderer-context';
+import type { LynxCanvasRenderingContext2D } from './canvas-2d-context';
 import { LynxCanvasElement } from './canvas-element';
 import { canvasSourceOf } from './canvas-source';
+import { setWebGL2ContextFactory } from './canvas-surface';
 import { LynxDetachedCanvas, LynxOffscreenCanvas } from './detached-canvas';
+import { ɵenableWebGL2 } from './enable-webgl2';
 import { createImageBitmap, LynxImageBitmap } from './image';
 import {
   setBitmapRendererBridgeForTesting,
+  setCanvas2DBridgeForTesting,
   setWebGLBridgeForTesting,
 } from './webgl-bridge';
+import type { LynxWebGL2RenderingContext } from './webgl2-context';
 
 let bridge: FakeBitmapRendererBridge;
 let bridgeGL: FakeWebGLBridge;
@@ -389,5 +398,63 @@ describe('a canvas with a bitmaprenderer context', () => {
     await expect(empty.convertToBlob()).rejects.toMatchObject({
       name: 'IndexSizeError',
     });
+  });
+});
+
+describe('a bitmap that leaves the shell', () => {
+  let bridge2D: FakeCanvas2DBridge;
+
+  beforeEach(() => {
+    bridge2D = createFakeCanvas2DBridge();
+    setCanvas2DBridgeForTesting(bridge2D);
+  });
+
+  afterEach(() => {
+    setCanvas2DBridgeForTesting(undefined);
+    setWebGL2ContextFactory(null);
+  });
+
+  it('sends a drawImage() of it recorded earlier in the task before it’s transferred', () => {
+    const target = new LynxOffscreenCanvas(4, 4);
+    const context2D = target.getContext('2d') as LynxCanvasRenderingContext2D;
+    const bitmap = new LynxImageBitmap(7, 3, 2);
+    context2D.drawImage(bitmap as never, 0, 0);
+    expect(bridge2D.batches).toHaveLength(0);
+    let sentFirst = false;
+    bridge.transferToBitmapRenderer.mockImplementationOnce(() => {
+      sentFirst = bridge2D.batches.length > 0;
+      return { ok: true };
+    });
+    contextOf(new LynxOffscreenCanvas(4, 4)).transferFromImageBitmap(bitmap);
+    expect(sentFirst).toBe(true);
+  });
+
+  it('sends the calls recorded before it’s closed, in a 2D and a WebGL2 context', () => {
+    ɵenableWebGL2();
+    const gl = new LynxOffscreenCanvas(2, 2).getContext(
+      'webgl2',
+    ) as LynxWebGL2RenderingContext;
+    const glBatches = bridgeGL.batches.length;
+    gl.clearColor(1, 0, 0, 1);
+    const context2D = new LynxOffscreenCanvas(4, 4).getContext(
+      '2d',
+    ) as LynxCanvasRenderingContext2D;
+    const bitmap = new LynxImageBitmap(7, 3, 2);
+    context2D.drawImage(bitmap as never, 0, 0);
+    let sent: number[] = [];
+    bridgeGL.releaseImage.mockImplementationOnce(() => {
+      sent = [bridgeGL.batches.length - glBatches, bridge2D.batches.length];
+    });
+    bitmap.close();
+    expect(sent).toEqual([1, 1]);
+  });
+
+  it('leaves out a context that has gone', () => {
+    const canvas = new LynxOffscreenCanvas(4, 4);
+    const context2D = canvas.getContext('2d') as LynxCanvasRenderingContext2D;
+    context2D.fillRect(0, 0, 1, 1);
+    canvas.surface.release();
+    new LynxImageBitmap(7, 3, 2).close();
+    expect(bridge2D.batches).toHaveLength(0);
   });
 });

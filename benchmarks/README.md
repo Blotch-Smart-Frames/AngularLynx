@@ -38,8 +38,8 @@ milliseconds in every run, and "fully drawn" measures the framework.
 
 - **Release builds only**, each app in its own native shell: never Expo Go,
   never Lynx Explorer.
-- **A real phone** for every published number. Simulators only check the
-  harness.
+- **A real phone** for every published number. A Simulator run (below) only
+  compares runs of one session with each other.
 - **Alternating apps**, run by run (A B, B A, A B…), so heat, battery and
   background work fall on every app alike.
 - **Battery, charging, thermal state and OS build** recorded with every run.
@@ -112,3 +112,43 @@ test allows the local network prompt each new install brings.
 `ios_scroll.py` builds the runner with `xcodebuild`, from the project
 committed in `harness/ios-scroll`. After changing `project.yml`, run
 `xcodegen` there (`brew install xcodegen`) to make the project again.
+
+## On the iOS Simulator
+
+The phone is shared, so the launch and mount runs can also go on a booted
+Simulator, to see whether a change made an app faster or slower before
+someone takes the phone:
+
+```sh
+# Build and install each app for the Simulator (it reaches the fixture server
+# at localhost)
+xcrun simctl install <UDID> \
+  "$(sh harness/build_ios_app.sh --simulator angular-lynx com.angularlynx.bench.angularlynx)"
+
+# Launch them in turn
+python3 harness/ios_launch.py --simulator --device <UDID> --runs 20 \
+  --app angular-lynx=<bundle id> --app react-lynx=<bundle id> \
+  --out results/ios-simulator/launch-<date>-react-lynx.csv
+
+# The screens of many elements
+python3 harness/ios_mount.py --simulator --device <UDID> --rival react-lynx --runs 10
+```
+
+On the Simulator, Instruments' App Launch template records no launch phases
+and Activity Monitor fails, so a Simulator run records fully drawn (the light
+recording, from dyld's launch of the process) and the app's memory, which
+`footprint` reads from its process on the Mac 6 s into the recording
+(`--memory-after`), a few seconds after it's drawn. There's no first frame,
+peak memory, battery or charging, and the thermal state is the Mac's.
+
+Its numbers aren't a phone's. Every launch takes about 1.45 s longer, and
+memory doesn't rank the apps as a phone does, so they're never charted:
+`results/ios-simulator` isn't read by the website. Within a session they
+compare, as long as the Mac stays quiet. Two builds of one app launched in
+turn came within ±4% of each other (95% intervals), and each app's cost per
+element, (5,000-element screen − 1,500-element screen) / 3,500, separates the
+frameworks clearly. The Simulator runs on the Mac's cores, so a busy Mac
+slows it by 5–30%: the harness waits until the Mac's load average is under
+`--max-load` (half its cores by default) before each launch, and drops and
+repeats a run whose load went over it. With more than two apps, the order
+rotates as well as reversing, so each app follows each of the others in turn.

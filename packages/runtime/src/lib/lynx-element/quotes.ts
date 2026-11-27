@@ -110,12 +110,12 @@ export type QuoteMarks = readonly string[] | 'auto';
  * undefined for one a browser drops: an odd number of strings, or anything
  * else, such as a `var()`, which the runtime can't resolve (it can't read a
  * custom property's value off Lynx's stylesheet). A trailing `!important`
- * is passed over: an inline one wins either way.
+ * (or `! important`, as CSS allows) is passed over: #ownQuotes reads it.
  */
 export const parseQuotes = (
   value: string,
 ): QuoteMarks | 'inherit' | undefined => {
-  const text = value.replace(/\s*!important\s*$/i, '').trim();
+  const text = value.replace(/\s*!\s*important\s*$/i, '').trim();
   const keyword = text.toLowerCase();
   if (keyword === 'none') return [];
   if (keyword === 'auto' || keyword === 'initial') return 'auto';

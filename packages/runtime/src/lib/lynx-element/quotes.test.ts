@@ -66,6 +66,7 @@ describe('parseQuotes', () => {
     // An escaped newline is no character.
     ['"a\\\nb" "c"', ['ab', 'c']],
     [`'<' '>' !important`, ['<', '>']],
+    ['none ! IMPORTANT', []],
   ])('reads %s', (value, quotes) => {
     expect(parseQuotes(value)).toEqual(quotes);
   });

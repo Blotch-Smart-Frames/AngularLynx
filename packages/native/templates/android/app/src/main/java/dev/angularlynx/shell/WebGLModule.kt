@@ -79,10 +79,26 @@ class WebGLModule(context: Context, param: Any?) : LynxModule(context, param) {
 
     @LynxMethod
     fun decodeImage(imageId: Int, bytes: ReadableArray?, options: ReadableMap?): JavaOnlyMap {
-        val image = bytes?.let { decode(bytesFromWords(it), options) }
-            ?: return JavaOnlyMap.from(mapOf("width" to 0, "height" to 0, "error" to "The data is not an image Android can decode"))
-        DecodedImages.put(imageId, image)
-        return JavaOnlyMap.from(mapOf("width" to image.width, "height" to image.height))
+        return try {
+            val image = bytes?.let {
+                if (hasCrop(options)) {
+                    // Cropped before it's resized or flipped, as the HTML
+                    // spec orders it: the file is decoded as it is, with the
+                    // alpha the bitmap asks for, so the copy needn't convert
+                    // it, and then cut.
+                    val premultiply = options?.optString("premultiplyAlpha") == "premultiply"
+                    decode(bytesFromWords(it), null, premultiply)?.let { decoded -> pixelsOfSnapshot(decoded, options) }
+                } else {
+                    decode(bytesFromWords(it), options)
+                }
+            } ?: return imageFailed("The data is not an image Android can decode")
+            keptImage(imageId, image, options)
+        } catch (_: OutOfMemoryError) {
+            imageFailed("The image is too large to decode")
+        } catch (_: IllegalArgumentException) {
+            // A crop or a resize larger than a Bitmap or a buffer can hold.
+            imageFailed("The image is too large to decode")
+        }
     }
 
     @LynxMethod
@@ -117,14 +133,56 @@ class WebGLModule(context: Context, param: Any?) : LynxModule(context, param) {
                 DecodedImage(ByteBuffer.allocateDirect(bytes).order(ByteOrder.nativeOrder()), width, height, true)
             }
             if (options?.optBool("transfer") == true) context?.clearForTransfer()
-            val image = pixelsOfSnapshot(snapshot, options)
-            DecodedImages.put(imageId, image)
-            JavaOnlyMap.from(mapOf("width" to image.width, "height" to image.height))
+            keptImage(imageId, pixelsOfSnapshot(snapshot, options), options)
         } catch (_: OutOfMemoryError) {
             imageFailed("The canvas is too large to copy")
         } catch (_: IllegalArgumentException) {
-            // A resize larger than a Bitmap or a buffer can hold.
+            // A crop or a resize larger than a Bitmap or a buffer can hold.
             imageFailed("The canvas is too large to copy")
+        }
+    }
+
+    /**
+     * An ImageBitmap of an image the module keeps (an ImageBitmap's, or an
+     * `<img>`'s), for createImageBitmap(): a copy of its pixels with
+     * createImageBitmap's options, so neither the pixels nor the file cross
+     * the bridge again. `{ width, height, cropped }`, or `{ error }`.
+     */
+    @LynxMethod
+    fun imageFromImage(imageId: Int, sourceId: Int, options: ReadableMap?): JavaOnlyMap {
+        val source = DecodedImages.get(sourceId) ?: return imageFailed("The image is gone")
+        return try {
+            // pixelsOfSnapshot works on the pixels it's given, and these are
+            // the source's own, which stay as they are. A crop copies them
+            // first, so only the part it keeps is read.
+            keptImage(imageId, pixelsOfSnapshot(if (hasCrop(options)) source else source.copy(), options), options)
+        } catch (_: OutOfMemoryError) {
+            imageFailed("The image is too large to copy")
+        } catch (_: IllegalArgumentException) {
+            imageFailed("The image is too large to copy")
+        }
+    }
+
+    /**
+     * An ImageBitmap of an ImageData, for createImageBitmap(): its RGBA
+     * bytes, straight, rows top to bottom, sent as words (see
+     * [bytesFromWords]), with its size in [options], and createImageBitmap's
+     * options applied. `{ width, height, cropped }`, or `{ error }`.
+     */
+    @LynxMethod
+    fun imageFromPixels(imageId: Int, bytes: ReadableArray?, options: ReadableMap?): JavaOnlyMap {
+        val width = options?.optInt("width") ?: 0
+        val height = options?.optInt("height") ?: 0
+        return try {
+            val pixels = bytes?.let { bytesFromWords(it) }
+            if (pixels == null || width <= 0 || height <= 0 || rgbaByteCount(width, height) != pixels.remaining()) {
+                return imageFailed("The pixels don't fill the image")
+            }
+            keptImage(imageId, pixelsOfSnapshot(DecodedImage(pixels, width, height, false), options), options)
+        } catch (_: OutOfMemoryError) {
+            imageFailed("The image is too large to copy")
+        } catch (_: IllegalArgumentException) {
+            imageFailed("The image is too large to copy")
         }
     }
 
@@ -132,12 +190,69 @@ class WebGLModule(context: Context, param: Any?) : LynxModule(context, param) {
         JavaOnlyMap.from(mapOf("width" to 0, "height" to 0, "error" to message))
 
     /**
-     * A canvas's pixels (its context's snapshot, a copy of its own) as
-     * createImageBitmap's options ask. Without a resize, the bytes are
-     * flipped and premultiplied or divided as asked, exactly; a resize scales
-     * them, as a decode does.
+     * Keeps a new ImageBitmap's pixels under the id the runtime gave it, and
+     * answers its size and, when it was asked for, that the crop was
+     * applied: a shell from before cropping leaves `cropped` out, so the
+     * runtime can tell it would get all of the source.
      */
-    private fun pixelsOfSnapshot(snapshot: DecodedImage, options: ReadableMap?): DecodedImage {
+    private fun keptImage(imageId: Int, image: DecodedImage, options: ReadableMap?): JavaOnlyMap {
+        DecodedImages.put(imageId, image)
+        return JavaOnlyMap.from(mapOf("width" to image.width, "height" to image.height, "cropped" to hasCrop(options)))
+    }
+
+    /**
+     * Whether createImageBitmap() asked for part of the source (its `sx, sy,
+     * sw, sh`), which the runtime sends as cropX, cropY, cropWidth and
+     * cropHeight, the sizes made positive.
+     */
+    private fun hasCrop(options: ReadableMap?): Boolean =
+        options != null && options.optLong("cropWidth") > 0 && options.optLong("cropHeight") > 0
+
+    /**
+     * The part of [image] createImageBitmap()'s crop rectangle covers, the
+     * rectangle's size: what it covers outside the image is transparent
+     * black, as the HTML spec has it, and the rest keeps its alpha as it
+     * was. The rows are copied into a new buffer; the image is only read.
+     */
+    private fun cropped(image: DecodedImage, options: ReadableMap): DecodedImage {
+        // In Long: a corner near a Web IDL long's end, plus a side, passes an Int's.
+        val x = options.optLong("cropX")
+        val y = options.optLong("cropY")
+        val width = options.optLong("cropWidth").toInt()
+        val height = options.optLong("cropHeight").toInt()
+        val bytes = rgbaByteCount(width, height) ?: throw IllegalArgumentException("The crop rectangle is too large")
+        val out = ByteBuffer.allocateDirect(bytes).order(ByteOrder.nativeOrder())
+        // The columns and rows the rectangle shares with the image.
+        val left = maxOf(x, 0L)
+        val right = minOf(x + width, image.width.toLong())
+        val top = maxOf(y, 0L)
+        val bottom = minOf(y + height, image.height.toLong())
+        if (left < right && top < bottom) {
+            // A view of its own, so the image's buffer keeps its position.
+            val from = image.pixels.duplicate()
+            val row = ByteArray(((right - left) * 4).toInt())
+            for (r in top until bottom) {
+                from.position(((r * image.width + left) * 4).toInt())
+                from.get(row)
+                out.position((((r - y) * width + (left - x)) * 4).toInt())
+                out.put(row)
+            }
+        }
+        out.rewind()
+        return DecodedImage(out, width, height, image.premultiplied)
+    }
+
+    /**
+     * Pixels of the shell's own (a canvas's snapshot, a copy of an image it
+     * keeps, an ImageData's) as createImageBitmap's options ask, for a new
+     * ImageBitmap: cropped first, as the HTML spec orders it, so a resize and
+     * a flip apply to the part the crop rectangle names. Without a resize, the
+     * bytes are flipped and premultiplied or divided as asked, exactly, in
+     * place; a resize scales them, as a decode does.
+     */
+    private fun pixelsOfSnapshot(source: DecodedImage, options: ReadableMap?): DecodedImage {
+        // hasCrop() is false without options; the check is for the compiler.
+        val snapshot = if (options != null && hasCrop(options)) cropped(source, options) else source
         val premultiply = options?.optString("premultiplyAlpha") == "premultiply"
         val resizeWidth = options?.optInt("resizeWidth") ?: 0
         val resizeHeight = options?.optInt("resizeHeight") ?: 0
@@ -332,12 +447,16 @@ class WebGLModule(context: Context, param: Any?) : LynxModule(context, param) {
     /**
      * Decodes an image file to RGBA bytes, as createImageBitmap's options ask:
      * `imageOrientation: 'flipY'` flips it, `premultiplyAlpha: 'premultiply'`
-     * premultiplies it (otherwise it's kept straight), and
+     * premultiplies it (otherwise it's kept straight; [premultiply] says so
+     * instead, for a file decoded to be cropped), and
      * `resizeWidth`/`resizeHeight` scale it.
      */
-    private fun decode(bytes: ByteBuffer, options: ReadableMap?): DecodedImage? {
+    private fun decode(
+        bytes: ByteBuffer,
+        options: ReadableMap?,
+        premultiply: Boolean = options?.optString("premultiplyAlpha") == "premultiply",
+    ): DecodedImage? {
         val array = ByteArray(bytes.remaining()).also { bytes.get(it) }
-        val premultiply = options?.optString("premultiplyAlpha") == "premultiply"
         val resizeWidth = options?.optInt("resizeWidth") ?: 0
         val resizeHeight = options?.optInt("resizeHeight") ?: 0
         val resize = resizeWidth > 0 || resizeHeight > 0
@@ -369,6 +488,9 @@ class WebGLModule(context: Context, param: Any?) : LynxModule(context, param) {
     private fun ReadableMap.optInt(key: String): Int =
         if (hasKey(key) && getType(key) in NUMBER_TYPES) getDouble(key).toInt() else 0
 
+    private fun ReadableMap.optLong(key: String): Long =
+        if (hasKey(key) && getType(key) in NUMBER_TYPES) getDouble(key).toLong() else 0L
+
     private fun ReadableMap.optBool(key: String): Boolean =
         hasKey(key) && getType(key) == ReadableType.Boolean && getBoolean(key)
 
@@ -383,7 +505,17 @@ internal val NUMBER_TYPES = setOf(ReadableType.Int, ReadableType.Long, ReadableT
 class DrawingBufferPixels(val rgba: ByteBuffer, val width: Int, val height: Int, val alpha: Boolean)
 
 /** Pixels the module decoded, which texture uploads read by id: RGBA, rows top to bottom. */
-class DecodedImage(val pixels: ByteBuffer, val width: Int, val height: Int, val premultiplied: Boolean)
+class DecodedImage(val pixels: ByteBuffer, val width: Int, val height: Int, val premultiplied: Boolean) {
+    /** A copy, in a buffer of its own, for work done on the pixels in place. */
+    fun copy(): DecodedImage {
+        val from = pixels.duplicate()
+        from.rewind()
+        val to = ByteBuffer.allocateDirect(from.remaining()).order(ByteOrder.nativeOrder())
+        to.put(from)
+        to.rewind()
+        return DecodedImage(to, width, height, premultiplied)
+    }
+}
 
 /**
  * A canvas's context, of either kind: what the registry pairs with the

@@ -14,7 +14,7 @@ Zone.js depends on browser globals that don't exist in Lynx. Using it crashes at
 
 ### `AbortController` / `queueMicrotask` missing
 
-Angular Router v21+ and the zoneless scheduler use these internally. Without polyfills, navigation silently dies. **Fix:** The runtime polyfills both automatically.
+Angular Router v21+ and the zoneless scheduler use these internally. Without polyfills, navigation silently dies. **Fix:** The build polyfills both automatically.
 
 ### Timer APIs not on `globalThis`
 

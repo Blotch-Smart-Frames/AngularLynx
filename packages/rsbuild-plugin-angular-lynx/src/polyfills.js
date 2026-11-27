@@ -65,10 +65,36 @@ if (typeof AbortController === 'undefined') {
 if (typeof performance === 'undefined') {
   globalThis.performance = undefined;
 }
+// Angular core schedules effects and change detection with queueMicrotask,
+// which neither of Lynx's engines has as a global. The background thread's
+// `lynx` has one (Lynx 3.1+): its task runner's microtask queue, which
+// reports what a callback throws. That thread's Promise can be Lynx's own,
+// whose callbacks wait for a setTimeout(0) unless the page enables
+// enableMicrotaskPromisePolyfill (getPromiseMaybePolyfill in Lynx's
+// lynx-core), so a resolved promise there could queue a macrotask. Prefer
+// lynx.queueMicrotask, as React Lynx does (its runtime's
+// shared/microtask.ts). The main thread's `lynx` has none, so there a
+// resolved promise queues the callback, and an error it throws is thrown
+// again from a timer, as the web's queueMicrotask reports it, rather than
+// left as a rejection nothing handles. This is the only copy: the runtime's,
+// which preferred lynx.queueMicrotask too, never ran, since this one was
+// already installed (#780).
 if (typeof queueMicrotask === 'undefined') {
-  globalThis.queueMicrotaskPromiseCache = Promise.resolve();
-  globalThis.queueMicrotask = (cb) =>
-    globalThis.queueMicrotaskPromiseCache.then(cb);
+  if (
+    typeof lynx !== 'undefined' &&
+    typeof lynx.queueMicrotask === 'function'
+  ) {
+    globalThis.queueMicrotask = (callback) => lynx.queueMicrotask(callback);
+  } else {
+    const resolved = Promise.resolve();
+    globalThis.queueMicrotask = (callback) => {
+      resolved.then(callback).catch((error) => {
+        setTimeout(() => {
+          throw error;
+        }, 0);
+      });
+    };
+  }
 }
 
 // Angular's i18n runtime (applyCreateOpCodes / applyMutableOpCodes /
@@ -136,14 +162,20 @@ try {
   // Read-only in Web Worker — document already exists
 }
 // In native Lynx, window doesn't exist — assign globalThis as a stub.
-// In web bundles, the code runs inside lynx-view which shadows window=void 0
-// but globalThis IS the Window object (where 'window' is a read-only getter).
 try {
   if (typeof window === 'undefined') {
     globalThis.window = globalThis;
   }
 } catch {
-  // Read-only in web environment — window already exists on globalThis
+  // On Lynx for Web, globalThis is the main thread's iframe window, whose
+  // `window` is a getter, so the assignment above throws. And the bundle
+  // runs inside web-core's wrapper, `(function(){ … let window=void 0;
+  // <bundle> })` (MTS_CODE_WRAPPER_PREFIX in its decode.worker.js), so
+  // `window` meant that `let`, and code that reads `window.innerWidth`
+  // threw. Assigning it makes `window` globalThis there too, as it is on iOS
+  // and Android. `__WEB__` is the build's define, false on iOS and Android,
+  // so they leave this out.
+  if (typeof __WEB__ !== 'undefined' && __WEB__) window = globalThis;
 }
 // Angular's DefaultValueAccessor (from @angular/forms) is instantiated on every
 // <input [formControl]> / <textarea [formControl]> element — even when a custom

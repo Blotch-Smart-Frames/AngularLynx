@@ -6,7 +6,11 @@
 // Not exported from public-api.ts: this is test-only infrastructure, never
 // shipped in the published package.
 import { vi } from 'vitest';
-import type { WebGLBridge } from '../canvas/webgl-bridge';
+import type {
+  DecodedImage,
+  ImageCopyOptions,
+  WebGLBridge,
+} from '../canvas/webgl-bridge';
 import { OP } from '../canvas/webgl-ops';
 
 export type FakeWebGLBridge = {
@@ -24,6 +28,10 @@ export type FakeWebGLBridge = {
   releaseImage: ReturnType<typeof vi.fn<WebGLBridge['releaseImage']>>;
   /** Answers with the size asked for: the resize, or the canvas's. */
   imageFromCanvas: ReturnType<typeof vi.fn<WebGLBridge['imageFromCanvas']>>;
+  /** Answers with the size asked for: the resize, the crop's, or 4 by 2. */
+  imageFromImage: ReturnType<typeof vi.fn<WebGLBridge['imageFromImage']>>;
+  /** Answers with the size asked for: the resize, the crop's, or the pixels'. */
+  imageFromPixels: ReturnType<typeof vi.fn<WebGLBridge['imageFromPixels']>>;
   /** Answers with a file of bytes 1 and 2, of the type asked for. */
   encodeImage: ReturnType<typeof vi.fn<WebGLBridge['encodeImage']>>;
   /** Every command sent after the first batch, flattened. */
@@ -42,12 +50,17 @@ export const createFakeWebGLBridge = (): FakeWebGLBridge => {
     limits: new Map(),
     create: vi.fn(() => ({ ok: true })),
     destroy: vi.fn(),
-    decodeImage: vi.fn(() => ({ width: 4, height: 2 })),
+    decodeImage: vi.fn((_imageId, _bytes, options) => copied(options, 4, 2)),
     releaseImage: vi.fn(),
-    imageFromCanvas: vi.fn((_imageId, _canvasId, options) => ({
-      width: options.resizeWidth || options.width,
-      height: options.resizeHeight || options.height,
-    })),
+    imageFromCanvas: vi.fn((_imageId, _canvasId, options) =>
+      copied(options, options.width, options.height),
+    ),
+    imageFromImage: vi.fn((_imageId, _sourceId, options) =>
+      copied(options, 4, 2),
+    ),
+    imageFromPixels: vi.fn((_imageId, _bytes, options) =>
+      copied(options, options.width, options.height),
+    ),
     encodeImage: vi.fn((_contextId, { type }) => ({ base64: 'AQI=', type })),
     run: (_contextId, commands) => {
       fake.batches.push(commands);
@@ -59,6 +72,36 @@ export const createFakeWebGLBridge = (): FakeWebGLBridge => {
     sent: () => fake.batches.slice(1).flat(),
   };
   return fake;
+};
+
+/**
+ * What the shell answers for a copy of a source of `width` by `height`: the
+ * crop's size, or the source's, resized, and whether it cropped. A resize of
+ * one side scales the other to keep the aspect ratio, rounded up, as the
+ * shells and the HTML spec do.
+ */
+const copied = (
+  options: ImageCopyOptions,
+  width: number,
+  height: number,
+): DecodedImage => {
+  const crop = !!options.cropWidth;
+  const fromWidth = crop ? options.cropWidth : width;
+  const fromHeight = crop ? options.cropHeight : height;
+  const { resizeWidth, resizeHeight } = options;
+  return {
+    width:
+      resizeWidth ||
+      (resizeHeight
+        ? Math.ceil((fromWidth * resizeHeight) / fromHeight)
+        : fromWidth),
+    height:
+      resizeHeight ||
+      (resizeWidth
+        ? Math.ceil((fromHeight * resizeWidth) / fromWidth)
+        : fromHeight),
+    ...(crop ? { cropped: true } : {}),
+  };
 };
 
 /**

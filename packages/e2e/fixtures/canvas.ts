@@ -17,10 +17,19 @@ const CYAN_PNG =
 /**
  * What the Bitmap check reads: green, red, blue, the cleared OffscreenCanvas,
  * red through WebGL, then the WebGL OffscreenCanvas's transferred red, the
- * canvas cleared, and its draw buffer kept.
+ * canvas cleared, and its draw buffer kept. Then the crops and copies (issue
+ * #731): an ImageData's green top, its bitmap flipped (red on top), cropped
+ * to its bottom (red), and its top again (green, the source untouched); a
+ * canvas cropped to its right (blue), and cropped from left of it (clear,
+ * then red); a Blob cropped wider than it (cyan, then clear); and an Image
+ * cropped (cyan).
  */
-const BITMAP_READS =
-  '0,128,0,255 255,0,0,255 0,0,255,255 0,0,0,0 255,0,0,255 255,0,0,255 0,0,0,0 none';
+const BITMAP_READS = [
+  '0,128,0,255 255,0,0,255 0,0,255,255 0,0,0,0 255,0,0,255 255,0,0,255 0,0,0,0 none',
+  '0,255,0,255 255,0,0,255 255,0,0,255 0,255,0,255',
+  '0,0,255,255 0,0,0,0 255,0,0,255',
+  '0,255,255,255 0,0,0,0 0,255,255,255',
+].join(' ');
 
 const VERTEX = `#version 300 es
 in vec2 position;
@@ -82,8 +91,9 @@ const colorName = ({ 0: r, 1: g, 2: b }: ArrayLike<number>): string =>
  * uploaded as the WebGL texture, drawn and read back; then a WebGL2
  * OffscreenCanvas cleared red and transferred while it draws to no color
  * buffer (`drawBuffers([NONE])`): its bitmap, the canvas the transfer
- * cleared, and its draw buffer, still NONE. When a read is wrong,
- * the line shows them all. It's in the canvas's row, and short, so the page
+ * cleared, and its draw buffer, still NONE. Then createImageBitmap()'s crop
+ * rectangle and its other sources (issue #731, see #cropBitmaps). When a
+ * read is wrong, the line shows them all. It's in the canvas's row, and short, so the page
  * is no taller: the links under it stay on the Android emulator's screen,
  * where the flows tap them.
  *
@@ -510,9 +520,75 @@ export class CanvasRoute {
       read(transferred),
       Array.from(after).join(','),
       drawBuffer === glSourceContext.NONE ? 'none' : `${drawBuffer}`,
+      ...(await this.#cropBitmaps()),
     );
     const all = reads.join(' ');
     return all === BITMAP_READS ? 'ok' : all;
+  }
+
+  /**
+   * createImageBitmap()'s crop rectangle and its other sources (issue #731),
+   * each read back a pixel at a time: an ImageData, an ImageBitmap copied
+   * flipped and cropped (which leaves it as it was), a canvas cropped inside
+   * it and from left of it (what's outside is transparent), a Blob cropped
+   * wider than its file, and a loaded Image cropped.
+   */
+  async #cropBitmaps(): Promise<string[]> {
+    const target = document.createElement('canvas');
+    target.width = 1;
+    target.height = 1;
+    const context = target.getContext('2d')!;
+    const pixel = (bitmap: ImageBitmap, x: number, y: number) => {
+      context.clearRect(0, 0, 1, 1);
+      context.drawImage(bitmap, x, y, 1, 1, 0, 0, 1, 1);
+      return Array.from(context.getImageData(0, 0, 1, 1).data).join(',');
+    };
+
+    // Green over red.
+    const stripes = new ImageData(
+      new Uint8ClampedArray([0, 255, 0, 255, 255, 0, 0, 255]),
+      1,
+      2,
+    );
+    const ofData = await createImageBitmap(stripes);
+    const flipped = await createImageBitmap(ofData, {
+      imageOrientation: 'flipY',
+    });
+    const bottom = await createImageBitmap(ofData, 0, 1, 1, 1);
+    const reads = [
+      pixel(ofData, 0, 0),
+      pixel(flipped, 0, 0),
+      pixel(bottom, 0, 0),
+      pixel(ofData, 0, 0),
+    ];
+
+    // Red, then blue.
+    const source = new OffscreenCanvas(2, 1);
+    const sourceContext = source.getContext('2d')!;
+    sourceContext.fillStyle = 'rgb(255, 0, 0)';
+    sourceContext.fillRect(0, 0, 1, 1);
+    sourceContext.fillStyle = 'rgb(0, 0, 255)';
+    sourceContext.fillRect(1, 0, 1, 1);
+    // A negative width reaches left of its corner: from 2 back to 1.
+    const right = await createImageBitmap(source, 2, 0, -1, 1);
+    const shifted = await createImageBitmap(source, -1, 0, 2, 1);
+    reads.push(pixel(right, 0, 0), pixel(shifted, 0, 0), pixel(shifted, 1, 0));
+
+    const png = Uint8Array.from(atob(CYAN_PNG), (c) => c.charCodeAt(0));
+    const wide = await createImageBitmap(
+      new Blob([png], { type: 'image/png' }),
+      0,
+      0,
+      2,
+      1,
+    );
+    reads.push(pixel(wide, 0, 0), pixel(wide, 1, 0));
+
+    const image = new Image();
+    image.src = `data:image/png;base64,${CYAN_PNG}`;
+    await image.decode();
+    reads.push(pixel(await createImageBitmap(image, 0, 0, 1, 1), 0, 0));
+    return reads;
   }
 
   async #draw(): Promise<string> {

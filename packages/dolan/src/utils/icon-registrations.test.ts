@@ -215,6 +215,19 @@ export const appConfig: ApplicationConfig = {
     });
   });
 
+  // A formatter wraps a long binding onto lines of its own.
+  it('reads a binding that spans lines', () => {
+    app();
+    write(
+      'src/app/app.html',
+      '<ui-icon\n  [name]="\n    done() ? \'check\' : item.icon\n  "\n/>',
+    );
+    write('src/app/items.ts', "export const ITEMS = [{ icon: 'home' }];\n");
+    expect(registerAppIcons(cwd, components())).toMatchObject({
+      names: ['check', 'home'],
+    });
+  });
+
   // An icon the config draws with iconSvg() is imported there already.
   it('uses the imports the config has, under their local names', () => {
     app();

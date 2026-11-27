@@ -156,7 +156,7 @@ export const registerAppIcons = (
       add(name);
     }
     for (const [, , expression] of content.matchAll(
-      /\[(?:name|icon)\]=(["'])(.*?)\1/g,
+      /\[(?:name|icon)\]=(["'])(.*?)\1/gs,
     )) {
       quoted(expression).forEach(add);
       if (!allWritten(expression)) fromData = true;

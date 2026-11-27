@@ -782,9 +782,11 @@ export class CanvasRoute {
       canvas instanceof HTMLCanvasElement,
       canvas instanceof HTMLElement,
       this.video().nativeElement instanceof HTMLVideoElement,
-      // iOS and Android have no WebGL2RenderingContext global yet.
-      typeof WebGL2RenderingContext === 'undefined' ||
-        gl instanceof WebGL2RenderingContext,
+      gl instanceof WebGL2RenderingContext,
+      // Nothing is a WebGL1 context: it's the runtime's global on a phone
+      // (issue #799), so this answers there rather than throwing.
+      !(gl instanceof WebGLRenderingContext),
+      WebGL2RenderingContext.TEXTURE_2D === gl.TEXTURE_2D,
       gl.canvas instanceof HTMLCanvasElement,
     ];
     if (instances.includes(false)) return `instanceof ${instances.join(',')}`;

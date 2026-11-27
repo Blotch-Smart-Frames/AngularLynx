@@ -14,6 +14,7 @@ import { createImageBitmap, LynxImageBitmap, LynxImageElement } from './image';
 import { LynxPath2D } from './path';
 import { wrapRealmImageMethods } from './web-image-sources';
 import { acceptPageInstances } from './web-instanceof';
+import { WEBGL2_CONTEXT } from './webgl2-brand';
 
 /**
  * A template's element: a LynxElement, told apart by shape rather than class,
@@ -67,6 +68,13 @@ const isLynxElement = (value: unknown): value is LayoutElement =>
  * - `Image`, `HTMLImageElement`, `ImageBitmap`, `createImageBitmap()`, and
  *   `document.createElement('img')`: see image.ts. `ImageBitmapRenderingContext`,
  *   a canvas's `bitmaprenderer` context: see bitmap-renderer-context.ts.
+ * - `WebGL2RenderingContext`: a canvas's `getContext('webgl2')` is an
+ *   instance of it, as WebGL libraries check before making WebGL2-only calls,
+ *   and `typeof WebGL2RenderingContext` is how they ask whether there's
+ *   WebGL2 at all. `WebGLRenderingContext` is there too, so an `instanceof`
+ *   against it answers rather than throwing, though nothing is an instance of
+ *   it: Lynx has no WebGL1 context, and in a browser a WebGL2 context isn't
+ *   one either.
  * - `devicePixelRatio`: from Lynx's SystemInfo, so a 3D scene renders at the
  *   screen's resolution.
  * - `getComputedStyle()`: ngxtension's resize directive reads an element's
@@ -109,6 +117,8 @@ export const installCanvasGlobals = (target: Record<string, any>): void => {
   install('ImageBitmap', LynxImageBitmap);
   install('ImageBitmapRenderingContext', LynxImageBitmapRenderingContext);
   install('createImageBitmap', createImageBitmap);
+  install('WebGL2RenderingContext', LynxWebGL2RenderingContextGlobal);
+  install('WebGLRenderingContext', LynxWebGLRenderingContextGlobal);
   // The web preview's own classes, which the ones above leave in place. On
   // Lynx, they're the runtime's, which read a template's element already.
   if (__WEB__) {
@@ -245,6 +255,45 @@ class LynxHTMLVideoElement {
 
   static [Symbol.hasInstance](value: unknown): boolean {
     return isVideoElement(value);
+  }
+}
+
+/**
+ * The `WebGL2RenderingContext` global on iOS and Android (see
+ * installCanvasGlobals). It recognizes the runtime's context by the mark it
+ * carries, since the context's class is in the build only when something
+ * names `'webgl2'` (see webgl2-brand.ts). `ɵenableWebGL2()` gives it the
+ * context's constants, as `WebGL2RenderingContext.FLOAT` is in a browser,
+ * once there's a context to use them with: here they'd be in every app.
+ */
+export class LynxWebGL2RenderingContextGlobal {
+  /**
+   * Throws, as a browser's does: contexts come from getContext().
+   */
+  constructor() {
+    throw new TypeError('Illegal constructor');
+  }
+
+  static [Symbol.hasInstance](value: unknown): boolean {
+    return (
+      typeof value === 'object' &&
+      value !== null &&
+      (value as Record<symbol, unknown>)[WEBGL2_CONTEXT] === true
+    );
+  }
+}
+
+/**
+ * The `WebGLRenderingContext` global on iOS and Android, which nothing is an
+ * instance of (see installCanvasGlobals).
+ */
+class LynxWebGLRenderingContextGlobal {
+  constructor() {
+    throw new TypeError('Illegal constructor');
+  }
+
+  static [Symbol.hasInstance](): boolean {
+    return false;
   }
 }
 

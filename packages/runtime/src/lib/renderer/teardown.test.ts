@@ -61,6 +61,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   type BaseLynxElement,
   LynxElement,
+  processPendingFlow,
   processPendingListUpdates,
   processPendingRemovals,
 } from '../lynx-element';
@@ -2530,6 +2531,35 @@ describe('renderer teardown', () => {
       // The list's next update gives native the new one.
       expect(processPendingListUpdates()).toBe(true);
       expect(askForItem(listRef, 0)).toBe(rebuilt);
+    });
+
+    it('joins the text around one native already put in the list', () => {
+      const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
+      const page = document.createRootElement();
+      const view = document.createElement('view');
+      const list = document.createElement('list');
+      const item = document.createElement('list-item');
+      page.appendChild(view);
+      page.appendChild(list);
+      view.appendChild(document.createText('a'));
+      view.appendChild(item);
+      view.appendChild(document.createText('b'));
+      processPendingFlow();
+      const texts = () => (view.element as unknown as FakeEl).children;
+      expect(texts().map((child) => child.tag)).toEqual([
+        'text',
+        'list-item',
+        'text',
+      ]);
+
+      list.appendChild(item);
+      processPendingListUpdates();
+      askForItem(list.element as unknown as FakeEl, 0);
+      processPendingRemovals();
+      processPendingFlow();
+
+      // One run of text, in one anonymous <text>, as the item has gone.
+      expect(texts().map((child) => child.tag)).toEqual(['text']);
     });
   });
 });

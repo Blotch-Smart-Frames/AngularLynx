@@ -4380,18 +4380,7 @@ export class LynxElement implements BaseLynxElement {
       this.#jsParent = null;
     }
     this.#markPaintingDead();
-    // What's left of loose text around it may need regrouping (see #regroup):
-    // an emptied anonymous <text> goes, and runs it split may join.
-    if (jsParent && !LynxElement.#regrouping) {
-      const holder = jsParent.#anonymous ? jsParent.#jsParent : jsParent;
-      if (holder && holder.#hasFlow) LynxElement.#pendingFlow.add(holder);
-    }
-    // Removing a run from a surviving text shifts its edges (a middle run can
-    // become the new last run), so re-derive the former parent's context. Uses
-    // jsParent captured above, before #jsParent was nulled.
-    if (jsParent && isTextish(this)) {
-      LynxElement.#enqueueTextNormalization(jsParent);
-    }
+    if (jsParent) this.#leftParent(jsParent);
     // Angular destroyed it (see markDestroyed): nothing will put it back.
     if (this.#destroyed) this.#release();
   }
@@ -4458,6 +4447,23 @@ export class LynxElement implements BaseLynxElement {
     /* v8 ignore next */
     if (i >= 0) jsParent.#children!.splice(i, 1);
     this.#jsParent = null;
+    this.#leftParent(jsParent);
+  }
+
+  /**
+   * After this element left `jsParent`'s children (see #doRemove and
+   * #leaveJsParent): settles the text around where it was.
+   */
+  #leftParent(jsParent: LynxElement): void {
+    // What's left of loose text around it may need regrouping (see #regroup):
+    // an emptied anonymous <text> goes, and runs it split may join.
+    if (!LynxElement.#regrouping) {
+      const holder = jsParent.#anonymous ? jsParent.#jsParent : jsParent;
+      if (holder && holder.#hasFlow) LynxElement.#pendingFlow.add(holder);
+    }
+    // Removing a run from a surviving text shifts its edges (a middle run can
+    // become the new last run), so re-derive the former parent's context.
+    if (isTextish(this)) LynxElement.#enqueueTextNormalization(jsParent);
   }
 
   /**

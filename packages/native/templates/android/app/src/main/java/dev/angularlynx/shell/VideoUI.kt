@@ -153,9 +153,10 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
             target?.reset()
             // A held first-frame event is the last source's: XElement sends
             // the new one's itself (its setSrc lets it send another). XElement's
-            // `stop` and `play` rebuild the same item without that, so the
-            // event is kept for the same source.
-            if (mediaItem?.localConfiguration?.uri != heldSource) heldFirstFrame = null
+            // `stop` and `play` clear the items (a transition to null) and
+            // add the same one back without that, so the event is kept
+            // through an empty transition and for the same source.
+            if (mediaItem != null && mediaItem.localConfiguration?.uri != heldSource) heldFirstFrame = null
         }
 
         override fun onRenderedFirstFrame() {

@@ -167,6 +167,84 @@ export const appConfig: ApplicationConfig = {
     expect(read('src/app/app.config.ts')).toBe(APP_CONFIG);
   });
 
+  // A spec registers the icons it renders with, not the app's.
+  it("registers the app's icons when only a spec registers icons", () => {
+    app();
+    write('src/app/app.ts', '`<ui-icon name="home" />`;\n');
+    write(
+      'src/app/app.test.ts',
+      'render(App, { providers: [provideIcons({ homeIcon })] });\n',
+    );
+    expect(registerAppIcons(cwd, components())).toMatchObject({
+      kind: 'written',
+      names: ['home'],
+    });
+  });
+
+  it('reads attributes and bindings in single quotes', () => {
+    app();
+    write(
+      'src/app/app.html',
+      `<ui-icon name='home' /><ui-icon [name]='on() ? "check" : "undo-2"' />`,
+    );
+    expect(registerAppIcons(cwd, components())).toMatchObject({
+      names: ['check', 'home', 'undo-2'],
+    });
+  });
+
+  // `item.icon` is data, though the other outcome is written in the binding.
+  it('reads data for a binding with one outcome that is no name', () => {
+    app();
+    write(
+      'src/app/app.ts',
+      "const item = { icon: 'home' };\n`<ui-icon [icon]=\"on() ? 'check' : item.icon\" />`;\n",
+    );
+    expect(registerAppIcons(cwd, components())).toMatchObject({
+      names: ['check', 'home'],
+    });
+  });
+
+  it('takes a ternary after optional chaining for one that names icons', () => {
+    app();
+    write(
+      'src/app/app.ts',
+      "const t = 'chevron-right';\n`<ui-icon [name]=\"a?.b ? 'check' : 'home'\" />`;\n",
+    );
+    expect(registerAppIcons(cwd, components())).toMatchObject({
+      names: ['check', 'home'],
+    });
+  });
+
+  // An icon the config draws with iconSvg() is imported there already.
+  it('uses the imports the config has, under their local names', () => {
+    app();
+    write(
+      'src/app/app.config.ts',
+      "import { homeIcon as home, iconSvg } from '../components/ui/icon';\n\nexport const appConfig: ApplicationConfig = { providers: [] };\n",
+    );
+    write(
+      'src/app/app.ts',
+      '`<ui-icon name="home" /><ui-icon name="check" />`;\n',
+    );
+    registerAppIcons(cwd, components());
+    expect(read('src/app/app.config.ts')).toBe(
+      "import { homeIcon as home, iconSvg } from '../components/ui/icon';\nimport { checkIcon, provideIcons } from '../components/ui/icon';\n\nexport const appConfig: ApplicationConfig = { providers: [provideIcons({ checkIcon, home })] };\n",
+    );
+  });
+
+  it('adds no import when the config has them all', () => {
+    app();
+    write(
+      'src/app/app.config.ts',
+      "import { homeIcon, provideIcons } from '../components/ui/icon';\n\nexport const appConfig: ApplicationConfig = { providers: [] };\n",
+    );
+    write('src/app/app.ts', '`<ui-icon name="home" />`;\n');
+    registerAppIcons(cwd, components());
+    expect(read('src/app/app.config.ts')).toBe(
+      "import { homeIcon, provideIcons } from '../components/ui/icon';\n\nexport const appConfig: ApplicationConfig = { providers: [provideIcons({ homeIcon })] };\n",
+    );
+  });
+
   it('changes nothing for an app that registers every icon', () => {
     app();
     write('src/app/app.ts', 'provideAllIcons(); `<ui-icon name="check" />`;\n');

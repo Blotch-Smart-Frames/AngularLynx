@@ -115,7 +115,15 @@ export const registerAppIcons = (
     .filter(({ content }) => /\bICONS\b/.test(content))
     .map(({ path }) => relative(cwd, path));
 
-  if (files.some(({ content }) => /\bprovide(All)?Icons\s*\(/.test(content))) {
+  // The app's own registrations: a spec that registers the icons it renders
+  // with doesn't register them for the app.
+  if (
+    files.some(
+      ({ path, content }) =>
+        !/\.(spec|test)\.ts$/.test(path) &&
+        /\bprovide(All)?Icons\s*\(/.test(content),
+    )
+  ) {
     return { kind: 'none', iconsUsers };
   }
 
@@ -126,20 +134,32 @@ export const registerAppIcons = (
   };
   const quoted = (text: string) =>
     [...text.matchAll(/(['"`])([a-z0-9-]+)\1/g)].map(([, , name]) => name);
-  // A binding with no name written in it takes its names from data.
+  /**
+   * A binding whose every outcome is a name written in it, such as
+   * `[name]="done() ? 'check' : 'x'"`. Any other outcome, as in
+   * `on() ? 'check' : item.icon`, takes its names from data.
+   */
+  const allWritten = (expression: string): boolean => {
+    const literal = /^\s*(['"`])[a-z0-9-]+\1\s*$/;
+    // The condition, up to a `?` that isn't optional chaining (`a?.b`).
+    const ternary = /^[^'"`]*?\?(?!\.)([^:]*):(.*)$/s.exec(expression);
+    return ternary
+      ? literal.test(ternary[1]) && allWritten(ternary[2])
+      : literal.test(expression);
+  };
   let fromData = false;
   for (const { content } of files) {
-    for (const [, name] of content.matchAll(
-      /\b(?:name|icon)="([a-z0-9-]+)"/g,
+    // Angular takes either quote around an attribute.
+    for (const [, , name] of content.matchAll(
+      /\b(?:name|icon)=(["'])([a-z0-9-]+)\1/g,
     )) {
       add(name);
     }
-    for (const [, expression] of content.matchAll(
-      /\[(?:name|icon)\]="([^"]*)"/g,
+    for (const [, , expression] of content.matchAll(
+      /\[(?:name|icon)\]=(["'])(.*?)\1/g,
     )) {
-      const written = quoted(expression);
-      written.forEach(add);
-      if (written.length === 0) fromData = true;
+      quoted(expression).forEach(add);
+      if (!allWritten(expression)) fromData = true;
     }
   }
   if (fromData) {
@@ -149,7 +169,6 @@ export const registerAppIcons = (
 
   const sorted = [...names].sort();
   const imported = sorted.map((name) => exports.get(name)!);
-  const call = `provideIcons({ ${imported.join(', ')} })`;
 
   // The app's config: the file that declares its ApplicationConfig with a
   // providers array, app.config.ts in an Angular CLI app.
@@ -168,7 +187,7 @@ export const registerAppIcons = (
     return {
       kind: 'no-config',
       names: sorted,
-      snippet: `import { ${[...imported, 'provideIcons'].join(', ')} } from '<components>/icon';\n\n${call}`,
+      snippet: `import { ${[...imported, 'provideIcons'].join(', ')} } from '<components>/icon';\n\nprovideIcons({ ${imported.join(', ')} })`,
       iconsUsers,
     };
   }
@@ -177,7 +196,23 @@ export const registerAppIcons = (
   const afterImports = imports.length
     ? imports[imports.length - 1].index + imports[imports.length - 1][0].length
     : 0;
-  const statement = `import { ${[...imported, 'provideIcons'].join(', ')} } from '${importPath(config.path, iconDir)}';\n`;
+  // A name the config imports already, such as an icon it draws with
+  // iconSvg(), is used under its local name rather than imported twice.
+  const local = new Map<string, string>();
+  for (const [, list] of config.content.matchAll(/^import\s*\{([^}]*)\}/gm)) {
+    for (const [, name, alias] of list.matchAll(/(\w+)(?:\s+as\s+(\w+))?/g)) {
+      local.set(name, alias ?? name);
+    }
+  }
+  const missing = [...imported, 'provideIcons'].filter(
+    (name) => !local.has(name),
+  );
+  const statement = missing.length
+    ? `import { ${missing.join(', ')} } from '${importPath(config.path, iconDir)}';\n`
+    : '';
+  const call = `${local.get('provideIcons') ?? 'provideIcons'}({ ${imported
+    .map((name) => local.get(name) ?? name)
+    .join(', ')} })`;
   const withImport =
     config.content.slice(0, afterImports) +
     statement +

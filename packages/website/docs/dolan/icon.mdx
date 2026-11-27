@@ -81,9 +81,10 @@ A spec that renders a component without the app's config needs the component's i
 
 Icon copies before `provideIcons()` came with every icon, so an app drew any of them without registering it. The `dolan update` that brings the new copy registers the icons your app names for you:
 
-- **It looks for icon names in your source:** every quoted string in your `.ts` and `.html` files, outside the components' own folders, that's the name of an icon. That finds `name="check"`, `[name]="done() ? 'check' : 'x'"` and `{ icon: 'home' }`. A string that only happens to be an icon's name, such as `'x'` for an axis, registers an icon you don't draw, which costs a few hundred bytes.
+- **It looks for icon names in your `.ts` and `.html` files,** outside the components' own folders: in `name` and `icon` attributes (`name="check"`), and in `[name]` and `[icon]` bindings (`[name]="done() ? 'check' : 'x'"`).
+- **A binding that reads data counts every icon name in your source.** With `[icon]="item.icon"`, or `on() ? 'check' : item.icon`, the names are in your data (`{ icon: 'home' }`), so every quoted string that's an icon's name counts. A string that only happens to be one, such as `'x'` for an axis, registers an icon you don't draw, which costs a few hundred bytes.
 - **It adds `provideIcons()` with them to the `providers` of your `ApplicationConfig`,** in `app.config.ts`, and says which it registered. Without an `ApplicationConfig`, it prints the call to add.
-- **It does this once.** An app that calls `provideIcons()` or `provideAllIcons()` anywhere is left alone.
+- **It does this once.** An app that calls `provideIcons()` or `provideAllIcons()` outside its specs is left alone.
 - **A name built at runtime can't be found,** such as `'arrow-' + side`. Drawing it throws the error above, naming the icon to register.
 - **`ICONS` is gone.** `update` lists your files that read it. For an icon's markup, use `iconSvg(chevronRightIcon)`.
 

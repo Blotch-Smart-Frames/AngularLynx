@@ -2322,6 +2322,13 @@ export class LynxWebGL2RenderingContext {
       this.#fail(GL.INVALID_OPERATION);
       return REFUSED;
     }
+    // A video with no frame yet is no image: INVALID_VALUE, and the texture
+    // keeps what it had, as Chromium does ("no video"), rather than becoming
+    // empty. three.js's VideoTexture waits for HAVE_CURRENT_DATA anyway.
+    if (canvas?.video && (canvas.width === 0 || canvas.height === 0)) {
+      this.#fail(GL.INVALID_VALUE);
+      return REFUSED;
+    }
     const image = canvas ? null : nativeImageOf(source);
     if (canvas || image) {
       // A canvas or an image is one picture: it can't fill a 3D upload's

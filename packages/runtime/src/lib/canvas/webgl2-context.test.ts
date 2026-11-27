@@ -1862,6 +1862,41 @@ describe('textures', () => {
     }
   });
 
+  it('refuses a video before its first frame, and keeps the texture as it was', () => {
+    globalThis.__SetAttribute = vi.fn();
+    let uid = 1;
+    globalThis.__GetElementUniqueID = vi.fn(() => uid++);
+    setVideoFrameSizeForTesting(() => ({ width: 0, height: 0 }));
+    try {
+      const video = new LynxVideoElement({} as ElementRef);
+      const before = bridge.batches.flat().length;
+      gl.texImage2D(
+        GL.TEXTURE_2D,
+        0,
+        GL.RGBA,
+        GL.RGBA,
+        GL.UNSIGNED_BYTE,
+        video,
+      );
+      gl.texSubImage2D(
+        GL.TEXTURE_2D,
+        0,
+        0,
+        0,
+        GL.RGBA,
+        GL.UNSIGNED_BYTE,
+        video,
+      );
+      expect(gl.getError()).toBe(GL.INVALID_VALUE);
+      gl.flush();
+      const sent = bridge.batches.flat().slice(before);
+      expect(sent).not.toContain(OP.texImage2D);
+      expect(sent).not.toContain(OP.texSubImage2D);
+    } finally {
+      setVideoFrameSizeForTesting(undefined);
+    }
+  });
+
   it('reads a video’s size once an upload, so a new resolution can’t refuse it', () => {
     globalThis.__SetAttribute = vi.fn();
     let uid = 1;

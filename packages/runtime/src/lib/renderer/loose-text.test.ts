@@ -37,8 +37,6 @@ import {
   LYNX_TEXT_INHERITANCE_CLASS,
   NOT_BLOCK_CONTAINERS,
   INHERITED_TEXT_PROPERTIES,
-  LOWERED_FLAG,
-  RAISED_FLAG,
   resetStyleIndex,
   SMALLER_FLAG,
   VERTICAL_ALIGN_FLAG,
@@ -217,6 +215,12 @@ const descendants = (): FakeEl[] => {
 
 const flush = (): Promise<void> =>
   new Promise<void>((resolve) => setTimeout(resolve));
+
+/** The build's `sub` and `sup` rules, as the style index lists them. */
+const BUILD_VERTICAL_ALIGNS = [
+  [['_ngtag-sub'], [], [-0.24, 0], 1000, 0, 0],
+  [['_ngtag-sup'], [], [0.4, 0], 1000, 0, 1],
+];
 
 @Component({
   selector: 'loose-host',
@@ -418,6 +422,19 @@ class InheritHost {}
 class BoldHost {}
 
 @Component({
+  selector: 'inline-style-host',
+  encapsulation: ViewEncapsulation.None,
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: `<text class="total" style="font-size: 18px; color: red"
+      >Total: <b>12</b></text
+    >
+    <text class="bound" [style.font-size.px]="size()">Total: <b>12</b></text>`,
+})
+class InlineStyleHost {
+  readonly size = signal<number | null>(20);
+}
+
+@Component({
   selector: 'decorated-host',
   encapsulation: ViewEncapsulation.None,
   schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -441,6 +458,21 @@ class DecoratedHost {}
 })
 class SmallerHost {
   readonly large = signal(false);
+}
+
+@Component({
+  selector: 'inline-smaller-host',
+  encapsulation: ViewEncapsulation.None,
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: `<text class="big"
+    ><small class="outer" [style.font-size.px]="size()"
+      >a <b class="in-small">b</b>
+      <small class="inner">c <i class="in-inner">i</i></small></small
+    ></text
+  >`,
+})
+class InlineSmallerHost {
+  readonly size = signal<number | null>(null);
 }
 
 @Component({
@@ -499,6 +531,29 @@ class RaisedHost {
   readonly size = signal<string | null>(null);
   readonly subAlign = signal<string | null>(null);
   readonly color = signal<string | null>(null);
+}
+
+@Component({
+  selector: 'own-align-host',
+  encapsulation: ViewEncapsulation.None,
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: `<p>
+    x<span class="exp" [class.sized]="sized()"
+      >n<b class="in-exp">2</b><sup class="sup-in-exp">m</sup></span
+    >
+    y<span class="lift" [style.vertical-align]="lift()"
+      ><b class="in-lift">b</b
+      ><sup class="sup-in-lift">s<b class="in-sup-in-lift">t</b></sup></span
+    >
+    <span [class.note]="note()"
+      ><sup class="note-sup">a<b class="in-note-sup">b</b></sup></span
+    >
+  </p>`,
+})
+class OwnAlignHost {
+  readonly sized = signal(false);
+  readonly lift = signal<string | null>(null);
+  readonly note = signal(false);
 }
 
 @Component({
@@ -888,6 +943,46 @@ describe('loose text', () => {
     expect(style('_ngtag-i')).not.toContain('font-weight');
   });
 
+  // Issue #690: an inline style on a Lynx <text> didn't reach the inline
+  // tags inside it. The build copies only stylesheet rules to the variables
+  // the tags read, and a property set inline counted as the <text>'s
+  // default, so `<text style="font-size: 18px">a <b>b</b></text>` drew the
+  // <b> at the page's size.
+  it("gives an inline tag the inline style of the <text> it's in", () => {
+    // As the build writes it for an app whose CSS sets no text styles.
+    (
+      globalThis as { __angularLynxStyleIndex?: unknown }
+    ).__angularLynxStyleIndex = { rules: [] };
+    const fixture = TestBed.createComponent(InlineStyleHost);
+    fixture.detectChanges();
+    const style = (el: FakeEl): string => String(el.attrs.get('style') ?? '');
+    const total = byClass('total');
+    const bold = (text: FakeEl): FakeEl =>
+      text.children.find((child) => child.classes.has('_ngtag-b'))!;
+
+    // The <text> passes its inline values down, as its rules' copies do.
+    expect(style(total)).toContain('--angular-lynx-font-size: 18px');
+    expect(style(total)).toContain('--angular-lynx-color: red');
+    expect(style(bold(total))).toContain(
+      'font-size: var(--angular-lynx-font-size)',
+    );
+    expect(style(bold(total))).toContain('color: var(--angular-lynx-color)');
+
+    // A [style.x] binding too, and the <b> goes back to the default with it.
+    const bound = byClass('bound');
+    expect(style(bound)).toContain('--angular-lynx-font-size: 20px');
+    expect(style(bold(bound))).toContain(
+      'font-size: var(--angular-lynx-font-size)',
+    );
+    fixture.componentInstance.size.set(24);
+    fixture.detectChanges();
+    expect(style(bound)).toContain('--angular-lynx-font-size: 24px');
+    fixture.componentInstance.size.set(null);
+    fixture.detectChanges();
+    expect(style(bound)).not.toContain('--angular-lynx-font-size');
+    expect(style(bold(bound))).not.toContain('font-size');
+  });
+
   // Issue #649: a browser styles an `<a>` as a link only with an `href`, and
   // an `<abbr>` only with a `title`. Lynx matches no attribute selector, so
   // the runtime gives the element a class standing for the pair, which the
@@ -972,6 +1067,47 @@ describe('loose text', () => {
     expect(smaller('in-inner')).toEqual(['_ngsmaller-2']);
   });
 
+  // Issue #690: an inline size passes on in its copy, as a rule's does, so
+  // the levels of <small> start again below it.
+  it('starts the levels of <small> again below an inline font size', () => {
+    const fontSize = 1 << INHERITED_TEXT_PROPERTIES.indexOf('font-size');
+    (
+      globalThis as { __angularLynxStyleIndex?: unknown }
+    ).__angularLynxStyleIndex = {
+      rules: [
+        [['big'], fontSize],
+        [['_ngtag-small'], SMALLER_FLAG],
+        [['_ngsmaller-1'], SMALLER_FLAG],
+        [['_ngsmaller-2'], SMALLER_FLAG],
+      ],
+    };
+    const fixture = TestBed.createComponent(InlineSmallerHost);
+    fixture.detectChanges();
+    const style = (cls: string): string =>
+      String(byClass(cls).attrs.get('style') ?? '');
+    const smaller = (cls: string): string[] =>
+      [...byClass(cls).classes].filter((name) =>
+        name.startsWith('_ngsmaller-'),
+      );
+    expect(smaller('in-small')).toEqual(['_ngsmaller-1']);
+    expect(smaller('in-inner')).toEqual(['_ngsmaller-2']);
+
+    fixture.componentInstance.size.set(20);
+    fixture.detectChanges();
+    expect(style('outer')).toContain('--angular-lynx-font-size: 20px');
+    expect(smaller('in-small')).toEqual([]);
+    expect(style('in-small')).toContain(
+      'font-size: var(--angular-lynx-font-size)',
+    );
+    expect(smaller('inner')).toEqual([]);
+    expect(smaller('in-inner')).toEqual(['_ngsmaller-1']);
+
+    fixture.componentInstance.size.set(null);
+    fixture.detectChanges();
+    expect(smaller('in-small')).toEqual(['_ngsmaller-1']);
+    expect(smaller('in-inner')).toEqual(['_ngsmaller-2']);
+  });
+
   // A rule with the build's smaller size can require an ancestor, as
   // `.compact .label` does: outside `.compact` the label isn't smaller, and
   // nor is the text inside it.
@@ -1048,9 +1184,14 @@ describe('loose text', () => {
       rules: [
         [['big'], fontSize],
         [['_ngtag-small'], SMALLER_FLAG],
-        [['_ngtag-sub'], SMALLER_FLAG | LOWERED_FLAG],
-        [['_ngtag-sup'], SMALLER_FLAG | RAISED_FLAG],
+        [['_ngtag-sub'], SMALLER_FLAG | VERTICAL_ALIGN_FLAG],
+        [['_ngtag-sup'], SMALLER_FLAG | VERTICAL_ALIGN_FLAG],
         [['own'], VERTICAL_ALIGN_FLAG],
+      ],
+      verticalAligns: [
+        ...BUILD_VERTICAL_ALIGNS,
+        // A distance the runtime can't copy, such as `super`.
+        [['own'], [], null, 1000, 0, 2],
       ],
     };
     const fixture = TestBed.createComponent(RaisedHost);
@@ -1066,7 +1207,9 @@ describe('loose text', () => {
     expect(style('small-in-sup')).toContain('vertical-align: 0.48em');
     expect(style('sup-in-sup')).toContain('vertical-align: 0.88em');
 
-    // An app's own vertical-align wins, as it would in a browser.
+    // An app's rule for the inner <sup> beats the build's, with a distance
+    // the runtime can't copy, so it leaves the tag to Lynx, where a browser
+    // would add the outer <sup>'s distance to it.
     fixture.componentInstance.own.set(true);
     fixture.detectChanges();
     expect(style('sup-in-sup')).not.toContain('vertical-align');
@@ -1077,17 +1220,23 @@ describe('loose text', () => {
   });
 
   // The index sees neither an inline size nor an inline vertical-align
-  // (review of #714): with either, the distance can't be worked out.
-  it('leaves the tags inside a <sup> alone when an inline style sets the size or another distance', () => {
+  // (review of #714): the runtime reads an inline distance as a rule's, and
+  // with an inline size the distance can't be worked out.
+  it('reads the inline style of the tags around the tags inside a <sup>', () => {
     (
       globalThis as { __angularLynxStyleIndex?: unknown }
     ).__angularLynxStyleIndex = {
       rules: [
-        [['_ngtag-sub'], SMALLER_FLAG | LOWERED_FLAG],
-        [['_ngtag-sup'], SMALLER_FLAG | RAISED_FLAG],
-        // An app's `sup { vertical-align: -0.24em }`, merged with the
-        // build's: the index can't tell which one wins.
-        [['own'], RAISED_FLAG | LOWERED_FLAG],
+        [['_ngtag-small'], SMALLER_FLAG],
+        [['_ngtag-sub'], SMALLER_FLAG | VERTICAL_ALIGN_FLAG],
+        [['_ngtag-sup'], SMALLER_FLAG | VERTICAL_ALIGN_FLAG],
+        [['own'], VERTICAL_ALIGN_FLAG],
+      ],
+      verticalAligns: [
+        ...BUILD_VERTICAL_ALIGNS,
+        // An app's `.own { vertical-align: -0.24em }`, later in the
+        // stylesheet than the build's `sup`, which it beats.
+        [['own'], [], [-0.24, 0], 1000, 0, 2],
       ],
     };
     const fixture = TestBed.createComponent(RaisedHost);
@@ -1104,8 +1253,13 @@ describe('loose text', () => {
     fixture.detectChanges();
     expect(style('in-sup')).toContain('vertical-align: 0.4em');
 
-    // A distance of the <sup>'s own, which the runtime doesn't read.
+    // A distance of the <sup>'s own, which wins over its rule.
     fixture.componentInstance.supAlign.set('0.8em');
+    fixture.detectChanges();
+    expect(style('in-sup')).toContain('vertical-align: 0.8em');
+    expect(style('small-in-sup')).toContain('vertical-align: 0.96em');
+    // One the runtime can't copy.
+    fixture.componentInstance.supAlign.set('super');
     fixture.detectChanges();
     expect(style('in-sup')).not.toContain('vertical-align');
     expect(style('small-in-sup')).not.toContain('vertical-align');
@@ -1113,9 +1267,11 @@ describe('loose text', () => {
     fixture.detectChanges();
     expect(style('in-sup')).toContain('vertical-align: 0.4em');
 
+    // The inner <sup> is lowered by its own rule, and raised by the outer
+    // one's distance, 1.2 times as many of its em.
     fixture.componentInstance.own.set(true);
     fixture.detectChanges();
-    expect(style('sup-in-sup')).not.toContain('vertical-align');
+    expect(style('sup-in-sup')).toContain('vertical-align: 0.24em');
   });
 
   // A binding's style covers the runtime's own declaration of it while it's
@@ -1124,7 +1280,8 @@ describe('loose text', () => {
     (
       globalThis as { __angularLynxStyleIndex?: unknown }
     ).__angularLynxStyleIndex = {
-      rules: [[['_ngtag-sub'], SMALLER_FLAG | LOWERED_FLAG]],
+      rules: [[['_ngtag-sub'], SMALLER_FLAG | VERTICAL_ALIGN_FLAG]],
+      verticalAligns: BUILD_VERTICAL_ALIGNS,
     };
     const fixture = TestBed.createComponent(RaisedHost);
     fixture.detectChanges();
@@ -1167,7 +1324,8 @@ describe('loose text', () => {
       (
         globalThis as { __angularLynxStyleIndex?: unknown }
       ).__angularLynxStyleIndex = {
-        rules: [[['_ngtag-sup'], SMALLER_FLAG | RAISED_FLAG]],
+        rules: [[['_ngtag-sup'], SMALLER_FLAG | VERTICAL_ALIGN_FLAG]],
+        verticalAligns: BUILD_VERTICAL_ALIGNS,
       };
       const fixture = TestBed.createComponent(RaisedHost);
       fixture.detectChanges();
@@ -1177,6 +1335,67 @@ describe('loose text', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  // Issue #715: an app's own rule moves the tags inside its tag too, by its
+  // distance in em or px, and wins over the build's rule for a <sup> where
+  // it's more specific.
+  it("moves the tags inside a tag with the app's own vertical-align", () => {
+    const fontSize = 1 << INHERITED_TEXT_PROPERTIES.indexOf('font-size');
+    (
+      globalThis as { __angularLynxStyleIndex?: unknown }
+    ).__angularLynxStyleIndex = {
+      rules: [
+        [['_ngtag-sub'], SMALLER_FLAG | VERTICAL_ALIGN_FLAG],
+        [['_ngtag-sup'], SMALLER_FLAG | VERTICAL_ALIGN_FLAG],
+        [['exp'], VERTICAL_ALIGN_FLAG],
+        [['sized'], fontSize],
+        [['_ngtag-sup'], VERTICAL_ALIGN_FLAG, [[' ', ['note']]]],
+      ],
+      verticalAligns: [
+        ...BUILD_VERTICAL_ALIGNS,
+        [['exp'], [], [0.5, 0], 1000, 0, 2],
+        [['_ngtag-sup'], [[' ', ['note']]], [0.3, 0], 2000, 0, 3],
+      ],
+    };
+    const fixture = TestBed.createComponent(OwnAlignHost);
+    fixture.detectChanges();
+    const style = (cls: string): string =>
+      String(byClass(cls).attrs.get('style') ?? '');
+
+    expect(style('exp')).not.toContain('vertical-align');
+    expect(style('in-exp')).toContain('vertical-align: 0.5em');
+    // A <sup> in it rises by both, its em 1.2 times smaller.
+    expect(style('sup-in-exp')).toContain('vertical-align: 1em');
+
+    // A size of the span's own passes to the tags inside, which measure its
+    // em by it.
+    fixture.componentInstance.sized.set(true);
+    fixture.detectChanges();
+    expect(style('in-exp')).toContain('vertical-align: 0.5em');
+    expect(style('sup-in-exp')).toContain('vertical-align: 1em');
+
+    // An inline distance in pixels moves the tags inside by as much. A
+    // <sup> in it would need both its em and the pixels, which Lynx drops
+    // as a calc(), so it's left to its own rule.
+    expect(style('in-lift')).not.toContain('vertical-align');
+    fixture.componentInstance.lift.set('4px');
+    fixture.detectChanges();
+    expect(style('in-lift')).toContain('vertical-align: 4px');
+    expect(style('sup-in-lift')).not.toContain('vertical-align');
+    // The tags inside the <sup> still rise with its own text (review of
+    // #735).
+    expect(style('in-sup-in-lift')).toContain('vertical-align: 0.4em');
+    fixture.componentInstance.lift.set(null);
+    fixture.detectChanges();
+    expect(style('in-lift')).not.toContain('vertical-align');
+
+    // `.note sup` wins over the build's `sup`: the tags inside move by its
+    // distance, not the build's.
+    expect(style('in-note-sup')).toContain('vertical-align: 0.4em');
+    fixture.componentInstance.note.set(true);
+    fixture.detectChanges();
+    expect(style('in-note-sup')).toContain('vertical-align: 0.3em');
   });
 
   // Issue #643: the build gives `<em>`, `<u>`, `<s>` and their kin the
@@ -1862,6 +2081,183 @@ describe('loose text, element by element', () => {
       commit();
       expect(style(bold)).toContain(FONT_SIZE);
       expect(style(bold)).toContain(COLOR);
+    });
+
+    it('gives it what the <text>’s inline style sets (issue #690)', () => {
+      // Set before the tag goes in, as Angular sets a static style.
+      const text = doc.createElement('text');
+      text.setAttribute('style', 'font-size: 18px; color: red !important');
+      page.appendChild(text);
+      const bold = doc.createElement('b');
+      text.appendChild(bold);
+      commit();
+
+      expect(style(text)).toContain('--angular-lynx-font-size: 18px');
+      // A variable can't be !important.
+      expect(style(text)).toContain('--angular-lynx-color: red');
+      expect(style(text)).not.toContain('--angular-lynx-color: red !');
+      expect(style(bold)).toContain(FONT_SIZE);
+      expect(style(bold)).toContain(COLOR);
+
+      text.setAttribute('style', 'color: blue');
+      commit();
+      expect(style(text)).not.toContain('--angular-lynx-font-size');
+      expect(style(text)).toContain('--angular-lynx-color: blue');
+      expect(style(bold)).not.toContain(FONT_SIZE);
+      expect(style(bold)).toContain(COLOR);
+    });
+
+    it('gives it a [style.x] the <text> gets after the tag', () => {
+      const text = doc.createElement('text');
+      page.appendChild(text);
+      const bold = doc.createElement('b');
+      text.appendChild(bold);
+      commit();
+      expect(style(bold)).not.toContain(FONT_SIZE);
+
+      text.setStyle('font-size', '18px');
+      commit();
+      expect(style(text)).toContain('--angular-lynx-font-size: 18px');
+      expect(style(bold)).toContain(FONT_SIZE);
+
+      text.removeStyle('font-size');
+      commit();
+      expect(style(text)).not.toContain('--angular-lynx-font-size');
+      expect(style(bold)).not.toContain(FONT_SIZE);
+    });
+
+    it('keeps a [style.x] text style and its copy when the whole style changes', () => {
+      const text = doc.createElement('text');
+      page.appendChild(text);
+      const bold = doc.createElement('b');
+      text.appendChild(bold);
+      text.setStyle('font-size', '20px');
+      commit();
+
+      text.setAttribute('style', 'color: red');
+      commit();
+      // The declaration itself, not only its copy.
+      expect(style(text)).toMatch(/(^|; )font-size: 20px/);
+      expect(style(text)).toContain('--angular-lynx-font-size: 20px');
+      expect(style(text)).toContain('--angular-lynx-color: red');
+      expect(style(bold)).toContain(FONT_SIZE);
+      expect(style(bold)).toContain(COLOR);
+    });
+
+    it('takes a removed style out of the style string of an element that sets copies', () => {
+      const view = doc.createElement('view');
+      view.setAttribute('style', 'color: red; height: 100px');
+      page.appendChild(view);
+      view.appendChild(doc.createElement('p'));
+      commit();
+      expect(style(view)).toContain('height: 100px');
+
+      view.removeStyle('height');
+      commit();
+      expect(style(view)).not.toContain('height');
+      expect(style(view)).toContain('--angular-lynx-color: red');
+
+      // A text style goes with its copy.
+      view.removeStyle('color');
+      commit();
+      expect(style(view)).not.toContain('color');
+      // A property's name matches in any case, as the copy reads it.
+      view.setAttribute('style', 'Color: green; height: 10px');
+      commit();
+      expect(style(view)).toContain('--angular-lynx-color: green');
+      view.removeStyle('color');
+      commit();
+      expect(style(view)).not.toContain('green');
+      expect(style(view)).toContain('height: 10px');
+      // A ; inside a quoted value stays in its declaration.
+      view.setAttribute(
+        'style',
+        '--label: "alpha;height: 10px;omega"; color: red; height: 20px',
+      );
+      commit();
+      view.removeStyle('height');
+      commit();
+      expect(style(view)).toContain('--label: "alpha;height: 10px;omega"');
+      expect(style(view)).not.toContain('height: 20px');
+      // One the string doesn't declare leaves it as it is.
+      view.setAttribute('style', 'color: blue');
+      view.removeStyle('width');
+      commit();
+      expect(style(view)).toContain('--angular-lynx-color: blue');
+    });
+
+    it('lets an inheritance variable the app sets itself win over the copy', () => {
+      const view = doc.createElement('view');
+      view.setAttribute('style', 'color: red; --angular-lynx-color: blue');
+      page.appendChild(view);
+      view.appendChild(doc.createElement('p'));
+      commit();
+
+      const written = style(view);
+      expect(written.lastIndexOf('--angular-lynx-color: blue')).toBeGreaterThan(
+        written.indexOf('--angular-lynx-color: red'),
+      );
+    });
+
+    it('leaves a <text> that never had a text style as it is when one goes', () => {
+      const text = doc.createElement('text');
+      page.appendChild(text);
+      const bold = doc.createElement('b');
+      text.appendChild(bold);
+      commit();
+
+      text.removeStyle('color');
+      commit();
+      expect(style(text)).toBe('');
+      expect(style(bold)).not.toContain(COLOR);
+    });
+
+    it('passes the inline style of an element around an HTML text tag down', () => {
+      // `<div style="color: red"><p>red</p></div>`, as on the web.
+      const view = doc.createElement('view');
+      view.setAttribute('style', 'color: red');
+      page.appendChild(view);
+      const p = doc.createElement('p');
+      view.appendChild(p);
+      const span = doc.createElement('span');
+      span.setAttribute('style', 'font-size: 20px');
+      p.appendChild(span);
+      const bold = doc.createElement('b');
+      span.appendChild(bold);
+      commit();
+
+      expect(style(view)).toContain('--angular-lynx-color: red');
+      expect(style(p)).toContain(COLOR);
+      expect(style(span)).toContain('--angular-lynx-font-size: 20px');
+      // Its own inline value wins: it reads no variable for it.
+      expect(style(span)).not.toContain(FONT_SIZE);
+      expect(style(bold)).toContain(FONT_SIZE);
+    });
+
+    it('keeps a value that reads its own variable out of the copy', () => {
+      // As the build makes no copy of `font-size:
+      // calc(var(--angular-lynx-font-size) * 2)`: a variable that refers to
+      // itself is invalid.
+      const view = doc.createElement('view');
+      view.setAttribute(
+        'style',
+        'font-size: calc(var(--angular-lynx-font-size) * 2)',
+      );
+      page.appendChild(view);
+      view.appendChild(doc.createElement('p'));
+      commit();
+
+      expect(style(view)).not.toContain('--angular-lynx-font-size:');
+    });
+
+    it('leaves the inline style of an element with no HTML text inside as it is', () => {
+      const text = doc.createElement('text');
+      text.setAttribute('style', 'font-size: 18px');
+      page.appendChild(text);
+      text.appendChild(doc.createText('18px'));
+      commit();
+
+      expect(style(text)).toBe('font-size: 18px');
     });
 
     // Issue #652: the style index kept only the last part of a selector, so

@@ -2,8 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ElementRef } from '../types/lynx';
 import { canvasSourceOf } from './canvas-source';
 import { installCanvasGlobals } from './dom-globals';
+import { createImageBitmap } from './image';
+import { createFakeWebGLBridge } from '../testing/fake-webgl-bridge';
 import { LynxVideoElement } from './video-element';
-import { setVideoFrameSizeForTesting } from './webgl-bridge';
+import {
+  setVideoFrameSizeForTesting,
+  setWebGLBridgeForTesting,
+} from './webgl-bridge';
 
 let size = { width: 0, height: 0 };
 let uid = 1;
@@ -62,6 +67,25 @@ describe('LynxVideoElement', () => {
     expect(() => source.flush()).not.toThrow();
     size = { width: 8, height: 6 };
     expect(canvasSourceOf(video)!.width).toBe(8);
+  });
+
+  it('makes an ImageBitmap of its frame, and refuses before it has one', async () => {
+    const bridge = createFakeWebGLBridge();
+    setWebGLBridgeForTesting(bridge);
+    try {
+      const video = new LynxVideoElement({} as ElementRef);
+      // HAVE_NOTHING: an InvalidStateError, as a browser throws.
+      await expect(createImageBitmap(video)).rejects.toMatchObject({
+        name: 'InvalidStateError',
+      });
+      size = { width: 4, height: 2 };
+      const bitmap = await createImageBitmap(video);
+      expect(bridge.imageFromCanvas).toHaveBeenCalledOnce();
+      expect(bridge.imageFromCanvas.mock.calls[0][1]).toBe(video.videoId);
+      expect(bitmap).toBeDefined();
+    } finally {
+      setWebGLBridgeForTesting(undefined);
+    }
   });
 
   it('is an HTMLVideoElement, and not an HTMLCanvasElement', () => {

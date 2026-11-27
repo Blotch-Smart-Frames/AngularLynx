@@ -268,6 +268,8 @@ test('a canvas draws with WebGL2', async ({ page }) => {
   await page.getByText('Open storage', { exact: true }).click();
   await page.getByText('Open canvas', { exact: true }).click();
   await expect(page.getByText('WebGL: 0,0,255,255')).toBeVisible();
+  // ImageBitmaps of canvases (issue #697), the browser's own here.
+  await expect(page.getByText('Bitmap: ok')).toBeVisible();
 
   expect(errors, 'the app logged errors while running').toEqual([]);
 });

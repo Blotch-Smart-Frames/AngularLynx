@@ -41,6 +41,10 @@ static void *const kAngularLynxVideoItemContext = (void *)&kAngularLynxVideoItem
 - (void)targetDidLayOut:(AngularLynxCanvasTarget *)target {
 }
 
+// Only an OffscreenCanvas is transferred: a video has nothing to clear.
+- (void)clearForTransfer {
+}
+
 - (void)setOutput:(AVPlayerItemVideoOutput *)output {
   @synchronized(self) {
     if (output == _output) return;

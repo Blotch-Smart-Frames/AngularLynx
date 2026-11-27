@@ -101,7 +101,8 @@ page {
   - **A rule naming `text` isn't a `<p>`'s own.** The UI theme's `view > text` matches a `<p>` on Lynx, since a `<p>` renders as a `<text>`, but a `<p>` in a `<view class="text-red-500">` is still red, as on the web. One with no colored ancestor takes the page's color, which the theme sets.
   - **A rule that needs an ancestor counts only where the tag has it.** `.card b { font-size: 24px }` sizes a `<b>` inside `.card`, and a `<b>` elsewhere takes the size of the text around it.
   - **A child combinator reaches an inline tag beside loose text.** `.row > b` styles the `<b>` in `<div class="row">Total: <b>12</b></div>`, though the runtime draws "Total: " and the `<b>` in a `<text>` of their own, between the `<div>` and the `<b>`. The build gives the rule a second selector through that `<text>`.
-  - **Only classes and stylesheet rules pass styles down.** An inline `style` on the ancestor doesn't.
+  - **An inline style passes styles down too.** An inline `style` or `[style.x]` binding counts as a rule does, so `<text style="font-size: 18px">Total: <b>12</b></text>` draws the `<b>` at 18px, and `<div style="color: red">` colors the `<p>` inside it.
+  - **An HTML tag inside a Lynx `<text>` follows that `<text>`.** It reads only what the `<text>`'s rules or inline style set, or those of an HTML tag between them, and draws a property none of them sets as the `<text>` does. `<text>Total: <b>12</b></text>` draws the `<b>` at the size of "Total:".
 - **A nested `<text>` takes more.** An inner `<text>` takes its parent `<text>`'s `color` and `font-family`, as well as its `font-size`.
 - **CSS variables always inherit**, as on the web. Set them on a parent and use `var()` anywhere below it.
 - **There's no `inherit`, `initial` or `unset` keyword.**

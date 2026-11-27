@@ -160,6 +160,8 @@ Textures and models load as on the web:
 
 The phone decodes images, and the pixels go straight to the GPU. A canvas, drawn in 2D or with WebGL, uploads as a texture too (`CanvasTexture`, or `texImage2D()` with the canvas): the phone reads its pixels and hands them to the GPU. Loaders that need Web Workers or WebAssembly, such as `DRACOLoader` and `KTX2Loader`, don't work.
 
+`createImageBitmap()` takes a canvas too (a `<canvas>`, `document.createElement('canvas')` or an `OffscreenCanvas`), and `OffscreenCanvas.transferToImageBitmap()` hands over its image and clears it, as on the web. The phone copies the pixels, so keeping a frame costs no trip through JavaScript. Make a WebGL canvas's bitmap in the same function that draws, as with `toBlob()` below: once the frame is on screen, its drawing buffer is cleared, unless you asked for `preserveDrawingBuffer: true`.
+
 ## Videos
 
 A [`<video>`](/api/elements/video) is an image too. **`VideoTexture`** plays it on a mesh, and `drawImage()` grabs a frame, for a thumbnail or a filter:
@@ -231,7 +233,8 @@ The iOS Simulator and the Android emulator both draw on the Mac's GPU, so a scen
 
 - The 2D context's `filter` is kept but not applied, and `wordSpacing`, `fontKerning`, `fontStretch`, `fontVariantCaps` and `textRendering` are kept but don't change the text. Text drawn with a gradient, a pattern or `strokeText()` is drawn from the glyphs' outlines, so color emoji show only with a plain `fillStyle`.
 - A `<video>` draws its current frame, on a 2D canvas or as a texture, only from its first frame on (`bindfirstframe`): there's no frame before. On Android, a video with `display: none` has no frame to draw: hide it with `opacity: 0` or behind other elements instead.
-- `OffscreenCanvas` has no `transferToImageBitmap()`, and `createImageBitmap()` doesn't take a canvas: draw the canvas itself with `drawImage()` or `texImage2D()`.
+- `getContext('bitmaprenderer')` is `null`: draw an `ImageBitmap` with a 2D context's `drawImage()` instead.
+- `createImageBitmap()` doesn't take the crop arguments (`sx, sy, sw, sh`), an `ImageBitmap` or `ImageData`: draw the part you want on a canvas, then make the bitmap of that.
 - `toBlob()` and `toDataURL()` make the main thread wait while the phone reads and encodes the canvas (tens of milliseconds for a photo), where a browser's `toBlob()` encodes in the background.
 - A lost context isn't restored: make a new renderer.
 - `crypto.randomUUID()`, which AngularLynx adds for angular-three, isn't cryptographically secure: don't use it for secrets.

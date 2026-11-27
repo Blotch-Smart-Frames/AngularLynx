@@ -104,6 +104,9 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
 
     override fun surfaceChanged() {}
 
+    /** Only an OffscreenCanvas is transferred: a video has nothing to clear. */
+    override fun clearForTransfer() {}
+
     /**
      * The size of the frame showing now, in pixels, or 0 by 0 before the
      * first: the runtime's `videoWidth` and `videoHeight` (the module's

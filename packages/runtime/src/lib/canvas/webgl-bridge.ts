@@ -48,6 +48,22 @@ export type DecodedImage = {
   error?: string;
 };
 
+/**
+ * What `imageFromCanvas` sends the shell: createImageBitmap()'s options, the
+ * canvas's size, for the transparent image of a canvas with no context, and
+ * whether the canvas's bitmap is cleared after it's read, as
+ * `OffscreenCanvas.transferToImageBitmap()` leaves it.
+ */
+export type CanvasImageOptions = {
+  imageOrientation: string;
+  premultiplyAlpha: string;
+  resizeWidth: number;
+  resizeHeight: number;
+  width: number;
+  height: number;
+  transfer: boolean;
+};
+
 /** What `encodeImage` sends the shell. */
 export type EncodeImageOptions = {
   /** `image/jpeg` or `image/png`. */
@@ -88,6 +104,17 @@ export type WebGLBridge = {
     options: Record<string, unknown>,
   ): DecodedImage;
   releaseImage(imageId: number): void;
+  /**
+   * Copies a canvas's pixels now (its 2D bitmap or its drawing buffer, read
+   * by the canvas's id) into a new decoded image, as `decodeImage` makes one
+   * of a file: what createImageBitmap() makes of a canvas. The pixels stay
+   * in the shell.
+   */
+  imageFromCanvas(
+    imageId: number,
+    canvasId: string,
+    options: CanvasImageOptions,
+  ): DecodedImage;
   /**
    * Reads the drawing buffer and encodes it as a PNG or JPEG file, for
    * `canvas.toBlob()` and `toDataURL()`. The shell encodes it, so the
@@ -161,6 +188,24 @@ const lookUpBridge = (): WebGLBridge | null => {
         error: `${WEBGL_MODULE_NAME} isn't registered in this app's shell`,
       },
     releaseImage: (imageId) => void handle.invoke('releaseImage', imageId),
+    imageFromCanvas: (imageId, canvasId, options) => {
+      let image: DecodedImage | undefined;
+      try {
+        image = handle.invoke('imageFromCanvas', imageId, canvasId, options) as
+          | DecodedImage
+          | undefined;
+      } catch {
+        // A shell from before imageFromCanvas, which Lynx may answer by
+        // throwing or with nothing.
+      }
+      return (
+        image ?? {
+          width: 0,
+          height: 0,
+          error: `This app's shell can't make an ImageBitmap of a canvas: build it again with \`ng build --platform\``,
+        }
+      );
+    },
     encodeImage: (contextId, options) => {
       let encoded: EncodedImage | undefined;
       try {

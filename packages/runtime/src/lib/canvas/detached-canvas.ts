@@ -3,6 +3,7 @@ import {
   CanvasSurface,
   dispatchContextEvent,
 } from './canvas-surface';
+import { imageBitmapOfCanvas, LynxImageBitmap } from './image';
 
 /**
  * What `document.createElement('canvas')` and `new OffscreenCanvas()` share:
@@ -112,7 +113,8 @@ export class LynxDetachedCanvas extends LynxCanvasBase {
 
 /**
  * `OffscreenCanvas`: a canvas of a given size, with no view, whose image
- * `convertToBlob()` gives as a file.
+ * `convertToBlob()` gives as a file and `transferToImageBitmap()` as an
+ * ImageBitmap.
  */
 export class LynxOffscreenCanvas extends LynxCanvasBase {
   constructor(width: number, height: number) {
@@ -153,10 +155,28 @@ export class LynxOffscreenCanvas extends LynxCanvasBase {
     return Promise.reject(error);
   }
 
-  transferToImageBitmap(): never {
-    throw new Error(
-      'OffscreenCanvas.transferToImageBitmap() is not available on Lynx: draw the OffscreenCanvas itself with drawImage() or texImage2D()',
-    );
+  /**
+   * The canvas's image as an ImageBitmap, and a cleared bitmap for the
+   * canvas to draw on next: transparent black, or opaque black for a 2D
+   * context made with `alpha: false`. A WebGL drawing buffer is cleared
+   * too, even with `preserveDrawingBuffer`, which the HTML spec says has no
+   * effect on a transfer.
+   * The context's state (transform, styles, GL state) stays as it was.
+   */
+  transferToImageBitmap(): LynxImageBitmap {
+    if (!this.surface.source.readable) {
+      const error = new Error(
+        "Failed to execute 'transferToImageBitmap' on 'OffscreenCanvas': Cannot transfer an ImageBitmap from an OffscreenCanvas with no context",
+      );
+      error.name = 'InvalidStateError';
+      throw error;
+    }
+    // A canvas of no pixels gives an ImageBitmap of none, which draws
+    // nothing; the shell keeps no image for it.
+    if (this.width === 0 || this.height === 0) {
+      return new LynxImageBitmap(0, 0, 0);
+    }
+    return imageBitmapOfCanvas(this.surface.source, {}, true);
   }
 }
 

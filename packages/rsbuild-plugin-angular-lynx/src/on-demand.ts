@@ -25,7 +25,7 @@ const LINE_TERMINATOR = /\r\n|[\n\r\u2028\u2029]/;
  * `canvas.getContext('webgl2')`. A comment that mentions it matches too,
  * which only brings the context into a bundle that didn't need it.
  */
-const WEBGL2 = /\bwebgl2\b/;
+export const WEBGL2 = /\bwebgl2\b/;
 
 /**
  * The main thread's globals the runtime installs only for the apps that use
@@ -110,7 +110,7 @@ const GLOBALS: readonly { enable: string; names: readonly string[] }[] = [
  * A Unicode or hexadecimal escape, with which a string or an identifier can
  * spell a name (`\u0066`, `\u{66}`, `\x66`).
  */
-const ESCAPE = /\\[ux]/;
+export const ESCAPE = /\\[ux]/;
 
 const GLOBAL_NAMES: ReadonlySet<string> = new Set(
   GLOBALS.flatMap(({ names }) => names),
@@ -159,7 +159,7 @@ const stringCharacter = (character: string): string => {
  * A string of only the name, in quotes or backticks, spelled any way
  * namedGlobals() reads as the name, apart from the escapes ESCAPE finds.
  */
-const quotedName = (name: string): RegExp =>
+export const quotedName = (name: string): RegExp =>
   new RegExp(
     `['"\`]${CONTINUATION}${[...name]
       .map((character) => stringCharacter(character) + CONTINUATION)
@@ -238,7 +238,7 @@ export const ANGULAR_UNUSED: Readonly<Record<string, readonly string[]>> = {
 /** An Angular package's name, from the path of one of its modules. */
 const ANGULAR_PACKAGE = /[\\/]node_modules[\\/](@angular[\\/][^\\/]+)[\\/]/;
 
-const scriptKind = (filename: string): ts.ScriptKind =>
+export const scriptKind = (filename: string): ts.ScriptKind =>
   /\.[cm]?tsx?$/.test(filename) ? ts.ScriptKind.TS : ts.ScriptKind.JS;
 
 /**

@@ -2,6 +2,7 @@ import {
   cpSync,
   existsSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -17,8 +18,10 @@ import {
   appShortcutsSwift,
   entitlementsPlist,
   infoPlistEntries,
+  IOS_CANVAS_SOURCES,
   iosGenerator,
   LOCAL_NETWORK_REASON,
+  withoutFrameworks,
   xcconfig,
 } from './project.ts';
 
@@ -468,5 +471,61 @@ describe('iosGenerator', () => {
     expect(() =>
       iosGenerator.configure(dir, app({ icon: 'icon.jpg' }), dir),
     ).toThrow(/is not a PNG file/);
+  });
+});
+
+describe('iosGenerator.leaveOut', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(path.join(os.tmpdir(), 'angular-lynx-ios-'));
+    cpSync(path.join(TEMPLATES_DIR, 'ios'), dir, { recursive: true });
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  const project = () =>
+    readFileSync(path.join(dir, 'App.xcodeproj/project.pbxproj'), 'utf8');
+
+  it('keeps everything for an app that draws', () => {
+    const before = project();
+    iosGenerator.leaveOut(dir, { canvas: true });
+    expect(project()).toBe(before);
+    for (const file of IOS_CANVAS_SOURCES) {
+      expect(existsSync(path.join(dir, file))).toBe(true);
+    }
+  });
+
+  it('takes out the canvas sources and ANGLE for an app that never draws', () => {
+    expect(project()).toContain('libEGL.xcframework');
+    iosGenerator.leaveOut(dir, { canvas: false });
+    for (const file of IOS_CANVAS_SOURCES) {
+      expect(existsSync(path.join(dir, file))).toBe(false);
+    }
+    expect(project()).not.toMatch(/libEGL|libGLESv2/);
+    // The rest of the frameworks are still linked and embedded.
+    expect(project()).toContain('Lynx.xcframework in Embed Frameworks');
+  });
+
+  it('leaves no file that needs what it took out', () => {
+    // Swift reaches the canvas classes only by name (NSClassFromString), so
+    // no file left may import their headers, or the shell wouldn't build.
+    iosGenerator.leaveOut(dir, { canvas: false });
+    const app = path.join(dir, 'App');
+    for (const file of readdirSync(app).filter((f) =>
+      /\.(swift|m|h)$/.test(f),
+    )) {
+      const source = readFileSync(path.join(app, file), 'utf8');
+      expect(source, file).not.toMatch(/#import "AngularLynx/);
+      expect(source, file).not.toMatch(
+        /\bAngularLynx(WebGL|Canvas|Video)\w*\.(self|alloc)\b/,
+      );
+    }
+  });
+});
+
+describe('withoutFrameworks', () => {
+  it('fails for a framework the project doesn’t have', () => {
+    expect(() => withoutFrameworks('a\nb', ['libEGL'])).toThrow(
+      'The project has no libEGL.xcframework to leave out.',
+    );
   });
 });

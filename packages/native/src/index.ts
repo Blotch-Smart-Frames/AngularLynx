@@ -12,6 +12,7 @@ import { buildAndroid, resolveAndroidSigning } from './android/build.ts';
 import { writeAppLinkFile } from './app-links.ts';
 import { startAndroidDevice } from './android/run.ts';
 import { devBuildKey, recordDevBuild, reusableDevBuild } from './dev-build.ts';
+import { readNativeFeatures } from './features.ts';
 import {
   type Platform,
   prepareProject,
@@ -33,6 +34,12 @@ import { splashWarnings } from './splash.ts';
 export type { Platform } from './generate.ts';
 export { EJECT_MARKER, copyBundle, prepareProject } from './generate.ts';
 export { renderEjectedProject } from './eject.ts';
+export {
+  ALL_NATIVE_FEATURES,
+  NATIVE_FEATURES_FILE,
+  type NativeFeatures,
+  readNativeFeatures,
+} from './features.ts';
 export { LYNX_IOS, FRAMEWORKS_ENV } from './ios/frameworks.ts';
 export type {
   AndroidOptions,
@@ -160,15 +167,19 @@ export const buildNativeApp = async (
     throw new NativeBuildError(await missingTeamMessage(target.iPhone.name));
   }
 
+  const bundleDir = devServer ? undefined : options.bundleDir;
   const project = prepareProject({
     platform,
     generator: platform === 'ios' ? iosGenerator : androidGenerator,
     projectRoot,
     workDir,
     app,
-    bundleDir: devServer ? undefined : options.bundleDir,
+    bundleDir,
     packageVersion: PACKAGE_VERSION,
     development: !!devServer,
+    // The native code the bundle uses: an app that never draws on a canvas
+    // leaves the canvas, WebGL and video frame code out (issue #837).
+    features: readNativeFeatures(bundleDir),
   });
   if (
     devServer &&

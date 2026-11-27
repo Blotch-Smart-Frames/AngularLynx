@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   statSync,
@@ -14,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TEMPLATES_DIR } from '../generate.ts';
 import { resolveAppOptions } from '../options.ts';
 import {
+  ANDROID_CANVAS_SOURCES,
   androidGenerator,
   deepLinkEntries,
   findAndroidSdk,
@@ -353,6 +355,71 @@ describe('findAndroidSdk', () => {
     } finally {
       process.env['HOME'] = original;
       rmSync(home, { recursive: true });
+    }
+  });
+});
+
+describe('androidGenerator.leaveOut', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(path.join(os.tmpdir(), 'angular-lynx-android-'));
+    cpSync(path.join(TEMPLATES_DIR, 'android'), dir, { recursive: true });
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  const shell = (main = 'main') =>
+    path.join(dir, `app/src/${main}/java/dev/angularlynx/shell`);
+  const mainActivity = () =>
+    readFileSync(path.join(shell(), 'MainActivity.kt'), 'utf8');
+
+  it('keeps everything for an app that draws', () => {
+    const before = mainActivity();
+    androidGenerator.leaveOut(dir, { canvas: true });
+    expect(mainActivity()).toBe(before);
+    for (const file of ANDROID_CANVAS_SOURCES) {
+      expect(existsSync(path.join(shell(), file))).toBe(true);
+    }
+  });
+
+  it('takes out the canvas sources and the lines that register them', () => {
+    androidGenerator.leaveOut(dir, { canvas: false });
+    for (const file of ANDROID_CANVAS_SOURCES) {
+      expect(existsSync(path.join(shell(), file))).toBe(false);
+    }
+    expect(mainActivity()).not.toContain('angular-lynx:canvas');
+    // The modules and elements around them stay.
+    expect(mainActivity()).toContain('registerModule(AssetsModule.NAME');
+    expect(mainActivity()).toContain(
+      'addBehaviors(XElementBehaviors().create())',
+    );
+  });
+
+  it('leaves no file that needs what it took out', () => {
+    // Every name the files taken out declare at their top level (a class, an
+    // object, a function, a value), which another file of the package could
+    // use: AssetsModule.kt used WebGLModule.kt's wordsFromBytes() until it
+    // moved to ModuleBytes.kt.
+    const declared = new Set<string>();
+    for (const file of ANDROID_CANVAS_SOURCES) {
+      const source = readFileSync(path.join(shell(), file), 'utf8');
+      for (const [, name] of source.matchAll(
+        /^(?:(?:internal|public|abstract|open|data|sealed|enum|const)\s+)*(?:class|interface|object|fun|val|var)\s+(?:<[^>]*>\s*)?(?:[\w.]+\.)?(\w+)/gm,
+      )) {
+        declared.add(name!);
+      }
+    }
+    expect(declared).toContain('bitmapOf');
+    expect(declared).toContain('CanvasRegistry');
+    androidGenerator.leaveOut(dir, { canvas: false });
+    const names = new RegExp(`\\b(${[...declared].join('|')})\\b`);
+    for (const main of ['main', 'debug', 'release']) {
+      for (const file of readdirSync(shell(main))) {
+        const source = readFileSync(path.join(shell(main), file), 'utf8')
+          // What a comment names isn't code.
+          .replace(/\/\/.*$/gm, '')
+          .replace(/\/\*[\s\S]*?\*\//g, '');
+        expect(source.match(names)?.[0], file).toBeUndefined();
+      }
     }
   });
 });

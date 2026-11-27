@@ -126,8 +126,25 @@ Like an HTML canvas:
 - `getContext('2d')` and `getContext('webgl2')` return the same context every time. A canvas has the kind of context it was first asked for: after `getContext('2d')`, `getContext('webgl2')` is `null`, and the other way round. `'webgl'` (WebGL 1) is `null`: three.js needs WebGL2 anyway.
 - The build includes the WebGL2 context only when a module of your app or its libraries names `'webgl2'`, as three.js and `getContext('webgl2')` do, so an app that never draws in 3D doesn't load its code (about 37 kB of the main-thread script). So on iOS and Android, a context name built at runtime gets `null` and a console warning, unless another module named `'webgl2'`: write the name out, or call `ɵenableWebGL2()` from `@blotch/angular-lynx` before `getContext()`. The web preview's canvas is the browser's, which has its own context.
 - The 2D context is the same: the build includes it only when a module names `'2d'` in quotes, as `getContext('2d')` and chart and image libraries do, or one of its classes (`Path2D`, `CanvasRenderingContext2D`, `CanvasGradient`, `CanvasPattern`, `TextMetrics`), which are globals only then. An app that never draws in 2D doesn't load its code (about 40 kB of the main-thread script). A context name built at runtime gets `null` and a console warning on iOS and Android, unless another module named `'2d'`: write the name out, or call `ɵenableCanvas2D()` from `@blotch/angular-lynx` before `getContext()`.
+- An app built with `ng build --platform ios|android` gets the native canvas code only if it can draw. See [The canvas in the native app](#the-canvas-in-the-native-app).
 - Pointer events (`pointerdown`, `pointermove`, `pointerup` and the rest) work, from the finger's touches. They work on every element, not only a canvas: see [Element events](/api/angular-lynx/element-events).
 - `clientWidth`, `clientHeight` and `getBoundingClientRect()` answer from the element's last layout, and `ResizeObserver` reports its size as it changes.
+
+## The canvas in the native app
+
+`ng build --platform ios|android` builds the native code behind `<canvas>` into the app only when a module of your app or its libraries can draw. A module can draw when it names one of these:
+
+- `'webgl2'`, or the 2D context, as above
+- `'canvas'` or `'bitmaprenderer'` in quotes, as a template's `<canvas>` and `document.createElement('canvas')` do
+- `OffscreenCanvas`, `HTMLCanvasElement`, `Image`, `ImageBitmap`, `createImageBitmap` or `ImageBitmapRenderingContext`
+
+An app that never draws leaves out the canvas, its WebGL and 2D contexts, and `<video>`'s readable frames. That's about 176 kB of the iOS app. It also leaves out ANGLE, which iOS draws WebGL with: about 6 MB.
+
+Without that code, a `<canvas>` shows nothing and `getContext()` returns `null`. If your app builds every canvas name at runtime, call `ɵenableCanvas2D()` or `ɵenableWebGL2()` from `@blotch/angular-lynx`. Either one brings the native code too.
+
+The development app from `ng serve --platform` always has the native code, since you can add a canvas while it runs.
+
+An ejected project (`ng generate @blotch/angular-lynx:eject`) keeps all of it too, since it's yours to change. So does an app built with Rsbuild's persistent cache (`performance.buildCache`), whose cached modules the build doesn't read again.
 
 ## angular-three
 

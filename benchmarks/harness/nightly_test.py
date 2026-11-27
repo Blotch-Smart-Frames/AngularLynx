@@ -94,6 +94,12 @@ class NightTest(unittest.TestCase):
         self.assertEqual(result["metrics"]["launch.fully_drawn_ms"], {"angular-lynx": 1100, "react-lynx": 950})
         self.assertEqual(result["failed"], 2)
 
+    def test_a_value_that_isnt_a_finite_number_is_no_measurement(self):
+        launch = rows({"angular-lynx": ["nan", "inf"], "react-lynx": [900, "x"]})
+        result = nightly.night(launch, {}, "2026-11-28", "", "")
+        self.assertEqual(result["metrics"]["launch.fully_drawn_ms"], {"angular-lynx": None, "react-lynx": 900})
+        self.assertEqual(result["failed"], 3)
+
     def test_a_cost_of_zero_or_less_has_no_ratio(self):
         self.assertIsNone(nightly.ratio(record("2026-11-28", {"mount.view.us_per_element": -0.1}), "mount.view.us_per_element"))
 

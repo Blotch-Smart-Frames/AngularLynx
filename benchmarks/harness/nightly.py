@@ -37,6 +37,7 @@ import argparse
 import csv
 import glob
 import json
+import math
 import os
 import re
 import statistics
@@ -70,8 +71,19 @@ def read_csv(path):
         return list(csv.DictReader(file))
 
 
+def number(text):
+    """A CSV cell's number, or None for an empty cell or one that isn't a
+    finite number: json.dumps would write NaN or Infinity into the history,
+    which isn't JSON, and a NaN would pass for a measurement."""
+    try:
+        value = float(text)
+    except (TypeError, ValueError):
+        return None
+    return value if math.isfinite(value) else None
+
+
 def app_median(rows, app, column):
-    return median(float(row[column]) for row in rows if row["app"] == app and row.get(column))
+    return median(number(row.get(column)) for row in rows if row["app"] == app)
 
 
 def mount_files(folder):
@@ -107,9 +119,10 @@ def night(launch_rows, mount_rows, date, commit, run_url):
         metrics[f"mount.{kind}.us_per_element"] = costs
     all_rows = launch_rows + [row for rows in mount_rows.values() for row in rows]
     launches = {
-        app: sum(1 for row in launch_rows if row["app"] == app and row.get("fully_drawn_ms")) for app in (OURS, RIVAL)
+        app: sum(1 for row in launch_rows if row["app"] == app and number(row.get("fully_drawn_ms")) is not None)
+        for app in (OURS, RIVAL)
     }
-    failed = sum(1 for row in all_rows if not row.get("fully_drawn_ms"))
+    failed = sum(1 for row in all_rows if number(row.get("fully_drawn_ms")) is None)
     first = next((row for row in all_rows if row.get("device")), {})
     return {
         "date": date,
@@ -118,7 +131,7 @@ def night(launch_rows, mount_rows, date, commit, run_url):
         "device": first.get("device", ""),
         "os_build": first.get("os_build", ""),
         "cores": os.cpu_count(),
-        "host_load": median(float(row["host_load"]) for row in all_rows if row.get("host_load")),
+        "host_load": median(number(row.get("host_load")) for row in all_rows),
         "launches": launches,
         "failed": failed,
         "metrics": metrics,

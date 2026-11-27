@@ -3333,6 +3333,16 @@ export class LynxElement implements BaseLynxElement {
    * as #adoptChild, it passes text styles down to the #webText inside.
    */
   adoptVirtualChild(child: LynxElement): void {
+    // An element child is put back in the tree, as #attach puts one back:
+    // whoever puts it there still uses it, and one removed in an earlier
+    // cycle lost its native elements, so the list gets new ones to show. A
+    // `*lynxListFor` item's run builds and rebinds its own (see
+    // attachItemSource). One still waiting for its removal from another
+    // parent keeps it: see commitPendingRemovals.
+    if (!child._ownedByListSource) {
+      child.#keepIfDestroyed();
+      child.#recreateIfDead();
+    }
     // The list puts its native element in the native list when native asks
     // for it (see create-list-element.ts), not through #adoptChild.
     if (child.#unplaced()) child.#jsParent = null;
@@ -3905,9 +3915,22 @@ export class LynxElement implements BaseLynxElement {
         ...LynxElement.#pendingRemovals,
       ]);
       LynxElement.#pendingRemovals.clear();
+      // An element moved into a list this cycle (see adoptVirtualChild): its
+      // removal from its old parent goes ahead, since the list appends it to
+      // the native list only when native asks for it, in a later flush, and
+      // until then it would still be drawn where it was. Its native elements
+      // go with the removal (or its old parent's), so it's rebuilt after
+      // them, before the list's update reads its native element and
+      // componentAtIndex appends it. Not when Angular destroyed the list,
+      // which releases it: read before the list's own removal, whose release
+      // clears the mark.
+      const moved = items.filter(
+        (el) => el._virtualParent && !el._virtualParent.#destroyed,
+      );
       for (const el of items) {
         el.#doRemove();
       }
+      for (const el of moved) el.#recreateIfDead();
     }
     LynxElement.#commitPendingReleases();
     scheduleCollection();

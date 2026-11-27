@@ -3603,6 +3603,11 @@ export class LynxElement implements BaseLynxElement {
       if (!hasClassName(before, name)) {
         this.#classes = before ? `${before} ${name}` : name;
       }
+    } else if (before === '') {
+      // An element's first class, as a new element's scope class is: the
+      // rebuild below gives the same, from a Set of the one name.
+      this.#classes = name;
+      this.#classesListed = plain;
     } else {
       const rebuilt = new Set(splitClasses(before));
       rebuilt.add(name);

@@ -353,6 +353,19 @@ export class CanvasRoute {
     if (!webgl) return 'no WebGL';
     const { gl, program } = webgl;
     const video = this.video().nativeElement;
+    // Blue first: the texture may hold the bitmap check's red, which an
+    // upload that did nothing would leave to be read back.
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      1,
+      1,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      new Uint8Array([0, 0, 255, 255]),
+    );
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
     gl.uniform4f(gl.getUniformLocation(program, 'tint'), 1, 1, 1, 1);
     gl.drawArrays(gl.TRIANGLES, 0, 3);

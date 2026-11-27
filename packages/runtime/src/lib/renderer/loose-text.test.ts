@@ -1954,6 +1954,154 @@ describe('loose text, element by element', () => {
     expect(level()).toBe(false);
   });
 
+  // Issue #750: a relative size on a view further up is copied as `1em` too,
+  // so the text in a <small> below it takes no level, and works its level out
+  // again when the view's classes or inline size change, or it moves.
+  it('gives the text in a <small> no level below a relative size on a view, and works it out again when the view changes', () => {
+    const fontSize = 1 << INHERITED_TEXT_PROPERTIES.indexOf('font-size');
+    (
+      globalThis as { __angularLynxStyleIndex?: unknown }
+    ).__angularLynxStyleIndex = {
+      rules: [
+        [['big'], fontSize | RELATIVE_SIZE_FLAG],
+        [['px'], fontSize],
+        [['sm'], SMALLER_FLAG],
+        [['_ngsmaller-1'], SMALLER_FLAG],
+        [['_ngsmaller-2'], SMALLER_FLAG],
+      ],
+    };
+    const outer = doc.createElement('view');
+    page.appendChild(outer);
+    const div = doc.createElement('div');
+    div.addClass('big');
+    outer.appendChild(div);
+    // A view between them that sets no size passes the div's on.
+    const inner = doc.createElement('view');
+    div.appendChild(inner);
+    inner.appendChild(doc.createText('a '));
+    const small = doc.createElement('small');
+    small.addClass('sm');
+    inner.appendChild(small);
+    small.appendChild(doc.createText('b '));
+    const bold = doc.createElement('b');
+    small.appendChild(bold);
+    bold.appendChild(doc.createText('c'));
+    commit();
+    const level = (): string[] =>
+      [...native(bold).classes].filter((name) =>
+        name.startsWith('_ngsmaller-'),
+      );
+    expect(level()).toEqual([]);
+    expect(String(native(bold).attrs.get('style') ?? '')).toContain(
+      'font-size: var(--angular-lynx-font-size)',
+    );
+
+    // An absolute size's copy is the size, which the level divides.
+    div.setAttribute('class', 'px');
+    commit();
+    expect(level()).toEqual(['_ngsmaller-1']);
+    div.setAttribute('class', 'big');
+    commit();
+    expect(level()).toEqual([]);
+
+    // A view's inline size wins over its rules, as on a text tag.
+    div.setStyle('font-size', '20px');
+    commit();
+    expect(level()).toEqual(['_ngsmaller-1']);
+    div.removeStyle('font-size');
+    commit();
+    expect(level()).toEqual([]);
+    div.setInlineStyles('font-size: 20px');
+    commit();
+    expect(level()).toEqual(['_ngsmaller-1']);
+    div.setInlineStyles('font-size: 150%');
+    commit();
+    expect(level()).toEqual([]);
+    div.setStyle('--angular-lynx-font-size', '20px');
+    commit();
+    expect(level()).toEqual(['_ngsmaller-1']);
+    div.removeStyle('--angular-lynx-font-size');
+    commit();
+    expect(level()).toEqual([]);
+
+    // A view nearer the text that sets an absolute size passes that on
+    // instead, and one that sets none passes the size from above it.
+    inner.setAttribute('class', 'px');
+    commit();
+    expect(level()).toEqual(['_ngsmaller-1']);
+    inner.setAttribute('class', '');
+    commit();
+    expect(level()).toEqual([]);
+
+    // Moved out from under the relative size, it reads an absolute one.
+    const sized = doc.createElement('view');
+    sized.addClass('px');
+    page.appendChild(sized);
+    sized.appendChild(inner);
+    commit();
+    expect(level()).toEqual(['_ngsmaller-1']);
+    div.appendChild(inner);
+    commit();
+    expect(level()).toEqual([]);
+
+    // A class that leaves the kind of size as it was changes no level, and
+    // an empty tag in the <small> takes its styles again too.
+    small.appendChild(doc.createElement('i'));
+    div.setAttribute('class', 'big other');
+    commit();
+    expect(level()).toEqual([]);
+    sized.setAttribute('class', 'px other');
+    commit();
+    expect(level()).toEqual([]);
+  });
+
+  // Issue #750: a list's items take the size the list passes on, which they
+  // read through the list (see LynxListElement), not their #jsParent.
+  it('gives the text in a <small> in a list item its level from the size above the list', () => {
+    const fontSize = 1 << INHERITED_TEXT_PROPERTIES.indexOf('font-size');
+    (
+      globalThis as { __angularLynxStyleIndex?: unknown }
+    ).__angularLynxStyleIndex = {
+      rules: [
+        [['big'], fontSize | RELATIVE_SIZE_FLAG],
+        [['px'], fontSize],
+        [['sm'], SMALLER_FLAG],
+        [['_ngsmaller-1'], SMALLER_FLAG],
+      ],
+    };
+    const outer = doc.createElement('view');
+    outer.addClass('big');
+    page.appendChild(outer);
+    const list = doc.createElement('list');
+    outer.appendChild(list);
+    const item = doc.createElement('list-item');
+    list.appendChild(item);
+    const small = doc.createElement('small');
+    small.addClass('sm');
+    item.appendChild(small);
+    const bold = doc.createElement('b');
+    small.appendChild(bold);
+    bold.appendChild(doc.createText('c'));
+    commit();
+    const level = () => native(bold).classes.has('_ngsmaller-1');
+    expect(level()).toBe(false);
+
+    outer.setAttribute('class', 'px');
+    commit();
+    expect(level()).toBe(true);
+
+    // Moved to a list below a relative size, it reads that.
+    const other = doc.createElement('view');
+    other.addClass('big');
+    page.appendChild(other);
+    const otherList = doc.createElement('list');
+    other.appendChild(otherList);
+    item.remove();
+    otherList.appendChild(item);
+    commit();
+    expect(level()).toBe(false);
+  });
+
   it('reads a flex container by its id from the style index', () => {
     (
       globalThis as { __angularLynxStyleIndex?: unknown }

@@ -337,6 +337,17 @@ const isCustomProperty = (name: string): boolean => name.startsWith('--');
  */
 const SIZE_VARIABLE = inheritanceVariable('font-size');
 
+/**
+ * What kind of size an element passes to the HTML text tags inside through
+ * SIZE_VARIABLE (see LynxElement's #passedSize): none, the size from above
+ * passing through, a relative one copied as `1em`, or any other.
+ */
+const enum PassedSize {
+  None,
+  Absolute,
+  Relative,
+}
+
 /** A declaration of a CSS variable in an inline style string. */
 const VARIABLE_DECLARATION = /(?:^|;)\s*--/;
 
@@ -1039,6 +1050,16 @@ export class LynxElement implements BaseLynxElement {
    * styles down, which is what every element did before.
    */
   #passesTextStyles = false;
+  /**
+   * Set once the level of `<small>`s of an HTML text tag inside it was worked
+   * out from the size it passes on (see #sizedRelatively): what kind of size
+   * that was then, a PassedSize. A change of its classes, its inline size or
+   * its place that changes the kind works the tags' levels out again (see
+   * #passedSizeChanged). Undefined on an element no tag read it of, whose
+   * changes then change no level. Never cleared, as #passesTextStyles isn't:
+   * one the text left only costs a walk of its children.
+   */
+  #passedSizeSeen: PassedSize | undefined = undefined;
   /**
    * Set once loose text or an inline tag has been a child: the element's
    * children are regrouped when they change, or when its classes do, as
@@ -1766,7 +1787,10 @@ export class LynxElement implements BaseLynxElement {
       this.#rewriteInlineStyle();
       // It decides whether the size passed down is relative (see
       // #relativeSize), so the tags inside work out their levels again.
-      if (key === SIZE_VARIABLE) this.#inheritAgain();
+      if (key === SIZE_VARIABLE) {
+        this.#inheritAgain();
+        this.#passedSizeChanged();
+      }
       return;
     }
     // `[style.display]="open ? 'block' : 'none'"` would lay the element out
@@ -1787,6 +1811,9 @@ export class LynxElement implements BaseLynxElement {
       __AddInlineStyle(this.element, key, forNative(value));
     }
     if (textStyles >= 0) this.#inlineTextStylesChanged(textStyles);
+    // A view's inline size decides the levels of <small>s below it too (see
+    // #sizedRelatively), which #inlineTextStylesChanged doesn't reach.
+    if (key === 'font-size') this.#passedSizeChanged();
     if (LAYOUT_STYLES.has(key)) this.#layoutChanged();
     if (SHIFT_STYLES.has(key)) this.#shiftStylesChanged();
     // A style set outside change detection, as a transition's last frame is
@@ -1797,7 +1824,10 @@ export class LynxElement implements BaseLynxElement {
     if (isCustomProperty(key)) {
       if (this.#customProperties?.delete(key)) {
         this.#rewriteInlineStyle();
-        if (key === SIZE_VARIABLE) this.#inheritAgain();
+        if (key === SIZE_VARIABLE) {
+          this.#inheritAgain();
+          this.#passedSizeChanged();
+        }
       }
       return;
     }
@@ -1829,6 +1859,9 @@ export class LynxElement implements BaseLynxElement {
       __AddInlineStyle(this.element, key, null);
     }
     if (textStyles >= 0) this.#inlineTextStylesChanged(textStyles);
+    // A view's inline size decides the levels of <small>s below it too (see
+    // #sizedRelatively), which #inlineTextStylesChanged doesn't reach.
+    if (key === 'font-size') this.#passedSizeChanged();
     if (LAYOUT_STYLES.has(key)) this.#layoutChanged();
     if (SHIFT_STYLES.has(key)) this.#shiftStylesChanged();
     scheduleSettleFlush();
@@ -1877,6 +1910,8 @@ export class LynxElement implements BaseLynxElement {
     if (inlineDeclaration(inlineStyle, SIZE_VARIABLE) !== sizeVariable) {
       this.#inheritAgain();
     }
+    // And so does a view's, as its inline size does (see #sizedRelatively).
+    this.#passedSizeChanged();
     this.#layoutChanged();
     for (const property of SHIFT_STYLES) {
       if (
@@ -1941,6 +1976,9 @@ export class LynxElement implements BaseLynxElement {
     ) {
       this.#ancestorsChanged();
     }
+    // A view's rules decide the levels of <small>s below it too, when a tag
+    // read the size it passes on (see #sizedRelatively).
+    this.#passedSizeChanged();
     this.#layoutChanged();
   }
 
@@ -2237,24 +2275,82 @@ export class LynxElement implements BaseLynxElement {
   /**
    * Whether the size the variable holds at the tags of #sizeChain, the first
    * `length` of `tags`, is relative (see #relativeSize): that of the tag
-   * above them that sets it, or where none does, that of the Lynx `<text>`
-   * they're in, as in `<text class="big">a <small>b <b>c</b></small></text>`.
-   * A view above them passes its size on as well, but a change to its classes
-   * doesn't work the tags' levels out again (see #rulesChanged), so it isn't
-   * read: below a relative size on a view, the text inside a `<small>` is
-   * still divided again.
+   * above them that sets it, or where none does, that of the nearest element
+   * above the tags that sets it, the Lynx `<text>` they're in, as in
+   * `<text class="big">a <small>b <b>c</b></small></text>`, or a view further
+   * up, as in `<div class="text-[2em]">a <small>b <b>c</b></small></div>`.
+   * Reading only the `<text>` left the `<b>` there divided again, a level
+   * smaller than in a browser (issue #750).
+   *
+   * Each element it reads above the tags keeps what kind of size it passed
+   * (#passedSizeSeen), so a change to it that changes the kind works the
+   * tags' levels out again (see #passedSizeChanged). Only the `<small>`s
+   * whose levels it read pay for that.
    */
   #sizedRelatively(tags: [LynxElement, number][], length: number): boolean {
     const sizer = tags[length]?.[0];
     if (sizer) return sizer.#relativeSize();
-    const around = tags[tags.length - 1]![0].#jsParent;
-    return (
-      !!around &&
-      !around.#anonymous &&
-      around.tagName === 'text' &&
-      !!(around.#ownTextStyles(false) & FONT_SIZE_FLAG) &&
-      around.#relativeSize()
-    );
+    // A list's item has the list as its parent (see #passTextStyles).
+    const last = tags[tags.length - 1]![0];
+    for (
+      let parent = last._virtualParent ?? last.#jsParent;
+      parent;
+      parent = parent._virtualParent ?? parent.#jsParent
+    ) {
+      const kind = parent.#passedSize();
+      parent.#passedSizeSeen = kind;
+      if (kind !== PassedSize.None) return kind === PassedSize.Relative;
+    }
+    return false;
+  }
+
+  /**
+   * What kind of size this element passes to the HTML text tags inside
+   * through the variable (see #sizedRelatively): none where neither its
+   * rules, nor its inline style, nor a variable the app sets itself sets it,
+   * and the size from above passes through. A `<small>`'s rule sets no copy
+   * (see SMALLER_FLAG), so it passes none either. An anonymous `<text>` is
+   * never an element's #jsParent, so it isn't asked.
+   */
+  #passedSize(): PassedSize {
+    if (
+      this.#ownSizeVariable() === undefined &&
+      !((this.#ruleFlags(false) | this.#inlineTextFlags()) & FONT_SIZE_FLAG)
+    ) {
+      return PassedSize.None;
+    }
+    return this.#relativeSize() ? PassedSize.Relative : PassedSize.Absolute;
+  }
+
+  /**
+   * Its classes or inline style changed: if an HTML text tag inside read the
+   * size it passes on (see #passedSizeSeen) and its kind is now another, the
+   * tags inside work their levels of `<small>`s out again. A change that
+   * keeps the kind, such as `20px` to `24px`, or a page's `dark` class,
+   * changes no level and walks nothing.
+   */
+  #passedSizeChanged(): void {
+    if (this.#passedSizeSeen === undefined) return;
+    const kind = this.#passedSize();
+    if (kind === this.#passedSizeSeen) return;
+    this.#passedSizeSeen = kind;
+    this.#outerSizeChanged();
+  }
+
+  /**
+   * The size passed to this element from above may have changed (see
+   * #passedSizeChanged), or it moved: gives each #webText element from here
+   * down its inherited styles again, through the elements whose size a tag
+   * read (#passedSizeSeen), as only those have such tags inside, or are
+   * HTML text tags.
+   */
+  #outerSizeChanged(): void {
+    if (this.#webText) LynxElement.#pendingInheritance.add(this);
+    else if (this.#passedSizeSeen === undefined) return;
+    for (const child of this.#children ?? NO_CHILDREN) {
+      child.#outerSizeChanged();
+    }
+    for (const item of this.virtualChildren()) item.#outerSizeChanged();
   }
 
   /**
@@ -2864,6 +2960,9 @@ export class LynxElement implements BaseLynxElement {
     // and so do the tags in a Lynx <text> inside it.
     if (newChild.#webText) newChild.#inheritAgain();
     newChild.#ancestorsChanged();
+    // And the levels of <small>s inside it on the size its new ancestors
+    // pass on, where a tag read that (see #sizedRelatively).
+    if (newChild.#passedSizeSeen !== undefined) newChild.#outerSizeChanged();
     // And a <q>'s marks on how many <q>s it's in (see #setQuoteDepth).
     if (newChild.#quoteMarks || newChild.#holdsQuote) {
       this.#holdQuote();
@@ -2921,6 +3020,7 @@ export class LynxElement implements BaseLynxElement {
   adoptVirtualChild(child: LynxElement): void {
     if (child.#webText || child.#passesTextStyles) this.#passTextStyles();
     child.#ancestorsChanged();
+    if (child.#passedSizeSeen !== undefined) child.#outerSizeChanged();
   }
 
   /**

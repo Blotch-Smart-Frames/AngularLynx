@@ -475,6 +475,15 @@ const QUOTES_KEYWORD =
   /^(?:none|auto|initial|inherit|unset|revert|revert-layer)$/i;
 const QUOTES_STRING = /"(?:[^"\\\n]|\\[^])*"|'(?:[^'\\\n]|\\[^])*'/y;
 
+/**
+ * CSS's whitespace, at a value's edges and between its strings: a space,
+ * tab, newline, carriage return or form feed. JavaScript's `\s` and
+ * `trim()` take a no-break space too, which CSS reads as part of a word, so
+ * `quotes:\u00a0auto` is invalid rather than `auto`.
+ */
+const CSS_SPACE = /[ \t\n\r\f]/;
+const CSS_EDGE_SPACE = /^[ \t\n\r\f]+|[ \t\n\r\f]+$/g;
+
 const isQuotesValue = (value: string): boolean => {
   if (QUOTES_KEYWORD.test(value)) return true;
   let count = 0;
@@ -485,7 +494,7 @@ const isQuotesValue = (value: string): boolean => {
     if (!match) return false;
     count++;
     at = QUOTES_STRING.lastIndex;
-    while (/\s/.test(value[at] ?? '')) at++;
+    while (CSS_SPACE.test(value[at] ?? '')) at++;
   }
   return count > 0 && count % 2 === 0;
 };
@@ -501,7 +510,7 @@ const quotesOf = (
   let found: { value: string; important: boolean } | undefined;
   rule.each((node) => {
     if (node.type !== 'decl' || node.prop.toLowerCase() !== 'quotes') return;
-    const value = node.value.trim();
+    const value = node.value.replace(CSS_EDGE_SPACE, '');
     if (!isQuotesValue(value)) return;
     // PostCSS leaves it undefined on a declaration without `!important`.
     const important = node.important === true;

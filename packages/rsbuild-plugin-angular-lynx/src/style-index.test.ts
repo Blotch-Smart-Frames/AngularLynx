@@ -481,6 +481,12 @@ describe('quotes (issue #821)', () => {
       [['b'], [], 'none', 1000 + IMPORTANT_RANK, 1, 1],
       [['c'], [], `"\\"" '\\'' "a" 'b'`, 1000, 2, 2],
     ]);
+    // A no-break space is no whitespace in CSS, but part of a word, so it
+    // doesn't take the place of the `none` before it.
+    expect(
+      quotes(`.a { quotes: none; quotes: \u00a0auto; quotes: '«'\u00a0'»' }`),
+    ).toEqual([[['a'], [], 'none', 1000, 0, 0]]);
+    expect(quotes(`.a { quotes: '«'\t'»' }`)![0]![2]).toBe(`'«'\t'»'`);
     // A rule with none it keeps isn't listed.
     expect(quotes(`.a { quotes: 'x' }`)).toBeUndefined();
   });

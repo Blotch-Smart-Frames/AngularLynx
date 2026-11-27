@@ -67,6 +67,8 @@ describe('parseQuotes', () => {
     ['"a\\\nb" "c"', ['ab', 'c']],
     [`'<' '>' !important`, ['<', '>']],
     ['none ! IMPORTANT', []],
+    // CSS's whitespace: tabs, newlines and form feeds too.
+    ["\t'«'\n'»'\f", ['«', '»']],
   ])('reads %s', (value, quotes) => {
     expect(parseQuotes(value)).toEqual(quotes);
   });
@@ -78,6 +80,9 @@ describe('parseQuotes', () => {
     ['12px'],
     ['var(--q)'],
     ["'«' x '»'"],
+    // A no-break space is no whitespace in CSS, but part of a word.
+    ['\u00a0auto'],
+    ["'«'\u00a0'»'"],
     ["'unclosed"],
     ['"a\nb" "c"'],
     ['"a\\'],

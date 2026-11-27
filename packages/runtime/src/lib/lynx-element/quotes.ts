@@ -102,6 +102,13 @@ export const setDocumentLanguage = (language: string): void => {
 export type QuoteMarks = readonly string[] | 'auto';
 
 /**
+ * CSS's whitespace: a space, tab, newline, carriage return or form feed.
+ * JavaScript's `\s` takes a no-break space too, which CSS reads as part of
+ * a word.
+ */
+const CSS_SPACE = /[ \t\n\r\f]/;
+
+/**
  * Reads a CSS `quotes` value, as a stylesheet's rule or an inline style
  * has it: `none`, `auto`, or pairs of strings (`'«' '»' '‹' '›'`), whose
  * escapes (`'\201C'`) it decodes. `inherit` for a value that takes the
@@ -115,7 +122,10 @@ export type QuoteMarks = readonly string[] | 'auto';
 export const parseQuotes = (
   value: string,
 ): QuoteMarks | 'inherit' | undefined => {
-  const text = value.replace(/\s*!\s*important\s*$/i, '').trim();
+  // CSS's whitespace only (see CSS_SPACE): `\s` takes a no-break space too.
+  const text = value
+    .replace(/[ \t\n\r\f]*![ \t\n\r\f]*important[ \t\n\r\f]*$/i, '')
+    .replace(/^[ \t\n\r\f]+|[ \t\n\r\f]+$/g, '');
   const keyword = text.toLowerCase();
   if (keyword === 'none') return [];
   if (keyword === 'auto' || keyword === 'initial') return 'auto';
@@ -149,7 +159,7 @@ export const parseQuotes = (
       const hex = /^[0-9a-f]{1,6}/i.exec(text.slice(at))?.[0];
       if (hex) {
         at += hex.length;
-        if (/\s/.test(text[at] ?? '')) at++;
+        if (CSS_SPACE.test(text[at] ?? '')) at++;
         const code = parseInt(hex, 16);
         mark += String.fromCodePoint(
           code === 0 || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)
@@ -160,7 +170,7 @@ export const parseQuotes = (
       else if (text[at] !== undefined) mark += text[at++];
     }
     marks.push(mark);
-    const space = /^\s*/.exec(text.slice(at))![0].length;
+    const space = /^[ \t\n\r\f]*/.exec(text.slice(at))![0].length;
     // Strings are separated by whitespace, or nothing, as CSS allows.
     at += space;
   }

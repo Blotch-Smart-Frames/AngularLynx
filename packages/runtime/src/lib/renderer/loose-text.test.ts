@@ -2055,6 +2055,39 @@ describe('loose text, element by element', () => {
     expect(level()).toEqual([]);
   });
 
+  // Review of #786: a variable an HTML text tag between them sets itself is
+  // the size the text inside reads, not the relative one from the view, so
+  // the levels divide it.
+  it('gives the text in a <small> its level below a variable a tag sets itself, under a relative size on a view', () => {
+    const fontSize = 1 << INHERITED_TEXT_PROPERTIES.indexOf('font-size');
+    (
+      globalThis as { __angularLynxStyleIndex?: unknown }
+    ).__angularLynxStyleIndex = {
+      rules: [
+        [['big'], fontSize | RELATIVE_SIZE_FLAG],
+        [['sm'], SMALLER_FLAG],
+        [['_ngsmaller-1'], SMALLER_FLAG],
+      ],
+    };
+    const div = doc.createElement('div');
+    div.addClass('big');
+    page.appendChild(div);
+    const small = doc.createElement('small');
+    small.addClass('sm');
+    div.appendChild(small);
+    const bold = doc.createElement('b');
+    small.appendChild(bold);
+    bold.appendChild(doc.createText('c'));
+    small.setStyle('--angular-lynx-font-size', '20px');
+    commit();
+    const level = () => native(bold).classes.has('_ngsmaller-1');
+    expect(level()).toBe(true);
+
+    small.removeStyle('--angular-lynx-font-size');
+    commit();
+    expect(level()).toBe(false);
+  });
+
   // Issue #750: a list's items take the size the list passes on, which they
   // read through the list (see LynxListElement), not their #jsParent.
   it('gives the text in a <small> in a list item its level from the size above the list', () => {

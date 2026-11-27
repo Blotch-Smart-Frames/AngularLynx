@@ -2288,6 +2288,14 @@ export class LynxElement implements BaseLynxElement {
    * whose levels it read pay for that.
    */
   #sizedRelatively(tags: [LynxElement, number][], length: number): boolean {
+    // A variable a tag of the chain sets itself is what the tags inside read,
+    // whatever is above it, and it isn't `1em` (see #relativeSize): in
+    // `<small style="--angular-lynx-font-size: 20px">b <b>c</b></small>`
+    // the `<small>` divides it, so the `<b>` must too (review of #786). A
+    // change to it inherits again from that tag down (see setStyle).
+    for (let index = 0; index < length; index++) {
+      if (tags[index]![0].#ownSizeVariable() !== undefined) return false;
+    }
     const sizer = tags[length]?.[0];
     if (sizer) return sizer.#relativeSize();
     // A list's item has the list as its parent (see #passTextStyles).

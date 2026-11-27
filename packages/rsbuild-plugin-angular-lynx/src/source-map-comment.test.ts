@@ -49,7 +49,29 @@ describe('takeSourceMap', () => {
     expect(map).toEqual(MAP);
   });
 
-  it("doesn't take one that isn't at the start of a line", () => {
+  it('takes one after code on its line', () => {
+    const { code, map } = takeSourceMap(
+      `export const a = 1; ${comment(MAP)}\n`,
+      'app.js',
+    );
+    expect(code).toBe('export const a = 1; \n');
+    expect(map).toEqual(MAP);
+  });
+
+  // ECMA-426 reads any spaces after the `#`, and the older `@`.
+  it.each(['//#', '//# \t', '//@'])(
+    'reads a comment that starts %j',
+    (start) => {
+      const { code, map } = takeSourceMap(
+        `a;\n${comment(MAP).replace('//# ', start)}\n`,
+        'app.js',
+      );
+      expect(code).toBe('a;\n\n');
+      expect(map).toEqual(MAP);
+    },
+  );
+
+  it("doesn't take one in a string", () => {
     const code = `const text = "${comment(MAP)}";\n`;
     expect(takeSourceMap(code, 'app.js')).toEqual({ code });
   });

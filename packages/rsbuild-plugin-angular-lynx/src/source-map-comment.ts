@@ -7,9 +7,10 @@ import type { SourceMapPayload } from './source-map-edits.js';
  * A `//# sourceMappingURL=` comment: the URL of the module's map, an inline
  * one (base64 JSON in a `data:` URL, as Angular's transformer and compiler
  * append when angular.json asks for script or vendor source maps) or the
- * file a published library ships beside the module.
+ * file a published library ships beside the module. As ECMA-426 reads it:
+ * any spaces after the `#`, or the older `@` in its place.
  */
-const SOURCE_MAP_COMMENT = /^\/\/# sourceMappingURL=(\S+)/;
+const SOURCE_MAP_COMMENT = /^\/\/[#@]\s*sourceMappingURL=(\S+)/;
 
 /**
  * An inline map's URL, with the base64 JSON it holds.
@@ -31,18 +32,20 @@ const findSourceMapComment = (
   let found:
     | { url: string; comment: { start: number; end: number } }
     | undefined;
-  const readComments = (position: number) =>
-    ts.forEachLeadingCommentRange(text, position, (start, end, kind) => {
-      const match =
-        kind === ts.SyntaxKind.SingleLineCommentTrivia &&
-        SOURCE_MAP_COMMENT.exec(text.slice(start, end));
-      if (match) {
-        found = { url: match[1]!, comment: { start, end } };
-      }
-    });
-  readComments(0);
+  const read = (start: number, end: number, kind: ts.CommentKind) => {
+    const match =
+      kind === ts.SyntaxKind.SingleLineCommentTrivia &&
+      SOURCE_MAP_COMMENT.exec(text.slice(start, end));
+    if (match) {
+      found = { url: match[1]!, comment: { start, end } };
+    }
+  };
+  ts.forEachLeadingCommentRange(text, 0, read);
   for (const statement of sourceFile.statements) {
-    readComments(statement.end);
+    // In source order: a comment on the statement's own line, which
+    // TypeScript counts as trailing it, then those on the lines after.
+    ts.forEachTrailingCommentRange(text, statement.end, read);
+    ts.forEachLeadingCommentRange(text, statement.end, read);
   }
   return found;
 };
@@ -80,7 +83,9 @@ export const takeSourceMap = (
   code: string,
   filename: string,
 ): { code: string; map?: SourceMapPayload } => {
-  if (!code.includes(COMMENT_START)) {
+  // Every form of the comment has this, which the parse below needn't read
+  // a module without.
+  if (!code.includes('sourceMappingURL=')) {
     return { code };
   }
   // The transforms before this leave JavaScript, whatever the file's

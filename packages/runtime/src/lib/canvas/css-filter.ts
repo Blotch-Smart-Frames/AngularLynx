@@ -55,9 +55,9 @@ export const NO_FILTER: CanvasFilter = { steps: [], padding: 0 };
  * blurs onto it. That's for a blur at least 4 of that layer's pixels wide,
  * and the layer's scale is this over the whole reach, offsets included:
  * alone, a blur needs a deviation past about 85 px. A drop shadow's offset
- * isn't a blur, so one past this still leaves out what's farther off, and
- * lowers the scale enough to keep a blur beside it out of the smaller layer
- * too (issue #824).
+ * isn't a blur: one past this leaves out what's farther off unless its own
+ * blur is wide enough at that scale, and a far one can lower the scale
+ * enough to keep a blur beside it out of the smaller layer (issue #824).
  */
 const MAX_PADDING = 256;
 

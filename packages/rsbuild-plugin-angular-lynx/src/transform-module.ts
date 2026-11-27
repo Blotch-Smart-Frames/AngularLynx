@@ -8,6 +8,7 @@ import {
   hotUpdateSignature,
 } from './hot-updates.js';
 import { transformWorklets } from './worklet-transform.js';
+import { applyEdits } from './source-map-edits.js';
 
 /**
  * The stylesheets extracted from one module's components (see
@@ -63,7 +64,7 @@ export const importStylesheets = (
   // Prepend the imports so the CSS chunks are pulled into the bundle
   // before the component class is defined — matching the side-effect
   // ordering Angular itself produces in its standard build.
-  return importsString + code;
+  return applyEdits(code, [{ start: 0, end: 0, text: importsString }]);
 };
 
 /**
@@ -118,9 +119,16 @@ export const buildTransformedCode = (params: {
   // derived from the class name and file path, so set ɵcmp.id to the same ID:
   // EmulatedLynxRenderer builds its _ngcontent-<id> and _nghost-<id> classes
   // from it.
-  for (const { className, scopeId } of stylesheets?.scopes ?? []) {
-    code += `\n;${className}.ɵcmp.id = '${scopeId}';\n`;
-  }
+  // Made with applyEdits, as the other passes' edits are, so a source map
+  // follows it (see source-map-edits.ts).
+  code = applyEdits(
+    code,
+    (stylesheets?.scopes ?? []).map(({ className, scopeId }) => ({
+      start: code.length,
+      end: code.length,
+      text: `\n;${className}.ɵcmp.id = '${scopeId}';\n`,
+    })),
+  );
   const transformed = transformCrossThread(
     transformWorklets(code, resourcePath),
     resourcePath,

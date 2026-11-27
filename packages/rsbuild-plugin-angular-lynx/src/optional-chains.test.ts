@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest';
 import { LAYERS, applyLayers } from './layers.js';
 import { splitPrivateChains } from './private-methods.js';
 import { lowerOptionalChains } from './optional-chains.js';
+import { embedSourceMap, takeSourceMap } from './source-map-comment.js';
+import { trackSourceMap } from './source-map-edits.js';
 
 /**
  * The options layers.ts gives SWC, by `oneOf` branch (`main`,
@@ -497,7 +499,11 @@ describe('lowerOptionalChains', () => {
       },
       fileName: 'list.ts',
     });
-    const result = lower(outputText);
+    // As the plugin runs the pass: the map out of its comment, moved
+    // through the pass's edits (source-map-edits.ts), and put back here.
+    const taken = takeSourceMap(outputText, FILE);
+    const lowered = trackSourceMap(taken.code, taken.map, lower);
+    const result = embedSourceMap(lowered.code, lowered.map!);
     expect(result).toContain('__chain0');
     // Where `later` is in the source, and in the code the map is for, on
     // the line after TypeScript's `"use strict"`.

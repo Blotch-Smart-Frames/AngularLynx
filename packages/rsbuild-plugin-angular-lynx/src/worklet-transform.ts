@@ -1,4 +1,5 @@
 import * as ts from 'typescript';
+import { applyEdits } from './source-map-edits.js';
 
 const MAIN_THREAD_DIRECTIVE = 'main thread';
 const MAIN_THREAD_DIRECTIVE_ALT = 'main-thread';
@@ -31,21 +32,21 @@ export const transformWorklets = (code: string, filename: string): string => {
     return code;
   }
 
-  // Apply replacements from end to start so earlier positions remain valid
-  // after text is inserted. Forward iteration would shift all subsequent
-  // offsets by the length difference of each replacement.
-  let result = code;
-  for (let i = workletRanges.length - 1; i >= 0; i--) {
-    const { start, end } = workletRanges[i];
-    const fnText = result.slice(start, end);
-    result =
-      result.slice(0, start) + `mainThreadFn(${fnText})` + result.slice(end);
-  }
-
-  // Single import at the top covers all wrapped functions in this file.
-  result = `import { mainThreadFn } from '@blotch/angular-lynx';\n` + result;
-
-  return result;
+  // Each function is wrapped by inserting around it, rather than replaced
+  // with a copy, so a source map still points into it (see
+  // source-map-edits.ts). A single import at the top covers all wrapped
+  // functions in this file.
+  return applyEdits(code, [
+    {
+      start: 0,
+      end: 0,
+      text: `import { mainThreadFn } from '@blotch/angular-lynx';\n`,
+    },
+    ...workletRanges.flatMap(({ start, end }) => [
+      { start, end: start, text: 'mainThreadFn(' },
+      { start: end, end, text: ')' },
+    ]),
+  ]);
 };
 
 const visitNode = (

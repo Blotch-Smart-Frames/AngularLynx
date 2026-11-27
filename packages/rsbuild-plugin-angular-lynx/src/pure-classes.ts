@@ -1,6 +1,5 @@
 import * as ts from 'typescript';
-
-type Edit = { start: number; end: number; text: string };
+import { applyEdits, type Edit } from './source-map-edits.js';
 
 /** Built-in constructors that create a value and do nothing else. */
 const PURE_CONSTRUCTORS = new Set([
@@ -174,13 +173,8 @@ export const wrapPureClasses = (code: string, filename: string): string => {
   if (edits.length === 0) {
     return code;
   }
-  // From the end, so earlier offsets stay valid. Edits never share a start.
-  edits.sort((a, b) => b.start - a.start);
-  let result = code;
-  for (const { start, end, text } of edits) {
-    result = result.slice(0, start) + text + result.slice(end);
-  }
-  return result;
+  // Edits never share a start.
+  return applyEdits(code, edits);
 };
 
 type ClassAlias = {

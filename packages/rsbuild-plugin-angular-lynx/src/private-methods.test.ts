@@ -15,6 +15,8 @@ import {
   splitPrivateChains,
   transformPrivateMethods,
 } from './private-methods.js';
+import { embedSourceMap, takeSourceMap } from './source-map-comment.js';
+import { trackSourceMap } from './source-map-edits.js';
 import { JavaScriptTransformer } from './utils/angular/build-internals.js';
 
 const ROOT = '/app';
@@ -1206,7 +1208,24 @@ describe('renamePrivateMethods', () => {
   });
 });
 
-describe('renamePrivateMethods and hidePrivateMethods with an inline source map', () => {
+describe('renamePrivateMethods and hidePrivateMethods with a source map', () => {
+  /**
+   * `pass` as the plugin runs it: the map taken out of the code's comment,
+   * moved through the pass's edits (source-map-edits.ts), and put back
+   * inline after it, where these tests read it.
+   */
+  const viaMap =
+    (pass: (code: string) => string) =>
+    (code: string): string => {
+      const taken = takeSourceMap(code, APP_FILE);
+      const { code: output, map } = trackSourceMap(taken.code, taken.map, pass);
+      return map ? `${embedSourceMap(output, map)}\n` : output;
+    };
+  const renameWithMap = viaMap((code) => rename(code));
+  const hideWithMap = viaMap((code) => hide(code));
+  const splitWithMap = (code: string, file: string): string =>
+    viaMap((input) => splitPrivateChains(input, file))(code);
+
   const PREFIX =
     '//# sourceMappingURL=data:application/json;charset=utf-8;base64,';
   const withMap = (code: string, map: object, prefix = PREFIX): string =>
@@ -1321,9 +1340,9 @@ describe('renamePrivateMethods and hidePrivateMethods with an inline source map'
     );
     const spaced = outputText.replace(/(base64,[A-Za-z0-9+/]+=*)/, '$1 \t');
     expect(spaced).not.toBe(outputText);
-    const moved = mapOf(rename(outputText)).mappings;
+    const moved = mapOf(renameWithMap(outputText)).mappings;
     expect(moved).not.toBe(mapOf(outputText).mappings);
-    expect(mapOf(rename(spaced)).mappings).toBe(moved);
+    expect(mapOf(renameWithMap(spaced)).mappings).toBe(moved);
   });
 
   it("keeps TypeScript's map pointing at the same code", () => {
@@ -1344,7 +1363,7 @@ describe('renamePrivateMethods and hidePrivateMethods with an inline source map'
       },
       fileName: 'counter.ts',
     });
-    const result = rename(outputText);
+    const result = renameWithMap(outputText);
     expect(renamed(result, 'step')).toHaveLength(1);
     expect(renamed(result, 'double')).toHaveLength(1);
 
@@ -1394,7 +1413,7 @@ describe('renamePrivateMethods and hidePrivateMethods with an inline source map'
       0,
       column,
     ]);
-    const result = rename(
+    const result = renameWithMap(
       withMap(`${LINE}\nconst b = 1;`, mapWith([segments, [[6, 0, 1, 6]]])),
     );
     expect(columnsOf(result)).toEqual([[0, 10, 10, 21, 38, 49], [6]]);
@@ -1402,19 +1421,18 @@ describe('renamePrivateMethods and hidePrivateMethods with an inline source map'
   });
 
   it("reads TypeScript's inline map too, and a line with no segments", () => {
-    const result = rename(
+    const result = renameWithMap(
       withMap(
         LINE,
         mapWith([[], [[0, 0, 0, 0]]]),
         '//# sourceMappingURL=data:application/json;base64,',
       ),
     );
-    expect(result).toContain('sourceMappingURL=data:application/json;base64,');
     expect(columnsOf(result)).toEqual([[], [0]]);
   });
 
   it('keeps segments in the order they came, even out of column order', () => {
-    const result = rename(
+    const result = renameWithMap(
       withMap(
         LINE,
         mapWith([
@@ -1428,22 +1446,23 @@ describe('renamePrivateMethods and hidePrivateMethods with an inline source map'
     expect(columnsOf(result)).toEqual([[49, 10]]);
   });
 
-  it("leaves a map it can't read", () => {
+  it("drops a map that isn't JSON, and hands on one whose mappings it can't read", () => {
     const notJson = `${PREFIX}${Buffer.from('not json').toString('base64')}\n`;
-    const result = rename(`${LINE}\n${notJson}`);
-    expect(result.endsWith(notJson)).toBe(true);
+    const result = renameWithMap(`${LINE}\n${notJson}`);
+    expect(result).not.toContain('sourceMappingURL');
     expect(result).not.toContain('#m');
 
-    const sections = withMap(LINE, { version: 3, sections: [] });
-    expect(rename(sections).slice(rename(sections).indexOf('//#'))).toBe(
-      sections.slice(sections.indexOf('//#')),
+    const sections = { version: 3, sections: [] };
+    expect(renameWithMap(withMap(LINE, sections))).not.toContain(
+      'sourceMappingURL',
     );
 
-    // A character that isn't base64, and a value whose last digit says
-    // another follows: neither may stop the build, nor keep it reading.
-    for (const mappings of ['A!AA', 'g']) {
+    // A character that isn't base64, a value whose last digit says another
+    // follows, and a segment with two fields: none may stop the build, nor
+    // keep it reading.
+    for (const mappings of ['A!AA', 'g', 'AA']) {
       const invalid = withMap(LINE, { version: 3, mappings });
-      const renamedCode = rename(invalid);
+      const renamedCode = renameWithMap(invalid);
       expect(renamedCode).not.toContain('#m');
       expect(mapOf(renamedCode).mappings).toBe(mappings);
     }
@@ -1463,7 +1482,7 @@ describe('renamePrivateMethods and hidePrivateMethods with an inline source map'
       at('#m', at('this')),
       at(');'),
     ];
-    const result = hide(
+    const result = hideWithMap(
       withMap(line, mapWith([columns.map((column) => [column, 0, 0, column])])),
     );
     const [output, map] = result.split('\n');
@@ -1472,16 +1491,16 @@ describe('renamePrivateMethods and hidePrivateMethods with an inline source map'
     expect(columnsOf(result)).toEqual([
       [0, out('m() {'), out('return'), out('f()'), call, call, out(');')],
     ]);
-    // After the class, on its line, and the map on the next.
+    // After the class, on its line.
     expect(output).toMatch(/\};var __m_\w+;$/);
-    expect(map).toMatch(/^\/\/# sourceMappingURL=/);
+    expect(map).toBe('');
   });
 
   it('moves columns past the parentheses splitPrivateChains inserts', () => {
     const line = 'class A { #a; #b() {} f() { return this.#a.#b(); } }';
     // `class`, the chain's `this`, and its `#b`.
     const columns = [0, line.indexOf('this'), line.indexOf('#b()')];
-    const result = splitPrivateChains(
+    const result = splitWithMap(
       withMap(line, mapWith([columns.map((column) => [column, 0, 0, column])])),
       APP_FILE,
     );
@@ -1490,33 +1509,6 @@ describe('renamePrivateMethods and hidePrivateMethods with an inline source map'
     expect(columnsOf(result)).toEqual([
       [0, output.indexOf('this'), output.indexOf('#b()')],
     ]);
-  });
-
-  it('finds the map before the code the plugin appends after it', () => {
-    // As addHotAccept() does in a development build.
-    const hot = 'if (import.meta.webpackHot) {}';
-    const line = 'class A { #m() { return this.#m(); } }';
-    const column = line.indexOf('this');
-    const code = `${withMap(line, mapWith([[[column, 0, 0, column]]]))}${hot}\n`;
-    const result = hide(code);
-    const lines = result.split('\n');
-    expect(lines[1]).toMatch(/^\/\/# sourceMappingURL=/);
-    // After the last statement, the appended code's.
-    expect(lines.slice(2)).toEqual([
-      expect.stringMatching(/^if .*\};var __m_\w+;$/),
-      '',
-    ]);
-    const map = JSON.parse(
-      Buffer.from(
-        lines[1]!.slice(lines[1]!.indexOf(',') + 1),
-        'base64',
-      ).toString(),
-    );
-    // The call's segment moved past the static block's start.
-    expect(map.mappings).not.toBe(mapWith([[[column, 0, 0, column]]]).mappings);
-    expect(
-      lines[0]!.slice(columnsOf(`${lines[0]}\n${lines[1]}`)[0]![0]!),
-    ).toMatch(/^__m_\w+\.call\(this\)/);
   });
 
   it("doesn't take a map in a string or a block comment for the module's", () => {
@@ -1532,14 +1524,14 @@ describe('renamePrivateMethods and hidePrivateMethods with an inline source map'
       'class A { #m() { return snippet; } f() { return this.#m(); } }',
       'new A().f() === snippet;',
     ].join('\n');
-    const hidden = hide(code);
+    const hidden = hideWithMap(code);
     expect(hidden.split(fake)).toHaveLength(3);
     expect(hidden).toMatch(/\nnew A\(\)\.f\(\) === snippet;;var __m_\w+;$/);
     expect(
       runInNewContext(`"use strict";\n${compile(hidden, LAYERS.MAIN_THREAD)}`),
     ).toBe(true);
     // Nor does the rename re-encode it.
-    expect(rename(code).split(fake)).toHaveLength(3);
+    expect(renameWithMap(code).split(fake)).toHaveLength(3);
   });
 });
 

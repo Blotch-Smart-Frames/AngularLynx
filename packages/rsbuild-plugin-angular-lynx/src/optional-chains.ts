@@ -1,11 +1,10 @@
 import * as ts from 'typescript';
 import {
-  applyEdits,
   declareVariables,
-  type Edit,
   receiverScope,
   yieldingDefault,
 } from './private-methods.js';
+import { applyEdits, type Edit } from './source-map-edits.js';
 
 /**
  * `Function.prototype.apply`, reached through a new arrow function rather
@@ -424,7 +423,6 @@ export const lowerOptionalChains = (code: string, filename: string): string => {
       code,
       sourceFile,
     ),
-    sourceFile,
   );
 };
 

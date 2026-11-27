@@ -93,11 +93,12 @@ export const applyLayers = (api: RsbuildPluginAPI): void => {
         setPublicClassFields = false,
       ) => ({
         // A module's map comes only from the loaders before this one, as the
-        // plugin's transform hands it over (see inline-source-map.ts). Left
-        // to itself, SWC read the published `.map` file next to each
-        // library module and laid it over code the transform had rewritten,
-        // which put the main-thread script's code down to the wrong files
-        // (issue #722).
+        // plugin's transform hands it over, moved through its passes' edits
+        // (see source-map-comment.ts and source-map-edits.ts). Left to
+        // itself, SWC read the published `.map` file next to each library
+        // module and laid it over code the transform had rewritten, which
+        // put the main-thread script's code down to the wrong files (issue
+        // #722).
         inputSourceMap: false,
         jsc: {
           target,

@@ -1,5 +1,6 @@
 // cspell:words ɵɵdefineComponent ɵɵelementStart ɵɵelement ɵɵelementEnd ɵɵdomElementStart ɵɵdomElement ɵɵdomElementEnd ɵɵtext ɵɵadvance
 import * as ts from 'typescript';
+import { applyEdits, type Edit } from './source-map-edits.js';
 
 /**
  * The attribute a static block's root element gets, whose value is the
@@ -171,7 +172,7 @@ export const foldStaticBlocks = (
   }
 
   const imports = importsOf(sourceFile);
-  const edits: Array<{ start: number; end: number; text: string }> = [];
+  const edits: Edit[] = [];
   const declarations: string[] = [];
   let blockCount = 0;
 
@@ -247,15 +248,14 @@ export const foldStaticBlocks = (
   visit(sourceFile);
 
   if (edits.length === 0) return code;
-  // From the end, so earlier offsets stay valid.
-  edits.sort((a, b) => b.start - a.start);
-  let result = code;
-  for (const { start, end, text } of edits) {
-    result = result.slice(0, start) + text + result.slice(end);
-  }
-  // Before everything else: a component's definition, which reads them, is
-  // made as its class is defined. Imports are hoisted above them.
-  return `${declarations.join('\n')}\n${result}`;
+  // The declarations go before everything else: a component's definition,
+  // which reads them, is made as its class is defined. Imports are hoisted
+  // above them. One call, so a source map follows every edit (see
+  // source-map-edits.ts).
+  return applyEdits(code, [
+    { start: 0, end: 0, text: `${declarations.join('\n')}\n` },
+    ...edits,
+  ]);
 };
 
 /**

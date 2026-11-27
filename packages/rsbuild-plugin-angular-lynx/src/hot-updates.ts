@@ -1,6 +1,7 @@
 // cspell:words ɵɵdefine
 import { createHash } from 'node:crypto';
 import * as ts from 'typescript';
+import { applyEdits } from './source-map-edits.js';
 
 /**
  * The fields of `@Component()` that a hot update applies to running
@@ -170,6 +171,13 @@ export const componentClassNames = (
 const ACCEPT = 'ɵɵangularLynxHmrAccept';
 
 /**
+ * `code` with `text` after it, made with applyEdits as the other passes'
+ * edits are, so a source map follows it (see source-map-edits.ts).
+ */
+const appendCode = (code: string, text: string): string =>
+  applyEdits(code, [{ start: code.length, end: code.length, text }]);
+
+/**
  * Makes a module that defines components take its own hot updates, through
  * the runtime's `ɵhmrAccept`. The call reassigns the module's component
  * classes to what it returns, so after an in-place update the module's
@@ -191,12 +199,15 @@ export const addHotAccept = (
   }: { components: string[]; signature: string; compiled: string },
 ): string => {
   const list = `[${components.join(', ')}]`;
-  return `${code}
+  return appendCode(
+    code,
+    `
 import { ɵhmrAccept as ${ACCEPT} } from '@blotch/angular-lynx';
 if (import.meta.webpackHot) {
   ${list} = ${ACCEPT}(import.meta.webpackHot, ${list}, ${JSON.stringify(signature)}, ${JSON.stringify(hash(compiled))});
 }
-`;
+`,
+  );
 };
 
 /**
@@ -209,8 +220,11 @@ if (import.meta.webpackHot) {
  * @returns The code with the self-accept appended.
  */
 export const addEntryHotAccept = (code: string): string =>
-  `${code}
+  appendCode(
+    code,
+    `
 if (import.meta.webpackHot) {
   import.meta.webpackHot.accept();
 }
-`;
+`,
+  );

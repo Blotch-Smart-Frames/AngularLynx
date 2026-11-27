@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import * as ts from 'typescript';
+import { applyEdits, type Edit } from './source-map-edits.js';
 
 const RUNTIME_MODULE = '@blotch/angular-lynx';
 
@@ -13,8 +14,6 @@ export type CrossThreadTransformOptions = {
   /** The directory the file keys are relative to, the same for both bundles. */
   root: string;
 };
-
-type Edit = { start: number; end: number; text: string };
 
 /**
  * Gives each module-level `backgroundFn(fn)`, `createMainThreadRef(value)` and
@@ -56,14 +55,8 @@ export const transformCrossThread = (
     if (edit) edits.push(edit);
   });
 
-  // Apply from the end so earlier offsets stay valid. Edits never overlap:
-  // each goes after one call's arguments.
-  edits.sort((a, b) => b.start - a.start);
-  let result = code;
-  for (const { start, end, text } of edits) {
-    result = result.slice(0, start) + text + result.slice(end);
-  }
-  return result;
+  // Edits never overlap: each goes after one call's arguments.
+  return applyEdits(code, edits);
 };
 
 /**

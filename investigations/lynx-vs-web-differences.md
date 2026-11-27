@@ -1684,15 +1684,17 @@ Lynx's docs say a percentage is relative to the parent's size, but a nested `<te
 
 ---
 
-## `vertical-align` drops a value with a `var()` in it
+## `vertical-align` drops a value with a `var()` or a `calc()` in it
 
 ### What you'd expect (web)
 
-`vertical-align: calc(var(--size) / 3)` raises the text by a third of `--size`.
+`vertical-align: calc(var(--size) / 3)` raises the text by a third of `--size`, and `calc(0.4em + 10px)` by the sum of both.
 
 ### What Lynx does
 
 On Android (Lynx Explorer 4.1, API 34 emulator, November 2026), `vertical-align: 6px` and `calc(18px / 3)` raised the text, but `calc(var(--angular-lynx-font-size, 14px) / 3)` left it on the baseline, as if the declaration weren't there. Lynx's keywords move it little: `super` and `sub` move by a tenth of the element's height, and `40%` (of the line height) moved nothing visible. Use a length or an `em`, which is the element's own size: the `<sup>` rule is `vertical-align: 0.4em` (issue #649).
+
+Lynx's core takes a single length here and nothing else: `VerticalAlignHandler` (`core/renderer/css/parser/vertical_align_handler.cc`) parses the value as a length, and `ComputedCSSStyle::SetVerticalAlign` keeps it only if it resolves to a plain unit length (`NLength::IsUnit()`). Every `calc()` parses to a calculated length (`kNLengthCalc`, `TryMakeCalcNLength` in `css_style_utils.cc`), even one of lengths alone, so it's dropped whether it's inline or in a stylesheet rule. `calc(18px / 3)` worked in a rule only because the build's CSS minifier (lightningcss) folds it to `6px` first, which it can't do for `calc(0.4em + 10px)`: an inline `vertical-align: calc(0.4em + 10px)` drew the text on the line (iOS 27 Simulator, Lynx Explorer, November 2026). No single unit adds an `em` to pixels, so a distance in both can't reach Lynx at all. That's why a `<sup>` inside a tag raised by pixels rises by its own `0.4em` only (issue #734, see the next section).
 
 ---
 
@@ -1710,7 +1712,7 @@ On iOS, Lynx moves only the text of the inline `<text>` that has the `vertical-a
 
 The style index flags each rule with a `vertical-align` (`VERTICAL_ALIGN_FLAG`) and lists its distance in `em` and `px` with its specificity and its place in the stylesheet (`verticalAligns`, `style-index.ts` in the build plugin). On iOS and Android the runtime gives each HTML text tag inside a tag that moves the whole distance inline (`baselineShiftFor` in `text-flow.ts`, issues #682 and #715): `0.4em` for a `<b>` in a `<sup>`, `0.48em` for a `<small>` in a `<sup>` (it's 1.2 times smaller), `0.88em` for a `<sup>` in a `<sup>`, `0.5em` for a `<b>` in an app's `.exp { vertical-align: 0.5em }`, and `1em` for a `<sup>` in it. Of the rules that match a tag, it takes the one with the highest specificity, then the last in its stylesheet (`.note sup` beats the build's `sup`); an inline `vertical-align` on a tag around it counts too. A `px` distance goes inline as it is, and a tag whose rules set its size passes it to the tags inside, which measure its `em` by it.
 
-Where it can't tell the whole distance, it writes the distance of the longest part of the chain from the tag up that it can (`inlineBaselineShift`), so a `<b>` in a `<sup>` still rises with the `<sup>`'s own text. It can't tell it for a value with no fixed length (`super`, a percentage, a `calc()`, `rem`), a rule in an at-rule, nested, `!important`, or with a part of its selector the runtime can't check, two stylesheets that disagree, or an `em` distance above a tag with a size of its own, from a rule or an inline style. Nor can it write a distance in both `em` and `px`, such as a `<sup>`'s inside a tag raised `10px`: Lynx drops an inline `vertical-align: calc(0.4em + 10px)`, which drew the `<sup>` on the line (iOS 27 Simulator, Lynx Explorer, November 2026), so the `<sup>` rises by its own `0.4em` only.
+Where it can't tell the whole distance, it writes the distance of the longest part of the chain from the tag up that it can (`inlineBaselineShift`), so a `<b>` in a `<sup>` still rises with the `<sup>`'s own text. It can't tell it for a value with no fixed length (`super`, a percentage, a `calc()`, `rem`), a rule in an at-rule, nested, `!important`, or with a part of its selector the runtime can't check, two stylesheets that disagree, or an `em` distance above a tag with a size of its own, from a rule or an inline style. Nor can it write a distance in both `em` and `px`, such as a `<sup>`'s inside a tag raised `10px`: Lynx drops an inline `vertical-align: calc(0.4em + 10px)`, which drew the `<sup>` on the line (iOS 27 Simulator, Lynx Explorer, November 2026), and Lynx takes no other form of the sum (see "`vertical-align` drops a value with a `var()` or a `calc()` in it"), so the `<sup>` rises by its own `0.4em` only. To turn the `em` into pixels the runtime would have to read the tag's size from Lynx after a flush (`__GetComputedStyleByKey`), so the tag would draw a frame at the wrong height before it moved, and each change would cost another flush. It's left as a Lynx limitation (issue #734): to raise a `<sup>` inside a tag by both, raise the tag by an `em` distance rather than pixels, or give the `<sup>` the whole distance in pixels in its own inline style (`style="vertical-align: 16px"`), which it keeps alone.
 
 ---
 

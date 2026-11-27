@@ -1504,6 +1504,41 @@ describe('loose text', () => {
     expect(style('in-note-sup')).toContain('vertical-align: 0.3em');
   });
 
+  // Issue #734: a <sup> inside a tag an app's rule raises by pixels would
+  // need `0.4em + 10px`, which no value Lynx takes can hold. Its
+  // vertical-align takes a single length only: every calc(), inline or in a
+  // rule, parses to a calculated length that SetVerticalAlign rejects. The
+  // runtime doesn't know the <sup>'s size in pixels to add them up, so the
+  // <sup> keeps its own rule's 0.4em and never gets a calc() that would drop
+  // it to the line. Kept as a Lynx limitation: measuring the size after a
+  // flush would draw a frame at the wrong height first.
+  it('leaves a <sup> inside a tag raised by pixels to its own rule', () => {
+    (
+      globalThis as { __angularLynxStyleIndex?: unknown }
+    ).__angularLynxStyleIndex = {
+      rules: [
+        [['_ngtag-sup'], SMALLER_FLAG | VERTICAL_ALIGN_FLAG],
+        [['lift'], VERTICAL_ALIGN_FLAG],
+      ],
+      verticalAligns: [
+        ...BUILD_VERTICAL_ALIGNS,
+        [['lift'], [], [0, 10], 1000, 0, 2],
+      ],
+    };
+    const fixture = TestBed.createComponent(OwnAlignHost);
+    fixture.detectChanges();
+    const style = (cls: string): string =>
+      String(byClass(cls).attrs.get('style') ?? '');
+
+    expect(style('in-lift')).toContain('vertical-align: 10px');
+    expect(style('sup-in-lift')).not.toContain('vertical-align');
+    // The text inside the <sup> still rises with the <sup>'s own text.
+    expect(style('in-sup-in-lift')).toContain('vertical-align: 0.4em');
+    for (const cls of ['in-lift', 'sup-in-lift', 'in-sup-in-lift']) {
+      expect(style(cls)).not.toContain('calc(');
+    }
+  });
+
   // Issue #643: the build gives `<em>`, `<u>`, `<s>` and their kin the
   // browser's italic and lines, in rules on their tags' classes. As for
   // `<b>`'s weight, the index entries must keep the inherited value off, and

@@ -3439,6 +3439,12 @@ describe('<q>, element by element', () => {
     expect(leafText(openRef)).toBe('«');
     view.setAttribute('lang', 'de');
     expect(leafText(openRef)).toBe('„');
+
+    // A wrapper made later for the element between them (as parentNode()
+    // makes one) has no flag, and the change still reaches the <q>.
+    new LynxElement(wrapperRef as never);
+    view.setAttribute('lang', 'fr');
+    expect(leafText(openRef)).toBe('«');
   });
 
   it('gives a <q> put in a hydrated element the language above it', () => {
@@ -3469,7 +3475,15 @@ describe('<q>, element by element', () => {
     const list = doc.createElement('list');
     list.setAttribute('lang', 'fr');
     page.appendChild(list);
+    // An item with no <q>, and an element with no <q> beside one, which the
+    // change passes by.
+    const plain = doc.createElement('list-item');
+    plain.appendChild(doc.createElement('text'));
+    list.appendChild(plain);
     const item = doc.createElement('list-item');
+    const other = doc.createElement('text');
+    other.appendChild(doc.createText('no quote'));
+    item.appendChild(other);
     const text = doc.createElement('text');
     item.appendChild(text);
     const q = doc.createElement('q');

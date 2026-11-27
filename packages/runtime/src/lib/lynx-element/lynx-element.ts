@@ -2756,22 +2756,26 @@ export class LynxElement implements BaseLynxElement {
       inner++;
     }
     const pass = (child: LynxElement): void => {
-      if (child.#holdsQuote || child.#quoteMarks) {
-        child.#setQuoteDepth(inner, language);
-      }
+      child.#setQuoteDepth(inner, language);
     };
     // The native children, not #children: a hydrated element's aren't in
     // it (hydration inserts nothing), and a list's items are its virtual
     // children instead.
     LynxElement.#eachQuoteChild(this.element, pass);
-    for (const child of this.virtualChildren()) pass(child);
+    for (const child of this.virtualChildren()) {
+      if (child.#holdsQuote || child.#quoteMarks) pass(child);
+    }
   }
 
   /**
-   * Calls `fn` with the wrapper of each native child of `ref`, looking
-   * through the children that are only drawn there, which a `<q>` can be
-   * in: an anonymous `<text>` (see #regroup) and a snapshot's elements
-   * without a wrapper.
+   * Calls `fn` with each element among the native descendants of `ref`
+   * that holds a `<q>` or is one, nearest first (see #holdsQuote). It looks
+   * through the elements a flag can't be trusted on, which a `<q>` can be
+   * in without it: an anonymous `<text>` (see #regroup), a snapshot's
+   * element without a wrapper, and a wrapper with no JS children, which
+   * hydration leaves an element (or parentNode() makes one for a snapshot's
+   * element, after the `<q>`s below it flagged their ancestors). A wrapper
+   * Angular put children in has the flag if a `<q>` went in.
    */
   static #eachQuoteChild(
     ref: ElementRef,
@@ -2779,8 +2783,11 @@ export class LynxElement implements BaseLynxElement {
   ): void {
     for (let at = __FirstElement(ref); at; at = __NextElement(at)) {
       const child = LynxElement.#registered(__GetElementUniqueID(at));
-      if (child && !child.#anonymous) fn(child);
-      else LynxElement.#eachQuoteChild(at, fn);
+      if (child && (child.#holdsQuote || child.#quoteMarks)) {
+        fn(child);
+      } else if (!child || child.#anonymous || !child.#children) {
+        LynxElement.#eachQuoteChild(at, fn);
+      }
     }
   }
 

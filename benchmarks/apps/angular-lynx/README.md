@@ -93,6 +93,16 @@ jq '.packages |= with_entries(select(.key | test("(^|/)node_modules/@angular/") 
 node scripts/use-local-packages.mjs
 ```
 
+## Script size check
+
+CI builds this app for Lynx on every PR (`.github/workflows/script-sizes.yml`)
+and fails when its main-thread script, background script or
+`main.lynx.bundle` grows more than 10 KB or 2% (whichever is larger) past
+`.github/script-sizes.json`. A PR that means to grow them updates that file:
+copy the `script-sizes.json` the run uploads, or run
+`node .github/scripts/script-sizes.mts --update` after building this app and
+`examples/hello-world` with `DEBUG=rspeedy npx ng build --environment lynx`.
+
 ## Commands
 
 The fixture server first, from the repository root: `node benchmarks/fixtures/server.mjs`.

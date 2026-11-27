@@ -430,8 +430,9 @@ describe('source maps', () => {
   // Left to itself, SWC took a module's map from its `sourceMappingURL`
   // comment, or from the file beside it with `.map` added: a published
   // library's map, laid over code the plugin's transform had rewritten
-  // (issue #722). The transform hands the loader chain the map the code does
-  // have (inline-source-map.ts), which rspack passes SWC whatever this says.
+  // (issue #722). The transform hands the loader chain the module's map,
+  // moved through its passes' edits (source-map-comment.ts), which rspack
+  // passes SWC whatever this says.
   it.each([LAYERS.BACKGROUND, LAYERS.MAIN_THREAD])(
     "never has SWC look for a module's map itself in the %s layer",
     (layer) => {

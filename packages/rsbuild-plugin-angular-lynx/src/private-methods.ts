@@ -6,15 +6,15 @@ import {
   PACKAGES_DIR,
   THIRD_PARTY,
 } from './layers.js';
-import { findInlineSourceMap } from './inline-source-map.js';
 import { definesClassPurely } from './pure-classes.js';
+import { applyEdits, type Edit } from './source-map-edits.js';
 
 export type PrivateMethodsOptions = {
   /** The directory the file keys are relative to, as in cross-thread-transform.ts. */
   root: string;
 };
 
-export type Edit = { start: number; end: number; text: string };
+export type { Edit };
 
 /**
  * One class in a module, as {@link analyzeClasses} found it.
@@ -342,11 +342,7 @@ export const splitPrivateChains = (code: string, filename: string): string => {
   for (const at of questionMarks) {
     edits.push({ start: at, end: at, text: '?' });
   }
-  return applyEdits(
-    code,
-    declareVariables(receivers, edits, code, sourceFile),
-    sourceFile,
-  );
+  return applyEdits(code, declareVariables(receivers, edits, code, sourceFile));
 };
 
 /**
@@ -839,7 +835,7 @@ export const renamePrivateMethods = (
     edits.push({ start, end: start, text: `var ${symbols.join(', ')}; ` });
   }
   edits.push(...wraps);
-  return applyEdits(code, edits, sourceFile);
+  return applyEdits(code, edits);
 };
 
 /**
@@ -1192,7 +1188,7 @@ export const hidePrivateMethods = (
   // statement written without one.
   const end = sourceFile.statements[sourceFile.statements.length - 1]!.end;
   edits.push({ start: end, end, text: `;var ${variables.join(', ')};` });
-  return applyEdits(code, edits, sourceFile);
+  return applyEdits(code, edits);
 };
 
 /**
@@ -1423,31 +1419,6 @@ const analyzeClasses = (sourceFile: ts.SourceFile): ClassInfo[] => {
 };
 
 /**
- * `code` with `edits` made, its inline source map moved to match, or `code`
- * itself when there are none.
- */
-export const applyEdits = (
-  code: string,
-  edits: Edit[],
-  sourceFile: ts.SourceFile,
-): string => {
-  if (edits.length === 0) {
-    return code;
-  }
-  const mapEdit = shiftInlineSourceMap(edits, sourceFile);
-  const all = mapEdit ? [...edits, mapEdit] : edits;
-  // In source order, as the loop below expects. Edits never overlap.
-  all.sort((a, b) => a.start - b.start);
-  let result = '';
-  let last = 0;
-  for (const { start, end, text } of all) {
-    result += code.slice(last, start) + text;
-    last = end;
-  }
-  return result + code.slice(last);
-};
-
-/**
  * The declarations whose `name` binds an identifier in their scope (unlike
  * a property's or a method's).
  */
@@ -1529,136 +1500,4 @@ const isCalledAtOnce = (node: ts.Node): boolean => {
 const keyForFile = (filename: string, root: string): string => {
   const relative = path.relative(root, filename).split(path.sep).join('/');
   return createHash('sha1').update(relative).digest('hex').slice(0, 6);
-};
-
-/**
- * The edit that moves the columns of the module's inline source map by
- * `edits`, made to the code the map was written for. None when it has no
- * inline map, or one this can't read: the build goes on, with a map that's as
- * wrong as it was.
- */
-const shiftInlineSourceMap = (
-  edits: Edit[],
-  sourceFile: ts.SourceFile,
-): Edit | undefined => {
-  const found = findInlineSourceMap(sourceFile);
-  if (!found) {
-    return undefined;
-  }
-  let map: { mappings?: unknown };
-  try {
-    map = JSON.parse(
-      Buffer.from(
-        sourceFile.text.slice(found.start, found.end),
-        'base64',
-      ).toString('utf8'),
-    );
-  } catch {
-    return undefined;
-  }
-  const mappings = map.mappings;
-  if (typeof mappings !== 'string') {
-    return undefined;
-  }
-  // The edits on each line, in order, by column.
-  const editsByLine = new Map<
-    number,
-    Array<{ start: number; end: number; delta: number }>
-  >();
-  for (const { start, end, text } of edits) {
-    const { line, character } = sourceFile.getLineAndCharacterOfPosition(start);
-    const lineEdits = editsByLine.get(line) ?? [];
-    lineEdits.push({
-      start: character,
-      end: character + end - start,
-      delta: text.length - (end - start),
-    });
-    editsByLine.set(line, lineEdits);
-  }
-  try {
-    map.mappings = mappings
-      .split(';')
-      .map((segments, line) => {
-        const lineEdits = editsByLine.get(line);
-        return lineEdits ? shiftColumns(segments, lineEdits) : segments;
-      })
-      .join(';');
-  } catch {
-    return undefined;
-  }
-  return {
-    start: found.start,
-    end: found.end,
-    text: Buffer.from(JSON.stringify(map)).toString('base64'),
-  };
-};
-
-/**
- * One line of a source map's `mappings` with each segment's column moved past
- * the edits before it. A column inside an edit moves to the edit's start.
- */
-const shiftColumns = (
-  segments: string,
-  edits: Array<{ start: number; end: number; delta: number }>,
-): string => {
-  const shift = (column: number): number => {
-    let shifted = column;
-    for (const { start, end, delta } of edits) {
-      if (column >= end) shifted += delta;
-      else if (column > start) shifted -= column - start;
-    }
-    return shifted;
-  };
-  // Each segment's first field is its column, relative to the segment
-  // before it on the line; the other fields are left as they are.
-  let column = 0;
-  let previous = 0;
-  return segments
-    .split(',')
-    .map((segment) => {
-      if (segment === '') return segment;
-      const [delta, next] = decodeVlq(segment);
-      column += delta;
-      const shifted = shift(column);
-      const text = encodeVlq(shifted - previous) + segment.slice(next);
-      previous = shifted;
-      return text;
-    })
-    .join(',');
-};
-
-const BASE64 =
-  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-
-/**
- * The first base64 VLQ value in `text`, and where the next one starts. Throws
- * on a character that isn't base64, or a value that never ends, which would
- * otherwise read on forever.
- */
-const decodeVlq = (text: string): [value: number, next: number] => {
-  let value = 0;
-  let shift = 0;
-  let index = 0;
-  let digit: number;
-  do {
-    digit = index < text.length ? BASE64.indexOf(text[index++]) : -1;
-    if (digit < 0) {
-      throw new Error(`Invalid source map segment: ${text}`);
-    }
-    value += (digit & 31) * 2 ** shift;
-    shift += 5;
-  } while (digit & 32);
-  // The lowest bit is the sign.
-  return [value % 2 ? -(value - 1) / 2 : value / 2, index];
-};
-
-const encodeVlq = (value: number): string => {
-  let rest = value < 0 ? -value * 2 + 1 : value * 2;
-  let text = '';
-  do {
-    const digit = rest % 32;
-    rest = Math.floor(rest / 32);
-    text += BASE64[rest > 0 ? digit | 32 : digit];
-  } while (rest > 0);
-  return text;
 };

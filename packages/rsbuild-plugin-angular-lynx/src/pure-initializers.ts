@@ -1,6 +1,7 @@
 import * as ts from 'typescript';
 import { findModuleLevelCalls } from './cross-thread-transform.js';
 import { isPure, pureConstructions } from './pure-classes.js';
+import { applyEdits, type Edit } from './source-map-edits.js';
 
 /**
  * The runtime's names whose module-level calls register something on the
@@ -12,8 +13,6 @@ import { isPure, pureConstructions } from './pure-classes.js';
  */
 const CROSS_THREAD_NAMES =
   /\b(?:backgroundFn|createMainThreadRef|MainThreadRef)\b/;
-
-type Edit = { start: number; end: number; text: string };
 
 /**
  * Wraps each top-level variable's initializer in a pure IIFE, for the
@@ -101,13 +100,8 @@ export const wrapPureInitializers = (
   if (edits.length === 0) {
     return code;
   }
-  // From the end, so earlier offsets stay valid. Edits never share a start.
-  edits.sort((a, b) => b.start - a.start);
-  let result = code;
-  for (const { start, end, text } of edits) {
-    result = result.slice(0, start) + text + result.slice(end);
-  }
-  return result;
+  // Edits never share a start.
+  return applyEdits(code, edits);
 };
 
 /**

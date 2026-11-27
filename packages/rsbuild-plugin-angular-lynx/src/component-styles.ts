@@ -8,6 +8,7 @@ import {
   type ModuleStylesheets,
 } from './transform-module.js';
 import { generateComponentScopeId } from './utils/angular/component-scope-id.js';
+import { applyEdits } from './source-map-edits.js';
 
 /**
  * One component's styles, lifted out of its compiled definition.
@@ -206,14 +207,9 @@ export const extractComponentStyles = (
   };
   visit(sourceFile);
 
-  // Applied from the end, so each edit's offsets still hold. No two edits
-  // start at the same offset: a wrapper opens before its call's `styles` and
-  // closes after them.
-  let result = code;
-  for (const { start, end, text } of edits.sort((a, b) => b.start - a.start)) {
-    result = result.slice(0, start) + text + result.slice(end);
-  }
-  return { code: result, components };
+  // No two edits start at the same offset: a wrapper opens before its call's
+  // `styles` and closes after them.
+  return { code: applyEdits(code, edits), components };
 };
 
 /**

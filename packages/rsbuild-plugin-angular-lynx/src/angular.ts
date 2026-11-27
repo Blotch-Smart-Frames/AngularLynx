@@ -72,7 +72,8 @@ import { getAngularWorkspace } from './utils/angular/read-workspace.js';
 import { resolvePrimaryBuild } from './utils/angular/resolve-primary-build.js';
 import { resolvePages } from './utils/angular/resolve-pages.js';
 import { scanTemplatesForCappedTextWithoutEllipsis } from './capped-text.js';
-import { takeInlineSourceMap } from './inline-source-map.js';
+import { embedSourceMap, takeSourceMap } from './source-map-comment.js';
+import { type SourceMapPayload, trackSourceMap } from './source-map-edits.js';
 import {
   createLynxDiagnosticsReporter,
   scanCompiledOutputForHtmlElements,
@@ -627,7 +628,7 @@ export const applyAngularRules = async (
       environment: Parameters<typeof hotUpdatesEnabled>[0];
     },
     background: boolean,
-  ): Promise<{ code: string }> => {
+  ): Promise<{ code: string; map?: SourceMapPayload }> => {
     const hot = hotUpdatesEnabled(context.environment);
     const isJs = /\.[cm]?js$/.test(context.resourcePath);
     if (isJs) {
@@ -648,81 +649,111 @@ export const applyAngularRules = async (
           sideEffects: () => Promise.resolve(false),
         },
       );
-      // A prebuilt library's components carry their styles in their
-      // definitions. Lynx can't add CSS at runtime, so they leave the code
-      // here and ship as CSS files, as compileAngular() does for the app's.
-      const code = transformCrossThread(
-        transformWorklets(
-          shipLibraryComponentStyles(
-            Buffer.from(contents).toString(),
-            context.resourcePath,
-            { basePath, cacheDir: componentCssCacheDir },
-          ),
-          context.resourcePath,
-        ),
-        context.resourcePath,
-        { root: api.context.rootPath },
-      );
-      if (!background) {
-        // AngularLynx's classes, and the app's own, get their private
-        // methods defined once instead of on every instance (see
-        // private-methods.ts); other packages' are left as they are. After
-        // the cross-thread transform, whose IDs come from the code as
-        // written. Only here: the background thread never builds the element
-        // wrappers or components this is for, and there it cost tree shaking.
-        // With no private method left to lower inside a class's pure IIFE,
-        // SWC's minifier inlines the IIFE, and then can't drop the class when
-        // nothing uses it (kitchen-sink's background bundle kept the
-        // IntersectionObserver and XMLHttpRequest classes, 8.6 kB).
-        // Then what the module asks for of the runtime's on-demand code: the
-        // WebGL2 context, fetch, XMLHttpRequest, IntersectionObserver and the
-        // body APIs (see on-demand.ts).
-        return {
-          code: enableAskedFor(
-            transformPrivateMethods(
-              lowerOptionalChains(code, context.resourcePath),
-              context.resourcePath,
-              {
-                root: api.context.rootPath,
-              },
-            ),
-            context.resourcePath,
-          ),
-        };
-      }
-      const classesWrapped = wrapPureClasses(
-        markHostElementsPure(
-          splitBackgroundPrivateChains(
-            lowerOptionalChains(code, context.resourcePath),
-            context.resourcePath,
-          ),
-          context.resourcePath,
-        ),
+      // The module's map, which the passes below move with their edits (see
+      // source-map-edits.ts): the transformer leaves it inline, or, in a
+      // library module it changed nothing in, the comment naming the
+      // library's published map.
+      const transformed = takeSourceMap(
+        Buffer.from(contents).toString(),
         context.resourcePath,
       );
-      // AngularLynx's own packages also get their module-level values made
-      // droppable (see pure-initializers.ts): the background thread uses
-      // almost none of the runtime's. So do the app's own JavaScript files
-      // with `backgroundTreeShaking: 'aggressive'`, but never another
-      // package's (see background-tree-shaking.ts). After the class pass,
-      // whose IIFEs count as pure.
-      const wrapped = wrapsBackgroundInitializers(
-        context.resourcePath,
-        backgroundTreeShaking,
-      )
-        ? wrapPureInitializers(classesWrapped, context.resourcePath)
-        : classesWrapped;
-      // The generated background entry takes every hot update the
-      // background thread's modules pass on to it: running it again runs the
-      // updated modules again, which registers their background functions
-      // and refs again. The background thread has no app to update.
-      return {
-        code:
-          hot && backgroundEntries.isEntryFile(context.resourcePath)
-            ? addEntryHotAccept(wrapped)
-            : wrapped,
-      };
+      return trackSourceMap(transformed.code, transformed.map, (input) =>
+        transformJavaScriptModule(input, context.resourcePath, background, hot),
+      );
     }
+    return transformCompiledModule(context, background, hot);
+  };
+
+  /**
+   * The plugin's passes over a JavaScript module, after Angular's
+   * transformer: text in and text out, so trackSourceMap can follow their
+   * edits.
+   */
+  const transformJavaScriptModule = (
+    input: string,
+    resourcePath: string,
+    background: boolean,
+    hot: boolean,
+  ): string => {
+    // A prebuilt library's components carry their styles in their
+    // definitions. Lynx can't add CSS at runtime, so they leave the code
+    // here and ship as CSS files, as compileAngular() does for the app's.
+    const code = transformCrossThread(
+      transformWorklets(
+        shipLibraryComponentStyles(input, resourcePath, {
+          basePath,
+          cacheDir: componentCssCacheDir,
+        }),
+        resourcePath,
+      ),
+      resourcePath,
+      { root: api.context.rootPath },
+    );
+    if (!background) {
+      // AngularLynx's classes, and the app's own, get their private
+      // methods defined once instead of on every instance (see
+      // private-methods.ts); other packages' are left as they are. After
+      // the cross-thread transform, whose IDs come from the code as
+      // written. Only here: the background thread never builds the element
+      // wrappers or components this is for, and there it cost tree shaking.
+      // With no private method left to lower inside a class's pure IIFE,
+      // SWC's minifier inlines the IIFE, and then can't drop the class when
+      // nothing uses it (kitchen-sink's background bundle kept the
+      // IntersectionObserver and XMLHttpRequest classes, 8.6 kB).
+      // Then what the module asks for of the runtime's on-demand code: the
+      // WebGL2 context, fetch, XMLHttpRequest, IntersectionObserver and the
+      // body APIs (see on-demand.ts).
+      return enableAskedFor(
+        transformPrivateMethods(
+          lowerOptionalChains(code, resourcePath),
+          resourcePath,
+          {
+            root: api.context.rootPath,
+          },
+        ),
+        resourcePath,
+      );
+    }
+    const classesWrapped = wrapPureClasses(
+      markHostElementsPure(
+        splitBackgroundPrivateChains(
+          lowerOptionalChains(code, resourcePath),
+          resourcePath,
+        ),
+        resourcePath,
+      ),
+      resourcePath,
+    );
+    // AngularLynx's own packages also get their module-level values made
+    // droppable (see pure-initializers.ts): the background thread uses
+    // almost none of the runtime's. So do the app's own JavaScript files
+    // with `backgroundTreeShaking: 'aggressive'`, but never another
+    // package's (see background-tree-shaking.ts). After the class pass,
+    // whose IIFEs count as pure.
+    const wrapped = wrapsBackgroundInitializers(
+      resourcePath,
+      backgroundTreeShaking,
+    )
+      ? wrapPureInitializers(classesWrapped, resourcePath)
+      : classesWrapped;
+    // The generated background entry takes every hot update the
+    // background thread's modules pass on to it: running it again runs the
+    // updated modules again, which registers their background functions
+    // and refs again. The background thread has no app to update.
+    return hot && backgroundEntries.isEntryFile(resourcePath)
+      ? addEntryHotAccept(wrapped)
+      : wrapped;
+  };
+
+  /**
+   * Compiles one of the app's TypeScript modules for one thread, from the
+   * output Angular's compiler left for it in the cache.
+   */
+  const transformCompiledModule = async (
+    context: Parameters<typeof transformModule>[0],
+    background: boolean,
+    hot: boolean,
+  ): Promise<{ code: string; map?: SourceMapPayload }> => {
     const content = typeScriptFileCache.get(context.resourcePath);
     if (!content) {
       // No entry in the cache means Angular's compiler never saw this file
@@ -741,39 +772,44 @@ export const applyAngularRules = async (
     ) ?? []) {
       context.addDependency(dependency);
     }
-    const compiled =
-      typeof content === 'string' ? content : Buffer.from(content).toString();
-    const code = buildTransformedCode({
-      // The main thread builds each template's static blocks with Lynx's
-      // element calls (static-blocks.ts). The background thread never renders.
-      code: background
-        ? compiled
-        : foldStaticBlocks(
-            compiled,
-            context.resourcePath,
-            resolveDependencies(context.resourcePath),
-          ),
-      resourcePath: context.resourcePath,
-      stylesheets: moduleStylesheets.get(context.resourcePath),
-      root: api.context.rootPath,
-      // Only the main thread's modules take hot updates themselves; the
-      // background thread's pass theirs on to its entry (above).
-      hot:
-        hot && !background
-          ? {
-              entry: appEntries.has(path.normalize(context.resourcePath)),
-              source: () => fs.readFileSync(context.resourcePath, 'utf-8'),
-            }
-          : undefined,
-    });
+    const compiled = takeSourceMap(
+      typeof content === 'string' ? content : Buffer.from(content).toString(),
+      context.resourcePath,
+    );
+    const built = trackSourceMap(compiled.code, compiled.map, (input) =>
+      buildTransformedCode({
+        // The main thread builds each template's static blocks with Lynx's
+        // element calls (static-blocks.ts). The background thread never
+        // renders.
+        code: background
+          ? input
+          : foldStaticBlocks(
+              input,
+              context.resourcePath,
+              resolveDependencies(context.resourcePath),
+            ),
+        resourcePath: context.resourcePath,
+        stylesheets: moduleStylesheets.get(context.resourcePath),
+        root: api.context.rootPath,
+        // Only the main thread's modules take hot updates themselves; the
+        // background thread's pass theirs on to its entry (above).
+        hot:
+          hot && !background
+            ? {
+                entry: appEntries.has(path.normalize(context.resourcePath)),
+                source: () => fs.readFileSync(context.resourcePath, 'utf-8'),
+              }
+            : undefined,
+      }),
+    );
     if (!background) {
       // The app's private methods, as for a JavaScript module above. After
       // the transforms buildTransformedCode makes, so the cross-thread IDs
       // come from the same code as the background thread's.
-      return {
-        code: enableAskedFor(
+      return trackSourceMap(built.code, built.map, (input) =>
+        enableAskedFor(
           transformPrivateMethods(
-            lowerOptionalChains(code, context.resourcePath),
+            lowerOptionalChains(input, context.resourcePath),
             context.resourcePath,
             {
               root: api.context.rootPath,
@@ -781,7 +817,7 @@ export const applyAngularRules = async (
           ),
           context.resourcePath,
         ),
-      };
+      );
     }
     // The background thread runs a module like this for its background
     // functions and refs, never for its components, services or pipes.
@@ -793,63 +829,68 @@ export const applyAngularRules = async (
     // buildTransformedCode, so the cross-thread IDs come from the same code
     // as the main thread's. Top-level calls in the app's files, such as
     // backgroundFn() itself, aren't marked pure, except registerHostElement()
-    // (see markHostElementsPure).
-    const classesWrapped = wrapPureClasses(
-      markHostElementsPure(
-        splitBackgroundPrivateChains(
-          lowerOptionalChains(
-            Buffer.from(
-              await javascriptTransformer.transformData(
-                context.resourcePath,
-                code,
-                {
-                  skipLinker: true,
-                  sideEffects: () => Promise.resolve(false),
-                },
-              ),
-            ).toString(),
+    // (see markHostElementsPure). The transformer composes the map it's
+    // given inline with its own, as it does for a library module.
+    const optimized = takeSourceMap(
+      Buffer.from(
+        await javascriptTransformer.transformData(
+          context.resourcePath,
+          built.map ? embedSourceMap(built.code, built.map) : built.code,
+          {
+            skipLinker: true,
+            sideEffects: () => Promise.resolve(false),
+          },
+        ),
+      ).toString(),
+      context.resourcePath,
+    );
+    return trackSourceMap(optimized.code, optimized.map, (input) => {
+      const classesWrapped = wrapPureClasses(
+        markHostElementsPure(
+          splitBackgroundPrivateChains(
+            lowerOptionalChains(input, context.resourcePath),
             context.resourcePath,
           ),
           context.resourcePath,
         ),
         context.resourcePath,
-      ),
-      context.resourcePath,
-    );
-    // With `backgroundTreeShaking: 'aggressive'`, the module-level values
-    // too, as for AngularLynx's packages, so the minifier drops the ones
-    // nothing on the background thread reads: a `signal()` only the
-    // component's main-thread scripts read, which kept Angular's signals and
-    // DI there, each module-level mainThreadFn() (only a handle there), or
-    // the icon table of dolan's copy of `@blotch/ui` (issue #743). Off by
-    // default, as such a declaration's initializer stops running there even
-    // when it does something on purpose. After the class pass, whose IIFEs
-    // count as pure.
-    return {
-      code: wrapsBackgroundInitializers(
+      );
+      // With `backgroundTreeShaking: 'aggressive'`, the module-level values
+      // too, as for AngularLynx's packages, so the minifier drops the ones
+      // nothing on the background thread reads: a `signal()` only the
+      // component's main-thread scripts read, which kept Angular's signals
+      // and DI there, each module-level mainThreadFn() (only a handle
+      // there), or the icon table of dolan's copy of `@blotch/ui` (issue
+      // #743). Off by default, as such a declaration's initializer stops
+      // running there even when it does something on purpose. After the
+      // class pass, whose IIFEs count as pure.
+      return wrapsBackgroundInitializers(
         context.resourcePath,
         backgroundTreeShaking,
       )
         ? wrapPureInitializers(classesWrapped, context.resourcePath)
-        : classesWrapped,
-    };
+        : classesWrapped;
+    });
   };
 
   /**
    * A module compiled for one thread, with the ES built-ins it names imported
    * at its top (see es-builtins.ts). From its final code, which is what runs.
-   * Its inline source map, if Angular left one, goes to the next loader as
-   * the module's map rather than in a comment (see inline-source-map.ts).
+   * Its source map, moved through every pass's edits, goes to the next
+   * loader as the module's map rather than in a comment (see
+   * source-map-comment.ts).
    */
   const transformForThread = async (
     context: Parameters<typeof transformModule>[0],
     background: boolean,
   ): Promise<{ code: string; map?: string }> => {
-    const { code } = await transformModule(context, background);
-    return takeInlineSourceMap(
-      importEsBuiltinsWhereNamed(code, context.resourcePath),
-      context.resourcePath,
+    const transformed = await transformModule(context, background);
+    const { code, map } = trackSourceMap(
+      transformed.code,
+      transformed.map,
+      (input) => importEsBuiltinsWhereNamed(input, context.resourcePath),
     );
+    return map ? { code, map: JSON.stringify(map) } : { code };
   };
 
   // One transform per layer, as the background layer compiles the app's

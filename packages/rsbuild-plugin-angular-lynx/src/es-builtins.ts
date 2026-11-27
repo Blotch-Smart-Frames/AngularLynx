@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as ts from 'typescript';
+import { applyEdits } from './source-map-edits.js';
 
 /**
  * The folder of the built-ins' modules (`es-builtins/`), next to the plugin's
@@ -322,7 +323,9 @@ export const importEsBuiltinsWhereNamed = (
     (filename.endsWith('.js') && isInModulePackage(filename))
   ) {
     const imports = specifiers.map((specifier) => `import ${specifier}; `);
-    return `${code.slice(0, head)}${imports.join('')}${code.slice(head)}`;
+    return applyEdits(code, [
+      { start: head, end: head, text: imports.join('') },
+    ]);
   }
   // A CommonJS module (or a script) has no imports. The requires go after its
   // directives: before a `'use strict'`, it would stop being one. The `;`
@@ -338,5 +341,7 @@ export const importEsBuiltinsWhereNamed = (
     offset = statement.end;
   }
   const requires = specifiers.map((specifier) => `require(${specifier});`);
-  return `${code.slice(0, offset)};${requires.join('')} ${code.slice(offset)}`;
+  return applyEdits(code, [
+    { start: offset, end: offset, text: `;${requires.join('')} ` },
+  ]);
 };

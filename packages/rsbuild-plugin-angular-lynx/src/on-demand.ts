@@ -3,6 +3,7 @@ import path from 'node:path';
 import * as ts from 'typescript';
 import { isAngularLynxPackageModule } from './layers.js';
 import { isStrictEsmFile } from './strict-esm.js';
+import { applyEdits } from './source-map-edits.js';
 
 const RUNTIME = '@blotch/angular-lynx';
 /**
@@ -283,7 +284,13 @@ export const enableOnDemand = (
       .map((enable, i) => `${enable} as ${locals[i]}`)
       .join(', ');
     const calls = locals.map((local) => `${local}(); `).join('');
-    return `${code.slice(0, head)}import { ${bindings} } from ${specifier}; ${calls}${code.slice(head)}`;
+    return applyEdits(code, [
+      {
+        start: head,
+        end: head,
+        text: `import { ${bindings} } from ${specifier}; ${calls}`,
+      },
+    ]);
   }
   // A CommonJS module (or a script) has no imports. The calls go after its
   // directives: before a `'use strict'`, it would stop being one. The `;`
@@ -301,7 +308,7 @@ export const enableOnDemand = (
   const calls = enables
     .map((enable) => `require(${specifier}).${enable}();`)
     .join('');
-  return `${code.slice(0, offset)};${calls} ${code.slice(offset)}`;
+  return applyEdits(code, [{ start: offset, end: offset, text: `;${calls} ` }]);
 };
 
 /**

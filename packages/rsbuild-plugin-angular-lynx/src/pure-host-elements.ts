@@ -1,4 +1,5 @@
 import * as ts from 'typescript';
+import { applyEdits } from './source-map-edits.js';
 
 const RUNTIME = '@blotch/angular-lynx';
 const REGISTER = 'registerHostElement';
@@ -123,13 +124,12 @@ export const markHostElementsPure = (
     name = `_${name}`;
   }
 
-  // From the end, so earlier offsets stay valid.
-  let result = code;
-  for (const [index, start] of [...starts.entries()].reverse()) {
-    result =
-      result.slice(0, start) +
-      `const ${name}${index} = ${PURE}` +
-      result.slice(start);
-  }
-  return result;
+  return applyEdits(
+    code,
+    starts.map((start, index) => ({
+      start,
+      end: start,
+      text: `const ${name}${index} = ${PURE}`,
+    })),
+  );
 };

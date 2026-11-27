@@ -4209,14 +4209,22 @@ export class LynxElement implements BaseLynxElement {
    * out of this one before it was released, as CDK's DomPortal hands its
    * element back when its view is destroyed: they're still shown. The ones
    * still under it go with it, and so does one released already, with
-   * another element destroyed in the same cycle that it moved into.
+   * another element destroyed in the same cycle that it moved into: it's
+   * out of the registry then. Not its painting state: a list item moved out
+   * after this was destroyed is marked painting-dead with it, but its list
+   * still shows it.
    */
   #restoreAnimationsMovedOut(): void {
     const ended = LynxElement.#endedAnimations.get(this);
     if (!ended) return;
     LynxElement.#endedAnimations.delete(this);
     for (const el of ended) {
-      if (el.#paintingDead || el.#isInSubtreeOf(this)) continue;
+      if (
+        LynxElement.#registered(__GetElementUniqueID(el.element)) !== el ||
+        el.#isInSubtreeOf(this)
+      ) {
+        continue;
+      }
       el.#rewriteInlineStyle();
       LynxElement.#platformAnimated.add(el);
     }

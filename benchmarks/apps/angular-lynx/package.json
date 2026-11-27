@@ -1,6 +1,7 @@
 {
   "name": "angular-lynx",
   "version": "0.0.0",
+  "private": true,
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
@@ -8,8 +9,6 @@
     "watch": "ng build --watch --configuration development",
     "test": "ng test"
   },
-  "private": true,
-  "packageManager": "npm@11.19.1",
   "dependencies": {
     "@angular/common": "22.3.0",
     "@angular/compiler": "22.3.0",
@@ -17,7 +16,7 @@
     "@angular/forms": "22.3.0",
     "@angular/platform-browser": "22.3.0",
     "@angular/router": "22.3.0",
-    "@blotch/angular-lynx": "file:.local-packages/blotch-angular-lynx-22.3.1-c8b375c0.tgz",
+    "@blotch/angular-lynx": "file:.local-packages/blotch-angular-lynx-22.3.1-7a89bb16.tgz",
     "@blotch/dolan": "file:.local-packages/blotch-dolan-22.3.1-7baa06ee.tgz",
     "rxjs": "7.8.2",
     "tslib": "2.9.1"
@@ -27,6 +26,8 @@
     "@angular/cli": "22.3.0",
     "@angular/compiler-cli": "22.3.0",
     "@blotch/angular-lynx-build": "file:.local-packages/blotch-angular-lynx-build-22.3.1-475e401a.tgz",
+    "@blotch/angular-lynx-native": "file:.local-packages/blotch-angular-lynx-native-22.3.1-dd9a7788.tgz",
+    "@blotch/rsbuild-plugin-angular-lynx": "file:.local-packages/blotch-rsbuild-plugin-angular-lynx-22.3.1-c47a2a5a.tgz",
     "@lynx-js/types": "4.4.2",
     "@tailwindcss/postcss": "4.3.5",
     "jsdom": "30.1.3",
@@ -36,11 +37,11 @@
     "vitest": "5.1.1"
   },
   "overrides": {
-    "@blotch/rsbuild-plugin-angular-lynx": "file:.local-packages/blotch-rsbuild-plugin-angular-lynx-22.3.1-1b671cfe.tgz",
-    "@blotch/angular-lynx-native": "file:.local-packages/blotch-angular-lynx-native-22.3.1-72c00740.tgz",
+    "@blotch/angular-lynx": "file:.local-packages/blotch-angular-lynx-22.3.1-7a89bb16.tgz",
     "@blotch/angular-lynx-build": "file:.local-packages/blotch-angular-lynx-build-22.3.1-475e401a.tgz",
-    "@blotch/angular-lynx": "file:.local-packages/blotch-angular-lynx-22.3.1-c8b375c0.tgz",
-    "@blotch/angular-lynx-testing-library": "file:.local-packages/blotch-angular-lynx-testing-library-22.3.1-40267d44.tgz",
-    "@blotch/dolan": "file:.local-packages/blotch-dolan-22.3.1-7baa06ee.tgz"
-  }
+    "@blotch/angular-lynx-native": "file:.local-packages/blotch-angular-lynx-native-22.3.1-dd9a7788.tgz",
+    "@blotch/dolan": "file:.local-packages/blotch-dolan-22.3.1-7baa06ee.tgz",
+    "@blotch/rsbuild-plugin-angular-lynx": "file:.local-packages/blotch-rsbuild-plugin-angular-lynx-22.3.1-c47a2a5a.tgz"
+  },
+  "packageManager": "npm@11.19.1"
 }

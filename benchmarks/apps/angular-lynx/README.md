@@ -61,10 +61,14 @@ node scripts/use-local-packages.mjs        # or --build to run the root build fi
 
 `scripts/use-local-packages.mjs` packs every package in
 `packages/release/src/packages.ts` (the list the E2E tests and the publish
-workflow use) with `npm pack` into `.local-packages/` (git-ignored), points the
-app's `@blotch/*` dependencies at the tarballs, and adds an `overrides` entry
-for each, so the packages they bring (`@blotch/angular-lynx-build` brings the
-rsbuild plugin and the native builder) are the packed ones too. Each tarball's
+workflow use) with `npm pack` into `.local-packages/` (git-ignored) and points
+the app at the tarballs: its `@blotch/*` dependencies, and the packages they
+bring (`@blotch/angular-lynx-build` brings the rsbuild plugin and the native
+builder), which it adds to `devDependencies`. An `overrides` entry for each
+makes the packages that depend on them take the packed ones too. They have to
+be direct dependencies: npm resolves a `file:` override from the package that
+depends on it, so `@blotch/angular-lynx-build`'s would look for the tarball in
+`node_modules/@blotch/angular-lynx-build/.local-packages/`. Each tarball's
 name ends in a hash of its bytes, so package.json and the lockfile change
 whenever a package does, and npm installs the new one. Run it again after
 changing or rebuilding a package. `node scripts/use-local-packages.mjs -- <args>`

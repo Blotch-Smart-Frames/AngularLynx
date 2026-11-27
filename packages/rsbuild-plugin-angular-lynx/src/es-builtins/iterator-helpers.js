@@ -1,4 +1,6 @@
 import {
+  call,
+  createDataProperty,
   definePolyfillOverride,
   definePolyfills,
   isObject,
@@ -26,7 +28,8 @@ const iteratorOrIterable = (value, allowStrings) => {
     throw new TypeError('Expected an iterator or an iterable');
   }
   const method = value[Symbol.iterator];
-  const iterator = method == null ? value : requireCallable(method).call(value);
+  const iterator =
+    method == null ? value : call(requireCallable(method), value);
   if (!isObject(iterator)) throw new TypeError('Expected an iterator');
   return iteratorRecord(iterator);
 };
@@ -40,8 +43,22 @@ const IteratorHelperPrototype = Object.create(IteratorPrototype);
 const helperStates = new WeakMap();
 const createHelper = (step, close) => {
   const helper = Object.create(IteratorHelperPrototype);
-  helperStates.set(helper, { step, close, running: false, done: false });
+  helperStates.set(helper, {
+    step,
+    close,
+    running: false,
+    started: false,
+    done: false,
+  });
   return helper;
+};
+/**
+ * Marks the helper done, and lets go of what it read, so a finished helper
+ * doesn't keep its source (or Iterator.concat's iterables) alive.
+ */
+const finish = (state) => {
+  state.done = true;
+  state.step = state.close = undefined;
 };
 const helperState = (helper) => {
   const state = helperStates.get(helper);
@@ -53,18 +70,18 @@ definePolyfills(IteratorHelperPrototype, {
   next() {
     const state = helperState(this);
     if (state.done) return { value: undefined, done: true };
-    state.running = true;
+    state.running = state.started = true;
     let value;
     try {
       value = state.step();
     } catch (error) {
-      state.done = true;
+      finish(state);
       throw error;
     } finally {
       state.running = false;
     }
     if (value === DONE) {
-      state.done = true;
+      finish(state);
       return { value: undefined, done: true };
     }
     return { value, done: false };
@@ -72,8 +89,17 @@ definePolyfills(IteratorHelperPrototype, {
   return() {
     const state = helperState(this);
     if (!state.done) {
-      state.done = true;
-      state.close();
+      const { close, started } = state;
+      finish(state);
+      // A helper that has started closes from inside its generator, which
+      // is running until it's closed: the source's return() can't call the
+      // helper again. One that hasn't started is already done by then.
+      state.running = started;
+      try {
+        close();
+      } finally {
+        state.running = false;
+      }
     }
     return { value: undefined, done: true };
   },
@@ -337,8 +363,43 @@ if (typeof globalThis.Iterator !== 'function') {
     value: IteratorPrototype,
     writable: false,
   });
-  definePolyfillOverride(IteratorPrototype, 'constructor', Iterator);
-  definePolyfillOverride(IteratorPrototype, Symbol.toStringTag, 'Iterator');
+  /**
+   * Iterator.prototype's `constructor` and Symbol.toStringTag are accessors
+   * (as on the web, where sites assign them on objects that inherit them): a
+   * getter for the value, and a setter that defines the property on the
+   * object assigned to, but refuses to change it on Iterator.prototype itself
+   * (SetterThatIgnoresPrototypeProperties).
+   */
+  const setOwn = (object, key, value) => {
+    if (!isObject(object) || object === IteratorPrototype) {
+      throw new TypeError('Cannot assign to read only property');
+    }
+    if (Object.getOwnPropertyDescriptor(object, key)) object[key] = value;
+    else createDataProperty(object, key, value);
+  };
+  const accessors = {
+    get constructor() {
+      return Iterator;
+    },
+    set constructor(value) {
+      setOwn(this, 'constructor', value);
+    },
+    get [Symbol.toStringTag]() {
+      return 'Iterator';
+    },
+    set [Symbol.toStringTag](value) {
+      setOwn(this, Symbol.toStringTag, value);
+    },
+  };
+  for (const key of ['constructor', Symbol.toStringTag]) {
+    const { get, set } = Object.getOwnPropertyDescriptor(accessors, key);
+    Object.defineProperty(IteratorPrototype, key, {
+      get,
+      set,
+      enumerable: false,
+      configurable: true,
+    });
+  }
   definePolyfillOverride(globalThis, 'Iterator', Iterator);
 }
 /* oxlint-enable func-style, @blotch/no-function-declaration */
@@ -355,13 +416,13 @@ const wrappedRecord = (wrapper) => {
 definePolyfills(WrapForValidIteratorPrototype, {
   next() {
     const record = wrappedRecord(this);
-    return record.next.call(record.iterator);
+    return call(record.next, record.iterator);
   },
   return() {
     const { iterator } = wrappedRecord(this);
     const method = iterator.return;
     if (method == null) return { value: undefined, done: true };
-    return requireCallable(method).call(iterator);
+    return call(requireCallable(method), iterator);
   },
 });
 
@@ -394,7 +455,7 @@ definePolyfills(globalThis.Iterator, {
           if (!current) {
             if (position === iterables.length) return DONE;
             const { iterable, open } = iterables[position++];
-            const iterator = open.call(iterable);
+            const iterator = call(open, iterable);
             if (!isObject(iterator))
               throw new TypeError('Expected an iterator');
             current = iteratorRecord(iterator);

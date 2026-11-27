@@ -50,6 +50,12 @@ export const requireCallable = (value) => {
   if (typeof value !== 'function') throw new TypeError('Expected a function');
   return value;
 };
+/**
+ * Call(fn, thisArg, args): calls a function the caller handed over without
+ * reading its `call` property, which the function can shadow or delete
+ * (`fn.call = undefined` still leaves it callable for the built-ins).
+ */
+export const call = (fn, thisArg, ...args) => Reflect.apply(fn, thisArg, args);
 export const toObject = (value) => {
   if (value == null) {
     throw new TypeError('Cannot convert undefined or null to object');
@@ -71,13 +77,16 @@ export const lengthOf = (object) =>
     Number.MAX_SAFE_INTEGER,
   );
 /**
- * IsConstructor, without calling it: Reflect.construct throws when the new
- * target isn't a constructor.
+ * IsConstructor, without calling it or reading anything from it: a proxy has
+ * [[Construct]] only when its target does, and its `construct` trap runs in
+ * place of the target. (Reflect.construct with the value as the new target
+ * reads its `prototype`, which a proxy can throw from.)
  */
+const constructTrap = { construct: () => ({}) };
 export const isConstructor = (value) => {
   if (typeof value !== 'function') return false;
   try {
-    Reflect.construct(String, [], value);
+    new new Proxy(value, constructTrap)();
     return true;
   } catch {
     return false;
@@ -98,10 +107,11 @@ export const createDataProperty = (object, key, value) => {
  * methods and the iterator helpers.
  */
 export const iteratorRecord = (iterator) => ({ iterator, next: iterator.next });
-// What stepValue returns once the iterator is done.
+// What stepValue returns once the iterator is done. Nothing outside these
+// modules can reach it, so no iterator can yield it.
 export const DONE = {};
 export const stepValue = (record) => {
-  const result = record.next.call(record.iterator);
+  const result = call(record.next, record.iterator);
   if (!isObject(result))
     throw new TypeError('Iterator result is not an object');
   return result.done ? DONE : result.value;
@@ -112,7 +122,7 @@ export const stepValue = (record) => {
 export const closeIterator = (iterator) => {
   const method = iterator.return;
   if (method == null) return;
-  if (!isObject(requireCallable(method).call(iterator))) {
+  if (!isObject(call(requireCallable(method), iterator))) {
     throw new TypeError('Iterator result is not an object');
   }
 };
@@ -123,7 +133,7 @@ export const closeIterator = (iterator) => {
 export const closeAndThrow = (iterator, error) => {
   try {
     const method = iterator.return;
-    if (method != null) method.call(iterator);
+    if (method != null) call(method, iterator);
   } catch {
     // The original error is the one to report.
   }
@@ -133,8 +143,7 @@ export const closeAndThrow = (iterator, error) => {
 /**
  * ES2022 `.at()`, on arrays, strings and typed arrays.
  */
-export const relativeIndex = (object, index) => {
-  const length = lengthOf(object);
+export const relativeIndex = (object, index, length = lengthOf(object)) => {
   let n = toIntegerOrInfinity(index);
   if (n < 0) n += length;
   if (n < 0 || n >= length) return undefined;
@@ -155,10 +164,17 @@ export const createArray = (length) => {
   array.length = length;
   return array;
 };
-export const copyArrayLike = (object, length) => {
-  const copy = createArray(length);
-  for (let index = 0; index < length; index++) copy[index] = object[index];
-  return copy;
+/**
+ * A new array of `length` from `value(index)`. Each element is an own data
+ * property (CreateDataPropertyOrThrow), so a setter on Array.prototype can't
+ * intercept it as `array[index] = value` would let it.
+ */
+export const arrayFrom = (length, value) => {
+  const array = createArray(length);
+  for (let index = 0; index < length; index++) {
+    createDataProperty(array, index, value(index));
+  }
+  return array;
 };
 export const actualIndex = (index, length) => {
   const relative = toIntegerOrInfinity(index);
@@ -181,6 +197,19 @@ export const typedArrayName =
 export const typedArrayLength =
   TypedArrayPrototype &&
   Object.getOwnPropertyDescriptor(TypedArrayPrototype, 'length').get;
+// The typed array constructors, by name, as they were when the app started:
+// the spec creates the intrinsic %Float64Array%, which replacing
+// globalThis.Float64Array doesn't change. Pure, so a bundle that doesn't use
+// typedArrayKind drops it.
+const typedArrayKinds = /* @__PURE__ */ (() => {
+  const kinds = {};
+  for (const kind of 'Int8 Uint8 Uint8Clamped Int16 Uint16 Int32 Uint32 Float16 Float32 Float64 BigInt64 BigUint64'.split(
+    ' ',
+  )) {
+    kinds[kind + 'Array'] = globalThis[kind + 'Array'];
+  }
+  return kinds;
+})();
 /**
  * TypedArrayCreateSameType: the copy is the receiver's own kind (a Float64Array
  * for a Float64Array), never a subclass.
@@ -188,7 +217,7 @@ export const typedArrayLength =
 export const typedArrayKind = (value) => {
   const name = typedArrayName.call(value);
   if (name === undefined) throw new TypeError('Expected a typed array');
-  return globalThis[name];
+  return typedArrayKinds[name];
 };
 
 /**
@@ -199,8 +228,15 @@ export const promiseCapability = (Constructor) => {
   let resolve;
   let reject;
   const promise = new Constructor((resolveFn, rejectFn) => {
+    // A constructor may call the executor more than once, but only the first
+    // call may set the functions.
+    if (resolve !== undefined || reject !== undefined) {
+      throw new TypeError('Promise executor has already been invoked');
+    }
     resolve = resolveFn;
     reject = rejectFn;
   });
+  requireCallable(resolve);
+  requireCallable(reject);
   return { promise, resolve, reject };
 };

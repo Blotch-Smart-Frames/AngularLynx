@@ -5,6 +5,7 @@ import {
   toThisString,
   TypedArrayPrototype,
   typedArrayKind,
+  typedArrayLength,
 } from './shared.js';
 
 // ES2022 `.at()`, on arrays, strings and typed arrays.
@@ -24,7 +25,9 @@ if (TypedArrayPrototype) {
   definePolyfills(TypedArrayPrototype, {
     at(index) {
       typedArrayKind(this);
-      return relativeIndex(this, index);
+      // The typed array's own length, which a `length` getter on a subclass
+      // or the array itself can't change.
+      return relativeIndex(this, index, typedArrayLength.call(this));
     },
   });
 }

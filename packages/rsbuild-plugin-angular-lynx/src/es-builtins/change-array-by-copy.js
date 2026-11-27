@@ -1,7 +1,6 @@
 import {
   actualIndex,
-  copyArrayLike,
-  createArray,
+  arrayFrom,
   definePolyfills,
   lengthOf,
   requireComparator,
@@ -18,16 +17,16 @@ definePolyfills(Array.prototype, {
   toReversed() {
     const object = toObject(this);
     const length = lengthOf(object);
-    const result = createArray(length);
-    for (let index = 0; index < length; index++) {
-      result[index] = object[length - 1 - index];
-    }
-    return result;
+    return arrayFrom(length, (index) => object[length - 1 - index]);
   },
   toSorted(comparator) {
     requireComparator(comparator);
     const object = toObject(this);
-    return copyArrayLike(object, lengthOf(object)).sort(comparator);
+    // Every element of the copy is its own, so sort() writes them back
+    // without reaching a setter on Array.prototype.
+    return arrayFrom(lengthOf(object), (index) => object[index]).sort(
+      comparator,
+    );
   },
   toSpliced(start, skipCount) {
     const object = toObject(this);
@@ -48,31 +47,28 @@ definePolyfills(Array.prototype, {
               Math.max(toIntegerOrInfinity(skipCount), 0),
               length - actualStart,
             );
-    const newLength =
-      length + Math.max(arguments.length - 2, 0) - actualSkipCount;
+    const insertCount = Math.max(arguments.length - 2, 0);
+    // Subtracting first keeps the sum exact up to 2^53: adding first could
+    // round a length past 2^53 - 1 down to it, and pass this check.
+    const newLength = length - actualSkipCount + insertCount;
     if (newLength > Number.MAX_SAFE_INTEGER) {
       throw new TypeError('Invalid array length');
     }
-    const result = createArray(newLength);
-    let to = 0;
-    for (let from = 0; from < actualStart; from++) result[to++] = object[from];
-    for (let item = 2; item < arguments.length; item++) {
-      result[to++] = arguments[item];
-    }
-    for (let from = actualStart + actualSkipCount; from < length; from++) {
-      result[to++] = object[from];
-    }
-    return result;
+    const items = arguments;
+    const insertEnd = actualStart + insertCount;
+    return arrayFrom(newLength, (index) =>
+      index < actualStart
+        ? object[index]
+        : index < insertEnd
+          ? items[index - actualStart + 2]
+          : object[index - insertCount + actualSkipCount],
+    );
   },
   with(index, value) {
     const object = toObject(this);
     const length = lengthOf(object);
     const actual = actualIndex(index, length);
-    const result = createArray(length);
-    for (let k = 0; k < length; k++) {
-      result[k] = k === actual ? value : object[k];
-    }
-    return result;
+    return arrayFrom(length, (k) => (k === actual ? value : object[k]));
   },
 });
 

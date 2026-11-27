@@ -218,9 +218,11 @@ export class CanvasRoute {
    * back with getImageData(). A red square through grayscale(1) is the
    * spec's 21% gray; drop-shadow() puts a blue copy of one beside it, and
    * shows through one half see-through (globalAlpha comes first); a
-   * filtered square off the canvas casts its canvas shadow onto it; and
-   * blur() softens a black square's edge to partly see-through. A string
-   * that isn't a filter leaves the last one. Gives "ok", or the reads.
+   * filtered square off the canvas casts its canvas shadow onto it; a square
+   * far off the canvas casts its shadow onto it, with a filter and without
+   * (issue #755); and blur() softens a black square's edge to partly
+   * see-through. A string that isn't a filter leaves the last one. Gives
+   * "ok", or the reads.
    */
   #drawFilters(): string {
     const make = (width: number, height: number) => {
@@ -264,6 +266,18 @@ export class CanvasRoute {
     offCanvas.fillRect(-4, 0, 4, 2);
     const offCanvasRead = pixel(offCanvas, 3, 0);
 
+    // A shape drawn far off the canvas, with only its shadow brought onto
+    // it, as glows and shadow-only effects are drawn: the shadow's layer
+    // lies where the shape is, not round the canvas.
+    const farReads = [false, true].map((filtered) => {
+      const far = make(8, 2);
+      if (filtered) far.filter = 'grayscale(1)';
+      far.shadowColor = 'rgb(255, 0, 0)';
+      far.shadowOffsetX = 10000;
+      far.fillRect(-10000, 0, 4, 2);
+      return pixel(far, 1, 0);
+    });
+
     const blur = make(12, 12);
     blur.filter = 'blur(2px)';
     blur.fillRect(0, 0, 6, 12);
@@ -278,6 +292,7 @@ export class CanvasRoute {
       near(shadowReads[1], [0, 0, 255, 255]) &&
       Math.abs(fadedAlpha - 191) <= 3 &&
       near(offCanvasRead, [255, 0, 0, 255]) &&
+      farReads.every((read) => near(read, [255, 0, 0, 255])) &&
       edge >= 64 &&
       edge <= 160;
     return ok
@@ -288,6 +303,7 @@ export class CanvasRoute {
           ...shadowReads,
           fadedAlpha,
           offCanvasRead,
+          ...farReads,
           edge,
         ].join(' ');
   }

@@ -40,6 +40,12 @@ describe('canvasNamed', () => {
     ['a check against a canvas', `x instanceof HTMLCanvasElement;`],
     ['an enable function the app calls itself', `ɵenableCanvas2D();`],
     ['a name spelled with an escape', `c.getContext('\\x32d');`],
+    ['a name spelled with an identity escape', `new globalThis['Im\\age']();`],
+    ['a name spelled with an octal escape', `new globalThis['\\111mage']();`],
+    [
+      'a name spelled with a line continuation',
+      `new globalThis['Ima\\\nge']();`,
+    ],
   ])('is true for %s', (_, code) => {
     expect(canvasNamed(code, '/app/src/draw.js')).toBe(true);
   });

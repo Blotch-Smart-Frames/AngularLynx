@@ -76,6 +76,15 @@ const CANVAS_STRINGS: ReadonlyMap<string, RegExp> = new Map(
 );
 
 /**
+ * A string of only one of the names, spelled any way a string can spell it
+ * (on-demand.ts's quotedName()).
+ */
+const QUOTED_NAMES: readonly RegExp[] = [
+  ...[...CANVAS_NAMES].map(quotedName),
+  ...CANVAS_STRINGS.values(),
+];
+
+/**
  * Whether a main-thread module can draw on a canvas: it names one of
  * CANVAS_NAMES as an identifier or a string, one of CANVAS_STRINGS as a
  * string, or `webgl2` anywhere, as the runtime's WebGL2 context comes where
@@ -89,12 +98,13 @@ export const canvasNamed = (code: string, filename: string): boolean => {
   if (isAngularLynxPackageModule(filename)) return false;
   if (WEBGL2.test(code)) return true;
   // Parsing is the slow part, and most modules name none of them. A string
-  // or an identifier can spell a name with escapes, which a search of the
-  // text can't see, so a module with any is parsed too (as on-demand.ts
-  // does).
+  // can spell a name in ways a search for it doesn't find: a Unicode or
+  // hexadecimal escape (ESCAPE, which an identifier can use too), and an
+  // octal or identity escape or a line continuation (`'Im\age'` is
+  // `'Image'`), which QUOTED_NAMES looks for. A module with any is parsed.
   if (
     ![...CANVAS_NAMES].some((name) => code.includes(name)) &&
-    ![...CANVAS_STRINGS.values()].some((pattern) => pattern.test(code)) &&
+    !QUOTED_NAMES.some((pattern) => pattern.test(code)) &&
     !ESCAPE.test(code)
   ) {
     return false;

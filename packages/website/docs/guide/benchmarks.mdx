@@ -1,23 +1,27 @@
 import {
   LaunchCharts,
   MountTable,
+  ScrollCharts,
   SizeTable,
   VersionTable,
 } from '../../src/components/benchmarks';
 
 # Benchmarks
 
-How fast an AngularLynx app starts, how much memory it takes and how big it is, next to the same app in other frameworks, on a real iPhone. Every app, script and raw sample is in the repository's [`benchmarks/`](https://github.com/Blotch-Smart-Frames/AngularLynx/tree/master/benchmarks) folder.
+How fast an AngularLynx app starts, how smoothly it scrolls, how much memory and CPU it takes and how big it is, next to the same app in other frameworks, on a real iPhone. Every app, script and raw sample is in the repository's [`benchmarks/`](https://github.com/Blotch-Smart-Frames/AngularLynx/tree/master/benchmarks) folder.
 
 ## What it shows
 
-Measured on an iPhone 14 Pro (iOS 27.0.1) on 17 November 2026. Each number is a median, launching the app again right after it last ran.
+Measured on an iPhone 14 Pro. The launches ran on iOS 27.0.1 on 17 November 2026, the scrolling on iOS 27.2.1 on 27 November. Each number is a median; for a launch, launching the app again right after it last ran.
 
 - **The first screen is complete sooner than in React Native and Angular Native.** AngularLynx's list is drawn about 170 ms after launch. React Native 0.81 takes about 215 ms, React Native 0.88 about 205 ms and Angular Native about 230 ms.
 - **ReactLynx is a little sooner still,** about 175 ms against AngularLynx's 195 ms in their session. Both run on the same Lynx engine in the same native app, so that gap is Angular's own cost.
 - **The first frame is level.** Every app shows its launch screen in about 90 ms.
 - **AngularLynx uses the most memory with React Native 0.88:** about 60 MB, against 51 MB for React Native 0.81, 46 MB for ReactLynx and 41 MB for Angular Native.
 - **Building a big screen is AngularLynx's weak spot.** 5,000 plain views take it about 625 ms from launch. ReactLynx takes about 145 ms and React Native 0.81 about 225 ms. Against Angular Native it depends on the screen: AngularLynx is faster at 1,500 of anything and at 5,000 texts, Angular Native at 5,000 views (555 ms against 625 ms).
+- **Scrolling is as smooth as in React Native and ReactLynx:** about 85 frames a second, with next to no [hitches](/guide/glossary#hitch), in all three.
+- **Scrolling takes less CPU than React Native and more than ReactLynx.** AngularLynx spends about 745 ms of CPU on a swipe through new rows. React Native 0.81 spends about 1,055 ms, ReactLynx about 415 ms.
+- **After scrolling, AngularLynx takes less memory than React Native 0.81:** about 72 MB, against 81 MB. ReactLynx takes about 59 MB.
 - **The download is among the smallest:** 10.1 MB, against 9.0 MB for ReactLynx, 11.1 MB for React Native 0.81, 14.3 MB for Angular Native and 15.2 MB for React Native 0.88.
 
 Android isn't measured yet: it needs a physical phone.
@@ -31,6 +35,14 @@ Android isn't measured yet: it needs a physical phone.
 Each app built to open on a screen of 1,500 or 5,000 plain views, texts or images, not in a list that renders only what's on screen. The time runs from the process starting to the app reporting all of them drawn: the median of about five launches each way, launched again and after the other app. Each row is one session, AngularLynx and the other app launched in turn.
 
 <MountTable />
+
+## Scrolling
+
+Each app launched, then its Pokédex swiped up ten times, fast, always further down the list. Each swipe brings rows the app hasn't built yet, with their images and types to fetch, and about the fifth loads the list's second page.
+
+These runs are newer than the launches: 27 November 2026, on iOS 27.2.1. AngularLynx is the tip of master that day (Angular 22.3.0), ReactLynx is `@lynx-js/react` 0.129.4 and React Native 0.81 is on Expo 54.0.38, all else as in the [version table](#the-app). React Native 0.88 and Angular Native aren't measured scrolling yet.
+
+<ScrollCharts />
 
 ## App size
 
@@ -52,13 +64,14 @@ The apps load recorded PokeAPI responses and images from a server on the Mac, ov
 
 ### What's measured
 
-| Metric                      | How                                                                                                                                                                                                                                                                                     |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Time to first frame**     | Instruments' **App Launch** template: from the process starting to the end of its "Initial Frame Rendering" phase. That frame is the launch screen                                                                                                                                      |
-| **Time to fully drawn**     | From the process starting to the app's own mark that the first page of the list is on screen: the original's `TTFD` signpost, or [`reportFullyDrawn()`](/api/angular-lynx/fully-drawn) in AngularLynx. Each app marks it after the frame that shows the rows, not when the data arrives |
-| **Memory**                  | Instruments' **Activity Monitor**: the app's physical footprint, what iOS counts against its memory limit, in the last sample before the eight-second recording ends                                                                                                                    |
-| **Rendering many elements** | A build of each app that opens on a screen of 1,500 or 5,000 views, texts or images, recorded with only the Points of Interest and dyld Activity instruments (no CPU sampling): from dyld launching the app, about 2 ms after the process starts, to the screen's fully-drawn mark      |
-| **Size**                    | The release `.app` for a phone, installed and zipped                                                                                                                                                                                                                                    |
+| Metric                      | How                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Time to first frame**     | Instruments' **App Launch** template: from the process starting to the end of its "Initial Frame Rendering" phase. That frame is the launch screen                                                                                                                                                                                                                                                                                                 |
+| **Time to fully drawn**     | From the process starting to the app's own mark that the first page of the list is on screen: the original's `TTFD` signpost, or [`reportFullyDrawn()`](/api/angular-lynx/fully-drawn) in AngularLynx. Each app marks it after the frame that shows the rows, not when the data arrives                                                                                                                                                            |
+| **Memory**                  | Instruments' **Activity Monitor**: the app's physical footprint, what iOS counts against its memory limit, in the last sample before the eight-second recording ends                                                                                                                                                                                                                                                                               |
+| **Rendering many elements** | A build of each app that opens on a screen of 1,500 or 5,000 views, texts or images, recorded with only the Points of Interest and dyld Activity instruments (no CPU sampling): from dyld launching the app, about 2 ms after the process starts, to the screen's fully-drawn mark                                                                                                                                                                 |
+| **Scrolling**               | A UI test ([XCTest](https://developer.apple.com/documentation/xctest)) launches the app, waits 3 seconds for its list, then swipes up fast ten times. Each swipe is measured from the finger landing until 4 seconds later, when every list has come to rest, with Apple's own scroll metric (UIKit's signposts for a scroll view's drag and deceleration: frame rate and hitches), the app's CPU time on every thread, and its physical footprint |
+| **Size**                    | The release `.app` for a phone, installed and zipped                                                                                                                                                                                                                                                                                                                                                                                               |
 
 ### Rules
 
@@ -75,6 +88,7 @@ The apps load recorded PokeAPI responses and images from a server on the Mac, ov
 - **One phone so far,** an iPhone 14 Pro. Android needs a physical phone, and none has been measured yet.
 - **Instruments' App Launch template samples the CPU** while it records, which slows every app a little. It's the same for every app, and it's how Apple measures a launch.
 - **"Drawn" is each framework's own signal.** Each app marks it the way its framework tells a component its output is committed: `requestAnimationFrame` after React's commit in the React Native apps, the next flush to native in AngularLynx, a round trip to Lynx's main thread in ReactLynx. None of them waits for the screen's next frame, and React Native builds its native views on the UI thread after the commit, so for 5,000 elements its mark may come before the last of them is built.
+- **Smooth scrolling on an idle phone shows little.** The list scrolls on the phone's UI thread in every app, so a framework shows in a scroll only when building the rows coming into view takes too long. A scroll while the app's JavaScript is busy isn't measured yet.
 - **The free Apple team used to sign the apps allows three apps on a phone at once,** so each other framework ran in its own session against AngularLynx, two apps at a time. AngularLynx's dots come from every session.
 
 ## Run it yourself

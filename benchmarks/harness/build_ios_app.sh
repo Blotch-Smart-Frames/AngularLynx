@@ -30,7 +30,11 @@ cd "$dir"
 case "$app" in
   angular-lynx)
     BENCH_SCREEN="$screen" FIXTURE_ORIGIN="$origin" npx ng build --platform ios >"$log" 2>&1
-    project=$(ls -d .angular/cache/*/angular-lynx/lynx-native/ios/App.xcodeproj | head -1)
+    # The builder writes the project under the Angular version's cache
+    # folder, so a checkout that has built on an older Angular has one per
+    # version, the older ones with whatever bundle they were last built with.
+    # The one ng build just wrote is the newest.
+    project=$(ls -dt .angular/cache/*/angular-lynx/lynx-native/ios/App.xcodeproj | head -1)
     xcodebuild build -project "$project" -scheme App -configuration Release \
       -sdk iphoneos -destination generic/platform=iOS -derivedDataPath .angular/xcode-device \
       DEVELOPMENT_TEAM="$team" PRODUCT_BUNDLE_IDENTIFIER="$bundle_id" \

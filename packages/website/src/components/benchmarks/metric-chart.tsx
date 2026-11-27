@@ -20,13 +20,15 @@ const CONDITION_LABELS: Record<Condition, string> = {
   afterOther: 'after the other',
 };
 
-type Row = {
-  app: string;
-  label: string;
-  value: number;
-  run: number;
-  session: string;
+/** One dot: one run of one app, in the chart's row `label`. */
+export type Point = {
+  readonly app: string;
+  readonly label: string;
+  readonly value: number;
+  /** Unique in the chart, for the dot's key. */
+  readonly key: string;
 };
+
 type Summary = {
   app: string;
   label: string;
@@ -42,59 +44,67 @@ const rowLabel = (app: string, condition: Condition) =>
   `${APPS[app]?.label ?? app}, ${CONDITION_LABELS[condition]}`;
 
 /**
+ * A launch metric's dots, two rows per app: launched again, right after
+ * itself, and launched after the other app. iOS keeps an app's files in
+ * memory for a while, so the first is about 80 ms faster, and the second
+ * depends on what the other app pushed out; mixing them would give each app
+ * two humps and a median between.
+ */
+export const launchPoints = (
+  launches: readonly Launch[],
+  metric: Metric,
+  order: readonly string[],
+): { points: Point[]; labels: string[] } => ({
+  points: launches.flatMap((launch) => {
+    const value = launch[metric];
+    return value === undefined ||
+      launch.condition === 'first' ||
+      !order.includes(launch.app)
+      ? []
+      : [
+          {
+            app: launch.app,
+            label: rowLabel(launch.app, launch.condition),
+            value,
+            key: `${launch.app}-${launch.session}-${launch.run}`,
+          },
+        ];
+  }),
+  labels: (['again', 'afterOther'] as const).flatMap((condition) =>
+    order.map((app) => rowLabel(app, condition)),
+  ),
+});
+
+/**
  * One metric across the apps: a dot for every run, a bar at the median, the
  * median written over it. Every run stays visible, so a spread or an outlier
  * is there to see rather than hidden in an average.
- *
- * Each app has two rows: launched again, right after itself, and launched
- * after the other app. iOS keeps an app's files in memory for a while, so the
- * first is about 80 ms faster, and the second depends on what the other app
- * pushed out; mixing them would give each app two humps and a median between.
  */
 export const MetricChart = ({
-  launches,
-  metric,
+  points,
+  labels,
   unit,
   axisLabel,
-  order,
   xMax,
 }: {
-  readonly launches: readonly Launch[];
-  readonly metric: Metric;
+  readonly points: readonly Point[];
+  /** The rows, top to bottom; a row with no points is left out. */
+  readonly labels: readonly string[];
   readonly unit: string;
   readonly axisLabel: string;
-  /** The apps, top to bottom. */
-  readonly order: readonly string[];
   /** The axis's end, so that charts side by side share one scale. */
   readonly xMax: number;
 }) => {
-  const { rows, summaries, labels } = useMemo(() => {
-    const groups = (['again', 'afterOther'] as const).flatMap((condition) =>
-      order.map((app) => ({ app, condition, label: rowLabel(app, condition) })),
-    );
-    const rows: Row[] = launches.flatMap((launch) =>
-      launch[metric] === undefined ||
-      launch.condition === 'first' ||
-      !order.includes(launch.app)
-        ? []
-        : [
-            {
-              app: launch.app,
-              label: rowLabel(launch.app, launch.condition),
-              value: launch[metric],
-              run: launch.run,
-              session: launch.session,
-            },
-          ],
-    );
-    const summaries: Summary[] = groups.flatMap(({ app, label }) => {
+  const { rows, summaries } = useMemo(() => {
+    const rows = points.filter((point) => labels.includes(point.label));
+    const summaries: Summary[] = labels.flatMap((label) => {
       const values = rows
         .filter((row) => row.label === label)
         .map((row) => row.value);
       if (values.length === 0) return [];
       return [
         {
-          app,
+          app: rows.find((row) => row.label === label)!.app,
           label,
           median: percentile(values, 0.5),
           p90: percentile(values, 0.9),
@@ -102,8 +112,8 @@ export const MetricChart = ({
         },
       ];
     });
-    return { rows, summaries, labels: groups.map((group) => group.label) };
-  }, [launches, metric, order]);
+    return { rows, summaries };
+  }, [points, labels]);
 
   const definition = useMemo(() => {
     /**
@@ -111,14 +121,14 @@ export const MetricChart = ({
      * named on the axis, and the color only picks it out.
      */
     const ours = (row: { app: string }) => row.app === 'angular-lynx';
-    const dots = (source: readonly Row[], fill: string) =>
+    const dots = (source: readonly Point[], fill: string) =>
       dot(source, {
         x: 'value',
         y: 'label',
         r: 3,
         fill,
         fillOpacity: 0.5,
-        key: (row) => `${row.app}-${row.session}-${row.run}`,
+        key: (row) => row.key,
       });
     const medians = (source: readonly Summary[], stroke: string) =>
       tickX(source, {
@@ -161,12 +171,14 @@ export const MetricChart = ({
         // An instance, not a factory, so the apps keep this order instead of
         // the order their rows come in.
         y: {
-          scale: scaleBand().domain(labels).padding(0.3),
+          scale: scaleBand()
+            .domain(summaries.map((summary) => summary.label))
+            .padding(0.3),
         },
       },
       tooltip,
     });
-  }, [rows, summaries, labels, unit, axisLabel, xMax]);
+  }, [rows, summaries, unit, axisLabel, xMax]);
 
   return (
     <>

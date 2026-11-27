@@ -19,7 +19,7 @@ frameworks never touch the monorepo's build.
 | `apps/react-lynx` | The port to ReactLynx, in the same native shell as the AngularLynx app |
 | `apps/angular-native` | The port to Angular Native (Expo SDK 58) |
 | `fixtures/` | Recorded PokeAPI responses and sprites, and the server that hands them to the apps |
-| `harness/` | The scripts that launch the apps under Instruments and read the traces |
+| `harness/` | The scripts that launch the apps under Instruments and read the traces, and the UI test that scrolls them (`ios-scroll/`) |
 | `results/` | Every run, as CSV |
 
 ## The app
@@ -47,7 +47,7 @@ milliseconds in every run, and "fully drawn" measures the framework.
 
 ## Results
 
-[`results/ios`](results/ios) holds every run, one CSV per session: `launch-<date>-<app>.csv` for the launches, `mount-<date>-<kind>-<count>-<app>.csv` for the screens of many elements, `size.csv` for the apps' sizes and `apps.json` for their versions. The website's [Benchmarks page](https://angularlynx.js.org/guide/benchmarks) charts them as they are, and `harness/summarize.py` prints the same medians.
+[`results/ios`](results/ios) holds every run, one CSV per session: `launch-<date>-<app>.csv` for the launches, `mount-<date>-<kind>-<count>-<app>.csv` for the screens of many elements, `scroll-<date>-<app>.csv` for the swipes (a row per swipe), `size.csv` for the apps' sizes and `apps.json` for their versions. The website's [Benchmarks page](https://angularlynx.js.org/guide/benchmarks) charts them as they are, and `harness/summarize.py` prints the same medians.
 
 Two things the runs showed, which shape how they're read:
 
@@ -78,9 +78,18 @@ python3 harness/ios_launch.py --device <UDID> --runs 20 \
 #    screen, and launches them with a lighter recording
 python3 harness/ios_mount.py --device <UDID> --rival react-native --runs 10
 
-# 5. Sizes, and the medians
+# 5. Scrolling: a UI test swipes up each app's list ten times a launch
+#    (harness/ios-scroll). With a third field, each app's .app, it keeps one
+#    of the two installed at a time, beside the test's own runner app
+python3 harness/ios_scroll.py --device <UDID> --runs 10 \
+  --app angular-lynx=<bundle id>=path/to/LaunchPerfAL.app \
+  --app react-native=<bundle id>=path/to/LaunchPerfRN.app \
+  --out results/ios/scroll-<date>-react-native.csv
+
+# 6. Sizes, and the medians
 sh harness/ios_size.sh <app> path/to/App.app >> results/ios/size.csv
 python3 harness/summarize.py results/ios/launch-*.csv
+python3 harness/summarize.py results/ios/scroll-*.csv
 ```
 
 The harness needs Xcode and `ideviceinfo` (`brew install libimobiledevice`)
@@ -90,4 +99,11 @@ access on the phone: tap Allow.
 A free Apple team (a Personal Team) can have three apps on a phone at once
 and register ten App IDs a week, so the runs keep AngularLynx installed as
 `com.angularlynx.bench.angularlynx` and put each other app in turn on
-`com.angularlynx.bench.rival`.
+`com.angularlynx.bench.rival`. The scroll test's runner is an app too
+(`com.angularlynx.bench.scroll.xctrunner`): with it and any other app of the
+team on the phone, `ios_scroll.py` swaps the two benchmark apps, and the
+test allows the local network prompt each new install brings.
+
+`ios_scroll.py` builds the runner with `xcodebuild`, from the project
+committed in `harness/ios-scroll`. After changing `project.yml`, run
+`xcodegen` there (`brew install xcodegen`) to make the project again.

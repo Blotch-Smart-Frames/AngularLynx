@@ -263,3 +263,115 @@ export const SESSIONS: readonly Session[] = [
     return { id, rival, launches };
   })
   .sort((a, b) => APP_ORDER.indexOf(a.rival) - APP_ORDER.indexOf(b.rival));
+
+/** Every CSV of the scroll benchmark (`harness/ios_scroll.py`). */
+const scrollFiles = import.meta.webpackContext(
+  '../../../../../benchmarks/results/ios',
+  { recursive: false, regExp: /^\.\/scroll-.*\.csv$/ },
+);
+
+/**
+ * One launch of the scroll benchmark: the app launched, then swiped up
+ * through its list ten times, each swipe measured from the finger landing to
+ * the list coming to rest. The CSV has a row per swipe; a run adds them up,
+ * so one slow swipe counts by how long it lasted, as XCTest's own summary
+ * does.
+ */
+export type ScrollRun = {
+  readonly app: string;
+  readonly session: string;
+  readonly timestamp: string;
+  readonly device: string;
+  readonly osBuild: string;
+  readonly run: number;
+  readonly swipes: number;
+  /**
+   * Milliseconds of hitches (frames that reached the screen late) per second
+   * of scrolling, Apple's measure of smoothness: under 5 is good, over 10
+   * is bad.
+   */
+  readonly hitchRatio: number;
+  /** Frames drawn per second while the list moved, over every swipe. */
+  readonly fps: number;
+  /** The app's CPU time per swipe, every thread. */
+  readonly cpuMsPerSwipe: number;
+  /** The app's footprint after the last swipe. */
+  readonly memoryMb?: number;
+  readonly thermalState: string;
+};
+
+const sum = (values: readonly number[]): number =>
+  values.reduce((total, value) => total + value, 0);
+
+const readScrollRuns = (text: string, session: string): ScrollRun[] => {
+  const rows = parseCsv<
+    | 'app'
+    | 'timestamp'
+    | 'device'
+    | 'os_build'
+    | 'run'
+    | 'swipe'
+    | 'scroll_ms'
+    | 'fps'
+    | 'hitch_ms'
+    | 'cpu_ms'
+    | 'memory_mb'
+    | 'thermal_state'
+  >(text);
+  const runs = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const key = `${row.app} ${row.run}`;
+    runs.set(key, [...(runs.get(key) ?? []), row]);
+  }
+  return [...runs.values()].flatMap((swipes) => {
+    const measured = swipes.filter((swipe) => swipe.scroll_ms !== '');
+    if (measured.length === 0) return [];
+    const [first] = measured;
+    const seconds = sum(measured.map((s) => Number(s.scroll_ms))) / 1000;
+    const last = measured.reduce((a, b) =>
+      Number(b.swipe) > Number(a.swipe) ? b : a,
+    );
+    return [
+      {
+        app: first.app,
+        session,
+        timestamp: first.timestamp,
+        device: first.device,
+        osBuild: first.os_build,
+        run: Number(first.run),
+        swipes: measured.length,
+        hitchRatio: sum(measured.map((s) => Number(s.hitch_ms || 0))) / seconds,
+        // Each swipe's rate, weighted by how long it moved: the frames drawn
+        // over the seconds scrolled.
+        fps:
+          sum(measured.map((s) => Number(s.fps || 0) * Number(s.scroll_ms))) /
+          1000 /
+          seconds,
+        cpuMsPerSwipe:
+          sum(measured.map((s) => Number(s.cpu_ms || 0))) / measured.length,
+        memoryMb: number(last.memory_mb),
+        thermalState: first.thermal_state,
+      },
+    ];
+  });
+};
+
+/** One scroll session: AngularLynx and one other app, launched in turn. */
+export type ScrollSession = {
+  readonly id: string;
+  readonly rival: string;
+  readonly runs: readonly ScrollRun[];
+};
+
+export const SCROLL_SESSIONS: readonly ScrollSession[] = scrollFiles
+  .keys()
+  .map((file) => {
+    const id = file.replace(/^\.\/scroll-|\.csv$/g, '');
+    const runs = readScrollRuns(scrollFiles(file) as string, id);
+    const rival = runs.find((run) => run.app !== 'angular-lynx')?.app ?? '';
+    return { id, rival, runs };
+  })
+  .sort(
+    (a, b) =>
+      Object.keys(APPS).indexOf(a.rival) - Object.keys(APPS).indexOf(b.rival),
+  );

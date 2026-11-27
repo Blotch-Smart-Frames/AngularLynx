@@ -5,10 +5,11 @@ import {
   LAUNCHES,
   MOUNTS,
   percentile,
+  SCROLL_SESSIONS,
   SESSIONS,
   SIZES,
 } from './data';
-import { type Metric, MetricChart } from './metric-chart';
+import { launchPoints, type Metric, MetricChart } from './metric-chart';
 import styles from './index.module.scss';
 
 /**
@@ -80,11 +81,12 @@ const SessionCharts = ({
             With {APPS[session.rival]?.label ?? session.rival}
           </p>
           <MetricChart
-            launches={session.launches}
-            metric={metric}
+            {...launchPoints(session.launches, metric, [
+              'angular-lynx',
+              session.rival,
+            ])}
             unit={unit}
             axisLabel={axisLabel}
-            order={['angular-lynx', session.rival]}
             xMax={xMax}
           />
         </div>
@@ -234,5 +236,153 @@ export const MountTable = () => {
         ))}
       </tbody>
     </table>
+  );
+};
+
+type ScrollMetric = 'hitchRatio' | 'fps' | 'cpuMsPerSwipe' | 'memoryMb';
+
+/**
+ * One panel per scroll session, the other app beside AngularLynx, a dot per
+ * launch (its ten swipes added up), all panels on one axis.
+ */
+const ScrollSessionCharts = ({
+  metric,
+  unit,
+  axisLabel,
+  step,
+}: {
+  readonly metric: ScrollMetric;
+  readonly unit: string;
+  readonly axisLabel: string;
+  /** The axis is rounded up to a whole one of these. */
+  readonly step: number;
+}) => {
+  const values = SCROLL_SESSIONS.flatMap((session) =>
+    session.runs.flatMap((run) =>
+      run[metric] === undefined ? [] : [run[metric]],
+    ),
+  );
+  const xMax = Math.ceil(Math.max(...values, step) / step) * step;
+  return (
+    <div className={styles['sessions']}>
+      {SCROLL_SESSIONS.map((session) => {
+        const order = ['angular-lynx', session.rival];
+        return (
+          <div key={session.id}>
+            <p className={styles['session']}>
+              With {APPS[session.rival]?.label ?? session.rival}
+            </p>
+            <MetricChart
+              points={session.runs.flatMap((run) => {
+                const value = run[metric];
+                return value === undefined
+                  ? []
+                  : [
+                      {
+                        app: run.app,
+                        label: APPS[run.app]?.label ?? run.app,
+                        value,
+                        key: `${run.app}-${run.run}`,
+                      },
+                    ];
+              })}
+              labels={order.map((app) => APPS[app]?.label ?? app)}
+              unit={unit}
+              axisLabel={axisLabel}
+              xMax={xMax}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+/**
+ * Where and when the scroll runs were made, and how many.
+ */
+const ScrollCaption = () => {
+  const runs = SCROLL_SESSIONS.flatMap((session) => session.runs);
+  const devices = [...new Set(runs.map((run) => deviceName(run.device)))];
+  const builds = [...new Set(runs.map((run) => run.osBuild))];
+  const swipes = [...new Set(runs.map((run) => run.swipes))];
+  const perApp = APP_ORDER.flatMap((app) => {
+    const count = runs.filter((run) => run.app === app).length;
+    return count > 0 ? [`${APPS[app].label} ${count}`] : [];
+  });
+  return (
+    <p className={styles['caption']}>
+      {devices.join(', ')}, iOS {builds.join(', ')},{' '}
+      {dateRange(runs.map((run) => run.timestamp))}. Launches per app:{' '}
+      {perApp.join(', ')}, each with {swipes.join(' or ')} fast swipes up the
+      Pokédex, measured by XCTest from the finger landing to the list coming to
+      rest. Each dot is one launch's swipes added up. Release builds.{' '}
+      <a href="/guide/benchmarks#method">How we measured</a>
+    </p>
+  );
+};
+
+/** The scroll charts: hitches, frame rate, CPU and memory. */
+export const ScrollCharts = () => {
+  if (SCROLL_SESSIONS.length === 0) return null;
+  return (
+    <div className={styles['charts']}>
+      <figure className={styles['figure']}>
+        <figcaption className={styles['title']}>Hitches</figcaption>
+        <p className={styles['summary']}>
+          Milliseconds of frames that reached the screen late, per second of
+          scrolling. Apple counts under 5 as good and over 10 as bad. Lower is
+          better.
+        </p>
+        <ScrollSessionCharts
+          metric="hitchRatio"
+          unit="ms/s"
+          axisLabel="Hitch milliseconds per second"
+          step={5}
+        />
+      </figure>
+      <figure className={styles['figure']}>
+        <figcaption className={styles['title']}>Frame rate</figcaption>
+        <p className={styles['summary']}>
+          Frames drawn per second while the list moved. The iPhone 14 Pro's
+          screen runs at up to 120. Higher is better.
+        </p>
+        <ScrollSessionCharts
+          metric="fps"
+          unit="fps"
+          axisLabel="Frames per second"
+          step={20}
+        />
+      </figure>
+      <figure className={styles['figure']}>
+        <figcaption className={styles['title']}>CPU</figcaption>
+        <p className={styles['summary']}>
+          The app's CPU time for one swipe, on every thread, while it builds the
+          rows coming into view. Lower is better.
+        </p>
+        <ScrollSessionCharts
+          metric="cpuMsPerSwipe"
+          unit="ms"
+          axisLabel="CPU milliseconds per swipe"
+          step={50}
+        />
+      </figure>
+      <figure className={styles['figure']}>
+        <figcaption className={styles['title']}>
+          Memory after scrolling
+        </figcaption>
+        <p className={styles['summary']}>
+          The app's footprint after the last swipe, with about 100 rows and
+          their images loaded. Lower is better.
+        </p>
+        <ScrollSessionCharts
+          metric="memoryMb"
+          unit="MB"
+          axisLabel="Megabytes"
+          step={10}
+        />
+      </figure>
+      <ScrollCaption />
+    </div>
   );
 };

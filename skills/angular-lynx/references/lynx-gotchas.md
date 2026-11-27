@@ -455,6 +455,10 @@ XElement's iOS loader and its `WKWebView` keep each other, so in Lynx Explorer, 
 
 The CSS pipeline minifies `rgba(92, 94, 102, 1)` to `#5c5e66`, and a later tokenizer reads `5e66` as a number: the web preview's stylesheet holds `#5c9999`. Any hex with a digit, `e`, digit run (`#3e4048` too) is at risk; `#71717a` or `#3f3f46` is fine. Pick a neighbouring value (`rgba(92, 95, 102, 1)`) until it's fixed. Not yet checked on iOS and Android.
 
+### Two optional chains can still fail in a destructuring default with `yield` or `await`
+
+Optional chains in a destructuring's default value work as on the web, also when the default value has a `yield` or an `await` in it (`const [v = a.b()?.c(await x)] = []`): the build compiles them itself, since its compiler would move them into an arrow function where the `yield` or `await` is a SyntaxError. Two shapes it leaves to the compiler, so in such a default value they can still fail the module's load: a `delete` of a chain in parentheses (`delete (a.b()?.c)`), and a call whose callee is a parenthesized optional chain (`(a?.b.c)?.()`). Read the value into a variable before the destructuring instead.
+
 ### A nullish `#private` member in an optional chain gives `undefined`
 
 `#private` members work in chains and optional chains as on the web: `this.#parent.#depth()`, `other?.#method()`, `this.#onColors?.()[scheme]` and `node?.#name.length`. The build rewrites them before its compiler, which would otherwise lift what follows a private member out of the optional chain's short-circuit and call a private method there without its receiver. The rewrite makes the link after a private member optional, so code the web would throw a TypeError for gives `undefined` instead: `a?.#b.#c` when `a.#b` is nullish, or `a?.#field()` when `#field` holds `null`. It covers the app's own code and AngularLynx's packages; other npm packages' private members compile as they are.

@@ -32,6 +32,7 @@ import {
   transformPrivateMethods,
 } from './private-methods.js';
 import { wrapPureClasses } from './pure-classes.js';
+import { lowerYieldingDefaultChains } from './yielding-defaults.js';
 import { wrapPureInitializers } from './pure-initializers.js';
 import { markHostElementsPure } from './pure-host-elements.js';
 import { seedCompilationSourceFiles } from './seed-compilation-source-files.js';
@@ -587,6 +588,12 @@ export const applyAngularRules = async (
   /**
    * Compiles one module for one thread. `background` is set for the
    * background layer.
+   *
+   * Every module, another package's too, gets lowerYieldingDefaultChains on
+   * both threads, last before the private-member passes: SWC fails any
+   * module with an optional chain in a destructuring's default value that
+   * has a `yield` or an `await` (see yielding-defaults.ts), and it leaves
+   * splitPrivateChains no optional chain in those default values.
    */
   const transformModule = async (
     context: {
@@ -644,14 +651,19 @@ export const applyAngularRules = async (
         // nothing uses it (kitchen-sink's background bundle kept the
         // IntersectionObserver and XMLHttpRequest classes, 8.6 kB).
         return {
-          code: transformPrivateMethods(code, context.resourcePath, {
-            root: api.context.rootPath,
-          }),
+          code: transformPrivateMethods(
+            lowerYieldingDefaultChains(code, context.resourcePath),
+            context.resourcePath,
+            { root: api.context.rootPath },
+          ),
         };
       }
       const classesWrapped = wrapPureClasses(
         markHostElementsPure(
-          splitBackgroundPrivateChains(code, context.resourcePath),
+          splitBackgroundPrivateChains(
+            lowerYieldingDefaultChains(code, context.resourcePath),
+            context.resourcePath,
+          ),
           context.resourcePath,
         ),
         context.resourcePath,
@@ -722,9 +734,11 @@ export const applyAngularRules = async (
       // the transforms buildTransformedCode makes, so the cross-thread IDs
       // come from the same code as the background thread's.
       return {
-        code: transformPrivateMethods(code, context.resourcePath, {
-          root: api.context.rootPath,
-        }),
+        code: transformPrivateMethods(
+          lowerYieldingDefaultChains(code, context.resourcePath),
+          context.resourcePath,
+          { root: api.context.rootPath },
+        ),
       };
     }
     // The background thread runs a module like this for its background
@@ -742,16 +756,19 @@ export const applyAngularRules = async (
       code: wrapPureClasses(
         markHostElementsPure(
           splitBackgroundPrivateChains(
-            Buffer.from(
-              await javascriptTransformer.transformData(
-                context.resourcePath,
-                code,
-                {
-                  skipLinker: true,
-                  sideEffects: () => Promise.resolve(false),
-                },
-              ),
-            ).toString(),
+            lowerYieldingDefaultChains(
+              Buffer.from(
+                await javascriptTransformer.transformData(
+                  context.resourcePath,
+                  code,
+                  {
+                    skipLinker: true,
+                    sideEffects: () => Promise.resolve(false),
+                  },
+                ),
+              ).toString(),
+              context.resourcePath,
+            ),
             context.resourcePath,
           ),
           context.resourcePath,

@@ -213,6 +213,22 @@ class ReportTest(unittest.TestCase):
                 self.assertEqual(len(file.readlines()), 7)
             self.assertFalse(os.path.exists(os.path.join(folder, "alert.md")))
 
+    def test_a_second_run_on_a_date_replaces_its_night(self):
+        with tempfile.TemporaryDirectory() as folder:
+            self.write(folder, "launch.csv", launches({"angular-lynx": [1300], "react-lynx": [1000]}))
+            history = os.path.join(folder, "history.jsonl")
+            with open(history, "w") as file:
+                for past in nights(1.0, 1.0, 1.0, 1.0):
+                    file.write(json.dumps(past) + "\n")
+            for run in (1, 2, 3):
+                self.run_report(folder, history, run_url=f"https://example.invalid/run/{run}")
+            with open(history) as file:
+                saved = [json.loads(line) for line in file]
+            self.assertEqual([r["date"] for r in saved][-2:], ["2026-11-04", "2026-11-28"])
+            self.assertEqual(saved[-1]["run"], "https://example.invalid/run/3")
+            # One night off the baseline isn't three.
+            self.assertFalse(os.path.exists(os.path.join(folder, "alert.md")))
+
     def test_without_a_history(self):
         with tempfile.TemporaryDirectory() as folder:
             self.write(folder, "launch.csv", launches({"angular-lynx": [1100], "react-lynx": [1000]}))

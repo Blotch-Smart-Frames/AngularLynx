@@ -302,8 +302,14 @@ def report(args):
     mount_rows = {key: read_csv(path) for key, path in mount_files(args.mount_dir).items()} if args.mount_dir else {}
     date = args.date or max((row["timestamp"][:10] for row in launch_rows if row.get("timestamp")), default="")
     history = read_history(args.history)
-    # A night run twice (a re-run) replaces its first record.
-    history = [record for record in history if record.get("run") != args.run_url or not args.run_url]
+    # A history has one record a night, the latest run's: a re-run, or a run
+    # by hand on master the same day, replaces the night's earlier record,
+    # so three runs in a day can't pass for three nights.
+    history = [
+        record
+        for record in history
+        if record.get("date") != date and (not args.run_url or record.get("run") != args.run_url)
+    ]
     history.append(night(launch_rows, mount_rows, date, args.commit, args.run_url))
     if args.history:
         with open(args.history, "w") as file:

@@ -99,14 +99,20 @@ const fromAsync = async (Constructor, items, mapper, thisArg) => {
         }
         const done = !!step.done;
         const stepValue = step.value;
-        try {
-          value = await stepValue;
-        } catch (error) {
-          // A rejected value closes the iterator, unless it's the last
-          // step's.
-          if (!done) closeAndThrow(iterator, error);
-          throw error;
-        }
+        // The async-from-sync iterator's next() settles its own promise once
+        // the value has, which this then awaits: two turns, as the spec
+        // takes, so the next step can't run before code the value's own
+        // settling queued.
+        value = await (async () => {
+          try {
+            return await stepValue;
+          } catch (error) {
+            // A rejected value closes the iterator, unless it's the last
+            // step's.
+            if (!done) closeAndThrow(iterator, error);
+            throw error;
+          }
+        })();
         if (done) break;
       }
       try {

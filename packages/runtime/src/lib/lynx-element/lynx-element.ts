@@ -4157,14 +4157,14 @@ export class LynxElement implements BaseLynxElement {
     if (!this.#destroyed) return;
     this.#destroyed = false;
     LynxElement.#pendingReleases.delete(this);
-    // The animations markDestroyed ended run again, from the inline styles
-    // the element keeps (the write that ended them left those as they were).
+    // The animations markDestroyed ended run again (see #restartAnimation),
+    // but not in an element released since, with another destroyed element
+    // it moved into.
     const ended = LynxElement.#endedAnimations.get(this);
     if (ended) {
       LynxElement.#endedAnimations.delete(this);
       for (const el of ended) {
-        el.#rewriteInlineStyle();
-        LynxElement.#platformAnimated.add(el);
+        if (el.#isRegistered()) el.#restartAnimation();
       }
     }
   }
@@ -4223,23 +4223,39 @@ export class LynxElement implements BaseLynxElement {
     if (!ended) return;
     LynxElement.#endedAnimations.delete(this);
     for (const el of ended) {
-      if (
-        LynxElement.#registered(__GetElementUniqueID(el.element)) !== el ||
-        el.#isInSubtreeOf(this)
-      ) {
-        continue;
+      if (el.#isRegistered() && !el.#isInSubtreeOf(this)) {
+        el.#restartAnimation();
       }
-      const holder = el.#destroyedAncestor();
-      if (holder) {
-        const held = LynxElement.#endedAnimations.get(holder);
-        // Its own record holds it already when it's the one destroyed.
-        if (!held) LynxElement.#endedAnimations.set(holder, [el]);
-        else if (!held.includes(el)) held.push(el);
-        continue;
-      }
-      el.#rewriteInlineStyle();
-      LynxElement.#platformAnimated.add(el);
     }
+  }
+
+  /**
+   * Starts this element's animation again, which markDestroyed ended, from
+   * the inline styles it keeps (the write that ended it left those as they
+   * were), and notes it for its next destruction. Unless it's in another
+   * element Angular destroyed and hasn't released (or is one itself): the
+   * record goes to that one, and the animation stays ended until it's
+   * released with it, or put back.
+   */
+  #restartAnimation(): void {
+    const holder = this.#destroyedAncestor();
+    if (holder) {
+      const held = LynxElement.#endedAnimations.get(holder);
+      // Its own record holds it already when it's the one destroyed.
+      if (!held) LynxElement.#endedAnimations.set(holder, [this]);
+      else if (!held.includes(this)) held.push(this);
+      return;
+    }
+    this.#rewriteInlineStyle();
+    LynxElement.#platformAnimated.add(this);
+  }
+
+  /**
+   * Whether this is still the registered wrapper of its native element:
+   * only a release (see #release) takes it out.
+   */
+  #isRegistered(): boolean {
+    return LynxElement.#registered(__GetElementUniqueID(this.element)) === this;
   }
 
   /**

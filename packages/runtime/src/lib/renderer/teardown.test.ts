@@ -2154,6 +2154,66 @@ describe('renderer teardown', () => {
       expect(shown.styles.get('__inline')).toContain('animation: turn');
     });
 
+    it('keeps it ended when the first view is put back while the other still goes', () => {
+      const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
+      const page = document.createRootElement();
+      const view = document.createElement('view');
+      const other = document.createElement('view');
+      const el = document.createElement('view');
+      el.setAttribute('enable-new-animator', 'false');
+      el.setAttribute('style', 'animation: turn 1600ms linear infinite;');
+      page.appendChild(view);
+      page.appendChild(other);
+      view.appendChild(el);
+      const ref = el.element as unknown as FakeEl;
+
+      // Moved into another destroyed view, then the first view is put back.
+      view.markDestroyed();
+      el.remove();
+      other.appendChild(el);
+      other.markDestroyed();
+      ref.styles.delete('__inline');
+      view.remove();
+      page.appendChild(view);
+      processPendingRemovals();
+      expect(ref.styles.has('__inline')).toBe(false);
+
+      // It goes with the other view, its animation still ended.
+      other.remove();
+      processPendingRemovals();
+      expect(ref.styles.has('__inline')).toBe(false);
+    });
+
+    it('leaves it alone when the first view is put back after the other went', () => {
+      const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
+      const page = document.createRootElement();
+      const view = document.createElement('view');
+      const other = document.createElement('view');
+      const el = document.createElement('view');
+      el.setAttribute('enable-new-animator', 'false');
+      el.setAttribute('style', 'animation: turn 1600ms linear infinite;');
+      page.appendChild(view);
+      page.appendChild(other);
+      view.appendChild(el);
+      const ref = el.element as unknown as FakeEl;
+
+      // The other view goes, and the element with it, before the first view
+      // is put back.
+      view.markDestroyed();
+      el.remove();
+      other.appendChild(el);
+      other.markDestroyed();
+      other.remove();
+      processPendingRemovals();
+      ref.styles.delete('__inline');
+      view.remove();
+      page.appendChild(view);
+      processPendingRemovals();
+
+      expect(registered([ref])).toEqual([false]);
+      expect(ref.styles.has('__inline')).toBe(false);
+    });
+
     it('leaves an element moved out of a destroyed view alone once it has gone too', () => {
       const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
       const page = document.createRootElement();

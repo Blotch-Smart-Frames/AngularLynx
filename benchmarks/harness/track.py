@@ -4,12 +4,13 @@ simulator-benchmarks.yml) that aren't a build or a launch: booting the
 Simulator, and reading a run's CSVs into a report, a history and an alert.
 
     python3 track.py boot
+    python3 track.py shutdown
     python3 track.py report --launch launch.csv --mount-dir ../results/ios-simulator \\
         --history history.jsonl --commit <sha> --run-url <url> \\
         --summary summary.md --alert alert.md
 
 `boot` creates (once) and boots a Simulator named "AngularLynx Benchmarks"
-and prints its UDID.
+and prints its UDID, and `shutdown` shuts it down.
 
 `report` reads one run's launches of the Pokédex (ios_launch.py) and its
 mount screens (ios_mount.py, `mount-<date>-<kind>-<count>-react-lynx.csv`),
@@ -424,10 +425,21 @@ def boot(_args):
     raise SystemExit("The Simulator didn't boot on any installed runtime.")
 
 
+def shutdown(_args):
+    """Shut down every booted Simulator with the benchmark's name, and no
+    other: a Mac of your own may be running its own."""
+    for devices in simctl_json("devices")["devices"].values():
+        for device in devices:
+            if device["name"] == SIMULATOR_NAME and device["state"] == "Booted":
+                subprocess.run(["xcrun", "simctl", "shutdown", device["udid"]], check=False)
+                print(f"Shut down {device['udid']}", file=sys.stderr)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("boot", help="create and boot the Simulator, and print its UDID").set_defaults(run=boot)
+    commands.add_parser("shutdown", help="shut the Simulator down").set_defaults(run=shutdown)
     reporting = commands.add_parser("report", help="read a run's CSVs into the summary, history and alert")
     reporting.set_defaults(run=report)
     reporting.add_argument("--launch", required=True, help="ios_launch.py's CSV of the Pokédex's launches")

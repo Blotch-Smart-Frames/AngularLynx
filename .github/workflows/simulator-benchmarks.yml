@@ -236,26 +236,33 @@ jobs:
           ${MAX_LOAD:+--max-load "$MAX_LOAD"} --max-wait "$MAX_WAIT"
           ${NO_THERMAL:+"$NO_THERMAL"}
       # The history, from the newest run of this workflow on master that
-      # finished. Artifacts last 90 days, so a gap that long starts a new
-      # history, as does the first run. A history that's there but doesn't
-      # download fails the step instead: starting again would throw away
-      # every day's baseline.
+      # uploaded one. That's after its report, so a run that failed later
+      # (uploading the CSVs, or the issue) still hands its day on, and one
+      # that failed before has none and is passed over. Artifacts last 90
+      # days, so a gap that long starts a new history, as does the first
+      # run. A history that's there but doesn't download fails the step
+      # instead: starting again would throw away every day's baseline.
       - name: Download the history
         if: env.TRACK == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p "$RUNNER_TEMP/history"
-          run=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow simulator-benchmarks.yml --branch master \
-            --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+          # Assignments, so a failed request fails the step (bash -e)
+          # rather than pass a run over for an older history.
+          runs=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow simulator-benchmarks.yml \
+            --branch master --status completed --limit 30 --json databaseId --jq '.[].databaseId')
+          run=
+          for candidate in $runs; do
+            history=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$candidate/artifacts" \
+              --jq '.artifacts[] | select(.name == "simulator-benchmark-history" and .expired == false) | .id')
+            if [ -n "$history" ]; then
+              run=$candidate
+              break
+            fi
+          done
           if [ -z "$run" ]; then
-            echo "::warning::No earlier run on master, so this run starts the history."
-            exit 0
-          fi
-          artifact=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/artifacts" \
-            --jq '.artifacts[] | select(.name == "simulator-benchmark-history" and .expired == false) | .id')
-          if [ -z "$artifact" ]; then
-            echo "::warning::Run $run has no history left (expired after 90 days?), so this run starts a new one."
+            echo "::warning::No run on master in the last 30 has a history (none yet, or expired after 90 days), so this run starts one."
             exit 0
           fi
           for attempt in 1 2 3; do
@@ -318,9 +325,13 @@ jobs:
             gh issue create --title "$title" --label benchmark-alert --body-file "$alert"
           fi
       # A Mac of your own keeps its Simulator, which would go on using its
-      # memory and cores after the run.
+      # memory and cores after the run. A step that failed before "Wait for
+      # the Simulator" leaves the boot running and no UDID, so this stops
+      # the boot and shuts down the Simulator by its name, which leaves the
+      # Mac's other Simulators alone.
       - name: Shut the Simulator down
-        if: always() && steps.simulator.outputs.udid
-        env:
-          UDID: ${{ steps.simulator.outputs.udid }}
-        run: xcrun simctl shutdown "$UDID" || true
+        if: always()
+        run: |
+          pid=$(cat "$RUNNER_TEMP/simulator-boot.pid" 2>/dev/null || true)
+          [ -z "$pid" ] || kill "$pid" 2>/dev/null || true
+          python3 benchmarks/harness/track.py shutdown

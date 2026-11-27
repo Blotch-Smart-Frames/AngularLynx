@@ -2683,13 +2683,13 @@ export class LynxElement implements BaseLynxElement {
     const lang = value == null ? undefined : String(value);
     if (lang === this.#lang) return;
     this.#lang = lang;
-    // And one with no JS children, which may hold a hydrated <q> without
-    // the flag (see #eachQuoteChild); one Angular is building has none in
-    // it yet, so that costs a look at no children.
-    if (this.#quoteMarks || this.#holdsQuote || !this.#children) {
-      const [depth, language] = this.#outerQuoteContext();
-      this.#setQuoteDepth(depth, language);
-    }
+    // Every element below it, not only the flagged ones (see
+    // #eachQuoteChild): a hydrated <q> flags the wrappers its native
+    // ancestors had when it hydrated, and a wrapper made later, which may
+    // since have JS children of its own, has no flag. A lang that changes
+    // is rare, and a static one is set before Angular puts children in.
+    const [depth, language] = this.#outerQuoteContext();
+    this.#setQuoteDepth(depth, language, true);
   }
 
   /**
@@ -2745,9 +2745,14 @@ export class LynxElement implements BaseLynxElement {
    * into an element (see #adoptChild): when Angular builds one, when
    * content projection moves one into another, and when an element built
    * with a `<q>` inside goes in after it; and when a `lang` changes (see
-   * #setLang).
+   * #setLang), with `everyChild`, which goes through every element below
+   * rather than only those that hold a `<q>`.
    */
-  #setQuoteDepth(depth: number, outerLanguage: string): void {
+  #setQuoteDepth(
+    depth: number,
+    outerLanguage: string,
+    everyChild = false,
+  ): void {
     let inner = depth;
     const language = this.#lang ?? outerLanguage;
     if (this.#quoteMarks) {
@@ -2759,27 +2764,22 @@ export class LynxElement implements BaseLynxElement {
       inner++;
     }
     const pass = (child: LynxElement): void => {
-      child.#setQuoteDepth(inner, language);
+      if (everyChild || child.#holdsQuote || child.#quoteMarks) {
+        child.#setQuoteDepth(inner, language, everyChild);
+      }
     };
     // The native children, not #children: a hydrated element's aren't in
     // it (hydration inserts nothing), and a list's items are its virtual
     // children instead.
     LynxElement.#eachQuoteChild(this.element, pass);
-    for (const child of this.virtualChildren()) {
-      if (child.#holdsQuote || child.#quoteMarks) pass(child);
-    }
+    for (const child of this.virtualChildren()) pass(child);
   }
 
   /**
-   * Calls `fn` with each nearest wrapper among the native descendants of
-   * `ref` that holds a `<q>` or is one (see #holdsQuote), or may without
-   * the flag: a wrapper with no JS children, which hydration leaves an
-   * element, or parentNode() makes for a snapshot's element after the
-   * `<q>`s below it flagged their ancestors. `fn` gets those too, rather
-   * than their children, so their own `lang` applies below them. A wrapper
-   * Angular put children in has the flag if a `<q>` went in. It looks
-   * through what isn't one of Angular's elements: an anonymous `<text>`
-   * (see #regroup) and a snapshot's element without a wrapper.
+   * Calls `fn` with the wrapper of each native child of `ref`, looking
+   * through what isn't one of Angular's elements, which a `<q>` can be in:
+   * an anonymous `<text>` (see #regroup) and a snapshot's element without
+   * a wrapper.
    */
   static #eachQuoteChild(
     ref: ElementRef,
@@ -2787,11 +2787,8 @@ export class LynxElement implements BaseLynxElement {
   ): void {
     for (let at = __FirstElement(ref); at; at = __NextElement(at)) {
       const child = LynxElement.#registered(__GetElementUniqueID(at));
-      if (!child || child.#anonymous) {
-        LynxElement.#eachQuoteChild(at, fn);
-      } else if (child.#holdsQuote || child.#quoteMarks || !child.#children) {
-        fn(child);
-      }
+      if (!child || child.#anonymous) LynxElement.#eachQuoteChild(at, fn);
+      else fn(child);
     }
   }
 

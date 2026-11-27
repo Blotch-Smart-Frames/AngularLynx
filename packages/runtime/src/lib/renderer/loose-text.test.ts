@@ -3451,6 +3451,12 @@ describe('<q>, element by element', () => {
     expect(leafText(openRef)).toBe('„');
     view.setAttribute('lang', 'ja');
     expect(leafText(openRef)).toBe('„');
+    // And once it has a JS child of its own beside the <q>.
+    wrapper.appendChild(doc.createElement('view'));
+    wrapper.setAttribute('lang', 'fr');
+    expect(leafText(openRef)).toBe('«');
+    wrapper.removeAttribute('lang');
+    expect(leafText(openRef)).toBe('「');
   });
 
   it('gives a <q> put in a hydrated element the language above it', () => {

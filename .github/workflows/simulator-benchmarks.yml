@@ -209,9 +209,13 @@ jobs:
             echo "::error::xctrace can't record dyld Activity here, which fully drawn is timed from."
             exit 1
           fi
-          # The thermal state is only a column in the CSVs.
-          if ! check thermal --instrument 'Thermal State'; then
-            echo "::warning::xctrace can't record Thermal State here, so the launches leave it out."
+          # The thermal state is only a column in the CSVs, so without it
+          # the launches record the set checked above. With it, they record
+          # all three, which is checked too: two that each record beside
+          # Points of Interest might still not record together.
+          if ! check thermal --instrument 'Thermal State' \
+            || ! check all --instrument 'dyld Activity' --instrument 'Thermal State'; then
+            echo "::warning::xctrace can't record Thermal State with the others here, so the launches leave it out."
             echo "NO_THERMAL=--no-thermal" >> "$GITHUB_ENV"
           fi
       - name: Launch the Pokédex

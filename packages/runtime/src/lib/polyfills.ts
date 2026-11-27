@@ -11,9 +11,16 @@
  * or a browser main thread). Extracted from runtime.ts as one cohesive unit;
  * imported for its side effects only. Ordering matters (timers before
  * requestIdleCallback), so keep these blocks in sequence.
+ *
+ * The main-thread-only blocks test `__MAIN_THREAD__` itself, not
+ * isMainThread(): the build defines it, so rspack drops each block, and the
+ * classes only it reaches, from the background thread's bundle. Behind a
+ * call it kept them all, and the minifier, which later inlines the call and
+ * drops the block, left Blob, ReadableStream and TextDecoder in that
+ * thread's script (issue #717). The `typeof` check is for unit tests, which
+ * load this module without the define.
  */
 
-import { isMainThread } from './background-call';
 import { installCanvasGlobals } from './canvas/dom-globals';
 import {
   globalEvents,
@@ -131,7 +138,7 @@ installBase64Globals(globalThis as unknown as Record<string, unknown>);
 // ɵenableIntersectionObserver() in each module that names them, so an app
 // that never uses them leaves them out of its main-thread script, which
 // PrimJS reads whole as it loads it (#719; network/enable.ts).
-if (isMainThread()) {
+if (typeof __MAIN_THREAD__ !== 'undefined' && __MAIN_THREAD__) {
   installNetworkGlobals(globalThis as unknown as Record<string, unknown>);
 }
 
@@ -200,7 +207,7 @@ if (typeof Node === 'undefined') {
 // Angular's DOCUMENT are, which `document:` and `window:` listeners listen on
 // (see global-events). It replaces the plugin's placeholder (polyfills.js).
 // The web preview and jsdom keep their own: there `document` is a DOM one.
-if (isMainThread()) {
+if (typeof __MAIN_THREAD__ !== 'undefined' && __MAIN_THREAD__) {
   installGlobalDocument(globalThis, globalEvents());
 } else if (typeof document === 'undefined') {
   (globalThis as any).document = {
@@ -250,7 +257,7 @@ try {
 // The background thread runs no Angular, and keeps no-op listener methods
 // for code that calls them: BrowserPlatformLocation's onPopState and
 // onHashChange call window.addEventListener.
-if (isMainThread()) {
+if (typeof __MAIN_THREAD__ !== 'undefined' && __MAIN_THREAD__) {
   installGlobalWindow(globalThis, globalEvents());
 } else {
   if (typeof globalThis.addEventListener !== 'function') {
@@ -370,7 +377,7 @@ if (
 // (canvas/dom-globals.ts): performance.now(), images, ResizeObserver and the
 // like. Last, since it adds to the `document` and `window` stand-ins above.
 // The main thread only: Angular, and the scene, run there.
-if (isMainThread()) {
+if (typeof __MAIN_THREAD__ !== 'undefined' && __MAIN_THREAD__) {
   // A template's elements are `instanceof Element`, which Angular's @defer
   // triggers check before listening to one (issue #459).
   installElementGlobal(globalThis as unknown as Record<string, any>);

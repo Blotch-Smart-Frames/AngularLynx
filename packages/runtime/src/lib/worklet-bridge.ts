@@ -1,4 +1,5 @@
 import { MainThreadElement } from './main-thread/main-thread-element';
+import type { ElementRef } from './types/lynx';
 
 /**
  * Worklet registry state + the pure param transform shared by every worklet
@@ -50,27 +51,41 @@ export const nextResolveId = (): number => __nextResolveId++;
 
 /**
  * Rebuilds `value` with every `{ _wvid }` marker resolved to its MainThreadRef
- * and, when `elements` is set, every `{ elementRefptr }` wrapped as a
- * MainThreadElement.
+ * and, given `wrapElement`, every `{ elementRefptr }` wrapped by it.
+ *
+ * The wrapper is passed in rather than chosen with a flag, so only
+ * transformParams, which the main thread calls, reaches MainThreadElement: with
+ * a flag, restoreRefs, which the background thread calls, kept the class and
+ * its LynxAnimation in that thread's script, where an element handle never
+ * arrives (issue #717).
  */
-const transform = (value: unknown, elements: boolean): unknown => {
+const transform = (
+  value: unknown,
+  wrapElement?: (ref: ElementRef) => unknown,
+): unknown => {
   if (typeof value !== 'object' || value === null) return value;
   if (Array.isArray(value)) {
-    return value.map((item) => transform(item, elements));
+    return value.map((item) => transform(item, wrapElement));
   }
   const obj = value as Record<string, unknown>;
-  if (elements && 'elementRefptr' in obj) {
-    return new MainThreadElement(obj['elementRefptr'] as any);
+  if (wrapElement && 'elementRefptr' in obj) {
+    return wrapElement(obj['elementRefptr'] as ElementRef);
   }
   if ('_wvid' in obj) {
     return __mainThreadRefMap[obj['_wvid'] as number | string] ?? obj;
   }
   const result: Record<string, unknown> = {};
   for (const key of Object.keys(obj)) {
-    result[key] = transform(obj[key], elements);
+    result[key] = transform(obj[key], wrapElement);
   }
   return result;
 };
+
+/**
+ * Wraps a native element handle for main-thread code.
+ */
+const wrapElement = (ref: ElementRef): MainThreadElement =>
+  new MainThreadElement(ref);
 
 /**
  * Recursively transforms raw Lynx event params into usable objects:
@@ -81,7 +96,7 @@ const transform = (value: unknown, elements: boolean): unknown => {
  * transform can be exercised in isolation.
  */
 export const transformParams = (value: unknown): unknown =>
-  transform(value, true);
+  transform(value, wrapElement);
 
 /**
  * Resolves the `{ _wvid }` markers in the arguments the main thread sends a
@@ -89,7 +104,7 @@ export const transformParams = (value: unknown): unknown =>
  * would also see through its closure. Element handles are left alone: a
  * MainThreadElement only works on the main thread.
  */
-export const restoreRefs = (value: unknown): unknown => transform(value, false);
+export const restoreRefs = (value: unknown): unknown => transform(value);
 
 /**
  * Whether `value` is a promise, or any thenable an async function can return.

@@ -2,6 +2,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import * as ts from 'typescript';
 import { isAngularLynxPackageModule } from './layers.js';
+import { isStrictEsmFile } from './strict-esm.js';
 
 const RUNTIME = '@blotch/angular-lynx';
 /**
@@ -253,9 +254,10 @@ export const enableOnDemand = (
     if (!end) return code;
     head = end.index + end[0].length;
   }
-  // An `.mjs` or `.mts` file is an ES module even with no import or export,
-  // and has no `require` (strict-esm.ts builds it as one).
-  if (ts.isExternalModule(sourceFile) || /\.m[jt]s$/.test(filename)) {
+  // An `.mjs` file, or a `.js` file in a `"type": "module"` package, is an ES
+  // module even with no import or export, and has no `require` (strict-esm.ts
+  // builds it as one).
+  if (ts.isExternalModule(sourceFile) || isStrictEsmFile(filename)) {
     // Imports are hoisted, so the import can go anywhere; the calls go after
     // the module's own imports, which run first whatever their place.
     const locals = localNames(code, sourceFile, enables);

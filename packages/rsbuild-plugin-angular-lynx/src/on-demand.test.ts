@@ -242,6 +242,41 @@ describe('enableOnDemand, for the main thread’s globals', () => {
     expect(enableOnDemand(other, '/app/src/s.ts')).toBe(other);
   });
 
+  it('imports in a .js module of a "type": "module" package with no import or export, which has no require', () => {
+    const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'on-demand-')));
+    try {
+      const dir = path.join(root, 'node_modules/lib');
+      mkdirSync(path.join(dir, 'dist'), { recursive: true });
+      writeFileSync(
+        path.join(dir, 'package.json'),
+        JSON.stringify({ type: 'module' }),
+      );
+      const code = `globalThis.get = (u) => fetch(u);`;
+      expect(enableOnDemand(code, path.join(dir, 'dist/polyfill.js'))).toBe(
+        calls('ɵenableFetch') + code,
+      );
+      // A CommonJS package's .js file keeps require.
+      const cjs = path.join(root, 'node_modules/cjs');
+      mkdirSync(cjs, { recursive: true });
+      writeFileSync(
+        path.join(cjs, 'package.json'),
+        JSON.stringify({ type: 'commonjs' }),
+      );
+      expect(enableOnDemand(code, path.join(cjs, 'index.js'))).toBe(
+        `;require("@blotch/angular-lynx").ɵenableFetch(); ${code}`,
+      );
+      // So does one whose package.json can't be read.
+      const broken = path.join(root, 'node_modules/broken');
+      mkdirSync(broken, { recursive: true });
+      writeFileSync(path.join(broken, 'package.json'), '{');
+      expect(enableOnDemand(code, path.join(broken, 'index.js'))).toBe(
+        `;require("@blotch/angular-lynx").ɵenableFetch(); ${code}`,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('leaves a module that only mentions them in comments or other strings as it is', () => {
     const code = `// Fetch the user, then read the Response.\n/* new XMLHttpRequest() */\nexport const m = 'Response status: ' + \`fetch failed\`;\nexport const fetcher = 1;\nclass A { #fetch = 1; }`;
     expect(enableOnDemand(code, '/app/src/a.ts')).toBe(code);

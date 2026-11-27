@@ -651,27 +651,32 @@ class Canvas2DContext(
     private fun compositeFiltered(c: Canvas, matrix: Matrix?, draw: (Canvas) -> Unit) {
         val s = state
         val layers = layers()
-        val shapeRect = layers.shape
-        // The shadow is cast from the shape's layer, or from a layer of its
-        // own when one round both would be bigger than the two (see layers).
-        val sourceRect = layers.shadow ?: shapeRect
+        // The shape's plan always has a layer at the canvas's resolution.
+        val shapeLayer = layers.shape.full ?: return
         var layer: Bitmap? = null
         var shadow: Bitmap? = null
         try {
-            val pixels = filteredLayer(shapeRect, matrix, draw)
+            val steps = CanvasFilter.parse(s.filterSteps)
+            val pixels = rendered(layers.shape, steps, matrix, draw)
             // The canvas shadow, cast from the filtered layer's alpha and
-            // drawn before it, as the spec has it.
+            // drawn before it, as the spec has it. It's cast from the shape's
+            // layer, or from a layer of its own (see layers), which may be a
+            // smaller one, scaled up as it's drawn.
+            var sourceLayer = shapeLayer
             if (shadowVisible()) {
-                val source = layers.shadow?.let { filteredLayer(it, matrix, draw) } ?: pixels
+                val source = layers.shadow?.let { plan ->
+                    sourceLayer = plan.full ?: plan.low ?: return
+                    rendered(plan, steps, matrix, draw)
+                } ?: pixels
                 val color = s.shadowColor
                 val shadowBytes = CanvasFilter.shadowOf(
-                    source, sourceRect.width(), sourceRect.height(), 0.0, 0.0, s.shadowBlur / 2.0,
+                    source, sourceLayer.width, sourceLayer.height, 0.0, 0.0, s.shadowBlur / 2.0 * sourceLayer.scale,
                     Color.red(color).toDouble(), Color.green(color).toDouble(), Color.blue(color).toDouble(),
                     Color.alpha(color) / 255.0,
                 )
-                shadow = bitmapOf(shadowBytes, sourceRect)
+                shadow = bitmapOf(shadowBytes, sourceLayer)
             }
-            layer = bitmapOf(pixels, shapeRect)
+            layer = bitmapOf(pixels, shapeLayer)
             val paint = Paint(Paint.FILTER_BITMAP_FLAG)
             val unbounded = s.composite in UNBOUNDED
             // The spec composites the shadow, then the shape, each over the
@@ -685,20 +690,20 @@ class Canvas2DContext(
             shadow?.let {
                 if (unbounded) c.saveLayer(null, layerPaint)
                 // Its offset is in the canvas's pixels, which the layers are in.
-                c.drawBitmap(it, sourceRect.left + s.shadowOffsetX, sourceRect.top + s.shadowOffsetY, paint)
+                c.drawBitmap(it, null, sourceLayer.bounds(s.shadowOffsetX.toDouble(), s.shadowOffsetY.toDouble()), paint)
                 if (unbounded) c.restore()
             }
             if (unbounded) c.saveLayer(null, layerPaint)
-            c.drawBitmap(layer, shapeRect.left.toFloat(), shapeRect.top.toFloat(), paint)
+            c.drawBitmap(layer, shapeLayer.left.toFloat(), shapeLayer.top.toFloat(), paint)
             if (unbounded) c.restore()
         } catch (_: OutOfMemoryError) {
             // A layer, its bytes or the filter's scratch copies didn't fit:
             // this draw is left out, and the batch goes on, as a browser's
             // canvas that can't hold its size draws nothing.
-            Log.w(TAG, "The filter's ${shapeRect.width()}x${shapeRect.height()} layer is too big to draw with")
+            Log.w(TAG, "The filter's ${shapeLayer.width}x${shapeLayer.height} layer is too big to draw with")
             return
         } catch (_: IllegalArgumentException) {
-            Log.w(TAG, "The filter's ${shapeRect.width()}x${shapeRect.height()} layer is too big to allocate")
+            Log.w(TAG, "The filter's ${shapeLayer.width}x${shapeLayer.height} layer is too big to allocate")
             return
         } finally {
             layer?.recycle()
@@ -708,79 +713,222 @@ class Canvas2DContext(
     }
 
     /**
-     * What `draw` draws over `rect` of the canvas's pixels, through
-     * globalAlpha and then the filter: the bytes as stored, premultiplied
-     * RGBA, which is what the filter works on. globalAlpha goes on first, as
-     * the canvas spec has it (since whatwg/html#10674), so a drop-shadow()
-     * shows through a see-through shape.
+     * What `draw` draws into `layer`, through globalAlpha: the bytes as
+     * stored, premultiplied RGBA, which is what the filter works on.
+     * globalAlpha goes on first, as the canvas spec has it (since
+     * whatwg/html#10674), so a drop-shadow() shows through a see-through
+     * shape.
      */
-    private fun filteredLayer(rect: Rect, matrix: Matrix?, draw: (Canvas) -> Unit): ByteArray {
-        val s = state
-        val bitmap = Bitmap.createBitmap(rect.width(), rect.height(), Bitmap.Config.ARGB_8888)
+    private fun drawn(layer: Layer, matrix: Matrix?, draw: (Canvas) -> Unit): ByteArray {
+        val bitmap = Bitmap.createBitmap(layer.width, layer.height, Bitmap.Config.ARGB_8888)
         try {
             val layerCanvas = Canvas(bitmap)
-            layerCanvas.translate(-rect.left.toFloat(), -rect.top.toFloat())
+            // The layer's place in the canvas's pixels, worked out in Doubles:
+            // a small layer's left can be far off the canvas.
+            layerCanvas.translate((-layer.left * layer.scale).toFloat(), (-layer.top * layer.scale).toFloat())
+            if (layer.scale != 1.0) layerCanvas.scale(layer.scale.toFloat(), layer.scale.toFloat())
             if (matrix != null) layerCanvas.concat(matrix)
             draw(layerCanvas)
-            val pixels = ByteBuffer.allocate(rect.width() * rect.height() * 4)
+            val pixels = ByteBuffer.allocate(layer.width * layer.height * 4)
             bitmap.copyPixelsToBuffer(pixels)
-            CanvasFilter.scaleAlpha(pixels.array(), s.globalAlpha.toDouble())
-            CanvasFilter.apply(pixels.array(), rect.width(), rect.height(), s.filterSteps)
+            CanvasFilter.scaleAlpha(pixels.array(), state.globalAlpha.toDouble())
             return pixels.array()
         } finally {
             bitmap.recycle()
         }
     }
 
-    /** A layer's bytes, premultiplied RGBA, as a bitmap to draw over `rect` of the canvas. */
-    private fun bitmapOf(bytes: ByteArray, rect: Rect): Bitmap {
-        val bitmap = Bitmap.createBitmap(rect.width(), rect.height(), Bitmap.Config.ARGB_8888)
+    /**
+     * What `draw` draws through the alpha and the filter's `steps`, as
+     * `plan` has it: the bytes over its [Plan.full] layer, or over its
+     * [Plan.low] one when it has only that.
+     *
+     * With both, the low layer is drawn too, and the steps whose deviation
+     * is wide enough there ([isWide]) are worked out in it and scaled up
+     * onto the full one ([CanvasFilter.resample]): a wide blur replaces the
+     * full layer (so the steps before it are worked out only in the low
+     * one), and a wide drop shadow's shadow goes under it. The other steps
+     * are applied in both. So whatever the wide steps bring onto the canvas
+     * from past the full layer's reach comes from the low one, which reaches
+     * as far as the steps do, and the rest keeps the canvas's resolution.
+     */
+    private fun rendered(plan: Plan, steps: List<CanvasFilter.Step>, matrix: Matrix?, draw: (Canvas) -> Unit): ByteArray {
+        val full = plan.full
+        val low = plan.low
+        if (full == null || low == null) {
+            // A plan has one layer at least (see planFor and layers).
+            val only = full ?: checkNotNull(low)
+            val bytes = drawn(only, matrix, draw)
+            for (step in steps) CanvasFilter.applyStep(bytes, only.width, only.height, step, only.scale)
+            return bytes
+        }
+        val wide = steps.map { isWide(it, low.scale) }
+        val lastWide = wide.lastIndexOf(true)
+        val lastWideBlur = steps.indices.lastOrNull { wide[it] && steps[it].isBlur } ?: -1
+        val lowBytes = drawn(low, matrix, draw)
+        var fullBytes = if (lastWideBlur < 0) drawn(full, matrix, draw) else null
+        for ((i, step) in steps.withIndex()) {
+            when {
+                !wide[i] -> {
+                    // The low layer is read only up to the last wide step.
+                    if (i < lastWide) CanvasFilter.applyStep(lowBytes, low.width, low.height, step, low.scale)
+                    fullBytes?.let { CanvasFilter.applyStep(it, full.width, full.height, step, 1.0) }
+                }
+                step.isBlur -> {
+                    CanvasFilter.applyStep(lowBytes, low.width, low.height, step, low.scale)
+                    if (i == lastWideBlur) fullBytes = resampled(lowBytes, low, full, 0.0, 0.0)
+                }
+                else -> {
+                    // The shadow is cast unmoved, then moved as it's resampled
+                    // onto each layer, so its offset needn't be whole pixels
+                    // of the low one.
+                    val v = step.values
+                    val cast = CanvasFilter.shadowOf(lowBytes, low.width, low.height, 0.0, 0.0, v[2] * low.scale, v[3], v[4], v[5], v[6])
+                    fullBytes?.let { CanvasFilter.under(it, resampled(cast, low, full, v[0], v[1])) }
+                    if (i < lastWide) CanvasFilter.under(lowBytes, resampled(cast, low, low, v[0], v[1]))
+                }
+            }
+        }
+        // Drawn up front, or made from the low layer at the last wide blur.
+        return checkNotNull(fullBytes)
+    }
+
+    /** `bytes` of layer `from`, resampled onto layer `to`, moved by (dx, dy) canvas pixels. */
+    private fun resampled(bytes: ByteArray, from: Layer, to: Layer, dx: Double, dy: Double): ByteArray =
+        CanvasFilter.resample(
+            bytes, from.width, from.height, from.left, from.top, from.scale,
+            to.width, to.height, to.left, to.top, to.scale, dx, dy,
+        )
+
+    /**
+     * Whether a step blurs widely enough, in a layer at `scale`, to be
+     * worked out there and scaled up: its deviation there is at least
+     * [WIDE_SIGMA] of the layer's pixels, so the detail the smaller layer
+     * loses is blurred away. Skia scales a wide blur down the same way.
+     */
+    private fun isWide(step: CanvasFilter.Step, scale: Double): Boolean = step.sigma * scale >= WIDE_SIGMA
+
+    /** A layer's bytes, premultiplied RGBA, as a bitmap of the layer's size. */
+    private fun bitmapOf(bytes: ByteArray, layer: Layer): Bitmap {
+        val bitmap = Bitmap.createBitmap(layer.width, layer.height, Bitmap.Config.ARGB_8888)
         bitmap.copyPixelsFromBuffer(ByteBuffer.wrap(bytes))
         return bitmap
     }
 
     /**
-     * Where a filter's layers lie, in the canvas's pixels: [shape] is the
-     * layer the shape is drawn into, and [shadow] a second one the shadow is
-     * cast from, or null.
+     * A layer a draw goes into, over part of the canvas's pixels: from
+     * ([left], [top]), [width] by [height] of its pixels, [scale] of them to
+     * a canvas pixel. A layer at the canvas's resolution (scale 1) lies on
+     * whole pixels, so its pixels line up with the canvas's.
      */
-    private class Layers(val shape: Rect, val shadow: Rect?)
+    private class Layer(val left: Double, val top: Double, val width: Int, val height: Int, val scale: Double) {
+        constructor(rect: Rect) : this(rect.left.toDouble(), rect.top.toDouble(), rect.width(), rect.height(), 1.0)
+
+        /** Where a layer at the canvas's resolution lies, as a Rect. */
+        fun rect(): Rect = Rect(left.toInt(), top.toInt(), left.toInt() + width, top.toInt() + height)
+
+        /** Where it lies in the canvas's pixels, moved by (dx, dy). */
+        fun bounds(dx: Double, dy: Double): RectF = RectF(
+            (left + dx).toFloat(),
+            (top + dy).toFloat(),
+            (left + dx + width / scale).toFloat(),
+            (top + dy + height / scale).toFloat(),
+        )
+    }
+
+    /**
+     * The layers one filtered draw (or the shadow cast from it) goes into:
+     * [full], at the canvas's resolution, and [low], a smaller one that
+     * reaches as far as the filter's wide blurs do (see [rendered]), or
+     * either alone. The shape's plan always has [full].
+     */
+    private class Plan(val full: Layer?, val low: Layer?)
+
+    /**
+     * Where a filter's layers lie: [shape] is the plan the shape is drawn
+     * into, and [shadow] a second one the shadow is cast from, or null.
+     */
+    private class Layers(val shape: Plan, val shadow: Plan?)
 
     /** A rectangle's area, as a Long: a layer's sides multiplied can pass an Int. */
     private fun area(rect: Rect): Long = rect.width().toLong() * rect.height()
 
     /**
+     * The plan for a filtered draw that needs `base` (the canvas, or the
+     * canvas moved back by the shadow's offset) and the filter's reach round
+     * it, and `extra` more for the full layer (a shadow's blur, when the
+     * shadow is cast from it).
+     *
+     * A layer the canvas's resolution grows by the reach, capped at
+     * [MAX_REACH], so a huge blur makes no huge layer. Past the cap, when a
+     * step blurs widely ([isWide]), a low layer, scaled down by MAX_REACH
+     * over the reach, takes in the whole reach at about the size the capped
+     * layer was (issue #814), and the full layer needs to reach only as far
+     * as the steps after the last wide blur do.
+     */
+    private fun planFor(base: Rect, steps: List<CanvasFilter.Step>, extra: Double): Plan {
+        val s = state
+        val reach = steps.sumOf { it.reach }
+        val cappedReach = min(s.filterPadding.toDouble(), MAX_REACH)
+        fun fullLayer(margin: Double): Layer {
+            val grown = ceil(min(margin, MAX_REACH)).toInt()
+            return Layer(Rect(base).apply { inset(-grown, -grown) })
+        }
+        if (!(reach > MAX_REACH) || !reach.isFinite()) return Plan(fullLayer(cappedReach + extra), null)
+        val scale = MAX_REACH / reach
+        val wide = steps.map { isWide(it, scale) }
+        if (wide.none { it }) return Plan(fullLayer(cappedReach + extra), null)
+        val lastWideBlur = steps.indices.lastOrNull { wide[it] && steps[it].isBlur } ?: -1
+        val after = steps.withIndex().filter { (i, _) -> i > lastWideBlur && !wide[i] }.sumOf { it.value.reach }
+        return Plan(fullLayer(after + extra), lowLayer(base, reach, scale))
+    }
+
+    /** A layer over `base` grown by `reach`, at `scale`, which keeps it about the size `base` grown by MAX_REACH is. */
+    private fun lowLayer(base: Rect, reach: Double, scale: Double): Layer = Layer(
+        base.left - reach,
+        base.top - reach,
+        // (side + 2 * reach) * scale, without multiplying a huge reach out.
+        ceil(base.width() * scale + 2 * reach * scale).toInt(),
+        ceil(base.height() * scale + 2 * reach * scale).toInt(),
+        scale,
+    )
+
+    /**
      * The layers a filtered draw goes into. The shape's is the canvas grown
      * by the filter's reach, so a shape just off the canvas still blurs onto
-     * it. With a shadow, the shadow needs the part of the shape that casts
-     * onto the canvas: the canvas moved back by the shadow's offset, grown by
-     * its blur (three of its deviations, which are half the blur) and the
-     * filter's reach, capped at 256 pixels, as css-filter.ts caps the
-     * filter's, so a huge blur makes no huge layer. When one rectangle round
-     * both is no bigger than the two, the shape's layer grows to take that
-     * part in. Otherwise it's a second layer: one rectangle round both would
-     * grow with the offset, and a shadow cast from far off the canvas
-     * (shadowOffsetX = 10000 and a shape at x = -10000) would make a huge
-     * layer, or, capped, cut the shape away.
+     * it (see [planFor]). With a shadow, the shadow needs the part of the
+     * shape that casts onto the canvas: the canvas moved back by the
+     * shadow's offset, grown by its blur (three of its deviations, which are
+     * half the blur) and the filter's reach.
      *
-     * When the blur's reach passes the cap, the shadow's layer also takes in
-     * the part of the canvas grown by 256 pixels (the one layer it was cast
-     * from before #787) that lies within the blur's whole reach, so a shape
-     * the old layer kept still casts its shadow (issue #795): with
-     * shadowOffsetX = -100, the layer round the moved canvas starts at
-     * x = -156, and a shape at x = -250 would be cut away. It does so only
-     * when one rectangle round the two is no bigger than the two, so a far
-     * offset still makes no huge layer.
+     * Within [MAX_REACH] of that, when one rectangle round both is no bigger
+     * than the two, the shape's layer grows to take that part in. Otherwise
+     * it's a second layer: one rectangle round both would grow with the
+     * offset, and a shadow cast from far off the canvas (shadowOffsetX =
+     * 10000 and a shape at x = -10000) would make a huge layer, or, capped,
+     * cut the shape away.
+     *
+     * Past MAX_REACH, the shadow's layer is a smaller one that takes in the
+     * whole reach (issue #814): a 1000 px shadowBlur reaches 1500 px, and a
+     * layer that far round the canvas would be thousands of pixels a side.
+     * When the shadow's blur is wide at that layer's scale ([WIDE_SIGMA]),
+     * the shape is drawn, filtered and cast from in it, and the shadow is
+     * scaled up as it's drawn, as Skia scales a wide blur down: the detail
+     * the layer loses is blurred away. Otherwise the reach is the filter's,
+     * and the shadow's layer is planned as the shape's is, grown by the
+     * shadow's blur too.
      */
     private fun layers(): Layers {
         val s = state
+        val steps = CanvasFilter.parse(s.filterSteps)
         val canvasRect = Rect(0, 0, width, height)
-        val filterReach = min(s.filterPadding, 256)
-        val shape = Rect(canvasRect).apply { inset(-filterReach, -filterReach) }
+        val shape = planFor(canvasRect, steps, 0.0)
         if (!shadowVisible()) return Layers(shape, null)
+        val blurReach = ceil(s.shadowBlur * 1.5)
         // A Double, as a huge blur's reach doesn't fit an Int.
-        val fullReach = filterReach + ceil(s.shadowBlur * 1.5)
-        val reach = min(fullReach, 256.0)
+        val fullReach = steps.sumOf { it.reach } + blurReach
+        val within = fullReach <= MAX_REACH
+        val reach = if (within) fullReach else 0.0
         // Whole pixels, so the layer's pixels line up with the canvas's.
         val left = floor(-s.shadowOffsetX.toDouble()) - reach
         val top = floor(-s.shadowOffsetY.toDouble()) - reach
@@ -789,23 +937,20 @@ class Canvas2DContext(
         // An offset past what a Rect holds casts no shadow anywhere the
         // canvas's pixels, which are floats, can still place a shape.
         if (listOf(left, top, right, bottom).any { abs(it) > MAX_LAYER_OFFSET }) return Layers(shape, null)
-        var source = Rect(left.toInt(), top.toInt(), right.toInt(), bottom.toInt())
-        if (fullReach > 256) {
-            // The old layer, cut to the blur's whole reach round the moved
-            // canvas: past that, a shape casts nothing onto the canvas.
-            val keptLeft = max(-256.0, left + reach - fullReach)
-            val keptTop = max(-256.0, top + reach - fullReach)
-            val keptRight = min(width + 256.0, right - reach + fullReach)
-            val keptBottom = min(height + 256.0, bottom - reach + fullReach)
-            if (keptLeft < keptRight && keptTop < keptBottom) {
-                val kept = Rect(keptLeft.toInt(), keptTop.toInt(), keptRight.toInt(), keptBottom.toInt())
-                val grown = Rect(source).apply { union(kept) }
-                if (area(grown) <= area(source) + area(kept)) source = grown
+        val source = Rect(left.toInt(), top.toInt(), right.toInt(), bottom.toInt())
+        if (!within) {
+            val scale = MAX_REACH / fullReach
+            if (s.shadowBlur / 2.0 * scale >= WIDE_SIGMA && fullReach.isFinite()) {
+                return Layers(shape, Plan(null, lowLayer(source, fullReach, scale)))
             }
+            return Layers(shape, planFor(source, steps, blurReach))
         }
-        val both = Rect(shape).apply { union(source) }
-        if (area(both) > area(shape) + area(source)) return Layers(shape, source)
-        return Layers(both, null)
+        // Within MAX_REACH, so is the filter's reach: the shape's layer is
+        // at the canvas's resolution alone, on whole pixels.
+        val shapeRect = shape.full?.rect() ?: return Layers(shape, Plan(Layer(source), null))
+        val both = Rect(shapeRect).apply { union(source) }
+        if (area(both) > area(shapeRect) + area(source)) return Layers(shape, Plan(Layer(source), null))
+        return Layers(Plan(Layer(both), null), null)
     }
 
     /**
@@ -1260,6 +1405,21 @@ class Canvas2DContext(
          * whole pixel, and well inside what a Rect's ints hold.
          */
         private const val MAX_LAYER_OFFSET = 16_777_216.0
+
+        /**
+         * The most a layer at the canvas's resolution reaches past the part
+         * of the canvas it's for, as css-filter.ts caps the filter's padding.
+         * A blur or shadow that reaches farther goes through a smaller layer
+         * too (see layers), which this keeps about the capped layer's size.
+         */
+        private const val MAX_REACH = 256.0
+
+        /**
+         * The deviation, in a smaller layer's pixels, from which a blur is
+         * worked out there and scaled up (see isWide): a blur that wide has
+         * no detail a pixel of that layer would lose.
+         */
+        private const val WIDE_SIGMA = 4.0
 
         /** The operations that clear what the shape doesn't cover. */
         private val UNBOUNDED = setOf(1, 2, 5, 7, 9)

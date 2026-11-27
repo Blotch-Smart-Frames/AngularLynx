@@ -29,8 +29,33 @@ internal object CanvasFilter {
     private const val MATRIX = 1
     private const val DROP_SHADOW = 2
 
-    /** The filter's steps, as the runtime sends them, on a layer's bytes. */
-    fun apply(bytes: ByteArray, width: Int, height: Int, steps: DoubleArray) {
+    /** A step of the filter: its kind (as css-filter.ts's FILTER_STEP numbers them) and its numbers. */
+    class Step(val kind: Int, val values: DoubleArray) {
+        val isBlur: Boolean get() = kind == BLUR
+
+        /** Its deviation, for a blur or a drop shadow; 0 for a color matrix. */
+        val sigma: Double get() = when (kind) {
+            BLUR -> values[0]
+            DROP_SHADOW -> values[2]
+            else -> 0.0
+        }
+
+        /**
+         * How far it can move what's drawn, in the canvas's pixels, as
+         * css-filter.ts counts a step's padding: three deviations, and a
+         * drop shadow's offset. Uncapped, unlike the padding the runtime
+         * sends, which stops at 256.
+         */
+        val reach: Double get() = when (kind) {
+            BLUR -> ceil(values[0] * 3)
+            DROP_SHADOW -> ceil(values[2] * 3) + ceil(maxOf(abs(values[0]), abs(values[1])))
+            else -> 0.0
+        }
+    }
+
+    /** The filter's steps, as the runtime sends them. */
+    fun parse(steps: DoubleArray): List<Step> {
+        val parsed = ArrayList<Step>()
         var i = 0
         while (i < steps.size) {
             val kind = steps[i++].toInt()
@@ -42,13 +67,26 @@ internal object CanvasFilter {
             }
             // A step it doesn't know, or one cut short, ends the list: what's
             // after it would be read as the wrong numbers.
-            if (arity == 0 || i + arity > steps.size) return
-            val values = steps.copyOfRange(i, i + arity)
+            if (arity == 0 || i + arity > steps.size) break
+            parsed.add(Step(kind, steps.copyOfRange(i, i + arity)))
             i += arity
-            when (kind) {
-                BLUR -> gaussianBlur(bytes, width, height, values[0])
-                MATRIX -> colorMatrix(bytes, values)
-                else -> dropShadow(bytes, width, height, values)
+        }
+        return parsed
+    }
+
+    /**
+     * One step on a layer's bytes, in a layer `scale` of whose pixels make a
+     * canvas pixel: its lengths (a deviation, an offset) are in the canvas's
+     * pixels, so they're scaled to the layer's.
+     */
+    fun applyStep(bytes: ByteArray, width: Int, height: Int, step: Step, scale: Double) {
+        val v = step.values
+        when (step.kind) {
+            BLUR -> gaussianBlur(bytes, width, height, v[0] * scale)
+            MATRIX -> colorMatrix(bytes, v)
+            else -> {
+                val shadow = shadowOf(bytes, width, height, v[0] * scale, v[1] * scale, v[2] * scale, v[3], v[4], v[5], v[6])
+                under(bytes, shadow)
             }
         }
     }
@@ -218,14 +256,76 @@ internal object CanvasFilter {
     }
 
     /**
-     * drop-shadow(): the shadow of what's drawn (shadowOf), under it. `values`
-     * is dx, dy, the deviation, red, green, blue (0 to 255) and alpha (0 to 1).
+     * `under` drawn under `bytes`, source-over, as drop-shadow() puts its
+     * shadow under what's drawn. Both are premultiplied, the same size.
      */
-    private fun dropShadow(bytes: ByteArray, width: Int, height: Int, values: DoubleArray) {
-        val shadow = shadowOf(bytes, width, height, values[0], values[1], values[2], values[3], values[4], values[5], values[6])
+    fun under(bytes: ByteArray, under: ByteArray) {
         for (p in 0 until bytes.size) {
-            val under = 1 - bytes.at(p - p % 4 + 3) / 255.0
-            bytes[p] = clampByte(bytes.at(p) + shadow.at(p) * under)
+            val uncovered = 1 - bytes.at(p - p % 4 + 3) / 255.0
+            bytes[p] = clampByte(bytes.at(p) + under.at(p) * uncovered)
         }
+    }
+
+    /**
+     * The bytes of a layer resampled onto another: `src`, over the canvas's
+     * pixels from (srcLeft, srcTop) at `srcScale` of its pixels to a canvas
+     * pixel, read with bilinear filtering at the center of each of the
+     * `dstWidth` by `dstHeight` pixels of a layer from (dstLeft, dstTop) at
+     * `dstScale`, moved by (shiftX, shiftY) canvas pixels. Transparent past
+     * `src`'s edges. It's how a blur worked out in a smaller layer is scaled
+     * up, and how a drop shadow's offset lands between two pixels, which a
+     * blur that wide has no edge to show.
+     */
+    fun resample(
+        src: ByteArray,
+        srcWidth: Int,
+        srcHeight: Int,
+        srcLeft: Double,
+        srcTop: Double,
+        srcScale: Double,
+        dstWidth: Int,
+        dstHeight: Int,
+        dstLeft: Double,
+        dstTop: Double,
+        dstScale: Double,
+        shiftX: Double,
+        shiftY: Double,
+    ): ByteArray {
+        val dst = ByteArray(dstWidth * dstHeight * 4)
+        // Where each column's and row's center falls in src, as the pixel
+        // before it and how far past that pixel's center it is. Clamped, so a
+        // far shift stays an Int (and reads nothing).
+        fun axis(count: Int, from: Double, shift: Double, srcFrom: Double, size: Int): Pair<IntArray, DoubleArray> {
+            val index = IntArray(count)
+            val fraction = DoubleArray(count)
+            for (i in 0 until count) {
+                val u = ((from + (i + 0.5) / dstScale - shift - srcFrom) * srcScale - 0.5).coerceIn(-2.0, size + 1.0)
+                val whole = floor(u)
+                index[i] = whole.toInt()
+                fraction[i] = u - whole
+            }
+            return index to fraction
+        }
+        val (xs, fx) = axis(dstWidth, dstLeft, shiftX, srcLeft, srcWidth)
+        val (ys, fy) = axis(dstHeight, dstTop, shiftY, srcTop, srcHeight)
+        fun sample(x: Int, y: Int, channel: Int): Int =
+            if (x < 0 || y < 0 || x >= srcWidth || y >= srcHeight) 0 else src.at((y * srcWidth + x) * 4 + channel)
+        for (j in 0 until dstHeight) {
+            val y = ys[j]
+            if (y < -1 || y >= srcHeight) continue
+            val wy = fy[j]
+            for (i in 0 until dstWidth) {
+                val x = xs[i]
+                if (x < -1 || x >= srcWidth) continue
+                val wx = fx[i]
+                val p = (j * dstWidth + i) * 4
+                for (channel in 0 until 4) {
+                    val top = sample(x, y, channel) * (1 - wx) + sample(x + 1, y, channel) * wx
+                    val bottom = sample(x, y + 1, channel) * (1 - wx) + sample(x + 1, y + 1, channel) * wx
+                    dst[p + channel] = clampByte(top * (1 - wy) + bottom * wy)
+                }
+            }
+        }
+        return dst
     }
 }

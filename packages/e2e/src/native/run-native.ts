@@ -7,37 +7,19 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
-
-import type * as Native from '@blotch/angular-lynx-native';
 
 import { CheckError, check, run, step } from '../process.ts';
 import { HTTP_DATA, serveStatic } from '../static-server.ts';
 import { runOnAndroidEmulator } from './android.ts';
 import { prepareIos, runOnIosSimulator } from './ios.ts';
 import type { NativeHost } from './maestro.ts';
-
-type Platform = 'ios' | 'android';
-
-type AngularJson = {
-  projects: Record<
-    string,
-    {
-      root?: string;
-      architect: {
-        build: {
-          options: { appId: string } & Record<string, unknown>;
-          configurations?: Record<string, Record<string, unknown>>;
-          defaultConfiguration?: string;
-        };
-      };
-    }
-  >;
-};
-
-const readAngularJson = (appDir: string): AngularJson =>
-  JSON.parse(readFileSync(path.join(appDir, 'angular.json'), 'utf8'));
+import {
+  buildFromBundle,
+  loadNativePackage,
+  type Platform,
+  readAngularJson,
+} from './native-package.ts';
 
 /**
  * Builds the app's binary from its built bundle with the native builder in
@@ -59,37 +41,19 @@ const buildWithNativePackage = async (
   logFile: string,
 ) => {
   step(`Layer 6: the ${platform} app, from the built bundle`);
-  const native = (await import(
-    pathToFileURL(path.join(nativeDir, 'dist/index.js')).href
-  )) as typeof Native;
-  const [projectName, project] = Object.entries(
-    readAngularJson(appDir).projects,
-  )[0]!;
-  const { build } = project.architect;
-  // What Angular CLI hands the builder for a plain `ng build`: the base
-  // options with the default configuration's on top.
-  const options = {
-    ...build.options,
-    ...(build.defaultConfiguration
-      ? build.configurations?.[build.defaultConfiguration]
-      : {}),
-  };
+  const projectName = Object.keys(readAngularJson(appDir).projects)[0]!;
   const bundleDir = path.join(appDir, 'dist');
   const log = (message: string) => {
     console.log(message);
     appendFileSync(logFile, `${message}\n`);
   };
-  const { artifacts } = await native.buildNativeApp({
+  const { artifacts } = await buildFromBundle({
+    native: await loadNativePackage(nativeDir),
     platform,
-    projectRoot: path.join(appDir, project.root ?? ''),
-    workDir: path.join(tmpdir(), 'angular-lynx-e2e-native', projectName),
-    projectName,
-    packageVersion: JSON.parse(
-      readFileSync(path.join(appDir, 'package.json'), 'utf8'),
-    ).version,
+    appDir,
     bundleDir,
+    workDir: path.join(tmpdir(), 'angular-lynx-e2e-native', projectName),
     outputDir: path.join(bundleDir, platform),
-    app: options,
     log,
   });
   for (const artifact of artifacts) {

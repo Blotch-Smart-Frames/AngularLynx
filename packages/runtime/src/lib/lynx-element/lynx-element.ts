@@ -70,14 +70,22 @@ import {
   isRowOrientation,
   ancestorTextRulesRead,
   matchedStyleFlagsFor,
+  matchedQuotesFor,
   matchedVerticalAlignFor,
   parseVerticalAlign,
+  quotesRulesRead,
+  hasQuotesRules,
   smallerClassFor,
   styleFlagsFor,
   textPropertyBit,
   textPropertyFlags,
 } from './text-flow';
-import { getDocumentLanguage, quotesFor } from './quotes';
+import {
+  getDocumentLanguage,
+  parseQuotes,
+  quotePairFor,
+  type QuoteMarks,
+} from './quotes';
 import {
   type LayoutRect,
   LayoutTracker,
@@ -1841,6 +1849,7 @@ export class LynxElement implements BaseLynxElement {
     if (key === 'font-size') this.#passedSizeChanged();
     if (LAYOUT_STYLES.has(key)) this.#layoutChanged();
     if (SHIFT_STYLES.has(key)) this.#shiftStylesChanged();
+    if (key === 'quotes') this.#inlineQuotesChanged();
     // A style set outside change detection, as a transition's last frame is
     // from a timer, reaches native only with a flush (see scheduleSettleFlush).
     scheduleSettleFlush();
@@ -1889,6 +1898,7 @@ export class LynxElement implements BaseLynxElement {
     if (key === 'font-size') this.#passedSizeChanged();
     if (LAYOUT_STYLES.has(key)) this.#layoutChanged();
     if (SHIFT_STYLES.has(key)) this.#shiftStylesChanged();
+    if (key === 'quotes') this.#inlineQuotesChanged();
     scheduleSettleFlush();
   }
   /**
@@ -1946,6 +1956,12 @@ export class LynxElement implements BaseLynxElement {
         this.#shiftStylesChanged();
         break;
       }
+    }
+    if (
+      inlineDeclaration(before, 'quotes') !==
+      inlineDeclaration(inlineStyle, 'quotes')
+    ) {
+      this.#inlineQuotesChanged();
     }
     scheduleSettleFlush();
   }
@@ -2006,6 +2022,9 @@ export class LynxElement implements BaseLynxElement {
     // read the size it passes on (see #sizedRelatively).
     this.#passedSizeChanged();
     this.#layoutChanged();
+    // And the marks of a <q> it is or is in, where a `quotes` rule requires
+    // a changed token (see #ownQuotes).
+    if (quotesRulesRead(changed)) this.#refreshQuotes();
   }
 
   /**
@@ -2630,8 +2649,7 @@ export class LynxElement implements BaseLynxElement {
     // Flags its hydrated ancestors (with itself, which changes nothing: a
     // <q> is visited for its own marks anyway).
     if (existing) this.#holdQuote();
-    const [depth, language] = this.#outerQuoteContext();
-    this.#setQuoteDepth(depth, language);
+    this.#refreshQuotes();
   }
 
   /**
@@ -2654,16 +2672,75 @@ export class LynxElement implements BaseLynxElement {
   }
 
   /**
-   * How many `<q>`s are around this element, and the language it inherits:
-   * the depth and language #setQuoteDepth gives it. An element in nothing
-   * has no `<q>`s around it, and the document's language.
+   * Gives the `<q>`s in this element, itself included, their marks again
+   * (see #setQuoteDepth), from how many `<q>`s are around it, and the
+   * language and `quotes` it inherits. An element in nothing has no `<q>`s
+   * around it, the document's language, and `quotes: auto`.
    */
-  #outerQuoteContext(): [depth: number, language: string] {
+  #refreshQuotes(everyChild = false): void {
     const parent = this.#quoteParent();
-    return parent
-      ? [parent.#quoteDepth(), parent.#language()]
-      : [0, getDocumentLanguage()];
+    if (parent) {
+      this.#setQuoteDepth(
+        parent.#quoteDepth(),
+        parent.#language(),
+        parent.#quotes(),
+        everyChild,
+      );
+    } else this.#setQuoteDepth(0, getDocumentLanguage(), 'auto', everyChild);
   }
+
+  /**
+   * The `quotes` of this element: its own (see #ownQuotes), or else the one
+   * it inherits, as `quotes` is an inherited property, up to the initial
+   * `auto`.
+   */
+  #quotes(): QuoteMarks {
+    const own = this.#ownQuotes();
+    if (own !== 'inherit') return own;
+    const parent = this.#quoteParent();
+    return parent ? parent.#quotes() : 'auto';
+  }
+
+  /**
+   * The `quotes` this element's inline style or rules give it, or `inherit`
+   * where neither does. The runtime can't read a computed style on Lynx, so
+   * the rules are the build's index of them (see matchedQuotesFor): the one
+   * that wins the cascade, which an inline style beats unless the rule is
+   * `!important` and it isn't. A rule the runtime can't tell applies (see
+   * the build plugin's QuotesRule) draws the language's marks, as without
+   * one.
+   */
+  #ownQuotes(): QuoteMarks | 'inherit' {
+    const rules = hasQuotesRules();
+    if (!rules && !LynxElement.#inlineQuotesSeen) return 'inherit';
+    const inline = String(this.#inlineStyle('quotes') ?? '');
+    const inlineValue = inline ? parseQuotes(inline) : undefined;
+    const matched = rules
+      ? matchedQuotesFor(this.#ruleTokens(), this.#ancestorTokens())
+      : undefined;
+    if (
+      inlineValue !== undefined &&
+      (!matched?.important || /!\s*important\s*$/i.test(inline))
+    ) {
+      return inlineValue;
+    }
+    if (!matched) return 'inherit';
+    if (matched.value === null) return 'auto';
+    return parseQuotes(matched.value) ?? 'inherit';
+  }
+
+  /**
+   * An inline `quotes` came, went or changed: the `<q>`s in this element,
+   * itself included, draw its marks (see #ownQuotes). Until one is set, no
+   * element reads its inline style for it.
+   */
+  #inlineQuotesChanged(): void {
+    LynxElement.#inlineQuotesSeen = true;
+    this.#refreshQuotes();
+  }
+
+  /** Whether an inline `quotes` was ever set (see #ownQuotes). */
+  static #inlineQuotesSeen = false;
 
   /**
    * The language of this element: the nearest `lang` attribute on it or
@@ -2688,8 +2765,7 @@ export class LynxElement implements BaseLynxElement {
     // ancestors had when it hydrated, and a wrapper made later, which may
     // since have JS children of its own, has no flag. A lang that changes
     // is rare, and a static one is set before Angular puts children in.
-    const [depth, language] = this.#outerQuoteContext();
-    this.#setQuoteDepth(depth, language, true);
+    this.#refreshQuotes(true);
   }
 
   /**
@@ -2736,36 +2812,41 @@ export class LynxElement implements BaseLynxElement {
 
   /**
    * Gives the `<q>`s in this element, itself included, the marks for how
-   * deep each is and for its language, `depth` being this one's and
-   * `language` the one it inherits. As a browser's `quotes: auto` does, a
-   * `<q>` draws its language's outer pair outside any other (“ ” in
-   * English, « » in French) and its inner pair inside one (‘ ’, « »),
-   * which deeper ones repeat; each takes the language of its own nearest
-   * `lang` (see quotes.ts). Run when a `<q>`, or an element one is in, goes
+   * deep each is, for its language and for its `quotes`, `depth` being this
+   * one's and `outerLanguage` and `outerQuotes` the ones it inherits. As a
+   * browser's `quotes: auto` does, a `<q>` draws its language's outer pair
+   * outside any other (“ ” in English, « » in French) and its inner pair
+   * inside one (‘ ’, « »), which deeper ones repeat; each takes the
+   * language of its own nearest `lang` (see quotes.ts). A `quotes` of its
+   * own or inherited, from a rule or an inline style (see #ownQuotes), gives
+   * it those pairs instead, or none for `none` (see quotePairFor). Run when a `<q>`, or an element one is in, goes
    * into an element (see #adoptChild): when Angular builds one, when
    * content projection moves one into another, and when an element built
-   * with a `<q>` inside goes in after it; and when a `lang` changes (see
+   * with a `<q>` inside goes in after it; when a `lang` changes (see
    * #setLang), with `everyChild`, which goes through every element below
-   * rather than only those that hold a `<q>`.
+   * rather than only those that hold a `<q>`; and when a `quotes` may have
+   * (see #rulesChanged and #inlineQuotesChanged).
    */
   #setQuoteDepth(
     depth: number,
     outerLanguage: string,
+    outerQuotes: QuoteMarks,
     everyChild = false,
   ): void {
     let inner = depth;
     const language = this.#lang ?? outerLanguage;
+    const own = this.#ownQuotes();
+    const quotes = own === 'inherit' ? outerQuotes : own;
     if (this.#quoteMarks) {
       const [open, close] = this.#quoteMarks;
-      const marks = quotesFor(language);
-      const pair = depth === 0 ? 0 : 2;
-      open.#setQuoteMark(marks[pair]!);
-      close.#setQuoteMark(marks[pair + 1]!);
+      const [openMark, closeMark] = quotePairFor(quotes, depth, language);
+      open.#setQuoteMark(openMark);
+      close.#setQuoteMark(closeMark);
       inner++;
     }
     const pass = (child: LynxElement): void => {
       if (everyChild || child.#holdsQuote || child.#quoteMarks) {
-        child.#setQuoteDepth(inner, language, everyChild);
+        child.#setQuoteDepth(inner, language, quotes, everyChild);
       }
     };
     // The native children, not #children: a hydrated element's aren't in
@@ -3116,7 +3197,11 @@ export class LynxElement implements BaseLynxElement {
     // And a <q>'s marks on how many <q>s it's in (see #setQuoteDepth).
     if (newChild.#quoteMarks || newChild.#holdsQuote) {
       this.#holdQuote();
-      newChild.#setQuoteDepth(this.#quoteDepth(), this.#language());
+      newChild.#setQuoteDepth(
+        this.#quoteDepth(),
+        this.#language(),
+        this.#quotes(),
+      );
     }
   }
 
@@ -3174,7 +3259,11 @@ export class LynxElement implements BaseLynxElement {
     // And a <q> in it takes the list's language (see #setQuoteDepth).
     if (child.#quoteMarks || child.#holdsQuote) {
       this.#holdQuote();
-      child.#setQuoteDepth(this.#quoteDepth(), this.#language());
+      child.#setQuoteDepth(
+        this.#quoteDepth(),
+        this.#language(),
+        this.#quotes(),
+      );
     }
   }
 

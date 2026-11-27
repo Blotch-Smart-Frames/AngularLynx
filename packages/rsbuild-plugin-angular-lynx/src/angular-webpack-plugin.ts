@@ -10,6 +10,7 @@ import { RuntimeGlobals } from '@lynx-js/webpack-runtime-globals';
 import type { Chunk, Compilation, Compiler } from '@rspack/core';
 import invariant from 'tiny-invariant';
 import { LAYERS } from './layers.js';
+import { withoutAppliedProperties } from './css-diagnostics.js';
 import { styleIndexOf, styleIndexStatement } from './style-index.js';
 import { createLynxProcessEvalResultRuntimeModule } from './lynx-process-eval-result-runtime-module.js';
 import type { PreferredFps } from './utils/options.js';
@@ -423,6 +424,19 @@ class AngularWebpackPlugin {
         compilation as unknown as Parameters<
           typeof LynxTemplatePlugin.getLynxTemplatePluginHooks
         >[0],
+      );
+
+      // Before Lynx's own tap (stage 256), which warns of each diagnostic
+      // left: the runtime applies a `quotes` Lynx drops (see
+      // css-diagnostics.ts).
+      hooks.beforeEmit.tap(
+        { name: `${this.constructor.name}:cssDiagnostics`, stage: 0 },
+        (args) => {
+          const cssDiagnostics = withoutAppliedProperties(args.cssDiagnostics);
+          return cssDiagnostics === args.cssDiagnostics
+            ? args
+            : { ...args, cssDiagnostics };
+        },
       );
 
       hooks.beforeEncode.tap(this.constructor.name, (args) => {

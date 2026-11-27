@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { getDocumentLanguage, quotesFor, setDocumentLanguage } from './quotes';
+import {
+  getDocumentLanguage,
+  parseQuotes,
+  quotePairFor,
+  quotesFor,
+  setDocumentLanguage,
+} from './quotes';
 
 describe('quotesFor', () => {
   it("gives a language's outer and inner marks, as CLDR has them", () => {
@@ -34,5 +40,68 @@ describe('the document language', () => {
     expect(getDocumentLanguage()).toBe('');
     setDocumentLanguage('fr');
     expect(getDocumentLanguage()).toBe('fr');
+  });
+});
+
+describe('parseQuotes', () => {
+  it.each([
+    ['none', []],
+    [' NONE ', []],
+    ['auto', 'auto'],
+    ['initial', 'auto'],
+    ['inherit', 'inherit'],
+    ['unset', 'inherit'],
+    ['revert', 'inherit'],
+    ['revert-layer', 'inherit'],
+    [`'«' '»'`, ['«', '»']],
+    [`"«" "»" '‹' '›'`, ['«', '»', '‹', '›']],
+    // Strings need no space between them.
+    [`"a""b"`, ['a', 'b']],
+    // An escape: hex digits, with one space after them, or the character.
+    [String.raw`"\201C" '\201D x'`, ['“', '”x']],
+    [String.raw`"\"" '\''`, ['"', "'"]],
+    [String.raw`"\0" "\110000"`, ['\ufffd', '\ufffd']],
+    // A surrogate isn't a character of its own.
+    [String.raw`"\D800" "a"`, ['\ufffd', 'a']],
+    // An escaped newline is no character.
+    ['"a\\\nb" "c"', ['ab', 'c']],
+    [`'<' '>' !important`, ['<', '>']],
+  ])('reads %s', (value, quotes) => {
+    expect(parseQuotes(value)).toEqual(quotes);
+  });
+
+  it.each([
+    ["'«'"],
+    ["'«' '»' '‹'"],
+    [''],
+    ['12px'],
+    ['var(--q)'],
+    ["'«' x '»'"],
+    ["'unclosed"],
+    ['"a\nb" "c"'],
+    ['"a\\'],
+    // An escape at the end, in a string that doesn't close.
+    [String.raw`"\41`],
+  ])('drops %j, as a browser does', (value) => {
+    expect(parseQuotes(value)).toBeUndefined();
+  });
+});
+
+describe('quotePairFor', () => {
+  it("gives the language's outer pair, then its inner one", () => {
+    expect(quotePairFor('auto', 0, 'fr')).toEqual(['«', '»']);
+    expect(quotePairFor('auto', 1, 'de')).toEqual(['‚', '‘']);
+    expect(quotePairFor('auto', 3, 'en')).toEqual(['‘', '’']);
+  });
+
+  it('gives the pair for the depth, or the last one past them', () => {
+    const quotes = ['1', '2', '3', '4'];
+    expect(quotePairFor(quotes, 0, 'fr')).toEqual(['1', '2']);
+    expect(quotePairFor(quotes, 1, 'fr')).toEqual(['3', '4']);
+    expect(quotePairFor(quotes, 5, 'fr')).toEqual(['3', '4']);
+  });
+
+  it('gives no marks for none', () => {
+    expect(quotePairFor([], 0, 'fr')).toEqual(['', '']);
   });
 });

@@ -18,6 +18,7 @@ import {
   isRowOrientation,
   LAYOUT_FLAG,
   matchedStyleFlagsFor,
+  matchedQuotesFor,
   matchedVerticalAlignFor,
   parseVerticalAlign,
   RELATIVE_SIZE_FLAG,
@@ -549,6 +550,8 @@ describe('matchedVerticalAlignFor', () => {
 
   it('reads nothing without an index', () => {
     expect(matchedVerticalAlignFor(new Set(['a']), none)).toBeUndefined();
+    // Nor a quotes (issue #821).
+    expect(matchedQuotesFor(new Set(['a']), none)).toBeUndefined();
   });
 
   it('reads nothing where no rule matches', () => {

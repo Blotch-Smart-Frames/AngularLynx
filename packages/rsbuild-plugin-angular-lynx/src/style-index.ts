@@ -139,6 +139,33 @@ export type VerticalAlignRule = [
 ];
 
 /**
+ * The rank an `!important` declaration of `quotes` adds to its selector's
+ * specificity, which is never as high, so it beats any rule without one, as
+ * in a browser. The runtime's IMPORTANT_RANK (text-flow.ts), kept the same
+ * by a test.
+ */
+export const IMPORTANT_RANK = 1e9;
+
+/**
+ * A rule that sets `quotes`, for the runtime to give a `<q>` the marks the
+ * app's CSS gives it (issue #821): the tokens and ancestors, as in
+ * StyleIndexRule, the value as written (the runtime reads it), and where it
+ * stands in the cascade, as in VerticalAlignRule, IMPORTANT_RANK added for
+ * an `!important` one. The value is null where the runtime can't tell
+ * where the rule applies: a selector it can't check all of, or a rule in a
+ * `@media` or another at-rule, or nested in another rule. The runtime
+ * draws the language's marks for that, as without a rule.
+ */
+export type QuotesRule = [
+  tokens: string[],
+  ancestors: AncestorStep[],
+  value: string | null,
+  rank: number,
+  sheet: number,
+  order: number,
+];
+
+/**
  * What the runtime needs to know about the app's CSS (see the runtime's
  * lynx-element/text-flow.ts): for each rule that sets an inheritable text
  * property or a `vertical-align`, or changes layout, the tokens the last
@@ -147,11 +174,13 @@ export type VerticalAlignRule = [
  * ancestors. The
  * runtime can't read the stylesheet, which Lynx compiles into the bundle.
  * Each rule that sets a `vertical-align` is in `verticalAligns` too, with
- * its distance, left out when there are none.
+ * its distance, and each that sets `quotes` is in `quotes`, with its value,
+ * each left out when there are none.
  */
 export type StyleIndex = {
   rules: StyleIndexRule[];
   verticalAligns?: VerticalAlignRule[];
+  quotes?: QuotesRule[];
 };
 
 /**
@@ -359,6 +388,7 @@ const subjectsOf = (selectorList: string): Subject[] => {
 export const styleIndexOf = (stylesheets: readonly string[]): StyleIndex => {
   const rulesBySelector = new Map<string, StyleIndexRule>();
   const verticalAligns: VerticalAlignRule[] = [];
+  const quotes: QuotesRule[] = [];
   for (const [sheet, css] of stylesheets.entries()) {
     let root;
     try {
@@ -368,6 +398,24 @@ export const styleIndexOf = (stylesheets: readonly string[]): StyleIndex => {
     }
     root.walkRules((rule) => {
       if (inNonSelectorAtRule(rule)) return;
+      const quotesDeclaration = quotesOf(rule);
+      if (quotesDeclaration) {
+        for (const subject of subjectsOf(rule.selector)) {
+          // A state's rule applies only while the runtime can't see it, and
+          // a pseudo-element's (`q::before`) to a mark the runtime draws as
+          // its <q>'s.
+          if (subject.inState || subject.pseudoElement) continue;
+          const { value, important } = quotesDeclaration;
+          quotes.push([
+            subject.tokens,
+            subject.ancestors,
+            subject.exact && rule.parent?.type === 'root' ? value : null,
+            subject.specificity + (important ? IMPORTANT_RANK : 0),
+            sheet,
+            quotes.length,
+          ]);
+        }
+      }
       let flags = 0;
       let setsSizeVariable = false;
       rule.each((node) => {
@@ -410,8 +458,58 @@ export const styleIndexOf = (stylesheets: readonly string[]): StyleIndex => {
       }
     });
   }
-  const rules = [...rulesBySelector.values()];
-  return verticalAligns.length ? { rules, verticalAligns } : { rules };
+  const index: StyleIndex = { rules: [...rulesBySelector.values()] };
+  if (verticalAligns.length) index.verticalAligns = verticalAligns;
+  if (quotes.length) index.quotes = quotes;
+  return index;
+};
+
+/**
+ * A `quotes` value a browser keeps: a keyword, or an even number of strings
+ * (the runtime decodes their escapes, see its parseQuotes). A browser drops
+ * any other declaration, as though the rule didn't have it, so the index
+ * leaves it out too. A `var()` is left out as well: the runtime can't read
+ * the custom property's value.
+ */
+const QUOTES_KEYWORD =
+  /^(?:none|auto|initial|inherit|unset|revert|revert-layer)$/i;
+const QUOTES_STRING = /"(?:[^"\\\n]|\\[^])*"|'(?:[^'\\\n]|\\[^])*'/y;
+
+const isQuotesValue = (value: string): boolean => {
+  if (QUOTES_KEYWORD.test(value)) return true;
+  let count = 0;
+  let at = 0;
+  while (at < value.length) {
+    QUOTES_STRING.lastIndex = at;
+    const match = QUOTES_STRING.exec(value);
+    if (!match) return false;
+    count++;
+    at = QUOTES_STRING.lastIndex;
+    while (/\s/.test(value[at] ?? '')) at++;
+  }
+  return count > 0 && count % 2 === 0;
+};
+
+/**
+ * The `quotes` a rule declares, the last it declares that a browser keeps
+ * (see isQuotesValue), with whether it's `!important`, or undefined for a
+ * rule without one.
+ */
+const quotesOf = (
+  rule: Rule,
+): { value: string; important: boolean } | undefined => {
+  let found: { value: string; important: boolean } | undefined;
+  rule.each((node) => {
+    if (node.type !== 'decl' || node.prop.toLowerCase() !== 'quotes') return;
+    const value = node.value.trim();
+    if (!isQuotesValue(value)) return;
+    // PostCSS leaves it undefined on a declaration without `!important`.
+    const important = node.important === true;
+    // A normal declaration after an `!important` one doesn't win over it.
+    if (found?.important && !important) return;
+    found = { value, important };
+  });
+  return found;
 };
 
 /**

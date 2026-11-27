@@ -3525,4 +3525,198 @@ describe('<q>, element by element', () => {
     view.setAttribute('lang', 'fr');
     expect(drawn(q)).toEqual(['«', '»']);
   });
+
+  describe('CSS quotes (issue #821)', () => {
+    /**
+     * Hands the runtime a style index whose `quotes` rules are these.
+     */
+    const quotesRules = (
+      ...quotes: [
+        tokens: string[],
+        ancestors: [combinator: '>' | ' ', tokens: string[]][],
+        value: string | null,
+        rank: number,
+        sheet: number,
+        order: number,
+      ][]
+    ): void => {
+      (
+        globalThis as { __angularLynxStyleIndex?: unknown }
+      ).__angularLynxStyleIndex = { rules: [], quotes };
+      resetStyleIndex();
+    };
+
+    afterEach(() => {
+      delete (globalThis as { __angularLynxStyleIndex?: unknown })
+        .__angularLynxStyleIndex;
+      resetStyleIndex();
+    });
+
+    /**
+     * A <q>, with the tag's class the renderer gives it (see markTag).
+     */
+    const makeQ = (): LynxElement => {
+      const q = doc.createElement('q');
+      q.addScopeClass('_ngtag-q');
+      return q;
+    };
+
+    /**
+     * A <q> in a <q>, in a <p> in the page.
+     */
+    const nested = (): {
+      p: LynxElement;
+      q: LynxElement;
+      inner: LynxElement;
+    } => {
+      const p = doc.createElement('p');
+      page.appendChild(p);
+      const q = makeQ();
+      p.appendChild(q);
+      const inner = makeQ();
+      q.appendChild(inner);
+      commit();
+      return { p, q, inner };
+    };
+
+    it("draws a rule's pairs, the last one past them", () => {
+      quotesRules([['_ngtag-q'], [], `'«' '»' '‹' '›'`, 1, 0, 0]);
+      const { q, inner } = nested();
+      expect(drawn(q)).toEqual(['«', '‹', '›', '»']);
+      // A third <q> deep repeats the last pair.
+      const third = makeQ();
+      inner.appendChild(third);
+      expect(drawn(q)).toEqual(['«', '‹', '‹', '›', '›', '»']);
+    });
+
+    it('draws no marks for none, and the language’s for auto', () => {
+      quotesRules(
+        [['_ngtag-q'], [], 'none', 1, 0, 0],
+        [['plain'], [], 'auto', 1000, 0, 1],
+      );
+      const { q, inner } = nested();
+      expect(drawn(q)).toEqual(['', '', '', '']);
+
+      inner.setAttribute('class', 'plain');
+      expect(drawn(q)).toEqual(['', '‘', '’', '']);
+    });
+
+    it('inherits a quotes from an element above the <q>', () => {
+      quotesRules([['fancy'], [], `"<" ">"`, 1000, 0, 0]);
+      const { p, q } = nested();
+      expect(drawn(q)).toEqual(['“', '‘', '’', '”']);
+
+      // A class that comes later redraws the marks below it.
+      p.setAttribute('class', 'fancy');
+      expect(drawn(q)).toEqual(['<', '<', '>', '>']);
+      p.setAttribute('class', '');
+      expect(drawn(q)).toEqual(['“', '‘', '’', '”']);
+    });
+
+    it('takes a quotes when the <q> goes into an element that has one', () => {
+      quotesRules([['fancy'], [], `"<" ">"`, 1000, 0, 0]);
+      const view = doc.createElement('view');
+      view.setAttribute('class', 'fancy');
+      page.appendChild(view);
+      const q = makeQ();
+      view.appendChild(q);
+      commit();
+      expect(drawn(q)).toEqual(['<', '>']);
+    });
+
+    it('checks a rule’s ancestors, and ranks the rules as Lynx does', () => {
+      quotesRules(
+        [['_ngtag-q'], [], `"1" "1"`, 1, 0, 0],
+        // `.card q`: more specific, but only in a card.
+        [['_ngtag-q'], [[' ', ['card']]], `"2" "2"`, 1001, 0, 1],
+        // A later rule of the same specificity wins in its stylesheet.
+        [['_ngtag-q'], [], `"3" "3"`, 1, 0, 2],
+      );
+      const view = doc.createElement('view');
+      page.appendChild(view);
+      const q = makeQ();
+      view.appendChild(q);
+      commit();
+      expect(drawn(q)).toEqual(['3', '3']);
+
+      view.setAttribute('class', 'card');
+      expect(drawn(q)).toEqual(['2', '2']);
+    });
+
+    it('draws the language’s marks where it can’t tell the rule', () => {
+      quotesRules([['_ngtag-q'], [], null, 1, 0, 0]);
+      const { q } = nested();
+      expect(drawn(q)).toEqual(['“', '‘', '’', '”']);
+    });
+
+    it('passes over a rule whose value it can’t read', () => {
+      // The build lists only values a browser keeps (see its style-index.ts).
+      quotesRules([['_ngtag-q'], [], `'«'`, 1, 0, 0]);
+      const q = makeQ();
+      page.appendChild(q);
+      commit();
+      expect(drawn(q)).toEqual(['“', '”']);
+    });
+
+    it('draws the language’s marks where stylesheets disagree', () => {
+      // Their order in Lynx's stylesheet isn't the runtime's to know.
+      quotesRules(
+        [['_ngtag-q'], [], `"a" "a"`, 1, 0, 0],
+        [['_ngtag-q'], [], `"b" "b"`, 1, 1, 1],
+      );
+      const q = makeQ();
+      page.appendChild(q);
+      commit();
+      expect(drawn(q)).toEqual(['“', '”']);
+    });
+
+    it('takes an inline quotes over a rule, but not an !important one', () => {
+      quotesRules([['_ngtag-q'], [], `"r" "r"`, 1, 0, 0]);
+      const q = makeQ();
+      page.appendChild(q);
+      commit();
+      expect(drawn(q)).toEqual(['r', 'r']);
+
+      q.setStyle('quotes', `"i" "i"`);
+      expect(drawn(q)).toEqual(['i', 'i']);
+      q.removeStyle('quotes');
+      expect(drawn(q)).toEqual(['r', 'r']);
+
+      quotesRules([['_ngtag-q'], [], `"r" "r"`, 1 + 1e9, 0, 0]);
+      q.setStyle('quotes', `"i" "i"`);
+      expect(drawn(q)).toEqual(['r', 'r']);
+      q.setStyle('quotes', `"i" "i" !important`);
+      expect(drawn(q)).toEqual(['i', 'i']);
+    });
+
+    it("takes a style attribute's quotes, without any rule", () => {
+      const view = doc.createElement('view');
+      page.appendChild(view);
+      const q = makeQ();
+      view.appendChild(q);
+      commit();
+      view.setAttribute('style', `quotes: '«' '»'`);
+      expect(drawn(q)).toEqual(['«', '»']);
+      // An invalid one is dropped, as a browser drops it.
+      view.setAttribute('style', `quotes: '«'`);
+      expect(drawn(q)).toEqual(['“', '”']);
+      view.setAttribute('style', 'quotes: none');
+      expect(drawn(q)).toEqual(['', '']);
+      view.setAttribute('style', 'color: red');
+      expect(drawn(q)).toEqual(['“', '”']);
+    });
+
+    it('keeps the language of an auto inside a quotes', () => {
+      quotesRules([['fancy'], [], `"<" ">"`, 1000, 0, 0]);
+      const view = doc.createElement('view');
+      view.setAttribute('class', 'fancy');
+      page.appendChild(view);
+      const q = makeQ();
+      q.setAttribute('lang', 'fr');
+      q.setStyle('quotes', 'auto');
+      view.appendChild(q);
+      commit();
+      expect(drawn(q)).toEqual(['«', '»']);
+    });
+  });
 });

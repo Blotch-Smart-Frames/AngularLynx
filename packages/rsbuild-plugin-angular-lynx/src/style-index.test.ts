@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  IMPORTANT_RANK,
   LAYOUT_FLAG,
   RELATIVE_SIZE_FLAG,
   SMALLER_FLAG,
@@ -437,5 +438,83 @@ describe('the vertical-align flag', () => {
       [['<sub>'], [], [-0.24, 0], 1, 0, 0],
       [['<sup>'], [], [0.4, 0], 1, 0, 1],
     ]);
+  });
+});
+
+describe('quotes (issue #821)', () => {
+  const quotes = (...stylesheets: string[]) => styleIndexOf(stylesheets).quotes;
+
+  it('is left out where no rule sets quotes', () => {
+    expect(styleIndexOf(['.a { color: red }']).quotes).toBeUndefined();
+  });
+
+  it('lists each rule’s value, specificity and place', () => {
+    expect(
+      quotes(
+        "._ngtag-q { quotes: '«' '»' '‹' '›' } .card ._ngtag-q { quotes: none }",
+        '.plain { quotes: auto; color: red }',
+      ),
+    ).toEqual([
+      [['_ngtag-q'], [], "'«' '»' '‹' '›'", 1000, 0, 0],
+      [['_ngtag-q'], [[' ', ['card']]], 'none', 2000, 0, 1],
+      [['plain'], [], 'auto', 1000, 1, 2],
+    ]);
+    // It sets none of the flags.
+    expect(styleIndexOf(['.plain { quotes: auto }']).rules).toEqual([]);
+  });
+
+  it('ranks an !important one above any other', () => {
+    expect(quotes('.a { quotes: none !important }')).toEqual([
+      [['a'], [], 'none', 1000 + IMPORTANT_RANK, 0, 0],
+    ]);
+  });
+
+  it('takes the last declaration a browser keeps', () => {
+    expect(
+      quotes(
+        `.a { quotes: '1' '1'; quotes: '2'; quotes: var(--q); quotes: 12px }`,
+        `.b { quotes: none !important; quotes: auto }`,
+        `.c { quotes: "\\"" '\\'' "a" 'b' }`,
+      ),
+    ).toEqual([
+      [['a'], [], "'1' '1'", 1000, 0, 0],
+      [['b'], [], 'none', 1000 + IMPORTANT_RANK, 1, 1],
+      [['c'], [], `"\\"" '\\'' "a" 'b'`, 1000, 2, 2],
+    ]);
+    // A rule with none it keeps isn't listed.
+    expect(quotes(`.a { quotes: 'x' }`)).toBeUndefined();
+  });
+
+  it.each([
+    ['an attribute', '.a[data-x]'],
+    ['a sibling', '.b + .a'],
+  ])('can’t tell the value of a rule with %s', (_, selector) => {
+    expect(quotes(`${selector} { quotes: none }`)![0]![2]).toBeNull();
+  });
+
+  it.each([
+    ['one in a @media', '@media (min-width: 1px) { .a { quotes: none } }'],
+    ['a nested one', '.b { .a { quotes: none } }'],
+  ])('can’t tell the value of %s', (_, css) => {
+    expect(quotes(css)![0]![2]).toBeNull();
+  });
+
+  it('leaves out a state’s rule and a pseudo-element’s', () => {
+    expect(
+      quotes('.a:active { quotes: none } .a::before { quotes: none }'),
+    ).toBeUndefined();
+  });
+
+  // The runtime reads the rank, so the two must agree.
+  it('ranks !important as the runtime does', () => {
+    const runtime = fs.readFileSync(
+      path.join(
+        import.meta.dirname,
+        '../../runtime/src/lib/lynx-element/text-flow.ts',
+      ),
+      'utf-8',
+    );
+    expect(runtime).toContain('export const IMPORTANT_RANK = 1e9;');
+    expect(IMPORTANT_RANK).toBe(1e9);
   });
 });

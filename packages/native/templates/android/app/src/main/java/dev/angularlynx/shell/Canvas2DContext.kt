@@ -33,6 +33,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.WeakHashMap
 import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -687,45 +688,67 @@ class Canvas2DContext(
      */
     private fun compositeFiltered(c: Canvas, matrix: Matrix?, draw: (Canvas) -> Unit) {
         val s = state
-        val pad = s.filterPadding
+        val pad = layerPadding()
         val layerWidth = width + pad * 2
         val layerHeight = height + pad * 2
-        val layer = try {
-            Bitmap.createBitmap(layerWidth, layerHeight, Bitmap.Config.ARGB_8888)
+        var layer: Bitmap? = null
+        try {
+            layer = Bitmap.createBitmap(layerWidth, layerHeight, Bitmap.Config.ARGB_8888)
+            val layerCanvas = Canvas(layer)
+            layerCanvas.translate(pad.toFloat(), pad.toFloat())
+            if (matrix != null) layerCanvas.concat(matrix)
+            draw(layerCanvas)
+            // The bytes as stored, premultiplied RGBA, which is what the
+            // filter works on.
+            val pixels = ByteBuffer.allocate(layerWidth * layerHeight * 4)
+            layer.copyPixelsToBuffer(pixels)
+            CanvasFilter.apply(pixels.array(), layerWidth, layerHeight, s.filterSteps)
+            pixels.rewind()
+            layer.copyPixelsFromBuffer(pixels)
+            val paint = Paint()
+            // The layer is in the canvas's pixels, so the shadow needs no matrix.
+            if (shadowVisible()) applyShadow(paint, null)
+            val unbounded = s.composite in UNBOUNDED
+            if (unbounded) {
+                val layerPaint = Paint()
+                setBlend(layerPaint, s.composite)
+                layerPaint.alpha = (s.globalAlpha * 255).roundToInt()
+                c.saveLayer(null, layerPaint)
+            } else {
+                setBlend(paint, s.composite)
+                paint.alpha = (s.globalAlpha * 255).roundToInt()
+            }
+            c.drawBitmap(layer, -pad.toFloat(), -pad.toFloat(), paint)
+            if (unbounded) c.restore()
         } catch (_: OutOfMemoryError) {
-            null
-        } ?: run {
+            // The layer, its bytes or the filter's scratch copies didn't fit:
+            // this draw is left out, and the batch goes on, as a browser's
+            // canvas that can't hold its size draws nothing.
+            Log.w(TAG, "The filter's ${layerWidth}x$layerHeight layer is too big to draw with")
+            return
+        } catch (_: IllegalArgumentException) {
             Log.w(TAG, "The filter's ${layerWidth}x$layerHeight layer is too big to allocate")
             return
+        } finally {
+            layer?.recycle()
         }
-        val layerCanvas = Canvas(layer)
-        layerCanvas.translate(pad.toFloat(), pad.toFloat())
-        if (matrix != null) layerCanvas.concat(matrix)
-        draw(layerCanvas)
-        // The bytes as stored, premultiplied RGBA, which is what the filter
-        // works on.
-        val pixels = ByteBuffer.allocate(layerWidth * layerHeight * 4)
-        layer.copyPixelsToBuffer(pixels)
-        CanvasFilter.apply(pixels.array(), layerWidth, layerHeight, s.filterSteps)
-        pixels.rewind()
-        layer.copyPixelsFromBuffer(pixels)
-        val paint = Paint()
-        // The layer is in the canvas's pixels, so the shadow needs no matrix.
-        if (shadowVisible()) applyShadow(paint, null)
-        val unbounded = s.composite in UNBOUNDED
-        if (unbounded) {
-            val layerPaint = Paint()
-            setBlend(layerPaint, s.composite)
-            layerPaint.alpha = (s.globalAlpha * 255).roundToInt()
-            c.saveLayer(null, layerPaint)
-        } else {
-            setBlend(paint, s.composite)
-            paint.alpha = (s.globalAlpha * 255).roundToInt()
-        }
-        c.drawBitmap(layer, -pad.toFloat(), -pad.toFloat(), paint)
-        if (unbounded) c.restore()
-        layer.recycle()
         if (!alpha && s.composite in REDUCES_ALPHA) keepOpaque()
+    }
+
+    /**
+     * How far past the canvas, on every side, a filter's layer reaches: the
+     * filter's padding, and the shadow's offset and blur (three of its
+     * deviations, which are half the blur), so a shape just off the canvas
+     * still blurs, or casts its shadow, onto it. Capped at 256 pixels, as
+     * css-filter.ts caps the filter's, so a far shadow makes no huge layer.
+     */
+    private fun layerPadding(): Int {
+        val s = state
+        var pad = s.filterPadding.toDouble()
+        if (shadowVisible()) {
+            pad += ceil(max(abs(s.shadowOffsetX), abs(s.shadowOffsetY)) + s.shadowBlur * 1.5f).toDouble()
+        }
+        return min(pad, 256.0).toInt()
     }
 
     /**

@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
 import android.view.PixelCopy
+import android.view.SurfaceHolder
 import android.view.SurfaceView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -36,10 +37,12 @@ import kotlin.math.roundToInt
  * The contexts then read a video as they read another canvas, by its id
  * (`{ canvas: id }`), so the pixels never travel through JavaScript.
  *
- * The surface is there while the video is laid out with a size: a video with
- * `display: none` has none, and draws nothing, as before its first frame. One
- * that's only out of sight (behind other elements, or `opacity: 0`) still
- * draws.
+ * The surface is there only while the video is laid out with a size. While
+ * it isn't (`display: none`), the player draws into a VideoFrameTarget
+ * instead, a texture the shell owns, which the snapshot reads, so a hidden
+ * video is drawn as a browser's is (issue #726). When the view has a surface
+ * again, the player goes back to it. One that's only out of sight (behind
+ * other elements, or `opacity: 0`) keeps its surface.
  */
 class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
     private var videoId: String? = null
@@ -52,10 +55,61 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
     @Volatile
     private var frame = FrameSize(0, 0)
 
+    /** The view's surface has a frame of the player's. */
     @Volatile
     private var hasFrame = false
 
+    /**
+     * Where the snapshot reads from when it isn't the view: the target the
+     * player draws into while the view has no surface, and still after it
+     * goes back to the view, until the view has a frame of its own.
+     */
+    @Volatile
+    private var readTarget: VideoFrameTarget? = null
+
+    // The UI thread's: the target, once made, whether one is being made,
+    // whether the player draws into it now, and whether the element is gone.
+    private var target: VideoFrameTarget? = null
+    private var makingTarget = false
+    private var drawingOffscreen = false
+    private var destroyed = false
+
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    private val playerView: PlayerView?
+        get() = view as? PlayerView
+
+    private val surfaceView: SurfaceView?
+        get() = playerView?.videoSurfaceView as? SurfaceView
+
+    /**
+     * Follows the view's surface beside the player's own callback.
+     *
+     * When the surface goes, the player is given the target only after
+     * every callback has run. SurfaceView calls a copy of its callback list,
+     * and once drawInView() has given the player the view again, the
+     * player's callback comes after this one. Were the target given here,
+     * setVideoSurface() would take the player's callback off the holder but
+     * not out of that copy, and it would still run, see the holder's surface
+     * as the player's output (setVideoSurface() doesn't clear media3's
+     * `surfaceHolderSurfaceIsVideoOutput`) and set the output to null,
+     * leaving a hidden video with nowhere to draw. Posted, the target comes
+     * after the player has let go of the view's surface, which it does
+     * before its callback returns, so the surface is never drawn into after
+     * it's gone.
+     */
+    private val surfaceCallback = object : SurfaceHolder.Callback {
+        override fun surfaceCreated(holder: SurfaceHolder) = drawInView()
+
+        override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
+
+        override fun surfaceDestroyed(holder: SurfaceHolder) {
+            mainHandler.post {
+                // Unless the view was shown again in the meantime.
+                if (surfaceView?.holder?.surface?.isValid != true) drawOffscreen()
+            }
+        }
+    }
 
     private val listener = object : Player.Listener {
         override fun onVideoSizeChanged(videoSize: VideoSize) {
@@ -74,13 +128,16 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
             // A new source has nothing to draw until its first frame, as in a
             // browser.
             hasFrame = false
+            target?.reset()
         }
 
         override fun onRenderedFirstFrame() {
             // The player draws a first frame again after `stop` and `play`,
             // which clear and rebuild its item, but XElement sends
             // `onFirstFrame` only once: the frame is there again from here.
-            hasFrame = true
+            // It also tells of the first frame on each new surface, so once
+            // it's back in the view, the view is read again.
+            frameRendered()
         }
     }
 
@@ -89,8 +146,81 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
         // calls before this class's properties are set. XElement's view gives
         // its PlayerView its player on the UI thread, in a post when this
         // isn't it, so the listener goes on after.
-        val playerView = view as? PlayerView
-        mainHandler.post { playerView?.player?.addListener(listener) }
+        mainHandler.post { attachPlayer() }
+    }
+
+    /** Listens to the player and the view's surface, on the UI thread. */
+    private fun attachPlayer() {
+        val player = playerView?.player ?: return
+        player.addListener(listener)
+        val holder = surfaceView?.holder ?: return
+        holder.addCallback(surfaceCallback)
+        // A video laid out with no size (`display: none`) never has a surface.
+        if (!holder.surface.isValid) drawOffscreen()
+    }
+
+    /**
+     * Has the player draw into the target while the view has no surface: it
+     * drops every frame without one, and a hidden video has a frame to read
+     * in a browser.
+     */
+    private fun drawOffscreen() {
+        val player = playerView?.player ?: return
+        if (drawingOffscreen || destroyed) return
+        val offscreen = target
+        if (offscreen == null) {
+            makeTarget()
+            return
+        }
+        // A frame from the last time it was drawn into isn't the one showing.
+        offscreen.reset()
+        hasFrame = false
+        readTarget = offscreen
+        drawingOffscreen = true
+        // The player renders the next frame here even while paused (it does
+        // for each new surface), and tells of it with onRenderedFirstFrame.
+        player.setVideoSurface(offscreen.surface)
+    }
+
+    /**
+     * Makes the target, off the UI thread, and draws into it once it's made
+     * if the view still has no surface. A video that's shown checks before
+     * its first layout too, so it may make one it won't draw into; it keeps
+     * it for when it's hidden.
+     */
+    private fun makeTarget() {
+        if (makingTarget) return
+        makingTarget = true
+        VideoFrameTarget.create { made ->
+            mainHandler.post {
+                makingTarget = false
+                if (destroyed) {
+                    made?.release()
+                    return@post
+                }
+                target = made ?: return@post
+                if (surfaceView?.holder?.surface?.isValid != true) drawOffscreen()
+            }
+        }
+    }
+
+    /**
+     * Gives the player back the view's surface: setVideoSurface() stopped
+     * the player following it, and setVideoSurfaceView() follows it again.
+     * The target is still read until the view has a frame.
+     */
+    private fun drawInView() {
+        if (!drawingOffscreen) return
+        val player = playerView?.player ?: return
+        drawingOffscreen = false
+        player.setVideoSurfaceView(surfaceView)
+    }
+
+    /** The player drew a frame on its surface, or XElement says it did. */
+    private fun frameRendered() {
+        if (drawingOffscreen) return
+        hasFrame = true
+        readTarget = null
     }
 
     /**
@@ -99,7 +229,7 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
      * the app hears of it.
      */
     override fun onFirstFrame(durationMs: Long) {
-        hasFrame = true
+        frameRendered()
         super.onFirstFrame(durationMs)
     }
 
@@ -115,20 +245,29 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
     override fun clearForTransfer() {}
 
     /**
-     * The size of the frame showing now, in pixels, or 0 by 0 before the
-     * first: the runtime's `videoWidth` and `videoHeight` (the module's
-     * `videoSize`), and the size the snapshot is copied at.
+     * The size of the frame showing now, in pixels, or 0 by 0 while there's
+     * no frame to copy (before the first, or before the first on the
+     * player's new surface): the runtime's `videoWidth` and `videoHeight`
+     * (the module's `videoSize`), and the size the snapshot is copied at.
      */
     fun frameSize(): Pair<Int, Int> {
         val (width, height) = frame
-        return if (hasFrame && width > 0 && height > 0) width to height else 0 to 0
+        if (width <= 0 || height <= 0) return 0 to 0
+        val offscreen = readTarget
+        val readable = if (offscreen != null) {
+            offscreen.hasFrame()
+        } else {
+            hasFrame && surfaceView?.holder?.surface?.isValid == true
+        }
+        return if (readable) width to height else 0 to 0
     }
 
     /** The frame showing now, as RGBA rows top to bottom, or null without one. */
     override fun snapshot(): DecodedImage? {
         val (width, height) = frameSize()
         if (width == 0) return null
-        val surfaceView = (view as? PlayerView)?.videoSurfaceView as? SurfaceView ?: return null
+        readTarget?.let { return it.read(width, height) }
+        val surfaceView = surfaceView ?: return null
         if (!surfaceView.holder.surface.isValid) return null
         val bitmap = try {
             Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
@@ -181,8 +320,25 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
 
     override fun destroy() {
         videoId?.let { id -> if (CanvasRegistry.context(id) === this) CanvasRegistry.setContext(id, null) }
-        val player = (view as? PlayerView)?.player
-        mainHandler.post { player?.removeListener(listener) }
+        val detach = Runnable {
+            val player = playerView?.player
+            player?.removeListener(listener)
+            surfaceView?.holder?.removeCallback(surfaceCallback)
+            readTarget = null
+            target?.let { offscreen ->
+                // The player lets go of the target's surface (and waits for
+                // its decoder to) before the target lets go of the texture
+                // behind it.
+                if (drawingOffscreen) player?.clearVideoSurface(offscreen.surface)
+                offscreen.release()
+            }
+            target = null
+            drawingOffscreen = false
+            destroyed = true
+        }
+        // Before XElement's destroy releases the player, which it does at
+        // once on the UI thread.
+        if (Looper.myLooper() == Looper.getMainLooper()) detach.run() else mainHandler.post(detach)
         super.destroy()
     }
 

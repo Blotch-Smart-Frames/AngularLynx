@@ -37,6 +37,8 @@ appId: ${APP_ID}
 # (issue #725), so 32 by 64 and red above and blue below, drawn on a 2D
 # canvas and read back at the top and the bottom, and uploaded as a texture
 # and read back at its top right and bottom left.
+# A copy with display: none (issue #726) has to read the same, or the line
+# shows it after "| hidden".
 - extendedWaitUntil:
     visible: '.*; Video: 32x64 red,blue / red,blue'
     timeout: 20000

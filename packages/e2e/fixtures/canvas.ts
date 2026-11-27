@@ -1,6 +1,7 @@
 import {
   afterNextRender,
   Component,
+  computed,
   type ElementRef,
   signal,
   viewChild,
@@ -52,6 +53,9 @@ out vec4 color;
 void main() {
   color = texture(image, uv) * tint;
 }`;
+
+/** Which video a video check reads: the one shown, or the one with `display: none`. */
+type VideoCheck = 'shown' | 'hidden';
 
 /**
  * A video pixel's color by name: a video's colors are near, not exact,
@@ -123,6 +127,11 @@ const colorName = ({ 0: r, 1: g, 2: b }: ArrayLike<number>): string =>
  * as stored is 64x32, and blue at the top right. The colors are named
  * rather than compared, since a video's are near, not exact, after its YUV
  * encoding.
+ * A second copy of the video, with `display: none`, is read the same way
+ * (issue #726: Android's player had nowhere to draw one), and the line shows
+ * one result when both read the same, or both, the hidden one after
+ * "| hidden", when they don't. It waits for both, so a hidden video that never
+ * shows a first frame leaves it unfinished.
  *
  * Below it, the prebuilt library fixture (fixtures/prebuilt-library), which
  * the counter page has no room for, and "Open linking" and "Open photo",
@@ -146,8 +155,16 @@ const colorName = ({ 0: r, 1: g, 2: b }: ArrayLike<number>): string =>
         [src]="videoUrl"
         [muted]="true"
         style="width: 20px; height: 40px; margin-left: 8px;"
-        (bindfirstframe)="drawVideo()"
-        (binderror)="resultVideo.set('error')"
+        (bindfirstframe)="drawVideo('shown')"
+        (binderror)="setVideoResult('shown', 'error')"
+      ></video>
+      <video
+        #hiddenVideo
+        [src]="videoUrl"
+        [muted]="true"
+        style="display: none;"
+        (bindfirstframe)="drawVideo('hidden')"
+        (binderror)="setVideoResult('hidden', 'error')"
       ></video>
       <canvas
         #shown
@@ -194,12 +211,25 @@ export class CanvasRoute {
   readonly result = signal('…');
   readonly result2D = signal('…');
   readonly resultBitmap = signal('…');
-  readonly resultVideo = signal('…');
   readonly video = viewChild.required<ElementRef<HTMLVideoElement>>('video');
+  readonly hiddenVideo =
+    viewChild.required<ElementRef<HTMLVideoElement>>('hiddenVideo');
   readonly videoUrl = environment.videoUrl;
+  /** Each video check's result, by the video it read. */
+  readonly #videoResults = signal<Partial<Record<VideoCheck, string>>>({});
+  /**
+   * The video checks' results: one when they agree, both when they don't,
+   * so the flow's line needs both.
+   */
+  readonly resultVideo = computed(() => {
+    const { shown, hidden } = this.#videoResults();
+    if (shown !== undefined && shown === hidden) return shown;
+    if (shown === undefined && hidden === undefined) return '…';
+    return `${shown ?? '…'} | hidden ${hidden ?? '…'}`;
+  });
   #gl: { gl: WebGL2RenderingContext; program: WebGLProgram } | undefined;
-  /** The video check's 2D half, made at bindfirstframe. */
-  #video2D: string | undefined;
+  /** Each video check's 2D half, made at bindfirstframe. */
+  readonly #video2D: Partial<Record<VideoCheck, string>> = {};
 
   constructor() {
     afterNextRender(() => {
@@ -367,26 +397,32 @@ export class CanvasRoute {
         ].join(' ');
   }
 
+  setVideoResult(check: VideoCheck, result: string): void {
+    this.#videoResults.update((results) => ({ ...results, [check]: result }));
+  }
+
   /**
-   * The video check, once its first frame shows: drawn on a 2D canvas and
-   * read back, and uploaded as a texture into the WebGL context and read
+   * A video check, once its video's first frame shows: drawn on a 2D canvas
+   * and read back, and uploaded as a texture into the WebGL context and read
    * back.
    */
-  drawVideo(): void {
+  drawVideo(check: VideoCheck): void {
     // The docs promise the frame can be drawn from bindfirstframe
     // (VideoUI.onFirstFrame, AngularLynxVideo.m), so the 2D draw and its
     // read happen here, at the event, never waited for.
+    let drawn: string | undefined;
     try {
-      this.#video2D = this.#drawVideo2D();
+      drawn = this.#drawVideo2D(check);
     } catch (error) {
-      this.resultVideo.set(`error ${(error as Error).message}`);
+      this.setVideoResult(check, `error ${(error as Error).message}`);
       return;
     }
-    if (this.#video2D === undefined) {
-      this.resultVideo.set('no frame at bindfirstframe');
+    if (drawn === undefined) {
+      this.setVideoResult(check, 'no frame at bindfirstframe');
       return;
     }
-    this.#uploadVideo();
+    this.#video2D[check] = drawn;
+    this.#uploadVideo(check);
   }
 
   /**
@@ -394,24 +430,32 @@ export class CanvasRoute {
    * which the first frame can come before: it waits for it, for up to 2
    * seconds, and #draw() runs it again once it's there.
    */
-  #uploadVideo(tries = 20): void {
+  #uploadVideo(check: VideoCheck, tries = 20): void {
     if (!this.#gl && tries > 0) {
-      setTimeout(() => this.#uploadVideo(tries - 1), 100);
+      setTimeout(() => this.#uploadVideo(check, tries - 1), 100);
       return;
     }
     try {
-      this.resultVideo.set(`${this.#video2D} / ${this.#uploadVideoNow()}`);
+      this.setVideoResult(
+        check,
+        `${this.#video2D[check]} / ${this.#uploadVideoNow(check)}`,
+      );
     } catch (error) {
-      this.resultVideo.set(`error ${(error as Error).message}`);
+      this.setVideoResult(check, `error ${(error as Error).message}`);
     }
+  }
+
+  #videoElement(check: VideoCheck): HTMLVideoElement {
+    return (check === 'shown' ? this.video() : this.hiddenVideo())
+      .nativeElement;
   }
 
   /**
    * The video's size, and its colors at the top and the bottom, or undefined
    * without a frame.
    */
-  #drawVideo2D(): string | undefined {
-    const video = this.video().nativeElement;
+  #drawVideo2D(check: VideoCheck): string | undefined {
+    const video = this.#videoElement(check);
     if (video.videoWidth === 0) return undefined;
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth;
@@ -432,11 +476,11 @@ export class CanvasRoute {
    * top right and bottom left. The 2 by 2 canvas's bottom row is the
    * texture's first rows, its top.
    */
-  #uploadVideoNow(): string {
+  #uploadVideoNow(check: VideoCheck): string {
     const webgl = this.#gl;
     if (!webgl) return 'no WebGL';
     const { gl, program } = webgl;
-    const video = this.video().nativeElement;
+    const video = this.#videoElement(check);
     // Blue first: the texture may hold the bitmap check's red, which an
     // upload that did nothing would leave to be read back.
     gl.texImage2D(
@@ -717,7 +761,9 @@ export class CanvasRoute {
     this.#gl = { gl, program };
     // A video check that ran out of tries before the context was there runs
     // again with it.
-    if (this.resultVideo().endsWith('no WebGL')) this.#uploadVideo();
+    for (const [check, result] of Object.entries(this.#videoResults())) {
+      if (result.endsWith('no WebGL')) this.#uploadVideo(check as VideoCheck);
+    }
     try {
       this.result2D.set(this.#draw2D(gl, program));
     } catch (error) {

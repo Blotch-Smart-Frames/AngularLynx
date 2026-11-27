@@ -473,7 +473,9 @@ const DEVICE_LOST = /DeviceUnreachableException|Device became unreachable/;
  * the next one, and every flow after it failed in a second, so 18 of 18
  * failed. The same commit passed on a re-run. That counts every failure of
  * the session, not just the ones Maestro blamed on the device: the flows
- * before it can have failed on the same stall, as app.yaml did.
+ * before it can have failed on the same stall, as app.yaml did. A flow still
+ * runs again at most {@link DEVICE_FAULT_RETRIES} times for either kind of
+ * device fault.
  */
 const DEVICE_LOST_RETRIES = 1;
 
@@ -707,16 +709,15 @@ export const runFlows = async (
       ) {
         continue;
       }
-      if (outcome.status === 'failed' && deviceLost) {
-        deviceFaultFailures.set(flow, outcome);
-        deviceFaulted.push(flow);
-        continue;
-      }
+      // One allowance per flow for both kinds of device fault, so a flow
+      // run again because Maestro lost the device doesn't get another run
+      // when its log then shows a slow launch: a flow that fails twice
+      // fails the run, with its first failure.
       const retries = deviceFaultRetries.get(flow) ?? 0;
       if (outcome.status === 'failed' && retries < DEVICE_FAULT_RETRIES) {
-        const fault = flow.deviceFault?.(
-          options.appLog?.().slice(appLogStart) ?? '',
-        );
+        const fault = deviceLost
+          ? 'Maestro lost the device in that session'
+          : flow.deviceFault?.(options.appLog?.().slice(appLogStart) ?? '');
         if (fault) {
           deviceFaultRetries.set(flow, retries + 1);
           deviceFaultFailures.set(flow, outcome);
@@ -729,7 +730,7 @@ export const runFlows = async (
       }
       outcomes.set(flow, outcome);
     }
-    if (deviceLost) {
+    if (deviceLost && deviceFaulted.length > 0) {
       deviceLostRetries++;
       console.warn(
         `! Maestro lost the device; ${deviceFaulted.length} flow(s) failed in that session, and run again in a new one once the device is back (${deviceLostRetries} of ${DEVICE_LOST_RETRIES}).`,

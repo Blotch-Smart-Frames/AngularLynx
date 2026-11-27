@@ -30,9 +30,10 @@ export type CanvasFilter = {
   readonly steps: readonly number[];
   /**
    * How far, in the canvas's pixels, the steps can move what's drawn: a
-   * blur's or a shadow's reach. The shells draw into a layer this much
-   * bigger than the canvas on every side, so a shape just off the canvas
-   * still blurs or casts its shadow onto it.
+   * blur's or a shadow's reach, capped at MAX_PADDING. It still crosses the
+   * bridge, but the shells no longer read it: they plan their layers from
+   * the steps' own reach (issue #824), as a far drop shadow's offset doesn't
+   * count toward it.
    */
   readonly padding: number;
 };
@@ -49,15 +50,16 @@ export const NO_FILTER: CanvasFilter = { steps: [], padding: 0 };
 /**
  * The most the layer grows by on a side. A blur's reach is three of its
  * deviations, so a big blur (`blur(500px)`) would make a layer many times
- * the canvas's size. The shells work out the steps' whole reach from the
- * steps themselves, and past this a blur goes through a smaller layer that
- * takes all of it in (issue #814), so what's farther off the canvas still
- * blurs onto it. That's for a blur at least 4 of that layer's pixels wide,
- * and the layer's scale is this over the whole reach, offsets included:
- * alone, a blur needs a deviation past about 85 px. A drop shadow's offset
- * isn't a blur: one past this leaves out what's farther off unless its own
- * blur is wide enough at that scale, and a far one can lower the scale
- * enough to keep a blur beside it out of the smaller layer (issue #824).
+ * the canvas's size. The shells cap their layers the same way (their
+ * MAX_REACH) and work out the reach from the steps themselves. Past it, a
+ * blur goes through a smaller layer that takes all of it in (issue #814),
+ * so what's farther off the canvas still blurs onto it. That's for a blur
+ * at least 4 of that layer's pixels wide, and the layer's scale is this
+ * over the reach: alone, a blur needs a deviation past about 85 px. A drop
+ * shadow moved by an offset, when the filter reaches past this, casts from
+ * a layer of its own, the canvas moved back by the offset (issue #824), so
+ * its offset leaves out no shape, and isn't counted toward the scale. Only
+ * a filter's last three do, as each doubles the draws.
  */
 const MAX_PADDING = 256;
 

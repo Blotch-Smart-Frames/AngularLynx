@@ -1115,7 +1115,7 @@ Lynx's PrimJS JavaScript runtime **does not provide** `AbortController`, `AbortS
 
 ### The fix
 
-Polyfill both before Angular bootstraps (see `packages/runtime/src/lib/runtime.ts`):
+Polyfill both before Angular bootstraps. The build plugin's `polyfills.js` (`packages/rsbuild-plugin-angular-lynx/src/`), the first module of each thread's script, installs `AbortController`/`AbortSignal`; `queueMicrotask` is in both it and the runtime's `lib/polyfills.ts`:
 
 - `AbortController`/`AbortSignal`: implement the minimal subset (`signal.aborted`, `signal.reason`, `addEventListener/removeEventListener`, `controller.abort()`).
 - `queueMicrotask`: implement as `Promise.resolve().then(fn)`.
@@ -5053,9 +5053,9 @@ It is subtle because the constants are pure discriminators — once resolved, th
 
 ### The fix
 
-Polyfill a minimal `Node` **class** carrying the standard node-type constants, before Angular bootstraps. It ships as `preEntry` from `@blotch/rsbuild-plugin-angular-lynx` (`src/polyfills.js`) and defensively in the runtime (`packages/runtime/src/lib/runtime.ts`) for consumers not using the plugin — mirroring the existing `document` / `window` / `navigator` shims.
+Polyfill a minimal `Node` **class** carrying the standard node-type constants, before Angular bootstraps. It ships as `preEntry` from `@blotch/rsbuild-plugin-angular-lynx` (`src/polyfills.js`), the first module of each thread's script. The runtime kept a copy for apps built without the plugin until #765, but there are none (the runtime reads the plugin's compile-time defines), so it only doubled the shim in every script.
 
-It **must be a class, not a plain object**: a few dev/debug paths in Angular do `x instanceof Node`, which throws if the right-hand side is not callable. As a class, `instanceof` returns `false` for Lynx elements (correct — they are not DOM nodes) while the constants resolve to their spec values. Both guards check `typeof Node === 'undefined'`, so the shim is a no-op in the web bundle where `Node` is real.
+It **must be a class, not a plain object**: a few dev/debug paths in Angular do `x instanceof Node`, which throws if the right-hand side is not callable. As a class, `instanceof` returns `false` for Lynx elements (correct — they are not DOM nodes) while the constants resolve to their spec values. Its guard checks `typeof Node === 'undefined'`, so the shim is a no-op in the web bundle where `Node` is real.
 
 ---
 

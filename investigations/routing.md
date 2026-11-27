@@ -294,7 +294,7 @@ this.navigationTransitions.setupNavigations(this).subscribe({
 Added a minimal `AbortController`/`AbortSignal` polyfill to:
 
 1. **`packages/rsbuild-plugin-angular-lynx/src/polyfills.js`** — Runs as `preEntry` before any Angular code loads (primary)
-2. **`packages/runtime/src/lib/runtime.ts`** — Defensive polyfill for consumers not using the rsbuild plugin
+2. **`packages/runtime/src/lib/runtime.ts`** — Defensive polyfill for consumers not using the rsbuild plugin (removed in #765: every app the runtime can run in is built with the plugin, so this copy never installed anything)
 
 Also added `queueMicrotask` polyfill to `runtime.ts` (Angular core uses it for effect scheduling).
 

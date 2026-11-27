@@ -2607,5 +2607,31 @@ describe('renderer teardown', () => {
       vi.unstubAllGlobals();
       vi.stubGlobal('__MAIN_THREAD__', true);
     });
+
+    it("doesn't put back a web pointer listener added twice and removed once", () => {
+      vi.stubGlobal('__WEB__', true);
+      const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
+      const page = document.createRootElement();
+      const view = document.createElement('view');
+      const list = document.createElement('list');
+      const item = document.createElement('list-item');
+      page.appendChild(view);
+      page.appendChild(list);
+      view.appendChild(item);
+      const down = vi.fn();
+
+      // The DOM keeps one listener for both, and one removal takes it.
+      item.addEventListener('pointerdown', down);
+      item.addEventListener('pointerdown', down);
+      item.removeEventListener('pointerdown', down);
+      list.appendChild(item);
+      processPendingRemovals();
+
+      const rebuilt = item.element as unknown as FakeEl;
+      expect(rebuilt).not.toBe(view.element);
+      expect(rebuilt.domListeners.get('pointerdown')).not.toContain(down);
+      vi.unstubAllGlobals();
+      vi.stubGlobal('__MAIN_THREAD__', true);
+    });
   });
 });

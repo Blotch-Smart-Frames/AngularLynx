@@ -4938,7 +4938,15 @@ export class LynxElement implements BaseLynxElement {
         this.#webPointer = { offsetX: 0, offsetY: 0 };
         this.#recordWebPointer();
       }
-      this.#webPointerListeners.push({ name, cb });
+      // The DOM adds a listener once however often it's added, and removes
+      // it with one call, so the cache keeps one entry for it too.
+      if (
+        !this.#webPointerListeners.some(
+          (entry) => entry.name === name && entry.cb === cb,
+        )
+      ) {
+        this.#webPointerListeners.push({ name, cb });
+      }
       (this.element as unknown as EventTarget).addEventListener(name, cb);
       return () => this.#removeWebPointerListener(name, cb);
     }

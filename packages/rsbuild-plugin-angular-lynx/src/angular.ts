@@ -38,7 +38,7 @@ import {
 import { wrapPureClasses } from './pure-classes.js';
 import { lowerYieldingDefaultChains } from './yielding-defaults.js';
 import { wrapPureInitializers } from './pure-initializers.js';
-import { enableWebGL2WhereNamed, resolveRuntimeEntry } from './webgl2.js';
+import { enableOnDemand, resolveRuntimeEntry } from './on-demand.js';
 import { markHostElementsPure } from './pure-host-elements.js';
 import { seedCompilationSourceFiles } from './seed-compilation-source-files.js';
 import { addEntryHotAccept, hotUpdatesEnabled } from './hot-updates.js';
@@ -606,11 +606,11 @@ export const applyAngularRules = async (
    * has a `yield` or an `await` (see yielding-defaults.ts), and it leaves
    * splitPrivateChains no optional chain in those default values.
    */
-  // Where the WebGL2 call (webgl2.ts) imports the runtime from, resolved
-  // once, when the first module needs it.
+  // Where the calls to the runtime's enable functions (on-demand.ts) import
+  // it from, resolved once, when the first module needs it.
   let runtimeEntry: string | undefined;
-  const enableWebGL2 = (code: string, file: string): string =>
-    enableWebGL2WhereNamed(
+  const enableAskedFor = (code: string, file: string): string =>
+    enableOnDemand(
       code,
       file,
       (runtimeEntry ??= resolveRuntimeEntry(api.context.rootPath)),
@@ -671,9 +671,11 @@ export const applyAngularRules = async (
         // SWC's minifier inlines the IIFE, and then can't drop the class when
         // nothing uses it (kitchen-sink's background bundle kept the
         // IntersectionObserver and XMLHttpRequest classes, 8.6 kB).
-        // Then the WebGL2 context, if the module names it (see webgl2.ts).
+        // Then what the module asks for of the runtime's on-demand code: the
+        // WebGL2 context, fetch, XMLHttpRequest, IntersectionObserver (see
+        // on-demand.ts).
         return {
-          code: enableWebGL2(
+          code: enableAskedFor(
             transformPrivateMethods(
               lowerYieldingDefaultChains(code, context.resourcePath),
               context.resourcePath,
@@ -766,7 +768,7 @@ export const applyAngularRules = async (
       // the transforms buildTransformedCode makes, so the cross-thread IDs
       // come from the same code as the background thread's.
       return {
-        code: enableWebGL2(
+        code: enableAskedFor(
           transformPrivateMethods(
             lowerYieldingDefaultChains(code, context.resourcePath),
             context.resourcePath,

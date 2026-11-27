@@ -1,4 +1,5 @@
 import { blobForURL, decodeDataURL, LynxBlob } from '../network/blob';
+import { relayBytes } from '../network/relay';
 import { type CanvasSource, canvasSourceOf } from './canvas-source';
 import { type WebGLBridge, getWebGLBridge, toWords } from './webgl-bridge';
 import {
@@ -77,13 +78,19 @@ const decode = (
 };
 
 /**
- * An image file's bytes, from a URL: an object URL, a data: URL or the network.
+ * An image file's bytes, from a URL: an object URL, a data: URL, a file the
+ * app bundles or the network.
  */
 const fetchBytes = async (url: string): Promise<Uint8Array> => {
   const blob = blobForURL(url);
   if (blob) return blob.bytesSync();
   const data = url.startsWith('data:') ? decodeDataURL(url) : null;
   if (data) return data.bytes;
+  // The app's fetch where it has one (the web preview's, a test's, or the
+  // relayed one a module that names fetch installs), so the request goes as
+  // its own do. Most apps have none on the main thread (network/enable.ts),
+  // and an image's request needs only what fetch would do for it.
+  if (typeof fetch !== 'function') return relayBytes(url);
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`Failed to load ${url}: ${response.status}`);

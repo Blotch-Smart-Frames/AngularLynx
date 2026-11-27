@@ -17,6 +17,8 @@
 //   source-out, destination-in, destination-atop, copy), and shadows, draw
 //   the shape into a layer the size of the canvas first, which is then
 //   drawn over the canvas with the operation and the shadow.
+// - The filter (blur(), drop-shadow(), the color functions) is applied to
+//   that layer's pixels, before it's drawn over the canvas.
 // - Conic gradients (CGContextDrawConicGradient needs iOS 17) are worked out
 //   a pixel at a time.
 // - Text is laid out with Core Text: drawn as glyphs for a color fill (so
@@ -189,6 +191,9 @@ typedef struct {
 @property(nonatomic) CGFloat letterSpacing;
 @property(nonatomic) BOOL smoothing;
 @property(nonatomic) NSInteger smoothingQuality;
+/// The filter, as its steps (see applyFilter), and how far they reach.
+@property(nonatomic, copy) NSArray<NSNumber *> *filterSteps;
+@property(nonatomic) NSInteger filterPadding;
 @end
 
 @implementation ALCanvas2DState
@@ -208,6 +213,7 @@ typedef struct {
     _textAlign = 0;
     _textBaseline = 3;
     _smoothing = YES;
+    _filterSteps = @[];
   }
   return self;
 }
@@ -241,6 +247,8 @@ typedef struct {
   copy.letterSpacing = _letterSpacing;
   copy.smoothing = _smoothing;
   copy.smoothingQuality = _smoothingQuality;
+  copy.filterSteps = _filterSteps;
+  copy.filterPadding = _filterPadding;
   return copy;
 }
 
@@ -438,6 +446,201 @@ static UIFont *fontFor(NSString *families, NSInteger weight, BOOL italic, CGFloa
     if (font) return withItalic(font, italic);
   }
   return withItalic([UIFont systemFontOfSize:size weight:uiWeight], italic);
+}
+
+#pragma mark - Filters
+
+// The 2D context's `filter`, which the runtime parses into steps
+// (packages/runtime/src/lib/canvas/css-filter.ts): a Gaussian blur, a color
+// matrix, or a drop shadow, applied in order to the layer what's drawn went
+// into, after its alpha and before its shadow and compositing, as the
+// canvas spec has it. They
+// work on the layer's bytes, premultiplied RGBA, in sRGB, which is where
+// the spec has filter functions work. Android's shell runs the same steps
+// the same way (CanvasFilter.kt), so the two draw alike.
+
+/// The steps' kinds, as css-filter.ts's FILTER_STEP numbers them.
+enum { ALFilterBlur = 0, ALFilterMatrix = 1, ALFilterDropShadow = 2 };
+
+static inline uint8_t clampByte(double value) {
+  return value <= 0 ? 0 : value >= 255 ? 255 : (uint8_t)(value + 0.5);
+}
+
+static inline double clampUnit(double value) { return value < 0 ? 0 : value > 1 ? 1 : value; }
+
+/// A color matrix (row by row: red, green, blue, alpha; each row's factors
+/// and offset) on the colors not premultiplied, clamped, as feColorMatrix is.
+static void applyColorMatrix(uint8_t *bytes, size_t pixels, const double *m) {
+  for (size_t i = 0; i < pixels; i++) {
+    uint8_t *p = bytes + i * 4;
+    double a = p[3] / 255.0;
+    double r = 0, g = 0, b = 0;
+    if (a > 0) {
+      r = p[0] / 255.0 / a;
+      g = p[1] / 255.0 / a;
+      b = p[2] / 255.0 / a;
+    }
+    double r2 = clampUnit(m[0] * r + m[1] * g + m[2] * b + m[3] * a + m[4]);
+    double g2 = clampUnit(m[5] * r + m[6] * g + m[7] * b + m[8] * a + m[9]);
+    double b2 = clampUnit(m[10] * r + m[11] * g + m[12] * b + m[13] * a + m[14]);
+    double a2 = clampUnit(m[15] * r + m[16] * g + m[17] * b + m[18] * a + m[19]);
+    p[0] = clampByte(r2 * a2 * 255);
+    p[1] = clampByte(g2 * a2 * 255);
+    p[2] = clampByte(b2 * a2 * 255);
+    p[3] = clampByte(a2 * 255);
+  }
+}
+
+/// One box blur along each row (or each column), each output the mean of
+/// the `lo` bytes before it, itself and the `hi` after; transparent past the
+/// edges.
+static void boxPass(const uint8_t *src, uint8_t *dst, size_t width, size_t height, size_t lo,
+                    size_t hi, BOOL horizontal) {
+  size_t lines = horizontal ? height : width;
+  size_t length = horizontal ? width : height;
+  size_t step = horizontal ? 4 : width * 4;
+  size_t lineStride = horizontal ? width * 4 : 4;
+  size_t size = lo + hi + 1;
+  for (size_t line = 0; line < lines; line++) {
+    const uint8_t *in = src + line * lineStride;
+    uint8_t *out = dst + line * lineStride;
+    for (size_t channel = 0; channel < 4; channel++) {
+      size_t sum = 0;
+      for (size_t i = 0; i <= hi && i < length; i++) sum += in[i * step + channel];
+      for (size_t x = 0; x < length; x++) {
+        out[x * step + channel] = (uint8_t)((sum * 2 + size) / (size * 2));
+        if (x + hi + 1 < length) sum += in[(x + hi + 1) * step + channel];
+        if (x >= lo) sum -= in[(x - lo) * step + channel];
+      }
+    }
+  }
+}
+
+/// One pass of a Gaussian kernel along each row (or each column).
+static void kernelPass(const uint8_t *src, uint8_t *dst, size_t width, size_t height,
+                       const double *weights, size_t radius, BOOL horizontal) {
+  size_t lines = horizontal ? height : width;
+  size_t length = horizontal ? width : height;
+  size_t step = horizontal ? 4 : width * 4;
+  size_t lineStride = horizontal ? width * 4 : 4;
+  for (size_t line = 0; line < lines; line++) {
+    const uint8_t *in = src + line * lineStride;
+    uint8_t *out = dst + line * lineStride;
+    for (size_t x = 0; x < length; x++) {
+      double sum[4] = {0, 0, 0, 0};
+      size_t from = x >= radius ? x - radius : 0;
+      size_t to = MIN(length - 1, x + radius);
+      for (size_t i = from; i <= to; i++) {
+        double weight = weights[(i + radius) - x];
+        const uint8_t *p = in + i * step;
+        for (int channel = 0; channel < 4; channel++) sum[channel] += p[channel] * weight;
+      }
+      for (int channel = 0; channel < 4; channel++) out[x * step + channel] = clampByte(sum[channel]);
+    }
+  }
+}
+
+/// A Gaussian blur of deviation `sigma`, as feGaussianBlur draws it: from a
+/// deviation of 2, three box blurs, which the spec gives as within 3% of
+/// the Gaussian (and which cost the same whatever the deviation); below it,
+/// the Gaussian's own kernel, which is small there.
+static void gaussianBlur(uint8_t *bytes, size_t width, size_t height, double sigma) {
+  if (!(sigma > 0) || width == 0 || height == 0) return;
+  uint8_t *scratch = malloc(width * height * 4);
+  if (!scratch) return;
+  for (int pass = 0; pass < 2; pass++) {
+    BOOL horizontal = pass == 0;
+    if (sigma >= 2) {
+      size_t d = (size_t)floor(sigma * 3 * sqrt(2 * M_PI) / 4 + 0.5);
+      if (d % 2 == 1) {
+        boxPass(bytes, scratch, width, height, d / 2, d / 2, horizontal);
+        boxPass(scratch, bytes, width, height, d / 2, d / 2, horizontal);
+        boxPass(bytes, scratch, width, height, d / 2, d / 2, horizontal);
+      } else {
+        // An even box is centered between two pixels: one leans left, one
+        // right, and the third is a pixel wider and centered.
+        boxPass(bytes, scratch, width, height, d / 2, d / 2 - 1, horizontal);
+        boxPass(scratch, bytes, width, height, d / 2 - 1, d / 2, horizontal);
+        boxPass(bytes, scratch, width, height, d / 2, d / 2, horizontal);
+      }
+      memcpy(bytes, scratch, width * height * 4);
+    } else {
+      size_t radius = (size_t)ceil(sigma * 3);
+      double weights[2 * 6 + 1];
+      double total = 0;
+      for (size_t i = 0; i <= 2 * radius; i++) {
+        double k = (double)i - (double)radius;
+        weights[i] = exp(-(k * k) / (2 * sigma * sigma));
+        total += weights[i];
+      }
+      for (size_t i = 0; i <= 2 * radius; i++) weights[i] /= total;
+      kernelPass(bytes, scratch, width, height, weights, radius, horizontal);
+      memcpy(bytes, scratch, width * height * 4);
+    }
+  }
+  free(scratch);
+}
+
+/// drop-shadow(): the alpha of what's drawn, moved by the offset (to the
+/// nearest pixel), blurred and in the color, drawn under it.
+static void dropShadow(uint8_t *bytes, size_t width, size_t height, double dx, double dy,
+                       double sigma, double r, double g, double b, double a) {
+  size_t length = width * height * 4;
+  uint8_t *shadow = calloc(length, 1);
+  if (!shadow) return;
+  long offsetX = lround(dx), offsetY = lround(dy);
+  for (size_t y = 0; y < height; y++) {
+    long fromY = (long)y - offsetY;
+    if (fromY < 0 || fromY >= (long)height) continue;
+    for (size_t x = 0; x < width; x++) {
+      long fromX = (long)x - offsetX;
+      if (fromX < 0 || fromX >= (long)width) continue;
+      shadow[(y * width + x) * 4 + 3] = bytes[((size_t)fromY * width + (size_t)fromX) * 4 + 3];
+    }
+  }
+  gaussianBlur(shadow, width, height, sigma);
+  for (size_t i = 0; i < length; i += 4) {
+    double shadowAlpha = shadow[i + 3] / 255.0 * a;
+    double under = 1 - bytes[i + 3] / 255.0;
+    bytes[i] = clampByte(bytes[i] + r * shadowAlpha * under);
+    bytes[i + 1] = clampByte(bytes[i + 1] + g * shadowAlpha * under);
+    bytes[i + 2] = clampByte(bytes[i + 2] + b * shadowAlpha * under);
+    bytes[i + 3] = clampByte(bytes[i + 3] + 255 * shadowAlpha * under);
+  }
+  free(shadow);
+}
+
+/// globalAlpha on a layer's bytes, which are premultiplied, so every
+/// channel scales.
+static void scaleAlpha(uint8_t *bytes, size_t pixels, double alpha) {
+  if (alpha >= 1) return;
+  for (size_t i = 0; i < pixels * 4; i++) bytes[i] = clampByte(bytes[i] * alpha);
+}
+
+/// The filter's steps, as the runtime sends them, on a layer's bytes.
+static void applyFilter(uint8_t *bytes, size_t width, size_t height, NSArray<NSNumber *> *steps) {
+  NSUInteger count = steps.count, i = 0;
+  double values[20];
+  while (i < count) {
+    NSInteger kind = steps[i++].integerValue;
+    NSUInteger arity = kind == ALFilterBlur ? 1 : kind == ALFilterMatrix ? 20 : kind == ALFilterDropShadow ? 7 : 0;
+    // A step it doesn't know, or one cut short, ends the list: what's after
+    // it would be read as the wrong numbers.
+    if (arity == 0 || i + arity > count) return;
+    for (NSUInteger k = 0; k < arity; k++) values[k] = steps[i + k].doubleValue;
+    i += arity;
+    switch (kind) {
+      case ALFilterBlur:
+        gaussianBlur(bytes, width, height, values[0]);
+        break;
+      case ALFilterMatrix:
+        applyColorMatrix(bytes, width * height, values);
+        break;
+      default:
+        dropShadow(bytes, width, height, values[0], values[1], values[2], values[3], values[4],
+                   values[5], values[6]);
+    }
+  }
 }
 
 #pragma mark - The context
@@ -804,6 +1007,10 @@ static BOOL reducesAlpha(NSInteger composite) {
       s.smoothing = readInt(r) != 0;
       s.smoothingQuality = readInt(r);
       break;
+    case ALCanvas2DOpSetFilter:
+      s.filterPadding = MAX(0, readInt(r));
+      s.filterSteps = readArray(r);
+      break;
     case ALCanvas2DOpCreatePattern: {
       NSInteger objectId = readInt(r);
       NSDictionary *source = readMap(r);
@@ -927,6 +1134,28 @@ static BOOL reducesAlpha(NSInteger composite) {
   return s.shadowA > 0 && (s.shadowBlur > 0 || s.shadowOffsetX != 0 || s.shadowOffsetY != 0);
 }
 
+/// How far past the canvas, on every side, the layer a draw goes into
+/// reaches: the filter's padding, and the shadow's offset and blur (three of
+/// its deviations, which are half the blur), so a shape just off the canvas
+/// still blurs, or casts its shadow, onto it. Capped at 256 pixels, as
+/// css-filter.ts caps the filter's, so a far shadow makes no huge layer.
+- (size_t)layerPadding {
+  ALCanvas2DState *s = _state;
+  CGFloat pad = s.filterSteps.count > 0 ? s.filterPadding : 0;
+  if ([self shadowVisible]) {
+    pad += ceil(MAX(fabs(s.shadowOffsetX), fabs(s.shadowOffsetY)) + s.shadowBlur * 1.5);
+  }
+  return (size_t)MIN(pad, 256);
+}
+
+/// The part of the canvas's pixels a context draws on: the canvas, or the
+/// padded layer's larger area, from the context's own size and transform.
+static CGRect drawableRect(CGContextRef c) {
+  CGRect device =
+      CGRectMake(0, 0, CGBitmapContextGetWidth(c), CGBitmapContextGetHeight(c));
+  return CGRectApplyAffineTransform(device, CGAffineTransformInvert(CGContextGetCTM(c)));
+}
+
 /// Draws with the state's alpha, compositing and shadow. `draw` draws in a
 /// context whose space is the canvas's pixels, with nothing else set.
 ///
@@ -934,13 +1163,15 @@ static BOOL reducesAlpha(NSInteger composite) {
 /// covers, and a shadow for each thing drawn; the canvas spec composites
 /// the whole canvas, and the shadow of the shape as a whole. So for those,
 /// the shape is drawn into a transparent layer the canvas's size, which is
-/// drawn over the canvas with the operation and the shadow.
+/// drawn over the canvas with the operation and the shadow. A filter works
+/// on pixels, so it needs the layer too: it's applied to the layer first.
 - (void)composite:(void (^)(CGContextRef c))draw {
   if (!_cg) return;
   ALCanvas2DState *s = _state;
   CGContextRef c = _cg;
   BOOL shadow = [self shadowVisible];
-  if (!shadow && !isUnbounded(s.composite)) {
+  BOOL filtered = s.filterSteps.count > 0;
+  if (!shadow && !filtered && !isUnbounded(s.composite)) {
     CGContextSaveGState(c);
     CGContextSetAlpha(c, s.globalAlpha);
     CGContextSetBlendMode(c, BLEND_MODES[s.composite]);
@@ -949,19 +1180,31 @@ static BOOL reducesAlpha(NSInteger composite) {
     [self keepOpaque];
     return;
   }
+  size_t pad = [self layerPadding];
+  size_t layerWidth = _width + pad * 2, layerHeight = _height + pad * 2;
   CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
   CGContextRef layer =
-      CGBitmapContextCreate(NULL, _width, _height, 8, _width * 4, space,
+      CGBitmapContextCreate(NULL, layerWidth, layerHeight, 8, layerWidth * 4, space,
                             kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
   CGColorSpaceRelease(space);
   if (!layer) return;
-  CGContextTranslateCTM(layer, 0, _height);
+  CGContextTranslateCTM(layer, 0, layerHeight);
   CGContextScaleCTM(layer, 1, -1);
+  CGContextTranslateCTM(layer, pad, pad);
   draw(layer);
+  // The canvas spec takes what's drawn through globalAlpha first, then the
+  // filter, then casts the shadow and composites, outside the clip until
+  // then (since whatwg/html#10674): so a drop-shadow() shows through a
+  // see-through shape. Without a filter, the alpha goes on as the layer's
+  // drawn, which comes to the same.
+  if (filtered) {
+    scaleAlpha(CGBitmapContextGetData(layer), layerWidth * layerHeight, s.globalAlpha);
+    applyFilter(CGBitmapContextGetData(layer), layerWidth, layerHeight, s.filterSteps);
+  }
   CGImageRef image = CGBitmapContextCreateImage(layer);
   CGContextRelease(layer);
   CGContextSaveGState(c);
-  CGContextSetAlpha(c, s.globalAlpha);
+  CGContextSetAlpha(c, filtered ? 1 : s.globalAlpha);
   CGContextSetBlendMode(c, BLEND_MODES[s.composite]);
   if (shadow) {
     CGColorRef color = CGColorCreateSRGB(s.shadowR / 255, s.shadowG / 255, s.shadowB / 255,
@@ -977,7 +1220,7 @@ static BOOL reducesAlpha(NSInteger composite) {
   // already lie top to bottom.
   CGContextScaleCTM(c, 1, -1);
   CGContextTranslateCTM(c, 0, -(CGFloat)_height);
-  CGContextDrawImage(c, CGRectMake(0, 0, _width, _height), image);
+  CGContextDrawImage(c, CGRectMake(-(CGFloat)pad, -(CGFloat)pad, layerWidth, layerHeight), image);
   CGContextRestoreGState(c);
   CGImageRelease(image);
   [self keepOpaque];
@@ -1040,31 +1283,33 @@ static BOOL reducesAlpha(NSInteger composite) {
     pattern.quality = [self interpolationQuality];
     CGFloat width = CGImageGetWidth(pattern.image);
     CGFloat height = CGImageGetHeight(pattern.image);
-    // Pattern space maps to the bitmap's own space (y up), past the
-    // canvas's flip: the pattern's transform, then the canvas's, then the
-    // flip.
-    CGAffineTransform flip = CGAffineTransformMake(1, 0, 0, -1, 0, _height);
-    CGAffineTransform matrix = CGAffineTransformConcat(
-        CGAffineTransformConcat(style.transform, transform), flip);
-    // A step longer than the canvas reaches in pattern space repeats nothing:
-    // no-repeat, and the other axis of repeat-x or repeat-y. The canvas's
-    // corners are taken back into pattern space to find how far that is.
-    CGFloat once = 1;
-    if (invertible(matrix)) {
-      CGAffineTransform back = CGAffineTransformInvert(matrix);
-      CGRect reach = CGRectApplyAffineTransform(CGRectMake(0, 0, _width, _height), back);
-      once = 2 * MAX(MAX(fabs(CGRectGetMinX(reach)), fabs(CGRectGetMaxX(reach))),
-                     MAX(fabs(CGRectGetMinY(reach)), fabs(CGRectGetMaxY(reach)))) +
-             width + height + 1;
-    }
     NSInteger repetition = pattern.repetition;
-    CGFloat xStep = repetition == 0 || repetition == 1 ? width : once;
-    CGFloat yStep = repetition == 0 || repetition == 2 ? height : once;
-    CGPatternCallbacks callbacks = {0, drawPatternCell, NULL};
-    CGPatternRef cg = CGPatternCreate((__bridge void *)pattern, CGRectMake(0, 0, width, height),
-                                      matrix, xStep, yStep, kCGPatternTilingConstantSpacing, true,
-                                      &callbacks);
+    CGAffineTransform patternTransform = CGAffineTransformConcat(style.transform, transform);
     [self composite:^(CGContextRef c) {
+      // Pattern space maps to the bitmap's own space (y up), past the
+      // canvas's flip: the pattern's transform, then the canvas's, then the
+      // context's own, which is the canvas's flip, or the flip of a layer
+      // bigger than the canvas (for a filter or a shadow) and its offset.
+      CGAffineTransform matrix = CGAffineTransformConcat(patternTransform, CGContextGetCTM(c));
+      // A step longer than the bitmap reaches in pattern space repeats
+      // nothing: no-repeat, and the other axis of repeat-x or repeat-y. The
+      // bitmap's corners are taken back into pattern space to find how far
+      // that is.
+      CGFloat once = 1;
+      if (invertible(matrix)) {
+        CGAffineTransform back = CGAffineTransformInvert(matrix);
+        CGRect reach = CGRectApplyAffineTransform(
+            CGRectMake(0, 0, CGBitmapContextGetWidth(c), CGBitmapContextGetHeight(c)), back);
+        once = 2 * MAX(MAX(fabs(CGRectGetMinX(reach)), fabs(CGRectGetMaxX(reach))),
+                       MAX(fabs(CGRectGetMinY(reach)), fabs(CGRectGetMaxY(reach)))) +
+               width + height + 1;
+      }
+      CGFloat xStep = repetition == 0 || repetition == 1 ? width : once;
+      CGFloat yStep = repetition == 0 || repetition == 2 ? height : once;
+      CGPatternCallbacks callbacks = {0, drawPatternCell, NULL};
+      CGPatternRef cg = CGPatternCreate((__bridge void *)pattern, CGRectMake(0, 0, width, height),
+                                        matrix, xStep, yStep, kCGPatternTilingConstantSpacing,
+                                        true, &callbacks);
       CGColorSpaceRef space = CGColorSpaceCreatePattern(NULL);
       CGContextSetFillColorSpace(c, space);
       CGColorSpaceRelease(space);
@@ -1076,8 +1321,8 @@ static BOOL reducesAlpha(NSInteger composite) {
       } else {
         CGContextFillPath(c);
       }
+      CGPatternRelease(cg);
     }];
-    CGPatternRelease(cg);
   }
 }
 
@@ -1120,8 +1365,10 @@ static BOOL reducesAlpha(NSInteger composite) {
                  transform:(CGAffineTransform)transform {
   if (!invertible(transform)) return;
   CGAffineTransform inverse = CGAffineTransformInvert(transform);
-  CGRect bounds = CGRectIntegral(CGRectIntersection(CGContextGetClipBoundingBox(c),
-                                                    CGRectMake(0, 0, _width, _height)));
+  // What the context draws on: the canvas, or the bigger layer of a filter
+  // or a shadow, whose pixels past the canvas can still reach it.
+  CGRect bounds =
+      CGRectIntegral(CGRectIntersection(CGContextGetClipBoundingBox(c), drawableRect(c)));
   if (CGRectIsEmpty(bounds)) return;
   size_t width = (size_t)bounds.size.width;
   size_t height = (size_t)bounds.size.height;

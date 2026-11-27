@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import type { RsbuildPluginAPI } from '@lynx-js/rspeedy';
 
 /**
@@ -39,3 +41,44 @@ export const applyStrictEsm = (api: RsbuildPluginAPI): void => {
       .type('javascript/esm');
   });
 };
+
+/** Each folder's nearest `package.json` `"type"`, as the build looks it up. */
+const packageTypes = new Map<string, unknown>();
+
+/**
+ * The `"type"` of the `package.json` nearest to a folder, which rspack's
+ * `descriptionData` matches against (the MODULE_PACKAGE_JS rule).
+ *
+ * @param dir - The folder.
+ */
+const packageType = (dir: string): unknown => {
+  if (packageTypes.has(dir)) return packageTypes.get(dir);
+  const file = path.join(dir, 'package.json');
+  let type: unknown;
+  if (fs.existsSync(file)) {
+    try {
+      type = (JSON.parse(fs.readFileSync(file, 'utf8')) as { type?: unknown })
+        .type;
+    } catch {
+      // A package.json the build can't read sets no type, as for rspack.
+    }
+  } else {
+    const parent = path.dirname(dir);
+    type = parent === dir ? undefined : packageType(parent);
+  }
+  packageTypes.set(dir, type);
+  return type;
+};
+
+/**
+ * Whether the build makes a file a strict ES module (applyStrictEsm()): an
+ * `.mjs` file, or a `.js` file in a package whose `package.json` has
+ * `"type": "module"`. Such a module has no `require`, even with no import or
+ * export of its own. So does an `.mts` file.
+ *
+ * @param filename - The module's path.
+ */
+export const isStrictEsmFile = (filename: string): boolean =>
+  /\.m[jt]s$/.test(filename) ||
+  (filename.endsWith('.js') &&
+    packageType(path.dirname(filename)) === 'module');

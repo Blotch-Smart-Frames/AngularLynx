@@ -270,6 +270,9 @@ test('a canvas draws with WebGL2', async ({ page }) => {
   await expect(page.getByText('WebGL: 0,0,255,255')).toBeVisible();
   // ImageBitmaps of canvases (issue #697), the browser's own here.
   await expect(page.getByText('Bitmap: ok')).toBeVisible();
+  // The 2D context's filter (issue #698), the browser's own here: the
+  // fixture's reads are what a browser draws, which the shells match.
+  await expect(page.getByText('2D: 0,128,0,255 filter ok')).toBeVisible();
 
   expect(errors, 'the app logged errors while running').toEqual([]);
 });

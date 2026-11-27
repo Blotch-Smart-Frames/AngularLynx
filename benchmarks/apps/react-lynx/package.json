@@ -6,6 +6,7 @@
   "scripts": {
     "build": "rspeedy build",
     "build:ios": "node scripts/build-ios.mjs",
+    "build:android": "node scripts/build-android.mjs",
     "typecheck": "tsc -p src --noEmit"
   },
   "dependencies": {

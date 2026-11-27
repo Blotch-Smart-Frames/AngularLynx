@@ -4,6 +4,7 @@ table, from one or more of the harness's CSVs.
 
     python3 summarize.py ../results/ios/launch-*.csv
     python3 summarize.py ../results/ios/scroll-*.csv
+    python3 summarize.py ../results/android-emulator/launch-*.csv
 
 Each app's launches are split by what ran before: "again" right after its
 own last launch (iOS still has its files in memory, about 80 ms faster) and

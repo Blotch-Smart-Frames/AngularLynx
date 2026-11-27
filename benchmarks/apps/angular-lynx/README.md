@@ -125,6 +125,21 @@ BENCH_SCREEN='mount?kind=image&count=5000' npx ng build --platform ios
 `ng build --platform ios --run` installs and opens it on a simulator itself
 (`--device "<simulator name>"` picks one).
 
+**Release build for Android** (an emulator, or a phone over USB):
+
+```sh
+npx ng build --platform android
+# dist/android/launchperfal.apk, signed with the debug key
+adb install -r dist/android/launchperfal.apk
+adb reverse tcp:8787 tcp:8787   # the device's localhost:8787 is the Mac's
+adb shell am start -n com.angularlynx.bench.angularlynx/dev.angularlynx.shell.MainActivity
+```
+
+The shell lets plain HTTP reach only `localhost`, so keep the default
+`FIXTURE_ORIGIN` and forward the port: a LAN address is refused as
+cleartext. `BENCH_SCREEN` works as for iOS. `../../README.md` ("On an
+Android emulator") runs it against the ReactLynx app.
+
 **Release build for a phone** (team `F64LTK85F6`, development signing):
 
 ```sh

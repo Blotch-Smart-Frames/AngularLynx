@@ -96,7 +96,7 @@ export class LynxTextDecoder {
   /** Bytes of a sequence a streaming decode cut off, kept for the next call. */
   #pending: number[] = [];
   /** Whether this stream has produced output yet, so a BOM can only lead it. */
-  #started: boolean;
+  #started = false;
 
   constructor(
     label = 'utf-8',
@@ -109,11 +109,6 @@ export class LynxTextDecoder {
     }
     this.fatal = !!options.fatal;
     this.ignoreBOM = !!options.ignoreBOM;
-    // Here rather than as the field's initializer: the build plugin puts a
-    // constant initializer on the prototype, in a static block whose
-    // statements the minifier couldn't drop, which kept the class in every
-    // app's main-thread script, used or not (#760).
-    this.#started = false;
   }
 
   decode(input?: BufferSource, options: { stream?: boolean } = {}): string {

@@ -2322,7 +2322,32 @@ describe('renamePrivateMethods, wrapping a class it gives a static block', () =>
     ).toBe(true);
   });
 
-  it('keeps an anonymous class’s name, through a property of its variable’s name, which binds nothing', () => {
+  /**
+   * Runs as a script: `var A` is the module's binding, as in a bundle.
+   */
+  const run = (code: string): unknown => new Function(code)();
+
+  it('names an anonymous class whose code never reads its variable, as its variable names it', () => {
+    const out = rename(
+      'var A = class { #f = null; static s = 1; g() { return this.#f; } };',
+    );
+    expect(out).toMatch(
+      /var A = \/\*#__PURE__\*\/ \(\(\) => class A \{ static \{ .* \} +static s = 1; g\(\) \{ return this\[__f_[0-9a-f]{6}0\]; \} \}\)\(\);$/,
+    );
+    expect(run(`${out} return [A.name, A.s, new A().g()];`)).toEqual([
+      'A',
+      1,
+      null,
+    ]);
+    // The name goes before a base, which a static block hides a field of.
+    const sub = rename(
+      'var A = class extends Object { static #t = 1; static t() { return this.#t; } };',
+    );
+    expect(sub).toContain('(() => class A extends Object {');
+    expect(run(`${sub} return [A.name, A.t()];`)).toEqual(['A', 1]);
+  });
+
+  it('keeps the name of an anonymous class that reads its variable, through a property of the variable’s name, which binds nothing', () => {
     const wrapped = (code: string): string => {
       const out = rename(code);
       expect(out).toMatch(
@@ -2330,10 +2355,6 @@ describe('renamePrivateMethods, wrapping a class it gives a static block', () =>
       );
       return out;
     };
-    /**
-     * Runs as a script: `var A` is the module's binding, as in a bundle.
-     */
-    const run = (code: string): unknown => new Function(code)();
     const cls =
       'var A = class { #f = null; static self = A; g() { return [A, this.#f]; } };';
     // The class is named A, as the initializer made it, and a static
@@ -2357,6 +2378,45 @@ describe('renamePrivateMethods, wrapping a class it gives a static block', () =>
         write,
       ).toBe(true);
     }
+    // So does code that could read it: through `eval`, or a computed name,
+    // which would otherwise see the class's own name before it's set.
+    wrapped('var A = class { #f = null; g() { return eval("A"); } };');
+    expect(
+      run(
+        `var A = { key: 'k' }; ${wrapped('var A = class { #f = null; [A.key]() { return this.#f; } };')} return new A().k();`,
+      ),
+    ).toBeNull();
+  });
+
+  it('keeps the property for a variable whose name a class can’t take', () => {
+    // A sloppy script can name a variable `yield`, a class's strict code
+    // can't name a class that.
+    const out = rename(
+      'var yield = class { #f = null; g() { return this.#f; } };',
+      '/app/src/script.js',
+    );
+    expect(out).toContain('(() => ({ yield: class {');
+    expect(run(`${out} return yield.name;`)).toBe('yield');
+  });
+
+  it('lets the minifier drop an anonymous class that only an unused class reads', () => {
+    /**
+     * The minified main-thread code, in a function, as rspack puts a
+     * bundle's modules, whose unused variables the minifier drops.
+     */
+    const minified = (code: string): string =>
+      experiments.swc.minifySync(
+        `(function () { ${compile(`${rename(code)} globalThis.kept = 1;`, LAYERS.MAIN_THREAD)} })();`,
+        { compress: {}, mangle: false } as never,
+      ).code;
+    // The minifier inlined the IIFE of a class whose block lowers to one
+    // expression when another class read it, and kept the assignment to its
+    // prototype that was left, with the class (#768).
+    const out = minified(
+      'var A = class { #f = false; g() { return this.#f; } }; var B = class { #b = null; m() { return [new A(), this.#b]; } };',
+    );
+    expect(out).not.toContain('class');
+    expect(out).toContain('globalThis.kept=1');
   });
 
   it('leaves alone a class that does more when it’s defined, or isn’t at the top of the module', () => {
@@ -2368,7 +2428,7 @@ describe('renamePrivateMethods, wrapping a class it gives a static block', () =>
       // Destructured: there's no one name to keep.
       'var { name } = class { #f = null; g() { return this.#f; } };',
       // A `__proto__` property would set the prototype instead.
-      'var __proto__ = class { #f = null; g() { return this.#f; } };',
+      'var __proto__ = class { #f = null; g() { return [__proto__, this.#f]; } };',
       'class A extends mixin(B) { static #t = 1; g() { return A.#t; } }',
       'class A { #f = null; [key()]() { return this.#f; } }',
       'class A { #f = null; static { setUp(); } g() { return this.#f; } }',

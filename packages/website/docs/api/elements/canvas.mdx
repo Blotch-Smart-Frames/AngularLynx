@@ -188,10 +188,13 @@ export class Thumbnail {
   readonly video = viewChild.required<ElementRef<HTMLVideoElement>>('video');
   readonly thumb = viewChild.required<ElementRef<LynxCanvasElement>>('thumb');
 
-  grab(): void {
+  grab(tries = 10): void {
     const video = this.video().nativeElement;
-    // Draw only once there's a frame: before it, nothing is drawn.
-    if (video.readyState < video.HAVE_CURRENT_DATA) return;
+    // Draw only once there's a frame: try again a little later until then.
+    if (video.readyState < video.HAVE_CURRENT_DATA) {
+      if (tries > 0) setTimeout(() => this.grab(tries - 1), 100);
+      return;
+    }
     const canvas = this.thumb().nativeElement as unknown as HTMLCanvasElement;
     canvas.getContext('2d')!.drawImage(video, 0, 0, 160, 90);
   }
@@ -202,7 +205,7 @@ For a mesh, pass the same element to three.js: `new THREE.VideoTexture(video)`. 
 
 - The phone reads the frame the video shows; the pixels never pass through JavaScript. `createImageBitmap(video)` keeps a copy of it, as on the web.
 - Before its first frame, `videoWidth` is 0, `readyState` is `HAVE_NOTHING`, and nothing is drawn, as in a browser.
-- Check `readyState` before you draw, as above. On the phone the frame is usually there when `bindfirstframe` arrives, but iOS waits for it for half a second at most, then sends the event anyway. The web preview never sends `bindfirstframe`: draw from a tap or a `bindtimeupdate` there.
+- Check `readyState` before you draw, and try again if there's no frame yet, as above. On the phone the frame is usually there when `bindfirstframe` arrives, but iOS waits for it for half a second at most, then sends the event anyway. The web preview never sends `bindfirstframe`: draw from a tap or a `bindtimeupdate` there.
 - On Android, a video with `display: none` has no frame. Hide it with `opacity: 0` instead.
 - On iOS, a video whose file says to turn it (a phone recording in portrait) is drawn as it's stored, on its side ([#725](https://github.com/Blotch-Smart-Frames/AngularLynx/issues/725)).
 - The web preview doesn't take a template's `<video>` in `drawImage()`, `texImage2D()` or `createImageBitmap()` yet ([#732](https://github.com/Blotch-Smart-Frames/AngularLynx/issues/732)).

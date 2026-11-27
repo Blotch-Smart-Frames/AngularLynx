@@ -9,7 +9,8 @@
     "lint": "oxlint .",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
-    "lint:fix": "oxlint --fix ."
+    "lint:fix": "oxlint --fix .",
+    "dolan:update:force": "dolan update --force"
   },
   "dependencies": {
     "@angular/common": "^22.3.0",

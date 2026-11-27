@@ -2023,8 +2023,10 @@ export class LynxElement implements BaseLynxElement {
     this.#passedSizeChanged();
     this.#layoutChanged();
     // And the marks of a <q> it is or is in, where a `quotes` rule requires
-    // a changed token (see #ownQuotes).
-    if (quotesRulesRead(changed)) this.#refreshQuotes();
+    // a changed token (see #ownQuotes): through every element below it, as
+    // a lang does (see #setLang), since a wrapper made after a hydrated <q>
+    // has no flag for it.
+    if (quotesRulesRead(changed)) this.#refreshQuotes(true);
   }
 
   /**
@@ -2756,7 +2758,8 @@ export class LynxElement implements BaseLynxElement {
    */
   #inlineQuotesChanged(): void {
     LynxElement.#inlineQuotesSeen = true;
-    this.#refreshQuotes();
+    // Through every element below, as for a class (see #rulesChanged).
+    this.#refreshQuotes(true);
   }
 
   /** Whether an inline `quotes` was ever set (see #ownQuotes). */

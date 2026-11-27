@@ -3763,6 +3763,42 @@ describe('<q>, element by element', () => {
       expect([leafText(openRef), leafText(closeRef)]).toEqual(['a', 'b']);
     });
 
+    it('redraws a hydrated <q> past a wrapper made after it', () => {
+      quotesRules([['_ngtag-q'], [[' ', ['card']]], `"a" "b"`, 1001, 0, 0]);
+      const g = globalThis as unknown as FakeNativeGlobal<FakeEl>;
+      const viewRef = g.__CreateView();
+      const wrapperRef = g.__CreateView();
+      const qRef = g.__CreateText();
+      const openRef = g.__CreateRawText('');
+      const closeRef = g.__CreateRawText('');
+      g.__AppendElement(native(page), viewRef);
+      g.__AppendElement(viewRef, wrapperRef);
+      g.__AppendElement(wrapperRef, qRef);
+      g.__AppendElement(qRef, openRef);
+      g.__AppendElement(qRef, closeRef);
+      // An id no wrapper has (see "takes a server render's lang from its
+      // native ancestors").
+      wrapperRef.id = -1;
+      const view = new LynxElement(viewRef as never);
+      view.tagName = 'view';
+      const q = new LynxElement(qRef as never);
+      q.tagName = 'text';
+      q.addScopeClass('_ngtag-q');
+      q.markQuote([openRef as never, closeRef as never]);
+      expect(leafText(openRef)).toBe('“');
+
+      // A wrapper made later (as parentNode() makes one) has no flag, and
+      // the class still reaches the <q>, and so does an inline style above
+      // it, where no rule of the <q>'s own wins over it.
+      wrapperRef.id = 1_000_001;
+      new LynxElement(wrapperRef as never).tagName = 'view';
+      view.setAttribute('class', 'card');
+      expect([leafText(openRef), leafText(closeRef)]).toEqual(['a', 'b']);
+      view.setAttribute('class', '');
+      view.setStyle('quotes', 'none');
+      expect(leafText(openRef)).toBe('');
+    });
+
     it('keeps the language of an auto inside a quotes', () => {
       quotesRules([['fancy'], [], `"<" ">"`, 1000, 0, 0]);
       const view = doc.createElement('view');

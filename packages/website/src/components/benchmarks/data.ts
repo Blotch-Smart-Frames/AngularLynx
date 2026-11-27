@@ -290,11 +290,11 @@ export type ScrollRun = {
    * of scrolling, Apple's measure of smoothness: under 5 is good, over 10
    * is bad.
    */
-  readonly hitchRatio: number;
+  readonly hitchRatio?: number;
   /** Frames drawn per second while the list moved, over every swipe. */
-  readonly fps: number;
+  readonly fps?: number;
   /** The app's CPU time per swipe, every thread. */
-  readonly cpuMsPerSwipe: number;
+  readonly cpuMsPerSwipe?: number;
   /** The app's footprint after the last swipe. */
   readonly memoryMb?: number;
   readonly thermalState: string;
@@ -329,7 +329,22 @@ const readScrollRuns = (text: string, session: string): ScrollRun[] => {
     const measured = swipes.filter((swipe) => swipe.scroll_ms !== '');
     if (measured.length === 0) return [];
     const [first] = measured;
-    const seconds = sum(measured.map((s) => Number(s.scroll_ms))) / 1000;
+    /**
+     * The swipes that have a value in `column`: each metric is over those, so
+     * a swipe the result bundle gave no value for is left out of that metric,
+     * not counted as 0.
+     */
+    const having = (column: 'fps' | 'hitch_ms' | 'cpu_ms') =>
+      measured.filter((s) => s[column] !== '');
+    const perSecond = (
+      column: 'fps' | 'hitch_ms',
+      weight: (s: (typeof measured)[number]) => number,
+    ): number | undefined => {
+      const swipes = having(column);
+      const seconds = sum(swipes.map((s) => Number(s.scroll_ms))) / 1000;
+      return swipes.length > 0 ? sum(swipes.map(weight)) / seconds : undefined;
+    };
+    const cpu = having('cpu_ms');
     const last = measured.reduce((a, b) =>
       Number(b.swipe) > Number(a.swipe) ? b : a,
     );
@@ -342,15 +357,17 @@ const readScrollRuns = (text: string, session: string): ScrollRun[] => {
         osBuild: first.os_build,
         run: Number(first.run),
         swipes: measured.length,
-        hitchRatio: sum(measured.map((s) => Number(s.hitch_ms || 0))) / seconds,
+        hitchRatio: perSecond('hitch_ms', (s) => Number(s.hitch_ms)),
         // Each swipe's rate, weighted by how long it moved: the frames drawn
         // over the seconds scrolled.
-        fps:
-          sum(measured.map((s) => Number(s.fps || 0) * Number(s.scroll_ms))) /
-          1000 /
-          seconds,
+        fps: perSecond(
+          'fps',
+          (s) => (Number(s.fps) * Number(s.scroll_ms)) / 1000,
+        ),
         cpuMsPerSwipe:
-          sum(measured.map((s) => Number(s.cpu_ms || 0))) / measured.length,
+          cpu.length > 0
+            ? sum(cpu.map((s) => Number(s.cpu_ms))) / cpu.length
+            : undefined,
         memoryMb: number(last.memory_mb),
         thermalState: first.thermal_state,
       },

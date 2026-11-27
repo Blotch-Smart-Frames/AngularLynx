@@ -50,12 +50,22 @@ def scroll_runs(rows):
             # a CSV; a launch's swipes all share its timestamp.
             runs[(row["app"], row["run"], row["timestamp"])].append(row)
     for (app, _, _), swipes in runs.items():
-        seconds = sum(float(s["scroll_ms"]) for s in swipes) / 1000
+        # Each metric over the swipes that have it: a swipe the result bundle
+        # gave no value for is left out of that metric, not counted as 0.
+        def having(column):
+            return [s for s in swipes if s.get(column)]
+
+        def per_second(column, weight):
+            measured = having(column)
+            seconds = sum(float(s["scroll_ms"]) for s in measured) / 1000
+            return sum(weight(s) for s in measured) / seconds if measured else None
+
+        cpu = having("cpu_ms")
         last = max(swipes, key=lambda s: int(s["swipe"]))
         yield app, {
-            "hitch_ratio": sum(float(s["hitch_ms"] or 0) for s in swipes) / seconds,
-            "fps": sum(float(s["fps"] or 0) * float(s["scroll_ms"]) for s in swipes) / 1000 / seconds,
-            "cpu_ms_per_swipe": sum(float(s["cpu_ms"] or 0) for s in swipes) / len(swipes),
+            "hitch_ratio": per_second("hitch_ms", lambda s: float(s["hitch_ms"])),
+            "fps": per_second("fps", lambda s: float(s["fps"]) * float(s["scroll_ms"]) / 1000),
+            "cpu_ms_per_swipe": sum(float(s["cpu_ms"]) for s in cpu) / len(cpu) if cpu else None,
             "memory_mb": float(last["memory_mb"]) if last.get("memory_mb") else None,
         }
 

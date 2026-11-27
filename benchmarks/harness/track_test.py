@@ -244,13 +244,28 @@ class ReportTest(unittest.TestCase):
 
     def test_fails_when_an_app_drew_nothing(self):
         with tempfile.TemporaryDirectory() as folder:
+            history = os.path.join(folder, "history.jsonl")
+            alert = os.path.join(folder, "alert.md")
+            past = days(1.0, 1.0, 1.0, 1.0, 1.25, 1.3)
+            # The day's good run, then one that broke an app.
+            past.append(record("2026-11-28", {"launch.fully_drawn_ms": 1.3}))
+            with open(history, "w") as file:
+                for day in past:
+                    file.write(json.dumps(day) + "\n")
+            with open(alert, "w") as file:
+                file.write("the good run's alert")
             self.write(folder, "launch.csv", launches({"angular-lynx": [None, None], "react-lynx": [1000, 1000]}))
             with self.assertRaises(SystemExit) as error:
-                self.run_report(folder, None)
+                self.run_report(folder, history)
             self.assertEqual(str(error.exception), "No measurement of Pokédex fully drawn (AngularLynx)")
-            # The summary is written first, to show what was measured.
+            # The summary is still written, to show what was measured.
             with open(os.path.join(folder, "summary.md")) as file:
                 self.assertIn("| Pokédex fully drawn | – ms | 1,000 ms | – |", file.read())
+            # The history and the alert are the good run's.
+            with open(history) as file:
+                self.assertEqual([json.loads(line) for line in file], past)
+            with open(alert) as file:
+                self.assertEqual(file.read(), "the good run's alert")
 
 
 class SimulatorChoiceTest(unittest.TestCase):

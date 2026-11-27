@@ -324,10 +324,14 @@ def report(args):
         if record.get("date") != date and (not args.run_url or record.get("run") != args.run_url)
     ]
     history.append(day(launch_rows, mount_rows, date, args.commit, args.run_url))
-    if args.history:
-        with open(args.history, "w") as file:
-            for record in history:
-                file.write(json.dumps(record, ensure_ascii=False) + "\n")
+    # An app with no value for a measure drew nothing on every run of it (a
+    # build that broke the screen, or a harness that measured nothing).
+    missing = [
+        f"{METRICS[metric][0]} ({NAMES[app]})"
+        for metric, values in history[-1]["metrics"].items()
+        for app, value in values.items()
+        if value is None
+    ]
     changes = sustained_changes(history, args.days, args.window, args.threshold)
     text = summary(history, changes, args.days, args.window, args.threshold)
     if args.summary:
@@ -335,23 +339,22 @@ def report(args):
             file.write(text)
     else:
         print(text)
+    # The summary says what such a run measured, and the exit makes it a
+    # failure. It leaves the history and the alert as they were: a run that
+    # broke an app would otherwise replace the day's good record, and its
+    # gap would break the run of days a sustained change needs.
+    if missing:
+        raise SystemExit("No measurement of " + ", ".join(missing))
+    if args.history:
+        with open(args.history, "w") as file:
+            for record in history:
+                file.write(json.dumps(record, ensure_ascii=False) + "\n")
     if args.alert:
         if changes:
             with open(args.alert, "w") as file:
                 file.write(alert(history, changes, args.run_url, args.days, args.window, args.threshold))
         elif os.path.exists(args.alert):
             os.remove(args.alert)
-    # An app with no value for a measure drew nothing on every run of it (a
-    # build that broke the screen, or a harness that measured nothing). The
-    # summary says which; the exit makes the run a failure.
-    missing = [
-        f"{METRICS[metric][0]} ({NAMES[app]})"
-        for metric, values in history[-1]["metrics"].items()
-        for app, value in values.items()
-        if value is None
-    ]
-    if missing:
-        raise SystemExit("No measurement of " + ", ".join(missing))
 
 
 def simctl_json(*args):

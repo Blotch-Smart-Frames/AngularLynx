@@ -10,8 +10,10 @@
  *
  * Each pass makes its edits with {@link applyEdits}, and
  * {@link trackSourceMap} records them while it runs the passes, then moves
- * the module's map through each, in order. Only what the passes kept maps
- * back: text a pass adds maps to nothing of its own.
+ * the module's map through each, in order. Only what the passes kept gets
+ * segments of its own. Text a pass adds gets none: a consumer reads it as
+ * part of the segment before it on its line, as with magic-string's maps,
+ * and an added line has no segments at all.
  */
 
 /** A change to a module's code: `text` in place of `start` to `end`. */

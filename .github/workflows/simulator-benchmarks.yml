@@ -33,8 +33,8 @@ on:
         description: Launches per app of each mount screen
         default: '10'
       max-load:
-        description: "ios_launch.py's --max-load (empty: the harness's default, half the runner's cores)"
-        default: ''
+        description: "ios_launch.py's --max-load: a load average, or off"
+        default: 'off'
   pull_request:
     branches: [master]
     paths:
@@ -72,7 +72,13 @@ jobs:
       # Both text screens give the cost of a text, which is enough to show
       # that the mount runs and the report work.
       MOUNT_SCREENS: ${{ github.event_name == 'pull_request' && 'text:1500,text:5000' || '' }}
-      MAX_LOAD: ${{ inputs.max-load || '' }}
+      # Off: on this runner (3 cores) the 1-minute load average stayed
+      # between 84 and 207 for the 15 minutes after the Simulator booted
+      # (#854), so half the cores, the harness's default, is never reached,
+      # and the load says little about how busy it is. The apps' order and
+      # the ratio cancel the host's share instead, and each row still
+      # records the load.
+      MAX_LOAD: ${{ inputs.max-load || 'off' }}
       # A launch that the load keeps from being measured for 15 minutes ends
       # the step with the load and the limit, rather than wait until the
       # job's timeout with nothing measured.
@@ -151,10 +157,8 @@ jobs:
         run: |
           xcrun simctl install "$UDID" "$OURS_APP"
           xcrun simctl install "$UDID" "$RIVAL_APP"
-      # The harness waits for the Mac's load average to be under --max-load
-      # (half its cores by default) before each launch, and launches again a
-      # run that ends over it. A runner's cores and load aren't a laptop's,
-      # so they're printed here for the night's log.
+      # A runner's cores and load aren't a laptop's (see MAX_LOAD), so
+      # they're printed here for the night's log.
       - name: The host
         run: |
           echo "cores: $(sysctl -n hw.ncpu), memory: $(( $(sysctl -n hw.memsize) / 1073741824 )) GB"

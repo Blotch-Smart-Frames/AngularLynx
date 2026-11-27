@@ -215,7 +215,11 @@ things as AngularLynx / ReactLynx: the Pokédex's fully drawn time and its
 memory, and the cost of a view, a text and an image, (5,000-element screen −
 1,500-element screen) / 3,500. A runner's host moves the times by 5–30% from
 night to night, but it moves both apps of a session alike, so the ratio keeps
-most of a change in AngularLynx and little of the host's.
+most of a change in AngularLynx and little of the host's. It runs with
+`--max-load off`: on the runner's 3 cores the 1-minute load average stays
+between 80 and 200 after the Simulator boots, so the quiet-Mac wait above
+would never end there, and the load says little of how busy the runner is.
+Each row still records it.
 
 The job summary has the night's numbers, each ratio against its baseline (the
 median of the 14 nights before) and the last 14 nights. Each night's run

@@ -53,7 +53,8 @@ thermal state is the Mac's, and battery and charging are left empty. The
 Simulator runs on the Mac's cores, so a busy Mac slows every launch: the
 harness waits for the Mac's load average to be under --max-load before each
 launch (half the Mac's cores by default), and drops and launches again a
-run whose recording ends over it. With --max-wait, a launch that hasn't been
+run whose recording ends over it (--max-load off waits for nothing, for a
+host whose load average says nothing of how busy it is). With --max-wait, a launch that hasn't been
 measured under the limit within that many seconds ends the session, for a
 host (a CI runner) that may never get that quiet.
 
@@ -173,6 +174,14 @@ def load_error(max_load):
         f"the Mac's load average is {os.getloadavg()[0]:.1f}, and hasn't stayed under --max-load {max_load} "
         "through a launch within --max-wait: raise --max-load, or run on a quieter host"
     )
+
+
+def max_load_value(text):
+    """--max-load's value: a load average, or "off" for no limit. On GitHub's
+    3-core macOS runners the 1-minute load average stays between 80 and 200
+    after the Simulator boots (measured on #854's run), so no limit near the
+    core count is ever reached there."""
+    return "off" if text == "off" else float(text)
 
 
 def of_pid(cell, pid):
@@ -387,9 +396,10 @@ def main():
     )
     parser.add_argument(
         "--max-load",
-        type=float,
+        type=max_load_value,
         help="drop a run whose recording ends with the Mac's 1-minute load average over this, and "
-        "launch it again once the load is under it (with --simulator, default: half the Mac's cores)",
+        "launch it again once the load is under it (with --simulator, default: half the Mac's cores; "
+        "off: no limit, every row still records the load)",
     )
     parser.add_argument(
         "--max-wait",
@@ -400,6 +410,8 @@ def main():
     args = parser.parse_args()
     if args.simulator and args.max_load is None:
         args.max_load = (os.cpu_count() or 2) / 2
+    if args.max_load == "off":
+        args.max_load = None
     if args.simulator and args.memory_after >= args.seconds:
         parser.error("--memory-after has to be under --seconds: the app ends with the recording")
 

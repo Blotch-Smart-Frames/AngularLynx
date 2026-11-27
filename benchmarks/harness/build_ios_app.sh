@@ -30,7 +30,19 @@ cd "$dir"
 case "$app" in
   angular-lynx)
     BENCH_SCREEN="$screen" FIXTURE_ORIGIN="$origin" npx ng build --platform ios >"$log" 2>&1
-    project=$(ls -d .angular/cache/*/angular-lynx/lynx-native/ios/App.xcodeproj | head -1)
+    # The builder writes the project into Angular's cache folder, which is
+    # named for @angular/build's version (its normalize-cache.js), so a
+    # checkout that has built on an older Angular keeps a project per
+    # version, each with the bundle it was last built with. Take the one
+    # this ng build used: neither the first one listed nor the newest is it,
+    # because the builder only copies a new bundle into a project whose
+    # inputs haven't changed, leaving the project's own date as it was.
+    version=$(node -p "require('@angular/build/package.json').version")
+    project=.angular/cache/$version/angular-lynx/lynx-native/ios/App.xcodeproj
+    if [ ! -d "$project" ]; then
+      echo "ng build wrote no project at $project" >&2
+      exit 1
+    fi
     xcodebuild build -project "$project" -scheme App -configuration Release \
       -sdk iphoneos -destination generic/platform=iOS -derivedDataPath .angular/xcode-device \
       DEVELOPMENT_TEAM="$team" PRODUCT_BUNDLE_IDENTIFIER="$bundle_id" \

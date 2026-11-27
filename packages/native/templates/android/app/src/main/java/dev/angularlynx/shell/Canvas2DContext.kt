@@ -650,11 +650,19 @@ class Canvas2DContext(
      * Android draws an operation like source-in only where the shape covers;
      * the canvas spec composites the whole canvas. So for those the shape is
      * drawn into a layer, which is composited with the operation.
+     *
+     * `drawsImage` is true when `draw` draws a bitmap (drawImage), which, like a
+     * paint with a shader, draws in colors of its own.
      */
-    private fun composite(paint: Paint, matrix: Matrix?, draw: (Canvas) -> Unit) {
+    private fun composite(paint: Paint, matrix: Matrix?, drawsImage: Boolean = false, draw: (Canvas) -> Unit) {
         val c = canvas ?: return
         val s = state
-        if (s.filterSteps.isNotEmpty()) {
+        // The paint's shadow layer draws the shadow by changing only the
+        // paint's color, so a gradient, a pattern or an image would cast its
+        // shadow in its own colors, not in shadowColor (issue #759). Those
+        // go through the filter's layer, with no filter, which casts the
+        // shadow from the layer's alpha, as the canvas spec has it.
+        if (s.filterSteps.isNotEmpty() || (shadowVisible() && (drawsImage || paint.shader != null))) {
             compositeFiltered(c, matrix, draw)
             return
         }
@@ -1071,7 +1079,7 @@ class Canvas2DContext(
         // outside it; one between pixels is clipped, shadow and all.
         val integral = src.left == src.left.toInt().toFloat() && src.top == src.top.toInt().toFloat() &&
             src.right == src.right.toInt().toFloat() && src.bottom == src.bottom.toInt().toFloat()
-        composite(paint, transformMatrix()) {
+        composite(paint, transformMatrix(), drawsImage = true) {
             if (integral) {
                 val crop = Rect(src.left.toInt(), src.top.toInt(), src.right.toInt(), src.bottom.toInt())
                 it.drawBitmap(image, crop, dst, paint)

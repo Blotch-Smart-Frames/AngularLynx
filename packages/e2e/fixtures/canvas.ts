@@ -230,7 +230,11 @@ export class CanvasRoute {
    * shows through one half see-through (globalAlpha comes first); a
    * filtered square off the canvas casts its canvas shadow onto it; and
    * blur() softens a black square's edge to partly see-through. A string
-   * that isn't a filter leaves the last one. Gives "ok", or the reads.
+   * that isn't a filter leaves the last one. Then a green image, and a
+   * square filled with a green gradient and with a green pattern, each cast
+   * a red canvas shadow, without a filter (issue #759): what's drawn in
+   * colors of its own still casts its shadow in shadowColor. Gives "ok", or
+   * the reads.
    */
   #drawFilters(): string {
     const make = (width: number, height: number) => {
@@ -274,6 +278,37 @@ export class CanvasRoute {
     offCanvas.fillRect(-4, 0, 4, 2);
     const offCanvasRead = pixel(offCanvas, 3, 0);
 
+    // An image, a gradient and a pattern each cast their shadow in
+    // shadowColor, not in their own colors (issue #759): Android's shadow
+    // layer only recolors what the paint's color draws.
+    const green = document.createElement('canvas');
+    green.width = 2;
+    green.height = 2;
+    const greenContext = green.getContext('2d')!;
+    greenContext.fillStyle = 'rgb(0, 128, 0)';
+    greenContext.fillRect(0, 0, 2, 2);
+    const ownColorReads = (['image', 'gradient', 'pattern'] as const).map(
+      (kind) => {
+        const cast = make(6, 2);
+        cast.shadowColor = 'rgb(255, 0, 0)';
+        cast.shadowOffsetX = 3;
+        if (kind === 'image') {
+          cast.drawImage(green, 0, 0);
+        } else {
+          if (kind === 'gradient') {
+            const gradient = cast.createLinearGradient(0, 0, 2, 0);
+            gradient.addColorStop(0, 'rgb(0, 128, 0)');
+            gradient.addColorStop(1, 'rgb(0, 128, 0)');
+            cast.fillStyle = gradient;
+          } else {
+            cast.fillStyle = cast.createPattern(green, 'repeat')!;
+          }
+          cast.fillRect(0, 0, 2, 2);
+        }
+        return [pixel(cast, 0, 0), pixel(cast, 4, 0)];
+      },
+    );
+
     const blur = make(12, 12);
     blur.filter = 'blur(2px)';
     blur.fillRect(0, 0, 6, 12);
@@ -288,6 +323,10 @@ export class CanvasRoute {
       near(shadowReads[1], [0, 0, 255, 255]) &&
       Math.abs(fadedAlpha - 191) <= 3 &&
       near(offCanvasRead, [255, 0, 0, 255]) &&
+      ownColorReads.every(
+        ([shape, cast]) =>
+          near(shape, [0, 128, 0, 255]) && near(cast, [255, 0, 0, 255]),
+      ) &&
       edge >= 64 &&
       edge <= 160;
     return ok
@@ -298,6 +337,7 @@ export class CanvasRoute {
           ...shadowReads,
           fadedAlpha,
           offCanvasRead,
+          ...ownColorReads.flat(),
           edge,
         ].join(' ');
   }

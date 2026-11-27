@@ -19,7 +19,7 @@ the rest. The ones that matter:
 
 | Package | Version |
 | --- | --- |
-| `@ng-native/*` (components, device, expo, fabric, icons, metro, platform, router) | 0.25.0 |
+| `@ng-native/*` (components, device, expo, fabric, icons, metro, platform, router) | 0.29.0 |
 | `@angular/core`, `@angular/common`, `@angular/router`, `@angular/compiler-cli` | 22.3.0 |
 | `@tanstack/angular-query-experimental` | 5.107.2 |
 | `expo` | 58.0.26 |

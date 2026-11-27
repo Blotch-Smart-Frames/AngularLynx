@@ -192,9 +192,8 @@ typedef struct {
 @property(nonatomic) CGFloat letterSpacing;
 @property(nonatomic) BOOL smoothing;
 @property(nonatomic) NSInteger smoothingQuality;
-/// The filter, as its steps (see parsedFilter), and how far they reach.
+/// The filter, as its steps (see parsedFilter).
 @property(nonatomic, copy) NSArray<NSNumber *> *filterSteps;
-@property(nonatomic) NSInteger filterPadding;
 @end
 
 @implementation ALCanvas2DState
@@ -249,7 +248,6 @@ typedef struct {
   copy.smoothing = _smoothing;
   copy.smoothingQuality = _smoothingQuality;
   copy.filterSteps = _filterSteps;
-  copy.filterPadding = _filterPadding;
   return copy;
 }
 
@@ -672,6 +670,11 @@ static double stepReach(const ALFilterStep *step) {
   return 0;
 }
 
+/// Whether a step is a drop shadow moved by an offset.
+static BOOL isMovedShadow(const ALFilterStep *step) {
+  return step->kind == ALFilterDropShadow && (step->values[0] != 0 || step->values[1] != 0);
+}
+
 /// One step on a layer's bytes, in a layer `scale` of whose pixels make a
 /// canvas pixel: its lengths (a deviation, an offset) are in the canvas's
 /// pixels, so they're scaled to the layer's.
@@ -716,6 +719,24 @@ static ALLayer layerOfRect(CGRect rect) {
 /// Where a layer lies in the canvas's pixels.
 static CGRect layerBounds(ALLayer layer) {
   return CGRectMake(layer.left, layer.top, layer.width / layer.scale, layer.height / layer.scale);
+}
+
+/// A layer grown by `pixels` of its own on each side, which stay where they
+/// were.
+static ALLayer grownLayer(ALLayer layer, size_t pixels) {
+  return (ALLayer){YES,
+                   layer.left - pixels / layer.scale,
+                   layer.top - pixels / layer.scale,
+                   layer.width + 2 * pixels,
+                   layer.height + 2 * pixels,
+                   layer.scale};
+}
+
+/// A layer moved by (dx, dy) canvas pixels.
+static ALLayer movedLayer(ALLayer layer, double dx, double dy) {
+  layer.left += dx;
+  layer.top += dy;
+  return layer;
 }
 
 /// The bytes of layer `from` resampled onto layer `to`, moved by (shiftX,
@@ -1138,7 +1159,9 @@ static BOOL reducesAlpha(NSInteger composite) {
       s.smoothingQuality = readInt(r);
       break;
     case ALCanvas2DOpSetFilter:
-      s.filterPadding = MAX(0, readInt(r));
+      // The filter's padding: the layers are planned from the steps' own
+      // reach instead (see -planFor:...).
+      readInt(r);
       s.filterSteps = readArray(r);
       break;
     case ALCanvas2DOpCreatePattern: {
@@ -1283,21 +1306,49 @@ static BOOL isWide(const ALFilterStep *step, CGFloat scale) {
   return stepSigma(step) * scale >= WIDE_SIGMA;
 }
 
+/// How far off the canvas a far drop shadow's layer can lie: 2^24 pixels,
+/// past which a float, as the canvas's pixels are on Android, no longer
+/// holds every whole pixel. Kept the same on both shells.
+static const double MAX_LAYER_OFFSET = 16777216;
+
 static double reachOf(const ALFilterStep *steps, NSUInteger count) {
   double reach = 0;
   for (NSUInteger i = 0; i < count; i++) reach += stepReach(&steps[i]);
   return reach;
 }
 
+/// The index of the last far drop shadow in the steps, or -1. When the
+/// steps reach past MAX_REACH, every drop shadow moved by an offset is far:
+/// it's cast from a layer of its own (-newFarShadow:...), so its offset
+/// doesn't count toward the reach the layers are planned for. Counted, an
+/// offset past the cap would leave out a shape that far off the canvas
+/// (issue #824), as the capped layer doesn't reach it, and it would lower
+/// the scale of the smaller layer a wide blur goes through, enough to keep a
+/// blur beside it at the canvas's resolution, cut short by the cap.
+static NSInteger lastFar(const ALFilterStep *steps, NSUInteger count) {
+  if (!(reachOf(steps, count) > MAX_REACH)) return -1;
+  for (NSUInteger i = count; i > 0; i--) {
+    if (isMovedShadow(&steps[i - 1])) return (NSInteger)(i - 1);
+  }
+  return -1;
+}
+
+/// How far the steps the layers are planned for reach: those after the last
+/// far drop shadow (lastFar).
+static double plannedReach(const ALFilterStep *steps, NSUInteger count) {
+  NSUInteger first = (NSUInteger)(lastFar(steps, count) + 1);
+  return reachOf(steps + first, count - first);
+}
+
 /// A layer over `base` grown by `reach`, at `scale`, which keeps it about
 /// the size `base` grown by MAX_REACH is.
-static ALLayer lowLayer(CGRect base, double reach, double scale) {
+static ALLayer lowLayer(ALLayer base, double reach, double scale) {
   // (side + 2 * reach) * scale, without multiplying a huge reach out.
   return (ALLayer){YES,
-                   base.origin.x - reach,
-                   base.origin.y - reach,
-                   (size_t)ceil(base.size.width * scale + 2 * reach * scale),
-                   (size_t)ceil(base.size.height * scale + 2 * reach * scale),
+                   base.left - reach,
+                   base.top - reach,
+                   (size_t)ceil(base.width / base.scale * scale + 2 * reach * scale),
+                   (size_t)ceil(base.height / base.scale * scale + 2 * reach * scale),
                    scale};
 }
 
@@ -1323,27 +1374,34 @@ static CGFloat area(CGRect rect) {
   return rect.size.width * rect.size.height;
 }
 
-/// The plan for a filtered draw that needs `base` (the canvas, or the
-/// canvas moved back by the shadow's offset) and the filter's reach round
-/// it, and `extra` more for the full layer (a shadow's blur, when the
-/// shadow is cast from it).
+/// The plan for a filtered draw that needs `base` (the canvas, the canvas
+/// moved back by the shadow's offset, or a layer a far drop shadow is worked
+/// out over) and the filter's reach round it, and `extra` more for the full
+/// layer (a shadow's blur, when the shadow is cast from it).
 ///
-/// A layer the canvas's resolution grows by the reach, capped at MAX_REACH,
-/// so a huge blur makes no huge layer. Past the cap, when a step blurs
-/// widely (isWide), a low layer, scaled down by MAX_REACH over the reach,
-/// takes in the whole reach at about the size the capped layer was (issue
-/// #814), and the full layer needs to reach only as far as the steps after
-/// the last wide blur do.
-- (ALPlan)planFor:(CGRect)base
-            steps:(const ALFilterStep *)steps
-            count:(NSUInteger)count
+/// The full layer is at `base`'s resolution, grown by the reach, capped at
+/// MAX_REACH of its pixels, so a huge blur makes no huge layer. Past the
+/// cap, when a step blurs widely (isWide), a low layer, scaled down by
+/// MAX_REACH over the reach, takes in the whole reach at about the size the
+/// capped layer was (issue #814), and the full layer needs to reach only as
+/// far as the steps after the last wide blur do.
+///
+/// The reach is the steps' own, from those after the last far drop shadow
+/// (lastFar), which casts from a layer of its own. The runtime sends the
+/// whole filter's reach, capped, as its padding, which comes to the same
+/// when there's no far drop shadow, but is too much for part of the filter
+/// and too little for a layer at another resolution.
+- (ALPlan)planFor:(ALLayer)base
+            steps:(const ALFilterStep *)allSteps
+            count:(NSUInteger)allCount
             extra:(CGFloat)extra {
-  ALCanvas2DState *s = _state;
+  NSUInteger first = (NSUInteger)(lastFar(allSteps, allCount) + 1);
+  const ALFilterStep *steps = allSteps + first;
+  NSUInteger count = allCount - first;
   double reach = reachOf(steps, count);
-  CGFloat capped = count > 0 ? MIN(s.filterPadding, MAX_REACH) : 0;
-  CGFloat margin = capped + extra;
+  double margin = reach + extra;
   ALLayer low = NO_LAYER;
-  if (reach > MAX_REACH && isfinite(reach)) {
+  if (reach * base.scale > MAX_REACH && isfinite(reach)) {
     double scale = MAX_REACH / reach;
     NSInteger lastWideBlur = -1;
     BOOL anyWide = NO;
@@ -1361,8 +1419,7 @@ static CGFloat area(CGRect rect) {
       low = lowLayer(base, reach, scale);
     }
   }
-  CGFloat grown = ceil(MIN(margin, MAX_REACH));
-  return (ALPlan){layerOfRect(CGRectIntegral(CGRectInset(base, -grown, -grown))), low};
+  return (ALPlan){grownLayer(base, (size_t)ceil(MIN(margin * base.scale, MAX_REACH))), low};
 }
 
 /// Where, in the canvas's pixels, the layers a draw goes into lie (see
@@ -1392,19 +1449,20 @@ static CGFloat area(CGRect rect) {
 - (ALLayers)layers:(const ALFilterStep *)steps count:(NSUInteger)count {
   ALCanvas2DState *s = _state;
   CGRect canvas = CGRectMake(0, 0, _width, _height);
-  ALPlan shape = [self planFor:canvas steps:steps count:count extra:0];
+  ALPlan shape = [self planFor:layerOfRect(canvas) steps:steps count:count extra:0];
   if (![self shadowVisible]) return (ALLayers){shape, NO_PLAN};
   CGFloat blurReach = ceil(s.shadowBlur * 1.5);
-  double fullReach = reachOf(steps, count) + blurReach;
+  // A far drop shadow casts from a layer of its own (see -planFor:...).
+  double fullReach = plannedReach(steps, count) + blurReach;
   CGRect moved = CGRectOffset(canvas, -s.shadowOffsetX, -s.shadowOffsetY);
   if (fullReach > MAX_REACH) {
     // Whole pixels, so a full layer's pixels line up with the canvas's.
     CGRect base = CGRectIntegral(moved);
     double scale = MAX_REACH / fullReach;
     if (isfinite(fullReach) && s.shadowBlur / 2 * scale >= WIDE_SIGMA) {
-      return (ALLayers){shape, {NO_LAYER, lowLayer(base, fullReach, scale)}};
+      return (ALLayers){shape, {NO_LAYER, lowLayer(layerOfRect(base), fullReach, scale)}};
     }
-    return (ALLayers){shape, [self planFor:base steps:steps count:count extra:blurReach]};
+    return (ALLayers){shape, [self planFor:layerOfRect(base) steps:steps count:count extra:blurReach]};
   }
   // Within MAX_REACH, so is the filter's reach: the shape's plan is a layer
   // at the canvas's resolution alone.
@@ -1462,16 +1520,28 @@ static CGFloat area(CGRect rect) {
 /// shadow's shadow goes under it. The other steps are applied in both. So
 /// whatever the wide steps bring onto the canvas from past the full layer's
 /// reach comes from the low one, which reaches as far as the steps do, and
-/// the rest keeps the canvas's resolution.
+/// the rest keeps the full layer's resolution.
+///
+/// A far drop shadow (lastFar) is cast from a layer of its own (see
+/// -newFarShadow:...), so the plan is for the steps after the last one, and
+/// the steps up to it are worked out over each of the plan's layers in
+/// place of what `draw` draws there.
 - (uint8_t *)newRendered:(ALPlan)plan
-                   steps:(const ALFilterStep *)steps
-                   count:(NSUInteger)count
+                   steps:(const ALFilterStep *)allSteps
+                   count:(NSUInteger)allCount
                     draw:(void (^)(CGContextRef c))draw {
+  NSInteger far = lastFar(allSteps, allCount);
+  const ALFilterStep *steps = allSteps + (far + 1);
+  NSUInteger count = allCount - (NSUInteger)(far + 1);
+  uint8_t * (^source)(ALLayer) = ^uint8_t *(ALLayer layer) {
+    if (far < 0) return [self newDrawn:layer draw:draw];
+    return [self newFarShadow:layer steps:allSteps count:(NSUInteger)far + 1 draw:draw];
+  };
   ALLayer full = plan.full, low = plan.low;
   if (!full.exists || !low.exists) {
     ALLayer only = full.exists ? full : low;
     if (!only.exists) return NULL;
-    uint8_t *bytes = [self newDrawn:only draw:draw];
+    uint8_t *bytes = source(only);
     if (!bytes) return NULL;
     for (NSUInteger i = 0; i < count; i++) {
       applyStep(bytes, only.width, only.height, &steps[i], only.scale);
@@ -1484,11 +1554,11 @@ static CGFloat area(CGRect rect) {
     lastWide = (NSInteger)i;
     if (steps[i].kind == ALFilterBlur) lastWideBlur = (NSInteger)i;
   }
-  uint8_t *lowBytes = [self newDrawn:low draw:draw];
+  uint8_t *lowBytes = source(low);
   if (!lowBytes) return NULL;
   uint8_t *fullBytes = NULL;
   if (lastWideBlur < 0) {
-    fullBytes = [self newDrawn:full draw:draw];
+    fullBytes = source(full);
     if (!fullBytes) {
       free(lowBytes);
       return NULL;
@@ -1500,7 +1570,7 @@ static CGFloat area(CGRect rect) {
     if (!isWide(step, low.scale)) {
       // The low layer is read only up to the last wide step.
       if ((NSInteger)i < lastWide) applyStep(lowBytes, low.width, low.height, step, low.scale);
-      if (fullBytes) applyStep(fullBytes, full.width, full.height, step, 1);
+      if (fullBytes) applyStep(fullBytes, full.width, full.height, step, full.scale);
     } else if (step->kind == ALFilterBlur) {
       applyStep(lowBytes, low.width, low.height, step, low.scale);
       if ((NSInteger)i == lastWideBlur) {
@@ -1538,6 +1608,76 @@ static CGFloat area(CGRect rect) {
     return NULL;
   }
   return fullBytes;
+}
+
+/// What `draw` draws through the alpha and the steps, which end with a far
+/// drop shadow (lastFar), over `layer`, as new bytes the caller frees (NULL
+/// if they can't be made): the steps before it, worked out over the layer,
+/// with the shadow under them, cast from those steps worked out over the
+/// layer moved back by the shadow's offset. That layer takes in the shape
+/// the shadow is cast from however far off the canvas it lies, and it's the
+/// size `layer` is, as the canvas shadow casts from a layer of its own (see
+/// -layers:count:).
+///
+/// The shadow's own blur goes on there as a blur step after the others, so
+/// a wide one is worked out in a smaller layer as any blur is (see
+/// -planFor:...), and the shadow is the alpha that leaves, in its color: a
+/// blur blurs each channel alike, so that's the alpha blurred, as
+/// newShadowBytes casts it. On a layer at the canvas's resolution, the
+/// offset is moved to the nearest pixel, as newShadowBytes moves it, so the
+/// layer stays on whole pixels.
+- (uint8_t *)newFarShadow:(ALLayer)layer
+                    steps:(const ALFilterStep *)steps
+                    count:(NSUInteger)count
+                     draw:(void (^)(CGContextRef c))draw {
+  NSUInteger before = count - 1;
+  const double *v = steps[before].values;
+  uint8_t *shape = [self newOver:layer steps:steps count:before draw:draw];
+  if (!shape) return NULL;
+  // Past where a shadow's layer can lie, the canvas's pixels place no shape
+  // the shadow could be cast from.
+  if (fabs(v[0]) > MAX_LAYER_OFFSET || fabs(v[1]) > MAX_LAYER_OFFSET) return shape;
+  double dx = layer.scale == 1 ? lround(v[0]) : v[0];
+  double dy = layer.scale == 1 ? lround(v[1]) : v[1];
+  // The steps before the shadow, then its blur.
+  ALFilterStep *blurred = malloc(sizeof(ALFilterStep) * count);
+  if (!blurred) {
+    free(shape);
+    return NULL;
+  }
+  memcpy(blurred, steps, sizeof(ALFilterStep) * before);
+  blurred[before] = (ALFilterStep){ALFilterBlur, {v[2]}};
+  uint8_t *cast = [self newOver:movedLayer(layer, -dx, -dy) steps:blurred count:count draw:draw];
+  free(blurred);
+  uint8_t *shadow = cast ? newShadowBytes(cast, layer.width, layer.height, 0, 0, 0, v[3], v[4],
+                                          v[5], v[6])
+                         : NULL;
+  free(cast);
+  if (!shadow) {
+    free(shape);
+    return NULL;
+  }
+  drawUnder(shape, shadow, layer.width * layer.height);
+  free(shadow);
+  return shape;
+}
+
+/// What `draw` draws through the alpha and the steps over `layer`, as new
+/// bytes the caller frees (NULL if they can't be made): planned round it as
+/// any filtered draw is (-planFor:...), and resampled down to it. The plan's
+/// full layer lies on its pixels, so that copies them.
+- (uint8_t *)newOver:(ALLayer)layer
+               steps:(const ALFilterStep *)steps
+               count:(NSUInteger)count
+                draw:(void (^)(CGContextRef c))draw {
+  if (count == 0) return [self newDrawn:layer draw:draw];
+  ALPlan plan = [self planFor:layer steps:steps count:count extra:0];
+  uint8_t *bytes = [self newRendered:plan steps:steps count:count draw:draw];
+  if (!bytes) return NULL;
+  if (plan.full.width == layer.width && plan.full.height == layer.height) return bytes;
+  uint8_t *cut = newResampled(bytes, plan.full, layer, 0, 0);
+  free(bytes);
+  return cut;
 }
 
 /// Premultiplied RGBA bytes, rows top to bottom, as an image.

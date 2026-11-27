@@ -33,6 +33,9 @@ internal object CanvasFilter {
     class Step(val kind: Int, val values: DoubleArray) {
         val isBlur: Boolean get() = kind == BLUR
 
+        /** Whether it's a drop shadow moved by an offset. */
+        val isMovedShadow: Boolean get() = kind == DROP_SHADOW && (values[0] != 0.0 || values[1] != 0.0)
+
         /** Its deviation, for a blur or a drop shadow; 0 for a color matrix. */
         val sigma: Double get() = when (kind) {
             BLUR -> values[0]
@@ -50,6 +53,11 @@ internal object CanvasFilter {
             BLUR -> ceil(values[0] * 3)
             DROP_SHADOW -> ceil(values[2] * 3) + ceil(maxOf(abs(values[0]), abs(values[1])))
             else -> 0.0
+        }
+
+        companion object {
+            /** A blur of deviation `sigma`, as blur() makes. */
+            fun blur(sigma: Double): Step = Step(BLUR, doubleArrayOf(sigma))
         }
     }
 

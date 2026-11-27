@@ -172,7 +172,7 @@ const sprite = await createImageBitmap(sheet, 32, 0, 32, 32);
 - **An `ImageBitmap` is copied** with the options you pass: flipped, premultiplied or resized.
 - **The phone copies the pixels.** A canvas, a bitmap or an `Image` is copied from the pixels the phone already has, so nothing crosses to JavaScript and no file is decoded again. An `ImageData`'s pixels go to the phone once.
 - **`OffscreenCanvas.transferToImageBitmap()`** hands over its image and clears the canvas, as on the web.
-- **An ejected app keeps its older shell**, which rejects an `ImageBitmap`, an `ImageData`, a loaded `Image` and a crop. Delete its `ios/` or `android/` folder and eject again to get the new one.
+- **An ejected app keeps its older shell**, which rejects an `ImageBitmap`, an `ImageData`, a loaded `Image` and a crop. To take them in without losing your own native changes, merge the new `App/AngularLynxWebGL.m` (iOS) or `WebGLModule.kt` (Android) from `node_modules/@blotch/angular-lynx-native/templates` into your copy.
 - **Make a WebGL canvas's bitmap in the function that draws**, as with `toBlob()` below. Once the frame is on screen, its drawing buffer is cleared, unless you asked for `preserveDrawingBuffer: true`.
 
 ## Videos

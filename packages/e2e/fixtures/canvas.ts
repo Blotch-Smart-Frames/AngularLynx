@@ -84,7 +84,8 @@ const colorName = ({ 0: r, 1: g, 2: b }: ArrayLike<number>): string =>
  * getImageData(), and uploaded from the second as the WebGL texture, drawn
  * and read back. Both reads have to give the green; when they don't, the line
  * shows each. After them, "filter ok" checks the 2D context's `filter`
- * (issue #698, see #drawFilters).
+ * (issue #698, see #drawFilters), and its shadow with an operation like
+ * copy (issue #763).
  *
  * Beside the canvas, under the WebGL line, "Bitmap: ok" checks ImageBitmaps
  * of canvases (issue #697), each drawn on a 2D canvas and read back: one
@@ -262,8 +263,9 @@ export class CanvasRoute {
    * far off the canvas casts its shadow onto it, with a filter and without,
    * and a filtered one off a corner draws once over its shadow (issue
    * #755); and blur() softens a black square's edge to partly see-through.
-   * A string that isn't a filter leaves the last one. Gives "ok", or the
-   * reads.
+   * A string that isn't a filter leaves the last one. Then a shadow drawn
+   * with an operation that clears what it doesn't cover (issue #763), with
+   * a filter and without, see #shadowComposites. Gives "ok", or the reads.
    */
   #drawFilters(): string {
     const make = (width: number, height: number) => {
@@ -364,7 +366,8 @@ export class CanvasRoute {
       ) &&
       edge >= 64 &&
       edge <= 160;
-    return ok
+    const composites = this.#shadowComposites();
+    return ok && composites === 'ok'
       ? 'ok'
       : [
           gray.filter,
@@ -375,11 +378,78 @@ export class CanvasRoute {
           ...farReads,
           ...cornerReads,
           edge,
+          composites,
         ].join(' ');
   }
 
   setVideoResult(check: VideoCheck, result: string): void {
     this.#videoResults.update((results) => ({ ...results, [check]: result }));
+  }
+
+  /**
+   * A shadow with an operation that clears what the source doesn't cover
+   * (issue #763). The canvas spec composites the shadow and then the shape,
+   * each with the operation over the whole canvas, so the shape's composite
+   * clears the shadow: on a green canvas, a blue square with a red shadow
+   * beside it leaves only the square with copy, source-out and
+   * destination-atop (with copy through grayscale(1), the spec's 7% gray),
+   * and nothing with source-in and destination-in, which the shadow's
+   * composite has already cleared under the square. Then source-in with a
+   * shape far off the canvas, whose shadow keeps part of the canvas for it.
+   * Gives "ok", or each operation's reads of the square and of its shadow.
+   */
+  #shadowComposites(): string {
+    const cases: [GlobalCompositeOperation, string, number[]][] = [
+      ['copy', 'grayscale(1)', [18, 18, 18, 255]],
+      ['copy', 'none', [0, 0, 255, 255]],
+      ['source-in', 'none', [0, 0, 0, 0]],
+      ['source-out', 'none', [0, 0, 255, 255]],
+      ['destination-in', 'none', [0, 0, 0, 0]],
+      ['destination-atop', 'none', [0, 0, 255, 255]],
+    ];
+    const near = (actual: number[], expected: number[]) =>
+      actual.every((value, index) => Math.abs(value - expected[index]) <= 2);
+    let ok = true;
+    const reads = cases.map(([operation, filter, square]) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 12;
+      canvas.height = 4;
+      const context = canvas.getContext('2d')!;
+      context.fillStyle = 'rgb(0, 128, 0)';
+      context.fillRect(0, 0, 12, 4);
+      context.filter = filter;
+      context.globalCompositeOperation = operation;
+      context.shadowColor = 'rgb(255, 0, 0)';
+      context.shadowOffsetX = 6;
+      context.fillStyle = 'rgb(0, 0, 255)';
+      context.fillRect(1, 1, 2, 2);
+      const squareRead = Array.from(context.getImageData(1, 1, 1, 1).data);
+      const shadowRead = Array.from(context.getImageData(7, 1, 1, 1).data);
+      ok &&= near(squareRead, square) && near(shadowRead, [0, 0, 0, 0]);
+      return `${operation}:${squareRead.join(',')}/${shadowRead.join(',')}`;
+    });
+    // The shadow of a shape far off the canvas still takes the shadow's
+    // composite (issue #755). With source-in, the shadow, cast from 400 px
+    // off, keeps the canvas from x = 4 and clears the rest, so the shape,
+    // which covers the whole canvas, draws only from there: a skipped shadow
+    // pass, or one layer for both, leaves it blue at x = 1 too, and a shadow
+    // with no source clears both.
+    const far = document.createElement('canvas').getContext('2d')!;
+    far.canvas.width = 12;
+    far.canvas.height = 4;
+    far.fillStyle = 'rgb(0, 128, 0)';
+    far.fillRect(0, 0, 12, 4);
+    far.globalCompositeOperation = 'source-in';
+    far.shadowColor = 'rgb(255, 0, 0)';
+    far.shadowOffsetX = 400;
+    far.fillStyle = 'rgb(0, 0, 255)';
+    far.fillRect(-396, 0, 408, 4);
+    const farReads = [1, 6].map((x) =>
+      Array.from(far.getImageData(x, 1, 1, 1).data),
+    );
+    ok &&=
+      near(farReads[0], [0, 0, 0, 0]) && near(farReads[1], [0, 0, 255, 255]);
+    return ok ? 'ok' : [...reads, `far:${farReads.join('/')}`].join(' ');
   }
 
   /**

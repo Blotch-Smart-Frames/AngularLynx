@@ -16,9 +16,10 @@ appId: ${APP_ID}
     visible: 'WebGL: 0,0,255,255'
     timeout: 15000
 # The 2D context (issue #469): a canvas drawn on another, read back with
-# getImageData(), and uploaded as a texture and read back; and its filter
+# getImageData(), and uploaded as a texture and read back; its filter
 # (issue #698): a color matrix, drop-shadow() and blur() read back, and a
-# shadow cast from a shape far off the canvas (issue #755).
+# shadow cast from a shape far off the canvas (issue #755); and a shadow
+# drawn with an operation like copy, which the shape clears (issue #763).
 - extendedWaitUntil:
     visible: '2D: 0,128,0,255 filter ok;.*'
     timeout: 15000

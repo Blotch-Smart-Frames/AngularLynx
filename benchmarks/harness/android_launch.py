@@ -62,6 +62,7 @@ FIELDS = [
     "app",
     "package",
     "run",
+    "previous_app",
     "launch_state",
     "first_frame_ms",
     "fully_drawn_ms",
@@ -301,6 +302,10 @@ def main():
     if new_file:
         writer.writeheader()
 
+    # The app launched before each one, counting the warm-ups and the runs
+    # dropped over --max-load, which the CSV doesn't hold: summarize.py
+    # splits each app's launches by it ("again" or "after other").
+    previous = ""
     try:
         for _ in range(args.warmup):
             for app, package in apps:
@@ -310,6 +315,7 @@ def main():
                     launch(device, watcher, package, activities[package], args.seconds, args.memory_after)
                 except (RuntimeError, subprocess.CalledProcessError) as error:
                     print(f"{app} warm-up: {error}", file=sys.stderr, flush=True)
+                previous = app
                 time.sleep(args.rest)
         for run in range(1, args.runs + 1):
             for app, package in run_order(apps, run):
@@ -325,6 +331,7 @@ def main():
                         "app": app,
                         "package": package,
                         "run": run,
+                        "previous_app": previous,
                         "battery_percent": battery,
                         "charging": charging,
                     }
@@ -338,6 +345,7 @@ def main():
                     # covers it, the one before covers the minute before.
                     load = os.getloadavg()[0]
                     row["host_load"] = f"{max(before, load):.1f}"
+                    previous = app
                     if not args.max_load or load <= args.max_load:
                         break
                     print(

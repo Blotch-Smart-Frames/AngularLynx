@@ -24,6 +24,12 @@ export type ApplicationBuilderOptions = NativeAppOptions & {
    */
   readonly multiTouch?: boolean;
   /**
+   * Whether the background thread's script drops the app's module-level
+   * values nothing there reads, which @blotch/rsbuild-plugin-angular-lynx
+   * reads from the build options it's passed.
+   */
+  readonly backgroundTreeShaking?: 'safe' | 'aggressive';
+  /**
    * The Angular compiler options `ng new` puts in the build target (browser,
    * tsConfig, polyfills, styles, optimization, ...).
    * @blotch/rsbuild-plugin-angular-lynx and `ng test` read them;

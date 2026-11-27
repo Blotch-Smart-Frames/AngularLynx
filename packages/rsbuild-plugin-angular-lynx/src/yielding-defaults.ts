@@ -77,14 +77,29 @@ export const lowerYieldingDefaultChains = (
   const edits: Edit[] = [];
   const variables = new Map<ts.Node, string[]>();
   let count = 0;
-  // A name nothing in the module uses, so it can't take another's place.
-  let prefix = '__chain';
-  while (code.includes(prefix)) prefix = `_${prefix}`;
+  // A name nothing in the module uses, so it can't take another's place:
+  // one its identifiers don't start with, read as they're parsed, so a name
+  // written with escapes (`\u005f_chain0`) counts too.
+  let prefix: string | undefined;
+  const choosePrefix = (): string => {
+    const names: string[] = [];
+    const collect = (node: ts.Node): void => {
+      if (ts.isIdentifier(node)) names.push(node.text);
+      ts.forEachChild(node, collect);
+    };
+    collect(sourceFile);
+    let chosen = '__chain';
+    while (names.some((name) => name.startsWith(chosen))) {
+      chosen = `_${chosen}`;
+    }
+    return chosen;
+  };
   // The variable each chain in parentheses that's called or tags a template
   // reads its last member's object into, for the call's `this` (see
   // `called` below), by the chain.
   const captures = new Map<ts.Node, string>();
   const declare = (scope: ts.Node): string => {
+    prefix ??= choosePrefix();
     const name = `${prefix}${count++}`;
     variables.set(scope, [...(variables.get(scope) ?? []), name]);
     return name;

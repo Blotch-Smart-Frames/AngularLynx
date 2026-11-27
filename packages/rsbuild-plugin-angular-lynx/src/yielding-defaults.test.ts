@@ -367,6 +367,14 @@ describe('lowerYieldingDefaultChains', () => {
     );
   });
 
+  it('chooses a prefix no identifier starts with, escaped or not', () => {
+    expect(
+      lower('const \\u005f_chain0 = 1; const [v = a?.b(await 1)] = [];'),
+    ).toBe(
+      'const \\u005f_chain0 = 1; const [v = ((___chain0 = a) == null ? void 0 : ___chain0.b(await 1))] = [];;var ___chain0;',
+    );
+  });
+
   it('leaves modules without such a default value', () => {
     for (const code of [
       // No `yield` or `await` in it, or none at all.

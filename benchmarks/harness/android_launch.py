@@ -237,11 +237,14 @@ def launch(device, watcher, package, activity, seconds, memory_after):
     )
     if values.get("Status") != "ok":
         raise RuntimeError(f"am start: {output.strip()[-300:]}")
-    fully_drawn = watcher.wait(package, since, started + seconds)
+    # Memory first, at the same moment of every launch: waiting for Fully
+    # drawn first would move a slow or missing one's reading later. The
+    # watcher keeps every line it sees, so one logged meanwhile isn't lost.
     pause = started + memory_after - time.monotonic()
     if pause > 0:
         time.sleep(pause)
     memory = device.memory(package)
+    fully_drawn = watcher.wait(package, since, started + seconds)
     rest = started + seconds - time.monotonic()
     if rest > 0:
         time.sleep(rest)

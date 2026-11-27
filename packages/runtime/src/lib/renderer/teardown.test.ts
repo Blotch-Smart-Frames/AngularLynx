@@ -1978,7 +1978,13 @@ describe('renderer teardown', () => {
       view.remove();
       processPendingRemovals();
 
-      expect(ended()).toEqual([]);
+      // The move into `other`, before the view now, was rebuilt (see
+      // #removeIfMoveWouldBeLost): only the old native element's animation
+      // ended, and the new one turns.
+      expect(ended()).toEqual(['view animation: none']);
+      expect((el.element as unknown as FakeEl).styles.has('animation')).toBe(
+        false,
+      );
       // Still noted: it ends with the view it's in now.
       other.markDestroyed();
       other.remove();
@@ -2011,7 +2017,7 @@ describe('renderer teardown', () => {
       expect(ended()).toEqual(['view animation: none']);
     });
 
-    it('ends it in an element rebuilt into a view that goes later', () => {
+    it('ends it in the old native element of a rebuilt move, and in the new one when its view goes', () => {
       const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
       const page = document.createRootElement();
       const other = document.createElement('view');
@@ -2021,23 +2027,44 @@ describe('renderer teardown', () => {
       page.appendChild(other);
       page.appendChild(view);
       view.appendChild(el);
+      const old = el.element as unknown as FakeEl;
 
       // The destination comes first in the tree, so the move is rebuilt
-      // (see #removeIfMoveWouldBeLost), and it stays a cycle before it goes.
+      // (see #removeIfMoveWouldBeLost): the old native element leaves the
+      // tree, and a new one takes its place.
       view.markDestroyed();
       other.markDestroyed();
       el.remove();
       other.appendChild(el);
+      const rebuilt = el.element as unknown as FakeEl;
+      expect(rebuilt).not.toBe(old);
+      expect(old.styles.get('animation')).toBe('none');
+      expect(rebuilt.styles.has('animation')).toBe(false);
+
+      // The new one turns while the destination is shown, and ends with it.
       view.remove();
       processPendingRemovals();
-      expect(ended()).toEqual([]);
-
+      expect(rebuilt.styles.has('animation')).toBe(false);
       other.remove();
       processPendingRemovals();
-      expect(ended()).toEqual(['view animation: none']);
-      expect((el.element as unknown as FakeEl).styles.get('animation')).toBe(
-        'none',
-      );
+      expect(rebuilt.styles.get('animation')).toBe('none');
+    });
+
+    it('ends it in a detached view, and starts it again in the view put back', () => {
+      const { page, view, el, ref } = make();
+
+      // Taken out to be put back in a later cycle, as a ViewContainerRef's
+      // detach() does: its native elements go, and come back rebuilt.
+      view.remove();
+      processPendingRemovals();
+      expect(ref.styles.get('animation')).toBe('none');
+      page.appendChild(view);
+      processPendingRemovals();
+
+      const rebuilt = el.element as unknown as FakeEl;
+      expect(rebuilt).not.toBe(ref);
+      expect(rebuilt.styles.has('animation')).toBe(false);
+      expect(rebuilt.styles.get('__inline')).toContain('animation: turn');
     });
 
     it('ends it again in an element rebuilt after its release', () => {
@@ -2056,7 +2083,7 @@ describe('renderer teardown', () => {
       expect(ended()).toEqual(['view animation: none', 'view animation: none']);
     });
 
-    it('ends it in a list item moved into a list, when the list goes', () => {
+    it('ends it in a list item moved into a list, as its native element leaves the view', () => {
       const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
       const page = document.createRootElement();
       const view = document.createElement('view');
@@ -2077,8 +2104,11 @@ describe('renderer teardown', () => {
       view.remove();
       processPendingRemovals();
 
+      // Its removal from the view reached native, as a list's insert doesn't
+      // cancel it, so its native element left the tree, and its animation
+      // ended with it, once.
       expect(registered([ref])).toEqual([true]);
-      expect(ended()).toEqual([]);
+      expect(ended()).toEqual(['list-item animation: none']);
       list.markDestroyed();
       list.remove();
       processPendingRemovals();

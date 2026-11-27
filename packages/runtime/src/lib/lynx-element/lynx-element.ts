@@ -1313,8 +1313,8 @@ export class LynxElement implements BaseLynxElement {
 
   /**
    * The elements that asked for the platform's animators
-   * (`enable-new-animator` false) and haven't gone: Angular hasn't destroyed
-   * and removed them, or released them (see #endPlatformAnimations). A handful
+   * (`enable-new-animator` false) and whose native elements are in use: not
+   * removed or released since (see #endPlatformAnimations). A handful
    * at most: `ui-spinner`'s turning view, a skeleton, an indeterminate
    * progress bar. See #endPlatformAnimations.
    */
@@ -4154,8 +4154,12 @@ export class LynxElement implements BaseLynxElement {
 
   /**
    * Ends the animations of the platform-animated elements in this element's
-   * subtree, which Angular destroyed, as its removal commits (see #doRemove),
-   * before the removal reaches native.
+   * subtree as its removal commits (see #doRemove), before the removal
+   * reaches native. Its native elements go for good then, whatever becomes
+   * of the element: Angular destroyed it, it moved where the move would be
+   * lost (see #removeIfMoveWouldBeLost), or its view was detached. One that
+   * comes back is rebuilt (see #recreateSubtree), which writes its animation
+   * again and notes it for its next removal.
    *
    * On iOS, an element with `enable-new-animator` false is animated by
    * Lynx's LynxKeyframeAnimator, which hands its `@keyframes` to Core
@@ -4173,9 +4177,8 @@ export class LynxElement implements BaseLynxElement {
    * At the commit rather than when Angular destroys the view, because the
    * cycle's moves are done then: an element moved out of the view (CDK's
    * DomPortal hands its element back) keeps turning, and one moved in goes
-   * with it. Nothing has to start again: an element Angular puts back never
-   * had its animation ended. Written straight to native, not to the
-   * element's inline styles, which it's released with.
+   * with it. Written straight to native, not to the element's inline styles,
+   * which a rebuild replays.
    */
   #endPlatformAnimations(): void {
     for (const el of LynxElement.#platformAnimated) {
@@ -4318,9 +4321,7 @@ export class LynxElement implements BaseLynxElement {
     // below rather than "parking" the children somewhere to keep them alive.
     // While the element is still in the tree, the animations under it that
     // iOS's platform animator would keep running (see #endPlatformAnimations).
-    if (this.#destroyed && LynxElement.#platformAnimated.size > 0) {
-      this.#endPlatformAnimations();
-    }
+    if (LynxElement.#platformAnimated.size > 0) this.#endPlatformAnimations();
     __RemoveElement(parent, this.element);
     // The native painting nodes of this element and its entire subtree are now
     // gone (Lynx tears them down for a non-move removal — is_move=false). Unlink

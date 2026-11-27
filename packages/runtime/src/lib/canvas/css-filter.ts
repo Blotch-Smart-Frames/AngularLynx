@@ -50,11 +50,14 @@ export const NO_FILTER: CanvasFilter = { steps: [], padding: 0 };
  * The most the layer grows by on a side. A blur's reach is three of its
  * deviations, so a big blur (`blur(500px)`) would make a layer many times
  * the canvas's size. The shells work out the steps' whole reach from the
- * steps themselves, and a blur wide enough to reach past this on its own (a
- * deviation past about 85 px) goes through a smaller layer that takes all of
- * it in (issue #814), so what's farther off the canvas still blurs onto it.
- * A drop shadow's offset isn't a blur: one past this with a narrow blur
- * still leaves out what's farther off.
+ * steps themselves, and past this a blur goes through a smaller layer that
+ * takes all of it in (issue #814), so what's farther off the canvas still
+ * blurs onto it. That's for a blur at least 4 of that layer's pixels wide,
+ * and the layer's scale is this over the whole reach, offsets included:
+ * alone, a blur needs a deviation past about 85 px. A drop shadow's offset
+ * isn't a blur, so one past this still leaves out what's farther off, and
+ * lowers the scale enough to keep a blur beside it out of the smaller layer
+ * too (issue #824).
  */
 const MAX_PADDING = 256;
 

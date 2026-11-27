@@ -570,7 +570,10 @@ class RaisedHost {
     >
     y<span class="lift" [style.vertical-align]="lift()"
       ><b class="in-lift">b</b
-      ><sup class="sup-in-lift">s<b class="in-sup-in-lift">t</b></sup></span
+      ><sup class="sup-in-lift">s<b class="in-sup-in-lift">t</b></sup
+      ><b class="own-in-lift" [style.vertical-align]="ownLift()"
+        >c<i class="in-own-in-lift">d</i></b
+      ><b class="attr-in-lift" style="vertical-align: 2px">e</b></span
     >
     <span [class.note]="note()"
       ><sup class="note-sup">a<b class="in-note-sup">b</b></sup></span
@@ -580,6 +583,7 @@ class RaisedHost {
 class OwnAlignHost {
   readonly sized = signal(false);
   readonly lift = signal<string | null>(null);
+  readonly ownLift = signal<string | null>(null);
   readonly note = signal(false);
 }
 
@@ -1502,6 +1506,126 @@ describe('loose text', () => {
     fixture.componentInstance.note.set(true);
     fixture.detectChanges();
     expect(style('in-note-sup')).toContain('vertical-align: 0.3em');
+  });
+
+  // Issue #734: a <sup> inside a tag an app's rule raises by pixels would
+  // need `0.4em + 10px`, which no value Lynx takes can hold. Its
+  // vertical-align takes a single length only: every calc(), inline or in a
+  // rule, parses to a calculated length that SetVerticalAlign rejects. The
+  // runtime doesn't know the <sup>'s size in pixels to add them up, so the
+  // <sup> keeps its own rule's 0.4em and never gets a calc() that would drop
+  // it to the line. Kept as a Lynx limitation: measuring the size after a
+  // flush would draw a frame at the wrong height first.
+  it('leaves a <sup> inside a tag raised by pixels to its own rule', () => {
+    (
+      globalThis as { __angularLynxStyleIndex?: unknown }
+    ).__angularLynxStyleIndex = {
+      rules: [
+        [['_ngtag-sup'], SMALLER_FLAG | VERTICAL_ALIGN_FLAG],
+        [['lift'], VERTICAL_ALIGN_FLAG],
+      ],
+      verticalAligns: [
+        ...BUILD_VERTICAL_ALIGNS,
+        [['lift'], [], [0, 10], 1000, 0, 2],
+      ],
+    };
+    const fixture = TestBed.createComponent(OwnAlignHost);
+    fixture.detectChanges();
+    const style = (cls: string): string =>
+      String(byClass(cls).attrs.get('style') ?? '');
+
+    expect(style('in-lift')).toContain('vertical-align: 10px');
+    expect(style('sup-in-lift')).not.toContain('vertical-align');
+    // The text inside the <sup> still rises with the <sup>'s own text.
+    expect(style('in-sup-in-lift')).toContain('vertical-align: 0.4em');
+    for (const cls of ['in-lift', 'sup-in-lift', 'in-sup-in-lift']) {
+      expect(style(cls)).not.toContain('calc(');
+    }
+  });
+
+  // Issue #736: a tag's own inline vertical-align comes after the runtime's
+  // declarations and won over them, so a `<b style="vertical-align: 2px">`
+  // inside a tag raised 4px moved 2px, where a browser moves it 6px (its 2px
+  // from the span's raised baseline). The runtime's total now goes after the
+  // app's value, as a binding or in the style attribute, and wins natively,
+  // where Lynx can hold it as one length.
+  it("adds a tag's own inline vertical-align to the distance of the tag around it", () => {
+    (
+      globalThis as { __angularLynxStyleIndex?: unknown }
+    ).__angularLynxStyleIndex = {
+      rules: [
+        [['_ngtag-sup'], SMALLER_FLAG | VERTICAL_ALIGN_FLAG],
+        [['lift'], VERTICAL_ALIGN_FLAG],
+      ],
+      verticalAligns: [
+        ...BUILD_VERTICAL_ALIGNS,
+        [['lift'], [], [0, 4], 1000, 0, 2],
+      ],
+    };
+    // What native draws: the last vertical-align of the whole inline style,
+    // unless a later __AddInlineStyle of the key replaced it.
+    const native = globalThis as unknown as {
+      __AddInlineStyle: (el: FakeEl, key: string, value: unknown) => void;
+      __SetInlineStyles: (el: FakeEl, value: unknown) => void;
+    };
+    const drawn = new Map<FakeEl, string | undefined>();
+    const add = native.__AddInlineStyle;
+    const set = native.__SetInlineStyles;
+    native.__AddInlineStyle = (el, key, value) => {
+      if (key === 'vertical-align') {
+        drawn.set(el, value == null ? undefined : String(value));
+      }
+      add(el, key, value);
+    };
+    native.__SetInlineStyles = (el, value) => {
+      const all = [
+        ...String(value ?? '').matchAll(/vertical-align:\s*([^;]+)/g),
+      ];
+      drawn.set(el, all.at(-1)?.[1]?.trim());
+      set(el, value);
+    };
+    const align = (cls: string): string | undefined => drawn.get(byClass(cls));
+    try {
+      const fixture = TestBed.createComponent(OwnAlignHost);
+      fixture.detectChanges();
+      const host = fixture.componentInstance;
+
+      // The style attribute's 2px adds to the rule's 4px.
+      expect(align('attr-in-lift')).toBe('6px');
+
+      host.ownLift.set('2px');
+      fixture.detectChanges();
+      expect(align('own-in-lift')).toBe('6px');
+      // The text inside the <b> rises with it, as it did before.
+      expect(align('in-own-in-lift')).toBe('6px');
+      // The runtime reads the app's value, not its own total, for the next
+      // one.
+      host.ownLift.set('3px');
+      fixture.detectChanges();
+      expect(align('own-in-lift')).toBe('7px');
+      expect(align('in-own-in-lift')).toBe('7px');
+
+      // An em of its own and the span's pixels make no single length Lynx
+      // takes (issue #734), so the <b> keeps its own value alone.
+      host.ownLift.set('0.5em');
+      fixture.detectChanges();
+      expect(align('own-in-lift')).toBe('0.5em');
+      expect(String(byClass('own-in-lift').attrs.get('style'))).not.toContain(
+        'calc(',
+      );
+
+      // Without a value of its own, it rises with the span again.
+      host.ownLift.set('1px');
+      fixture.detectChanges();
+      expect(align('own-in-lift')).toBe('5px');
+      host.ownLift.set(null);
+      fixture.detectChanges();
+      expect(align('own-in-lift')).toBe('4px');
+      expect(align('in-own-in-lift')).toBe('4px');
+    } finally {
+      native.__AddInlineStyle = add;
+      native.__SetInlineStyles = set;
+    }
   });
 
   // Issue #643: the build gives `<em>`, `<u>`, `<s>` and their kin the

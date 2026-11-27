@@ -1115,10 +1115,10 @@ Lynx's PrimJS JavaScript runtime **does not provide** `AbortController`, `AbortS
 
 ### The fix
 
-Polyfill both before Angular bootstraps (see `packages/runtime/src/lib/runtime.ts`):
+Polyfill both before Angular bootstraps. The build plugin's `polyfills.js` (`packages/rsbuild-plugin-angular-lynx/src/`), the first module of each thread's script, installs both. The runtime's `lib/polyfills.ts` kept copies until #765 and #780, which never installed anything, since the plugin's were there first:
 
 - `AbortController`/`AbortSignal`: implement the minimal subset (`signal.aborted`, `signal.reason`, `addEventListener/removeEventListener`, `controller.abort()`).
-- `queueMicrotask`: implement as `Promise.resolve().then(fn)`.
+- `queueMicrotask`: on the background thread, `lynx.queueMicrotask` (Lynx 3.1+), as React Lynx uses. That's Lynx's own microtask queue, and the thread's `Promise` can be Lynx's polyfill, whose callbacks wait for a `setTimeout(0)` unless the page sets `enableMicrotaskPromisePolyfill`. The main thread's `lynx` has no `queueMicrotask`, so there it's `Promise.resolve().then(fn)`, and an error `fn` throws is thrown again from a `setTimeout`, so it's reported as the web's `queueMicrotask` reports one rather than left as an unhandled rejection.
 
 ---
 
@@ -1174,7 +1174,7 @@ None of these exist in Lynx. `window` itself is not a global (though we shim it 
 
 ### The fix
 
-- Shim `window = globalThis` and a `document` at startup (see `polyfills.ts`). On the main thread, `document` and `window`'s `addEventListener` / `removeEventListener` are real ones that hear the screen's events (see "Lynx elements have no `ownerDocument`" below); the background thread keeps no-ops.
+- Shim `window = globalThis` and a `document` at startup (the build plugin's `polyfills.js`, which in the web preview also points web-core's wrapper's `let window` at `globalThis`). On the main thread, the runtime's `polyfills.ts` replaces the placeholders: `document` and `window`'s `addEventListener` / `removeEventListener` are real ones that hear the screen's events (see "Lynx elements have no `ownerDocument`" below); the background thread keeps no-ops.
 - Implement a custom `LynxPlatformLocation` that stores the current path in a signal and provides manual URL string parsing, bypassing the `URL` constructor entirely (see `packages/runtime/src/lib/lynx-platform-location.ts`).
 - Polyfill `URL` and `URLSearchParams` (see `packages/runtime/src/lib/url/`), because Angular itself calls them. Since 22.2, `DefaultUrlSerializer.serialize()` runs every URL through `new URL(url, 'http://fake')` to reject protocol-relative URLs, and treats the `ReferenceError` as such a URL. Every URL then serialized to `/`, so every navigation on the main thread looked like a navigation to the current URL and was skipped (`NavigationSkipped`, no error). No route could be opened on device, lazy or not, while the web build (which has a real `URL`) worked. HttpClient and `NgOptimizedImage`'s loaders call `URL` too. The polyfill follows the WHATWG URL Standard and is checked against Node's `URL` in its tests.
 
@@ -1684,15 +1684,17 @@ Lynx's docs say a percentage is relative to the parent's size, but a nested `<te
 
 ---
 
-## `vertical-align` drops a value with a `var()` in it
+## `vertical-align` drops a value with a `var()` or a `calc()` in it
 
 ### What you'd expect (web)
 
-`vertical-align: calc(var(--size) / 3)` raises the text by a third of `--size`.
+`vertical-align: calc(var(--size) / 3)` raises the text by a third of `--size`, and `calc(0.4em + 10px)` by the sum of both.
 
 ### What Lynx does
 
 On Android (Lynx Explorer 4.1, API 34 emulator, November 2026), `vertical-align: 6px` and `calc(18px / 3)` raised the text, but `calc(var(--angular-lynx-font-size, 14px) / 3)` left it on the baseline, as if the declaration weren't there. Lynx's keywords move it little: `super` and `sub` move by a tenth of the element's height, and `40%` (of the line height) moved nothing visible. Use a length or an `em`, which is the element's own size: the `<sup>` rule is `vertical-align: 0.4em` (issue #649).
+
+Lynx's core takes a single length here and nothing else: `VerticalAlignHandler` (`core/renderer/css/parser/vertical_align_handler.cc`) parses the value as a length, and `ComputedCSSStyle::SetVerticalAlign` keeps it only if it resolves to a plain unit length (`NLength::IsUnit()`). Every `calc()` parses to a calculated length (`kNLengthCalc`, `TryMakeCalcNLength` in `css_style_utils.cc`), even one of lengths alone, so it's dropped whether it's inline or in a stylesheet rule. `calc(18px / 3)` worked in a rule only because the build's CSS minifier (lightningcss) folds it to `6px` first, which it can't do for `calc(0.4em + 10px)`: an inline `vertical-align: calc(0.4em + 10px)` drew the text on the line (iOS 27 Simulator, Lynx Explorer, November 2026). No single unit adds an `em` to pixels, so a distance in both can't reach Lynx at all. That's why a `<sup>` inside a tag raised by pixels rises by its own `0.4em` only (issue #734, see the next section).
 
 ---
 
@@ -1708,9 +1710,9 @@ On iOS, Lynx moves only the text of the inline `<text>` that has the `vertical-a
 
 ### The fix
 
-The style index flags each rule with a `vertical-align` (`VERTICAL_ALIGN_FLAG`) and lists its distance in `em` and `px` with its specificity and its place in the stylesheet (`verticalAligns`, `style-index.ts` in the build plugin). On iOS and Android the runtime gives each HTML text tag inside a tag that moves the whole distance inline (`baselineShiftFor` in `text-flow.ts`, issues #682 and #715): `0.4em` for a `<b>` in a `<sup>`, `0.48em` for a `<small>` in a `<sup>` (it's 1.2 times smaller), `0.88em` for a `<sup>` in a `<sup>`, `0.5em` for a `<b>` in an app's `.exp { vertical-align: 0.5em }`, and `1em` for a `<sup>` in it. Of the rules that match a tag, it takes the one with the highest specificity, then the last in its stylesheet (`.note sup` beats the build's `sup`); an inline `vertical-align` on a tag around it counts too. A `px` distance goes inline as it is, and a tag whose rules set its size passes it to the tags inside, which measure its `em` by it.
+The style index flags each rule with a `vertical-align` (`VERTICAL_ALIGN_FLAG`) and lists its distance in `em` and `px` with its specificity and its place in the stylesheet (`verticalAligns`, `style-index.ts` in the build plugin). On iOS and Android the runtime gives each HTML text tag inside a tag that moves the whole distance inline (`baselineShiftFor` in `text-flow.ts`, issues #682 and #715): `0.4em` for a `<b>` in a `<sup>`, `0.48em` for a `<small>` in a `<sup>` (it's 1.2 times smaller), `0.88em` for a `<sup>` in a `<sup>`, `0.5em` for a `<b>` in an app's `.exp { vertical-align: 0.5em }`, and `1em` for a `<sup>` in it. Of the rules that match a tag, it takes the one with the highest specificity, then the last in its stylesheet (`.note sup` beats the build's `sup`); an inline `vertical-align` on a tag around it counts too. A `px` distance goes inline as it is, and a tag whose rules set its size passes it to the tags inside, which measure its `em` by it. A tag's own inline `vertical-align` counts with those above it too: the app's value comes after the runtime's declarations and would win over them, so the runtime writes the total after it instead (`#ownShiftStyle`, issue #736), and a `<b style="vertical-align: 2px">` inside a tag raised `4px` moves `6px`, as in a browser, not `2px`.
 
-Where it can't tell the whole distance, it writes the distance of the longest part of the chain from the tag up that it can (`inlineBaselineShift`), so a `<b>` in a `<sup>` still rises with the `<sup>`'s own text. It can't tell it for a value with no fixed length (`super`, a percentage, a `calc()`, `rem`), a rule in an at-rule, nested, `!important`, or with a part of its selector the runtime can't check, two stylesheets that disagree, or an `em` distance above a tag with a size of its own, from a rule or an inline style. Nor can it write a distance in both `em` and `px`, such as a `<sup>`'s inside a tag raised `10px`: Lynx drops an inline `vertical-align: calc(0.4em + 10px)`, which drew the `<sup>` on the line (iOS 27 Simulator, Lynx Explorer, November 2026), so the `<sup>` rises by its own `0.4em` only.
+Where it can't tell the whole distance, it writes the distance of the longest part of the chain from the tag up that it can (`inlineBaselineShift`), so a `<b>` in a `<sup>` still rises with the `<sup>`'s own text. It can't tell it for a value with no fixed length (`super`, a percentage, a `calc()`, `rem`), a rule in an at-rule, nested, `!important`, or with a part of its selector the runtime can't check, two stylesheets that disagree, or an `em` distance above a tag with a size of its own, from a rule or an inline style. Nor can it write a distance in both `em` and `px`, such as a `<sup>`'s inside a tag raised `10px`: Lynx drops an inline `vertical-align: calc(0.4em + 10px)`, which drew the `<sup>` on the line (iOS 27 Simulator, Lynx Explorer, November 2026), and Lynx takes no other form of the sum (see "`vertical-align` drops a value with a `var()` or a `calc()` in it"), so the `<sup>` rises by its own `0.4em` only. To turn the `em` into pixels the runtime would have to read the tag's size from Lynx after a flush (`__GetComputedStyleByKey`), so the tag would draw a frame at the wrong height before it moved, and each change would cost another flush. It's left as a Lynx limitation (issue #734): to raise a `<sup>` inside a tag by both, raise the tag by an `em` distance rather than pixels, or give the `<sup>` a distance of its own in pixels inline (`style="vertical-align: 6px"`), which the runtime adds the tag's `10px` to. An `em` distance in a tag's own inline style inside a tag raised by pixels (or pixels inside one raised by `em`) is the same sum, and the tag keeps its own value alone.
 
 ---
 
@@ -3479,8 +3481,9 @@ On the web, `drawImage(video)`, `createPattern(video)` and `texImage2D(…, vide
 - **The shells read the frame.** The runtime makes each `<video>` a `LynxVideoElement` (`canvas/video-element.ts`) and gives it a `video-id`. The shells register the element under that id in the canvas registry, as a canvas's context is, so the contexts read it by id (`{ canvas: id }`) like another canvas, and the pixels never cross the bridge. `createImageBitmap(video)` copies it through the same snapshot. iOS (`AngularLynxVideo.m`) adds an `AVPlayerItemVideoOutput` to each item the player plays and converts the frame it hands over with VideoToolbox; Android (`VideoUI.kt`) copies the `SurfaceView`'s frame with `PixelCopy`. Both subclass XElement's element and register it for `video`.
 - **No frame before the first.** `videoWidth`, `videoHeight` and `readyState` come from the shell (the module's `videoSize`): 0, 0 and `HAVE_NOTHING` until the player has drawn its first frame, then the frame's size and `HAVE_ENOUGH_DATA`. Android marks the frame as there before XElement's element sends `bindfirstframe` (`VideoUI.onFirstFrame`). iOS's XElement sends it when the `AVPlayerLayer` can show the frame, before the output on the same item hands it over, so a draw from the event read nothing (the E2E canvas flow caught it): `AngularLynxVideo` holds the event until the output has the frame, for half a second at most. Lynx's player doesn't say how much is buffered, so the states between aren't told apart. Before the first frame, `drawImage()` draws nothing and `createPattern()` returns null, as browsers do for a video with no data. A paused video keeps its last frame.
 - **Android needs the surface.** A `SurfaceView` has a surface only while it's laid out with a size, so a `<video>` with `display: none` has nothing to read and draws nothing; one hidden with `opacity: 0` or behind other elements still draws. iOS reads its output whether the video shows or not. The copy waits for `PixelCopy` (a few milliseconds a frame) on the main thread, and gives up after 250 ms, when the RenderThread is busy (an emulator drawing in software); that read draws nothing. The bitmap a copy that timed out was given mustn't be freed: the RenderThread still writes into it, and a freed one aborts the app.
-- **Not handled:** a video whose track is turned by its metadata (a phone recording in portrait) is read as it's stored, unturned, on iOS. Lynx Explorer has neither the module nor the element, so a video there has no frame.
-- **Measured** with the E2E canvas flow (fixtures/canvas.ts): a paused video, red above and blue below, drawn on a 2D canvas and read back at the top and the bottom, and uploaded as a texture and read back.
+- **A turned track is read turned.** A phone stores a portrait recording landscape, with a track transform (`preferredTransform`) that turns it as it plays, and a browser reads it turned, with `videoWidth` and `videoHeight` swapped to match. iOS's output hands the frame over as stored, so `AngularLynxVideo` loads the item's video track's transform (without blocking, as AVFoundation asks) and draws each frame it reads through it; until the transform has loaded the video has no frame, which `bindfirstframe`'s wait covers (issue #725). Android needs nothing: the decoder turns the frame onto the surface `PixelCopy` copies, and media3's `VideoSize` already has the turned size.
+- **Not handled:** Lynx Explorer has neither the module nor the element, so a video there has no frame.
+- **Measured** with the E2E canvas flow (fixtures/canvas.ts): a paused video stored 64 by 32 with a 90° transform, as a portrait phone recording is, and shown 32 by 64, red above and blue below: its size read, drawn on a 2D canvas and read back at the top and the bottom, and uploaded as a texture and read back at the top right and the bottom left.
 
 ### What to do
 
@@ -5053,9 +5056,9 @@ It is subtle because the constants are pure discriminators — once resolved, th
 
 ### The fix
 
-Polyfill a minimal `Node` **class** carrying the standard node-type constants, before Angular bootstraps. It ships as `preEntry` from `@blotch/rsbuild-plugin-angular-lynx` (`src/polyfills.js`) and defensively in the runtime (`packages/runtime/src/lib/runtime.ts`) for consumers not using the plugin — mirroring the existing `document` / `window` / `navigator` shims.
+Polyfill a minimal `Node` **class** carrying the standard node-type constants, before Angular bootstraps. It ships as `preEntry` from `@blotch/rsbuild-plugin-angular-lynx` (`src/polyfills.js`), the first module of each thread's script. The runtime kept a copy for apps built without the plugin until #765, but there are none (the runtime reads the plugin's compile-time defines), so it only doubled the shim in every script.
 
-It **must be a class, not a plain object**: a few dev/debug paths in Angular do `x instanceof Node`, which throws if the right-hand side is not callable. As a class, `instanceof` returns `false` for Lynx elements (correct — they are not DOM nodes) while the constants resolve to their spec values. Both guards check `typeof Node === 'undefined'`, so the shim is a no-op in the web bundle where `Node` is real.
+It **must be a class, not a plain object**: a few dev/debug paths in Angular do `x instanceof Node`, which throws if the right-hand side is not callable. As a class, `instanceof` returns `false` for Lynx elements (correct — they are not DOM nodes) while the constants resolve to their spec values. Its guard checks `typeof Node === 'undefined'`, so the shim is a no-op in the web bundle where `Node` is real.
 
 ---
 

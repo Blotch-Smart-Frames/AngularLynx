@@ -28,7 +28,7 @@ The rsbuild plugin replaces `__MAIN_THREAD__` with each bundle's value when it c
 - Main-thread bundle: `__MAIN_THREAD__ === true`
 - Background bundle: `__MAIN_THREAD__ === false`
 
-The background bundle doesn't start from `main.ts`: the build generates its entry, which imports the runtime and the files that define a `backgroundFn()`, `createMainThreadRef()` or `new MainThreadRef()` at top level. Angular and your components aren't in it, so constructors, `ngOnInit` and effects run once.
+The background bundle doesn't start from `main.ts`: the build generates its entry, which imports the runtime and the files that define a `backgroundFn()`, `createMainThreadRef()` or `new MainThreadRef()` at top level. Angular and your components aren't in it, so constructors, `ngOnInit` and effects run once. Every top-level statement of those files (and their imports) runs there too, unless the `backgroundTreeShaking` build option is `"aggressive"`: then a module-level declaration whose value nothing on the background thread reads is dropped from its script, initializer and all, so don't rely on a declaration's side effect there (see [build-configuration.md](build-configuration.md)).
 
 ## Why This Matters
 

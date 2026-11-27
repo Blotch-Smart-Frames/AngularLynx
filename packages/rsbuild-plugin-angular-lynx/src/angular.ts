@@ -10,7 +10,11 @@ import {
 import type { BackgroundEntries } from './background-entry.js';
 import { applyBudgets } from './budgets-plugin.js';
 import { applyFileReplacements } from './file-replacements.js';
-import { isAngularLynxPackageModule, LAYERS } from './layers.js';
+import { LAYERS } from './layers.js';
+import {
+  resolveBackgroundTreeShaking,
+  wrapsBackgroundInitializers,
+} from './background-tree-shaking.js';
 import { buildLynxSchemaSourceFileCache } from './build-schema-source-file-cache.js';
 import {
   createTransformStylesheet,
@@ -146,6 +150,12 @@ export const applyAngularRules = async (
     cli,
   });
   applyAngularConfig(api, buildOptions);
+  // Whether the background layer's copies of the app's own files get their
+  // module-level values made droppable too (see background-tree-shaking.ts).
+  const backgroundTreeShaking = resolveBackgroundTreeShaking(
+    pluginOptions.backgroundTreeShaking,
+    cli?.buildOptions,
+  );
   // The plugin's own `intl` option wins: plain rspeedy apps whose angular.json
   // targets Angular's builder can't add the option there.
   applyIntl(api, {
@@ -658,9 +668,14 @@ export const applyAngularRules = async (
       );
       // AngularLynx's own packages also get their module-level values made
       // droppable (see pure-initializers.ts): the background thread uses
-      // almost none of the runtime's. After the class pass, whose IIFEs
-      // count as pure.
-      const wrapped = isAngularLynxPackageModule(context.resourcePath)
+      // almost none of the runtime's. So do the app's own JavaScript files
+      // with `backgroundTreeShaking: 'aggressive'`, but never another
+      // package's (see background-tree-shaking.ts). After the class pass,
+      // whose IIFEs count as pure.
+      const wrapped = wrapsBackgroundInitializers(
+        context.resourcePath,
+        backgroundTreeShaking,
+      )
         ? wrapPureInitializers(classesWrapped, context.resourcePath)
         : classesWrapped;
       // The generated background entry takes every hot update the
@@ -738,26 +753,41 @@ export const applyAngularRules = async (
     // as the main thread's. Top-level calls in the app's files, such as
     // backgroundFn() itself, aren't marked pure, except registerHostElement()
     // (see markHostElementsPure).
-    return {
-      code: wrapPureClasses(
-        markHostElementsPure(
-          splitBackgroundPrivateChains(
-            Buffer.from(
-              await javascriptTransformer.transformData(
-                context.resourcePath,
-                code,
-                {
-                  skipLinker: true,
-                  sideEffects: () => Promise.resolve(false),
-                },
-              ),
-            ).toString(),
-            context.resourcePath,
-          ),
+    const classesWrapped = wrapPureClasses(
+      markHostElementsPure(
+        splitBackgroundPrivateChains(
+          Buffer.from(
+            await javascriptTransformer.transformData(
+              context.resourcePath,
+              code,
+              {
+                skipLinker: true,
+                sideEffects: () => Promise.resolve(false),
+              },
+            ),
+          ).toString(),
           context.resourcePath,
         ),
         context.resourcePath,
       ),
+      context.resourcePath,
+    );
+    // With `backgroundTreeShaking: 'aggressive'`, the module-level values
+    // too, as for AngularLynx's packages, so the minifier drops the ones
+    // nothing on the background thread reads: a `signal()` only the
+    // component's main-thread scripts read, which kept Angular's signals and
+    // DI there, each module-level mainThreadFn() (only a handle there), or
+    // the icon table of dolan's copy of `@blotch/ui` (issue #743). Off by
+    // default, as such a declaration's initializer stops running there even
+    // when it does something on purpose. After the class pass, whose IIFEs
+    // count as pure.
+    return {
+      code: wrapsBackgroundInitializers(
+        context.resourcePath,
+        backgroundTreeShaking,
+      )
+        ? wrapPureInitializers(classesWrapped, context.resourcePath)
+        : classesWrapped,
     };
   };
 

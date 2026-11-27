@@ -72,6 +72,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -323,6 +324,14 @@ def footprint(pid):
     return report["processes"][0]["footprint"] * report.get("bytes per unit", 1)
 
 
+# How long xctrace may take to start a Simulator recording (about a second
+# on a Mac), and to end one after its time limit, before it counts as stuck.
+RECORDING_START_TIMEOUT = 120
+# A session whose recordings fail this many times in a row measures nothing,
+# and would take hours to find out run by run.
+FAILURES_IN_A_ROW = 3
+
+
 def record_simulator(udid, bundle_id, trace, seconds, memory_after):
     """Records a launch on the Simulator, and returns the app's (pid, bytes)
     from footprint memory_after seconds into the recording, or None.
@@ -345,15 +354,44 @@ def record_simulator(udid, bundle_id, trace, seconds, memory_after):
         "--no-prompt",
         "--launch", "--", bundle_id,
     ]
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    # In a session of its own, so a stuck recording's kill takes the
+    # processes it started too, which would hold its pipes open.
+    process = subprocess.Popen(
+        command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True
+    )
     # xctrace prints this once it has launched the app and started the
     # recording, about a second after it starts (Xcode 27.2). The time limit
-    # counts from here.
-    output = []
-    for line in process.stdout:
-        output.append(line)
-        if "Ctrl-C to stop" in line:
-            break
+    # counts from here. Both pipes are read on threads, so a full stderr
+    # can't block xctrace, and so a recording that never starts (on a CI
+    # runner, the first launch sat silent for 45 minutes in #854) ends
+    # with what xctrace said rather than hanging the session.
+    output, errors = [], []
+    started = threading.Event()
+
+    def read_output():
+        for line in process.stdout:
+            output.append(line)
+            if "Ctrl-C to stop" in line:
+                started.set()
+        # The process has ended, started or not.
+        started.set()
+
+    def read_errors():
+        errors.extend(process.stderr)
+
+    readers = [threading.Thread(target=read_output, daemon=True), threading.Thread(target=read_errors, daemon=True)]
+    for reader in readers:
+        reader.start()
+
+    def stop(why):
+        os.killpg(process.pid, signal.SIGKILL)
+        process.wait()
+        for reader in readers:
+            reader.join(5)
+        raise subprocess.CalledProcessError(-9, command, "".join(output), f"{''.join(output)}{''.join(errors)}{why}")
+
+    if not started.wait(RECORDING_START_TIMEOUT):
+        stop(f"xctrace hadn't started recording after {RECORDING_START_TIMEOUT} s")
     memory = None
     if process.poll() is None:
         time.sleep(memory_after)
@@ -363,9 +401,14 @@ def record_simulator(udid, bundle_id, trace, seconds, memory_after):
                 memory = (pid, footprint(pid))
             except subprocess.CalledProcessError as error:
                 print(f"footprint failed: {error.stderr.strip()[-300:]}", file=sys.stderr, flush=True)
-    stdout, stderr = process.communicate()
+    try:
+        process.wait(timeout=seconds + RECORDING_START_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        stop(f"xctrace hadn't ended its {seconds} s recording after {seconds + RECORDING_START_TIMEOUT} s")
+    for reader in readers:
+        reader.join(5)
     if process.returncode:
-        raise subprocess.CalledProcessError(process.returncode, command, "".join(output) + stdout, stderr)
+        raise subprocess.CalledProcessError(process.returncode, command, "".join(output), "".join(errors))
     return memory
 
 
@@ -533,13 +576,18 @@ def main():
             if deadline is not None and time.monotonic() > deadline:
                 raise SystemExit(load_error(args.max_load))
 
+    failures = 0
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         for run in range(1, args.runs + 1):
             for name, bundle_id in run_order(apps, run):
                 trace = os.path.join(work, f"{name}-{run}.trace")
                 row, memory = launch(name, bundle_id, run, trace)
                 if row is None:
+                    failures += 1
+                    if failures >= FAILURES_IN_A_ROW:
+                        raise SystemExit(f"xctrace failed {failures} launches in a row: ending the session")
                     continue
+                failures = 0
                 if args.simulator:
                     # Reading a trace keeps the Mac busy, and the Simulator
                     # launches on the Mac's cores: read it before the next

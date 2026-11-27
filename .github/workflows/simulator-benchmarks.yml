@@ -164,6 +164,16 @@ jobs:
           echo "cores: $(sysctl -n hw.ncpu), memory: $(( $(sysctl -n hw.memsize) / 1073741824 )) GB"
           uptime
           xcodebuild -version
+      # xctrace records through Instruments, which asks for developer tools
+      # access the first time: a dialog nobody answers on a runner. The
+      # first launch on one sat silent for 45 minutes (#854). Granting it
+      # beforehand, and listing the devices under a time limit, shows here
+      # whether xctrace can run at all.
+      - name: Let Instruments run
+        run: |
+          sudo DevToolsSecurity -enable
+          sudo dseditgroup -o edit -a "$(id -un)" -t user _developer
+          perl -e 'alarm 120; exec @ARGV' xcrun xctrace list devices
       - name: Launch the Pokédex
         timeout-minutes: 45
         env:

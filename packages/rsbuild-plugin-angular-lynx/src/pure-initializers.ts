@@ -1,6 +1,6 @@
 import * as ts from 'typescript';
 import { findModuleLevelCalls } from './cross-thread-transform.js';
-import { isPure } from './pure-classes.js';
+import { isPure, pureConstructions } from './pure-classes.js';
 
 /**
  * The runtime's names whose module-level calls register something on the
@@ -33,11 +33,18 @@ type Edit = { start: number; end: number; text: string };
  * to be read. The runtime's side-effects test keeps the statements that do
  * something on purpose out of variable declarations.
  *
- * Left alone: initializers that are pure already (see pure-classes.ts:
- * wrapped, the minifier inlines such a small IIFE and then keeps what it
- * held), a destructuring (which
- * reads its properties as it binds them), one with `await` or `yield` (which
- * can't move into a function), and one that makes a cross-thread value.
+ * An initializer that's pure already (see pure-classes.ts) isn't wrapped:
+ * the minifier inlines such a small IIFE and then keeps what it held. Its
+ * collections get `/*#__PURE__*\/` on each `new` instead, because the
+ * minifier doesn't know that a built-in constructor does nothing else: with
+ * its constant gone, `typeof FinalizationRegistry === 'function' ? new
+ * FinalizationRegistry(releaseImage) : null` stayed in the background script
+ * as a statement, and with `releaseImage` the WebGL bridge's loader (issue
+ * #764).
+ *
+ * Left alone: a destructuring (which reads its properties as it binds them),
+ * one with `await` or `yield` (which can't move into a function), and one
+ * that makes a cross-thread value.
  *
  * @param code - The module's code.
  * @param filename - The module's path, for the parser.
@@ -67,11 +74,21 @@ export const wrapPureInitializers = (
       if (
         !value ||
         !ts.isIdentifier(declaration.name) ||
-        isPure(value) ||
-        isMarkedPure(value, code, sourceFile) ||
         suspends(value) ||
         makesCrossThreadValue(value)
       ) {
+        continue;
+      }
+      if (isPure(value)) {
+        for (const construction of pureConstructions(value)) {
+          if (!isAnnotatedPure(construction, code, sourceFile)) {
+            const start = construction.getStart(sourceFile);
+            edits.push({ start, end: start, text: '/*#__PURE__*/ ' });
+          }
+        }
+        continue;
+      }
+      if (isMarkedPure(value, code, sourceFile)) {
         continue;
       }
       const start = value.getStart(sourceFile);
@@ -103,9 +120,7 @@ const isMarkedPure = (
   code: string,
   sourceFile: ts.SourceFile,
 ): boolean => {
-  const annotated = /[@#]__PURE__/.test(
-    code.slice(node.getFullStart(), node.getStart(sourceFile)),
-  );
+  const annotated = isAnnotatedPure(node, code, sourceFile);
   if (ts.isParenthesizedExpression(node)) {
     return annotated || isMarkedPure(node.expression, code, sourceFile);
   }
@@ -115,6 +130,18 @@ const isMarkedPure = (
     (node.arguments ?? []).every(isPure)
   );
 };
+
+/**
+ * Whether a `@__PURE__` or `#__PURE__` comment comes right before the node.
+ */
+const isAnnotatedPure = (
+  node: ts.Node,
+  code: string,
+  sourceFile: ts.SourceFile,
+): boolean =>
+  /[@#]__PURE__/.test(
+    code.slice(node.getFullStart(), node.getStart(sourceFile)),
+  );
 
 /**
  * Whether the expression awaits or yields outside any function of its own.

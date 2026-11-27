@@ -261,7 +261,10 @@ test('copies text to the clipboard and reads it back', async ({
 // #211; native/canvas.yaml checks the app's own iOS and Android builds,
 // where the runtime's context draws through the shell). The canvas page
 // draws a texture createImageBitmap() decoded through a shader, then shows a
-// pixel it read back.
+// pixel it read back. It shows the pixel only once the template's <canvas>
+// and <video> and the canvas's context are `instanceof` the browser's
+// classes, the iframe's the app runs in, though they're the page's (issue
+// #788).
 test('a canvas draws with WebGL2', async ({ page }) => {
   const errors = collectErrors(page);
   await page.goto('/');
@@ -269,10 +272,13 @@ test('a canvas draws with WebGL2', async ({ page }) => {
   await page.getByText('Open canvas', { exact: true }).click();
   await expect(page.getByText('WebGL: 0,0,255,255')).toBeVisible();
   // ImageBitmaps of canvases (issue #697), and crops and copies (issue
-  // #731), the browser's own here.
+  // #731), the browser's own here. The first is of the template's <canvas>,
+  // AngularLynx's element around the page's, which the browser's
+  // createImageBitmap() takes in its place (issue #732).
   await expect(page.getByText('Bitmap: ok')).toBeVisible();
-  // The 2D context's filter (issue #698), the browser's own here: the
-  // fixture's reads are what a browser draws, which the shells match.
+  // The 2D context's filter (issue #698), and a shadow with an operation
+  // like copy (issue #763), the browser's own here: the fixture's reads are
+  // what a browser draws, which the shells match.
   await expect(page.getByText('2D: 0,128,0,255 filter ok')).toBeVisible();
 
   expect(errors, 'the app logged errors while running').toEqual([]);

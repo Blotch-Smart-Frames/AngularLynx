@@ -6,13 +6,19 @@
         "hash": "50e014b3350839f8"
       },
       "icon.ts": {
-        "hash": "932973521d0bb99b"
+        "hash": "7fdbd570d02e2647"
       },
       "icons.ts": {
-        "hash": "02b3420219869674"
+        "hash": "9c4233735666d5c3"
       },
       "index.ts": {
-        "hash": "d175df85291c8009"
+        "hash": "925ca2b25ff64004"
+      },
+      "all-icons.ts": {
+        "hash": "67baf8dfc7537de8"
+      },
+      "icon-set.ts": {
+        "hash": "087467f089b093e4"
       }
     },
     "tab-bar": {
@@ -20,7 +26,7 @@
         "hash": "ec53b8058dbb2ddb"
       },
       "tab-bar.ts": {
-        "hash": "95146a92cb4f4b10"
+        "hash": "a1689faf04977fd5"
       }
     },
     "glass": {

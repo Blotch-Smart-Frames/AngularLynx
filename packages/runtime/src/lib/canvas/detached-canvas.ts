@@ -139,7 +139,10 @@ export class LynxOffscreenCanvas extends LynxCanvasBase {
   }
 
   convertToBlob(options?: { type?: string; quality?: number }): Promise<Blob> {
-    if (this.width === 0 || this.height === 0) {
+    // The size of what's encoded: a bitmaprenderer context's bitmap, whose
+    // size needn't be the canvas's (see CanvasSurface.source).
+    const source = this.surface.source;
+    if (source.width === 0 || source.height === 0) {
       const error = new Error(
         "Failed to execute 'convertToBlob' on 'OffscreenCanvas': The size of the OffscreenCanvas is zero.",
       );
@@ -179,11 +182,21 @@ export class LynxOffscreenCanvas extends LynxCanvasBase {
       throw error;
     }
     // A canvas of no pixels gives an ImageBitmap of none, which draws
-    // nothing; the shell keeps no image for it.
-    if (this.width === 0 || this.height === 0) {
+    // nothing; the shell keeps no image for it. The source's size is what a
+    // bitmaprenderer context shows, which needn't be the canvas's.
+    const source = this.surface.source;
+    if (source.width === 0 || source.height === 0) {
+      this.surface.didTransfer();
       return new LynxImageBitmap(0, 0, 0);
     }
-    return imageBitmapOfCanvas(this.surface.source, {}, true);
+    try {
+      return imageBitmapOfCanvas(source, {}, true);
+    } finally {
+      // Also when the copy failed: the shell clears the canvas before it
+      // copies, so a bitmaprenderer canvas is blank either way, and the
+      // shell's blank has to be the size the runtime reports.
+      this.surface.didTransfer();
+    }
   }
 }
 

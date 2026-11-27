@@ -16,6 +16,7 @@ import { type RGBA, parseColor, serializeColor } from './css-color';
 import { parseFilter } from './css-filter';
 import { type CanvasFont, DEFAULT_FONT, parseFont } from './css-font';
 import { nativeImageOf } from './native-image';
+import { markBatchPending, markBatchSent } from './pending-batches';
 import {
   IDENTITY,
   LynxPath2D,
@@ -510,6 +511,11 @@ export class LynxCanvasRenderingContext2D {
   readonly #attributes: LynxCanvas2DAttributes;
   #commands: unknown[] = [];
   #flushScheduled = false;
+  /**
+   * Sends what's recorded: what an ImageBitmap calls before the shell lets go
+   * of its pixels (see pending-batches.ts).
+   */
+  readonly #sendPending = (): unknown => this.#send();
   /** Something was drawn since the last present. */
   #dirty = false;
   #destroyed = false;
@@ -556,6 +562,7 @@ export class LynxCanvasRenderingContext2D {
   }
 
   #scheduleFlush(): void {
+    markBatchPending(this.#sendPending);
     if (this.#commands.length > 65536) {
       this.#send();
       return;
@@ -580,6 +587,7 @@ export class LynxCanvasRenderingContext2D {
   }
 
   #send(): unknown[] {
+    markBatchSent(this.#sendPending);
     if (this.#commands.length === 0) return [];
     const commands = this.#commands;
     this.#commands = [];
@@ -616,6 +624,7 @@ export class LynxCanvasRenderingContext2D {
     if (this.#destroyed) return;
     this.#destroyed = true;
     this.#commands = [];
+    markBatchSent(this.#sendPending);
     this.#bridge.destroy2D(this.#id);
   }
 

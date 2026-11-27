@@ -108,9 +108,14 @@ const postToServer = (
  */
 const installLogRelay = (): void => {
   if (typeof __MAIN_THREAD__ !== 'undefined' && __MAIN_THREAD__) return;
+  // The URL first: in a build without a log server it's '' at compile time,
+  // so the minifier drops the rest, resolveFetch() too. Called before the
+  // check, its read of `fetch` stayed in every background script, which the
+  // minifier can't tell does nothing (issue #764).
   const url = logUrl();
+  if (!url) return;
   const fetchFn = resolveFetch();
-  if (!url || !fetchFn) return;
+  if (!fetchFn) return;
   try {
     if (
       typeof lynx !== 'undefined' &&

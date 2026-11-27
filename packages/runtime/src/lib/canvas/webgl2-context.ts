@@ -30,6 +30,7 @@ import {
 import { OP } from './webgl-ops';
 import { type CanvasSource, canvasSourceOf } from './canvas-source';
 import { nativeImageOf } from './native-image';
+import { markBatchPending, markBatchSent } from './pending-batches';
 
 /** The `<canvas>` a context draws into, as the context needs it. */
 export type WebGLCanvasHost = {
@@ -371,6 +372,11 @@ export class LynxWebGL2RenderingContext {
   readonly #attributes: LynxWebGLContextAttributes;
   #commands: unknown[] = [];
   #flushScheduled = false;
+  /**
+   * Sends what's recorded: what an ImageBitmap calls before the shell lets go
+   * of its pixels (see pending-batches.ts).
+   */
+  readonly #sendPending = (): unknown => this.#send();
   /** The command being recorded reads a canvas: send it at once. */
   #sendNow = false;
   /** The default framebuffer was drawn to since the last present. */
@@ -514,6 +520,7 @@ export class LynxWebGL2RenderingContext {
   }
 
   #scheduleFlush(): void {
+    markBatchPending(this.#sendPending);
     if (this.#commands.length > 65536) {
       // A big upload or a long loop: send what's there before it grows more.
       this.#send();
@@ -539,6 +546,7 @@ export class LynxWebGL2RenderingContext {
   }
 
   #send(): unknown[] {
+    markBatchSent(this.#sendPending);
     if (this.#commands.length === 0) return [];
     const commands = this.#commands;
     this.#commands = [];
@@ -616,6 +624,7 @@ export class LynxWebGL2RenderingContext {
     if (this.#lost) return;
     this.#lost = true;
     this.#commands = [];
+    markBatchSent(this.#sendPending);
     this.#bridge.destroy(this.#id);
   }
 

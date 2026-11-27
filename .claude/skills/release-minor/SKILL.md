@@ -201,10 +201,30 @@ with them. So far, the lines that needed changing have been:
 The public skill must change in this PR (see CLAUDE.md), so run the `update-angular-lynx-skill`
 skill with `content` for anything else it says about versions.
 
-Leave `benchmarks/` alone. Its apps pin exact versions on purpose, its results record what was
-measured, and `benchmarks/apps/angular-lynx` moves by hand when it's re-run (see its README).
-Note in the report that its next `use-local-packages.mjs` run needs its Angular pins moved to X.Y
-first, or the new peer ranges refuse the install.
+Move `benchmarks/apps/angular-lynx`'s Angular pins too. That app installs this repository's
+packages rather than the releases on npm, so their new `^X.Y.0` peers refuse its install until it's
+on X.Y. It's outside the npm workspaces, so step 3's range script doesn't reach it. Set each
+`@angular/*` pin in its package.json to the version in the root `package-lock.json` (core's and
+the CLI's patches can differ), then, with the packages built in step 4, regenerate its lockfile
+the way its README's "Local packages" section says. Drop Angular from its lockfile first: npm
+can't move Angular's packages, which pin each other as exact peers, one at a time from the
+versions it has locked.
+
+In a subshell, so step 6's checks still run at the worktree's root:
+
+```bash
+(
+  cd <worktree>/benchmarks/apps/angular-lynx &&
+    jq '.packages |= with_entries(select(.key | test("(^|/)node_modules/@angular/") | not))' \
+      package-lock.json > package-lock.json.tmp && mv package-lock.json.tmp package-lock.json &&
+    node scripts/use-local-packages.mjs &&
+    npx ng build
+)
+```
+
+Commit its package.json and lockfile, and update the `.angular/cache/<version>/` paths in its
+README, which follow `@angular/build`'s version. Leave the rest of `benchmarks/` alone: the other
+apps pin exact versions on purpose, and its results record what was measured.
 
 Then check for migrations the way the `release` skill's step 3 does. The Angular move alone needs
 none: Angular's own changes come through `ng update @angular/core`, and builder options copied in
@@ -234,6 +254,8 @@ Moves AngularLynx to Angular X.Y and sets every published package to X.Y.0, read
   needs AngularLynx X.Y. The full E2E matrix's lowest-Angular leg (`--angular lowest`) follows
   them to X.Y.0.
 - **Versions.** All <n> published packages are at X.Y.0, and so are the exact pins between them.
+- **The benchmark app.** `benchmarks/apps/angular-lynx` pins Angular X.Y.<p>, so
+  `use-local-packages.mjs` installs the X.Y.0 packages into it.
 - **`@angular/build`'s internals.** <What step 4's diff showed for the files the plugin loads, and
   what the plugin changed to match, or that they're unchanged.>
 - <Builder or schematic options copied from Angular, and docs and skill lines updated.>

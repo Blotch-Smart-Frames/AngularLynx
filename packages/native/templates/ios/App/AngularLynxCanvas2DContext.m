@@ -15,8 +15,9 @@
 // What the canvas spec has that Core Graphics doesn't is made here:
 // - Compositing that clears what the shape doesn't cover (source-in,
 //   source-out, destination-in, destination-atop, copy), and shadows, draw
-//   the shape into a layer the size of the canvas first, which is then
-//   drawn over the canvas with the operation and the shadow.
+//   the shape into a layer over the canvas first, which is then drawn over
+//   it with the operation and the shadow; a shadow cast from far off the
+//   canvas has a layer of its own there.
 // - The filter (blur(), drop-shadow(), the color functions) is applied to
 //   that layer's pixels, before it's drawn over the canvas.
 // - Conic gradients (CGContextDrawConicGradient needs iOS 17) are worked out
@@ -1134,26 +1135,86 @@ static BOOL reducesAlpha(NSInteger composite) {
   return s.shadowA > 0 && (s.shadowBlur > 0 || s.shadowOffsetX != 0 || s.shadowOffsetY != 0);
 }
 
-/// How far past the canvas, on every side, the layer a draw goes into
-/// reaches: the filter's padding, and the shadow's offset and blur (three of
-/// its deviations, which are half the blur), so a shape just off the canvas
-/// still blurs, or casts its shadow, onto it. Capped at 256 pixels, as
-/// css-filter.ts caps the filter's, so a far shadow makes no huge layer.
-- (size_t)layerPadding {
-  ALCanvas2DState *s = _state;
-  CGFloat pad = s.filterSteps.count > 0 ? s.filterPadding : 0;
-  if ([self shadowVisible]) {
-    pad += ceil(MAX(fabs(s.shadowOffsetX), fabs(s.shadowOffsetY)) + s.shadowBlur * 1.5);
-  }
-  return (size_t)MIN(pad, 256);
+/// Where, in the canvas's pixels, the layers a draw goes into lie (see
+/// composite:). `shape` is the canvas grown by the filter's reach, so a
+/// shape just off the canvas still blurs onto it. With a shadow, the shadow
+/// needs the part of the shape that casts onto the canvas: the canvas moved
+/// back by the shadow's offset, grown by its blur (three of its deviations,
+/// which are half the blur) and the filter's reach, capped at 256 pixels, as
+/// css-filter.ts caps the filter's, so a huge blur makes no huge layer.
+/// When one rectangle round both is no bigger than the two, `shape` grows to
+/// take that part in, and `shadow` is CGRectNull. Otherwise it's `shadow`, a
+/// second layer: one rectangle round both would grow with the offset, and a
+/// shadow cast from far off the canvas (shadowOffsetX = 10000 and a shape at
+/// x = -10000) would make a huge layer, or, capped, cut the shape away.
+typedef struct {
+  CGRect shape;
+  CGRect shadow;
+} ALLayers;
+
+static CGFloat area(CGRect rect) {
+  return rect.size.width * rect.size.height;
 }
 
-/// The part of the canvas's pixels a context draws on: the canvas, or the
-/// padded layer's larger area, from the context's own size and transform.
+- (ALLayers)layers {
+  ALCanvas2DState *s = _state;
+  CGRect canvas = CGRectMake(0, 0, _width, _height);
+  CGFloat filterReach = s.filterSteps.count > 0 ? MIN(s.filterPadding, 256) : 0;
+  CGRect shape = CGRectInset(canvas, -filterReach, -filterReach);
+  if (![self shadowVisible]) return (ALLayers){shape, CGRectNull};
+  CGFloat reach = MIN(filterReach + ceil(s.shadowBlur * 1.5), 256);
+  // Whole pixels, so the layer's pixels line up with the canvas's.
+  CGRect source = CGRectIntegral(CGRectInset(
+      CGRectOffset(canvas, -s.shadowOffsetX, -s.shadowOffsetY), -reach, -reach));
+  CGRect both = CGRectUnion(shape, source);
+  if (area(both) > area(shape) + area(source)) return (ALLayers){shape, source};
+  return (ALLayers){both, CGRectNull};
+}
+
+/// What `draw` draws over `rect` of the canvas's pixels, as an image: drawn
+/// into a transparent layer, then, with a filter, through globalAlpha and
+/// the filter. NULL if the layer can't be made.
+- (CGImageRef)newLayerImage:(CGRect)rect draw:(void (^)(CGContextRef c))draw CF_RETURNS_RETAINED {
+  ALCanvas2DState *s = _state;
+  size_t width = (size_t)rect.size.width, height = (size_t)rect.size.height;
+  CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  CGContextRef layer =
+      CGBitmapContextCreate(NULL, width, height, 8, width * 4, space,
+                            kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
+  CGColorSpaceRelease(space);
+  if (!layer) return NULL;
+  // The canvas's flip, and the layer's place in its pixels.
+  CGContextTranslateCTM(layer, 0, height);
+  CGContextScaleCTM(layer, 1, -1);
+  CGContextTranslateCTM(layer, -rect.origin.x, -rect.origin.y);
+  draw(layer);
+  // The canvas spec takes what's drawn through globalAlpha first, then the
+  // filter, then casts the shadow and composites, outside the clip until
+  // then (since whatwg/html#10674): so a drop-shadow() shows through a
+  // see-through shape. Without a filter, the alpha goes on as the layer's
+  // drawn, which comes to the same.
+  if (s.filterSteps.count > 0) {
+    scaleAlpha(CGBitmapContextGetData(layer), width * height, s.globalAlpha);
+    applyFilter(CGBitmapContextGetData(layer), width, height, s.filterSteps);
+  }
+  CGImageRef image = CGBitmapContextCreateImage(layer);
+  CGContextRelease(layer);
+  return image;
+}
+
+/// The part of the canvas's pixels a context draws on: the canvas, or a
+/// layer's area, from the context's own size and transform.
 static CGRect drawableRect(CGContextRef c) {
   CGRect device =
       CGRectMake(0, 0, CGBitmapContextGetWidth(c), CGBitmapContextGetHeight(c));
   return CGRectApplyAffineTransform(device, CGAffineTransformInvert(CGContextGetCTM(c)));
+}
+
+/// A rectangle of the canvas's pixels (y down) in the bitmap's own space
+/// (y up), for a canvas `height` pixels tall.
+static CGRect bitmapRect(CGRect rect, size_t height) {
+  return CGRectMake(rect.origin.x, (CGFloat)height - CGRectGetMaxY(rect), rect.size.width,
+                    rect.size.height);
 }
 
 /// Draws with the state's alpha, compositing and shadow. `draw` draws in a
@@ -1162,9 +1223,10 @@ static CGRect drawableRect(CGContextRef c) {
 /// Core Graphics draws an operation like source-in only where the shape
 /// covers, and a shadow for each thing drawn; the canvas spec composites
 /// the whole canvas, and the shadow of the shape as a whole. So for those,
-/// the shape is drawn into a transparent layer the canvas's size, which is
-/// drawn over the canvas with the operation and the shadow. A filter works
-/// on pixels, so it needs the layer too: it's applied to the layer first.
+/// the shape is drawn into a transparent layer over the canvas (see
+/// -layers), which is drawn over it with the operation and the shadow. A
+/// filter works on pixels, so it needs the layer too: it's applied to the
+/// layer first.
 - (void)composite:(void (^)(CGContextRef c))draw {
   if (!_cg) return;
   ALCanvas2DState *s = _state;
@@ -1180,50 +1242,95 @@ static CGRect drawableRect(CGContextRef c) {
     [self keepOpaque];
     return;
   }
-  size_t pad = [self layerPadding];
-  size_t layerWidth = _width + pad * 2, layerHeight = _height + pad * 2;
-  CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
-  CGContextRef layer =
-      CGBitmapContextCreate(NULL, layerWidth, layerHeight, 8, layerWidth * 4, space,
-                            kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
-  CGColorSpaceRelease(space);
-  if (!layer) return;
-  CGContextTranslateCTM(layer, 0, layerHeight);
-  CGContextScaleCTM(layer, 1, -1);
-  CGContextTranslateCTM(layer, pad, pad);
-  draw(layer);
-  // The canvas spec takes what's drawn through globalAlpha first, then the
-  // filter, then casts the shadow and composites, outside the clip until
-  // then (since whatwg/html#10674): so a drop-shadow() shows through a
-  // see-through shape. Without a filter, the alpha goes on as the layer's
-  // drawn, which comes to the same.
-  if (filtered) {
-    scaleAlpha(CGBitmapContextGetData(layer), layerWidth * layerHeight, s.globalAlpha);
-    applyFilter(CGBitmapContextGetData(layer), layerWidth, layerHeight, s.filterSteps);
+  ALLayers layers = [self layers];
+  CGImageRef image = [self newLayerImage:layers.shape draw:draw];
+  if (!image) return;
+  CGImageRef shadowImage = NULL;
+  if (!CGRectIsNull(layers.shadow)) {
+    shadowImage = [self newLayerImage:layers.shadow draw:draw];
+    if (!shadowImage) {
+      CGImageRelease(image);
+      return;
+    }
   }
-  CGImageRef image = CGBitmapContextCreateImage(layer);
-  CGContextRelease(layer);
+  // The spec composites the shadow, then the shape, each over the whole
+  // clip with the operation (its drawing model's steps 6 and 7). With an
+  // operation like source-in, Core Graphics composites only the shape, and
+  // drops the shadow's step, so for those the shadow is cast alone into an
+  // image of its own, and the two are drawn one after the other.
+  CGImageRef cast = NULL;
+  if (shadow && isUnbounded(s.composite)) {
+    cast = shadowImage ? [self newShadowOf:shadowImage rect:layers.shadow]
+                       : [self newShadowOf:image rect:layers.shape];
+    // A layer that can't be made drops the draw, as the shape's does.
+    if (!cast) {
+      CGImageRelease(shadowImage);
+      CGImageRelease(image);
+      return;
+    }
+  }
   CGContextSaveGState(c);
   CGContextSetAlpha(c, filtered ? 1 : s.globalAlpha);
   CGContextSetBlendMode(c, BLEND_MODES[s.composite]);
-  if (shadow) {
-    CGColorRef color = CGColorCreateSRGB(s.shadowR / 255, s.shadowG / 255, s.shadowB / 255,
-                                         s.shadowA);
-    // A shadow's offset is in the bitmap's own space, y up, whatever the
-    // transform, as the canvas's is in its pixels, y down. Its blur is
-    // twice the Gaussian's deviation, as the canvas's is.
-    CGContextSetShadowWithColor(c, CGSizeMake(s.shadowOffsetX, -s.shadowOffsetY), s.shadowBlur,
-                                color);
-    CGColorRelease(color);
-  }
-  // The layer's image is drawn in the bitmap's own space, where its rows
+  // Otherwise Core Graphics casts the shadow as the layer's drawn.
+  if (shadow && !cast) [self setShadow:c movedBy:0];
+  // The layers' images are drawn in the bitmap's own space, where their rows
   // already lie top to bottom.
   CGContextScaleCTM(c, 1, -1);
   CGContextTranslateCTM(c, 0, -(CGFloat)_height);
-  CGContextDrawImage(c, CGRectMake(-(CGFloat)pad, -(CGFloat)pad, layerWidth, layerHeight), image);
+  if (cast) {
+    CGContextDrawImage(c, CGRectMake(0, 0, _width, _height), cast);
+  } else if (shadowImage) {
+    // Only the shadow's layer's shadow is drawn: the layer is moved left off
+    // the bitmap, and the shadow's offset right by as much, which Core
+    // Graphics casts to the same pixels (it casts the shadow of what's drawn
+    // off the bitmap). Then the shape's layer is drawn without one, as the
+    // spec composites the shadow, then the shape.
+    CGFloat away = MAX(0, CGRectGetMaxX(layers.shadow));
+    [self setShadow:c movedBy:away];
+    CGContextDrawImage(c, CGRectOffset(bitmapRect(layers.shadow, _height), -away, 0), shadowImage);
+    CGContextSetShadowWithColor(c, CGSizeZero, 0, NULL);
+  }
+  CGContextDrawImage(c, bitmapRect(layers.shape, _height), image);
   CGContextRestoreGState(c);
+  CGImageRelease(cast);
+  CGImageRelease(shadowImage);
   CGImageRelease(image);
   [self keepOpaque];
+}
+
+/// Sets the state's shadow on `c`, a context whose own space is the
+/// canvas's pixels (or a layer's), y up, moved `dx` pixels further right.
+- (void)setShadow:(CGContextRef)c movedBy:(CGFloat)dx {
+  ALCanvas2DState *s = _state;
+  CGColorRef color = CGColorCreateSRGB(s.shadowR / 255, s.shadowG / 255, s.shadowB / 255,
+                                       s.shadowA);
+  // A shadow's offset is in the bitmap's own space, y up, whatever the
+  // transform, as the canvas's is in its pixels, y down. Its blur is twice
+  // the Gaussian's deviation, as the canvas's is.
+  CGContextSetShadowWithColor(c, CGSizeMake(s.shadowOffsetX + dx, -s.shadowOffsetY),
+                              s.shadowBlur, color);
+  CGColorRelease(color);
+}
+
+/// The shadow `image`, a layer over `rect` of the canvas's pixels, casts,
+/// alone, as an image the canvas's size. The layer is moved left off the
+/// bitmap, and its shadow right by as much, so only the shadow lands, with
+/// Core Graphics' blur, as an operation like source-over casts it. NULL if
+/// the bitmap can't be made.
+- (CGImageRef)newShadowOf:(CGImageRef)image rect:(CGRect)rect CF_RETURNS_RETAINED {
+  CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  CGContextRef bitmap =
+      CGBitmapContextCreate(NULL, _width, _height, 8, _width * 4, space,
+                            kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
+  CGColorSpaceRelease(space);
+  if (!bitmap) return NULL;
+  CGFloat away = MAX(0, CGRectGetMaxX(rect));
+  [self setShadow:bitmap movedBy:away];
+  CGContextDrawImage(bitmap, CGRectOffset(bitmapRect(rect, _height), -away, 0), image);
+  CGImageRef shadow = CGBitmapContextCreateImage(bitmap);
+  CGContextRelease(bitmap);
+  return shadow;
 }
 
 /// An opaque canvas stays opaque: what an operation like copy or
@@ -1289,7 +1396,7 @@ static CGRect drawableRect(CGContextRef c) {
       // Pattern space maps to the bitmap's own space (y up), past the
       // canvas's flip: the pattern's transform, then the canvas's, then the
       // context's own, which is the canvas's flip, or the flip of a layer
-      // bigger than the canvas (for a filter or a shadow) and its offset.
+      // (for a filter or a shadow) and its place in the canvas's pixels.
       CGAffineTransform matrix = CGAffineTransformConcat(patternTransform, CGContextGetCTM(c));
       // A step longer than the bitmap reaches in pattern space repeats
       // nothing: no-repeat, and the other axis of repeat-x or repeat-y. The

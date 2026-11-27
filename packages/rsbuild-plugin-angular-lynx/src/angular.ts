@@ -36,6 +36,7 @@ import {
   transformPrivateMethods,
 } from './private-methods.js';
 import { wrapPureClasses } from './pure-classes.js';
+import { lowerYieldingDefaultChains } from './yielding-defaults.js';
 import { wrapPureInitializers } from './pure-initializers.js';
 import { importEsBuiltinsWhereNamed } from './es-builtins.js';
 import { enableOnDemand, resolveRuntimeEntry } from './on-demand.js';
@@ -599,6 +600,12 @@ export const applyAngularRules = async (
   /**
    * Compiles one module for one thread. `background` is set for the
    * background layer.
+   *
+   * Every module, another package's too, gets lowerYieldingDefaultChains on
+   * both threads, last before the private-member passes: SWC fails any
+   * module with an optional chain in a destructuring's default value that
+   * has a `yield` or an `await` (see yielding-defaults.ts), and it leaves
+   * splitPrivateChains no optional chain in those default values.
    */
   // Where the calls to the runtime's enable functions (on-demand.ts) import
   // it from, resolved once, when the first module needs it.
@@ -670,16 +677,23 @@ export const applyAngularRules = async (
         // on-demand.ts).
         return {
           code: enableAskedFor(
-            transformPrivateMethods(code, context.resourcePath, {
-              root: api.context.rootPath,
-            }),
+            transformPrivateMethods(
+              lowerYieldingDefaultChains(code, context.resourcePath),
+              context.resourcePath,
+              {
+                root: api.context.rootPath,
+              },
+            ),
             context.resourcePath,
           ),
         };
       }
       const classesWrapped = wrapPureClasses(
         markHostElementsPure(
-          splitBackgroundPrivateChains(code, context.resourcePath),
+          splitBackgroundPrivateChains(
+            lowerYieldingDefaultChains(code, context.resourcePath),
+            context.resourcePath,
+          ),
           context.resourcePath,
         ),
         context.resourcePath,
@@ -756,9 +770,13 @@ export const applyAngularRules = async (
       // come from the same code as the background thread's.
       return {
         code: enableAskedFor(
-          transformPrivateMethods(code, context.resourcePath, {
-            root: api.context.rootPath,
-          }),
+          transformPrivateMethods(
+            lowerYieldingDefaultChains(code, context.resourcePath),
+            context.resourcePath,
+            {
+              root: api.context.rootPath,
+            },
+          ),
           context.resourcePath,
         ),
       };
@@ -777,16 +795,19 @@ export const applyAngularRules = async (
     const classesWrapped = wrapPureClasses(
       markHostElementsPure(
         splitBackgroundPrivateChains(
-          Buffer.from(
-            await javascriptTransformer.transformData(
-              context.resourcePath,
-              code,
-              {
-                skipLinker: true,
-                sideEffects: () => Promise.resolve(false),
-              },
-            ),
-          ).toString(),
+          lowerYieldingDefaultChains(
+            Buffer.from(
+              await javascriptTransformer.transformData(
+                context.resourcePath,
+                code,
+                {
+                  skipLinker: true,
+                  sideEffects: () => Promise.resolve(false),
+                },
+              ),
+            ).toString(),
+            context.resourcePath,
+          ),
           context.resourcePath,
         ),
         context.resourcePath,

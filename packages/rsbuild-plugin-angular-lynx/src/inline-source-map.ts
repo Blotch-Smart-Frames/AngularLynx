@@ -33,9 +33,12 @@ export const findInlineSourceMap = (
         kind === ts.SyntaxKind.SingleLineCommentTrivia &&
         INLINE_SOURCE_MAP.exec(text.slice(start, end));
       if (match) {
+        // The base64 from the match, which starts the comment: the
+        // comment's range takes in any spaces or tabs after it.
+        const payloadEnd = start + match[0].length;
         found = {
-          start: end - match[1]!.length,
-          end,
+          start: payloadEnd - match[1]!.length,
+          end: payloadEnd,
           comment: { start, end },
         };
       }

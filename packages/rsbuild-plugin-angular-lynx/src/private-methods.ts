@@ -1587,7 +1587,8 @@ const shiftInlineSourceMap = (
     return undefined;
   }
   return {
-    ...found,
+    start: found.start,
+    end: found.end,
     text: Buffer.from(JSON.stringify(map)).toString('base64'),
   };
 };

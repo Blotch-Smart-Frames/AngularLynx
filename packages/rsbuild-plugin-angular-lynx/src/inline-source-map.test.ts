@@ -28,6 +28,15 @@ describe('takeInlineSourceMap', () => {
     expect(JSON.parse(map!)).toEqual(MAP);
   });
 
+  it('reads a map with spaces after it, taking them out with the comment', () => {
+    const { code, map } = takeInlineSourceMap(
+      `a;\n${comment(MAP)} \t\n`,
+      'app.js',
+    );
+    expect(code).toBe('a;\n\n');
+    expect(JSON.parse(map!)).toEqual(MAP);
+  });
+
   // The plugin appends the scope IDs and the hot update code after the map
   // Angular's compiler left (transform-module.ts).
   it('takes the last one, with the code after it', () => {

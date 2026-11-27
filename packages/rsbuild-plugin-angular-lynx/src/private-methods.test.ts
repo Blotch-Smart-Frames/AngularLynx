@@ -1299,6 +1299,33 @@ describe('renamePrivateMethods and hidePrivateMethods with an inline source map'
    */
   const samePrivateNames = (code: string): string => code.replace(/\.#/g, '#');
 
+  // The comment's range takes in the spaces after the base64, which once
+  // made its start fall inside it: the map didn't parse, and stayed as it
+  // was.
+  it('moves a map with spaces after it, as one without', () => {
+    const { outputText } = ts.transpileModule(
+      [
+        'export class Counter {',
+        '  #count = [0];',
+        '  #step(by: number): number { return (this.#count[0] += by); }',
+        '  next(): number { return this.#step(1); }',
+        '}',
+      ].join('\n'),
+      {
+        compilerOptions: {
+          target: ts.ScriptTarget.ES2022,
+          inlineSourceMap: true,
+        },
+        fileName: 'counter.ts',
+      },
+    );
+    const spaced = outputText.replace(/(base64,[A-Za-z0-9+/]+=*)/, '$1 \t');
+    expect(spaced).not.toBe(outputText);
+    const moved = mapOf(rename(outputText)).mappings;
+    expect(moved).not.toBe(mapOf(outputText).mappings);
+    expect(mapOf(rename(spaced)).mappings).toBe(moved);
+  });
+
   it("keeps TypeScript's map pointing at the same code", () => {
     const source = [
       'export class Counter {',

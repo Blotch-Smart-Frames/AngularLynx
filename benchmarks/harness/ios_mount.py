@@ -59,6 +59,7 @@ def main():
     parser.add_argument("--screens", help="kind:count,... (default: all six)")
     parser.add_argument("--simulator", action="store_true", help="--device is a booted iOS Simulator")
     parser.add_argument("--max-load", help="passed to ios_launch.py")
+    parser.add_argument("--max-wait", help="passed to ios_launch.py")
     args = parser.parse_args()
     screens = (
         [(s.split(":")[0], int(s.split(":")[1])) for s in args.screens.split(",")]
@@ -77,6 +78,8 @@ def main():
         mode = ["--simulator"] if args.simulator else ["--light"]
         if args.max_load:
             mode += ["--max-load", args.max_load]
+        if args.max_wait:
+            mode += ["--max-wait", args.max_wait]
         subprocess.run(
             [
                 sys.executable, "-u", os.path.join(HERE, "ios_launch.py"),

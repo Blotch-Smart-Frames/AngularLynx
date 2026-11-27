@@ -53,7 +53,9 @@ thermal state is the Mac's, and battery and charging are left empty. The
 Simulator runs on the Mac's cores, so a busy Mac slows every launch: the
 harness waits for the Mac's load average to be under --max-load before each
 launch (half the Mac's cores by default), and drops and launches again a
-run whose recording ends over it.
+run whose recording ends over it. With --max-wait, a launch that hasn't been
+measured under the limit within that many seconds ends the session, for a
+host (a CI runner) that may never get that quiet.
 
 A Simulator's numbers aren't a phone's: every launch takes about 1.45 s
 longer, and memory doesn't rank the apps as a phone does. They compare runs
@@ -148,10 +150,14 @@ def run_order(apps, run):
     return list(apps) if run % 2 else list(reversed(apps))
 
 
-def wait_for_load(max_load):
-    """Waits until the Mac's 1-minute load average is at most max_load."""
+def wait_for_load(max_load, deadline=None):
+    """Waits until the Mac's 1-minute load average is at most max_load, and
+    ends the session if it's still over at deadline (time.monotonic()), so a
+    host that never gets that quiet fails rather than waits forever."""
     waiting_since = None
     while os.getloadavg()[0] > max_load:
+        if deadline is not None and time.monotonic() > deadline:
+            raise SystemExit(load_error(max_load))
         if waiting_since is None or time.monotonic() - waiting_since > 60:
             print(
                 f"the Mac's load average is {os.getloadavg()[0]:.1f}, over --max-load {max_load}: waiting",
@@ -160,6 +166,13 @@ def wait_for_load(max_load):
             )
             waiting_since = time.monotonic()
         time.sleep(5)
+
+
+def load_error(max_load):
+    return (
+        f"the Mac's load average is {os.getloadavg()[0]:.1f}, and hasn't stayed under --max-load {max_load} "
+        "through a launch within --max-wait: raise --max-load, or run on a quieter host"
+    )
 
 
 def of_pid(cell, pid):
@@ -378,6 +391,12 @@ def main():
         help="drop a run whose recording ends with the Mac's 1-minute load average over this, and "
         "launch it again once the load is under it (with --simulator, default: half the Mac's cores)",
     )
+    parser.add_argument(
+        "--max-wait",
+        type=float,
+        help="with --max-load, end the session when a launch hasn't been measured under it within this many "
+        "seconds, waiting and launching again included (default: wait as long as it takes)",
+    )
     args = parser.parse_args()
     if args.simulator and args.max_load is None:
         args.max_load = (os.cpu_count() or 2) / 2
@@ -444,11 +463,13 @@ def main():
     def launch(name, bundle_id, run, trace):
         """Records one launch, and returns its row and (on the Simulator)
         its memory reading, or (None, None) when xctrace failed. A run that
-        ends over --max-load is dropped and launched again."""
+        ends over --max-load is dropped and launched again, until
+        --max-wait has gone by."""
         nonlocal previous
+        deadline = time.monotonic() + args.max_wait if args.max_wait is not None else None
         while True:
             if args.max_load is not None:
-                wait_for_load(args.max_load)
+                wait_for_load(args.max_load, deadline)
             before = os.getloadavg()[0]
             row = {
                 "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
@@ -495,6 +516,10 @@ def main():
                 flush=True,
             )
             shutil.rmtree(trace, ignore_errors=True)
+            # A launch can push the load over the limit by itself, on a host
+            # with few cores, and then every run is dropped.
+            if deadline is not None and time.monotonic() > deadline:
+                raise SystemExit(load_error(args.max_load))
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         for run in range(1, args.runs + 1):

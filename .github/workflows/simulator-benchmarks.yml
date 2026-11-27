@@ -73,6 +73,10 @@ jobs:
       # that the mount runs and the report work.
       MOUNT_SCREENS: ${{ github.event_name == 'pull_request' && 'text:1500,text:5000' || '' }}
       MAX_LOAD: ${{ inputs.max-load || '' }}
+      # A launch that the load keeps from being measured for 15 minutes ends
+      # the step with the load and the limit, rather than wait until the
+      # job's timeout with nothing measured.
+      MAX_WAIT: 900
       RESULTS: ${{ github.workspace }}/benchmarks/results/ios-simulator
       NG_BUILD_MAX_WORKERS: 2
     steps:
@@ -162,7 +166,7 @@ jobs:
           UDID: ${{ steps.simulator.outputs.udid }}
         run: >-
           python3 -u benchmarks/harness/ios_launch.py --simulator --device "$UDID"
-          --runs "$LAUNCH_RUNS" ${MAX_LOAD:+--max-load "$MAX_LOAD"}
+          --runs "$LAUNCH_RUNS" ${MAX_LOAD:+--max-load "$MAX_LOAD"} --max-wait "$MAX_WAIT"
           --app angular-lynx=com.angularlynx.bench.angularlynx
           --app react-lynx=com.angularlynx.bench.rival
           --out "$RESULTS/launch-$(date -u +%F)-react-lynx.csv"
@@ -173,7 +177,7 @@ jobs:
         run: >-
           python3 -u benchmarks/harness/ios_mount.py --simulator --device "$UDID"
           --rival react-lynx --runs "$MOUNT_RUNS"
-          ${MOUNT_SCREENS:+--screens "$MOUNT_SCREENS"} ${MAX_LOAD:+--max-load "$MAX_LOAD"}
+          ${MOUNT_SCREENS:+--screens "$MOUNT_SCREENS"} ${MAX_LOAD:+--max-load "$MAX_LOAD"} --max-wait "$MAX_WAIT"
       # The last night's history, from the newest run of this workflow on
       # master that finished. Artifacts last 90 days, so a gap that long
       # starts a new history, as does the first night.

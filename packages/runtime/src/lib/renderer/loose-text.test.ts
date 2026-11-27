@@ -3723,6 +3723,46 @@ describe('<q>, element by element', () => {
       expect(drawn(q)).toEqual(['“', ' hi ', '”']);
     });
 
+    it('matches a child rule past the anonymous <text> loose text shares', () => {
+      quotesRules([['_ngtag-q'], [['>', ['card']]], `"a" "b"`, 1001, 0, 0]);
+      const view = doc.createElement('view');
+      view.setAttribute('class', 'card');
+      page.appendChild(view);
+      view.appendChild(doc.createText('He said '));
+      const q = makeQ();
+      view.appendChild(q);
+      q.appendChild(doc.createText('hi'));
+      commit();
+      expect(drawn(q)).toEqual(['a', 'hi', 'b']);
+      view.setAttribute('class', '');
+      view.setAttribute('class', 'card');
+      commit();
+      expect(drawn(q)).toEqual(['a', 'hi', 'b']);
+    });
+
+    it("matches a rule's ancestors through a server render's tree", () => {
+      quotesRules([['_ngtag-q'], [[' ', ['card']]], `"a" "b"`, 1001, 0, 0]);
+      // A snapshot's tree, which hydration puts no element in a JS parent
+      // of (see "takes a server render's lang from its native ancestors").
+      const g = globalThis as unknown as FakeNativeGlobal<FakeEl>;
+      const viewRef = g.__CreateView();
+      const qRef = g.__CreateText();
+      const openRef = g.__CreateRawText('');
+      const closeRef = g.__CreateRawText('');
+      g.__AppendElement(native(page), viewRef);
+      g.__AppendElement(viewRef, qRef);
+      g.__AppendElement(qRef, openRef);
+      g.__AppendElement(qRef, closeRef);
+      const view = new LynxElement(viewRef as never);
+      view.tagName = 'view';
+      view.setAttribute('class', 'card');
+      const q = new LynxElement(qRef as never);
+      q.tagName = 'text';
+      q.addScopeClass('_ngtag-q');
+      q.markQuote([openRef as never, closeRef as never]);
+      expect([leafText(openRef), leafText(closeRef)]).toEqual(['a', 'b']);
+    });
+
     it('keeps the language of an auto inside a quotes', () => {
       quotesRules([['fancy'], [], `"<" ">"`, 1000, 0, 0]);
       const view = doc.createElement('view');

@@ -2716,7 +2716,7 @@ export class LynxElement implements BaseLynxElement {
     const inline = String(this.#inlineStyle('quotes') ?? '');
     const inlineValue = inline ? parseQuotes(inline) : undefined;
     const matched = rules
-      ? matchedQuotesFor(this.#ruleTokens(), this.#ancestorTokens())
+      ? matchedQuotesFor(this.#ruleTokens(), this.#quoteAncestorTokens())
       : undefined;
     if (
       inlineValue !== undefined &&
@@ -2727,6 +2727,26 @@ export class LynxElement implements BaseLynxElement {
     if (!matched) return 'inherit';
     if (matched.value === null) return 'auto';
     return parseQuotes(matched.value) ?? 'inherit';
+  }
+
+  /**
+   * The tokens of this element's ancestors, nearest first, for a `quotes`
+   * rule (see #ownQuotes): up the elements #quoteParent goes through, so a
+   * hydrated element, which has no JS parent, has its native ancestors, and
+   * passing over the anonymous `<text>`s loose text shares with a `<q>` (see
+   * #regroup), which a browser has no element for, so that `.card > q`
+   * matches the `<q>` in one.
+   */
+  #quoteAncestorTokens(): (index: number) => Set<string> | undefined {
+    const ancestors: Set<string>[] = [];
+    let next = this.#quoteParent();
+    return (index) => {
+      while (ancestors.length <= index && next) {
+        if (!next.#anonymous) ancestors.push(next.#styleTokens());
+        next = next.#quoteParent();
+      }
+      return ancestors[index];
+    };
   }
 
   /**

@@ -1,5 +1,6 @@
 import { SourceMap } from 'node:module';
 import { describe, expect, it } from 'vitest';
+import { extractComponentStyles } from './component-styles.js';
 import { transformCrossThread } from './cross-thread-transform.js';
 import { importEsBuiltinsWhereNamed } from './es-builtins.js';
 import { addEntryHotAccept, addHotAccept } from './hot-updates.js';
@@ -298,6 +299,30 @@ describe("the plugin's passes with a source map", () => {
       'export const last = (list) => list.at(-1);\nexport const after = last;',
       (code) => importEsBuiltinsWhereNamed(code, '/proj/src/app/last.ts'),
     );
+  });
+
+  // The one pass that takes code out: a component's styles leave it as it
+  // comes from Angular's compiler (compileAngular in angular.ts). Every name
+  // after them, on their line and the lines below, still maps to itself.
+  it('extractComponentStyles', () => {
+    const input = [
+      'class App {}',
+      'App.ɵcmp = i0.ɵɵdefineComponent({ type: App, styles: [',
+      '  ".a[_ngcontent-%COMP%] {}"], decls: 1, vars: 0 });',
+      'export const after = App;',
+    ].join('\n');
+    const { code, map } = trackSourceMap(
+      input,
+      identityMap(input),
+      (code) => extractComponentStyles(code, '/proj/src/app/app.ts').code,
+    );
+    expect(code).not.toContain('styles');
+    const found = segments(code, map!, input);
+    // All but `styles` and the `a`, `_ngcontent` and `COMP` in its string.
+    expect(found).toHaveLength(input.match(/[A-Za-z_$][\w$]*/g)!.length - 4);
+    for (const { generated, original } of found) {
+      expect(generated).toBe(original);
+    }
   });
 
   it('buildTransformedCode, with stylesheets, scope IDs and hot updates', () => {

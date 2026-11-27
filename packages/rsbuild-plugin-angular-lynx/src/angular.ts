@@ -397,13 +397,27 @@ export const applyAngularRules = async (
         // rebuilds fast.
         const file = path.normalize(filename);
         // Lynx can't add CSS at runtime, so each component's styles leave the
-        // compiled code here and ship as CSS files the module imports.
-        const { code, components } = extractComponentStyles(
+        // compiled code here and ship as CSS files the module imports. The
+        // compiler's inline map moves with the edits (see
+        // source-map-edits.ts), and goes back inline in the cached code,
+        // where transformCompiledModule takes it out again.
+        const emitted = takeSourceMap(
           typeof contents === 'string'
             ? contents
             : Buffer.from(contents).toString(),
           file,
         );
+        let components: ReturnType<
+          typeof extractComponentStyles
+        >['components'] = [];
+        const extracted = trackSourceMap(emitted.code, emitted.map, (input) => {
+          const result = extractComponentStyles(input, file);
+          components = result.components;
+          return result.code;
+        });
+        const code = extracted.map
+          ? embedSourceMap(extracted.code, extracted.map)
+          : extracted.code;
         const stylesheets = writeModuleStylesheets({
           basePath,
           cacheDir: componentCssCacheDir,

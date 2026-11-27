@@ -23,13 +23,17 @@ const CYAN_PNG =
  * to its bottom (red), and its top again (green, the source untouched); a
  * canvas cropped to its right (blue), and cropped from left of it (clear,
  * then red); a Blob cropped wider than it (cyan, then clear); and an Image
- * cropped (cyan).
+ * cropped (cyan). Then a bitmaprenderer canvas (issue #730) showing red,
+ * the width of the bitmap it was handed, the sizes of its bitmaps (its 2 by
+ * 1 bitmap's, not its 4 by 4 size), and the canvas shown red again, then
+ * after it's handed null.
  */
 const BITMAP_READS = [
   '0,128,0,255 255,0,0,255 0,0,255,255 0,0,0,0 255,0,0,255 255,0,0,255 0,0,0,0 none',
   '0,255,0,255 255,0,0,255 255,0,0,255 0,255,0,255',
   '0,0,255,255 0,0,0,0 255,0,0,255',
   '0,255,255,255 0,0,0,0 0,255,255,255',
+  '255,0,0,255 0 2x1 2x1 2x1 255,0,0,255 0,0,0,0',
 ].join(' ');
 
 const VERTEX = `#version 300 es
@@ -97,8 +101,16 @@ const colorName = ({ 0: r, 1: g, 2: b }: ArrayLike<number>): string =>
  * OffscreenCanvas cleared red and transferred while it draws to no color
  * buffer (`drawBuffers([NONE])`): its bitmap, the canvas the transfer
  * cleared, and its draw buffer, still NONE. Then createImageBitmap()'s crop
- * rectangle and its other sources (issue #731, see #cropBitmaps). When a
- * read is wrong, the line shows them all. It's in the canvas's row, and short, so the page
+ * rectangle and its other sources (issue #731, see #cropBitmaps). Then an
+ * OffscreenCanvas's `bitmaprenderer` context (issue #730) handed a red
+ * bitmap with `transferFromImageBitmap()`: the canvas drawn (red), the
+ * bitmap's width (0, as the transfer detached it), the sizes of
+ * createImageBitmap() of the canvas and of two transferToImageBitmap()s
+ * (the 2 by 1 bitmap's, not the 4 by 4 canvas's), the canvas shown red
+ * again, and the canvas once handed `null` (transparent). The second canvas
+ * in the row shows a red bitmap the same way, which the flow's screenshot
+ * shows. When a read is wrong, the line shows them all. It's in the
+ * canvas's row, and short, so the page
  * is no taller: the links under it stay on the Android emulator's screen,
  * where the flows tap them.
  *
@@ -155,6 +167,12 @@ const colorName = ({ 0: r, 1: g, 2: b }: ArrayLike<number>): string =>
         (bindfirstframe)="drawVideo('hidden')"
         (binderror)="setVideoResult('hidden', 'error')"
       ></video>
+      <canvas
+        #shown
+        width="2"
+        height="2"
+        style="width: 40px; height: 40px; margin-left: 8px;"
+      ></canvas>
       <view style="margin-left: 12px;">
         <text flatten="false">WebGL: {{ result() }}</text>
         <text flatten="false">Bitmap: {{ resultBitmap() }}</text>
@@ -190,6 +208,7 @@ const colorName = ({ 0: r, 1: g, 2: b }: ArrayLike<number>): string =>
 })
 export class CanvasRoute {
   readonly canvas = viewChild.required<ElementRef<LynxCanvasElement>>('canvas');
+  readonly shown = viewChild.required<ElementRef<LynxCanvasElement>>('shown');
   readonly result = signal('…');
   readonly result2D = signal('…');
   readonly resultBitmap = signal('…');
@@ -586,7 +605,7 @@ export class CanvasRoute {
     target.width = 1;
     target.height = 1;
     const context = target.getContext('2d')!;
-    const read = (bitmap: ImageBitmap) => {
+    const read = (bitmap: ImageBitmap | OffscreenCanvas) => {
       context.clearRect(0, 0, 1, 1);
       context.drawImage(bitmap, 0, 0, 1, 1);
       return Array.from(context.getImageData(0, 0, 1, 1).data).join(',');
@@ -642,6 +661,45 @@ export class CanvasRoute {
       drawBuffer === glSourceContext.NONE ? 'none' : `${drawBuffer}`,
       ...(await this.#cropBitmaps()),
     );
+
+    /**
+     * A red frame drawn off screen and taken with transferToImageBitmap(),
+     * which a bitmaprenderer context shows with transferFromImageBitmap(),
+     * as web code shows an OffscreenCanvas's frames.
+     */
+    const redFrame = (width: number, height: number) => {
+      const frame = new OffscreenCanvas(width, height);
+      const frameContext = frame.getContext('2d')!;
+      frameContext.fillStyle = 'rgb(255, 0, 0)';
+      frameContext.fillRect(0, 0, width, height);
+      return frame.transferToImageBitmap();
+    };
+    // A bitmap smaller than its canvas: the canvas reads as the bitmap, at
+    // the bitmap's size, which the shell answers with, and a transfer leaves
+    // it a blank of that size, as the HTML spec has it.
+    const shownOffscreen = new OffscreenCanvas(4, 4);
+    const renderer = shownOffscreen.getContext('bitmaprenderer');
+    if (!renderer) return 'no bitmaprenderer';
+    const handed = redFrame(2, 1);
+    renderer.transferFromImageBitmap(handed);
+    reads.push(read(shownOffscreen), `${handed.width}`);
+    const size = (bitmap: ImageBitmap) => `${bitmap.width}x${bitmap.height}`;
+    reads.push(
+      size(await createImageBitmap(shownOffscreen)),
+      size(shownOffscreen.transferToImageBitmap()),
+      size(shownOffscreen.transferToImageBitmap()),
+    );
+    // Red again, and read as red, first: the transfers left the canvas
+    // transparent, so null has to be what clears it.
+    renderer.transferFromImageBitmap(redFrame(2, 1));
+    reads.push(read(shownOffscreen));
+    renderer.transferFromImageBitmap(null);
+    reads.push(read(shownOffscreen));
+    const shown = this.shown().nativeElement as unknown as HTMLCanvasElement;
+    const shownRenderer = shown.getContext('bitmaprenderer');
+    if (!shownRenderer) return 'no bitmaprenderer on <canvas>';
+    shownRenderer.transferFromImageBitmap(redFrame(2, 2));
+
     const all = reads.join(' ');
     return all === BITMAP_READS ? 'ok' : all;
   }

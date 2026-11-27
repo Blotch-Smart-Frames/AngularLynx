@@ -8,6 +8,7 @@ import {
   LynxTextMetrics,
 } from './canvas-2d-context';
 import { LynxDetachedCanvas, LynxOffscreenCanvas } from './detached-canvas';
+import { LynxImageBitmapRenderingContext } from './bitmap-renderer-context';
 import { createImageBitmap, LynxImageBitmap, LynxImageElement } from './image';
 import { LynxPath2D } from './path';
 import { CANVAS_SOURCE } from './canvas-source';
@@ -52,6 +53,9 @@ describe('installCanvasGlobals', () => {
     expect(target['HTMLImageElement']).toBe(LynxImageElement);
     expect(target['ImageBitmap']).toBe(LynxImageBitmap);
     expect(target['createImageBitmap']).toBe(createImageBitmap);
+    expect(target['ImageBitmapRenderingContext']).toBe(
+      LynxImageBitmapRenderingContext,
+    );
     expect(target['devicePixelRatio']).toBe(3);
     expect(target['document'].createElement('IMG')).toBeInstanceOf(
       LynxImageElement,

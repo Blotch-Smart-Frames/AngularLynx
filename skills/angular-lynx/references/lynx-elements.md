@@ -193,8 +193,9 @@ afterNextRender(() => {
 - **`createImageBitmap()`** takes a canvas, a Blob, a loaded `Image`, an `ImageBitmap` (a copy, with new options) or an `ImageData`, whole or cropped (`createImageBitmap(source, sx, sy, sw, sh, options)`, as for a sprite sheet; outside the source is transparent). The phone copies pixels it already has, so cropping a bitmap or an `Image` sends nothing again, and an `ImageData`'s bytes cross once.
 - **Batched:** calls reach the phone once per task, except those that answer (`measureText()`, `getImageData()`, `isPointInPath()`), which send everything recorded first. Avoid them in a tight loop.
 - **`filter`:** the CSS filter functions work (`blur()`, `drop-shadow()`, `sepia()`, …); `url()` is kept but not applied. Each filtered draw filters a canvas-sized layer on the main thread (two, when its shadow is cast from a shape far off the canvas): filter one `drawImage()` of a canvas, not many small shapes.
-- **Not there:** `wordSpacing`, `fontKerning`, `fontStretch`, `fontVariantCaps`, `textRendering` (kept, no effect); `getContext('bitmaprenderer')` (draw an ImageBitmap with `drawImage()`). Color emoji show only in a plain-color `fillText()`.
-- A canvas has the kind of context it was first asked for: after `getContext('2d')`, `getContext('webgl2')` is `null`.
+- **`bitmaprenderer`:** `canvas.getContext('bitmaprenderer').transferFromImageBitmap(offscreen.transferToImageBitmap())` shows an OffscreenCanvas's frame, as on the web. The bitmap is detached (width 0 after), and the canvas shows it scaled to its CSS size and reads as it (at the bitmap's size). `transferFromImageBitmap(null)` clears it.
+- **Not there:** `wordSpacing`, `fontKerning`, `fontStretch`, `fontVariantCaps`, `textRendering` (kept, no effect). Color emoji show only in a plain-color `fillText()`.
+- A canvas has the kind of context it was first asked for: after `getContext('2d')`, `getContext('webgl2')` and `getContext('bitmaprenderer')` are `null`.
 
 ### 3D with `<canvas>`
 

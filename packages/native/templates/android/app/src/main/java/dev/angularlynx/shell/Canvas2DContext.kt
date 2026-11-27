@@ -19,10 +19,8 @@ import android.graphics.Shader
 import android.graphics.SweepGradient
 import android.graphics.Typeface
 import android.graphics.BitmapShader
-import android.graphics.SurfaceTexture
 import android.os.Build
 import android.util.Log
-import android.view.Surface
 import androidx.annotation.RequiresApi
 import com.lynx.react.bridge.JavaOnlyArray
 import com.lynx.react.bridge.ReadableArray
@@ -86,11 +84,8 @@ class Canvas2DContext(
     private val stack = ArrayList<State>()
     private var destroyed = false
 
-    private var view: CanvasUI? = null
-    private var surface: Surface? = null
-    private var surfaceTexture: SurfaceTexture? = null
-    /** The bitmap was drawn on and not shown yet, waiting for a surface. */
-    private var framePending = false
+    /** Shows the bitmap in the canvas's view. */
+    private val presenter = BitmapPresenter(TAG)
 
     /** Decoded images as bitmaps, made the first time each is drawn. */
     private val decodedBitmaps = WeakHashMap<DecodedImage, Bitmap>()
@@ -206,7 +201,7 @@ class Canvas2DContext(
     fun destroy() {
         if (destroyed) return
         destroyed = true
-        releaseSurface()
+        presenter.release()
         bitmap?.recycle()
         bitmap = null
         canvas = null
@@ -216,59 +211,17 @@ class Canvas2DContext(
 
     @Synchronized
     override fun attachView(canvas: CanvasUI?) {
-        if (view === canvas) return
-        view = canvas
-        canvas?.setOpaque(!alpha)
-        surfaceChanged()
+        if (presenter.attach(canvas, !alpha)) surfaceChanged()
     }
 
     @Synchronized
     override fun surfaceChanged() {
         if (destroyed) return
-        val texture = view?.surface
-        if (texture !== surfaceTexture) {
-            releaseSurface()
-            if (texture != null) {
-                surface = Surface(texture)
-                surfaceTexture = texture
-                // A new surface shows nothing until it's drawn to.
-                framePending = true
-            }
-        }
-        if (framePending) present()
+        if (presenter.surfaceChanged()) present()
     }
-
-    private fun releaseSurface() {
-        surface?.release()
-        surface = null
-        surfaceTexture = null
-    }
-
-    private val presentPaint = Paint(Paint.FILTER_BITMAP_FLAG)
 
     /** Copies the bitmap into the view's surface, scaled to its size. */
-    private fun present() {
-        val target = surface
-        if (target == null || !target.isValid) {
-            framePending = true
-            return
-        }
-        try {
-            val c = target.lockHardwareCanvas()
-            try {
-                c.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
-                bitmap?.let { c.drawBitmap(it, null, Rect(0, 0, c.width, c.height), presentPaint) }
-            } finally {
-                target.unlockCanvasAndPost(c)
-            }
-            framePending = false
-        } catch (error: RuntimeException) {
-            // The surface went as it was drawn to: it's drawn again when
-            // the next one comes.
-            Log.w(TAG, "Could not show the canvas: ${error.message}")
-            framePending = true
-        }
-    }
+    private fun present() = presenter.present(bitmap)
 
     @Synchronized
     override fun snapshot(): DecodedImage? {
@@ -289,7 +242,7 @@ class Canvas2DContext(
     override fun clearForTransfer() {
         val target = bitmap ?: return
         target.eraseColor(if (alpha) Color.TRANSPARENT else Color.BLACK)
-        if (view != null) present()
+        if (presenter.view != null) present()
     }
 
     /** The bitmap as a PNG or JPEG file, or null when it has no pixels. */
@@ -1085,27 +1038,6 @@ class Canvas2DContext(
         if (!source.hasKey("image") || source.getType("image") !in NUMBER_TYPES) return null
         val image = DecodedImages.get(source.getDouble("image").toInt()) ?: return null
         return decodedBitmaps.getOrPut(image) { bitmapOf(image) }
-    }
-
-    /** Pixels as a bitmap, premultiplied, as Android's canvas draws only those. */
-    private fun bitmapOf(image: DecodedImage): Bitmap {
-        val pixels = image.pixels.duplicate().order(ByteOrder.nativeOrder())
-        pixels.rewind()
-        val bytes = if (image.premultiplied) {
-            pixels
-        } else {
-            val copy = ByteBuffer.allocateDirect(image.width * image.height * 4).order(ByteOrder.nativeOrder())
-            for (i in 0 until image.width * image.height * 4 step 4) {
-                val a = pixels.get(i + 3).toInt() and 0xff
-                for (c in 0 until 3) copy.put(i + c, (((pixels.get(i + c).toInt() and 0xff) * a + 127) / 255).toByte())
-                copy.put(i + 3, a.toByte())
-            }
-            copy
-        }
-        bytes.rewind()
-        return Bitmap.createBitmap(image.width, image.height, Bitmap.Config.ARGB_8888).apply {
-            copyPixelsFromBuffer(bytes)
-        }
     }
 
     /**

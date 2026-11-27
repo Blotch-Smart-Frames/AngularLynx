@@ -207,7 +207,7 @@ dependencies {
     // the media3 version xelement-video depends on.
     implementation("org.lynxsdk.lynx:xelement-video:$lynxVersion")
     implementation("androidx.media3:media3-ui:1.0.2")
-    implementation("androidx.media3:media3-common:1.0.2")
+    implementation("androidx.media3:media3-common:1.11.1")
     // cspell:words servalsvg libserval
     // ServalSVG, the engine <svg> draws with. xelement-svg asks for 0.0.2,
     // whose AAR has libserval_svg.so for arm64-v8a, armeabi-v7a and x86 but

@@ -75,7 +75,7 @@ const colorName = ({ 0: r, 1: g, 2: b }: ArrayLike<number>): string =>
       style="width: 20px; height: 40px; margin-top: 16px;"
       [style.display]="hidden() ? 'none' : 'flex'"
       (bindfirstframe)="start()"
-      (binderror)="reads.set(['error'])"
+      (binderror)="error.set(true)"
     ></video>
     <text flatten="false" style="margin-top: 8px;"
       >Video toggled: {{ result() }}</text
@@ -89,14 +89,25 @@ export class VideoToggleRoute {
   readonly hidden = signal(false);
   /** Each step's read, in STEPS' order. */
   readonly reads = signal<string[]>([]);
+  /**
+   * Whether the player reported an error. Kept apart from the reads: one
+   * before the first frame means the run never starts, and as a read it
+   * would show as a run in progress until the flow timed out.
+   */
+  readonly error = signal(false);
   #started = false;
 
   /**
    * One read when every step's agrees, or each step's when they don't (or
-   * how many are done, while they agree so far).
+   * how many are done, while they agree so far), after "error" if the player
+   * reported one.
    */
   readonly result = computed(() => {
     const reads = this.reads();
+    if (this.error()) {
+      const done = reads.map((read, index) => `${STEPS[index]} ${read}`);
+      return ['error', ...done].join('; ');
+    }
     const agree = reads.every((read) => read === reads[0]);
     if (agree && reads.length === STEPS.length) return reads[0];
     if (agree) return `… (${reads.length} of ${STEPS.length})`;

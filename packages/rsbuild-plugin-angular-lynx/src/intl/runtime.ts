@@ -51,6 +51,62 @@ export const pickLocale = (
   return tags.values().next().value ?? 'en';
 };
 
+/**
+ * Where FormatJS's locale matcher looks for the host's default locale, on
+ * `Intl`, before it asks a host `Intl` of the engine's own. It reads it once,
+ * as its module loads. The matcher has done so since 0.10.3, which every
+ * polyfill since DateTimeFormat 8.2 and NumberFormat 10.1 uses.
+ */
+export const HOST_DEFAULT_LOCALE = Symbol.for(
+  '@formatjs/intlHostDefaultLocale',
+);
+
+/**
+ * FormatJS formats in the first locale whose data loaded when it's given
+ * none (`new Intl.NumberFormat()`, `n.toLocaleString()`), where a browser
+ * uses the user's language. Given a host's default, FormatJS uses that when
+ * the app has data for it, and the first locale otherwise. So this makes the
+ * phone's language (`appLocale`) the host's default, and the app's source
+ * locale, whose data the build loads first, stays the fallback, as
+ * `provideLocale()` picks Angular's `LOCALE_ID`.
+ *
+ * The polyfills that use the key keep their default in their own module, set
+ * only from the first data they load: ListFormat, DisplayNames and
+ * RelativeTimeFormat have no way to change it at all. So this runs from the
+ * generated module's first import, once `Intl.getCanonicalLocales` is there
+ * and before any polyfill loads the matcher. Earlier releases ignore the key,
+ * and {@link useAppLocaleByDefault} sets theirs.
+ *
+ * @param intl - The global `Intl`, unless a test passes its own.
+ */
+export const useAppLocaleAsHostDefault = (
+  intl: Record<PropertyKey, unknown> = (
+    globalThis as unknown as { Intl: Record<PropertyKey, unknown> }
+  ).Intl,
+): void => {
+  const appLocale = globalProp('appLocale');
+  if (appLocale === undefined) return;
+  let tag: string;
+  try {
+    tag = (intl['getCanonicalLocales'] as (locale: string) => string[])(
+      appLocale,
+    )[0]!;
+  } catch {
+    // Not a locale; the host app sent something else.
+    return;
+  }
+  // Without its extensions, as FormatJS reads a host's own default:
+  // Android 14 adds the user's regional preferences, such as `-u-mu-celsius`,
+  // and a default with them would be a locale with no data of its own.
+  // An extension starts at its one-letter singleton, such as the `u`.
+  const parts = tag.split('-');
+  const extension = parts.findIndex((part) => part.length === 1);
+  Object.defineProperty(intl, HOST_DEFAULT_LOCALE, {
+    configurable: true,
+    value: (extension < 0 ? parts : parts.slice(0, extension)).join('-'),
+  });
+};
+
 /** A FormatJS constructor, with the statics it keeps its locales in. */
 type FormatJsConstructor = {
   availableLocales?: Set<string>;
@@ -58,12 +114,12 @@ type FormatJsConstructor = {
 };
 
 /**
- * FormatJS formats in the first locale whose data loaded when it's given
- * none (`new Intl.NumberFormat()`, `n.toLocaleString()`), where a browser
- * uses the user's language. Each constructor reads its default from
+ * The default locale of the FormatJS releases from before
+ * {@link HOST_DEFAULT_LOCALE}: each constructor reads it from
  * `__defaultLocale` on every call, so a getter there makes it the phone's
  * language (`appLocale`) when the app has data for it, and the source locale
- * otherwise, as `provideLocale()` picks Angular's `LOCALE_ID`.
+ * otherwise. Apps may still have those releases: the plugin's peer ranges
+ * take them.
  */
 const useAppLocaleByDefault = (
   intl: Record<string, unknown>,
@@ -76,14 +132,24 @@ const useAppLocaleByDefault = (
     const constructor = intl[name] as FormatJsConstructor | undefined;
     if (!(constructor?.availableLocales instanceof Set)) continue;
     const available = constructor.availableLocales;
+    const pick = (): string =>
+      pickLocale(
+        available,
+        [globalProp('appLocale'), sourceLocale],
+        canonicalize,
+      );
+    // Later releases of NumberFormat, DateTimeFormat and PluralRules keep
+    // the default in their module, which only their own setter reaches.
+    // It's what they fall back to when the app has no data for the host's
+    // default, and would be the first locale whose data loaded: `en` for an
+    // `en-US` app, where a browser says `en-US`.
+    Object.getOwnPropertyDescriptor(constructor, '__defaultLocale')?.set?.call(
+      constructor,
+      pick(),
+    );
     Object.defineProperty(constructor, '__defaultLocale', {
       configurable: true,
-      get: () =>
-        pickLocale(
-          available,
-          [globalProp('appLocale'), sourceLocale],
-          canonicalize,
-        ),
+      get: pick,
       // FormatJS sets it to the first locale it gets data for.
       set: () => {},
     });
@@ -99,6 +165,7 @@ type ZoneTransitions = [
 ][];
 
 type FormatJsDateTimeFormat = {
+  availableLocales: Set<string>;
   tzData: Record<string, ZoneTransitions>;
   __defaultTimeZone?: string;
   __addTZData: (data: unknown) => void;
@@ -179,7 +246,7 @@ const useDeviceTimeZoneByDefault = (
   const transitions = new Map<string, ZoneTransitions>();
   const zone = (): string => globalProp('appTimeZone') ?? UNKNOWN_TIME_ZONE;
   /**
-   * Called before FormatJS reads the zones, so the device's is there.
+   * Adds the device's zone to the zones, unless they have it already.
    */
   const addDeviceZone = (): string => {
     const name = zone();
@@ -200,16 +267,38 @@ const useDeviceTimeZoneByDefault = (
     }
     return name;
   };
-  Object.defineProperty(DateTimeFormat, '__defaultTimeZone', {
+  /**
+   * The zone this last made the default. Once the default is another, the
+   * app picked it with `__setDefaultTimeZone()`, and it stays.
+   */
+  let deviceZone: string | undefined;
+  const useDeviceZone = (): void => {
+    if (
+      deviceZone !== undefined &&
+      DateTimeFormat.__defaultTimeZone !== deviceZone
+    ) {
+      return;
+    }
+    deviceZone = addDeviceZone();
+    // A value, not a getter: since 8.2, DateTimeFormat takes a default only
+    // when it's a plain value naming a zone it has, and uses the host's zone
+    // or UTC otherwise.
+    Object.defineProperty(DateTimeFormat, '__defaultTimeZone', {
+      configurable: true,
+      enumerable: true,
+      writable: true,
+      value: deviceZone,
+    });
+  };
+  // Every `new Intl.DateTimeFormat()`, and so every `toLocaleString()` on a
+  // date, reads `availableLocales` before it takes the default zone. So the
+  // default is the zone the host app last sent, each time one is made.
+  const available = DateTimeFormat.availableLocales;
+  Object.defineProperty(DateTimeFormat, 'availableLocales', {
     configurable: true,
-    get: addDeviceZone,
-    // `__setDefaultTimeZone()` still picks another zone.
-    set: (value: string) => {
-      Object.defineProperty(DateTimeFormat, '__defaultTimeZone', {
-        configurable: true,
-        writable: true,
-        value,
-      });
+    get: () => {
+      useDeviceZone();
+      return available;
     },
   });
   // Loading FormatJS's zones replaces the whole map.
@@ -218,7 +307,7 @@ const useDeviceTimeZoneByDefault = (
     addTZData.call(DateTimeFormat, data);
     addDeviceZone();
   };
-  addDeviceZone();
+  useDeviceZone();
 };
 
 export type IntlSetupOptions = {

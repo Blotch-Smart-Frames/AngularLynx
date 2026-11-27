@@ -58,6 +58,12 @@
       "default": false,
       "description": "Whether touch events carry every finger on the screen, as a browser's do (Lynx's enableMultiTouch page config). Off, a touch event has one finger and a second is never reported. On, a second finger fires its own touchstart and touches lists them all, which is how an app zooms with two fingers: Lynx recognizes no pinch. Taps don't fire while more than one finger is down. Lynx for Web carries every finger either way."
     },
+    "backgroundTreeShaking": {
+      "type": "string",
+      "enum": ["safe", "aggressive"],
+      "default": "safe",
+      "description": "How much of the app's own code the background thread's script keeps. safe runs every top-level statement of the files the background thread loads (those that define a backgroundFn() or a MainThreadRef, and their imports). aggressive drops the app's module-level values that nothing on the background thread reads, which makes that script smaller, but such a declaration no longer runs there even when its initializer does something on purpose, such as subscribing to a global event emitter."
+    },
     "browser": {
       "type": "string",
       "description": "Angular: the app's entry point. Read by @blotch/rsbuild-plugin-angular-lynx and `ng test`, and rspeedy's `source.entry` unless lynx.config.ts sets one."

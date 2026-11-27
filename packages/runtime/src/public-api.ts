@@ -132,6 +132,9 @@ export type { BaseLynxElement } from './lib/lynx-element/types';
 export type { LynxCanvasRenderingContext2D } from './lib/canvas/canvas-2d-context';
 export type { LynxCanvasElement } from './lib/canvas/canvas-element';
 export type { LynxWebGL2RenderingContext } from './lib/canvas/webgl2-context';
+// Called by the build plugin in each module that asks for a WebGL2 context,
+// so apps that never draw leave the context out of their bundle.
+export { ɵenableWebGL2 } from './lib/canvas/enable-webgl2';
 export type { LynxPointerEvent } from './lib/lynx-element/pointer-events';
 export type { LynxDOMRect } from './lib/lynx-element/layout';
 // The type of `$event` on element events. Angular infers it in templates;

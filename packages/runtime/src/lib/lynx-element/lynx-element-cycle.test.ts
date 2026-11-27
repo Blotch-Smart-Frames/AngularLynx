@@ -415,3 +415,170 @@ describe('LynxElement cycle check cost', () => {
     expect(() => assertAcyclic()).not.toThrow();
   });
 });
+
+// LynxDocument marks each element it makes (markNew, or markUnplaced for a
+// raw-text or an anchor): its native element is in no tree until the first
+// insert, so that insert asks native nothing about where it is. These are an
+// @for's rows, each a native read or more the less on PrimJS.
+describe('LynxElement inserts of new elements', () => {
+  const counts = { parent: 0, uid: 0, first: 0, next: 0 };
+
+  beforeEach(() => {
+    vi.stubGlobal('__PROFILE__', false);
+    installNativeFakes();
+    const g = globalThis as unknown as FakeNativeGlobal<FakeEl>;
+    const { __GetParent, __GetElementUniqueID, __FirstElement, __NextElement } =
+      g;
+    g.__GetParent = (n) => (counts.parent++, __GetParent(n));
+    g.__GetElementUniqueID = (n) => (counts.uid++, __GetElementUniqueID(n));
+    g.__FirstElement = (n) => (counts.first++, __FirstElement(n));
+    g.__NextElement = (n) => (counts.next++, __NextElement(n));
+  });
+
+  const reads = (): number =>
+    counts.parent + counts.uid + counts.first + counts.next;
+
+  const resetCounts = (): void => {
+    counts.parent = 0;
+    counts.uid = 0;
+    counts.first = 0;
+    counts.next = 0;
+  };
+
+  /**
+   * An element as LynxDocument makes it.
+   */
+  const made = (tag: string): LynxElement => {
+    const el = wrap(makeEl(tag), tag);
+    if (tag === 'raw-text' || tag === 'comment') el.markUnplaced();
+    else el.markNew();
+    return el;
+  };
+
+  /**
+   * A chain of `depth` views under the page; returns the deepest.
+   */
+  const chain = (depth: number): LynxElement => {
+    let bottom = wrap(pageRoot, 'page');
+    for (let i = 0; i < depth; i++) {
+      const next = made('view');
+      bottom.appendChild(next);
+      bottom = next;
+    }
+    return bottom;
+  };
+
+  it('puts new views and <text> rows before an anchor with no native reads', () => {
+    const bottom = chain(20);
+    const anchor = made('comment');
+    bottom.appendChild(anchor);
+    resetCounts();
+
+    // A view row, and a <text> row built with its raw-text first, as
+    // Angular builds `<text>{{ i }}</text>`.
+    for (let i = 0; i < 50; i++) {
+      bottom.insertBefore(made('view'), anchor);
+      const text = made('text');
+      text.appendChild(made('raw-text'));
+      bottom.insertBefore(text, anchor);
+    }
+
+    // Each made element's registration reads its id, and nothing else is
+    // read. A view was 7 reads, and a <text> row 16.
+    expect(counts.uid).toBe(150);
+    expect(reads()).toBe(150);
+    expect((bottom.element as unknown as FakeEl).children).toHaveLength(101);
+    expect(() => assertAcyclic()).not.toThrow();
+  });
+
+  it('refuses a new element into itself', () => {
+    const leaf = made('view');
+    const text = made('text');
+    const run = made('raw-text');
+    text.appendChild(run);
+
+    leaf.appendChild(leaf);
+    text.insertBefore(text, run);
+
+    expect((leaf.element as unknown as FakeEl).children).toEqual([]);
+    expect((text.element as unknown as FakeEl).children).toEqual([run.element]);
+  });
+
+  it('refuses a new element into its raw-text', () => {
+    const text = made('text');
+    const run = made('raw-text');
+    text.appendChild(run);
+
+    run.appendChild(text);
+
+    expect((run.element as unknown as FakeEl).children).toEqual([]);
+    expect((text.element as unknown as FakeEl).parent).toBeNull();
+    expect(() => assertAcyclic()).not.toThrow();
+  });
+
+  it('refuses a new element into an element of its subtree, searching native', () => {
+    // A row with an element in it isn't one the wrappers answer for: its
+    // children's own children may be native only. Only the row's parent
+    // isn't read, as it has none.
+    const row = made('view');
+    const inner = made('view');
+    row.appendChild(inner);
+    const run = made('raw-text');
+    inner.appendChild(run);
+    resetCounts();
+
+    inner.appendChild(row);
+
+    expect(counts.parent).toBe(0);
+    expect(counts.first).toBeGreaterThan(0);
+    expect((inner.element as unknown as FakeEl).children).toEqual([
+      run.element,
+    ]);
+    expect((row.element as unknown as FakeEl).parent).toBeNull();
+  });
+
+  it('refuses a new element into a native child its wrapper does not list', () => {
+    // A static block's elements and a list's items are put in natively.
+    for (const [tag, block] of [
+      ['view', true],
+      ['list', false],
+    ] as const) {
+      const root = made(tag);
+      if (block) root.setStaticBlock([], '', false);
+      const nativeChild = makeEl('view');
+      (globalThis as unknown as FakeNativeGlobal<FakeEl>).__AppendElement(
+        root.element as unknown as FakeEl,
+        nativeChild,
+      );
+      const child = wrap(nativeChild, 'view');
+
+      child.appendChild(root);
+
+      expect(nativeChild.children).toEqual([]);
+      expect((root.element as unknown as FakeEl).parent).toBeNull();
+    }
+  });
+
+  it('reads where an element a list took is before moving it', () => {
+    // The list puts the element in the native list itself, so a later move
+    // may be one native would lose (see #removeIfMoveWouldBeLost).
+    const page = wrap(pageRoot, 'page');
+    const list = made('view');
+    page.appendChild(list);
+    const item = made('view');
+    list.adoptVirtualChild(item);
+    (globalThis as unknown as FakeNativeGlobal<FakeEl>).__AppendElement(
+      list.element as unknown as FakeEl,
+      item.element as unknown as FakeEl,
+    );
+    const other = made('view');
+    page.appendChild(other);
+    resetCounts();
+
+    other.appendChild(item);
+
+    expect(counts.parent).toBeGreaterThan(0);
+    expect((item.element as unknown as FakeEl).parent).toBe(other.element);
+    expect(() => assertAcyclic()).not.toThrow();
+  });
+});

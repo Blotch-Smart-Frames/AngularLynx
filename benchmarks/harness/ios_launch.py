@@ -332,7 +332,7 @@ RECORDING_START_TIMEOUT = 120
 FAILURES_IN_A_ROW = 3
 
 
-def record_simulator(udid, bundle_id, trace, seconds, memory_after):
+def record_simulator(udid, bundle_id, trace, seconds, memory_after, thermal=True):
     """Records a launch on the Simulator, and returns the app's (pid, bytes)
     from footprint memory_after seconds into the recording, or None.
 
@@ -341,13 +341,20 @@ def record_simulator(udid, bundle_id, trace, seconds, memory_after):
     memory comes from footprint: a Simulator app is a process on the Mac.
     It's read once, after the app has drawn and settled rather than during
     the launch, where footprint's reading would take the Mac's time from it.
+
+    thermal=False leaves out the Thermal State instrument, for a Mac (a
+    GitHub runner, a virtual machine) where it keeps xctrace from ever
+    starting the recording.
     """
     command = [
         "xcrun", "xctrace", "record",
         "--instrument", "Points of Interest",
         "--instrument", "dyld Activity",
+    ]
+    if thermal:
         # The Mac's thermal state, which the Simulator runs under.
-        "--instrument", "Thermal State",
+        command += ["--instrument", "Thermal State"]
+    command += [
         "--device", udid,
         "--time-limit", f"{seconds}s",
         "--output", trace,
@@ -443,6 +450,12 @@ def main():
         help="drop a run whose recording ends with the Mac's 1-minute load average over this, and "
         "launch it again once the load is under it (with --simulator, default: half the Mac's cores; "
         "off: no limit, every row still records the load)",
+    )
+    parser.add_argument(
+        "--no-thermal",
+        action="store_true",
+        help="with --simulator, record without the Thermal State instrument (its column stays empty), "
+        "for a Mac where it keeps the recording from starting",
     )
     parser.add_argument(
         "--max-wait",
@@ -541,7 +554,9 @@ def main():
             memory = None
             try:
                 if args.simulator:
-                    memory = record_simulator(args.device, bundle_id, trace, args.seconds, args.memory_after)
+                    memory = record_simulator(
+                        args.device, bundle_id, trace, args.seconds, args.memory_after, thermal=not args.no_thermal
+                    )
                 else:
                     record(args.device, bundle_id, trace, args.seconds, [], light=args.light)
             except subprocess.CalledProcessError as error:

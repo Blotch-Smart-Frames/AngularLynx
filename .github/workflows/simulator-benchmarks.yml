@@ -187,16 +187,40 @@ jobs:
           sleep 10
           xcrun simctl io "$UDID" screenshot "$RUNNER_TEMP/instruments/launched.png"
           xcrun simctl terminate "$UDID" com.angularlynx.bench.angularlynx
-          perl -e 'alarm 180; exec @ARGV' xcrun xctrace record --instrument 'Points of Interest' \
-            --device "$UDID" --time-limit 5s --output "$RUNNER_TEMP/instruments/check.trace" \
-            --no-prompt --launch -- com.angularlynx.bench.angularlynx
+          # Each instrument the harness records with, on its own beside
+          # Points of Interest: on this runner, Points of Interest alone
+          # recorded and the three together never started (#854).
+          check() {
+            name=$1
+            shift
+            if perl -e 'alarm 90; exec @ARGV' xcrun xctrace record --instrument 'Points of Interest' "$@" \
+              --device "$UDID" --time-limit 3s --output "$RUNNER_TEMP/instruments/$name.trace" \
+              --no-prompt --launch -- com.angularlynx.bench.angularlynx > "$RUNNER_TEMP/instruments/$name.log" 2>&1; then
+              echo "$name: records"
+            else
+              echo "$name: doesn't record"
+              cat "$RUNNER_TEMP/instruments/$name.log"
+              xcrun simctl terminate "$UDID" com.angularlynx.bench.angularlynx || true
+              return 1
+            fi
+          }
+          check points
+          if ! check dyld --instrument 'dyld Activity'; then
+            echo "::error::xctrace can't record dyld Activity here, which fully drawn is timed from."
+            exit 1
+          fi
+          # The thermal state is only a column in the CSVs.
+          if ! check thermal --instrument 'Thermal State'; then
+            echo "::warning::xctrace can't record Thermal State here, so the launches leave it out."
+            echo "NO_THERMAL=--no-thermal" >> "$GITHUB_ENV"
+          fi
       - name: Launch the Pokédex
         timeout-minutes: 45
         env:
           UDID: ${{ steps.simulator.outputs.udid }}
         run: >-
           python3 -u benchmarks/harness/ios_launch.py --simulator --device "$UDID"
-          --runs "$LAUNCH_RUNS" ${MAX_LOAD:+--max-load "$MAX_LOAD"} --max-wait "$MAX_WAIT"
+          --runs "$LAUNCH_RUNS" ${MAX_LOAD:+--max-load "$MAX_LOAD"} --max-wait "$MAX_WAIT" ${NO_THERMAL:+"$NO_THERMAL"}
           --app angular-lynx=com.angularlynx.bench.angularlynx
           --app react-lynx=com.angularlynx.bench.rival
           --out "$RESULTS/launch-$(date -u +%F)-react-lynx.csv"
@@ -208,6 +232,7 @@ jobs:
           python3 -u benchmarks/harness/ios_mount.py --simulator --device "$UDID"
           --rival react-lynx --runs "$MOUNT_RUNS"
           ${MOUNT_SCREENS:+--screens "$MOUNT_SCREENS"} ${MAX_LOAD:+--max-load "$MAX_LOAD"} --max-wait "$MAX_WAIT"
+          ${NO_THERMAL:+"$NO_THERMAL"}
       # The last night's history, from the newest run of this workflow on
       # master that finished. Artifacts last 90 days, so a gap that long
       # starts a new history, as does the first night. A history that's

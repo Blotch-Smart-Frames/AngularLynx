@@ -1312,6 +1312,21 @@ export class LynxElement implements BaseLynxElement {
   static #pendingReleases = new Set<LynxElement>();
 
   /**
+   * The elements that asked for the platform's animators
+   * (`enable-new-animator` false), which Angular hasn't destroyed. A handful
+   * at most: `ui-spinner`'s turning view, a skeleton, an indeterminate
+   * progress bar. See #endPlatformAnimations.
+   */
+  static #platformAnimated = new Set<LynxElement>();
+
+  /**
+   * The platform-animated elements under each element Angular destroyed
+   * whose animations it ended, until it's released, or put back in the tree
+   * and given them again (see #keepIfDestroyed).
+   */
+  static #endedAnimations = new Map<LynxElement, LynxElement[]>();
+
+  /**
    * Set when Angular destroys this element, until it's released (see
    * #release) or put back in the tree.
    */
@@ -1426,6 +1441,7 @@ export class LynxElement implements BaseLynxElement {
     if (this.isRootPageElement) return;
     this.#destroyed = true;
     LynxElement.#pendingReleases.add(this);
+    if (LynxElement.#platformAnimated.size > 0) this.#endPlatformAnimations();
     // A view destroyed outside change detection (a detached route view the
     // reuse strategy drops) has no end() to commit it.
     scheduleSettleFlush();
@@ -1564,6 +1580,7 @@ export class LynxElement implements BaseLynxElement {
     // HTML's `lang`, whose language a <q> in it draws the marks of (see
     // #setQuoteDepth). It still goes to native below.
     if (name === 'lang') this.#setLang(value);
+    if (name === 'enable-new-animator') this.#notePlatformAnimator(value);
     // An `<a href>` or `<abbr title>` gets the class the build's browser
     // styles for it match, as Lynx can't match `a[href]` (see
     // ATTRIBUTE_STYLED_TAGS). The attribute still goes to native below.
@@ -4140,6 +4157,79 @@ export class LynxElement implements BaseLynxElement {
     if (!this.#destroyed) return;
     this.#destroyed = false;
     LynxElement.#pendingReleases.delete(this);
+    // The animations markDestroyed ended run again, from the inline styles
+    // the element keeps (the write that ended them left those as they were).
+    const ended = LynxElement.#endedAnimations.get(this);
+    if (ended) {
+      LynxElement.#endedAnimations.delete(this);
+      for (const el of ended) {
+        el.#rewriteInlineStyle();
+        LynxElement.#platformAnimated.add(el);
+      }
+    }
+  }
+
+  /**
+   * Ends the animations of the platform-animated elements in this element's
+   * subtree, which Angular just destroyed, before their removal reaches
+   * native.
+   *
+   * On iOS, an element with `enable-new-animator` false is animated by
+   * Lynx's LynxKeyframeAnimator, which hands its `@keyframes` to Core
+   * Animation. When Core Animation stops one of its animations before the
+   * end, as it does once the view leaves the screen, the animator puts it
+   * back on the next frame, from a display link of its own, for as long as
+   * the LynxView is in a window: removing the view, or the element, doesn't
+   * stop it (Lynx 4.1). So a spinner that had gone kept costing the UI
+   * thread a Core Animation commit every frame, for the life of the app:
+   * the benchmark app, whose list showed a spinner while its first page
+   * loaded, used twice ReactLynx's CPU scrolling (issue #841). Ending
+   * the animation (`animation: none`) while the element is still in the tree
+   * stops the animator for good.
+   *
+   * Written straight to native, not to the element's inline styles: if
+   * Angular puts the element back after all, #keepIfDestroyed writes those
+   * again. Each platform-animated element looks up from itself for this
+   * one, rather than this element searching its subtree, since there are a
+   * handful of them and every destroyed view would pay for a search.
+   */
+  #endPlatformAnimations(): void {
+    let ended: LynxElement[] | undefined;
+    for (const el of LynxElement.#platformAnimated) {
+      if (!el.#isInSubtreeOf(this)) continue;
+      LynxElement.#platformAnimated.delete(el);
+      __AddInlineStyle(el.element, 'animation', 'none');
+      (ended ??= []).push(el);
+    }
+    if (ended) LynxElement.#endedAnimations.set(this, ended);
+  }
+
+  /**
+   * Whether this element is `root` or under it, through the parents Angular
+   * gave it (a list's items through their list).
+   */
+  #isInSubtreeOf(root: LynxElement): boolean {
+    if (this === root) return true;
+    for (
+      let el = this.#jsParent ?? this._virtualParent;
+      el;
+      el = el.#jsParent ?? el._virtualParent
+    ) {
+      if (el === root) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Notes whether this element asked for the platform's animators (see
+   * #endPlatformAnimations).
+   */
+  #notePlatformAnimator(value: unknown): void {
+    if (value === false || value === 'false') {
+      LynxElement.#platformAnimated.add(this);
+    } else {
+      LynxElement.#platformAnimated.delete(this);
+    }
   }
 
   /**
@@ -4294,6 +4384,11 @@ export class LynxElement implements BaseLynxElement {
   #release(): void {
     this.#destroyed = false;
     this.#paintingDead = true;
+    LynxElement.#endedAnimations.delete(this);
+    // Destroyed with an ancestor its parents no longer led to: it goes too.
+    if (LynxElement.#platformAnimated.size > 0) {
+      LynxElement.#platformAnimated.delete(this);
+    }
     noteReleased();
     this.deregisterNative();
     if (this.#nativeHandlers) {

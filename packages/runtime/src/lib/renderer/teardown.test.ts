@@ -1794,4 +1794,165 @@ describe('renderer teardown', () => {
       expect(registered([pageRoot])).toEqual([true]);
     });
   });
+
+  describe("ending the platform's animations of a destroyed view (issue #841)", () => {
+    // What reached native, in order: each element's removal from its parent,
+    // and each inline style written. On iOS the platform's animator puts a
+    // stopped animation back every frame even once its view is gone, so the
+    // animation has to end while the element is still in the tree.
+    let writes: string[];
+    beforeEach(() => {
+      writes = [];
+      const g = globalThis as unknown as FakeNativeGlobal<FakeEl>;
+      const remove = g.__RemoveElement;
+      const style = g.__AddInlineStyle;
+      g.__RemoveElement = (parent: FakeEl, child: FakeEl) => {
+        writes.push(
+          `remove ${child.classes.values().next().value ?? child.tag}`,
+        );
+        return remove(parent, child);
+      };
+      g.__AddInlineStyle = (n: FakeEl, key: string, value: unknown) => {
+        if (key === 'animation') {
+          writes.push(`${[...n.classes][0] ?? n.tag} animation: ${value}`);
+        }
+        style(n, key, value);
+      };
+    });
+
+    @Component({
+      selector: 'spinner-host',
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      encapsulation: ViewEncapsulation.None,
+      template: `
+        @if (show()) {
+          <view class="box">
+            <view
+              class="turn"
+              enable-new-animator="false"
+              style="animation: turn 1600ms linear infinite;"
+            ></view>
+            <view class="pulse" style="animation: pulse 1s infinite;"></view>
+          </view>
+        }
+        <view
+          class="kept"
+          enable-new-animator="false"
+          style="animation: turn 1600ms linear infinite;"
+        ></view>
+      `,
+    })
+    class SpinnerHost {
+      readonly show = signal(true);
+    }
+
+    it('ends them before the view leaves the tree, and leaves every other element alone', async () => {
+      const fixture = TestBed.createComponent(SpinnerHost);
+      fixture.detectChanges();
+      expect(writes).toEqual([]);
+
+      fixture.componentInstance.show.set(false);
+      fixture.detectChanges();
+      await flush();
+
+      // The turning view's animation ends, then the box goes. The pulse is
+      // on Lynx's own animator, which stops with its element, and the kept
+      // spinner is still shown.
+      expect(writes).toEqual(['turn animation: none', 'remove box']);
+      expect(findByClass('kept')[0]!.styles.has('animation')).toBe(false);
+    });
+
+    it('ends them in a static <list-item> the list takes out', async () => {
+      @Component({
+        selector: 'list-spinner-host',
+        schemas: [CUSTOM_ELEMENTS_SCHEMA],
+        encapsulation: ViewEncapsulation.None,
+        template: `
+          <list>
+            @if (loading()) {
+              <list-item class="empty" item-key="empty">
+                <view class="turn" enable-new-animator="false"></view>
+                <view class="turn-too" enable-new-animator="false"></view>
+              </list-item>
+            }
+          </list>
+        `,
+      })
+      class ListSpinnerHost {
+        readonly loading = signal(true);
+      }
+      const fixture = TestBed.createComponent(ListSpinnerHost);
+      fixture.detectChanges();
+
+      fixture.componentInstance.loading.set(false);
+      fixture.detectChanges();
+      await flush();
+
+      // Native keeps a list's item after the list's update says it's gone,
+      // so nothing else would have stopped them.
+      expect(writes).toEqual([
+        'turn animation: none',
+        'turn-too animation: none',
+      ]);
+    });
+
+    it('only for the elements that asked for the platform’s animators', async () => {
+      @Component({
+        selector: 'toggled-host',
+        schemas: [CUSTOM_ELEMENTS_SCHEMA],
+        encapsulation: ViewEncapsulation.None,
+        template: `
+          @if (show()) {
+            <view
+              class="turn"
+              [attr.enable-new-animator]="platform() ? 'false' : 'true'"
+            ></view>
+          }
+        `,
+      })
+      class ToggledHost {
+        readonly show = signal(true);
+        readonly platform = signal(true);
+      }
+      const fixture = TestBed.createComponent(ToggledHost);
+      fixture.detectChanges();
+      fixture.componentInstance.platform.set(false);
+      fixture.detectChanges();
+
+      fixture.componentInstance.show.set(false);
+      fixture.detectChanges();
+      await flush();
+
+      expect(writes).toEqual(['remove turn']);
+    });
+
+    it('starts them again when the element goes back in the tree', () => {
+      const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
+      const page = document.createRootElement();
+      const el = document.createElement('view');
+      el.setAttribute('enable-new-animator', 'false');
+      el.setAttribute('style', 'animation: turn 1600ms linear infinite;');
+      page.appendChild(el);
+      const ref = el.element as unknown as FakeEl;
+
+      el.markDestroyed();
+      el.remove();
+      expect(writes).toEqual(['view animation: none']);
+      ref.styles.delete('__inline');
+      page.appendChild(el);
+      processPendingRemovals();
+
+      // Its inline styles written again, the animation with them, and
+      // ended once more when it's destroyed for good.
+      expect(ref.styles.get('__inline')).toContain('animation: turn');
+      el.markDestroyed();
+      el.remove();
+      processPendingRemovals();
+      expect(writes).toEqual([
+        'view animation: none',
+        'view animation: none',
+        'remove view',
+      ]);
+    });
+  });
 });

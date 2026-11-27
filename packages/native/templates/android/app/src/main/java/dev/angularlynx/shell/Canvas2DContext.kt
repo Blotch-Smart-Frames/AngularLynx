@@ -273,6 +273,18 @@ class Canvas2DContext(
         return DecodedImage(pixels, width, height, true)
     }
 
+    /**
+     * After transferToImageBitmap() took the bitmap: transparent black, or
+     * opaque black without alpha. eraseColor ignores the clip, and the state
+     * stays.
+     */
+    @Synchronized
+    override fun clearForTransfer() {
+        val target = bitmap ?: return
+        target.eraseColor(if (alpha) Color.TRANSPARENT else Color.BLACK)
+        if (view != null) present()
+    }
+
     /** The bitmap as a PNG or JPEG file, or null when it has no pixels. */
     @Synchronized
     fun encode(jpeg: Boolean, quality: Double): ByteArray? {

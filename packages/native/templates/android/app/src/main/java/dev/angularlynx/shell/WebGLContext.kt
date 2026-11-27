@@ -280,6 +280,11 @@ class WebGLContext(override val canvasId: String, attributes: ReadableMap?) : Ca
         val discard = GLES30.glIsEnabled(GLES30.GL_RASTERIZER_DISCARD)
 
         GLES30.glBindFramebuffer(GLES30.GL_DRAW_FRAMEBUFFER, framebuffer)
+        // The app may have drawn to no color buffer (drawBuffers([NONE]) on
+        // the default framebuffer), which glClear would then skip: the color
+        // attachment is selected for the clear, and the app's choice put back.
+        val drawBuffer = IntArray(1).also { GLES30.glGetIntegerv(GLES30.GL_DRAW_BUFFER0, it, 0) }
+        GLES30.glDrawBuffers(1, intArrayOf(GLES30.GL_COLOR_ATTACHMENT0), 0)
         GLES30.glDisable(GLES30.GL_SCISSOR_TEST)
         GLES30.glDisable(GLES30.GL_RASTERIZER_DISCARD)
         GLES30.glClearColor(0f, 0f, 0f, 0f)
@@ -290,6 +295,7 @@ class WebGLContext(override val canvasId: String, attributes: ReadableMap?) : Ca
         GLES30.glStencilMask(-1)
         GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT or GLES30.GL_STENCIL_BUFFER_BIT)
 
+        GLES30.glDrawBuffers(1, drawBuffer, 0)
         GLES30.glClearColor(clearColor[0], clearColor[1], clearColor[2], clearColor[3])
         GLES30.glClearDepthf(clearDepth[0])
         GLES30.glClearStencil(ints[0])
@@ -409,6 +415,20 @@ class WebGLContext(override val canvasId: String, attributes: ReadableMap?) : Ca
         // GL's first row is the bottom of the image.
         flipRows(pixels.rgba, pixels.width * 4, pixels.height)
         return DecodedImage(pixels.rgba, pixels.width, pixels.height, premultipliedAlpha || !alpha)
+    }
+
+    /**
+     * After transferToImageBitmap() took the drawing buffer, it's cleared,
+     * even with preserveDrawingBuffer: the HTML spec gives the canvas a new
+     * bitmap, and says preserveDrawingBuffer has no effect on a transfer.
+     */
+    @Synchronized
+    override fun clearForTransfer() {
+        if (destroyed) return
+        withCurrent {
+            clearDrawingBuffer()
+            restoreFramebuffers()
+        }
     }
 
     /**

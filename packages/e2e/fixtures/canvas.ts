@@ -13,6 +13,14 @@ import { LibraryFrame } from 'e2e-prebuilt-library';
 const CYAN_PNG =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNg+P//PwAF/wL+Xg47rQAAAABJRU5ErkJggg==';
 
+/**
+ * What the Bitmap check reads: green, red, blue, the cleared OffscreenCanvas,
+ * red through WebGL, then the WebGL OffscreenCanvas's transferred red, the
+ * canvas cleared, and its draw buffer kept.
+ */
+const BITMAP_READS =
+  '0,128,0,255 255,0,0,255 0,0,255,255 0,0,0,0 255,0,0,255 255,0,0,255 0,0,0,0 none';
+
 const VERTEX = `#version 300 es
 in vec2 position;
 out vec2 uv;
@@ -52,6 +60,20 @@ void main() {
  * and read back. Both reads have to give the green; when they don't, the line
  * shows each.
  *
+ * Beside the canvas, under the WebGL line, "Bitmap: ok" checks ImageBitmaps
+ * of canvases (issue #697), each drawn on a 2D canvas and read back: one
+ * `createImageBitmap()` made of the WebGL canvas as the 2D check left it
+ * (green), one of an OffscreenCanvas filled red, one
+ * `transferToImageBitmap()` took of it once filled blue, then the
+ * OffscreenCanvas itself, which the transfer cleared, and the red bitmap
+ * uploaded as the WebGL texture, drawn and read back; then a WebGL2
+ * OffscreenCanvas cleared red and transferred while it draws to no color
+ * buffer (`drawBuffers([NONE])`): its bitmap, the canvas the transfer
+ * cleared, and its draw buffer, still NONE. When a read is wrong,
+ * the line shows them all. It's in the canvas's row, and short, so the page
+ * is no taller: the links under it stay on the Android emulator's screen,
+ * where the flows tap them.
+ *
  * Below it, the prebuilt library fixture (fixtures/prebuilt-library), which
  * the counter page has no room for, and "Open linking" and "Open photo",
  * which open linking.ts and photo.ts.
@@ -69,9 +91,10 @@ void main() {
         height="2"
         style="width: 40px; height: 40px;"
       ></canvas>
-      <text flatten="false" style="margin-left: 12px;"
-        >WebGL: {{ result() }}</text
-      >
+      <view style="margin-left: 12px;">
+        <text flatten="false">WebGL: {{ result() }}</text>
+        <text flatten="false">Bitmap: {{ resultBitmap() }}</text>
+      </view>
     </view>
     <text flatten="false">2D: {{ result2D() }}</text>
     <e2e-library-frame />
@@ -103,6 +126,7 @@ export class CanvasRoute {
   readonly canvas = viewChild.required<ElementRef<LynxCanvasElement>>('canvas');
   readonly result = signal('…');
   readonly result2D = signal('…');
+  readonly resultBitmap = signal('…');
 
   constructor() {
     afterNextRender(() => {
@@ -142,6 +166,89 @@ export class CanvasRoute {
     gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
     const uploaded = Array.from(pixel).join(',');
     return read === uploaded ? read : `${read} / ${uploaded}`;
+  }
+
+  /**
+   * The ImageBitmap check. The WebGL canvas's bitmap is made first, in the
+   * task that drew it: once the frame is shown, its drawing buffer is
+   * cleared.
+   */
+  async #drawBitmaps(
+    gl: WebGL2RenderingContext,
+    program: WebGLProgram,
+  ): Promise<string> {
+    const ofWebGL = createImageBitmap(gl.canvas as HTMLCanvasElement);
+    const source = new OffscreenCanvas(2, 2);
+    const sourceContext = source.getContext('2d')!;
+    sourceContext.fillStyle = 'rgb(255, 0, 0)';
+    sourceContext.fillRect(0, 0, 2, 2);
+    const red = createImageBitmap(source);
+    sourceContext.fillStyle = 'rgb(0, 0, 255)';
+    sourceContext.fillRect(0, 0, 2, 2);
+    const blue = source.transferToImageBitmap();
+    const cleared = Array.from(sourceContext.getImageData(0, 0, 1, 1).data);
+
+    const target = document.createElement('canvas');
+    target.width = 1;
+    target.height = 1;
+    const context = target.getContext('2d')!;
+    const read = (bitmap: ImageBitmap) => {
+      context.clearRect(0, 0, 1, 1);
+      context.drawImage(bitmap, 0, 0, 1, 1);
+      return Array.from(context.getImageData(0, 0, 1, 1).data).join(',');
+    };
+    const redBitmap = await red;
+    const reads = [
+      read(await ofWebGL),
+      read(redBitmap),
+      read(blue),
+      cleared.join(','),
+    ];
+
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      redBitmap,
+    );
+    gl.uniform4f(gl.getUniformLocation(program, 'tint'), 1, 1, 1, 1);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    const pixel = new Uint8Array(4);
+    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+    reads.push(Array.from(pixel).join(','));
+
+    // A WebGL2 OffscreenCanvas, transferred while it draws to no color
+    // buffer: the bitmap has its red, the canvas is cleared all the same,
+    // and its draw buffer is still the app's NONE.
+    const glSource = new OffscreenCanvas(1, 1);
+    const glSourceContext = glSource.getContext('webgl2');
+    if (!glSourceContext) return 'no WebGL2 OffscreenCanvas';
+    glSourceContext.clearColor(1, 0, 0, 1);
+    glSourceContext.clear(glSourceContext.COLOR_BUFFER_BIT);
+    glSourceContext.drawBuffers([glSourceContext.NONE]);
+    const transferred = glSource.transferToImageBitmap();
+    const after = new Uint8Array(4);
+    glSourceContext.readPixels(
+      0,
+      0,
+      1,
+      1,
+      glSourceContext.RGBA,
+      glSourceContext.UNSIGNED_BYTE,
+      after,
+    );
+    const drawBuffer = glSourceContext.getParameter(
+      glSourceContext.DRAW_BUFFER0,
+    );
+    reads.push(
+      read(transferred),
+      Array.from(after).join(','),
+      drawBuffer === glSourceContext.NONE ? 'none' : `${drawBuffer}`,
+    );
+    const all = reads.join(' ');
+    return all === BITMAP_READS ? 'ok' : all;
   }
 
   async #draw(): Promise<string> {
@@ -208,6 +315,11 @@ export class CanvasRoute {
     } catch (error) {
       this.result2D.set(`error ${(error as Error).message}`);
     }
+    // Started in this task, as the 2D check left the WebGL canvas.
+    this.#drawBitmaps(gl, program).then(
+      (result) => this.resultBitmap.set(result),
+      (error: Error) => this.resultBitmap.set(`error ${error.message}`),
+    );
     return Array.from(pixel).join(',');
   }
 }

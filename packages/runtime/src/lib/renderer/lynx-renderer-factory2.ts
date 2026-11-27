@@ -14,7 +14,9 @@ import { devStats, endCdTiming, startCdTiming } from '../devtools/stats';
 import type { LynxDocumentBase } from '../lynx-document';
 import {
   flushTreeWithListUpdates,
+  hasPendingListUpdates,
   markTreeFlushed,
+  needsTreeFlush,
   processPendingAttributeRemovals,
   processPendingClasses,
   processPendingFlow,
@@ -122,9 +124,12 @@ export class LynxRendererFactory2 implements RendererFactory2 {
    *      leaves a gap"). The cycle's loose text is regrouped next, then its
    *      attribute removals follow, for the same flush (see
    *      processPendingFlow and processPendingAttributeRemovals).
-   *   2. flushTreeWithListUpdates() — sends update-list-info for the lists
-   *      that gained, lost or moved items during this CD cycle, then makes the
-   *      cycle's one __FlushElementTree(), which commits all pending element
+   *   2. flushTreeWithListUpdates() — if the cycle wrote anything to native
+   *      or a list has items to send (see needsTreeFlush: Angular ends as many
+   *      cycles that change nothing as ones that do), sends update-list-info
+   *      for the lists that gained, lost or moved items during this CD cycle,
+   *      then makes the cycle's one __FlushElementTree(), which commits all
+   *      pending element
    *      mutations to native and lays out once. Native asks each list for its
    *      items (componentAtIndex) in that layout, after it has resolved the
    *      rest of the tree. componentAtIndex appends each item and flushes it
@@ -193,7 +198,6 @@ export class LynxRendererFactory2 implements RendererFactory2 {
       /* v8 ignore start */
       if (__PROFILE__) {
         devStats.cdCycles++;
-        devStats.flushCount++;
       }
       /* v8 ignore stop */
 
@@ -228,12 +232,19 @@ export class LynxRendererFactory2 implements RendererFactory2 {
           // wait for the first render to finish (see
           // processPendingListUpdates).
           processPendingListUpdates();
-        } else {
+        } else if (needsTreeFlush() || hasPendingListUpdates()) {
           // Everything written so far goes with this flush, the commit
           // passes' writes included: the next native event has nothing to
           // flush for them (see markTreeFlushed). So do the lists'
           // update-list-info, sent right before it. A list that throws
           // doesn't keep the flush from coming; its error is thrown after.
+          // A cycle that changed nothing, with nothing else waiting, makes
+          // no flush (see needsTreeFlush).
+          /* v8 ignore start */
+          if (__PROFILE__) {
+            devStats.flushCount++;
+          }
+          /* v8 ignore stop */
           markTreeFlushed();
           flushTreeWithListUpdates();
         }

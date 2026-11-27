@@ -1,4 +1,8 @@
-import { LynxListElement, settleAfterListItems } from '../../lynx-element';
+import {
+  listItemWriteMark,
+  LynxListElement,
+  settleAfterListItems,
+} from '../../lynx-element';
 import type { ListSlot } from '../../lynx-element/lynx-list-element';
 import type { ElementRef, ListElementRef } from '../../types/lynx';
 
@@ -123,6 +127,7 @@ export const createListElement = (pageId: number): LynxListElement => {
   ): number | undefined => {
     const slot = listEl.committedSlot(cellIndex);
     if (!slot) return undefined;
+    const mark = listItemWriteMark();
     const item = itemElement(listRef, slot);
     if (!item) return undefined;
     const sign = __GetElementUniqueID(item.element);
@@ -133,7 +138,7 @@ export const createListElement = (pageId: number): LynxListElement => {
       listID: listId,
       ...reuseNotification(listRef, slot, item, enableReuseNotification),
     });
-    if (slot.source) settleAfterListItems();
+    if (slot.source) settleAfterListItems(mark);
     return sign;
   };
 
@@ -169,6 +174,7 @@ export const createListElement = (pageId: number): LynxListElement => {
   ) => {
     const elementIDs: number[] = [];
     let built = false;
+    const mark = listItemWriteMark();
     for (let i = 0; i < cellIndexes.length; i++) {
       const slot = listEl.committedSlot(cellIndexes[i]!);
       const item = slot && itemElement(listRef, slot);
@@ -198,7 +204,7 @@ export const createListElement = (pageId: number): LynxListElement => {
         listID: listId,
       });
     }
-    if (built) settleAfterListItems();
+    if (built) settleAfterListItems(mark);
   };
 
   const nativeList = __CreateList(

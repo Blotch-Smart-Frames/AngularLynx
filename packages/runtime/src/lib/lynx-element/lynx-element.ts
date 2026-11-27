@@ -5314,13 +5314,24 @@ const awaitingFlush: Array<() => void> = [];
  * without a note. Every event used to flush, and that work reached the screen
  * with the next one, the next scroll frame on iOS.
  *
+ * `mark` is listItemWriteMark() from before the items were built: the
+ * items' own writes count as flushed (see needsTreeFlush).
+ *
  * And it flushes again on a task of its own if a call is waiting for a
  * flush, such as a UI method on an element the item just made (see
  * LynxElement.invoke). The settle flush it would have asked for was skipped
  * while the item was built, and only a macrotask runs after native's layout
  * pass has returned: a microtask would still run inside it.
  */
-export const settleAfterListItems = (): void => {
+export const settleAfterListItems = (mark: number): void => {
+  // What the items wrote went with their own flushes, so the next flush of
+  // the whole tree isn't owed for it: a change detection cycle that writes
+  // nothing after it skips its flush (see needsTreeFlush). Angular runs one
+  // right after most binds, for the views a rebound item detached. Only
+  // when nothing was waiting before the items were built: what the items
+  // wrote elsewhere waits for the next event, as noted here, with whatever
+  // was waiting already.
+  if (flushedEpoch === mark) flushedEpoch = nativeWriteEpoch;
   settleSkippedForListItem = true;
   if (awaitingFlush.length === 0) return;
   setTimeout(scheduleSettleFlush, 0);
@@ -5365,15 +5376,17 @@ let firstRenderTickScheduled = false;
 let settleSkippedForListItem = false;
 
 /**
- * Counts the writes to native that leave their flush to whoever made them:
- * setAttribute (a class, id, data-* or `hidden`), #rewriteInlineStyle (custom
- * properties, `hidden` and the runtime's own styles), appendChild,
- * insertBefore and remove, and an animation's start, play, pause and cancel
- * (see countNativeWrite). The other writes (a style, a class added, a UI
- * method, a handler, a new element) call scheduleSettleFlush themselves.
- * Compared with flushedEpoch, its value at the last flush of the whole tree,
- * so the next native event can tell whether one is still waiting for a
- * flush (see hasUnflushedWrites). A counter rather than a flag, so a write
+ * Counts the writes to native: the ones that leave their flush to whoever
+ * made them, setAttribute (a class, id, data-* or `hidden`),
+ * #rewriteInlineStyle (custom properties, `hidden` and the runtime's own
+ * styles), appendChild, insertBefore and remove, and an animation's start,
+ * play, pause and cancel (see countNativeWrite), and the others (a style, a
+ * class added, a UI method, a handler, a new element), which call
+ * scheduleSettleFlush themselves. Compared with flushedEpoch, its value at
+ * the last flush of the whole tree, so the next native event can tell
+ * whether one is still waiting for a flush (see hasUnflushedWrites), and
+ * the end of a change detection cycle whether it has anything to flush (see
+ * needsTreeFlush). A counter rather than a flag, so a write
  * costs one increment and a flush one assignment, with nothing to clear.
  */
 let nativeWriteEpoch = 0;
@@ -5396,7 +5409,30 @@ let flushedEpoch = 0;
  */
 export const markTreeFlushed = (): void => {
   flushedEpoch = nativeWriteEpoch;
+  // Whatever a list item left for a later flush goes with this one too.
+  settleSkippedForListItem = false;
 };
+
+/**
+ * @internal The count of native writes so far, for a list's componentAtIndex
+ * to hand settleAfterListItems() once it has built and flushed its items.
+ */
+export const listItemWriteMark = (): number => nativeWriteEpoch;
+
+/**
+ * @internal Whether `LynxRendererFactory2.end()` has anything to flush:
+ * something was written to native since the last flush of the whole tree
+ * (see nativeWriteEpoch), or a call is waiting for a flush (see
+ * afterNextFlush). Angular ends a change detection cycle that changed
+ * nothing as often as one that did: a tick that refreshes no view still
+ * calls the renderer's begin() and end(), as one does after a view is
+ * detached (each rebound `*lynxListFor` item whose `@if` let go of a view),
+ * and one runs for each root view it checks. A flush with nothing to commit
+ * isn't free: Lynx still runs its patch pass on the engine thread and queues
+ * an operation for the UI thread (see #dispatch).
+ */
+export const needsTreeFlush = (): boolean =>
+  nativeWriteEpoch !== flushedEpoch || awaitingFlush.length > 0;
 
 /**
  * Whether the next native event flushes (see #dispatch): something was
@@ -5471,6 +5507,10 @@ const checkDispatchWrites = (): void => {
  * gate) keeps the steady-state overhead negligible.
  */
 export const scheduleSettleFlush = (): void => {
+  // Every write that schedules its own flush is counted as one, with the
+  // ones that leave it to their caller: inside a change detection cycle,
+  // end() flushes only when something was written (see needsTreeFlush).
+  nativeWriteEpoch++;
   if (settleFlushScheduled || isInsideChangeDetection()) {
     return;
   }

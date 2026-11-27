@@ -1,7 +1,9 @@
 export {
   listenForScrollsFromTheStart,
+  listItemWriteMark,
   LynxElement,
   markTreeFlushed,
+  needsTreeFlush,
   processPendingAttributeRemovals,
   processPendingClasses,
   processPendingFlow,
@@ -13,6 +15,7 @@ export {
 } from './lynx-element';
 export {
   flushTreeWithListUpdates,
+  hasPendingListUpdates,
   processPendingListUpdates,
 } from './list-updates';
 export { LynxListElement } from './lynx-list-element';

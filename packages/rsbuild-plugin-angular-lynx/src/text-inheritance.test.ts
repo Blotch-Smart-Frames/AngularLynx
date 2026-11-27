@@ -9,6 +9,7 @@ import {
   applyTextInheritance,
   INHERITANCE_CLASS,
   INHERITED_TEXT_PROPERTIES,
+  isRelativeFontSize,
   LYNX_TEXT_INHERITANCE_CLASS,
   scopedSelector,
   textInheritanceForLynx,
@@ -54,6 +55,33 @@ describe('LYNX_TEXT_INHERITANCE_CLASS', () => {
       runtimeTextFlow(),
     )![1];
     expect(LYNX_TEXT_INHERITANCE_CLASS).toBe(value);
+  });
+});
+
+describe('isRelativeFontSize', () => {
+  it.each([
+    ['2em', true],
+    ['.8EM', true],
+    ['150%', true],
+    ['calc(1.2em + 2px)', true],
+    ['calc(100% - 2px)', true],
+    ['1.25rem', false],
+    ['18px', false],
+    ['var(--size-2em)', false],
+    ['var(--angular-lynx-font-size)', false],
+  ])('reads %s as %s', (value, expected) => {
+    expect(isRelativeFontSize(value)).toBe(expected);
+  });
+
+  // The runtime reads an inline size as the build reads a rule's.
+  it('reads a size as the runtime does', () => {
+    const own = fs.readFileSync(
+      path.join(import.meta.dirname, 'text-inheritance.ts'),
+      'utf-8',
+    );
+    const body = (source: string): string =>
+      /export const isRelativeFontSize = [\s\S]*?;\n/.exec(source)![0];
+    expect(body(runtimeTextFlow())).toBe(body(own));
   });
 });
 
@@ -152,6 +180,26 @@ describe('textInheritanceForLynx', () => {
     [
       '.a { --angular-lynx-color: red; color: var(--angular-lynx-color, blue) }',
       '.a { --angular-lynx-color: red; color: var(--angular-lynx-color, blue) }.a._nginherit { --angular-lynx-color: red }',
+    ],
+    // A relative size as `1em`, the size of the parent of the tag that
+    // reads it: `2em` would make each tag twice its parent's size, which is
+    // already the `<p>`'s (issue #701). Other properties keep theirs.
+    [
+      '.a { font-size: 2em; line-height: 1.5em }',
+      '.a { font-size: 2em; line-height: 1.5em }.a._nginherit { --angular-lynx-font-size: 1em; --angular-lynx-line-height: 1.5em }',
+    ],
+    [
+      '.a { font-size: 150% !important }',
+      '.a { font-size: 150% !important }.a._nginherit { --angular-lynx-font-size: 1em }',
+    ],
+    [
+      '.a { FONT-SIZE: calc(1.2em + 2px) }',
+      '.a { FONT-SIZE: calc(1.2em + 2px) }.a._nginherit { --angular-lynx-font-size: 1em }',
+    ],
+    // The root's size isn't the parent's.
+    [
+      '.a { font-size: 1.25rem }',
+      '.a { font-size: 1.25rem }.a._nginherit { --angular-lynx-font-size: 1.25rem }',
     ],
   ])('copies %s', (css, expected) => {
     expect(process(css)).toBe(expected);

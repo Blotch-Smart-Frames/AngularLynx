@@ -3,6 +3,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   LAYOUT_FLAG,
+  RELATIVE_SIZE_FLAG,
   SMALLER_FLAG,
   VERTICAL_ALIGN_FLAG,
   parseVerticalAlign,
@@ -167,6 +168,10 @@ describe('styleIndexOf', () => {
     ],
     ['font-size: calc(var(--angular-lynx-font-size) * 2 / 1.2)', FONT_SIZE],
     ['font-size: var(--angular-lynx-font-size-x)', FONT_SIZE],
+    // A size relative to the parent's, whose copy is `1em` (issue #701).
+    ['font-size: 2em', FONT_SIZE | RELATIVE_SIZE_FLAG],
+    ['font-size: 80%', FONT_SIZE | RELATIVE_SIZE_FLAG],
+    ['font-size: 1.25rem', FONT_SIZE],
     // Any vertical-align, whose distance is in verticalAligns (issue #715).
     ['vertical-align: 0.4em', VERTICAL_ALIGN_FLAG],
     ['vertical-align: super', VERTICAL_ALIGN_FLAG],
@@ -376,6 +381,13 @@ describe('the vertical-align flag', () => {
       'export const VERTICAL_ALIGN_FLAG = SMALLER_FLAG << 1;',
     );
     expect(VERTICAL_ALIGN_FLAG).toBe(SMALLER_FLAG << 1);
+  });
+
+  it("has the runtime's relative size bit", () => {
+    expect(runtime()).toContain(
+      'export const RELATIVE_SIZE_FLAG = VERTICAL_ALIGN_FLAG << 1;',
+    );
+    expect(RELATIVE_SIZE_FLAG).toBe(VERTICAL_ALIGN_FLAG << 1);
   });
 
   // The runtime reads an inline vertical-align as the build reads a rule's.

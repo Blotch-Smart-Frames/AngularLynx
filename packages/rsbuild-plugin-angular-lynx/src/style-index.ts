@@ -3,6 +3,7 @@ import selectorParser from 'postcss-selector-parser';
 import {
   INHERITED_TEXT_PROPERTIES,
   inheritanceVariable,
+  isRelativeFontSize,
 } from './text-inheritance.js';
 
 /**
@@ -35,6 +36,16 @@ export const SMALLER_FLAG = LAYOUT_FLAG << 1;
  * in the runtime's text-flow.ts.
  */
 export const VERTICAL_ALIGN_FLAG = SMALLER_FLAG << 1;
+
+/**
+ * The bit for a rule whose `font-size` is relative to the parent's (`2em`,
+ * `150%`), which it has with the `font-size` bit. Its copy is `1em` (see
+ * text-inheritance.ts), the size of the parent of the tag that reads it, so
+ * the runtime gives the text inside no class for its level of `<small>`s,
+ * which would divide that size again for each `<small>` above it (issue
+ * #701). Above VERTICAL_ALIGN_FLAG, as in the runtime's text-flow.ts.
+ */
+export const RELATIVE_SIZE_FLAG = VERTICAL_ALIGN_FLAG << 1;
 
 /**
  * How far a `vertical-align` moves the text off the baseline: the `em` of
@@ -148,6 +159,9 @@ const flagsOf = (property: string, value: string): number => {
   if (name === 'font-size' && isSmallerSize(value)) return SMALLER_FLAG;
   if (name === 'vertical-align') return VERTICAL_ALIGN_FLAG;
   const bit = INHERITED_TEXT_PROPERTIES.indexOf(name);
+  if (name === 'font-size' && isRelativeFontSize(value)) {
+    return (1 << bit) | RELATIVE_SIZE_FLAG;
+  }
   if (bit >= 0) return 1 << bit;
   const keyword = value.trim().toLowerCase();
   if (name === 'display') return BLOCK_DISPLAYS.has(keyword) ? 0 : LAYOUT_FLAG;

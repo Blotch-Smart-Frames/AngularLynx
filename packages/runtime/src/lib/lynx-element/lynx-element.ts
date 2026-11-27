@@ -51,6 +51,7 @@ import {
   LYNX_TEXT_INHERITANCE_CLASS,
   LAYOUT_FLAG,
   NOT_BLOCK_CONTAINERS,
+  RELATIVE_SIZE_FLAG,
   SMALLER_FLAG,
   type BaselineDistance,
   type ShiftLink,
@@ -59,6 +60,7 @@ import {
   hasAncestorTextRules,
   inlineBaselineShift,
   inheritanceCopiesFor,
+  isRelativeFontSize,
   inheritanceStyleFor,
   inlineTextStyles,
   splitDeclarations,
@@ -2087,10 +2089,13 @@ export class LynxElement implements BaseLynxElement {
     // it, or a second <small>, needs a class that divides it more (see
     // #sizeChain). The class sets the size, so it reads no variable.
     const tags = this.#textTagChain();
-    const chain = this.#sizeChain(tags).map(([, flags]) => flags);
-    const levels = chain.filter((flags) => flags & SMALLER_FLAG).length;
+    const sized = this.#sizeChain(tags);
+    const levels = sized.filter(([, flags]) => flags & SMALLER_FLAG).length;
     const ownLevel = this.#ruleFlags(false) & SMALLER_FLAG ? 1 : 0;
-    const smaller = levels > ownLevel ? smallerClassFor(levels) : null;
+    const smaller =
+      levels > ownLevel && !this.#sizedRelatively(tags, sized.length)
+        ? smallerClassFor(levels)
+        : null;
     this.#setSmallerClass(smaller);
     const inherited = inheritanceStyleFor(
       this.#ownTextStyles(true) |
@@ -2208,6 +2213,45 @@ export class LynxElement implements BaseLynxElement {
       ([, flags], index) => index > 0 && flags & FONT_SIZE_FLAG,
     );
     return sized < 0 ? tags : tags.slice(0, sized);
+  }
+
+  /**
+   * Whether the size the variable holds at the tags of #sizeChain, the first
+   * `length` of `tags`, is relative (see #relativeSize): that of the tag
+   * above them that sets it, or where none does, that of the Lynx `<text>`
+   * they're in, as in `<text class="big">a <small>b <b>c</b></small></text>`.
+   * A view above them passes its size on as well, but a change to its classes
+   * doesn't work the tags' levels out again (see #rulesChanged), so it isn't
+   * read: below a relative size on a view, the text inside a `<small>` is
+   * still divided again.
+   */
+  #sizedRelatively(tags: [LynxElement, number][], length: number): boolean {
+    const sizer = tags[length]?.[0];
+    if (sizer) return sizer.#relativeSize();
+    const around = tags[tags.length - 1]![0].#jsParent;
+    return (
+      !!around &&
+      !around.#anonymous &&
+      around.tagName === 'text' &&
+      !!(around.#ownTextStyles(false) & FONT_SIZE_FLAG) &&
+      around.#relativeSize()
+    );
+  }
+
+  /**
+   * Whether the size this element passes to the text inside is relative to
+   * its parent's (see RELATIVE_SIZE_FLAG): its inline `font-size`'s, which
+   * wins over its rules, or else its rules'. Its copy is then `1em`, the size
+   * of the parent of the tag that reads it. Below it, each `<small>`'s own
+   * rule divides that once, and the text inside it reads it as it is: a class
+   * dividing it for each `<small>` above would divide it again (issue #701).
+   */
+  #relativeSize(): boolean {
+    const inline = this.#inlineStyle('font-size');
+    if (inline != null && inline !== '') {
+      return isRelativeFontSize(String(inline));
+    }
+    return !!(this.#ruleFlags(false) & RELATIVE_SIZE_FLAG);
   }
 
   /**

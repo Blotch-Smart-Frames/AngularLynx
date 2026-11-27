@@ -320,7 +320,9 @@ const readScrollRuns = (text: string, session: string): ScrollRun[] => {
   >(text);
   const runs = new Map<string, typeof rows>();
   for (const row of rows) {
-    const key = `${row.app} ${row.run}`;
+    // Run numbers start again at 1 each time ios_scroll.py appends to a CSV;
+    // a launch's swipes all share its timestamp.
+    const key = `${row.app} ${row.run} ${row.timestamp}`;
     runs.set(key, [...(runs.get(key) ?? []), row]);
   }
   return [...runs.values()].flatMap((swipes) => {

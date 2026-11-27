@@ -46,8 +46,10 @@ def scroll_runs(rows):
     runs = defaultdict(list)
     for row in rows:
         if row.get("scroll_ms"):
-            runs[(row["app"], row["run"])].append(row)
-    for (app, _), swipes in runs.items():
+            # Run numbers start again at 1 each time ios_scroll.py appends to
+            # a CSV; a launch's swipes all share its timestamp.
+            runs[(row["app"], row["run"], row["timestamp"])].append(row)
+    for (app, _, _), swipes in runs.items():
         seconds = sum(float(s["scroll_ms"]) for s in swipes) / 1000
         last = max(swipes, key=lambda s: int(s["swipe"]))
         yield app, {

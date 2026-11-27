@@ -1253,41 +1253,84 @@ static CGRect bitmapRect(CGRect rect, size_t height) {
       return;
     }
   }
+  // The spec composites the shadow, then the shape, each over the whole
+  // clip with the operation (its drawing model's steps 6 and 7). With an
+  // operation like source-in, Core Graphics composites only the shape, and
+  // drops the shadow's step, so for those the shadow is cast alone into an
+  // image of its own, and the two are drawn one after the other.
+  CGImageRef cast = NULL;
+  if (shadow && isUnbounded(s.composite)) {
+    cast = shadowImage ? [self newShadowOf:shadowImage rect:layers.shadow]
+                       : [self newShadowOf:image rect:layers.shape];
+    // A layer that can't be made drops the draw, as the shape's does.
+    if (!cast) {
+      CGImageRelease(shadowImage);
+      CGImageRelease(image);
+      return;
+    }
+  }
   CGContextSaveGState(c);
   CGContextSetAlpha(c, filtered ? 1 : s.globalAlpha);
   CGContextSetBlendMode(c, BLEND_MODES[s.composite]);
-  CGColorRef shadowColor =
-      shadow ? CGColorCreateSRGB(s.shadowR / 255, s.shadowG / 255, s.shadowB / 255, s.shadowA)
-             : NULL;
-  if (shadow) {
-    // A shadow's offset is in the bitmap's own space, y up, whatever the
-    // transform, as the canvas's is in its pixels, y down. Its blur is
-    // twice the Gaussian's deviation, as the canvas's is.
-    CGContextSetShadowWithColor(c, CGSizeMake(s.shadowOffsetX, -s.shadowOffsetY), s.shadowBlur,
-                                shadowColor);
-  }
+  // Otherwise Core Graphics casts the shadow as the layer's drawn.
+  if (shadow && !cast) [self setShadow:c movedBy:0];
   // The layers' images are drawn in the bitmap's own space, where their rows
   // already lie top to bottom.
   CGContextScaleCTM(c, 1, -1);
   CGContextTranslateCTM(c, 0, -(CGFloat)_height);
-  if (shadowImage) {
+  if (cast) {
+    CGContextDrawImage(c, CGRectMake(0, 0, _width, _height), cast);
+  } else if (shadowImage) {
     // Only the shadow's layer's shadow is drawn: the layer is moved left off
     // the bitmap, and the shadow's offset right by as much, which Core
     // Graphics casts to the same pixels (it casts the shadow of what's drawn
     // off the bitmap). Then the shape's layer is drawn without one, as the
     // spec composites the shadow, then the shape.
     CGFloat away = MAX(0, CGRectGetMaxX(layers.shadow));
-    CGContextSetShadowWithColor(c, CGSizeMake(s.shadowOffsetX + away, -s.shadowOffsetY),
-                                s.shadowBlur, shadowColor);
+    [self setShadow:c movedBy:away];
     CGContextDrawImage(c, CGRectOffset(bitmapRect(layers.shadow, _height), -away, 0), shadowImage);
     CGContextSetShadowWithColor(c, CGSizeZero, 0, NULL);
-    CGImageRelease(shadowImage);
   }
   CGContextDrawImage(c, bitmapRect(layers.shape, _height), image);
   CGContextRestoreGState(c);
-  CGColorRelease(shadowColor);
+  CGImageRelease(cast);
+  CGImageRelease(shadowImage);
   CGImageRelease(image);
   [self keepOpaque];
+}
+
+/// Sets the state's shadow on `c`, a context whose own space is the
+/// canvas's pixels (or a layer's), y up, moved `dx` pixels further right.
+- (void)setShadow:(CGContextRef)c movedBy:(CGFloat)dx {
+  ALCanvas2DState *s = _state;
+  CGColorRef color = CGColorCreateSRGB(s.shadowR / 255, s.shadowG / 255, s.shadowB / 255,
+                                       s.shadowA);
+  // A shadow's offset is in the bitmap's own space, y up, whatever the
+  // transform, as the canvas's is in its pixels, y down. Its blur is twice
+  // the Gaussian's deviation, as the canvas's is.
+  CGContextSetShadowWithColor(c, CGSizeMake(s.shadowOffsetX + dx, -s.shadowOffsetY),
+                              s.shadowBlur, color);
+  CGColorRelease(color);
+}
+
+/// The shadow `image`, a layer over `rect` of the canvas's pixels, casts,
+/// alone, as an image the canvas's size. The layer is moved left off the
+/// bitmap, and its shadow right by as much, so only the shadow lands, with
+/// Core Graphics' blur, as an operation like source-over casts it. NULL if
+/// the bitmap can't be made.
+- (CGImageRef)newShadowOf:(CGImageRef)image rect:(CGRect)rect CF_RETURNS_RETAINED {
+  CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  CGContextRef bitmap =
+      CGBitmapContextCreate(NULL, _width, _height, 8, _width * 4, space,
+                            kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
+  CGColorSpaceRelease(space);
+  if (!bitmap) return NULL;
+  CGFloat away = MAX(0, CGRectGetMaxX(rect));
+  [self setShadow:bitmap movedBy:away];
+  CGContextDrawImage(bitmap, CGRectOffset(bitmapRect(rect, _height), -away, 0), image);
+  CGImageRef shadow = CGBitmapContextCreateImage(bitmap);
+  CGContextRelease(bitmap);
+  return shadow;
 }
 
 /// An opaque canvas stays opaque: what an operation like copy or

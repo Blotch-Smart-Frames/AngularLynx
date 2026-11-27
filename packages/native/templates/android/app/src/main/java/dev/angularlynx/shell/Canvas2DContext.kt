@@ -650,12 +650,14 @@ class Canvas2DContext(
      *
      * Android draws an operation like source-in only where the shape covers;
      * the canvas spec composites the whole canvas. So for those the shape is
-     * drawn into a layer, which is composited with the operation.
+     * drawn into a layer, which is composited with the operation. With a
+     * shadow too, the shadow and the shape are composited apart (see
+     * compositeFiltered), which the paint's shadow layer can't do.
      */
     private fun composite(paint: Paint, matrix: Matrix?, draw: (Canvas) -> Unit) {
         val c = canvas ?: return
         val s = state
-        if (s.filterSteps.isNotEmpty()) {
+        if (s.filterSteps.isNotEmpty() || (s.composite in UNBOUNDED && shadowVisible())) {
             compositeFiltered(c, matrix, draw)
             return
         }
@@ -684,6 +686,8 @@ class Canvas2DContext(
      * filter are applied to the layer's pixels (CanvasFilter). The layer is
      * then drawn over the canvas with the operation and the shadow, inside
      * the clip, in the canvas spec's order.
+     * An operation like copy with a shadow (and no filter) draws this way
+     * too, for the shadow made apart from the shape.
      */
     private fun compositeFiltered(c: Canvas, matrix: Matrix?, draw: (Canvas) -> Unit) {
         val s = state
@@ -713,17 +717,21 @@ class Canvas2DContext(
             layer = bitmapOf(pixels, shapeRect)
             val paint = Paint(Paint.FILTER_BITMAP_FLAG)
             val unbounded = s.composite in UNBOUNDED
-            if (unbounded) {
-                val layerPaint = Paint()
-                setBlend(layerPaint, s.composite)
-                c.saveLayer(null, layerPaint)
-            } else {
-                setBlend(paint, s.composite)
-            }
-            // Its offset is in the canvas's pixels, which the layers are in.
+            // The spec composites the shadow, then the shape, each over the
+            // whole clip with the operation (its drawing model's steps 6 and
+            // 7), so with copy or source-in the shape's composite clears the
+            // shadow round it. For those, each goes through a layer of its
+            // own, composited with the operation as it's restored: in one
+            // layer they'd meet source-over first, and the shadow would stay.
+            val layerPaint = Paint()
+            if (unbounded) setBlend(layerPaint, s.composite) else setBlend(paint, s.composite)
             shadow?.let {
+                if (unbounded) c.saveLayer(null, layerPaint)
+                // Its offset is in the canvas's pixels, which the layers are in.
                 c.drawBitmap(it, sourceRect.left + s.shadowOffsetX, sourceRect.top + s.shadowOffsetY, paint)
+                if (unbounded) c.restore()
             }
+            if (unbounded) c.saveLayer(null, layerPaint)
             c.drawBitmap(layer, shapeRect.left.toFloat(), shapeRect.top.toFloat(), paint)
             if (unbounded) c.restore()
         } catch (_: OutOfMemoryError) {

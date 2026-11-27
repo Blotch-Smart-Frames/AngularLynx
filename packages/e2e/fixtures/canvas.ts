@@ -395,8 +395,8 @@ export class CanvasRoute {
    * destination-atop (with copy through grayscale(1), the spec's 7% gray),
    * and nothing with source-in and destination-in, which the shadow's
    * composite has already cleared under the square. Then source-in with a
-   * shape far off the canvas, whose shadow keeps the canvas for it. Gives
-   * "ok", or each operation's reads of the square and of its shadow.
+   * shape far off the canvas, whose shadow keeps part of the canvas for it.
+   * Gives "ok", or each operation's reads of the square and of its shadow.
    */
   #shadowComposites(): string {
     const cases: [GlobalCompositeOperation, string, number[]][] = [
@@ -429,8 +429,11 @@ export class CanvasRoute {
       return `${operation}:${squareRead.join(',')}/${shadowRead.join(',')}`;
     });
     // The shadow of a shape far off the canvas still takes the shadow's
-    // composite (issue #755): with source-in, it keeps the canvas where it
-    // lands, so the shape, which covers the canvas too, draws over all of it.
+    // composite (issue #755). With source-in, the shadow, cast from 400 px
+    // off, keeps the canvas from x = 4 and clears the rest, so the shape,
+    // which covers the whole canvas, draws only from there: a skipped shadow
+    // pass, or one layer for both, leaves it blue at x = 1 too, and a shadow
+    // with no source clears both.
     const far = document.createElement('canvas').getContext('2d')!;
     far.canvas.width = 12;
     far.canvas.height = 4;
@@ -440,10 +443,13 @@ export class CanvasRoute {
     far.shadowColor = 'rgb(255, 0, 0)';
     far.shadowOffsetX = 400;
     far.fillStyle = 'rgb(0, 0, 255)';
-    far.fillRect(-400, 0, 412, 4);
-    const farRead = Array.from(far.getImageData(1, 1, 1, 1).data);
-    ok &&= near(farRead, [0, 0, 255, 255]);
-    return ok ? 'ok' : [...reads, `far:${farRead.join(',')}`].join(' ');
+    far.fillRect(-396, 0, 408, 4);
+    const farReads = [1, 6].map((x) =>
+      Array.from(far.getImageData(x, 1, 1, 1).data),
+    );
+    ok &&=
+      near(farReads[0], [0, 0, 0, 0]) && near(farReads[1], [0, 0, 255, 255]);
+    return ok ? 'ok' : [...reads, `far:${farReads.join('/')}`].join(' ');
   }
 
   /**

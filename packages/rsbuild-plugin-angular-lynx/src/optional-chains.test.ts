@@ -4,7 +4,7 @@ import * as ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import { LAYERS, applyLayers } from './layers.js';
 import { splitPrivateChains } from './private-methods.js';
-import { lowerYieldingDefaultChains } from './yielding-defaults.js';
+import { lowerOptionalChains } from './optional-chains.js';
 
 /**
  * The options layers.ts gives SWC, by `oneOf` branch (`main`,
@@ -43,7 +43,7 @@ const compile = (code: string, branch: string): string =>
   experiments.swc.transformSync(code, SWC_OPTIONS[branch] as never).code;
 
 const FILE = '/app/src/app/list.ts';
-const lower = (code: string): string => lowerYieldingDefaultChains(code, FILE);
+const lower = (code: string): string => lowerOptionalChains(code, FILE);
 
 /**
  * What `code` gives, settled, as an async fixture gives a promise.
@@ -200,6 +200,43 @@ const FIXTURES: Record<string, string> = {
     }
     (async () => [await g(a), log])();
   `,
+  'chains in parentheses that are called, and tag a template, anywhere': `
+    'use strict';
+    const log = [];
+    const node = (name, next) => ({
+      name,
+      next,
+      m(x) { return [this && this.name, x]; },
+      tag(strings, x) { return [this && this.name, strings[0], x]; },
+    });
+    class Box {
+      #name = 'box';
+      #m(x) { return [this.#name, x]; }
+      static field = (Box.prototype.f = function (a) { return (a?.#m)(1); });
+      static {
+        log.push((node('static')?.m)('block'));
+      }
+    }
+    const run = (a) => {
+      try {
+        return [
+          (a?.m)(1),
+          (a?.['m'])(2),
+          ((a?.next.m))(3),
+          (a?.next?.m)(a?.name),
+          (a?.tag)\`t\${4}\`,
+          // An optional call SWC makes on its receiver itself.
+          (a?.m)?.(5),
+          // A call in the chain, called in parentheses again.
+          ((a?.next.m)(6)?.length)
+        ];
+      } catch (error) {
+        return error.constructor.name;
+      }
+    };
+    const fn = (a = (node('param')?.m)('default')) => a;
+    [run(node('a', node('b'))), run(null), new Box().f(new Box()), fn(), log];
+  `,
   '`delete` of a chain': `
     async function g(a) {
       const [d = delete a?.b.c[await 'c']] = [];
@@ -231,7 +268,20 @@ const FIXTURES: Record<string, string> = {
   `,
 };
 
-describe('lowerYieldingDefaultChains', () => {
+describe('lowerOptionalChains', () => {
+  it('keeps the receiver SWC loses in every module', () => {
+    const code =
+      "'use strict'; const a = { m() { return this === a; } }; [(a?.m)(), (a?.m)``];";
+    expect(runInNewContext(code)).toEqual([true, true]);
+    for (const branch of BRANCHES) {
+      expect(runInNewContext(compile(code, branch))).toEqual([false, false]);
+      expect(runInNewContext(compile(lower(code), branch))).toEqual([
+        true,
+        true,
+      ]);
+    }
+  });
+
   it("leaves code SWC can't compile without it", () => {
     // What it's for: the `yield` ends up in an arrow function.
     const code = 'function* g(a) { const [v = a.b()?.c(yield 1)] = []; }';
@@ -394,9 +444,15 @@ describe('lowerYieldingDefaultChains', () => {
     ).toBe(
       'async (a) => { var __chain0, __chain1, __chain2; const [v = ((f, r) => function () { return (() => {}).apply.call(f, r, arguments); })((((__chain1 = a) == null ? void 0 : (__chain0 = __chain1)[0])), __chain0)`${await 1}`, w = (((__chain2 = a) == null ? void 0 : __chain2.f()))(await 1)] = []; }',
     );
-    // Outside such a default value, it's left alone.
-    expect(lower('async (a) => { const [v = (a?.m)()] = [await 1]; }')).toBe(
-      'async (a) => { const [v = (a?.m)()] = [await 1]; }',
+    // Outside such a default value too, and only that chain.
+    expect(lower('async (a) => { const [v = (a?.m)()] = [await a?.b]; }')).toBe(
+      'async (a) => { var __chain0, __chain1; const [v = (() => {}).apply.call((((__chain1 = a) == null ? void 0 : (__chain0 = __chain1).m)), __chain0, [])] = [await a?.b]; }',
+    );
+    expect(lower('const v = (a?.b?.c)(x?.y);')).toBe(
+      'const v = (() => {}).apply.call((((__chain1 = a) == null ? void 0 : ((__chain2 = __chain1.b) == null ? void 0 : (__chain0 = __chain2).c))), __chain0, [x?.y]);;var __chain0, __chain1, __chain2;',
+    );
+    expect(lower('const v = (a?.m)`${x?.y}`;')).toBe(
+      'const v = ((f, r) => function () { return (() => {}).apply.call(f, r, arguments); })((((__chain1 = a) == null ? void 0 : (__chain0 = __chain1).m)), __chain0)`${x?.y}`;;var __chain0, __chain1;',
     );
     // A call with no arguments gets only the receiver.
     expect(
@@ -414,12 +470,16 @@ describe('lowerYieldingDefaultChains', () => {
     );
   });
 
-  it('leaves modules without such a default value', () => {
+  it('leaves modules without such a default value or call', () => {
     for (const code of [
       // No `yield` or `await` in it, or none at all.
       'async (a) => { const [v = a?.b] = [await 1]; }',
       'const [v = a?.b] = [];',
       'const v = a?.b(await 1);',
+      // No chain in parentheses that's called, or only optionally.
+      'const v = a?.m(1) + f(a)(b);',
+      'const v = (a?.m)?.(1);',
+      'const v = (a?.m) + (b)(1);',
     ]) {
       expect(lower(code)).toBe(code);
     }

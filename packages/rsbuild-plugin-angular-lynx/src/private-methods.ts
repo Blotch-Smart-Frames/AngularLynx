@@ -474,7 +474,7 @@ export const receiverScope = (call: ts.Node): ts.Node => {
  * the chain reads. The rewritten calls and links need one, where SWC's own
  * compile of them doesn't, so there they're left to SWC: the module loads,
  * with SWC's short-circuit and receiver, rather than failing to. In the build
- * lowerYieldingDefaultChains (yielding-defaults.ts) runs first and compiles
+ * lowerOptionalChains (optional-chains.ts) runs first and compiles
  * these chains itself, so there are none left here; it uses this to find the
  * same default values.
  */

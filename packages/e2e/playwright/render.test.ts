@@ -268,7 +268,8 @@ test('a canvas draws with WebGL2', async ({ page }) => {
   await page.getByText('Open storage', { exact: true }).click();
   await page.getByText('Open canvas', { exact: true }).click();
   await expect(page.getByText('WebGL: 0,0,255,255')).toBeVisible();
-  // ImageBitmaps of canvases (issue #697), the browser's own here.
+  // ImageBitmaps of canvases (issue #697), and crops and copies (issue
+  // #731), the browser's own here.
   await expect(page.getByText('Bitmap: ok')).toBeVisible();
   // The 2D context's filter (issue #698), the browser's own here: the
   // fixture's reads are what a browser draws, which the shells match.

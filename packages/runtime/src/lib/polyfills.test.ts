@@ -128,57 +128,10 @@ describe('polyfills', () => {
     });
   });
 
-  describe('queueMicrotask', () => {
-    it('uses lynx.queueMicrotask when available', async () => {
-      const lynxQueueMicrotask = vi.fn();
-      delete (globalThis as any).queueMicrotask;
-      vi.stubGlobal('lynx', { queueMicrotask: lynxQueueMicrotask });
-      await importFresh();
-      expect(globalThis.queueMicrotask).toBe(lynxQueueMicrotask);
-    });
-
-    it('falls back to a Promise-based microtask that reschedules errors', async () => {
-      delete (globalThis as any).queueMicrotask;
-      vi.stubGlobal('lynx', undefined);
-      // Make setTimeout run its callback synchronously (inside a try) so the
-      // rethrow path executes without leaking an async error into the test.
-      const setTimeoutSpy = vi.fn((cb: () => void) => {
-        try {
-          cb();
-        } catch {
-          // swallow the deliberately-rethrown error
-        }
-        return 0 as unknown as ReturnType<typeof setTimeout>;
-      });
-      vi.stubGlobal('setTimeout', setTimeoutSpy);
-      await importFresh();
-
-      let ran = false;
-      globalThis.queueMicrotask(() => {
-        ran = true;
-      });
-      await Promise.resolve();
-      expect(ran).toBe(true);
-
-      // Throwing callback → .catch → setTimeout(rethrow).
-      globalThis.queueMicrotask(() => {
-        throw new Error('microtask boom');
-      });
-      await Promise.resolve();
-      await Promise.resolve();
-      expect(setTimeoutSpy).toHaveBeenCalled();
-    });
-  });
-
+  // queueMicrotask, navigator, window, and the background thread's document
+  // and listener methods are the build plugin's (polyfills.test.ts there).
+  // The main thread's document and listeners replace its stand-ins.
   describe('document', () => {
-    it('installs a minimal document stub on the background thread', async () => {
-      delete (globalThis as any).document;
-      vi.stubGlobal('lynx', undefined);
-      await importFresh();
-      expect((globalThis as any).document.defaultView).toBe(globalThis);
-      expect((globalThis as any).document.querySelector('base')).toBe(null);
-    });
-
     // The one elements' ownerDocument and DOCUMENT are (see global-events).
     it('is the document stand-in on the main thread', async () => {
       delete (globalThis as any).document;
@@ -189,61 +142,13 @@ describe('polyfills', () => {
       expect((globalThis as any).document).toBe(globalEvents().document);
       delete (globalThis as any).document;
     });
-  });
 
-  describe('window', () => {
-    it('points window at globalThis', async () => {
-      delete (globalThis as any).window;
+    it("leaves the background thread's to the build plugin", async () => {
+      delete (globalThis as any).document;
+      vi.stubGlobal('__MAIN_THREAD__', false);
       vi.stubGlobal('lynx', undefined);
       await importFresh();
-      expect((globalThis as any).window).toBe(globalThis);
-    });
-
-    /**
-     * A `window` whose first assignment throws, as globalThis.window does in
-     * the web preview's iframe. In the preview the second assignment sets
-     * web-core's wrapper's `let window`; here, the global's setter.
-     */
-    const readOnlyWindow = () => {
-      const set = vi.fn().mockImplementationOnce(() => {
-        throw new TypeError(
-          'Cannot set property window, which has only a getter',
-        );
-      });
-      Object.defineProperty(globalThis, 'window', {
-        get: () => undefined,
-        set,
-        configurable: true,
-      });
-      return set;
-    };
-
-    it("points the web wrapper's window at globalThis", async () => {
-      vi.stubGlobal('__WEB__', true);
-      vi.stubGlobal('lynx', undefined);
-      const set = readOnlyWindow();
-      await importFresh();
-      expect(set).toHaveBeenCalledTimes(2);
-      expect(set).toHaveBeenLastCalledWith(globalThis);
-      delete (globalThis as any).window;
-    });
-
-    it('leaves a read-only window alone elsewhere', async () => {
-      vi.stubGlobal('__WEB__', false);
-      vi.stubGlobal('lynx', undefined);
-      const set = readOnlyWindow();
-      await importFresh();
-      expect(set).toHaveBeenCalledTimes(1);
-      delete (globalThis as any).window;
-    });
-  });
-
-  describe('navigator', () => {
-    it('installs a navigator with an empty userAgent', async () => {
-      delete (globalThis as any).navigator;
-      vi.stubGlobal('lynx', undefined);
-      await importFresh();
-      expect((globalThis as any).navigator.userAgent).toBe('');
+      expect((globalThis as any).document).toBeUndefined();
     });
   });
 
@@ -259,22 +164,6 @@ describe('polyfills', () => {
       expect(globalEvents().window.hasListeners('resize')).toBe(true);
       globalThis.removeEventListener('resize', listener);
       expect(globalEvents().window.hasListeners('resize')).toBe(false);
-    });
-
-    it('installs no-op listener stubs', async () => {
-      delete (globalThis as any).addEventListener;
-      delete (globalThis as any).removeEventListener;
-      vi.stubGlobal('lynx', undefined);
-      await importFresh();
-      expect(globalThis.addEventListener).toBeTypeOf('function');
-      expect(globalThis.removeEventListener).toBeTypeOf('function');
-      const listener = (): void => {};
-      expect(
-        (globalThis as any).addEventListener('x', listener),
-      ).toBeUndefined();
-      expect(
-        (globalThis as any).removeEventListener('x', listener),
-      ).toBeUndefined();
     });
   });
 

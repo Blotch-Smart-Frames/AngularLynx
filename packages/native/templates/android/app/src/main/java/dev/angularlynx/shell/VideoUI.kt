@@ -75,6 +75,13 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
             // browser.
             hasFrame = false
         }
+
+        override fun onRenderedFirstFrame() {
+            // The player draws a first frame again after `stop` and `play`,
+            // which clear and rebuild its item, but XElement sends
+            // `onFirstFrame` only once: the frame is there again from here.
+            hasFrame = true
+        }
     }
 
     init {

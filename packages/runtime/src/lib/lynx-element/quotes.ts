@@ -93,3 +93,108 @@ export const getDocumentLanguage = (): string => documentLanguage;
 export const setDocumentLanguage = (language: string): void => {
   documentLanguage = language;
 };
+
+/**
+ * The marks a `quotes` value gives a `<q>`: its pairs of strings, outer
+ * first (an empty list for `none`, which draws no marks), or `auto` for its
+ * language's (see quotesFor), which is what `initial` is too.
+ */
+export type QuoteMarks = readonly string[] | 'auto';
+
+/**
+ * CSS's whitespace: a space, tab, newline, carriage return or form feed.
+ * JavaScript's `\s` takes a no-break space too, which CSS reads as part of
+ * a word.
+ */
+const CSS_SPACE = /[ \t\n\r\f]/;
+
+/**
+ * Reads a CSS `quotes` value, as a stylesheet's rule or an inline style
+ * has it: `none`, `auto`, or pairs of strings (`'«' '»' '‹' '›'`), whose
+ * escapes (`'\201C'`) it decodes. `inherit` for a value that takes the
+ * parent's (`inherit`, `unset`, `revert`, `revert-layer`: `quotes` is an
+ * inherited property, and the browser's own stylesheet doesn't set it), and
+ * undefined for one a browser drops: an odd number of strings, or anything
+ * else, such as a `var()`, which the runtime can't resolve (it can't read a
+ * custom property's value off Lynx's stylesheet). A trailing `!important`
+ * (or `! important`, as CSS allows) is passed over: #ownQuotes reads it.
+ */
+export const parseQuotes = (
+  value: string,
+): QuoteMarks | 'inherit' | undefined => {
+  // CSS's whitespace only (see CSS_SPACE): `\s` takes a no-break space too.
+  const text = value
+    .replace(/[ \t\n\r\f]*![ \t\n\r\f]*important[ \t\n\r\f]*$/i, '')
+    .replace(/^[ \t\n\r\f]+|[ \t\n\r\f]+$/g, '');
+  const keyword = text.toLowerCase();
+  if (keyword === 'none') return [];
+  if (keyword === 'auto' || keyword === 'initial') return 'auto';
+  if (
+    keyword === 'inherit' ||
+    keyword === 'unset' ||
+    keyword === 'revert' ||
+    keyword === 'revert-layer'
+  ) {
+    return 'inherit';
+  }
+  const marks: string[] = [];
+  let at = 0;
+  while (at < text.length) {
+    const quote = text[at];
+    if (quote !== '"' && quote !== "'") return undefined;
+    let mark = '';
+    at++;
+    for (;;) {
+      const char = text[at];
+      // An unclosed string, or a newline in one, makes the value invalid.
+      if (char === undefined || char === '\n') return undefined;
+      at++;
+      if (char === quote) break;
+      if (char !== '\\') {
+        mark += char;
+        continue;
+      }
+      // An escape: up to six hex digits and one whitespace after them, or
+      // the next character as it is (an escaped newline is no character).
+      const hex = /^[0-9a-f]{1,6}/i.exec(text.slice(at))?.[0];
+      if (hex) {
+        at += hex.length;
+        if (CSS_SPACE.test(text[at] ?? '')) at++;
+        const code = parseInt(hex, 16);
+        mark += String.fromCodePoint(
+          code === 0 || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)
+            ? 0xfffd
+            : code,
+        );
+      } else if (text[at] === '\n') at++;
+      else if (text[at] !== undefined) mark += text[at++];
+    }
+    marks.push(mark);
+    const space = /^[ \t\n\r\f]*/.exec(text.slice(at))![0].length;
+    // Strings are separated by whitespace, or nothing, as CSS allows.
+    at += space;
+  }
+  if (!marks.length || marks.length % 2) return undefined;
+  return marks;
+};
+
+/**
+ * The opening and closing mark of a `<q>` `depth` `<q>`s deep, for its
+ * `quotes` and its language: the pair for its depth, or the last pair past
+ * them, as a browser takes it, and nothing for `none`.
+ */
+export const quotePairFor = (
+  quotes: QuoteMarks,
+  depth: number,
+  language: string,
+): [open: string, close: string] => {
+  if (quotes === 'auto') {
+    // A language's inner pair repeats below it (see #setQuoteDepth).
+    const marks = quotesFor(language);
+    const pair = depth === 0 ? 0 : 2;
+    return [marks[pair]!, marks[pair + 1]!];
+  }
+  if (!quotes.length) return ['', ''];
+  const pair = Math.min(depth, quotes.length / 2 - 1) * 2;
+  return [quotes[pair]!, quotes[pair + 1]!];
+};

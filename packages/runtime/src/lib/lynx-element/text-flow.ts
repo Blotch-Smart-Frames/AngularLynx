@@ -473,16 +473,74 @@ type StyleIndex = {
     sheet: number,
     order: number,
   ])[];
+  /**
+   * Each rule that sets `quotes`, with its value as written (null when the
+   * runtime can't tell where it applies) and its place in the cascade, as
+   * in `verticalAligns`, an `!important` one ranked above the others (see
+   * the build plugin's QuotesRule). Left out when there are none.
+   */
+  readonly quotes?: readonly (readonly [
+    tokens: readonly string[],
+    ancestors: readonly AncestorStep[],
+    value: string | null,
+    rank: number,
+    sheet: number,
+    order: number,
+  ])[];
 };
 
-/** A `vertical-align` rule, by the first token it requires. */
-type IndexedVerticalAlign = {
+/**
+ * The rank the build gives an `!important` declaration of `quotes`, added
+ * to its selector's specificity, which is never as high: it beats any rule
+ * without one, as in a browser. The build plugin's IMPORTANT_RANK, kept the
+ * same by a test.
+ */
+export const IMPORTANT_RANK = 1e9;
+
+/**
+ * A rule the cascade ranks, by the first token it requires: what else it
+ * requires, its specificity (or rank), and its stylesheet and place there.
+ */
+type CascadeRule = {
   readonly rest: readonly string[];
   readonly ancestors: readonly AncestorStep[];
-  readonly distance: BaselineDistance | null;
   readonly specificity: number;
   readonly sheet: number;
   readonly order: number;
+};
+
+/** A `vertical-align` rule, by the first token it requires. */
+type IndexedVerticalAlign = CascadeRule & {
+  readonly distance: BaselineDistance | null;
+};
+
+/** A `quotes` rule, by the first token it requires. */
+type IndexedQuotes = CascadeRule & { readonly value: string | null };
+
+/** Rules the cascade ranks, by the first token each requires. */
+type CascadeRules<R extends CascadeRule> = {
+  /** Those whose selector's last part requires nothing. */
+  readonly any: readonly R[];
+  readonly byToken: ReadonlyMap<string, readonly R[]>;
+};
+
+/**
+ * Sorts a list of ranked rules by the first token each requires.
+ */
+const cascadeRulesOf = <R extends CascadeRule>(
+  rules: readonly (readonly [tokens: readonly string[], rule: R])[],
+): CascadeRules<R> => {
+  const any: R[] = [];
+  const byToken = new Map<string, R[]>();
+  for (const [[first], rule] of rules) {
+    if (first === undefined) any.push(rule);
+    else {
+      const list = byToken.get(first) ?? [];
+      list.push(rule);
+      byToken.set(first, list);
+    }
+  }
+  return { any, byToken };
 };
 
 /** A rule, by the first token it requires: what else it requires. */
@@ -510,13 +568,16 @@ type IndexedRules = {
    * which of them apply below the element only if it adds or removes one.
    */
   readonly ancestorTokens: ReadonlySet<string>;
-  /** The `vertical-align` rules whose selector's last part requires nothing. */
-  readonly anyVerticalAligns: readonly IndexedVerticalAlign[];
-  /** The others, by the first token each requires. */
-  readonly verticalAlignsByToken: ReadonlyMap<
-    string,
-    readonly IndexedVerticalAlign[]
-  >;
+  /** The `vertical-align` rules. */
+  readonly verticalAligns: CascadeRules<IndexedVerticalAlign>;
+  /** The `quotes` rules. */
+  readonly quotes: CascadeRules<IndexedQuotes>;
+  /**
+   * The tokens the `quotes` rules require, of the element or an ancestor: a
+   * class change can change the marks of a `<q>` only if it adds or removes
+   * one.
+   */
+  readonly quotesTokens: ReadonlySet<string>;
 };
 
 let indexed: IndexedRules | null | undefined;
@@ -556,23 +617,43 @@ const readIndex = (): IndexedRules | null => {
       byToken.set(first, list);
     }
   }
-  const anyVerticalAligns: IndexedVerticalAlign[] = [];
-  const verticalAlignsByToken = new Map<string, IndexedVerticalAlign[]>();
-  for (const [
-    tokens,
-    ancestors,
-    distance,
-    specificity,
-    sheet,
-    order,
-  ] of index.verticalAligns ?? []) {
-    const [first, ...rest] = tokens;
-    const rule = { rest, ancestors, distance, specificity, sheet, order };
-    if (first === undefined) anyVerticalAligns.push(rule);
-    else {
-      const list = verticalAlignsByToken.get(first) ?? [];
-      list.push(rule);
-      verticalAlignsByToken.set(first, list);
+  const verticalAligns = cascadeRulesOf(
+    (index.verticalAligns ?? []).map(
+      ([tokens, ancestors, distance, specificity, sheet, order]) =>
+        [
+          tokens,
+          {
+            rest: tokens.slice(1),
+            ancestors,
+            distance,
+            specificity,
+            sheet,
+            order,
+          },
+        ] as const,
+    ),
+  );
+  const quotes = cascadeRulesOf(
+    (index.quotes ?? []).map(
+      ([tokens, ancestors, value, specificity, sheet, order]) =>
+        [
+          tokens,
+          {
+            rest: tokens.slice(1),
+            ancestors,
+            value,
+            specificity,
+            sheet,
+            order,
+          },
+        ] as const,
+    ),
+  );
+  const quotesTokens = new Set<string>();
+  for (const [tokens, ancestors] of index.quotes ?? []) {
+    for (const token of tokens) quotesTokens.add(token);
+    for (const [, required] of ancestors) {
+      for (const token of required) quotesTokens.add(token);
     }
   }
   return (indexed = {
@@ -581,8 +662,9 @@ const readIndex = (): IndexedRules | null => {
     byToken,
     hasAncestorRules,
     ancestorTokens,
-    anyVerticalAligns,
-    verticalAlignsByToken,
+    verticalAligns,
+    quotes,
+    quotesTokens,
   });
 };
 
@@ -702,10 +784,41 @@ export const matchedVerticalAlignFor = (
 ): BaselineDistance | null | undefined => {
   const index = readIndex();
   if (!index) return undefined;
+  let distance: BaselineDistance | null | undefined;
+  for (const winner of cascadeWinners(
+    index.verticalAligns,
+    tokens,
+    ancestorAt,
+  )) {
+    if (!winner.distance) return null;
+    if (
+      distance &&
+      (distance[0] !== winner.distance[0] || distance[1] !== winner.distance[1])
+    ) {
+      return null;
+    }
+    distance = winner.distance;
+  }
+  return distance;
+};
+
+/**
+ * The rules that win the cascade for an element with these tokens, whose
+ * ancestors are as `ancestorAt` gives (see matchedStyleFlagsFor): of those
+ * that match, the ones with the highest specificity, and of those, the last
+ * in each stylesheet, whose order is the bundle's. Several stylesheets'
+ * winners are all returned, as the runtime can't know which comes later in
+ * Lynx's: a caller takes their value only where they agree.
+ */
+const cascadeWinners = <R extends CascadeRule>(
+  rules: CascadeRules<R>,
+  tokens: ReadonlySet<string>,
+  ancestorAt: (index: number) => ReadonlySet<string> | undefined,
+): Iterable<R> => {
   // The winner so far in each stylesheet, at the highest specificity seen.
   let specificity = -1;
-  const winners = new Map<number, IndexedVerticalAlign>();
-  const consider = (rule: IndexedVerticalAlign): void => {
+  const winners = new Map<number, R>();
+  const consider = (rule: R): void => {
     if (
       rule.specificity < specificity ||
       !rule.rest.every((other) => tokens.has(other)) ||
@@ -720,24 +833,66 @@ export const matchedVerticalAlignFor = (
     const winner = winners.get(rule.sheet);
     if (!winner || rule.order > winner.order) winners.set(rule.sheet, rule);
   };
-  for (const rule of index.anyVerticalAligns) consider(rule);
+  for (const rule of rules.any) consider(rule);
   for (const token of tokens) {
-    for (const rule of index.verticalAlignsByToken.get(token) ?? []) {
-      consider(rule);
-    }
+    for (const rule of rules.byToken.get(token) ?? []) consider(rule);
   }
-  let distance: BaselineDistance | null | undefined;
-  for (const winner of winners.values()) {
-    if (!winner.distance) return null;
-    if (
-      distance &&
-      (distance[0] !== winner.distance[0] || distance[1] !== winner.distance[1])
-    ) {
-      return null;
-    }
-    distance = winner.distance;
+  return winners.values();
+};
+
+/**
+ * Whether any rule in the app's CSS sets `quotes`: without one, a `<q>`
+ * draws its language's marks, unless an inline style says otherwise, and
+ * the runtime matches nothing for it.
+ */
+export const hasQuotesRules = (): boolean => {
+  const quotes = readIndex()?.quotes;
+  return (
+    quotes !== undefined && (quotes.any.length > 0 || quotes.byToken.size > 0)
+  );
+};
+
+/**
+ * Whether adding or removing these tokens on an element can change the
+ * `quotes` of a `<q>` it is or is in: a `quotes` rule requires one of them,
+ * or, with `changed` undefined (the tokens aren't known), there's any
+ * `quotes` rule.
+ */
+export const quotesRulesRead = (changed?: Iterable<string>): boolean => {
+  const index = readIndex();
+  if (!index) return false;
+  if (changed === undefined) return hasQuotesRules();
+  for (const token of changed) {
+    if (index.quotesTokens.has(token)) return true;
   }
-  return distance;
+  // Every rule requires the same of the element and its ancestors as it
+  // did, so the same ones apply.
+  return false;
+};
+
+/**
+ * The `quotes` the app's rules give an element with these tokens, whose
+ * ancestors are as `ancestorAt` gives (see cascadeWinners): undefined where
+ * no rule sets it, and otherwise the value as written, null where the
+ * runtime can't tell it (a rule whose selector or condition it can't check,
+ * or stylesheets that disagree), with whether it's `!important`, which wins
+ * over an inline style without it.
+ */
+export const matchedQuotesFor = (
+  tokens: ReadonlySet<string>,
+  ancestorAt: (index: number) => ReadonlySet<string> | undefined,
+): { value: string | null; important: boolean } | undefined => {
+  const index = readIndex();
+  if (!index) return undefined;
+  let matched: { value: string | null; important: boolean } | undefined;
+  for (const winner of cascadeWinners(index.quotes, tokens, ancestorAt)) {
+    const important = winner.specificity >= IMPORTANT_RANK;
+    if (matched && matched.value !== winner.value) {
+      return { value: null, important };
+    }
+    matched = { value: winner.value, important };
+  }
+  return matched;
 };
 
 /**

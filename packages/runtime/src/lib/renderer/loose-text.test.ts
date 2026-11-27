@@ -3525,4 +3525,325 @@ describe('<q>, element by element', () => {
     view.setAttribute('lang', 'fr');
     expect(drawn(q)).toEqual(['«', '»']);
   });
+
+  describe('CSS quotes (issue #821)', () => {
+    /**
+     * Hands the runtime a style index whose `quotes` rules are these.
+     */
+    const quotesRules = (
+      ...quotes: [
+        tokens: string[],
+        ancestors: [combinator: '>' | ' ', tokens: string[]][],
+        value: string | null,
+        rank: number,
+        sheet: number,
+        order: number,
+      ][]
+    ): void => {
+      (
+        globalThis as { __angularLynxStyleIndex?: unknown }
+      ).__angularLynxStyleIndex = { rules: [], quotes };
+      resetStyleIndex();
+    };
+
+    afterEach(() => {
+      delete (globalThis as { __angularLynxStyleIndex?: unknown })
+        .__angularLynxStyleIndex;
+      resetStyleIndex();
+    });
+
+    /**
+     * A <q>, with the tag's class the renderer gives it (see markTag).
+     */
+    const makeQ = (): LynxElement => {
+      const q = doc.createElement('q');
+      q.addScopeClass('_ngtag-q');
+      return q;
+    };
+
+    /**
+     * A <q> in a <q>, in a <p> in the page.
+     */
+    const nested = (): {
+      p: LynxElement;
+      q: LynxElement;
+      inner: LynxElement;
+    } => {
+      const p = doc.createElement('p');
+      page.appendChild(p);
+      const q = makeQ();
+      p.appendChild(q);
+      const inner = makeQ();
+      q.appendChild(inner);
+      commit();
+      return { p, q, inner };
+    };
+
+    it("draws a rule's pairs, the last one past them", () => {
+      quotesRules([['_ngtag-q'], [], `'«' '»' '‹' '›'`, 1, 0, 0]);
+      const { q, inner } = nested();
+      expect(drawn(q)).toEqual(['«', '‹', '›', '»']);
+      // A third <q> deep repeats the last pair.
+      const third = makeQ();
+      inner.appendChild(third);
+      expect(drawn(q)).toEqual(['«', '‹', '‹', '›', '›', '»']);
+    });
+
+    it('draws no marks for none, and the language’s for auto', () => {
+      quotesRules(
+        [['_ngtag-q'], [], 'none', 1, 0, 0],
+        [['plain'], [], 'auto', 1000, 0, 1],
+      );
+      const { q, inner } = nested();
+      expect(drawn(q)).toEqual(['', '', '', '']);
+
+      inner.setAttribute('class', 'plain');
+      expect(drawn(q)).toEqual(['', '‘', '’', '']);
+    });
+
+    it('inherits a quotes from an element above the <q>', () => {
+      quotesRules([['fancy'], [], `"<" ">"`, 1000, 0, 0]);
+      const { p, q } = nested();
+      expect(drawn(q)).toEqual(['“', '‘', '’', '”']);
+
+      // A class that comes later redraws the marks below it.
+      p.setAttribute('class', 'fancy');
+      expect(drawn(q)).toEqual(['<', '<', '>', '>']);
+      p.setAttribute('class', '');
+      expect(drawn(q)).toEqual(['“', '‘', '’', '”']);
+    });
+
+    it('takes a quotes when the <q> goes into an element that has one', () => {
+      quotesRules([['fancy'], [], `"<" ">"`, 1000, 0, 0]);
+      const view = doc.createElement('view');
+      view.setAttribute('class', 'fancy');
+      page.appendChild(view);
+      const q = makeQ();
+      view.appendChild(q);
+      commit();
+      expect(drawn(q)).toEqual(['<', '>']);
+    });
+
+    it('checks a rule’s ancestors, and ranks the rules as Lynx does', () => {
+      quotesRules(
+        [['_ngtag-q'], [], `"1" "1"`, 1, 0, 0],
+        // `.card q`: more specific, but only in a card.
+        [['_ngtag-q'], [[' ', ['card']]], `"2" "2"`, 1001, 0, 1],
+        // A later rule of the same specificity wins in its stylesheet.
+        [['_ngtag-q'], [], `"3" "3"`, 1, 0, 2],
+      );
+      const view = doc.createElement('view');
+      page.appendChild(view);
+      const q = makeQ();
+      view.appendChild(q);
+      commit();
+      expect(drawn(q)).toEqual(['3', '3']);
+
+      view.setAttribute('class', 'card');
+      expect(drawn(q)).toEqual(['2', '2']);
+    });
+
+    it('draws the language’s marks where it can’t tell the rule', () => {
+      quotesRules([['_ngtag-q'], [], null, 1, 0, 0]);
+      const { q } = nested();
+      expect(drawn(q)).toEqual(['“', '‘', '’', '”']);
+    });
+
+    it('passes over a rule whose value it can’t read', () => {
+      // The build lists only values a browser keeps (see its style-index.ts).
+      quotesRules([['_ngtag-q'], [], `'«'`, 1, 0, 0]);
+      const q = makeQ();
+      page.appendChild(q);
+      commit();
+      expect(drawn(q)).toEqual(['“', '”']);
+    });
+
+    it('draws the language’s marks where stylesheets disagree', () => {
+      // Their order in Lynx's stylesheet isn't the runtime's to know.
+      quotesRules(
+        [['_ngtag-q'], [], `"a" "a"`, 1, 0, 0],
+        [['_ngtag-q'], [], `"b" "b"`, 1, 1, 1],
+      );
+      const q = makeQ();
+      page.appendChild(q);
+      commit();
+      expect(drawn(q)).toEqual(['“', '”']);
+    });
+
+    it('takes an inline quotes over a rule, but not an !important one', () => {
+      quotesRules([['_ngtag-q'], [], `"r" "r"`, 1, 0, 0]);
+      const q = makeQ();
+      page.appendChild(q);
+      commit();
+      expect(drawn(q)).toEqual(['r', 'r']);
+
+      q.setStyle('quotes', `"i" "i"`);
+      expect(drawn(q)).toEqual(['i', 'i']);
+      q.removeStyle('quotes');
+      expect(drawn(q)).toEqual(['r', 'r']);
+
+      quotesRules([['_ngtag-q'], [], `"r" "r"`, 1 + 1e9, 0, 0]);
+      q.setStyle('quotes', `"i" "i"`);
+      expect(drawn(q)).toEqual(['r', 'r']);
+      q.setStyle('quotes', `"i" "i" !important`);
+      expect(drawn(q)).toEqual(['i', 'i']);
+      // An inline revert-layer leaves the rule's, important or not.
+      q.setStyle('quotes', 'revert-layer !important');
+      expect(drawn(q)).toEqual(['r', 'r']);
+      quotesRules([['_ngtag-q'], [], `"r" "r"`, 1, 0, 0]);
+      q.setStyle('quotes', 'revert-layer');
+      expect(drawn(q)).toEqual(['r', 'r']);
+    });
+
+    it("takes a style attribute's quotes, without any rule", () => {
+      const view = doc.createElement('view');
+      page.appendChild(view);
+      const q = makeQ();
+      view.appendChild(q);
+      commit();
+      view.setAttribute('style', `quotes: '«' '»'`);
+      expect(drawn(q)).toEqual(['«', '»']);
+      // An invalid one is dropped, as a browser drops it.
+      view.setAttribute('style', `quotes: '«'`);
+      expect(drawn(q)).toEqual(['“', '”']);
+      view.setAttribute('style', 'quotes: none');
+      expect(drawn(q)).toEqual(['', '']);
+      view.setAttribute('style', 'color: red');
+      expect(drawn(q)).toEqual(['“', '”']);
+    });
+
+    it('trims the spaces at the edges of a line again when the marks go', () => {
+      const p = doc.createElement('p');
+      page.appendChild(p);
+      const q = makeQ();
+      p.appendChild(q);
+      q.appendChild(doc.createText(' hi '));
+      commit();
+      expect(drawn(q)).toEqual(['“', ' hi ', '”']);
+
+      q.setStyle('quotes', 'none');
+      commit();
+      expect(drawn(q)).toEqual(['', 'hi', '']);
+      q.removeStyle('quotes');
+      commit();
+      expect(drawn(q)).toEqual(['“', ' hi ', '”']);
+    });
+
+    it('matches a child rule past the anonymous <text> loose text shares', () => {
+      quotesRules([['_ngtag-q'], [['>', ['card']]], `"a" "b"`, 1001, 0, 0]);
+      const view = doc.createElement('view');
+      view.setAttribute('class', 'card');
+      page.appendChild(view);
+      view.appendChild(doc.createText('He said '));
+      const q = makeQ();
+      view.appendChild(q);
+      q.appendChild(doc.createText('hi'));
+      commit();
+      expect(drawn(q)).toEqual(['a', 'hi', 'b']);
+      view.setAttribute('class', '');
+      view.setAttribute('class', 'card');
+      commit();
+      expect(drawn(q)).toEqual(['a', 'hi', 'b']);
+    });
+
+    it('takes a <p> above a <q> for no Lynx <text>', () => {
+      // `text > q`: a <p> is a <text> natively, but not on the web.
+      quotesRules([['_ngtag-q'], [['>', ['<text>']]], `"a" "b"`, 2, 0, 0]);
+      const p = doc.createElement('p');
+      page.appendChild(p);
+      const q = makeQ();
+      p.appendChild(q);
+      commit();
+      expect(drawn(q)).toEqual(['“', '”']);
+      // A Lynx <text> is one.
+      const text = doc.createElement('text');
+      page.appendChild(text);
+      text.appendChild(q);
+      commit();
+      expect(drawn(q)).toEqual(['a', 'b']);
+    });
+
+    it("matches a rule's ancestors through a server render's tree", () => {
+      quotesRules([['_ngtag-q'], [[' ', ['card']]], `"a" "b"`, 1001, 0, 0]);
+      // A snapshot's tree, which hydration puts no element in a JS parent
+      // of (see "takes a server render's lang from its native ancestors").
+      const g = globalThis as unknown as FakeNativeGlobal<FakeEl>;
+      const viewRef = g.__CreateView();
+      const qRef = g.__CreateText();
+      const openRef = g.__CreateRawText('');
+      const closeRef = g.__CreateRawText('');
+      g.__AppendElement(native(page), viewRef);
+      g.__AppendElement(viewRef, qRef);
+      g.__AppendElement(qRef, openRef);
+      g.__AppendElement(qRef, closeRef);
+      // Ids no other test's elements have (see "redraws a hydrated <q> past
+      // a wrapper made after it").
+      viewRef.id = 3_000_001;
+      qRef.id = 3_000_002;
+      openRef.id = 3_000_003;
+      closeRef.id = 3_000_004;
+      const view = new LynxElement(viewRef as never);
+      view.tagName = 'view';
+      view.setAttribute('class', 'card');
+      const q = new LynxElement(qRef as never);
+      q.tagName = 'text';
+      q.addScopeClass('_ngtag-q');
+      q.markQuote([openRef as never, closeRef as never]);
+      expect([leafText(openRef), leafText(closeRef)]).toEqual(['a', 'b']);
+    });
+
+    it('redraws a hydrated <q> past a wrapper made after it', () => {
+      quotesRules([['_ngtag-q'], [[' ', ['card']]], `"a" "b"`, 1001, 0, 0]);
+      const g = globalThis as unknown as FakeNativeGlobal<FakeEl>;
+      const viewRef = g.__CreateView();
+      const wrapperRef = g.__CreateView();
+      const qRef = g.__CreateText();
+      const openRef = g.__CreateRawText('');
+      const closeRef = g.__CreateRawText('');
+      g.__AppendElement(native(page), viewRef);
+      g.__AppendElement(viewRef, wrapperRef);
+      g.__AppendElement(wrapperRef, qRef);
+      g.__AppendElement(qRef, openRef);
+      g.__AppendElement(qRef, closeRef);
+      // Ids no other test's elements have: the ids start again in each
+      // test, and an element hydrated in an earlier one stays registered
+      // under its id. The wrapper's has no element until later.
+      viewRef.id = 2_000_001;
+      qRef.id = 2_000_002;
+      openRef.id = 2_000_003;
+      closeRef.id = 2_000_004;
+      wrapperRef.id = -2;
+      const view = new LynxElement(viewRef as never);
+      view.tagName = 'view';
+      const q = new LynxElement(qRef as never);
+      q.tagName = 'text';
+      q.addScopeClass('_ngtag-q');
+      q.markQuote([openRef as never, closeRef as never]);
+      expect(leafText(openRef)).toBe('“');
+
+      // A wrapper made later (as parentNode() makes one) has no flag, and
+      // the class still reaches the <q>, and so does an inline style above
+      // it, where no rule of the <q>'s own wins over it.
+      wrapperRef.id = 1_000_001;
+      new LynxElement(wrapperRef as never).tagName = 'view';
+      view.setAttribute('class', 'card');
+      expect([leafText(openRef), leafText(closeRef)]).toEqual(['a', 'b']);
+      view.setAttribute('class', '');
+      view.setStyle('quotes', 'none');
+      expect(leafText(openRef)).toBe('');
+    });
+
+    it('keeps the language of an auto inside a quotes', () => {
+      quotesRules([['fancy'], [], `"<" ">"`, 1000, 0, 0]);
+      const view = doc.createElement('view');
+      view.setAttribute('class', 'fancy');
+      page.appendChild(view);
+      const q = makeQ();
+      q.setAttribute('lang', 'fr');
+      q.setStyle('quotes', 'auto');
+      view.appendChild(q);
+      commit();
+      expect(drawn(q)).toEqual(['«', '»']);
+    });
+  });
 });

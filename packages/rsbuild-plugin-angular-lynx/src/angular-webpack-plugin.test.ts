@@ -205,16 +205,26 @@ const createMockCompilation = () => {
   return compilation;
 };
 
+/** The plugin's beforeEmit tap, once setupBeforeEncodeHook wired it up. */
+let beforeEmitCb: ((args: unknown) => unknown) | undefined;
+
 /**
- * Wires up the beforeEncode hook mock and returns a trigger function.
+ * Wires up the beforeEncode hook mock and returns a trigger function. It
+ * wires up beforeEmit too, which beforeEmitCb calls.
  */
 const setupBeforeEncodeHook = () => {
   let beforeEncodeCb: ((args: unknown) => unknown) | undefined;
+  beforeEmitCb = undefined;
 
   vi.mocked(LynxTemplatePlugin.getLynxTemplatePluginHooks).mockReturnValue({
     beforeEncode: {
       tap: vi.fn((_name: string, cb: (args: unknown) => unknown) => {
         beforeEncodeCb = cb;
+      }),
+    },
+    beforeEmit: {
+      tap: vi.fn((_options: unknown, cb: (args: unknown) => unknown) => {
+        beforeEmitCb = cb;
       }),
     },
   } as never);
@@ -1012,6 +1022,30 @@ describe('AngularWebpackPlugin', () => {
         expect(result.source()).toContain(
           "'use strict';var globDynamicComponentEntry",
         );
+      });
+    });
+
+    // Issue #821: the runtime draws a <q>'s marks from the `quotes` Lynx
+    // drops, so its warning about dropping them is left out.
+    describe('beforeEmit hook', () => {
+      it("leaves out the encoder's diagnostics about quotes", () => {
+        const { compiler, triggerCompilation } = createMockCompiler();
+        setupBeforeEncodeHook();
+        new AngularWebpackPlugin().apply(compiler as never);
+        triggerCompilation(createMockCompilation());
+        const cursor = { type: 'property', name: 'cursor', line: 1, column: 1 };
+        const quotes = { type: 'property', name: 'quotes', line: 2, column: 1 };
+        const args = {
+          template: 'bundle',
+          cssDiagnostics: JSON.stringify([cursor, quotes]),
+        };
+        expect(beforeEmitCb!(args)).toEqual({
+          template: 'bundle',
+          cssDiagnostics: JSON.stringify([cursor]),
+        });
+        // Without any, it hands the same arguments on.
+        const none = { template: 'bundle' };
+        expect(beforeEmitCb!(none)).toBe(none);
       });
     });
 

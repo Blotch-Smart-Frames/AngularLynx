@@ -214,9 +214,11 @@ static AngularLynxDecodedImage *cropImage(AngularLynxDecodedImage *image, NSDict
   long long y = integerOption(options, @"cropY");
   long long width = integerOption(options, @"cropWidth");
   long long height = integerOption(options, @"cropHeight");
-  // Each side is at most 2^31 - 1 (a Web IDL long), so the pixel count fits;
-  // it's checked before it's multiplied by 4, which could wrap round.
-  NSMutableData *pixels = (unsigned long long)width <= NSIntegerMax / 4 / (unsigned long long)height
+  // At most INT32_MAX bytes, Android's limit too (rgbaByteCount): a side can
+  // be 2^31 - 1 (a Web IDL long), and a crop of 8 GB, which pixelsOfSnapshot
+  // would copy again, can be allocated lazily and then end the app as the
+  // rows are written. Checked before it's multiplied, which could wrap round.
+  NSMutableData *pixels = (unsigned long long)width <= INT32_MAX / 4 / (unsigned long long)height
                               ? [NSMutableData dataWithLength:(NSUInteger)(width * height * 4)]
                               : nil;
   if (!pixels) {

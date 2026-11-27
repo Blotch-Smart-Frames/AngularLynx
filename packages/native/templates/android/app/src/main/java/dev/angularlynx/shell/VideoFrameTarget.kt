@@ -50,8 +50,12 @@ class VideoFrameTarget private constructor(
     private val readiness = Any()
     @Volatile
     private var hasImage = false
-    /** A reset hasn't reached the target's thread yet. */
-    private var resetPending = false
+    /**
+     * Resets that haven't reached the target's thread yet: a count, so the
+     * first of two can't clear the second's while a frame from between them
+     * is latched.
+     */
+    private var resetsPending = 0
     /** The timestamp of the frame the last reset forgot, which a latch with nothing new keeps. */
     private var staleTimestamp = 0L
     private var released = false
@@ -73,13 +77,13 @@ class VideoFrameTarget private constructor(
         // Not current from here on, though the thread may be busy: a latch
         // it runs before the post below takes a frame from before the reset.
         synchronized(readiness) {
-            resetPending = true
+            resetsPending++
             hasImage = false
         }
         handler.post {
             synchronized(readiness) {
                 staleTimestamp = surfaceTexture.timestamp
-                resetPending = false
+                resetsPending--
             }
         }
     }
@@ -133,7 +137,7 @@ class VideoFrameTarget private constructor(
         // with the time it's released to be shown, so two never share one.
         val timestamp = surfaceTexture.timestamp
         synchronized(readiness) {
-            if (!resetPending && timestamp != 0L && timestamp != staleTimestamp) hasImage = true
+            if (resetsPending == 0 && timestamp != 0L && timestamp != staleTimestamp) hasImage = true
         }
     }
 

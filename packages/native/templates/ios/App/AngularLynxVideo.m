@@ -368,7 +368,12 @@ static const int64_t kFrameNanoseconds = 16666667;
 /// frames reading `output`: a phone records portrait video landscape, with a
 /// transform that turns it upright, which the output's frames don't have.
 /// Loaded without blocking, as AVFoundation asks; a file whose track or
-/// transform won't load is shown as stored, as the frames were before.
+/// transform won't load is shown as stored, as the frames were before. The
+/// track is the first enabled one, the one the player shows: a file can hold
+/// a disabled video track ahead of it. They're the asset's tracks rather
+/// than the item's (`item.tracks`), which are empty until the item is ready
+/// to play, and the frames have none to give until this loads. Every path
+/// ends in `loaded`, which the first-frame wait relies on.
 - (void)loadTransformOf:(AVPlayerItem *)item forOutput:(AVPlayerItemVideoOutput *)output {
   __weak typeof(self) weakSelf = self;
   void (^loaded)(CGAffineTransform) = ^(CGAffineTransform transform) {
@@ -382,19 +387,34 @@ static const int64_t kFrameNanoseconds = 16666667;
   [item.asset
       loadTracksWithMediaType:AVMediaTypeVideo
             completionHandler:^(NSArray<AVAssetTrack *> *tracks, NSError *error) {
-              AVAssetTrack *track = tracks.firstObject;
-              if (!track) {
+              if (tracks.count == 0) {
                 loaded(CGAffineTransformIdentity);
                 return;
               }
-              [track loadValuesAsynchronouslyForKeys:@[ @"preferredTransform" ]
-                                   completionHandler:^{
-                                     loaded([track statusOfValueForKey:@"preferredTransform"
-                                                                 error:NULL] ==
-                                                    AVKeyValueStatusLoaded
-                                                ? track.preferredTransform
-                                                : CGAffineTransformIdentity);
-                                   }];
+              NSArray<NSString *> *keys = @[ @"enabled", @"preferredTransform" ];
+              dispatch_group_t group = dispatch_group_create();
+              for (AVAssetTrack *track in tracks) {
+                dispatch_group_enter(group);
+                [track loadValuesAsynchronouslyForKeys:keys
+                                     completionHandler:^{
+                                       dispatch_group_leave(group);
+                                     }];
+              }
+              dispatch_group_notify(group, dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+                AVAssetTrack *shown = tracks.firstObject;
+                for (AVAssetTrack *track in tracks) {
+                  if ([track statusOfValueForKey:@"enabled" error:NULL] ==
+                          AVKeyValueStatusLoaded &&
+                      track.enabled) {
+                    shown = track;
+                    break;
+                  }
+                }
+                loaded([shown statusOfValueForKey:@"preferredTransform" error:NULL] ==
+                               AVKeyValueStatusLoaded
+                           ? shown.preferredTransform
+                           : CGAffineTransformIdentity);
+              });
             }];
 }
 

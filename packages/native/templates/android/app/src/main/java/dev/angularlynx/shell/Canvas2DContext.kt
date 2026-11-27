@@ -681,10 +681,9 @@ class Canvas2DContext(
      * Draws with a filter, which works on pixels: the shape is drawn into a
      * layer, bigger than the canvas by how far the filter reaches (so a shape
      * just off the canvas blurs, or casts its shadow, onto it), and the
-     * filter is applied to the layer's pixels (CanvasFilter). The layer is
-     * then drawn over the canvas with the alpha, the operation and the
-     * shadow, inside the clip: the canvas spec filters what's drawn before
-     * all of those.
+     * alpha and then the filter are applied to the layer's pixels
+     * (CanvasFilter). The layer is then drawn over the canvas with the
+     * operation and the shadow, inside the clip, in the canvas spec's order.
      */
     private fun compositeFiltered(c: Canvas, matrix: Matrix?, draw: (Canvas) -> Unit) {
         val s = state
@@ -702,6 +701,11 @@ class Canvas2DContext(
             // filter works on.
             val pixels = ByteBuffer.allocate(layerWidth * layerHeight * 4)
             layer.copyPixelsToBuffer(pixels)
+            // globalAlpha goes on first, then the filter, then the shadow is
+            // cast and the layer composited, as the canvas spec has it (since
+            // whatwg/html#10674): so a drop-shadow() shows through a
+            // see-through shape.
+            CanvasFilter.scaleAlpha(pixels.array(), s.globalAlpha.toDouble())
             CanvasFilter.apply(pixels.array(), layerWidth, layerHeight, s.filterSteps)
             pixels.rewind()
             layer.copyPixelsFromBuffer(pixels)
@@ -712,11 +716,9 @@ class Canvas2DContext(
             if (unbounded) {
                 val layerPaint = Paint()
                 setBlend(layerPaint, s.composite)
-                layerPaint.alpha = (s.globalAlpha * 255).roundToInt()
                 c.saveLayer(null, layerPaint)
             } else {
                 setBlend(paint, s.composite)
-                paint.alpha = (s.globalAlpha * 255).roundToInt()
             }
             c.drawBitmap(layer, -pad.toFloat(), -pad.toFloat(), paint)
             if (unbounded) c.restore()

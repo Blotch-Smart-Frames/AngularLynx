@@ -13,7 +13,8 @@ import kotlin.math.sqrt
  * The 2D context's `filter`, which the runtime parses into steps
  * (packages/runtime/src/lib/canvas/css-filter.ts): a Gaussian blur, a color
  * matrix, or a drop shadow, applied in order to the layer what's drawn went
- * into, before its shadow and compositing, as the canvas spec has it.
+ * into, after its alpha and before its shadow and compositing, as the canvas
+ * spec has it.
  *
  * They work on the layer's bytes as `copyPixelsToBuffer` gives them,
  * premultiplied RGBA, in sRGB, which is where the spec has filter functions
@@ -50,6 +51,12 @@ internal object CanvasFilter {
                 else -> dropShadow(bytes, width, height, values)
             }
         }
+    }
+
+    /** globalAlpha on a layer's bytes, which are premultiplied, so every channel scales. */
+    fun scaleAlpha(bytes: ByteArray, alpha: Double) {
+        if (alpha >= 1) return
+        for (i in bytes.indices) bytes[i] = clampByte(bytes.at(i) * alpha)
     }
 
     private fun clampByte(value: Double): Byte = when {

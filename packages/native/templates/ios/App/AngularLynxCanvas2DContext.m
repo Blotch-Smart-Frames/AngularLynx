@@ -453,7 +453,8 @@ static UIFont *fontFor(NSString *families, NSInteger weight, BOOL italic, CGFloa
 // The 2D context's `filter`, which the runtime parses into steps
 // (packages/runtime/src/lib/canvas/css-filter.ts): a Gaussian blur, a color
 // matrix, or a drop shadow, applied in order to the layer what's drawn went
-// into, before its shadow and compositing, as the canvas spec has it. They
+// into, after its alpha and before its shadow and compositing, as the
+// canvas spec has it. They
 // work on the layer's bytes, premultiplied RGBA, in sRGB, which is where
 // the spec has filter functions work. Android's shell runs the same steps
 // the same way (CanvasFilter.kt), so the two draw alike.
@@ -607,6 +608,13 @@ static void dropShadow(uint8_t *bytes, size_t width, size_t height, double dx, d
     bytes[i + 3] = clampByte(bytes[i + 3] + 255 * shadowAlpha * under);
   }
   free(shadow);
+}
+
+/// globalAlpha on a layer's bytes, which are premultiplied, so every
+/// channel scales.
+static void scaleAlpha(uint8_t *bytes, size_t pixels, double alpha) {
+  if (alpha >= 1) return;
+  for (size_t i = 0; i < pixels * 4; i++) bytes[i] = clampByte(bytes[i] * alpha);
 }
 
 /// The filter's steps, as the runtime sends them, on a layer's bytes.
@@ -1184,15 +1192,19 @@ static CGRect drawableRect(CGContextRef c) {
   CGContextScaleCTM(layer, 1, -1);
   CGContextTranslateCTM(layer, pad, pad);
   draw(layer);
-  // The filter is applied to what's drawn before its shadow, its alpha and
-  // its compositing, and outside the clip, as the canvas spec has it.
+  // The canvas spec takes what's drawn through globalAlpha first, then the
+  // filter, then casts the shadow and composites, outside the clip until
+  // then (since whatwg/html#10674): so a drop-shadow() shows through a
+  // see-through shape. Without a filter, the alpha goes on as the layer's
+  // drawn, which comes to the same.
   if (filtered) {
+    scaleAlpha(CGBitmapContextGetData(layer), layerWidth * layerHeight, s.globalAlpha);
     applyFilter(CGBitmapContextGetData(layer), layerWidth, layerHeight, s.filterSteps);
   }
   CGImageRef image = CGBitmapContextCreateImage(layer);
   CGContextRelease(layer);
   CGContextSaveGState(c);
-  CGContextSetAlpha(c, s.globalAlpha);
+  CGContextSetAlpha(c, filtered ? 1 : s.globalAlpha);
   CGContextSetBlendMode(c, BLEND_MODES[s.composite]);
   if (shadow) {
     CGColorRef color = CGColorCreateSRGB(s.shadowR / 255, s.shadowG / 255, s.shadowB / 255,

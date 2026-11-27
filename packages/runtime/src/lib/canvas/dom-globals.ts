@@ -1,17 +1,10 @@
 import { writePendingClasses } from '../lynx-element/class-writes';
 import { type LayoutRect, toDOMRect } from '../lynx-element/layout';
-import {
-  LynxCanvasGradient,
-  LynxCanvasPattern,
-  LynxCanvasRenderingContext2D,
-  LynxImageData,
-  LynxTextMetrics,
-} from './canvas-2d-context';
+import { LynxImageData } from './image-data';
 import { CANVAS_SOURCE } from './canvas-source';
 import { LynxImageBitmapRenderingContext } from './bitmap-renderer-context';
 import { LynxDetachedCanvas, LynxOffscreenCanvas } from './detached-canvas';
 import { createImageBitmap, LynxImageBitmap, LynxImageElement } from './image';
-import { LynxPath2D } from './path';
 import { wrapRealmImageMethods } from './web-image-sources';
 import { acceptPageInstances } from './web-instanceof';
 import {
@@ -65,11 +58,12 @@ const isLynxElement = (value: unknown): value is LayoutElement =>
  * - `HTMLVideoElement`: a template's `<video>` is an instance of it, as
  *   three.js checks before sizing a VideoTexture by its `videoWidth` and
  *   `videoHeight` (see video-element.ts).
- * - `document.createElement('canvas')`, `OffscreenCanvas`, and the 2D
- *   context's classes (`CanvasRenderingContext2D`, `CanvasGradient`,
- *   `CanvasPattern`, `TextMetrics`, `ImageData`, `Path2D`): see
- *   canvas-2d-context.ts and detached-canvas.ts. Chart and image libraries,
- *   and three.js's text textures, draw on a canvas that's never in the page.
+ * - `document.createElement('canvas')`, `OffscreenCanvas` and `ImageData`:
+ *   see detached-canvas.ts and image-data.ts. Chart and image libraries, and
+ *   three.js's text textures, draw on a canvas that's never in the page. The
+ *   2D context's own classes (`CanvasRenderingContext2D`, `CanvasGradient`,
+ *   `CanvasPattern`, `TextMetrics`, `Path2D`) come with the context, in the
+ *   apps with a module that asks for it (enable-canvas-2d.ts).
  * - `Image`, `HTMLImageElement`, `ImageBitmap`, `createImageBitmap()`, and
  *   `document.createElement('img')`: see image.ts. `ImageBitmapRenderingContext`,
  *   a canvas's `bitmaprenderer` context: see bitmap-renderer-context.ts.
@@ -115,13 +109,7 @@ export const installCanvasGlobals = (target: Record<string, any>): void => {
   install('HTMLCanvasElement', LynxHTMLCanvasElement);
   install('HTMLVideoElement', LynxHTMLVideoElement);
   install('OffscreenCanvas', LynxOffscreenCanvas);
-  install('CanvasRenderingContext2D', LynxCanvasRenderingContext2D);
-  install('OffscreenCanvasRenderingContext2D', LynxCanvasRenderingContext2D);
-  install('CanvasGradient', LynxCanvasGradient);
-  install('CanvasPattern', LynxCanvasPattern);
-  install('TextMetrics', LynxTextMetrics);
   install('ImageData', LynxImageData);
-  install('Path2D', LynxPath2D);
   install('Image', LynxImageElement);
   install('HTMLImageElement', LynxImageElement);
   install('ImageBitmap', LynxImageBitmap);

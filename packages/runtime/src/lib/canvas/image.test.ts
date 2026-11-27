@@ -9,13 +9,13 @@ import {
   createFakeWebGLBridge,
   type FakeWebGLBridge,
 } from '../testing/fake-webgl-bridge';
-import {
-  type LynxCanvasRenderingContext2D,
-  LynxImageData,
-} from './canvas-2d-context';
+import type { LynxCanvasRenderingContext2D } from './canvas-2d-context';
 import { canvasSourceOf } from './canvas-source';
+import { setCanvas2DContextFactory } from './canvas-surface';
 import { LynxDetachedCanvas, LynxOffscreenCanvas } from './detached-canvas';
+import { ɵenableCanvas2D } from './enable-canvas-2d';
 import { createImageBitmap, LynxImageBitmap, LynxImageElement } from './image';
+import { LynxImageData } from './image-data';
 import { NATIVE_IMAGE, type NativeImage } from './native-image';
 import {
   fromWords,
@@ -30,6 +30,8 @@ let bridge: FakeWebGLBridge;
 let bridge2D: FakeCanvas2DBridge;
 
 beforeEach(() => {
+  // As the build plugin does for a module that names '2d'.
+  ɵenableCanvas2D();
   bridge = createFakeWebGLBridge();
   setWebGLBridgeForTesting(bridge);
   bridge2D = createFakeCanvas2DBridge();
@@ -37,6 +39,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  setCanvas2DContextFactory(null);
   setWebGLBridgeForTesting(undefined);
   setCanvas2DBridgeForTesting(undefined);
   vi.unstubAllGlobals();

@@ -137,6 +137,8 @@ export type { LynxWebGL2RenderingContext } from './lib/canvas/webgl2-context';
 // Called by the build plugin in each module that asks for a WebGL2 context,
 // so apps that never draw leave the context out of their bundle.
 export { ɵenableWebGL2 } from './lib/canvas/enable-webgl2';
+// Called by the build plugin in each module that asks for a 2D context.
+export { ɵenableCanvas2D } from './lib/canvas/enable-canvas-2d';
 // Called by the build plugin in each main-thread module that names fetch,
 // XMLHttpRequest, IntersectionObserver (or compiles `@defer (on viewport)`),
 // TextEncoder, TextDecoder, ReadableStream or Blob, so apps that use none of

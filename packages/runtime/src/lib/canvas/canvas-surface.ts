@@ -7,10 +7,11 @@ import {
 import {
   canvas2DAttributesFrom,
   type LynxCanvas2DAttributes,
-  LynxCanvasRenderingContext2D,
-} from './canvas-2d-context';
+} from './canvas-2d-attributes';
+import type { LynxCanvasRenderingContext2D } from './canvas-2d-context';
 import { CANVAS_SOURCE, type CanvasSource } from './canvas-source';
 import {
+  type Canvas2DBridge,
   type EncodedImage,
   getBitmapRendererBridge,
   getCanvas2DBridge,
@@ -62,6 +63,45 @@ let webGL2ContextFactory: WebGL2ContextFactory | null = null;
  * says so once rather than on every frame a library asks.
  */
 let warnedNotEnabled = false;
+
+/**
+ * Makes a canvas's 2D context (see {@link setCanvas2DContextFactory}). The
+ * owner is the canvas object the app holds, which the context's `canvas` is.
+ */
+export type Canvas2DContextFactory = (
+  bridge: Canvas2DBridge,
+  contextId: number,
+  owner: CanvasOwner,
+  attributes: LynxCanvas2DAttributes,
+) => LynxCanvasRenderingContext2D;
+
+/**
+ * What makes a canvas's 2D context, once `ɵenableCanvas2D()` (see
+ * enable-canvas-2d.ts) has set it, as {@link webGL2ContextFactory} does for
+ * WebGL2. Until then a canvas has no 2D context to give.
+ *
+ * The context, with its paths and its CSS color, font and filter parsers, is
+ * about 40 kB of an unmangled main-thread script, which every app paid for
+ * in memory whether it drew or not (#729). Through this slot only the
+ * modules that name `'2d'` (or one of the 2D context's classes, such as
+ * `Path2D`) bring it: the build plugin calls `ɵenableCanvas2D()` at the top
+ * of each one (on-demand.ts there).
+ */
+let canvas2DContextFactory: Canvas2DContextFactory | null = null;
+
+/** As {@link warnedNotEnabled}, for the 2D context. */
+let warned2DNotEnabled = false;
+
+/**
+ * @internal Sets what makes a canvas's 2D context (see
+ * {@link canvas2DContextFactory}); `null` takes it away again, for tests.
+ */
+export const setCanvas2DContextFactory = (
+  factory: Canvas2DContextFactory | null,
+): void => {
+  canvas2DContextFactory = factory;
+  warned2DNotEnabled = false;
+};
 
 /**
  * @internal Sets what makes a canvas's WebGL2 context (see
@@ -350,6 +390,19 @@ export class CanvasSurface {
   ): LynxCanvasRenderingContext2D | null {
     const bridge = getCanvas2DBridge();
     if (!bridge) return null;
+    const createContext = canvas2DContextFactory;
+    if (!createContext) {
+      // The build left the 2D context out: no module it bundled names '2d',
+      // as code that asks for the context does (see canvas2DContextFactory).
+      // Only a context name built at runtime gets here.
+      if (!warned2DNotEnabled) {
+        warned2DNotEnabled = true;
+        console.warn(
+          "[angular-lynx] getContext('2d') has no context to give: the build includes the 2D context only when a module names '2d', and none did. Write the name out where you call getContext(), or call ɵenableCanvas2D() from @blotch/angular-lynx before it.",
+        );
+      }
+      return null;
+    }
     const contextId = nextContextId++;
     const created = bridge.create2D(contextId, this.canvasId, {
       alpha: resolved.alpha,
@@ -362,12 +415,7 @@ export class CanvasSurface {
       );
       return null;
     }
-    const context = new LynxCanvasRenderingContext2D(
-      bridge,
-      contextId,
-      this.#owner,
-      resolved,
-    );
+    const context = createContext(bridge, contextId, this.#owner, resolved);
     this.#context = context;
     this.#contextType = '2d';
     contextFinalizer?.register(this.#owner, () => bridge.destroy2D(contextId));
@@ -449,12 +497,20 @@ export class CanvasSurface {
     // canvas's (see source).
     if (this.source.width === 0 || this.source.height === 0) return null;
     if (context?.isContextLost()) return null;
+    // Told apart by the kind it was made as, not its class: the 2D
+    // context's class is in the build only when something asks for one.
     const encoded = !context
       ? this.#encodeBlank(mime, jpegQuality)
-      : context instanceof LynxCanvasRenderingContext2D ||
-          context instanceof LynxImageBitmapRenderingContext
-        ? context.encode(mime, jpegQuality)
-        : context.encodeDrawingBuffer(mime, jpegQuality);
+      : this.#contextType === 'webgl2'
+        ? (context as LynxWebGL2RenderingContext).encodeDrawingBuffer(
+            mime,
+            jpegQuality,
+          )
+        : (
+            context as
+              | LynxCanvasRenderingContext2D
+              | LynxImageBitmapRenderingContext
+          ).encode(mime, jpegQuality);
     if (encoded.base64 === undefined) {
       console.warn(
         `[angular-lynx] The canvas couldn't be encoded: ${encoded.error}`,

@@ -5,18 +5,18 @@ import {
   createFakeCanvas2DBridge,
   type FakeCanvas2DBridge,
 } from '../testing/fake-canvas-2d-bridge';
+import { canvas2DAttributesFrom } from './canvas-2d-attributes';
 import {
-  canvas2DAttributesFrom,
   LynxCanvasGradient,
   LynxCanvasPattern,
   LynxCanvasRenderingContext2D,
   LynxDOMMatrix,
-  LynxImageData,
   LynxTextMetrics,
 } from './canvas-2d-context';
 import { OP, PATH_OP } from './canvas-2d-ops';
 import { FILTER_STEP, parseFilter } from './css-filter';
 import { CANVAS_SOURCE, type CanvasSource } from './canvas-source';
+import { LynxImageData } from './image-data';
 import { NATIVE_IMAGE } from './native-image';
 import { LynxPath2D } from './path';
 import { LynxVideoElement } from './video-element';
@@ -735,6 +735,19 @@ describe('LynxCanvasRenderingContext2D', () => {
     );
   });
 
+  it('still makes patterns where the engine has no FinalizationRegistry', async () => {
+    vi.stubGlobal('FinalizationRegistry', undefined);
+    vi.resetModules();
+    const module = await import('./canvas-2d-context');
+    const context = new module.LynxCanvasRenderingContext2D(
+      bridge,
+      7,
+      canvas,
+      canvas2DAttributesFrom(undefined),
+    );
+    expect(context.createPattern(image(3), null)).not.toBeNull();
+  });
+
   it('frees a pattern’s image through the module when it’s collected', async () => {
     let free: (() => void) | undefined;
     vi.stubGlobal(
@@ -752,7 +765,7 @@ describe('LynxCanvasRenderingContext2D', () => {
       bridge,
       7,
       canvas,
-      module.canvas2DAttributesFrom(undefined),
+      canvas2DAttributesFrom(undefined),
     );
     const pattern = context.createPattern(image(3), null)!;
     free!();

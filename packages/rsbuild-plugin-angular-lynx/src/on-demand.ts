@@ -53,8 +53,27 @@ const WEBGL2 = /\bwebgl2\b/;
  *   message ids name `TextEncoder`, so an app with `$localize` gets it.
  *   `Blob` also comes where a module names a canvas's `toBlob` or
  *   `convertToBlob`, which make one.
+ * - The 2D canvas context, with its classes as globals (#729), comes where a
+ *   module asks for it as code does, with the string `'2d'`
+ *   (`getContext('2d')`): unlike WEBGL2, not the bare word, which hashes,
+ *   CSS and comments hold. It comes too where a module names one of the
+ *   context's classes, which code checks a context against, patches, or
+ *   builds a `Path2D` from, maybe before it asks for a context. No module of
+ *   Angular's or rxjs's names any of them.
  */
 const GLOBALS: readonly { enable: string; names: readonly string[] }[] = [
+  {
+    enable: 'ɵenableCanvas2D',
+    names: [
+      '2d',
+      'CanvasRenderingContext2D',
+      'OffscreenCanvasRenderingContext2D',
+      'CanvasGradient',
+      'CanvasPattern',
+      'TextMetrics',
+      'Path2D',
+    ],
+  },
   {
     enable: 'ɵenableFetch',
     names: [
@@ -96,6 +115,19 @@ const ESCAPE = /\\[ux]/;
 const GLOBAL_NAMES: ReadonlySet<string> = new Set(
   GLOBALS.flatMap(({ names }) => names),
 );
+
+/**
+ * Whether the module's text can hold the name, as namedGlobals() reads it,
+ * before it's parsed. A name that isn't an identifier, `2d`, can only be a
+ * string's, so it's looked for in quotes: bare, it's in hashes, numbers and
+ * CSS of many modules that would be parsed for nothing.
+ */
+const mayName = (code: string, name: string): boolean =>
+  /^\d/.test(name)
+    ? code.includes(`'${name}'`) ||
+      code.includes(`"${name}"`) ||
+      code.includes(`\`${name}\``)
+    : code.includes(name);
 
 /**
  * Names that Angular's packages use for code an app doesn't run, or runs only
@@ -173,7 +205,7 @@ export const namedGlobals = (
   // `'fetch'`), which no search of the text finds, so a module with any goes
   // on to be parsed: its tokens hold the names decoded.
   if (
-    ![...GLOBAL_NAMES].some((name) => code.includes(name)) &&
+    ![...GLOBAL_NAMES].some((name) => mayName(code, name)) &&
     !ESCAPE.test(code)
   ) {
     return found;
@@ -225,7 +257,8 @@ const globalsAskedFor = (code: string, filename: string): string[] => {
  *
  * PrimJS reads a script's whole bytecode as it loads it, so every app paid in
  * memory for the code, whether it ran or not: the WebGL2 context (about
- * 37 kB of a minified main-thread script, #707), the relayed `fetch` and
+ * 37 kB of a minified main-thread script, #707), the 2D context (#729), the
+ * relayed `fetch` and
  * `XMLHttpRequest`, `IntersectionObserver` (#719), and `TextEncoder`,
  * `TextDecoder`, `ReadableStream` and `Blob` (#760). The runtime keeps each
  * out of reach until its enable function runs, so an app that never names it

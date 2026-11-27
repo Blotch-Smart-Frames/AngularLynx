@@ -37,6 +37,7 @@ import {
 import {
   provideRenderer,
   ɵenableBlob,
+  ɵenableCanvas2D,
   ɵenableFetch,
   ɵenableIntersectionObserver,
   ɵenableReadableStream,
@@ -48,8 +49,9 @@ import {
 import { type BoundLynxQueries, type LynxQueries, queries } from './queries.js';
 
 // An app's build gives its main thread fetch, XMLHttpRequest,
-// IntersectionObserver, TextEncoder, TextDecoder, ReadableStream and Blob
-// only where a module names them (the build plugin's on-demand.ts). Tests
+// IntersectionObserver, TextEncoder, TextDecoder, ReadableStream, Blob and
+// the 2D canvas context only where a module names them (the build plugin's
+// on-demand.ts). Tests
 // aren't built by the plugin, so they get them all, as the runtime gave every
 // app before: a component that observes its elements, or one with
 // `@defer (on viewport)`, renders as it does in the app. Each keeps the
@@ -62,6 +64,7 @@ import { type BoundLynxQueries, type LynxQueries, queries } from './queries.js';
 ɵenableTextDecoder();
 ɵenableReadableStream();
 ɵenableBlob();
+ɵenableCanvas2D();
 
 /**
  * The value an input takes from a test: what a signal input or model accepts

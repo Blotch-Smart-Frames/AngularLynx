@@ -197,6 +197,7 @@ afterNextRender(() => {
 - **`bitmaprenderer`:** `canvas.getContext('bitmaprenderer').transferFromImageBitmap(offscreen.transferToImageBitmap())` shows an OffscreenCanvas's frame, as on the web. The bitmap is detached (width 0 after), and the canvas shows it scaled to its CSS size and reads as it (at the bitmap's size). `transferFromImageBitmap(null)` clears it.
 - **Not there:** `wordSpacing`, `fontKerning`, `fontStretch`, `fontVariantCaps`, `textRendering` (kept, no effect). Color emoji show only in a plain-color `fillText()`.
 - A canvas has the kind of context it was first asked for: after `getContext('2d')`, `getContext('webgl2')` and `getContext('bitmaprenderer')` are `null`.
+- **Write `'2d'` out where you ask for the context:** the build includes the 2D context only when a module of the app or its libraries names `'2d'` in quotes, or one of its classes (`Path2D`, `CanvasRenderingContext2D`, `CanvasGradient`, `CanvasPattern`, `TextMetrics`, which are globals only then), so an app that never draws in 2D doesn't carry it. On iOS and Android, a name built at runtime gets `null` and a console warning unless another module named `'2d'`; write the name out, or call `ɵenableCanvas2D()` from `@blotch/angular-lynx` before `getContext()`.
 
 ### 3D with `<canvas>`
 

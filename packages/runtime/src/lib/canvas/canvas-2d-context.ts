@@ -30,30 +30,14 @@ import {
   transformSegments,
 } from './path';
 import type { Canvas2DBridge, EncodedImage } from './webgl-bridge';
+import type { LynxCanvas2DAttributes } from './canvas-2d-attributes';
+import { LynxImageData } from './image-data';
 
 /** The canvas a 2D context draws on, as the context sees it. */
 export type Canvas2DHost = {
   readonly width: number;
   readonly height: number;
 };
-
-/** CanvasRenderingContext2DSettings, with the defaults filled in. */
-export type LynxCanvas2DAttributes = {
-  alpha: boolean;
-  colorSpace: 'srgb';
-  desynchronized: boolean;
-  willReadFrequently: boolean;
-};
-
-export const canvas2DAttributesFrom = (
-  requested: Partial<LynxCanvas2DAttributes> | undefined,
-): LynxCanvas2DAttributes => ({
-  alpha: requested?.alpha ?? true,
-  // The shells draw in sRGB; display-p3 isn't there.
-  colorSpace: 'srgb',
-  desynchronized: false,
-  willReadFrequently: !!requested?.willReadFrequently,
-});
 
 const domError = (name: string, message: string): Error => {
   const error = new Error(message);
@@ -308,64 +292,6 @@ export class LynxTextMetrics {
     this.hangingBaseline = at(9);
     this.alphabeticBaseline = at(10);
     this.ideographicBaseline = at(11);
-  }
-}
-
-/** ImageData: RGBA pixels, not premultiplied, rows top to bottom. */
-export class LynxImageData {
-  readonly data: Uint8ClampedArray;
-  readonly width: number;
-  readonly height: number;
-  readonly colorSpace = 'srgb';
-
-  constructor(
-    dataOrWidth: Uint8ClampedArray | number,
-    widthOrHeight: number,
-    height?: number | object,
-  ) {
-    if (typeof dataOrWidth === 'number') {
-      const width = Math.floor(dataOrWidth);
-      const rows = Math.floor(widthOrHeight);
-      if (!(width > 0) || !(rows > 0)) {
-        throw domError(
-          'IndexSizeError',
-          `Failed to construct 'ImageData': The source ${width > 0 ? 'height' : 'width'} is zero or not a number.`,
-        );
-      }
-      this.width = width;
-      this.height = rows;
-      this.data = new Uint8ClampedArray(width * rows * 4);
-      return;
-    }
-    if (!(dataOrWidth instanceof Uint8ClampedArray)) {
-      throw new TypeError(
-        "Failed to construct 'ImageData': parameter 1 is not of type 'Uint8ClampedArray'.",
-      );
-    }
-    const width = Math.floor(widthOrHeight);
-    const length = dataOrWidth.length;
-    if (length === 0 || length % 4 !== 0) {
-      throw domError(
-        'InvalidStateError',
-        "Failed to construct 'ImageData': The input data length is not a multiple of 4.",
-      );
-    }
-    if (!(width > 0) || (length / 4) % width !== 0) {
-      throw domError(
-        'IndexSizeError',
-        "Failed to construct 'ImageData': The input data length is not a multiple of (4 * width).",
-      );
-    }
-    const rows = length / 4 / width;
-    if (typeof height === 'number' && Math.floor(height) !== rows) {
-      throw domError(
-        'IndexSizeError',
-        "Failed to construct 'ImageData': The input data length is not equal to (4 * width * height).",
-      );
-    }
-    this.width = width;
-    this.height = rows;
-    this.data = dataOrWidth;
   }
 }
 

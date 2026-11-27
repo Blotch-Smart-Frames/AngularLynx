@@ -762,6 +762,15 @@ class Canvas2DContext(
      * grow with the offset, and a shadow cast from far off the canvas
      * (shadowOffsetX = 10000 and a shape at x = -10000) would make a huge
      * layer, or, capped, cut the shape away.
+     *
+     * When the blur's reach passes the cap, the shadow's layer also takes in
+     * the part of the canvas grown by 256 pixels (the one layer it was cast
+     * from before #787) that lies within the blur's whole reach, so a shape
+     * the old layer kept still casts its shadow (issue #795): with
+     * shadowOffsetX = -100, the layer round the moved canvas starts at
+     * x = -156, and a shape at x = -250 would be cut away. It does so only
+     * when one rectangle round the two is no bigger than the two, so a far
+     * offset still makes no huge layer.
      */
     private fun layers(): Layers {
         val s = state
@@ -769,7 +778,9 @@ class Canvas2DContext(
         val filterReach = min(s.filterPadding, 256)
         val shape = Rect(canvasRect).apply { inset(-filterReach, -filterReach) }
         if (!shadowVisible()) return Layers(shape, null)
-        val reach = min(filterReach + ceil(s.shadowBlur * 1.5f).toInt(), 256)
+        // A Double, as a huge blur's reach doesn't fit an Int.
+        val fullReach = filterReach + ceil(s.shadowBlur * 1.5)
+        val reach = min(fullReach, 256.0)
         // Whole pixels, so the layer's pixels line up with the canvas's.
         val left = floor(-s.shadowOffsetX.toDouble()) - reach
         val top = floor(-s.shadowOffsetY.toDouble()) - reach
@@ -778,7 +789,20 @@ class Canvas2DContext(
         // An offset past what a Rect holds casts no shadow anywhere the
         // canvas's pixels, which are floats, can still place a shape.
         if (listOf(left, top, right, bottom).any { abs(it) > MAX_LAYER_OFFSET }) return Layers(shape, null)
-        val source = Rect(left.toInt(), top.toInt(), right.toInt(), bottom.toInt())
+        var source = Rect(left.toInt(), top.toInt(), right.toInt(), bottom.toInt())
+        if (fullReach > 256) {
+            // The old layer, cut to the blur's whole reach round the moved
+            // canvas: past that, a shape casts nothing onto the canvas.
+            val keptLeft = max(-256.0, left + reach - fullReach)
+            val keptTop = max(-256.0, top + reach - fullReach)
+            val keptRight = min(width + 256.0, right - reach + fullReach)
+            val keptBottom = min(height + 256.0, bottom - reach + fullReach)
+            if (keptLeft < keptRight && keptTop < keptBottom) {
+                val kept = Rect(keptLeft.toInt(), keptTop.toInt(), keptRight.toInt(), keptBottom.toInt())
+                val grown = Rect(source).apply { union(kept) }
+                if (area(grown) <= area(source) + area(kept)) source = grown
+            }
+        }
         val both = Rect(shape).apply { union(source) }
         if (area(both) > area(shape) + area(source)) return Layers(shape, source)
         return Layers(both, null)

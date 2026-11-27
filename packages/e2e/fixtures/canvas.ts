@@ -286,7 +286,8 @@ export class CanvasRoute {
    * far off the canvas casts its shadow onto it, with a filter and without,
    * and one off a corner draws once over its shadow (issue #755), whose
    * strength follows the shape's alpha (issue #792), with a filter and
-   * without; a faded square's shadow takes globalAlpha and, with no blur,
+   * without; a shadow with a blur wider than the layers' 256 px cap still
+   * reaches a shape the canvas's 256 px round keeps (issue #795); a faded square's shadow takes globalAlpha and, with no blur,
    * has sharp edges (issue #796); a green image, and a square filled with a
    * green gradient and with a green pattern, each cast a red shadow, and so
    * does a green image far off the canvas (issue #759); and blur() softens a
@@ -366,6 +367,22 @@ export class CanvasRoute {
       return [pixel(corner, 1, 1), pixel(corner, 4, 4)];
     });
 
+    // A blur so wide its reach passes the layers' 256 px cap, and a shadow
+    // moved left: the layer round the canvas moved back by the offset starts
+    // at x = -156, so the shape at x = -250 to -170 was cut away and the
+    // canvas stayed see-through (issue #795). The shadow's layer now also
+    // takes in the canvas's 256 px round, as it did before issue #755's fix,
+    // so the shape's faint shadow, about 10 alpha in a browser, reaches it.
+    const wideBlurRead = (() => {
+      const wide = make(8, 8);
+      wide.filter = 'grayscale(1)';
+      wide.shadowColor = 'rgb(255, 0, 0)';
+      wide.shadowBlur = 400;
+      wide.shadowOffsetX = -100;
+      wide.fillRect(-250, -256, 80, 520);
+      return pixel(wide, 1, 4);
+    })();
+
     // A shape faded with globalAlpha casts a shadow faded as much, and a
     // shadow with no blur has sharp edges (issue #796): both of the 2 px
     // square's shadow columns read half red. Android's paint shadow read
@@ -443,6 +460,11 @@ export class CanvasRoute {
             ) <= 4,
         ),
       ) &&
+      wideBlurRead[0] >= 200 &&
+      wideBlurRead[1] <= 2 &&
+      wideBlurRead[2] <= 2 &&
+      wideBlurRead[3] > 0 &&
+      wideBlurRead[3] <= 40 &&
       fadedShadowReads.every((read) => near(read, [255, 0, 0, 128])) &&
       ownColorReads.every(
         ([shape, cast]) =>
@@ -463,6 +485,7 @@ export class CanvasRoute {
           offCanvasRead,
           ...farReads,
           ...cornerReads,
+          wideBlurRead,
           ...fadedShadowReads,
           ...ownColorReads.flat(),
           ...farImageReads,

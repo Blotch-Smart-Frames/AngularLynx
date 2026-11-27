@@ -1147,6 +1147,14 @@ static BOOL reducesAlpha(NSInteger composite) {
 /// second layer: one rectangle round both would grow with the offset, and a
 /// shadow cast from far off the canvas (shadowOffsetX = 10000 and a shape at
 /// x = -10000) would make a huge layer, or, capped, cut the shape away.
+///
+/// When the blur's reach passes the cap, the shadow's part also takes in the
+/// part of the canvas grown by 256 pixels (the one layer it was cast from
+/// before #787) that lies within the blur's whole reach, so a shape the old
+/// layer kept still casts its shadow (issue #795): with shadowOffsetX = -100,
+/// the part round the moved canvas starts at x = -156, and a shape at
+/// x = -250 would be cut away. It does so only when one rectangle round the
+/// two is no bigger than the two, so a far offset still makes no huge layer.
 typedef struct {
   CGRect shape;
   CGRect shadow;
@@ -1162,10 +1170,22 @@ static CGFloat area(CGRect rect) {
   CGFloat filterReach = s.filterSteps.count > 0 ? MIN(s.filterPadding, 256) : 0;
   CGRect shape = CGRectInset(canvas, -filterReach, -filterReach);
   if (![self shadowVisible]) return (ALLayers){shape, CGRectNull};
-  CGFloat reach = MIN(filterReach + ceil(s.shadowBlur * 1.5), 256);
+  CGFloat fullReach = filterReach + ceil(s.shadowBlur * 1.5);
+  CGFloat reach = MIN(fullReach, 256);
+  CGRect moved = CGRectOffset(canvas, -s.shadowOffsetX, -s.shadowOffsetY);
   // Whole pixels, so the layer's pixels line up with the canvas's.
-  CGRect source = CGRectIntegral(CGRectInset(
-      CGRectOffset(canvas, -s.shadowOffsetX, -s.shadowOffsetY), -reach, -reach));
+  CGRect source = CGRectIntegral(CGRectInset(moved, -reach, -reach));
+  if (fullReach > 256) {
+    // The old layer, cut to the blur's whole reach round the moved canvas:
+    // past that, a shape casts nothing onto the canvas.
+    CGRect kept = CGRectIntersection(CGRectInset(canvas, -256, -256),
+                                     CGRectInset(moved, -fullReach, -fullReach));
+    if (!CGRectIsEmpty(kept)) {
+      kept = CGRectIntegral(kept);
+      CGRect grown = CGRectUnion(source, kept);
+      if (area(grown) <= area(source) + area(kept)) source = grown;
+    }
+  }
   CGRect both = CGRectUnion(shape, source);
   if (area(both) > area(shape) + area(source)) return (ALLayers){shape, source};
   return (ALLayers){both, CGRectNull};

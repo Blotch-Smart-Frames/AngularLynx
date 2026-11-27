@@ -201,12 +201,16 @@ static const int64_t kFrameNanoseconds = 16666667;
 /// would. Android's frame is there first already (VideoUI.onFirstFrame).
 - (void)playableDidLoadFirstFrame:(id<LynxVideoPlayable>)playable
                          duration:(NSTimeInterval)duration {
-  [self sendFirstFrame:playable duration:duration triesLeft:kFirstFrameTries];
+  [self sendFirstFrame:playable item:_item duration:duration triesLeft:kFirstFrameTries];
 }
 
+/// `item` is the one the first frame is of: a new `src` while the event
+/// waits makes it stale, and the new item's player sends one of its own.
 - (void)sendFirstFrame:(id<LynxVideoPlayable>)playable
+                  item:(AVPlayerItem *)item
               duration:(NSTimeInterval)duration
              triesLeft:(NSInteger)triesLeft {
+  if (item != _item) return;
   if (!_frames || triesLeft <= 0 || [_frames frameSize].width > 0) {
     [super playableDidLoadFirstFrame:playable duration:duration];
     return;
@@ -214,7 +218,10 @@ static const int64_t kFrameNanoseconds = 16666667;
   __weak typeof(self) weakSelf = self;
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, kFrameNanoseconds),
                  dispatch_get_main_queue(), ^{
-                   [weakSelf sendFirstFrame:playable duration:duration triesLeft:triesLeft - 1];
+                   [weakSelf sendFirstFrame:playable
+                                       item:item
+                                   duration:duration
+                                  triesLeft:triesLeft - 1];
                  });
 }
 

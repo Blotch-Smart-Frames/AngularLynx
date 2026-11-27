@@ -314,9 +314,10 @@ const ScrollCaption = () => {
     <p className={styles['caption']}>
       {devices.join(', ')}, iOS {builds.join(', ')},{' '}
       {dateRange(runs.map((run) => run.timestamp))}. Launches per app:{' '}
-      {perApp.join(', ')}, each with {swipes.join(' or ')} fast swipes up the
-      Pokédex, measured by XCTest from the finger landing to the list coming to
-      rest. Each dot is one launch's swipes added up. Release builds.{' '}
+      {perApp.join(', ')}. Each launch swipes up the Pokédex fast, once
+      unmeasured and then {swipes.join(' or ')} times measured by XCTest, from
+      the finger landing to the list coming to rest. Each dot is one launch's
+      swipes added up. Release builds.{' '}
       <a href="/guide/benchmarks#method">How we measured</a>
     </p>
   );

@@ -272,8 +272,9 @@ const scrollFiles = import.meta.webpackContext(
 
 /**
  * One launch of the scroll benchmark: the app launched, then swiped up
- * through its list ten times, each swipe measured from the finger landing to
- * the list coming to rest. The CSV has a row per swipe; a run adds them up,
+ * through its list eleven times, the last ten measured, each from the finger
+ * landing to the list coming to rest (XCTest leaves its first run of a
+ * measure block out). The CSV has a row per swipe; a run adds them up,
  * so one slow swipe counts by how long it lasted, as XCTest's own summary
  * does.
  */

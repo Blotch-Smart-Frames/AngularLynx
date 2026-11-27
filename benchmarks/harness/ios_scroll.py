@@ -9,9 +9,10 @@ and appends what each swipe measured to a CSV.
 
 Each run launches the app with the UI test in `ios-scroll/` (one runner for
 every framework: it drives the app by its bundle ID), waits for the list,
-then swipes up through it, always further, ten times. XCTest measures each
-swipe, from the finger landing until four seconds later, when every app's
-list has come to rest:
+then swipes up through it, always further, eleven times. XCTest runs a
+measure block once before the runs it reports, so the first swipe is a
+warm-up and the next ten are measured, each from the finger landing until
+four seconds later, when every app's list has come to rest:
 
 - XCTOSSignpostMetric.scrollingAndDecelerationMetric: UIKit's own signposts
   for a scroll view's drag and deceleration, as Xcode's scroll performance

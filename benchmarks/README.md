@@ -78,7 +78,8 @@ python3 harness/ios_launch.py --device <UDID> --runs 20 \
 #    screen, and launches them with a lighter recording
 python3 harness/ios_mount.py --device <UDID> --rival react-native --runs 10
 
-# 5. Scrolling: a UI test swipes up each app's list ten times a launch
+# 5. Scrolling: a UI test swipes up each app's list once, then ten times
+#    measured, each launch
 #    (harness/ios-scroll). It needs the list, so build both apps again
 #    without a bench screen: step 4 left them built for its last one. With a
 #    third field, each app's .app, it keeps one of the two installed at a

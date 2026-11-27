@@ -55,6 +55,9 @@ final class ScrollBench: XCTestCase {
     attachScreenshot(named: "before")
 
     let options = XCTMeasureOptions()
+    // XCTest runs the block once more than this, first, and leaves that run
+    // out of the results: so the app is swiped swipes + 1 times, and the
+    // first swipe after the launch isn't measured.
     options.iterationCount = swipes
     // Each iteration's window is the swipe and the scroll it throws, until
     // the list comes to rest, and nothing else.

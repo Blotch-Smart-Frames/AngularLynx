@@ -164,16 +164,30 @@ jobs:
           echo "cores: $(sysctl -n hw.ncpu), memory: $(( $(sysctl -n hw.memsize) / 1073741824 )) GB"
           uptime
           xcodebuild -version
-      # xctrace records through Instruments, which asks for developer tools
-      # access the first time: a dialog nobody answers on a runner. The
-      # first launch on one sat silent for 45 minutes (#854). Granting it
-      # beforehand, and listing the devices under a time limit, shows here
-      # whether xctrace can run at all.
+      # xctrace launches each app under Instruments, which attaches to the
+      # process it starts: that takes developer tools access and the task
+      # port right, which on a Mac ask for an admin's password, a dialog
+      # nobody answers on a runner. Without them, xctrace printed
+      # "Launching process" and nothing more until the step's timeout
+      # (#854). This grants both, then launches the app once on its own
+      # (with a screenshot in the artifacts) and once under xctrace, each
+      # under a time limit, so a runner that can't record says so here
+      # rather than an hour in.
       - name: Let Instruments run
+        env:
+          UDID: ${{ steps.simulator.outputs.udid }}
         run: |
           sudo DevToolsSecurity -enable
           sudo dseditgroup -o edit -a "$(id -un)" -t user _developer
-          perl -e 'alarm 120; exec @ARGV' xcrun xctrace list devices
+          sudo security authorizationdb write system.privilege.taskport allow
+          mkdir -p "$RUNNER_TEMP/instruments"
+          xcrun simctl launch "$UDID" com.angularlynx.bench.angularlynx
+          sleep 10
+          xcrun simctl io "$UDID" screenshot "$RUNNER_TEMP/instruments/launched.png"
+          xcrun simctl terminate "$UDID" com.angularlynx.bench.angularlynx
+          perl -e 'alarm 180; exec @ARGV' xcrun xctrace record --instrument 'Points of Interest' \
+            --device "$UDID" --time-limit 5s --output "$RUNNER_TEMP/instruments/check.trace" \
+            --no-prompt --launch -- com.angularlynx.bench.angularlynx
       - name: Launch the Pokédex
         timeout-minutes: 45
         env:
@@ -254,6 +268,7 @@ jobs:
           path: |
             ${{ env.RESULTS }}
             ${{ runner.temp }}/simulator-boot.log
+            ${{ runner.temp }}/instruments/launched.png
             ${{ runner.temp }}/fixtures.log
           retention-days: 30
       # One open issue at a time: a night that finds the change again

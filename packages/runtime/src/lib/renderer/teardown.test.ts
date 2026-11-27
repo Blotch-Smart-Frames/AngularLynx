@@ -2052,6 +2052,108 @@ describe('renderer teardown', () => {
       expect([...writes]).toEqual(['list-item animation: none']);
     });
 
+    it('keeps the animation ended in an element moved into another destroyed view', () => {
+      const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
+      const page = document.createRootElement();
+      const view = document.createElement('view');
+      const other = document.createElement('view');
+      const el = document.createElement('view');
+      el.setAttribute('enable-new-animator', 'false');
+      el.setAttribute('style', 'animation: turn 1600ms linear infinite;');
+      page.appendChild(view);
+      page.appendChild(other);
+      view.appendChild(el);
+      const ref = el.element as unknown as FakeEl;
+
+      // Moved out of the first view into another destroyed after it, which
+      // is released last.
+      view.markDestroyed();
+      el.remove();
+      other.appendChild(el);
+      other.markDestroyed();
+      ref.styles.delete('__inline');
+      view.remove();
+      processPendingRemovals();
+
+      // Still in a view that's going: not started again.
+      expect(ref.styles.has('__inline')).toBe(false);
+      other.remove();
+      processPendingRemovals();
+      expect(ref.styles.has('__inline')).toBe(false);
+      // Ended once, and never written again: the two views went.
+      expect(writes).toEqual([
+        'view animation: none',
+        'remove view',
+        'remove view',
+      ]);
+    });
+
+    it('starts the animation again when that other view is put back', () => {
+      const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
+      const page = document.createRootElement();
+      const view = document.createElement('view');
+      const other = document.createElement('view');
+      const el = document.createElement('view');
+      const own = document.createElement('view');
+      for (const animated of [el, own]) {
+        animated.setAttribute('enable-new-animator', 'false');
+        animated.setAttribute(
+          'style',
+          'animation: turn 1600ms linear infinite;',
+        );
+      }
+      page.appendChild(view);
+      page.appendChild(other);
+      view.appendChild(el);
+      other.appendChild(own);
+      const refs = [el, own].map((e) => e.element as unknown as FakeEl);
+
+      // The other view ends its own element's animation too, and takes the
+      // moved one beside it.
+      view.markDestroyed();
+      el.remove();
+      other.appendChild(el);
+      other.markDestroyed();
+      view.remove();
+      processPendingRemovals();
+      for (const ref of refs) ref.styles.delete('__inline');
+      other.remove();
+      page.appendChild(other);
+      processPendingRemovals();
+
+      for (const ref of refs) {
+        expect(ref.styles.get('__inline')).toContain('animation: turn');
+      }
+    });
+
+    it('keeps the animation ended in a moved element destroyed itself, until it is put back', () => {
+      const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
+      const page = document.createRootElement();
+      const view = document.createElement('view');
+      const el = document.createElement('view');
+      el.setAttribute('enable-new-animator', 'false');
+      el.setAttribute('style', 'animation: turn 1600ms linear infinite;');
+      page.appendChild(view);
+      view.appendChild(el);
+      const ref = el.element as unknown as FakeEl;
+
+      view.markDestroyed();
+      el.remove();
+      page.appendChild(el);
+      el.markDestroyed();
+      ref.styles.delete('__inline');
+      view.remove();
+      processPendingRemovals();
+      expect(ref.styles.has('__inline')).toBe(false);
+
+      el.remove();
+      page.appendChild(el);
+      processPendingRemovals();
+      // Its native element, rebuilt or not.
+      const shown = el.element as unknown as FakeEl;
+      expect(shown.styles.get('__inline')).toContain('animation: turn');
+    });
+
     it('leaves an element moved out of a destroyed view alone once it has gone too', () => {
       const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
       const page = document.createRootElement();

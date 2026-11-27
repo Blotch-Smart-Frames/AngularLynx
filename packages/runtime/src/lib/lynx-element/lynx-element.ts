@@ -4213,6 +4213,10 @@ export class LynxElement implements BaseLynxElement {
    * out of the registry then. Not its painting state: a list item moved out
    * after this was destroyed is marked painting-dead with it, but its list
    * still shows it.
+   *
+   * One moved into another element Angular destroyed, not released yet,
+   * goes to that one instead: its animation stays ended until that element
+   * is released with it, or put back (see #keepIfDestroyed).
    */
   #restoreAnimationsMovedOut(): void {
     const ended = LynxElement.#endedAnimations.get(this);
@@ -4225,9 +4229,34 @@ export class LynxElement implements BaseLynxElement {
       ) {
         continue;
       }
+      const holder = el.#destroyedAncestor();
+      if (holder) {
+        const held = LynxElement.#endedAnimations.get(holder);
+        // Its own record holds it already when it's the one destroyed.
+        if (!held) LynxElement.#endedAnimations.set(holder, [el]);
+        else if (!held.includes(el)) held.push(el);
+        continue;
+      }
       el.#rewriteInlineStyle();
       LynxElement.#platformAnimated.add(el);
     }
+  }
+
+  /**
+   * This element, or the nearest of its parents (as #isInSubtreeOf walks
+   * them), that Angular destroyed and hasn't released yet; undefined when
+   * none is.
+   */
+  #destroyedAncestor(): LynxElement | undefined {
+    if (this.#destroyed) return this;
+    for (
+      let el = this._virtualParent ?? this.#jsParent;
+      el;
+      el = el._virtualParent ?? el.#jsParent
+    ) {
+      if (el.#destroyed) return el;
+    }
+    return undefined;
   }
 
   /**

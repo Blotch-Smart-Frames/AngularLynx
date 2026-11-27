@@ -111,7 +111,13 @@ const ALWAYS_EXTENSIONS = [
   'WEBGL_lose_context',
 ];
 
-const EXTENSION_CONSTANTS: Record<string, Record<string, number>> = {
+// The tables below that take a call to build are in pure IIFEs: a call at
+// the top of a module is a side effect to the minifier, which kept them, and
+// the WebGL constants they read, in apps that never make a context (#707).
+const EXTENSION_CONSTANTS: Record<
+  string,
+  Record<string, number>
+> = /*#__PURE__*/ (() => ({
   EXT_color_buffer_half_float: {
     RGBA16F_EXT: 0x881a,
     RGB16F_EXT: 0x881b,
@@ -181,7 +187,7 @@ const EXTENSION_CONSTANTS: Record<string, Record<string, number>> = {
     UNMASKED_VENDOR_WEBGL: 0x9245,
     UNMASKED_RENDERER_WEBGL: 0x9246,
   },
-};
+}))();
 
 // WebGL-only pixel storage, which GLES doesn't know: the context keeps it and
 // applies it to uploads itself.
@@ -193,7 +199,7 @@ const MAX_TEXTURE_MAX_ANISOTROPY_EXT = 0x84ff;
 
 // Parameters that never change for a context: fetched together when it's
 // made, so three.js's capability checks cost no calls.
-const CONSTANT_PARAMETERS: number[] = [
+const CONSTANT_PARAMETERS: number[] = /*#__PURE__*/ (() => [
   // MAX_CLIENT_WAIT_TIMEOUT_WEBGL is WebGL's own, which GLES doesn't know.
   ...Object.entries(GL)
     .filter(([name]) => name.startsWith('MAX_') && !name.endsWith('_WEBGL'))
@@ -203,36 +209,35 @@ const CONSTANT_PARAMETERS: number[] = [
   GL.SUBPIXEL_BITS,
   GL.UNIFORM_BUFFER_OFFSET_ALIGNMENT,
   GL.MIN_PROGRAM_TEXEL_OFFSET,
-];
+])();
 
-const FLOAT_VECTOR_PARAMETERS = new Set<number>([
-  GL.ALIASED_LINE_WIDTH_RANGE,
-  GL.ALIASED_POINT_SIZE_RANGE,
-  GL.BLEND_COLOR,
-  GL.COLOR_CLEAR_VALUE,
-  GL.DEPTH_RANGE,
-]);
-const INT_VECTOR_PARAMETERS = new Set<number>([
-  GL.MAX_VIEWPORT_DIMS,
-  GL.SCISSOR_BOX,
-  GL.VIEWPORT,
-]);
-const BOOLEAN_PARAMETERS = new Set<number>([
-  GL.BLEND,
-  GL.CULL_FACE,
-  GL.DEPTH_TEST,
-  GL.DEPTH_WRITEMASK,
-  GL.DITHER,
-  GL.POLYGON_OFFSET_FILL,
-  GL.RASTERIZER_DISCARD,
-  GL.SAMPLE_ALPHA_TO_COVERAGE,
-  GL.SAMPLE_COVERAGE,
-  GL.SAMPLE_COVERAGE_INVERT,
-  GL.SCISSOR_TEST,
-  GL.STENCIL_TEST,
-  GL.TRANSFORM_FEEDBACK_ACTIVE,
-  GL.TRANSFORM_FEEDBACK_PAUSED,
-]);
+const FLOAT_VECTOR_PARAMETERS = /*#__PURE__*/ (() =>
+  new Set<number>([
+    GL.ALIASED_LINE_WIDTH_RANGE,
+    GL.ALIASED_POINT_SIZE_RANGE,
+    GL.BLEND_COLOR,
+    GL.COLOR_CLEAR_VALUE,
+    GL.DEPTH_RANGE,
+  ]))();
+const INT_VECTOR_PARAMETERS = /*#__PURE__*/ (() =>
+  new Set<number>([GL.MAX_VIEWPORT_DIMS, GL.SCISSOR_BOX, GL.VIEWPORT]))();
+const BOOLEAN_PARAMETERS = /*#__PURE__*/ (() =>
+  new Set<number>([
+    GL.BLEND,
+    GL.CULL_FACE,
+    GL.DEPTH_TEST,
+    GL.DEPTH_WRITEMASK,
+    GL.DITHER,
+    GL.POLYGON_OFFSET_FILL,
+    GL.RASTERIZER_DISCARD,
+    GL.SAMPLE_ALPHA_TO_COVERAGE,
+    GL.SAMPLE_COVERAGE,
+    GL.SAMPLE_COVERAGE_INVERT,
+    GL.SCISSOR_TEST,
+    GL.STENCIL_TEST,
+    GL.TRANSFORM_FEEDBACK_ACTIVE,
+    GL.TRANSFORM_FEEDBACK_PAUSED,
+  ]))();
 
 const SHADER_TYPES = [GL.VERTEX_SHADER, GL.FRAGMENT_SHADER];
 const PRECISION_TYPES = [
@@ -3421,37 +3426,37 @@ const numbers = (
 
 // The uniform types getUniform answers with a number, and with each kind of
 // vector; the rest (float vectors and matrices) are Float32Arrays.
-const SCALAR_UNIFORMS = new Set<number>([
-  GL.FLOAT,
-  GL.INT,
-  GL.UNSIGNED_INT,
-  GL.SAMPLER_2D,
-  GL.SAMPLER_3D,
-  GL.SAMPLER_CUBE,
-  GL.SAMPLER_2D_SHADOW,
-  GL.SAMPLER_2D_ARRAY,
-  GL.SAMPLER_2D_ARRAY_SHADOW,
-  GL.SAMPLER_CUBE_SHADOW,
-  GL.INT_SAMPLER_2D,
-  GL.INT_SAMPLER_3D,
-  GL.INT_SAMPLER_CUBE,
-  GL.INT_SAMPLER_2D_ARRAY,
-  GL.UNSIGNED_INT_SAMPLER_2D,
-  GL.UNSIGNED_INT_SAMPLER_3D,
-  GL.UNSIGNED_INT_SAMPLER_CUBE,
-  GL.UNSIGNED_INT_SAMPLER_2D_ARRAY,
-]);
-const BOOL_VECTORS = new Set<number>([
-  GL.BOOL_VEC2,
-  GL.BOOL_VEC3,
-  GL.BOOL_VEC4,
-]);
-const INT_VECTORS = new Set<number>([GL.INT_VEC2, GL.INT_VEC3, GL.INT_VEC4]);
-const UINT_VECTORS = new Set<number>([
-  GL.UNSIGNED_INT_VEC2,
-  GL.UNSIGNED_INT_VEC3,
-  GL.UNSIGNED_INT_VEC4,
-]);
+const SCALAR_UNIFORMS = /*#__PURE__*/ (() =>
+  new Set<number>([
+    GL.FLOAT,
+    GL.INT,
+    GL.UNSIGNED_INT,
+    GL.SAMPLER_2D,
+    GL.SAMPLER_3D,
+    GL.SAMPLER_CUBE,
+    GL.SAMPLER_2D_SHADOW,
+    GL.SAMPLER_2D_ARRAY,
+    GL.SAMPLER_2D_ARRAY_SHADOW,
+    GL.SAMPLER_CUBE_SHADOW,
+    GL.INT_SAMPLER_2D,
+    GL.INT_SAMPLER_3D,
+    GL.INT_SAMPLER_CUBE,
+    GL.INT_SAMPLER_2D_ARRAY,
+    GL.UNSIGNED_INT_SAMPLER_2D,
+    GL.UNSIGNED_INT_SAMPLER_3D,
+    GL.UNSIGNED_INT_SAMPLER_CUBE,
+    GL.UNSIGNED_INT_SAMPLER_2D_ARRAY,
+  ]))();
+const BOOL_VECTORS = /*#__PURE__*/ (() =>
+  new Set<number>([GL.BOOL_VEC2, GL.BOOL_VEC3, GL.BOOL_VEC4]))();
+const INT_VECTORS = /*#__PURE__*/ (() =>
+  new Set<number>([GL.INT_VEC2, GL.INT_VEC3, GL.INT_VEC4]))();
+const UINT_VECTORS = /*#__PURE__*/ (() =>
+  new Set<number>([
+    GL.UNSIGNED_INT_VEC2,
+    GL.UNSIGNED_INT_VEC3,
+    GL.UNSIGNED_INT_VEC4,
+  ]))();
 
 /**
  * A uniform's value, typed as getUniform returns it.

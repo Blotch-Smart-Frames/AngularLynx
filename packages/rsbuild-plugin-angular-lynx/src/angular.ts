@@ -10,7 +10,11 @@ import {
 import type { BackgroundEntries } from './background-entry.js';
 import { applyBudgets } from './budgets-plugin.js';
 import { applyFileReplacements } from './file-replacements.js';
-import { isAngularLynxPackageModule, LAYERS } from './layers.js';
+import { LAYERS } from './layers.js';
+import {
+  resolveBackgroundTreeShaking,
+  wrapsBackgroundInitializers,
+} from './background-tree-shaking.js';
 import { buildLynxSchemaSourceFileCache } from './build-schema-source-file-cache.js';
 import {
   createTransformStylesheet,
@@ -33,6 +37,7 @@ import {
 } from './private-methods.js';
 import { wrapPureClasses } from './pure-classes.js';
 import { wrapPureInitializers } from './pure-initializers.js';
+import { enableWebGL2WhereNamed, resolveRuntimeEntry } from './webgl2.js';
 import { markHostElementsPure } from './pure-host-elements.js';
 import { seedCompilationSourceFiles } from './seed-compilation-source-files.js';
 import { addEntryHotAccept, hotUpdatesEnabled } from './hot-updates.js';
@@ -146,6 +151,12 @@ export const applyAngularRules = async (
     cli,
   });
   applyAngularConfig(api, buildOptions);
+  // Whether the background layer's copies of the app's own files get their
+  // module-level values made droppable too (see background-tree-shaking.ts).
+  const backgroundTreeShaking = resolveBackgroundTreeShaking(
+    pluginOptions.backgroundTreeShaking,
+    cli?.buildOptions,
+  );
   // The plugin's own `intl` option wins: plain rspeedy apps whose angular.json
   // targets Angular's builder can't add the option there.
   applyIntl(api, {
@@ -588,6 +599,16 @@ export const applyAngularRules = async (
    * Compiles one module for one thread. `background` is set for the
    * background layer.
    */
+  // Where the WebGL2 call (webgl2.ts) imports the runtime from, resolved
+  // once, when the first module needs it.
+  let runtimeEntry: string | undefined;
+  const enableWebGL2 = (code: string, file: string): string =>
+    enableWebGL2WhereNamed(
+      code,
+      file,
+      (runtimeEntry ??= resolveRuntimeEntry(api.context.rootPath)),
+    );
+
   const transformModule = async (
     context: {
       code: string;
@@ -643,10 +664,14 @@ export const applyAngularRules = async (
         // SWC's minifier inlines the IIFE, and then can't drop the class when
         // nothing uses it (kitchen-sink's background bundle kept the
         // IntersectionObserver and XMLHttpRequest classes, 8.6 kB).
+        // Then the WebGL2 context, if the module names it (see webgl2.ts).
         return {
-          code: transformPrivateMethods(code, context.resourcePath, {
-            root: api.context.rootPath,
-          }),
+          code: enableWebGL2(
+            transformPrivateMethods(code, context.resourcePath, {
+              root: api.context.rootPath,
+            }),
+            context.resourcePath,
+          ),
         };
       }
       const classesWrapped = wrapPureClasses(
@@ -658,9 +683,14 @@ export const applyAngularRules = async (
       );
       // AngularLynx's own packages also get their module-level values made
       // droppable (see pure-initializers.ts): the background thread uses
-      // almost none of the runtime's. After the class pass, whose IIFEs
-      // count as pure.
-      const wrapped = isAngularLynxPackageModule(context.resourcePath)
+      // almost none of the runtime's. So do the app's own JavaScript files
+      // with `backgroundTreeShaking: 'aggressive'`, but never another
+      // package's (see background-tree-shaking.ts). After the class pass,
+      // whose IIFEs count as pure.
+      const wrapped = wrapsBackgroundInitializers(
+        context.resourcePath,
+        backgroundTreeShaking,
+      )
         ? wrapPureInitializers(classesWrapped, context.resourcePath)
         : classesWrapped;
       // The generated background entry takes every hot update the
@@ -722,9 +752,12 @@ export const applyAngularRules = async (
       // the transforms buildTransformedCode makes, so the cross-thread IDs
       // come from the same code as the background thread's.
       return {
-        code: transformPrivateMethods(code, context.resourcePath, {
-          root: api.context.rootPath,
-        }),
+        code: enableWebGL2(
+          transformPrivateMethods(code, context.resourcePath, {
+            root: api.context.rootPath,
+          }),
+          context.resourcePath,
+        ),
       };
     }
     // The background thread runs a module like this for its background
@@ -738,26 +771,41 @@ export const applyAngularRules = async (
     // as the main thread's. Top-level calls in the app's files, such as
     // backgroundFn() itself, aren't marked pure, except registerHostElement()
     // (see markHostElementsPure).
-    return {
-      code: wrapPureClasses(
-        markHostElementsPure(
-          splitBackgroundPrivateChains(
-            Buffer.from(
-              await javascriptTransformer.transformData(
-                context.resourcePath,
-                code,
-                {
-                  skipLinker: true,
-                  sideEffects: () => Promise.resolve(false),
-                },
-              ),
-            ).toString(),
-            context.resourcePath,
-          ),
+    const classesWrapped = wrapPureClasses(
+      markHostElementsPure(
+        splitBackgroundPrivateChains(
+          Buffer.from(
+            await javascriptTransformer.transformData(
+              context.resourcePath,
+              code,
+              {
+                skipLinker: true,
+                sideEffects: () => Promise.resolve(false),
+              },
+            ),
+          ).toString(),
           context.resourcePath,
         ),
         context.resourcePath,
       ),
+      context.resourcePath,
+    );
+    // With `backgroundTreeShaking: 'aggressive'`, the module-level values
+    // too, as for AngularLynx's packages, so the minifier drops the ones
+    // nothing on the background thread reads: a `signal()` only the
+    // component's main-thread scripts read, which kept Angular's signals and
+    // DI there, each module-level mainThreadFn() (only a handle there), or
+    // the icon table of dolan's copy of `@blotch/ui` (issue #743). Off by
+    // default, as such a declaration's initializer stops running there even
+    // when it does something on purpose. After the class pass, whose IIFEs
+    // count as pure.
+    return {
+      code: wrapsBackgroundInitializers(
+        context.resourcePath,
+        backgroundTreeShaking,
+      )
+        ? wrapPureInitializers(classesWrapped, context.resourcePath)
+        : classesWrapped,
     };
   };
 

@@ -1,9 +1,23 @@
+import type { BackgroundTreeShaking } from '../background-tree-shaking.js';
 import type { IntlApi } from '../intl/apis.js';
 
 /** The frame rates Lynx's `preferredFps` page config takes. */
 export type PreferredFps = 'high' | 'auto' | 'low';
 
 export type PluginAngularLynxOptions = {
+  /**
+   * How much of the app's own code the background thread's script keeps.
+   * `'safe'`, the default, runs every top-level statement of the files the
+   * background thread loads (those that define a `backgroundFn()` or a
+   * `MainThreadRef`, and their imports). `'aggressive'` drops the app's
+   * module-level values that nothing on the background thread reads, which
+   * makes that script smaller, but a top-level declaration whose value
+   * nothing reads there no longer runs there either, even when it does
+   * something on purpose, such as subscribing to a global event emitter. The
+   * same as the `backgroundTreeShaking` build option in angular.json, which
+   * this replaces when set.
+   */
+  backgroundTreeShaking?: BackgroundTreeShaking | undefined;
   /**
    * The properties that inherit with `enableCSSInheritance`, in place of
    * Lynx's list. `['font-size']` unless the app turns `enableCSSInheritance`
@@ -182,6 +196,11 @@ export const normalizeOptions = (
   options?: Partial<PluginAngularLynxOptions>,
 ): NormalizedPluginAngularLynxOptions => {
   const defaultOptions: NormalizedPluginAngularLynxOptions = {
+    // Undefined so angular.json's `backgroundTreeShaking` build option
+    // decides (see background-tree-shaking.ts); 'safe' unless one of them
+    // says otherwise.
+    //@ts-expect-error
+    backgroundTreeShaking: undefined,
     // Set below, from what the app passes.
     //@ts-expect-error
     customCSSInheritanceList: undefined,

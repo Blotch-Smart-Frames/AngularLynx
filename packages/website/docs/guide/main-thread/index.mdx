@@ -136,7 +136,7 @@ const onTap = mainThreadFn((event: MainThread.TouchEvent) => {
 ```
 
 - **`runOnBackground()` is a global.** Call it from any of your Angular code, a main-thread script or a template handler: they all run on the main thread.
-- **Define `backgroundFn()` at module level.** The background thread loads only the files that define one there (and their imports), never your components, so a function created in a class or a function never registers. The rest of that file's top-level code runs on both threads. Files that load lazily, such as a lazy route's, work too: the background thread loads them at startup.
+- **Define `backgroundFn()` at module level.** The background thread loads only the files that define one there (and their imports), never your components, so a function created in a class or a function never registers. The rest of that file's top-level code runs on both threads, unless you [shrink the background thread's script](#shrink-the-background-threads-script). Files that load lazily, such as a lazy route's, work too: the background thread loads them at startup.
 - **Arguments and the return value are copied as JSON.**
 - **The function can be `async`.** `runOnBackground()` waits for a returned Promise, so the function can `fetch()` data (see [Network requests](/guide/concepts/javascript-environment#network-requests)). If it throws or rejects, the Promise `runOnBackground()` returned rejects with the same message.
 
@@ -183,6 +183,35 @@ A main-thread script changes native elements behind Angular's back.
 
 Use scripts for visual effects that follow a gesture. Keep anything that must last in signals.
 :::
+
+## Shrink the background thread's script
+
+The background thread runs every top-level statement of the files it loads: those that define a `backgroundFn()` or a `MainThreadRef` at module level, and the files they import. So it also computes module-level values that only your components or main-thread scripts read, such as a `signal()` next to a `backgroundFn()`, which keeps Angular's signals in the background thread's script, or a table of icons. Its engine parses and keeps all of that at every launch.
+
+Set the `backgroundTreeShaking` build option to `"aggressive"` to drop the values nothing on the background thread reads:
+
+```json title="angular.json"
+"build": {
+  "builder": "@blotch/angular-lynx-build:application",
+  "options": {
+    "backgroundTreeShaking": "aggressive"
+  }
+}
+```
+
+The kitchen-sink example's background script goes from 216 KB to 170 KB. The main thread's script doesn't change, and neither do your background functions, refs and the values they read.
+
+The cost: a top-level declaration whose value nothing on the background thread reads no longer runs there, even when its initializer does something on purpose. This one stops subscribing:
+
+```typescript
+// Nothing reads `subscription`, so with "aggressive" the background thread
+// never calls addListener().
+const subscription = lynx
+  .getJSModule('GlobalEventEmitter')
+  .addListener('networkChanged', onNetworkChanged);
+```
+
+Statements that aren't declarations, such as a bare `emitter.addListener(…)` call, still run, and so does all of AngularLynx's and other packages' code: only your app's own files are trimmed. Keep work like this out of declarations, or leave the option at its default, `"safe"`.
 
 ## Limitations
 

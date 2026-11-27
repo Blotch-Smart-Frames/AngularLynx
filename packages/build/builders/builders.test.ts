@@ -1344,6 +1344,7 @@ describe('unit-test builder', () => {
       'environment',
       'intl',
       'multiTouch',
+      'backgroundTreeShaking',
       'appName',
       'appId',
       'version',

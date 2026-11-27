@@ -2308,5 +2308,143 @@ describe('renderer teardown', () => {
       expect(item.element as unknown as FakeEl).toBe(ref);
       expect(registered([ref])).toEqual([false]);
     });
+
+    /**
+     * A page holding `view`, which holds `item`, and a `<list>` in `holder`
+     * after it.
+     */
+    const makeMove = () => {
+      const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
+      const page = document.createRootElement();
+      const view = document.createElement('view');
+      const holder = document.createElement('view');
+      const list = document.createElement('list');
+      const item = document.createElement('list-item');
+      page.appendChild(view);
+      page.appendChild(holder);
+      holder.appendChild(list);
+      view.appendChild(item);
+      return {
+        page,
+        view,
+        holder,
+        list,
+        item,
+        ref: item.element as unknown as FakeEl,
+      };
+    };
+
+    it('rebuilds one moved in with no removal when its old parent goes', () => {
+      const { view, list, item, ref } = makeMove();
+
+      // A DomPortal's move: an insert alone. The view still holds its native
+      // element, and takes it when Angular destroys the view.
+      list.appendChild(item);
+      view.markDestroyed();
+      view.remove();
+      processPendingRemovals();
+      (globalThis as unknown as FakeNativeGlobal<FakeEl>).__FlushElementTree();
+
+      const rebuilt = item.element as unknown as FakeEl;
+      expect(rebuilt).not.toBe(ref);
+      expect(rebuilt.hasPaintingNode).toBe(true);
+      expect(registered([rebuilt])).toEqual([true]);
+    });
+
+    it("leaves a detached old parent's children when it's rebuilt", () => {
+      const { page, view, list, item } = makeMove();
+
+      list.appendChild(item);
+      view.remove();
+      processPendingRemovals();
+      const rebuilt = item.element as unknown as FakeEl;
+
+      // Shown again, the view is rebuilt without the item, which stays the
+      // list's.
+      page.appendChild(view);
+      const children = (view.element as unknown as FakeEl).children;
+      expect(children).not.toContain(rebuilt);
+      expect(item.element as unknown as FakeEl).toBe(rebuilt);
+      expect(item.parentNode()).toBe(list);
+    });
+
+    it("doesn't rebuild one when something around its list goes in the same cycle", () => {
+      const { holder, list, item, ref } = makeMove();
+
+      // Angular marks only the top of what it destroys: not the list.
+      item.remove();
+      list.appendChild(item);
+      holder.markDestroyed();
+      holder.remove();
+      processPendingRemovals();
+
+      expect(item.element as unknown as FakeEl).toBe(ref);
+      expect(registered([ref])).toEqual([false]);
+    });
+
+    /**
+     * A page holding `first` and then `second`, which holds `view`, which
+     * holds `item`, moved into a `<list>` with no removal. Moving `view`
+     * into `first` rebuilds it in the cycle (see
+     * LynxElement.#removeIfMoveWouldBeLost), and the item's native element
+     * goes with the old one.
+     */
+    const moveOldParent = () => {
+      const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
+      const page = document.createRootElement();
+      const first = document.createElement('view');
+      const second = document.createElement('view');
+      const view = document.createElement('view');
+      const list = document.createElement('list');
+      const item = document.createElement('list-item');
+      page.appendChild(first);
+      page.appendChild(second);
+      page.appendChild(list);
+      second.appendChild(view);
+      view.appendChild(item);
+      const ref = item.element as unknown as FakeEl;
+      list.appendChild(item);
+      view.remove();
+      first.appendChild(view);
+      return { first, view, list, item, ref };
+    };
+
+    it('rebuilds one whose old parent is rebuilt in the cycle, for the list, not the parent', () => {
+      const { view, list, item, ref } = moveOldParent();
+      expect(
+        (view.element as unknown as FakeEl).children.map((c) => c.tag),
+      ).toEqual([]);
+
+      processPendingRemovals();
+
+      const rebuilt = item.element as unknown as FakeEl;
+      expect(rebuilt).not.toBe(ref);
+      expect(rebuilt.parent).toBeNull();
+      expect(item.parentNode()).toBe(list);
+    });
+
+    it('leaves one put somewhere else after its old parent was rebuilt', () => {
+      const { first, item } = moveOldParent();
+
+      item.remove();
+      first.appendChild(item);
+      const rebuilt = item.element as unknown as FakeEl;
+      processPendingRemovals();
+
+      expect(item.element as unknown as FakeEl).toBe(rebuilt);
+      expect(rebuilt.parent).toBe(first.element as unknown as FakeEl);
+      expect(item.parentNode()).toBe(first);
+    });
+
+    it('leaves one taken out of the list after its old parent was rebuilt', () => {
+      const { item, ref } = moveOldParent();
+
+      item.remove();
+      processPendingRemovals();
+
+      // Out of the tree: nothing shows it, so it isn't rebuilt.
+      expect(item.element as unknown as FakeEl).toBe(ref);
+      expect(registered([ref])).toEqual([true]);
+    });
   });
 });

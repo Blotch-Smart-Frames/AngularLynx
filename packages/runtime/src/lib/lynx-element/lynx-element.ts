@@ -1269,6 +1269,12 @@ export class LynxElement implements BaseLynxElement {
   static #byNativeId = new Map<number, WeakRef<LynxElement>>();
 
   /**
+   * Elements a list took whose native element a removal marked dead this
+   * cycle (see #markPaintingDead and #rebuildDeadListItems).
+   */
+  static #deadListItems = new Set<LynxElement>();
+
+  /**
    * How many entries #byNativeId may hold before #register sweeps out the
    * ones whose wrapper was collected (see #sweepCollected).
    */
@@ -3915,24 +3921,12 @@ export class LynxElement implements BaseLynxElement {
         ...LynxElement.#pendingRemovals,
       ]);
       LynxElement.#pendingRemovals.clear();
-      // An element moved into a list this cycle (see adoptVirtualChild): its
-      // removal from its old parent goes ahead, since the list appends it to
-      // the native list only when native asks for it, in a later flush, and
-      // until then it would still be drawn where it was. Its native elements
-      // go with the removal (or its old parent's), so it's rebuilt after
-      // them, before the list's update reads its native element and
-      // componentAtIndex appends it. Not when Angular destroyed the list,
-      // which releases it: read before the list's own removal, whose release
-      // clears the mark.
-      const moved = items.filter(
-        (el) => el._virtualParent && !el._virtualParent.#destroyed,
-      );
       for (const el of items) {
         el.#doRemove();
       }
-      for (const el of moved) el.#recreateIfDead();
     }
     LynxElement.#commitPendingReleases();
+    LynxElement.#rebuildDeadListItems();
     scheduleCollection();
   }
 
@@ -4427,6 +4421,46 @@ export class LynxElement implements BaseLynxElement {
   }
 
   /**
+   * Rebuilds each element a list took whose native element a removal this
+   * cycle took with it (see #markPaintingDead), once the cycle's removals and
+   * releases are done.
+   *
+   * An element moved into a list (see adoptVirtualChild) keeps its native
+   * element in its old parent: the list appends it to the native list only
+   * when native asks for it (componentAtIndex), in a later flush. So its own
+   * queued removal goes ahead, or else it would still be drawn where it was,
+   * and so does the removal of an old parent that still holds it (one moved
+   * in with no removal, as a DomPortal does). Either way its native elements
+   * die at the flush, and it's rebuilt here, before the list's update reads
+   * its native element. It no longer belongs to the old parent, so it
+   * leaves that parent's children: shown again, the parent would rebuild it
+   * there (see #recreateSubtree). One the releases let go of (its list, or
+   * something around the list, was destroyed) isn't rebuilt: nothing shows
+   * it.
+   */
+  static #rebuildDeadListItems(): void {
+    if (LynxElement.#deadListItems.size === 0) return;
+    const elements = [...LynxElement.#deadListItems];
+    LynxElement.#deadListItems.clear();
+    for (const el of elements) {
+      // Put somewhere else since (and rebuilt there), or out of the list.
+      if (!el._virtualParent || !el.#paintingDead) continue;
+      if (LynxElement.#registered(__GetElementUniqueID(el.element)) !== el) {
+        continue;
+      }
+      const jsParent = el.#jsParent;
+      if (jsParent) {
+        const i = jsParent.#children!.indexOf(el);
+        // Defensive, as in #doRemove: #children follows the native tree.
+        /* v8 ignore next */
+        if (i >= 0) jsParent.#children!.splice(i, 1);
+        el.#jsParent = null;
+      }
+      el.#recreateIfDead();
+    }
+  }
+
+  /**
    * Recursively flags this element and every cached descendant painting-dead,
    * mirroring the native painting-node cascade when a subtree is removed. The
    * caches themselves are kept intact — they are exactly what #recreateSubtree
@@ -4434,6 +4468,9 @@ export class LynxElement implements BaseLynxElement {
    */
   #markPaintingDead(): void {
     this.#paintingDead = true;
+    // In a list now, but its native element went with a removal from where
+    // it was (see #rebuildDeadListItems).
+    if (this._virtualParent) LynxElement.#deadListItems.add(this);
     for (const child of this.#children ?? NO_CHILDREN) {
       child.#markPaintingDead();
     }
@@ -4555,6 +4592,8 @@ export class LynxElement implements BaseLynxElement {
     const marks = this.#quoteMarks;
     if (marks) __AppendElement(fresh, marks[0].#renewQuoteMark());
     for (const child of this.#children ?? NO_CHILDREN) {
+      // A list took it (see #rebuildDeadListItems): it's rebuilt for the list.
+      if (child._virtualParent) continue;
       child.#recreateSubtree();
       __AppendElement(fresh, child.element);
     }

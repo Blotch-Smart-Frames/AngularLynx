@@ -3746,6 +3746,23 @@ describe('<q>, element by element', () => {
       expect(drawn(q)).toEqual(['a', 'hi', 'b']);
     });
 
+    it('takes a <p> above a <q> for no Lynx <text>', () => {
+      // `text > q`: a <p> is a <text> natively, but not on the web.
+      quotesRules([['_ngtag-q'], [['>', ['<text>']]], `"a" "b"`, 2, 0, 0]);
+      const p = doc.createElement('p');
+      page.appendChild(p);
+      const q = makeQ();
+      p.appendChild(q);
+      commit();
+      expect(drawn(q)).toEqual(['“', '”']);
+      // A Lynx <text> is one.
+      const text = doc.createElement('text');
+      page.appendChild(text);
+      text.appendChild(q);
+      commit();
+      expect(drawn(q)).toEqual(['a', 'b']);
+    });
+
     it("matches a rule's ancestors through a server render's tree", () => {
       quotesRules([['_ngtag-q'], [[' ', ['card']]], `"a" "b"`, 1001, 0, 0]);
       // A snapshot's tree, which hydration puts no element in a JS parent
@@ -3759,6 +3776,12 @@ describe('<q>, element by element', () => {
       g.__AppendElement(viewRef, qRef);
       g.__AppendElement(qRef, openRef);
       g.__AppendElement(qRef, closeRef);
+      // Ids no other test's elements have (see "redraws a hydrated <q> past
+      // a wrapper made after it").
+      viewRef.id = 3_000_001;
+      qRef.id = 3_000_002;
+      openRef.id = 3_000_003;
+      closeRef.id = 3_000_004;
       const view = new LynxElement(viewRef as never);
       view.tagName = 'view';
       view.setAttribute('class', 'card');
@@ -3782,9 +3805,14 @@ describe('<q>, element by element', () => {
       g.__AppendElement(wrapperRef, qRef);
       g.__AppendElement(qRef, openRef);
       g.__AppendElement(qRef, closeRef);
-      // An id no wrapper has (see "takes a server render's lang from its
-      // native ancestors").
-      wrapperRef.id = -1;
+      // Ids no other test's elements have: the ids start again in each
+      // test, and an element hydrated in an earlier one stays registered
+      // under its id. The wrapper's has no element until later.
+      viewRef.id = 2_000_001;
+      qRef.id = 2_000_002;
+      openRef.id = 2_000_003;
+      closeRef.id = 2_000_004;
+      wrapperRef.id = -2;
       const view = new LynxElement(viewRef as never);
       view.tagName = 'view';
       const q = new LynxElement(qRef as never);

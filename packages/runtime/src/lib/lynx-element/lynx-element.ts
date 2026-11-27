@@ -2744,14 +2744,16 @@ export class LynxElement implements BaseLynxElement {
    * hydrated element, which has no JS parent, has its native ancestors, and
    * passing over the anonymous `<text>`s loose text shares with a `<q>` (see
    * #regroup), which a browser has no element for, so that `.card > q`
-   * matches the `<q>` in one.
+   * matches the `<q>` in one. Each has the tokens its own rules match (see
+   * #ruleTokens): an HTML text tag such as a `<p>` is a `<text>` natively,
+   * but a browser has no `text` above the `<q>`.
    */
   #quoteAncestorTokens(): (index: number) => Set<string> | undefined {
     const ancestors: Set<string>[] = [];
     let next = this.#quoteParent();
     return (index) => {
       while (ancestors.length <= index && next) {
-        if (!next.#anonymous) ancestors.push(next.#styleTokens());
+        if (!next.#anonymous) ancestors.push(next.#ruleTokens());
         next = next.#quoteParent();
       }
       return ancestors[index];

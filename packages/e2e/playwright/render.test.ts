@@ -269,7 +269,9 @@ test('a canvas draws with WebGL2', async ({ page }) => {
   await page.getByText('Open canvas', { exact: true }).click();
   await expect(page.getByText('WebGL: 0,0,255,255')).toBeVisible();
   // ImageBitmaps of canvases (issue #697), and crops and copies (issue
-  // #731), the browser's own here.
+  // #731), the browser's own here. The first is of the template's <canvas>,
+  // AngularLynx's element around the page's, which the browser's
+  // createImageBitmap() takes in its place (issue #732).
   await expect(page.getByText('Bitmap: ok')).toBeVisible();
   // The 2D context's filter (issue #698), the browser's own here: the
   // fixture's reads are what a browser draws, which the shells match.

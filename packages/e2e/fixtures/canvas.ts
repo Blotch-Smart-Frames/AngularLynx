@@ -280,8 +280,11 @@ export class CanvasRoute {
    * shows through one half see-through (globalAlpha comes first); a
    * filtered square off the canvas casts its canvas shadow onto it; a square
    * far off the canvas casts its shadow onto it, with a filter and without,
-   * and a filtered one off a corner draws once over its shadow (issue
-   * #755); and blur() softens a black square's edge to partly see-through.
+   * and one off a corner draws once over its shadow (issue #755), whose
+   * strength follows the shape's alpha (issue #792), with a filter and
+   * without; a faded square's shadow takes globalAlpha and, with no blur,
+   * has sharp edges (issue #796); and blur() softens a black square's edge
+   * to partly see-through.
    * A string that isn't a filter leaves the last one. Then a shadow drawn
    * with an operation that clears what it doesn't cover (issue #763), with
    * a filter and without, see #shadowComposites. Gives "ok", or the reads.
@@ -330,9 +333,7 @@ export class CanvasRoute {
 
     // A shape drawn far off the canvas, with only its shadow brought onto
     // it, as glows and shadow-only effects are drawn: the shadow's layer
-    // lies where the shape is, not round the canvas. It's read inside the
-    // shadow, as Android softens a shadow's edge by half a pixel even with
-    // no blur.
+    // lies where the shape is, not round the canvas.
     const farReads = [false, true].map((filtered) => {
       const far = make(8, 8);
       if (filtered) far.filter = 'grayscale(1)';
@@ -346,17 +347,31 @@ export class CanvasRoute {
     // drawn apart from the shape's though it overlaps the canvas: the half
     // see-through black corner on the canvas is drawn once, over its red
     // shadow (85, 0, 0, 191; twice would be darker), and the shadow beside
-    // it is half red. With a filter, so Android takes the layers too (without
-    // one, its paint casts the shadow, from no layer).
-    const cornerReads = (() => {
+    // it is half red, as the shape is half see-through (issue #792: Android's
+    // paint shadow took only the shadow color's alpha, 255, 0, 0, 255).
+    const cornerReads = [true, false].flatMap((filtered) => {
       const corner = make(8, 8);
-      corner.filter = 'grayscale(1)';
+      if (filtered) corner.filter = 'grayscale(1)';
       corner.shadowColor = 'rgb(255, 0, 0)';
       corner.shadowOffsetX = 4;
       corner.shadowOffsetY = 4;
       corner.fillStyle = 'rgba(0, 0, 0, 0.5)';
       corner.fillRect(-4, -4, 6, 6);
       return [pixel(corner, 1, 1), pixel(corner, 4, 4)];
+    });
+
+    // A shape faded with globalAlpha casts a shadow faded as much, and a
+    // shadow with no blur has sharp edges (issue #796): both of the 2 px
+    // square's shadow columns read half red. Android's paint shadow read
+    // 255, 0, 0, 207 at the second, blurred by half a pixel and opaque.
+    const fadedShadowReads = (() => {
+      const faded = make(6, 2);
+      faded.globalAlpha = 0.5;
+      faded.shadowColor = 'rgb(255, 0, 0)';
+      faded.shadowOffsetX = 3;
+      faded.fillStyle = 'rgb(0, 0, 255)';
+      faded.fillRect(0, 0, 2, 2);
+      return [pixel(faded, 3, 0), pixel(faded, 4, 1)];
     })();
 
     const blur = make(12, 12);
@@ -379,10 +394,11 @@ export class CanvasRoute {
           (value, channel) =>
             Math.abs(
               value -
-                (index === 0 ? [85, 0, 0, 191] : [255, 0, 0, 128])[channel],
+                (index % 2 === 0 ? [85, 0, 0, 191] : [255, 0, 0, 128])[channel],
             ) <= 4,
         ),
       ) &&
+      fadedShadowReads.every((read) => near(read, [255, 0, 0, 128])) &&
       edge >= 64 &&
       edge <= 160;
     const composites = this.#shadowComposites();
@@ -396,6 +412,7 @@ export class CanvasRoute {
           offCanvasRead,
           ...farReads,
           ...cornerReads,
+          ...fadedShadowReads,
           edge,
           composites,
         ].join(' ');

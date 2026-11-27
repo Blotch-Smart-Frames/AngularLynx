@@ -37,7 +37,9 @@ def build_and_install(adb, device, app, app_id, screen):
     built = subprocess.run(
         ["sh", os.path.join(HERE, "build_android_app.sh"), app, app_id, screen],
         check=True,
-        capture_output=True,
+        # Only stdout, the .apk's path: a failed build says where its log is
+        # on stderr, which has to reach the terminal.
+        stdout=subprocess.PIPE,
         text=True,
     ).stdout.strip().splitlines()[-1]
     subprocess.run([adb, "-s", device, "install", "-r", built], check=True, capture_output=True)

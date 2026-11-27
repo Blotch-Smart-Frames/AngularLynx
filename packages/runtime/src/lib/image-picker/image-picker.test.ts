@@ -2,6 +2,7 @@ import '@angular/compiler';
 import { Injector } from '@angular/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { bytesToBase64 } from '../network/base64';
+import { LynxBlob } from '../network/blob';
 import {
   ImagePickerError,
   type ImagePickerErrorCode,
@@ -69,6 +70,22 @@ describe('LynxImagePicker', () => {
       expect(image!.blob.type).toBe('image/jpeg');
       expect(await bytesOf(image)).toEqual([0xff, 0xd8, 0xff, 0xe0]);
       expect(pick).toHaveBeenCalledWith({}, expect.any(Function));
+    });
+
+    it('brings the main thread’s Blob, which an app that picks photos needn’t name', async () => {
+      // An app's main thread has a Blob only where a module names it
+      // (network/enable.ts).
+      vi.stubGlobal('Blob', undefined);
+      const { pick, finish } = stubModule();
+
+      const picked = createPicker().pick();
+      await vi.waitFor(() => expect(pick).toHaveBeenCalled());
+      finish({ base64: 'AQI=', name: 'a.png', type: 'image/png' });
+
+      const image = await picked;
+      expect(globalThis.Blob).toBe(LynxBlob);
+      expect(image!.blob).toBeInstanceOf(LynxBlob);
+      expect(await bytesOf(image)).toEqual([1, 2]);
     });
 
     it('asks for whole pixels and the quality it was given', async () => {

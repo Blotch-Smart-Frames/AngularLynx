@@ -265,7 +265,7 @@ An element's `getBoundingClientRect()`, `clientWidth` and `clientHeight` answer 
 
 ### `TextEncoder` / `TextDecoder` are UTF-8 only
 
-The runtime adds them to the main thread. Any other encoding label throws a `RangeError`.
+The runtime adds them to the main thread, in the apps whose code names them or `fetch` (see [http-requests.md](http-requests.md)). Any other encoding label throws a `RangeError`.
 
 ### The keyboard covers a focused field
 

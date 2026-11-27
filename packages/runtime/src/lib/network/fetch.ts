@@ -5,7 +5,8 @@ import type {
   RelayedResponse,
 } from './background-fetch';
 import { base64ToBytes, bytesToBase64 } from './base64';
-import { blobForURL, decodeDataURL, LynxBlob } from './blob';
+import { LynxBlob } from './blob';
+import { blobForURL, decodeDataURL } from './blob-urls';
 import { readBundledAsset, typeOfAsset } from './bundled-asset';
 import { LynxHeaders, type HeadersInit } from './headers';
 import { isDisturbed, LynxReadableStream } from './readable-stream';

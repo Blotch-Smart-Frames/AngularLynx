@@ -127,10 +127,30 @@ const pixelSize = (value: unknown): number =>
   Math.min(0x7fffffff, Math.max(0, Math.floor(Number(value) || 0)));
 
 /**
+ * The main thread's `Blob`, which toBlob() and convertToBlob() make. Not
+ * every app has one: the build plugin installs it in the apps with a module
+ * that names `Blob`, `toBlob` or `convertToBlob` (network/enable.ts), and
+ * importing it here would bring it into every app, since every canvas has a
+ * surface (#760). So a call reached by a name built at runtime says how to
+ * get it, rather than failing on a later task with a ReferenceError.
+ */
+const blobClass = (): typeof Blob => {
+  if (typeof Blob !== 'function') {
+    throw new TypeError(
+      "This app's main thread has no Blob: no module names Blob, toBlob or convertToBlob. Call ɵenableBlob() from '@blotch/angular-lynx' first.",
+    );
+  }
+  return Blob;
+};
+
+/**
  * An encoded image's file, as a Blob.
  */
-const blobOf = (encoded: { base64: string; type: string }): Blob =>
-  new Blob([base64ToBytes(encoded.base64)], { type: encoded.type }) as Blob;
+const blobOf = (
+  BlobClass: typeof Blob,
+  encoded: { base64: string; type: string },
+): Blob =>
+  new BlobClass([base64ToBytes(encoded.base64)], { type: encoded.type });
 
 /** The canvas object an app holds, which a context's `canvas` is. */
 export type CanvasOwner = {
@@ -315,16 +335,18 @@ export class CanvasSurface {
     // Read now, so the image is of the canvas as it is at the call; the
     // file's bytes and the Blob are made on a later task, which hands them
     // over, as browsers do.
+    const BlobClass = blobClass();
     const encoded = this.#encode(type, quality);
-    setTimeout(() => callback(encoded ? blobOf(encoded) : null), 0);
+    setTimeout(() => callback(encoded ? blobOf(BlobClass, encoded) : null), 0);
   }
 
   /**
    * The image as a Blob now, or null when there's nothing to encode.
    */
   blobNow(type?: string, quality?: unknown): Blob | null {
+    const BlobClass = blobClass();
     const encoded = this.#encode(type, quality);
-    return encoded ? blobOf(encoded) : null;
+    return encoded ? blobOf(BlobClass, encoded) : null;
   }
 
   /**

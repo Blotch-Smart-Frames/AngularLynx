@@ -45,6 +45,13 @@ const WEBGL2 = /\bwebgl2\b/;
  * - `IntersectionObserver` is also what Angular's `@defer (on viewport)`
  *   observes with, so the instructions a template compiles to for one ask for
  *   it: Angular core names the observer in every app (ANGULAR_UNUSED).
+ * - `TextEncoder`, `TextDecoder`, `ReadableStream` and `Blob` each by name
+ *   (#760). `fetch` brings all four, since code that reads a response uses
+ *   them without naming them, and so do `@angular/common`'s HTTP modules,
+ *   whose names don't count either (ANGULAR_UNUSED). `@angular/localize`'s
+ *   message ids name `TextEncoder`, so an app with `$localize` gets it.
+ *   `Blob` also comes where a module names a canvas's `toBlob` or
+ *   `convertToBlob`, which make one.
  */
 const GLOBALS: readonly { enable: string; names: readonly string[] }[] = [
   {
@@ -73,6 +80,10 @@ const GLOBALS: readonly { enable: string; names: readonly string[] }[] = [
       'ɵɵdeferHydrateOnViewport',
     ],
   },
+  { enable: 'ɵenableTextEncoder', names: ['TextEncoder'] },
+  { enable: 'ɵenableTextDecoder', names: ['TextDecoder'] },
+  { enable: 'ɵenableReadableStream', names: ['ReadableStream'] },
+  { enable: 'ɵenableBlob', names: ['Blob', 'toBlob', 'convertToBlob'] },
 ];
 
 /**
@@ -95,7 +106,10 @@ const GLOBAL_NAMES: ReadonlySet<string> = new Set(
  *   those instructions, which core defines and exports.
  * - `@angular/common`: `HttpClient`'s backends, which come with
  *   `@angular/common`'s and `@angular/platform-browser`'s modules but only
- *   run when an app names one of the APIs that provide them (see GLOBALS).
+ *   run when an app names one of the APIs that provide them (see GLOBALS),
+ *   and the body APIs they and `HttpRequest` read and write a body with,
+ *   which `fetch` brings: `TextDecoder`, `Blob`, and `TextEncoder` for the
+ *   HTTP transfer cache's keys.
  * - `@angular/platform-browser` and `@angular/router`: `fetch` to load a
  *   component's `templateUrl` and `styleUrl`, only with JIT (`ngJitMode`),
  *   which AOT builds leave out.
@@ -116,6 +130,9 @@ export const ANGULAR_UNUSED: Readonly<Record<string, readonly string[]>> = {
     'FetchBackend',
     'withXhr',
     'HttpXhrBackend',
+    'TextEncoder',
+    'TextDecoder',
+    'Blob',
   ],
   '@angular/core': [
     'IntersectionObserver',
@@ -208,7 +225,8 @@ const globalsAskedFor = (code: string, filename: string): string[] => {
  * PrimJS reads a script's whole bytecode as it loads it, so every app paid in
  * memory for the code, whether it ran or not: the WebGL2 context (about
  * 37 kB of a minified main-thread script, #707), the relayed `fetch` and
- * `XMLHttpRequest`, and `IntersectionObserver` (#719). The runtime keeps each
+ * `XMLHttpRequest`, `IntersectionObserver` (#719), and `TextEncoder`,
+ * `TextDecoder`, `ReadableStream` and `Blob` (#760). The runtime keeps each
  * out of reach until its enable function runs, so an app that never names it
  * leaves it out. A name an app builds at runtime isn't seen: getContext()
  * says so on the console, and an app can call the enable function itself.

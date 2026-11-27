@@ -16,15 +16,29 @@ import {
 const APPLY = '(() => {}).apply';
 
 /**
- * A `yield` or an `await` anywhere. With no `?.` as well, a module can't have
- * what {@link lowerYieldingDefaultChains} rewrites, so it isn't parsed.
+ * A `yield` or an `await` anywhere: a module without one has no default
+ * value whose chains {@link lowerOptionalChains} compiles.
  */
 const YIELD_HINT = /\b(?:yield|await)\b/;
 
 /**
- * Compiles the optional chains in a destructuring's default value that has a
- * `yield` or an `await` (see {@link yieldingDefault}) to the conditionals
- * SWC would, with their variables declared in the function around them.
+ * A closing parenthesis right after the end of a member (a name or a `]`,
+ * past any `!`, spaces and comments), then any more of them, followed by an
+ * argument list or a template: what `(a?.m)(x)`, `((a?.m!))()` and
+ * `(a?.['m'])` before a template look like as text. A module without one
+ * has no chain in parentheses that's called, so with no yielding default
+ * value either it isn't parsed. It matches more than that (`f(a)(b)`),
+ * never less.
+ */
+const CALLED_HINT =
+  /[\p{ID_Continue}$\]](?:[\s!]|\/\*[\s\S]*?\*\/|\/\/.*)*\)(?:[\s!)]|\/\*[\s\S]*?\*\/|\/\/.*)*[(`]/u;
+
+/**
+ * Compiles the optional chains SWC gets wrong to the conditionals SWC
+ * would, with their variables declared in the function around them: those
+ * in a destructuring's default value that has a `yield` or an `await` (see
+ * {@link yieldingDefault}), and a chain in parentheses that's called or
+ * tags a template anywhere (see below).
  *
  * Both threads lower optional chaining (ES2019 and ES2015 targets), and SWC
  * (1.16, and rspack 2.2's) compiles an array pattern's default value that has
@@ -63,6 +77,14 @@ const YIELD_HINT = /\b(?:yield|await)\b/;
  * chain reads the object of its last member into a variable, and the call is
  * made on it with `Function.prototype.apply`.
  *
+ * SWC loses that receiver in every module, not only in these default values:
+ * it compiles `(a?.m)(x)` to `(a == null ? void 0 : a.m)(x)`, a conditional,
+ * so `m` runs with `this` undefined. So a chain in parentheses that's called
+ * or tags a template, anywhere, is compiled here the same way, and only that
+ * chain: the others are left to SWC, which compiles them correctly, and so
+ * is an optional call of one (`(a?.m)?.()`), which SWC makes on its
+ * receiver.
+ *
  * Edits never add or remove a line, and an inline source map's columns are
  * moved to match, as for the passes after it.
  *
@@ -70,11 +92,11 @@ const YIELD_HINT = /\b(?:yield|await)\b/;
  * @param filename - The module's path, for the parser.
  * @returns The rewritten code, or `code` itself when nothing applies.
  */
-export const lowerYieldingDefaultChains = (
-  code: string,
-  filename: string,
-): string => {
-  if (!code.includes('?.') || !YIELD_HINT.test(code)) {
+export const lowerOptionalChains = (code: string, filename: string): string => {
+  if (
+    !code.includes('?.') ||
+    !(YIELD_HINT.test(code) || CALLED_HINT.test(code))
+  ) {
     return code;
   }
   const sourceFile = ts.createSourceFile(
@@ -319,10 +341,12 @@ export const lowerYieldingDefaultChains = (
    * and the arguments (or the template's substitutions) are evaluated before
    * a callee that isn't a function throws, as when the chain short-circuits.
    */
-  const called = (node: ts.CallExpression | ts.TaggedTemplateExpression) => {
+  const called = (
+    node: ts.CallExpression | ts.TaggedTemplateExpression,
+  ): ts.OptionalChain | undefined => {
     const callee = ts.isCallExpression(node) ? node.expression : node.tag;
     const chain = calledChain(callee);
-    if (!chain) return;
+    if (!chain) return undefined;
     const name = declare(receiverScope(node));
     captures.set(chain, name);
     const start = callee.getStart(sourceFile);
@@ -337,7 +361,7 @@ export const lowerYieldingDefaultChains = (
         },
         { start: callee.end, end: callee.end, text: `, ${name})` },
       );
-      return;
+      return chain;
     }
     // `(callee)(x, y)` becomes `<apply>.call((callee), r, [x, y])`: the
     // arguments' opening parenthesis becomes the list's, and the call's
@@ -351,7 +375,13 @@ export const lowerYieldingDefaultChains = (
       },
     );
     closingBrackets.push({ start: node.end - 1, end: node.end - 1, text: ']' });
+    return chain;
   };
+
+  // The chains in parentheses outside those default values that are called
+  // or tag a template, which are compiled here when they're reached (see
+  // `visit`), after the call that gives them their capture.
+  const calledChains = new Set<ts.Node>();
 
   /**
    * Visits `node`. `lowering` is whether it's evaluated as part of a
@@ -368,6 +398,18 @@ export const lowerYieldingDefaultChains = (
         called(node);
       }
       if (isChainTop(node)) lower(node);
+    } else {
+      // Anywhere else, only a chain in parentheses that's called, which SWC
+      // would give no receiver. A call in a chain (`(a?.m)?.()`), SWC makes
+      // on it.
+      if (
+        (ts.isCallExpression(node) && !ts.isOptionalChain(node)) ||
+        ts.isTaggedTemplateExpression(node)
+      ) {
+        const chain = called(node);
+        if (chain) calledChains.add(chain);
+      }
+      if (calledChains.has(node)) lower(node as ts.OptionalChain);
     }
     ts.forEachChild(node, (child) =>
       visit(child, inDefault && evaluatedWith(node, child)),

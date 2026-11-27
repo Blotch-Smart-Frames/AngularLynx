@@ -7288,7 +7288,21 @@ The build now rewrites the chain before SWC (`splitPrivateChains` in `packages/r
 
 Nothing; it's the build. Both threads lower optional chaining (ES2019 and ES2015 targets), and SWC (1.16, and rspack 2.2's) compiles an array pattern's default value that has an optional chain it needs a variable for (`a.b()?.c`, `a?.b?.c`, `x?.#m?.call(x)`) into an arrow function called at once, which declares the variable: `const [v = (() => { var _a_b; return (_a_b = a.b()) === null || … ? void 0 : _a_b.c((yield 1)); })()] = []`. The `yield` or `await` ends up inside the arrow function, which is a SyntaxError, so the module fails to load, on both threads. It doesn't matter where in the default value the `yield` is (`[v = (a.b()?.c(1), yield 1)]`), and `for (const [v = …] of …)` and array assignment patterns (`[v = …] = []`) do it too. An object pattern's default value, `a?.b` on a plain name (no variable needed) and a chain inside a function in the default value compile correctly. Found in November 2026 (issue #733), while fixing SWC's private-member chains (#706).
 
-The build now compiles these chains itself before SWC, in every module, other packages' too, on both threads (`lowerYieldingDefaultChains` in `packages/rsbuild-plugin-angular-lynx/src/yielding-defaults.ts`): `[v = ((t = a.b()) == null ? void 0 : t.c(yield 1))] = []`, with `t` declared in the function around it. A call is made on its receiver, read once into a variable of its own, through `Function.prototype.apply` rather than the function's own `call`, and `delete a?.b` becomes `(t = a) == null ? true : delete t.b`. A chain in parentheses that's called (`(a?.m)(x)`, `(a?.b.c)?.()`) or tags a template reads the object of its last member into a variable too, and the call is made on it through `Function.prototype.apply`, so it keeps its `this`. (SWC's own compile of `(a?.m)(x)` loses that `this` anywhere, not only in these default values.)
+The build now compiles these chains itself before SWC, in every module, other packages' too, on both threads (`lowerOptionalChains` in `packages/rsbuild-plugin-angular-lynx/src/optional-chains.ts`): `[v = ((t = a.b()) == null ? void 0 : t.c(yield 1))] = []`, with `t` declared in the function around it. A call is made on its receiver, read once into a variable of its own, through `Function.prototype.apply` rather than the function's own `call`, and `delete a?.b` becomes `(t = a) == null ? true : delete t.b`. A chain in parentheses that's called (`(a?.m)(x)`, `(a?.b.c)?.()`) or tags a template reads the object of its last member into a variable too, and the call is made on it through `Function.prototype.apply`, so it keeps its `this`. SWC's own compile of `(a?.m)(x)` loses that `this` anywhere, not only in these default values, so the same pass compiles those calls in every module too (see the next entry).
+
+---
+
+## A call of an optional chain in parentheses, `(a?.m)()`, lost its `this`
+
+### What you'd expect (web)
+
+The parentheses keep the reference, so `(a?.m)(x)` calls `m` with `a` as `this` when `a` isn't nullish, as `a.m(x)` does, and `` (a?.m)`…` `` tags the template the same way. `(a?.b.c)(x)` gets `a.b`.
+
+### What Lynx does
+
+Nothing; it's the build. Both threads lower optional chaining, and SWC (1.16, and rspack 2.2's) compiles `(a?.m)(x)` to `(a === null || a === void 0 ? void 0 : a.m)(x)`: the callee is a conditional, not a member, so `m` runs with `this` undefined (the global object in sloppy code), and a method called this way throws or reads the wrong object. It happened in every module, on both threads. An optional call of the chain, `(a?.m)?.(x)`, SWC compiles correctly. Found in November 2026 (issue #757), while fixing #733.
+
+The build now compiles each such chain itself before SWC, in every module, other packages' too, on both threads (`lowerOptionalChains` in `packages/rsbuild-plugin-angular-lynx/src/optional-chains.ts`), as it does in a yielding default value (above): `(() => {}).apply.call(((t = a) == null ? void 0 : (r = t).m), r, [x])`, with `t` and `r` declared in the function around it. Only those chains are compiled there; every other chain in the module is left to SWC. A module is parsed for this only when its text has a `?.` and a `)` after the end of a member, followed by `(` or a template.
 
 ---
 

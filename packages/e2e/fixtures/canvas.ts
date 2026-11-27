@@ -645,6 +645,21 @@ export class CanvasRoute {
     const canvas = this.canvas().nativeElement as unknown as HTMLCanvasElement;
     const gl = canvas.getContext('webgl2');
     if (!gl) return 'none';
+    // A template's elements and its canvas's context are instances of the
+    // browser's classes, as libraries check (three.js sizes a VideoTexture by
+    // `instanceof HTMLVideoElement`): on a phone, the runtime's, and in the
+    // web preview, the iframe's the app runs in, though they're the page's
+    // (issue #788). Shown only when one isn't, so the line stays as short.
+    const instances = [
+      canvas instanceof HTMLCanvasElement,
+      canvas instanceof HTMLElement,
+      this.video().nativeElement instanceof HTMLVideoElement,
+      // iOS and Android have no WebGL2RenderingContext global yet.
+      typeof WebGL2RenderingContext === 'undefined' ||
+        gl instanceof WebGL2RenderingContext,
+      gl.canvas instanceof HTMLCanvasElement,
+    ];
+    if (instances.includes(false)) return `instanceof ${instances.join(',')}`;
 
     const shader = (type: number, source: string) => {
       const created = gl.createShader(type)!;

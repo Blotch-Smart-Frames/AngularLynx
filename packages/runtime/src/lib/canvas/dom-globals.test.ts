@@ -308,6 +308,19 @@ describe('the canvas APIs on the web', () => {
     expect(drawImage).toHaveBeenCalledWith(video.element, 0, 0);
   });
 
+  it('take a template’s <video> as an instance of the browser’s class', () => {
+    vi.stubGlobal('__WEB__', true);
+    /**
+     * The page's video, of the window web-core's iframe is in.
+     */
+    class PageVideo {}
+    const page = { HTMLVideoElement: PageVideo };
+    class HTMLVideoElement {}
+    installCanvasGlobals({ HTMLVideoElement, parent: page });
+    const video = Object.assign(element(), { element: new PageVideo() });
+    expect(video).toBeInstanceOf(HTMLVideoElement);
+  });
+
   it('are left alone on Lynx, whose own take one already', () => {
     const drawImage = vi.fn();
     class CanvasRenderingContext2D {}

@@ -83,17 +83,32 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
         get() = playerView?.videoSurfaceView as? SurfaceView
 
     /**
-     * Follows the view's surface beside the player's own callback. Either
-     * may run first: the player swaps or drops its surface only once its
-     * decoder has let go of the old one, so a surface that's going is never
-     * drawn into after its callback returns.
+     * Follows the view's surface beside the player's own callback.
+     *
+     * When the surface goes, the player is given the target only after
+     * every callback has run. SurfaceView calls a copy of its callback list,
+     * and once drawInView() has given the player the view again, the
+     * player's callback comes after this one. Were the target given here,
+     * setVideoSurface() would take the player's callback off the holder but
+     * not out of that copy, and it would still run, see the holder's surface
+     * as the player's output (setVideoSurface() doesn't clear media3's
+     * `surfaceHolderSurfaceIsVideoOutput`) and set the output to null,
+     * leaving a hidden video with nowhere to draw. Posted, the target comes
+     * after the player has let go of the view's surface, which it does
+     * before its callback returns, so the surface is never drawn into after
+     * it's gone.
      */
     private val surfaceCallback = object : SurfaceHolder.Callback {
         override fun surfaceCreated(holder: SurfaceHolder) = drawInView()
 
         override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
 
-        override fun surfaceDestroyed(holder: SurfaceHolder) = drawOffscreen()
+        override fun surfaceDestroyed(holder: SurfaceHolder) {
+            mainHandler.post {
+                // Unless the view was shown again in the meantime.
+                if (surfaceView?.holder?.surface?.isValid != true) drawOffscreen()
+            }
+        }
     }
 
     private val listener = object : Player.Listener {

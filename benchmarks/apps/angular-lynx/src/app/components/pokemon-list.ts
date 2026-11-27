@@ -141,7 +141,7 @@ export class PokemonList {
   readonly laidOut = output<void>();
 
   readonly #height = signal(0);
-  protected readonly list = viewChild.required<ElementRef<unknown>>('list');
+  readonly list = viewChild.required<ElementRef<unknown>>('list');
 
   constructor() {
     // Lynx's list sends `layoutcomplete` after every layout, which is every

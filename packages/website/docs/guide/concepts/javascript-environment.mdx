@@ -83,7 +83,7 @@ const firstTen = users
   .toArray();
 ```
 
-The build looks for the method's name in each file: called as a method, or in a string that could be the name you call it by. It can't see a name your code puts together as it runs, or takes from a list. Write the name out in the file that calls it:
+The build looks for the method's name in each file: called as a method, or in a string that could be the name you call it by. It can't see a name your code puts together as it runs, or keeps as data: in a list, or as an object's value (`{ decode: 'fromHex' }`). Write the name out in the file that calls it:
 
 ```ts
 // Seen: the names are in the code.

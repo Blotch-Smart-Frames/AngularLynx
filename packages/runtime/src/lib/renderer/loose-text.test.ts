@@ -30,6 +30,7 @@ import {
   vi,
 } from 'vitest';
 import { LynxDocument } from '../lynx-document';
+import { setDocumentLanguage } from '../lynx-element/quotes';
 import { setPageElementRef } from '../lynx-document/page-ref';
 import {
   ANONYMOUS_TEXT_CLASS,
@@ -3363,5 +3364,165 @@ describe('<q>, element by element', () => {
     expect(leafText(openRef)).toBe('“');
     expect(leafText(innerOpenRef)).toBe('‘');
     expect(leafText(innerCloseRef)).toBe('’');
+  });
+
+  it('draws the marks of its own lang, or the nearest above it', () => {
+    const div = doc.createElement('div');
+    div.setAttribute('lang', 'de');
+    page.appendChild(div);
+    const q = doc.createElement('q');
+    div.appendChild(q);
+    const inner = doc.createElement('q');
+    q.appendChild(inner);
+    commit();
+    expect(drawn(q)).toEqual(['„', '‚', '‘', '“']);
+
+    // Its own lang wins over its ancestor's, at its own depth.
+    inner.setAttribute('lang', 'fr');
+    commit();
+    expect(drawn(q)).toEqual(['„', '«', '»', '“']);
+    // Setting it again changes nothing.
+    inner.setAttribute('lang', 'fr');
+    expect(drawn(q)).toEqual(['„', '«', '»', '“']);
+
+    // And a <q> moved out of the lang draws the document's.
+    inner.removeAttribute('lang');
+    page.appendChild(inner);
+    commit();
+    expect(drawn(inner)).toEqual(['“', '”']);
+  });
+
+  it("draws the document's language's marks without a lang", () => {
+    setDocumentLanguage('fr');
+    try {
+      const q = doc.createElement('q');
+      page.appendChild(q);
+      commit();
+      expect(drawn(q)).toEqual(['«', '»']);
+    } finally {
+      setDocumentLanguage('');
+    }
+  });
+
+  it("takes a server render's lang from its native ancestors", () => {
+    // A snapshot's tree (see LynxHydrateDocument), which hydration puts no
+    // element in a JS parent of: a view with a lang, a native element
+    // Angular never made between it and the <q>, then the <q>.
+    const g = globalThis as unknown as FakeNativeGlobal<FakeEl>;
+    const viewRef = g.__CreateView();
+    const wrapperRef = g.__CreateView();
+    const qRef = g.__CreateText();
+    const openRef = g.__CreateRawText('');
+    const closeRef = g.__CreateRawText('');
+    g.__AppendElement(native(page), viewRef);
+    g.__AppendElement(viewRef, wrapperRef);
+    g.__AppendElement(wrapperRef, qRef);
+    g.__AppendElement(qRef, openRef);
+    g.__AppendElement(qRef, closeRef);
+    // An id no wrapper has: the ids start again in each test, and an earlier
+    // test's wrapper may still be registered under the wrapper's.
+    wrapperRef.id = -1;
+    const view = new LynxElement(viewRef as never);
+    view.tagName = 'view';
+    view.setAttribute('lang', 'fr');
+    const q = new LynxElement(qRef as never);
+    q.tagName = 'text';
+    q.markQuote([openRef as never, closeRef as never]);
+    expect(leafText(openRef)).toBe('«');
+
+    // Its own lang, which Angular sets after it hydrates it.
+    q.setAttribute('lang', 'de');
+    expect(leafText(openRef)).toBe('„');
+    expect(leafText(closeRef)).toBe('“');
+    // Without it, the ancestor's again, and as that changes.
+    q.removeAttribute('lang');
+    expect(leafText(openRef)).toBe('«');
+    view.setAttribute('lang', 'de');
+    expect(leafText(openRef)).toBe('„');
+
+    // A wrapper made later for the element between them (as parentNode()
+    // makes one) has no flag, and the change still reaches the <q>.
+    const wrapper = new LynxElement(wrapperRef as never);
+    view.setAttribute('lang', 'fr');
+    expect(leafText(openRef)).toBe('«');
+    // Its own lang, set then, reaches the <q>, and keeps it when the
+    // view's changes.
+    wrapper.setAttribute('lang', 'de');
+    expect(leafText(openRef)).toBe('„');
+    view.setAttribute('lang', 'ja');
+    expect(leafText(openRef)).toBe('„');
+    // And once it has a JS child of its own beside the <q>.
+    wrapper.appendChild(doc.createElement('view'));
+    wrapper.setAttribute('lang', 'fr');
+    expect(leafText(openRef)).toBe('«');
+    wrapper.removeAttribute('lang');
+    expect(leafText(openRef)).toBe('「');
+  });
+
+  it('gives a <q> put in a hydrated element the language above it', () => {
+    // A hydrated view with a lang, and a <text> in it (see the test above),
+    // that a new <q> goes into after hydration.
+    const g = globalThis as unknown as FakeNativeGlobal<FakeEl>;
+    const viewRef = g.__CreateView();
+    const pRef = g.__CreateText();
+    g.__AppendElement(native(page), viewRef);
+    g.__AppendElement(viewRef, pRef);
+    const view = new LynxElement(viewRef as never);
+    view.tagName = 'view';
+    view.setAttribute('lang', 'fr');
+    const p = new LynxElement(pRef as never);
+    p.tagName = 'text';
+
+    const q = doc.createElement('q');
+    p.appendChild(q);
+    commit();
+    expect(drawn(q)).toEqual(['«', '»']);
+
+    // And the view's lang changing reaches it through the hydrated <text>.
+    view.setAttribute('lang', 'de');
+    expect(drawn(q)).toEqual(['„', '“']);
+  });
+
+  it("draws a list's language in a <q> in its items", () => {
+    const list = doc.createElement('list');
+    list.setAttribute('lang', 'fr');
+    page.appendChild(list);
+    // An item with no <q>, and an element with no <q> beside one, which the
+    // change passes by.
+    const plain = doc.createElement('list-item');
+    plain.appendChild(doc.createElement('text'));
+    list.appendChild(plain);
+    const item = doc.createElement('list-item');
+    const other = doc.createElement('text');
+    other.appendChild(doc.createText('no quote'));
+    item.appendChild(other);
+    const text = doc.createElement('text');
+    item.appendChild(text);
+    const q = doc.createElement('q');
+    text.appendChild(q);
+    list.appendChild(item);
+    commit();
+    expect(drawn(q)).toEqual(['«', '»']);
+
+    list.setAttribute('lang', 'de');
+    expect(drawn(q)).toEqual(['„', '“']);
+    // A lang on the element with no <q> beside it changes nothing of the
+    // <q>'s.
+    other.setAttribute('lang', 'fr');
+    expect(drawn(q)).toEqual(['„', '“']);
+  });
+
+  it('looks through an anonymous <text> for the <q>s a lang reaches', () => {
+    // Loose text beside a <q> in a <view> shares an anonymous <text> with it.
+    const view = doc.createElement('view');
+    page.appendChild(view);
+    view.appendChild(doc.createText('He said '));
+    const q = doc.createElement('q');
+    view.appendChild(q);
+    commit();
+    expect(drawn(q)).toEqual(['“', '”']);
+
+    view.setAttribute('lang', 'fr');
+    expect(drawn(q)).toEqual(['«', '»']);
   });
 });

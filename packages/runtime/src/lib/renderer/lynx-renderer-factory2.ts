@@ -3,6 +3,7 @@ import {
   Injectable,
   Injector,
   inject,
+  LOCALE_ID,
   type Renderer2,
   type RendererFactory2,
   type RendererType2,
@@ -22,6 +23,7 @@ import {
   processPendingRemovals,
   processPendingTextNormalization,
 } from '../lynx-element';
+import { setDocumentLanguage } from '../lynx-element/quotes';
 import {
   isBindingListItem,
   isFirstRenderPending,
@@ -41,6 +43,12 @@ export class LynxRendererFactory2 implements RendererFactory2 {
 
   constructor() {
     setRunComingTick(comingTickRunner(inject(Injector)));
+    // The language of an element no `lang` is on or above, whose
+    // quotation marks a <q> draws (see quotes.ts): the app's locale, as an
+    // Angular app localized for the web sets <html lang> to it. An app's
+    // root injector always has it; an injector made without a parent (as
+    // some tests make) doesn't, and English stands in.
+    setDocumentLanguage(inject(LOCALE_ID, { optional: true }) ?? '');
   }
 
   /**

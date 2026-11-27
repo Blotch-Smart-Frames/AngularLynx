@@ -2612,8 +2612,10 @@ export class LynxElement implements BaseLynxElement {
    *
    * With `existing`, the marks a server render drew, which the snapshot
    * holds (see LynxHydrateDocument). A hydrated element is already in the
-   * snapshot's tree, and hydration inserts nothing, so its depth is read
-   * from its native ancestors, which hydrate before it.
+   * snapshot's tree, and hydration inserts nothing, so its depth and
+   * language are read from its native ancestors, which hydrate before it
+   * (see #quoteParent), and they're flagged as holding it, for a `lang` of
+   * theirs that changes later.
    */
   markQuote(existing?: [open: ElementRef, close: ElementRef]): void {
     const open = LynxElement.#quoteMarkText(existing?.[0]);
@@ -2625,30 +2627,42 @@ export class LynxElement implements BaseLynxElement {
       __AppendElement(this.element, open.element);
       __AppendElement(this.element, close.element);
     }
+    // Flags its hydrated ancestors (with itself, which changes nothing: a
+    // <q> is visited for its own marks anyway).
+    if (existing) this.#holdQuote();
     const [depth, language] = this.#outerQuoteContext();
     this.#setQuoteDepth(depth, language);
   }
 
   /**
+   * The element a `<q>` in this one counts as being in, for its depth and
+   * language: its JS parent, or a list item's list (see adoptVirtualChild),
+   * or, for a hydrated element, which hydration puts in no JS parent (the
+   * snapshot's tree is built already), its nearest native ancestor with a
+   * wrapper. Its native ancestors hydrated before it, with their
+   * attributes. A snapshot's anonymous texts have no wrapper, so they're
+   * passed over, as Angular never sees them.
+   */
+  #quoteParent(): LynxElement | null {
+    const parent = this._virtualParent ?? this.#jsParent;
+    if (parent) return parent;
+    for (let at = __GetParent(this.element); at; at = __GetParent(at)) {
+      const ancestor = LynxElement.#registered(__GetElementUniqueID(at));
+      if (ancestor) return ancestor;
+    }
+    return null;
+  }
+
+  /**
    * How many `<q>`s are around this element, and the language it inherits:
-   * the depth and language #setQuoteDepth gives it. From its JS parent, or,
-   * for a hydrated element, which hydration puts in no parent (the
-   * snapshot's tree is built already), from its native ancestors, which
-   * hydrate before it with their attributes. An element that's in neither
+   * the depth and language #setQuoteDepth gives it. An element in nothing
    * has no `<q>`s around it, and the document's language.
    */
   #outerQuoteContext(): [depth: number, language: string] {
-    const parent = this.#jsParent;
-    if (parent) return [parent.#quoteDepth(), parent.#language()];
-    let depth = 0;
-    let language: string | undefined;
-    for (let at = __GetParent(this.element); at; at = __GetParent(at)) {
-      const ancestor = LynxElement.#registered(__GetElementUniqueID(at));
-      if (!ancestor) continue;
-      if (ancestor.#quoteMarks) depth++;
-      language ??= ancestor.#lang;
-    }
-    return [depth, language ?? getDocumentLanguage()];
+    const parent = this.#quoteParent();
+    return parent
+      ? [parent.#quoteDepth(), parent.#language()]
+      : [0, getDocumentLanguage()];
   }
 
   /**
@@ -2657,7 +2671,7 @@ export class LynxElement implements BaseLynxElement {
    */
   #language(): string {
     if (this.#lang !== undefined) return this.#lang;
-    const parent = this.#jsParent;
+    const parent = this.#quoteParent();
     return parent ? parent.#language() : getDocumentLanguage();
   }
 
@@ -2703,7 +2717,7 @@ export class LynxElement implements BaseLynxElement {
   #holdQuote(): void {
     if (this.#holdsQuote) return;
     this.#holdsQuote = true;
-    const parent = this.#jsParent;
+    const parent = this.#quoteParent();
     if (parent) parent.#holdQuote();
   }
 
@@ -2713,7 +2727,7 @@ export class LynxElement implements BaseLynxElement {
    */
   #quoteDepth(): number {
     const own = this.#quoteMarks ? 1 : 0;
-    const parent = this.#jsParent;
+    const parent = this.#quoteParent();
     return own + (parent ? parent.#quoteDepth() : 0);
   }
 
@@ -2741,10 +2755,32 @@ export class LynxElement implements BaseLynxElement {
       close.#setQuoteMark(marks[pair + 1]!);
       inner++;
     }
-    for (const child of this.#children ?? NO_CHILDREN) {
+    const pass = (child: LynxElement): void => {
       if (child.#holdsQuote || child.#quoteMarks) {
         child.#setQuoteDepth(inner, language);
       }
+    };
+    // The native children, not #children: a hydrated element's aren't in
+    // it (hydration inserts nothing), and a list's items are its virtual
+    // children instead.
+    LynxElement.#eachQuoteChild(this.element, pass);
+    for (const child of this.virtualChildren()) pass(child);
+  }
+
+  /**
+   * Calls `fn` with the wrapper of each native child of `ref`, looking
+   * through the children that are only drawn there, which a `<q>` can be
+   * in: an anonymous `<text>` (see #regroup) and a snapshot's elements
+   * without a wrapper.
+   */
+  static #eachQuoteChild(
+    ref: ElementRef,
+    fn: (child: LynxElement) => void,
+  ): void {
+    for (let at = __FirstElement(ref); at; at = __NextElement(at)) {
+      const child = LynxElement.#registered(__GetElementUniqueID(at));
+      if (child && !child.#anonymous) fn(child);
+      else LynxElement.#eachQuoteChild(at, fn);
     }
   }
 
@@ -3127,6 +3163,11 @@ export class LynxElement implements BaseLynxElement {
     if (child.#webText || child.#passesTextStyles) this.#passTextStyles();
     child.#ancestorsChanged();
     if (child.#passedSizeSeen !== undefined) child.#outerSizeChanged();
+    // And a <q> in it takes the list's language (see #setQuoteDepth).
+    if (child.#quoteMarks || child.#holdsQuote) {
+      this.#holdQuote();
+      child.#setQuoteDepth(this.#quoteDepth(), this.#language());
+    }
   }
 
   /**

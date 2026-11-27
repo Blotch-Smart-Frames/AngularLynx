@@ -3434,5 +3434,65 @@ describe('<q>, element by element', () => {
     q.setAttribute('lang', 'de');
     expect(leafText(openRef)).toBe('„');
     expect(leafText(closeRef)).toBe('“');
+    // Without it, the ancestor's again, and as that changes.
+    q.removeAttribute('lang');
+    expect(leafText(openRef)).toBe('«');
+    view.setAttribute('lang', 'de');
+    expect(leafText(openRef)).toBe('„');
+  });
+
+  it('gives a <q> put in a hydrated element the language above it', () => {
+    // A hydrated view with a lang, and a <text> in it (see the test above),
+    // that a new <q> goes into after hydration.
+    const g = globalThis as unknown as FakeNativeGlobal<FakeEl>;
+    const viewRef = g.__CreateView();
+    const pRef = g.__CreateText();
+    g.__AppendElement(native(page), viewRef);
+    g.__AppendElement(viewRef, pRef);
+    const view = new LynxElement(viewRef as never);
+    view.tagName = 'view';
+    view.setAttribute('lang', 'fr');
+    const p = new LynxElement(pRef as never);
+    p.tagName = 'text';
+
+    const q = doc.createElement('q');
+    p.appendChild(q);
+    commit();
+    expect(drawn(q)).toEqual(['«', '»']);
+
+    // And the view's lang changing reaches it through the hydrated <text>.
+    view.setAttribute('lang', 'de');
+    expect(drawn(q)).toEqual(['„', '“']);
+  });
+
+  it("draws a list's language in a <q> in its items", () => {
+    const list = doc.createElement('list');
+    list.setAttribute('lang', 'fr');
+    page.appendChild(list);
+    const item = doc.createElement('list-item');
+    const text = doc.createElement('text');
+    item.appendChild(text);
+    const q = doc.createElement('q');
+    text.appendChild(q);
+    list.appendChild(item);
+    commit();
+    expect(drawn(q)).toEqual(['«', '»']);
+
+    list.setAttribute('lang', 'de');
+    expect(drawn(q)).toEqual(['„', '“']);
+  });
+
+  it('looks through an anonymous <text> for the <q>s a lang reaches', () => {
+    // Loose text beside a <q> in a <view> shares an anonymous <text> with it.
+    const view = doc.createElement('view');
+    page.appendChild(view);
+    view.appendChild(doc.createText('He said '));
+    const q = doc.createElement('q');
+    view.appendChild(q);
+    commit();
+    expect(drawn(q)).toEqual(['“', '”']);
+
+    view.setAttribute('lang', 'fr');
+    expect(drawn(q)).toEqual(['«', '»']);
   });
 });

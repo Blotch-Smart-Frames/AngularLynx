@@ -74,6 +74,21 @@ The app is outside the monorepo's npm workspaces (`benchmarks/` isn't one), so
 it has its own `node_modules` and lockfile. Every other version is pinned
 exactly.
 
+The `@angular/*` pins follow the Angular master is on (the versions in the
+root `package-lock.json`), because the packed packages need that minor: their
+peer ranges are `^X.Y.0`, so on an older Angular npm refuses the install. When
+master moves to a new Angular minor, the `release-minor` skill moves the pins
+with it. To move them by hand, set each `@angular/*` pin in package.json to the
+root lockfile's version, then drop Angular from this app's lockfile before
+running the script. Angular's packages each pin the others' exact version as a
+peer, so npm can't move them one at a time from the versions it has locked:
+
+```sh
+jq '.packages |= with_entries(select(.key | test("(^|/)node_modules/@angular/") | not))' \
+  package-lock.json > package-lock.json.tmp && mv package-lock.json.tmp package-lock.json
+node scripts/use-local-packages.mjs
+```
+
 ## Commands
 
 The fixture server first, from the repository root: `node benchmarks/fixtures/server.mjs`.
@@ -103,7 +118,7 @@ FIXTURE_ORIGIN=http://192.168.1.231:8787 npx ng build --platform ios
 ```
 
 builds the bundle and generates the Xcode project in
-`.angular/cache/22.2.7/angular-lynx/lynx-native/ios`. The builder's own way to
+`.angular/cache/22.3.0/angular-lynx/lynx-native/ios`. The builder's own way to
 build a signed app is `--run --device "<iPhone name>"` with
 `"ios": { "teamId": "F64LTK85F6" }` in angular.json, which builds a
 development-signed Release app for that phone (`dist/ios/LaunchPerfAL-device.app`)
@@ -112,7 +127,7 @@ and installs it, but it passes `-allowProvisioningUpdates` and
 the phone with the team. Without the builder, after the build above:
 
 ```sh
-xcodebuild build -project .angular/cache/22.2.7/angular-lynx/lynx-native/ios/App.xcodeproj \
+xcodebuild build -project .angular/cache/22.3.0/angular-lynx/lynx-native/ios/App.xcodeproj \
   -scheme App -configuration Release -sdk iphoneos -destination generic/platform=iOS \
   -derivedDataPath .angular/xcode-device DEVELOPMENT_TEAM=F64LTK85F6 \
   PRODUCT_BUNDLE_IDENTIFIER=com.angularlynx.bench.angularlynx -allowProvisioningUpdates

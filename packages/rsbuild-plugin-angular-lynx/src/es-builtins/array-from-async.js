@@ -103,16 +103,19 @@ const fromAsync = async (Constructor, items, mapper, thisArg) => {
         // the value has, which this then awaits: two turns, as the spec
         // takes, so the next step can't run before code the value's own
         // settling queued.
-        value = await (async () => {
+        // The value comes back in a record, as the iterator wraps it in its
+        // result: returning it as it is would resolve it again, reading a
+        // thenable's `then` a second time.
+        ({ value } = await (async () => {
           try {
-            return await stepValue;
+            return { value: await stepValue };
           } catch (error) {
             // A rejected value closes the iterator, unless it's the last
             // step's.
             if (!done) closeAndThrow(iterator, error);
             throw error;
           }
-        })();
+        })());
         if (done) break;
       }
       try {

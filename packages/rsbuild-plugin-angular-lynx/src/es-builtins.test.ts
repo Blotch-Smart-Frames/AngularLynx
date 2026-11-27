@@ -813,6 +813,18 @@ describe('ES2021–ES2026 built-in polyfills', () => {
       // As the spec's async-from-sync iterator does. Node 24's own
       // Array.fromAsync does both, so each is compared with it too.
       await expectSameAsNativeAsync([
+        // A value is resolved once: its `then` is read once.
+        `(async () => {
+          let reads = 0;
+          const value = {
+            get then() {
+              if (reads++) throw new RangeError();
+              return undefined;
+            },
+          };
+          const [result] = await Array.fromAsync([value]);
+          return [result === value, reads];
+        })()`,
         // Each step waits for the async-from-sync iterator's own promise, so
         // the next one runs after what settling the value queued.
         `(() => {

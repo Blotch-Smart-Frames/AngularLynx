@@ -254,29 +254,32 @@ runner can't answer it.
 script and run it with `bash` from the repository root, after `npm ci` and
 `npm run build`. Commit or stash any changes to
 `benchmarks/apps/angular-lynx/package.json` and `package-lock.json` first,
-since the last line puts both back.
+since the script puts both back when it ends.
 
 ```sh
 set -e
+cleanup() {
+  [ -z "${fixtures:-}" ] || kill "$fixtures" 2>/dev/null || true
+  python3 benchmarks/harness/track.py shutdown
+  git checkout benchmarks/apps/angular-lynx/package.json benchmarks/apps/angular-lynx/package-lock.json
+}
+trap cleanup EXIT
 (cd benchmarks/apps/angular-lynx && node scripts/use-local-packages.mjs)
 (cd benchmarks/apps/react-lynx && npm ci)
 udid=$(python3 benchmarks/harness/track.py boot)
 xcrun simctl install "$udid" "$(sh benchmarks/harness/build_ios_app.sh --simulator angular-lynx com.angularlynx.bench.angularlynx)"
 xcrun simctl install "$udid" "$(sh benchmarks/harness/build_ios_app.sh --simulator react-lynx com.angularlynx.bench.rival)"
 node benchmarks/fixtures/server.mjs & fixtures=$!
-trap 'kill "$fixtures"; python3 benchmarks/harness/track.py shutdown' EXIT
+launch="benchmarks/results/ios-simulator/launch-$(date -u +%F)-react-lynx.csv"
 python3 benchmarks/harness/ios_launch.py --simulator --device "$udid" --runs 20 \
-  --app angular-lynx=com.angularlynx.bench.angularlynx --app react-lynx=com.angularlynx.bench.rival \
-  --out benchmarks/results/ios-simulator/launch-$(date -u +%F)-react-lynx.csv
+  --app angular-lynx=com.angularlynx.bench.angularlynx --app react-lynx=com.angularlynx.bench.rival --out "$launch"
 python3 benchmarks/harness/ios_mount.py --simulator --device "$udid" --rival react-lynx --runs 10
-python3 benchmarks/harness/track.py report --launch benchmarks/results/ios-simulator/launch-$(date -u +%F)-react-lynx.csv \
-  --mount-dir benchmarks/results/ios-simulator --summary summary.md
-git checkout benchmarks/apps/angular-lynx/package.json benchmarks/apps/angular-lynx/package-lock.json
+python3 benchmarks/harness/track.py report --launch "$launch" --mount-dir benchmarks/results/ios-simulator --summary summary.md
 ```
 
 `use-local-packages.mjs` rewrites those two files to the packed packages.
-The trap stops the fixture server and the Simulator however the script
-ends. Both harnesses append to the day's CSVs, and the report takes each
+`cleanup` stops the fixture server and the Simulator and puts the two files
+back however the script ends, a failed build or launch included. Both harnesses append to the day's CSVs, and the report takes each
 app's median of every row in them, so move a day's earlier
 `launch-<date>-react-lynx.csv` and `mount-<date>-*` files out of
 `results/ios-simulator` before a second session that day; the report finds

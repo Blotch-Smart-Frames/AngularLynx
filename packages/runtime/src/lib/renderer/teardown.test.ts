@@ -2448,17 +2448,61 @@ describe('renderer teardown', () => {
       expect(registered([ref])).toEqual([true]);
     });
 
-    it('keeps one native already put in the list when its old parent goes', () => {
+    it('takes one inserted alone out of its old parent at the end of the cycle', () => {
+      const { page, view, list, item, ref } = makeMove();
+
+      // A DomPortal's move: an insert alone. Native hasn't asked for the
+      // item, and may never (it's out of view).
+      list.appendChild(item);
+      processPendingRemovals();
+
+      // Not drawn in the view any more, and rebuilt for the list.
+      expect(ref.parent).toBeNull();
+      const rebuilt = item.element as unknown as FakeEl;
+      expect(rebuilt).not.toBe(ref);
+      // Out of the view's children: the view, removed and shown again,
+      // doesn't take it back, nor does its removal reach it.
+      view.remove();
+      processPendingRemovals();
+      page.appendChild(view);
+      expect((view.element as unknown as FakeEl).children).toEqual([]);
+      expect(item.element as unknown as FakeEl).toBe(rebuilt);
+      expect(item.parentNode()).toBe(list);
+    });
+
+    it('leaves one native already put in the list where it is', () => {
       const { view, list, item, ref } = makeMove();
       const listRef = list.element as unknown as FakeEl;
 
-      // An insert alone, and native asked for the item: it's in the native
-      // list, out of the view.
+      // An insert alone, and native asked for the item before the cycle's
+      // removals committed: it's in the native list, out of the view.
       list.appendChild(item);
-      processPendingRemovals();
       processPendingListUpdates();
       expect(askForItem(listRef, 0)).toBe(ref);
+      processPendingRemovals();
+      expect(ref.parent).toBe(listRef);
 
+      // And the view's removal doesn't reach it.
+      view.markDestroyed();
+      view.remove();
+      processPendingRemovals();
+      (globalThis as unknown as FakeNativeGlobal<FakeEl>).__FlushElementTree();
+
+      expect(item.element as unknown as FakeEl).toBe(ref);
+      expect(ref.parent).toBe(listRef);
+      expect(ref.hasPaintingNode).toBe(true);
+      expect(registered([ref])).toEqual([true]);
+    });
+
+    it('leaves one native put in the list in the cycle its old parent goes', () => {
+      const { view, list, item, ref } = makeMove();
+      const listRef = list.element as unknown as FakeEl;
+
+      list.appendChild(item);
+      processPendingListUpdates();
+      expect(askForItem(listRef, 0)).toBe(ref);
+      // The view goes before the item's own removal commits, and its
+      // removal reaches the item through its children.
       view.markDestroyed();
       view.remove();
       processPendingRemovals();
@@ -2471,21 +2515,19 @@ describe('renderer teardown', () => {
     });
 
     it('tells native about one rebuilt after it was told about the old one', () => {
-      const { view, list, item, ref } = makeMove();
+      const { list, item, ref } = makeMove();
       const listRef = list.element as unknown as FakeEl;
 
-      // Native knows the item, but hasn't asked for it yet.
+      // Native was told about the item (a list changed outside a cycle sends
+      // its update from a microtask), but hasn't asked for it yet.
       list.appendChild(item);
-      processPendingRemovals();
       processPendingListUpdates();
 
-      view.markDestroyed();
-      view.remove();
       processPendingRemovals();
       const rebuilt = item.element as unknown as FakeEl;
       expect(rebuilt).not.toBe(ref);
 
-      // The list's update in this cycle gives native the new one.
+      // The list's next update gives native the new one.
       expect(processPendingListUpdates()).toBe(true);
       expect(askForItem(listRef, 0)).toBe(rebuilt);
     });

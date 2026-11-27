@@ -3340,8 +3340,8 @@ export class LynxElement implements BaseLynxElement {
     }
     // A list's item has the list as its parent (see LynxListElement), as
     // parentNode() says: an item that moved into a list from another
-    // element still has that element as its #jsParent, which the list
-    // doesn't set.
+    // element still has that element as its #jsParent until the end of the
+    // cycle (see adoptVirtualChild), and the list doesn't set it.
     const parent = this._virtualParent ?? this.#jsParent;
     if (parent) parent.#passTextStyles();
   }
@@ -3356,10 +3356,17 @@ export class LynxElement implements BaseLynxElement {
     // cycle lost its native elements, so the list gets new ones to show. A
     // `*lynxListFor` item's run builds and rebinds its own (see
     // attachItemSource). One still waiting for its removal from another
-    // parent keeps it: see commitPendingRemovals.
+    // parent keeps it: see #rebuildDeadListItems.
     if (!child._ownedByListSource) {
       child.#keepIfDestroyed();
       child.#recreateIfDead();
+      // Inserted with no removal from where it was, as a DomPortal moves an
+      // element: it leaves that parent as a removal would, at the end of the
+      // cycle. The list draws it only when native asks for it, which for an
+      // item out of view may be never, so until then it was drawn in its old
+      // parent, and stayed in that parent's children, where a regroup or a
+      // rebuild of the parent took it back out of the list.
+      if (child.#jsParent) LynxElement.#pendingRemovals.add(child);
     }
     // The list puts its native element in the native list when native asks
     // for it (see create-list-element.ts), not through #adoptChild.
@@ -3934,6 +3941,13 @@ export class LynxElement implements BaseLynxElement {
       ]);
       LynxElement.#pendingRemovals.clear();
       for (const el of items) {
+        // Moved into a list that native has asked for it from already: it's
+        // in the native list, out of its old parent, and only leaves that
+        // parent's children.
+        if (el._virtualParent?.holdsInNativeList(el)) {
+          el.#leaveJsParent();
+          continue;
+        }
         el.#doRemove();
       }
     }
@@ -4433,20 +4447,33 @@ export class LynxElement implements BaseLynxElement {
   }
 
   /**
+   * Takes this element, which a list holds now, out of the children of the
+   * parent it was in before (see adoptVirtualChild).
+   */
+  #leaveJsParent(): void {
+    const jsParent = this.#jsParent;
+    if (!jsParent) return;
+    const i = jsParent.#children!.indexOf(this);
+    // Defensive, as in #doRemove: #children follows the native tree.
+    /* v8 ignore next */
+    if (i >= 0) jsParent.#children!.splice(i, 1);
+    this.#jsParent = null;
+  }
+
+  /**
    * Rebuilds each element a list took whose native element a removal this
    * cycle took with it (see #markPaintingDead), once the cycle's removals and
    * releases are done.
    *
    * An element moved into a list (see adoptVirtualChild) keeps its native
    * element in its old parent: the list appends it to the native list only
-   * when native asks for it (componentAtIndex), in a later flush. So its own
-   * queued removal goes ahead, or else it would still be drawn where it was,
-   * and so does the removal of an old parent that still holds it (one moved
-   * in with no removal, as a DomPortal does). Either way its native elements
-   * die at the flush, and it's rebuilt here, before the list's update reads
-   * its native element. It no longer belongs to the old parent, so it
-   * leaves that parent's children: shown again, the parent would rebuild it
-   * there (see #recreateSubtree). One the releases let go of (its list, or
+   * when native asks for it (componentAtIndex), in a later flush. So its
+   * removal from its old parent goes ahead, or else it would still be drawn
+   * there, as does the removal of the old parent itself when it's in the
+   * same cycle. Either way its native elements die at the flush, and it's
+   * rebuilt here, before the list's update reads its native element. It no
+   * longer belongs to the old parent, so it leaves that parent's children,
+   * if its removal didn't take it out of them already. One the releases let go of (its list, or
    * something around the list, was destroyed) isn't rebuilt: nothing shows
    * it.
    */
@@ -4460,14 +4487,7 @@ export class LynxElement implements BaseLynxElement {
       if (LynxElement.#registered(__GetElementUniqueID(el.element)) !== el) {
         continue;
       }
-      const jsParent = el.#jsParent;
-      if (jsParent) {
-        const i = jsParent.#children!.indexOf(el);
-        // Defensive, as in #doRemove: #children follows the native tree.
-        /* v8 ignore next */
-        if (i >= 0) jsParent.#children!.splice(i, 1);
-        el.#jsParent = null;
-      }
+      el.#leaveJsParent();
       el.#recreateIfDead();
       // Native may have been told about the old native element already (an
       // insert alone, in an earlier cycle): the list tells it about the new

@@ -191,12 +191,70 @@ static AngularLynxDecodedImage *decodeImage(NSData *bytes, NSDictionary *options
   return decoded;
 }
 
-/// A canvas's pixels (its context's snapshot) as createImageBitmap's options
-/// ask, for an ImageBitmap of the canvas. Without a resize, the bytes are
-/// copied, flipped and premultiplied or divided as asked, exactly; a resize
-/// draws them at the new size, as a decode does.
+/// An integer option, or 0 when it's missing or isn't a number.
+static long long integerOption(NSDictionary *options, NSString *key) {
+  id value = options[key];
+  return [value isKindOfClass:NSNumber.class] ? [value longLongValue] : 0;
+}
+
+/// Whether createImageBitmap() asked for part of the source (its `sx, sy, sw,
+/// sh`), which the runtime sends as cropX, cropY, cropWidth and cropHeight,
+/// the sizes made positive.
+static BOOL hasCrop(NSDictionary *options) {
+  return integerOption(options, @"cropWidth") > 0 && integerOption(options, @"cropHeight") > 0;
+}
+
+/// The part of an image createImageBitmap()'s crop rectangle covers, the
+/// rectangle's size: what it covers outside the image is transparent black,
+/// as the HTML spec has it, and the rest keeps its alpha as it was. The
+/// image's rows are copied, so the source is left as it is.
+static AngularLynxDecodedImage *cropImage(AngularLynxDecodedImage *image, NSDictionary *options,
+                                          NSString **error) {
+  long long x = integerOption(options, @"cropX");
+  long long y = integerOption(options, @"cropY");
+  long long width = integerOption(options, @"cropWidth");
+  long long height = integerOption(options, @"cropHeight");
+  // Each side is at most 2^31 - 1 (a Web IDL long), so the pixel count fits;
+  // it's checked before it's multiplied by 4, which could wrap round.
+  NSMutableData *pixels = (unsigned long long)width <= NSIntegerMax / 4 / (unsigned long long)height
+                              ? [NSMutableData dataWithLength:(NSUInteger)(width * height * 4)]
+                              : nil;
+  if (!pixels) {
+    *error = @"The crop rectangle is too large";
+    return nil;
+  }
+  // The columns and rows the rectangle shares with the image.
+  long long left = MAX(x, 0);
+  long long right = MIN(x + width, (long long)image.width);
+  long long top = MAX(y, 0);
+  long long bottom = MIN(y + height, (long long)image.height);
+  if (left < right && top < bottom) {
+    const uint8_t *from = image.pixels.bytes;
+    uint8_t *to = pixels.mutableBytes;
+    size_t span = (size_t)(right - left) * 4;
+    for (long long row = top; row < bottom; row++) {
+      memcpy(to + ((row - y) * width + (left - x)) * 4, from + (row * image.width + left) * 4,
+             span);
+    }
+  }
+  return [[AngularLynxDecodedImage alloc] initWithPixels:pixels
+                                                   width:(NSInteger)width
+                                                  height:(NSInteger)height
+                                           premultiplied:image.premultiplied];
+}
+
+/// Pixels the shell has (a canvas's snapshot, an image it keeps, an
+/// ImageData's) as createImageBitmap's options ask, for a new ImageBitmap:
+/// cropped first, as the HTML spec orders it, so a resize and a flip apply to
+/// the part the crop rectangle names. Without a resize, the bytes are copied,
+/// flipped and premultiplied or divided as asked, exactly; a resize draws
+/// them at the new size, as a decode does. The source is only read.
 static AngularLynxDecodedImage *pixelsOfSnapshot(AngularLynxDecodedImage *snapshot,
                                                  NSDictionary *options, NSString **error) {
+  if (hasCrop(options)) {
+    snapshot = cropImage(snapshot, options, error);
+    if (!snapshot) return nil;
+  }
   NSNumber *resizeWidth = options[@"resizeWidth"];
   NSNumber *resizeHeight = options[@"resizeHeight"];
   BOOL resize = ([resizeWidth isKindOfClass:NSNumber.class] && resizeWidth.integerValue > 0) ||
@@ -255,6 +313,21 @@ static AngularLynxDecodedImage *pixelsOfSnapshot(AngularLynxDecodedImage *snapsh
                                            premultiplied:premultiply];
 }
 
+/// Keeps a new ImageBitmap's pixels under the id the runtime gave it, and
+/// answers its size and, when it was asked for, that the crop was applied: a
+/// shell from before cropping leaves `cropped` out, so the runtime can tell
+/// it would get all of the source. Or answers why there's no image.
+static NSDictionary *keptImage(NSNumber *imageId, AngularLynxDecodedImage *image,
+                               NSDictionary *options, NSString *error, NSString *fallback) {
+  if (!image) return @{@"width" : @0, @"height" : @0, @"error" : error ?: fallback};
+  decodedImages()[imageId] = image;
+  return @{
+    @"width" : @(image.width),
+    @"height" : @(image.height),
+    @"cropped" : @(hasCrop(options)),
+  };
+}
+
 #pragma mark - Module
 
 @implementation AngularLynxWebGLModule {
@@ -277,6 +350,8 @@ static AngularLynxDecodedImage *pixelsOfSnapshot(AngularLynxDecodedImage *snapsh
     @"decodeImage" : NSStringFromSelector(@selector(decodeImage:bytes:options:)),
     @"releaseImage" : NSStringFromSelector(@selector(releaseImage:)),
     @"imageFromCanvas" : NSStringFromSelector(@selector(imageFromCanvas:canvasId:options:)),
+    @"imageFromImage" : NSStringFromSelector(@selector(imageFromImage:sourceId:options:)),
+    @"imageFromPixels" : NSStringFromSelector(@selector(imageFromPixels:bytes:options:)),
     @"encodeImage" : NSStringFromSelector(@selector(encodeImage:options:)),
     @"create2D" : NSStringFromSelector(@selector(create2D:canvasId:attributes:)),
     @"run2D" : NSStringFromSelector(@selector(run2D:commands:)),
@@ -344,17 +419,22 @@ static AngularLynxDecodedImage *pixelsOfSnapshot(AngularLynxDecodedImage *snapsh
 - (NSDictionary *)decodeImage:(NSNumber *)imageId
                         bytes:(NSArray *)bytes
                       options:(NSDictionary *)options {
+  if (![options isKindOfClass:NSDictionary.class]) options = @{};
   NSString *error = nil;
-  AngularLynxDecodedImage *image =
-      [bytes isKindOfClass:NSArray.class]
-          ? decodeImage(AngularLynxBytesFromWords(bytes),
-                        [options isKindOfClass:NSDictionary.class] ? options : @{}, &error)
-          : nil;
-  if (!image) {
-    return @{@"width" : @0, @"height" : @0, @"error" : error ?: @"No image data"};
+  AngularLynxDecodedImage *image = nil;
+  if ([bytes isKindOfClass:NSArray.class]) {
+    if (hasCrop(options)) {
+      // Cropped before it's resized or flipped, as the HTML spec orders it:
+      // the file is decoded as it is, with the alpha the bitmap asks for, so
+      // the copy needn't convert it, and then cut.
+      NSDictionary *plain = @{@"premultiplyAlpha" : options[@"premultiplyAlpha"] ?: @"default"};
+      image = decodeImage(AngularLynxBytesFromWords(bytes), plain, &error);
+      if (image) image = pixelsOfSnapshot(image, options, &error);
+    } else {
+      image = decodeImage(AngularLynxBytesFromWords(bytes), options, &error);
+    }
   }
-  decodedImages()[imageId] = image;
-  return @{@"width" : @(image.width), @"height" : @(image.height)};
+  return keptImage(imageId, image, options, error, @"No image data");
 }
 
 - (NSNumber *)releaseImage:(NSNumber *)imageId {
@@ -413,11 +493,51 @@ static AngularLynxDecodedImage *pixelsOfSnapshot(AngularLynxDecodedImage *snapsh
   if ([options[@"transfer"] isEqual:@YES]) [context clearForTransfer];
   NSString *error = nil;
   AngularLynxDecodedImage *image = pixelsOfSnapshot(snapshot, options, &error);
-  if (!image) {
-    return @{@"width" : @0, @"height" : @0, @"error" : error ?: @"The canvas could not be read"};
+  return keptImage(imageId, image, options, error, @"The canvas could not be read");
+}
+
+/// An ImageBitmap of an image the module keeps (an ImageBitmap's, or an
+/// `<img>`'s), for createImageBitmap(): a copy of its pixels with
+/// createImageBitmap's options, so neither the pixels nor the file cross the
+/// bridge again. `{ width, height, cropped }`, or `{ error }`.
+- (NSDictionary *)imageFromImage:(NSNumber *)imageId
+                        sourceId:(NSNumber *)sourceId
+                         options:(NSDictionary *)options {
+  if (![options isKindOfClass:NSDictionary.class]) options = @{};
+  AngularLynxDecodedImage *source =
+      [sourceId isKindOfClass:NSNumber.class] ? decodedImages()[sourceId] : nil;
+  if (!source) return @{@"width" : @0, @"height" : @0, @"error" : @"The image is gone"};
+  NSString *error = nil;
+  AngularLynxDecodedImage *image = pixelsOfSnapshot(source, options, &error);
+  return keptImage(imageId, image, options, error, @"The image could not be copied");
+}
+
+/// An ImageBitmap of an ImageData, for createImageBitmap(): its RGBA bytes,
+/// straight, rows top to bottom, sent as words (see AngularLynxBytesFromWords),
+/// with its size in `options`, and createImageBitmap's options applied.
+/// `{ width, height, cropped }`, or `{ error }`.
+- (NSDictionary *)imageFromPixels:(NSNumber *)imageId
+                            bytes:(NSArray *)bytes
+                          options:(NSDictionary *)options {
+  if (![options isKindOfClass:NSDictionary.class]) options = @{};
+  long long width = integerOption(options, @"width");
+  long long height = integerOption(options, @"height");
+  NSData *pixels = [bytes isKindOfClass:NSArray.class] ? AngularLynxBytesFromWords(bytes) : nil;
+  // Divided rather than multiplied, so two big sides can't wrap round to the
+  // byte count.
+  if (width <= 0 || height <= 0 || pixels.length == 0 || pixels.length % 4 ||
+      pixels.length / 4 % (unsigned long long)width ||
+      pixels.length / 4 / (unsigned long long)width != (unsigned long long)height) {
+    return @{@"width" : @0, @"height" : @0, @"error" : @"The pixels don't fill the image"};
   }
-  decodedImages()[imageId] = image;
-  return @{@"width" : @(image.width), @"height" : @(image.height)};
+  AngularLynxDecodedImage *source =
+      [[AngularLynxDecodedImage alloc] initWithPixels:pixels
+                                                width:(NSInteger)width
+                                               height:(NSInteger)height
+                                        premultiplied:NO];
+  NSString *error = nil;
+  AngularLynxDecodedImage *image = pixelsOfSnapshot(source, options, &error);
+  return keptImage(imageId, image, options, error, @"The pixels could not be copied");
 }
 
 /// The drawing buffer as an image file, for canvas.toBlob() and toDataURL():

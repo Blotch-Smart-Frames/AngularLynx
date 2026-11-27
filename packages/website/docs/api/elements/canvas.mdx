@@ -161,7 +161,7 @@ Textures and models load as on the web:
 
 The phone decodes images, and the pixels go straight to the GPU. A canvas, drawn in 2D or with WebGL, uploads as a texture too (`CanvasTexture`, or `texImage2D()` with the canvas): the phone reads its pixels and hands them to the GPU. Loaders that need Web Workers or WebAssembly, such as `DRACOLoader` and `KTX2Loader`, don't work.
 
-`createImageBitmap()` takes a canvas too (a `<canvas>`, `document.createElement('canvas')` or an `OffscreenCanvas`), and `OffscreenCanvas.transferToImageBitmap()` hands over its image and clears it, as on the web. The phone copies the pixels, so keeping a frame costs no trip through JavaScript. Make a WebGL canvas's bitmap in the same function that draws, as with `toBlob()` below: once the frame is on screen, its drawing buffer is cleared, unless you asked for `preserveDrawingBuffer: true`.
+`createImageBitmap()` takes a canvas too (a `<canvas>`, `document.createElement('canvas')` or an `OffscreenCanvas`), and `OffscreenCanvas.transferToImageBitmap()` hands over its image and clears it, as on the web. The phone copies the pixels, so keeping a frame costs no trip through JavaScript. It takes an `ImageBitmap` (a copy, flipped, premultiplied or resized as you ask) and an `ImageData` too, and the crop arguments of any source, as on the web: `createImageBitmap(sheet, 32, 0, 32, 32)` cuts a sprite out of a sprite sheet, and the part of the rectangle outside the source is transparent. A bitmap or an `Image` is copied from the pixels the phone already has, so its file isn't sent or decoded again; an `ImageData`'s pixels go to the phone once. Make a WebGL canvas's bitmap in the same function that draws, as with `toBlob()` below: once the frame is on screen, its drawing buffer is cleared, unless you asked for `preserveDrawingBuffer: true`.
 
 ## Save it as an image
 
@@ -217,7 +217,6 @@ The iOS Simulator and the Android emulator both draw on the Mac's GPU, so a scen
 - `wordSpacing`, `fontKerning`, `fontStretch`, `fontVariantCaps` and `textRendering` are kept but don't change the text. Text drawn with a gradient, a pattern or `strokeText()` is drawn from the glyphs' outlines, so color emoji show only with a plain `fillStyle`.
 - A `<video>` can't be drawn on a canvas or be a texture yet.
 - `getContext('bitmaprenderer')` is `null`: draw an `ImageBitmap` with a 2D context's `drawImage()` instead.
-- `createImageBitmap()` doesn't take the crop arguments (`sx, sy, sw, sh`), an `ImageBitmap` or `ImageData`: draw the part you want on a canvas, then make the bitmap of that.
 - `toBlob()` and `toDataURL()` make the main thread wait while the phone reads and encodes the canvas (tens of milliseconds for a photo), where a browser's `toBlob()` encodes in the background.
 - A lost context isn't restored: make a new renderer.
 - `crypto.randomUUID()`, which AngularLynx adds for angular-three, isn't cryptographically secure: don't use it for secrets.

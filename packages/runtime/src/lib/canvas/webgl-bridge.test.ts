@@ -1,15 +1,25 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CanvasImageOptions } from './webgl-bridge';
+import type { CanvasImageOptions, ImageCopyOptions } from './webgl-bridge';
 
-const CANVAS_IMAGE: CanvasImageOptions = {
+const COPY: ImageCopyOptions = {
   imageOrientation: 'from-image',
   premultiplyAlpha: 'default',
   resizeWidth: 0,
   resizeHeight: 0,
+  cropX: 0,
+  cropY: 0,
+  cropWidth: 0,
+  cropHeight: 0,
+};
+
+const CANVAS_IMAGE: CanvasImageOptions = {
+  ...COPY,
   width: 4,
   height: 5,
   transfer: false,
 };
+
+const PIXELS_IMAGE = { ...COPY, width: 1, height: 1 };
 
 /**
  * The bridge is looked up once per page, so each test loads a fresh copy.
@@ -57,7 +67,7 @@ describe('getWebGLBridge', () => {
             ? { width: 2, height: 3 }
             : method === 'encodeImage'
               ? { base64: 'AQI=', type: 'image/png' }
-              : method === 'imageFromCanvas'
+              : method.startsWith('imageFrom')
                 ? { width: 4, height: 5 }
                 : undefined,
     );
@@ -71,7 +81,10 @@ describe('getWebGLBridge', () => {
     expect(bridge.create(1, 'c-1', { alpha: true })).toEqual({ ok: true });
     expect(bridge.run(1, [OP_CLEAR])).toEqual([1]);
     bridge.destroy(1);
-    expect(bridge.decodeImage(2, [0, 0], {})).toEqual({ width: 2, height: 3 });
+    expect(bridge.decodeImage(2, [0, 0], COPY)).toEqual({
+      width: 2,
+      height: 3,
+    });
     bridge.releaseImage(2);
     const encodeOptions = {
       type: 'image/png',
@@ -86,14 +99,21 @@ describe('getWebGLBridge', () => {
       width: 4,
       height: 5,
     });
+    expect(bridge.imageFromImage(4, 3, COPY)).toEqual({ width: 4, height: 5 });
+    expect(bridge.imageFromPixels(5, [1, 4], PIXELS_IMAGE)).toEqual({
+      width: 4,
+      height: 5,
+    });
     expect(invoke.mock.calls).toEqual([
       ['create', 1, 'c-1', { alpha: true }],
       ['run', 1, [OP_CLEAR]],
       ['destroy', 1],
-      ['decodeImage', 2, [0, 0], {}],
+      ['decodeImage', 2, [0, 0], COPY],
       ['releaseImage', 2],
       ['encodeImage', 1, encodeOptions],
       ['imageFromCanvas', 3, 'c-1', CANVAS_IMAGE],
+      ['imageFromImage', 4, 3, COPY],
+      ['imageFromPixels', 5, [1, 4], PIXELS_IMAGE],
     ]);
   });
 
@@ -105,7 +125,7 @@ describe('getWebGLBridge', () => {
       error: expect.stringMatching(/isn't registered/),
     });
     expect(bridge.run(1, [])).toEqual([]);
-    expect(bridge.decodeImage(1, [], {})).toMatchObject({
+    expect(bridge.decodeImage(1, [], COPY)).toMatchObject({
       width: 0,
       error: expect.stringMatching(/isn't registered/),
     });
@@ -127,7 +147,7 @@ describe('getWebGLBridge', () => {
     vi.stubGlobal('lynx', {
       module: () => ({
         invoke: (method: string) => {
-          if (method === 'encodeImage' || method === 'imageFromCanvas') {
+          if (method === 'encodeImage' || method.startsWith('imageFrom')) {
             throw new Error('no such method');
           }
           return undefined;
@@ -144,6 +164,12 @@ describe('getWebGLBridge', () => {
     ).toEqual({ error: expect.stringMatching(/can't encode a canvas/) });
     expect(bridge.imageFromCanvas(1, 'c', CANVAS_IMAGE)).toMatchObject({
       error: expect.stringMatching(/can't make an ImageBitmap of a canvas/),
+    });
+    expect(bridge.imageFromImage(1, 2, COPY)).toMatchObject({
+      error: expect.stringMatching(/ImageBitmap of an ImageBitmap or an Image/),
+    });
+    expect(bridge.imageFromPixels(1, [0], PIXELS_IMAGE)).toMatchObject({
+      error: expect.stringMatching(/ImageBitmap of an ImageData/),
     });
   });
 

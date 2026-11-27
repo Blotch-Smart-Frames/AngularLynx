@@ -189,9 +189,10 @@ afterNextRender(() => {
 ```
 
 - **Canvases off the page:** `document.createElement('canvas')` and `new OffscreenCanvas(w, h)` have 2D (and WebGL2) contexts, as three.js text labels and photo resizing need. Draw one with `drawImage()`, make it a pattern, upload it as a texture (three.js `CanvasTexture`, `texImage2D()` with the canvas), encode it (`toBlob()`, `toDataURL()`, `convertToBlob()`), or make an `ImageBitmap` of it (`createImageBitmap(canvas)`, `OffscreenCanvas.transferToImageBitmap()`, which clears it). A WebGL canvas's bitmap must be made in the task that drew it, unless `preserveDrawingBuffer: true`.
+- **`createImageBitmap()`** takes a canvas, a Blob, a loaded `Image`, an `ImageBitmap` (a copy, with new options) or an `ImageData`, whole or cropped (`createImageBitmap(source, sx, sy, sw, sh, options)`, as for a sprite sheet; outside the source is transparent). The phone copies pixels it already has, so cropping a bitmap or an `Image` sends nothing again, and an `ImageData`'s bytes cross once.
 - **Batched:** calls reach the phone once per task, except those that answer (`measureText()`, `getImageData()`, `isPointInPath()`), which send everything recorded first. Avoid them in a tight loop.
 - **`filter`:** the CSS filter functions work (`blur()`, `drop-shadow()`, `sepia()`, …); `url()` is kept but not applied. Each filtered draw filters a canvas-sized layer on the main thread: filter one `drawImage()` of a canvas, not many small shapes.
-- **Not there:** `wordSpacing`, `fontKerning`, `fontStretch`, `fontVariantCaps`, `textRendering` (kept, no effect); a `<video>` as an image; `getContext('bitmaprenderer')` (draw an ImageBitmap with `drawImage()`); `createImageBitmap()`'s crop arguments, or of an `ImageBitmap` or `ImageData` (draw on a canvas first). Color emoji show only in a plain-color `fillText()`.
+- **Not there:** `wordSpacing`, `fontKerning`, `fontStretch`, `fontVariantCaps`, `textRendering` (kept, no effect); a `<video>` as an image; `getContext('bitmaprenderer')` (draw an ImageBitmap with `drawImage()`). Color emoji show only in a plain-color `fillText()`.
 - A canvas has the kind of context it was first asked for: after `getContext('2d')`, `getContext('webgl2')` is `null`.
 
 ### 3D with `<canvas>`

@@ -1,16 +1,17 @@
 import { Component, NO_ERRORS_SCHEMA, computed, inject, input } from '@angular/core';
 import { Favourites } from '../data/favourites';
 
-let tappedAt = 0;
+let lastTap: { readonly pokemonId: string; readonly at: number } | undefined;
 
 /**
- * Whether a heart was tapped a moment ago. NativeScript lets every gesture recognizer under a
- * finger fire together (its delegate recognizes them simultaneously), so a tap on the heart is a
- * tap on the card around it too, where React Native's innermost touchable takes the touch alone.
- * The card asks this to leave the heart's taps to the heart.
+ * Whether this Pokémon's heart was tapped a moment ago. NativeScript lets every gesture recognizer
+ * under a finger fire together (its delegate recognizes them simultaneously), so a tap on the heart
+ * is a tap on the card around it too, where React Native's innermost touchable takes the touch
+ * alone. The card asks this to leave the heart's taps to the heart; it names its own Pokémon, so a
+ * quick tap on another card still opens that one.
  */
-export function heartTappedRecently(): boolean {
-  return Date.now() - tappedAt < 250;
+export function heartTappedRecently(pokemonId: string): boolean {
+  return lastTap?.pokemonId === pokemonId && Date.now() - lastTap.at < 250;
 }
 
 /**
@@ -40,7 +41,7 @@ export class FavouriteButton {
   protected readonly favourite = computed(() => this.favourites.has(this.pokemonId()));
 
   protected toggle(): void {
-    tappedAt = Date.now();
+    lastTap = { pokemonId: this.pokemonId(), at: Date.now() };
     this.favourites.toggle(this.pokemonId());
   }
 }

@@ -145,8 +145,8 @@ app hasn't been checked there.
   `favourites`; zustand's `persist` wraps the same object in `{ state, version }` in AsyncStorage.
 - **The heart's tap is kept from the card.** NativeScript lets every gesture recognizer under a
   finger fire (its iOS delegate recognizes them all at once), so a tap on a row's heart is also a
-  tap on the row. The heart notes when it was tapped, and the row opens the sheet a run loop turn
-  later unless the heart took the tap; React Native gives the touch to the innermost touchable.
+  tap on the row. The heart notes which Pokémon's heart was tapped and when, and the row opens
+  the sheet a run loop turn later unless its own heart took the tap; React Native gives the touch to the innermost touchable.
 - **No pressed state on the rows.** The reference dims a row with `TouchableOpacity`; a
   NativeScript layout has no pressed state of its own.
 - **The marks are a Swift class in the app** that JavaScript calls directly, not a module: the

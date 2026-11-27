@@ -118,7 +118,8 @@ export class PokemonItem {
     // The heart's tap reaches the card too, in either order, so the card opens the sheet a turn
     // later unless the heart took the tap.
     setTimeout(() => {
-      if (!heartTappedRecently()) this.#sheet.open(this.pokemon().id);
+      const id = this.pokemon().id;
+      if (!heartTappedRecently(id)) this.#sheet.open(id);
     });
   }
 }

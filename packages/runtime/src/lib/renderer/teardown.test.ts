@@ -1926,78 +1926,137 @@ describe('renderer teardown', () => {
       expect(writes).toEqual(['remove turn']);
     });
 
-    it('ends them in an item moved into a list, through the list', () => {
+    /**
+     * A view holding a platform-animated element, and another view beside
+     * it. The tests below drive LynxElement directly, as Angular's renderer
+     * does: a destroyed view's top node is marked destroyed (destroyNode) and
+     * removed, and the cycle's end commits the removals.
+     */
+    const make = (): {
+      page: LynxElement;
+      view: LynxElement;
+      other: LynxElement;
+      el: LynxElement;
+      ref: FakeEl;
+    } => {
       const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
-      const page = document.createRootElement();
-      const view = document.createElement('view');
-      const list = document.createElement('list');
-      const item = document.createElement('list-item');
-      item.setAttribute('enable-new-animator', 'false');
+      const page = document.createRootElement() as LynxElement;
+      const view = document.createElement('view') as LynxElement;
+      const other = document.createElement('view') as LynxElement;
+      const el = document.createElement('view') as LynxElement;
+      el.setAttribute('enable-new-animator', 'false');
+      el.setAttribute('style', 'animation: turn 1600ms linear infinite;');
       page.appendChild(view);
-      page.appendChild(list);
-      view.appendChild(item);
+      page.appendChild(other);
+      view.appendChild(el);
+      return { page, view, other, el, ref: el.element as unknown as FakeEl };
+    };
+    const ended = (): string[] => writes.filter((w) => w.endsWith('none'));
 
-      // Moved into the list in the same cycle: its removal from the view
-      // hasn't committed, so the view is still its JS parent.
-      item.remove();
-      list.appendChild(item);
-      list.markDestroyed();
+    it('ends nothing while a destroyed view is still in the tree', () => {
+      const { view } = make();
 
-      // A copy: the settle flush that commits the move writes after this.
-      expect([...writes]).toEqual(['list-item animation: none']);
+      // As when a leave animation holds Angular's removal back.
+      view.markDestroyed();
+      processPendingRemovals();
+
+      expect(writes).toEqual([]);
     });
 
-    it('ends them again in an element rebuilt after its release', () => {
+    it('ends nothing in an element put back in the tree', () => {
+      const { page, view, other, el } = make();
+
+      // Angular took the view out and put it back (a move), and moved the
+      // element out of it before the view went (CDK's DomPortal).
+      view.markDestroyed();
+      view.remove();
+      page.appendChild(view);
+      processPendingRemovals();
+      el.remove();
+      other.appendChild(el);
+      view.markDestroyed();
+      view.remove();
+      processPendingRemovals();
+
+      expect(ended()).toEqual([]);
+      // Still noted: it ends with the view it's in now.
+      other.markDestroyed();
+      other.remove();
+      processPendingRemovals();
+      expect(writes.slice(-2)).toEqual(['view animation: none', 'remove view']);
+    });
+
+    it('ends it in an element moved into a view destroyed already', () => {
+      const { other, el } = make();
+
+      other.markDestroyed();
+      el.remove();
+      other.appendChild(el);
+      other.remove();
+      processPendingRemovals();
+
+      expect(ended()).toEqual(['view animation: none']);
+    });
+
+    it('ends it in a destroyed element put into another destroyed view', () => {
+      const { other, el } = make();
+
+      el.markDestroyed();
+      other.markDestroyed();
+      el.remove();
+      other.appendChild(el);
+      other.remove();
+      processPendingRemovals();
+
+      expect(ended()).toEqual(['view animation: none']);
+    });
+
+    it('ends it in an element rebuilt into a view that goes later', () => {
       const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
       const page = document.createRootElement();
+      const other = document.createElement('view');
+      const view = document.createElement('view');
       const el = document.createElement('view');
       el.setAttribute('enable-new-animator', 'false');
-      page.appendChild(el);
-      el.markDestroyed();
+      page.appendChild(other);
+      page.appendChild(view);
+      view.appendChild(el);
+
+      // The destination comes first in the tree, so the move is rebuilt
+      // (see #removeIfMoveWouldBeLost), and it stays a cycle before it goes.
+      view.markDestroyed();
+      other.markDestroyed();
       el.remove();
+      other.appendChild(el);
+      view.remove();
+      processPendingRemovals();
+      expect(ended()).toEqual([]);
+
+      other.remove();
+      processPendingRemovals();
+      expect(ended()).toEqual(['view animation: none']);
+      expect((el.element as unknown as FakeEl).styles.get('animation')).toBe(
+        'none',
+      );
+    });
+
+    it('ends it again in an element rebuilt after its release', () => {
+      const { page, view, el } = make();
+      view.markDestroyed();
+      view.remove();
       processPendingRemovals();
 
       // Shown again after all (content a surviving view projected): rebuilt
-      // from its caches, with a new native element.
+      // from its caches, with a new native element, and destroyed again.
       page.appendChild(el);
-      writes.length = 0;
       el.markDestroyed();
-
-      expect(writes).toEqual(['view animation: none']);
-    });
-
-    it('starts them again in an element moved out of the destroyed view before it goes', () => {
-      const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
-      const page = document.createRootElement();
-      const view = document.createElement('view');
-      const other = document.createElement('view');
-      const el = document.createElement('view');
-      el.setAttribute('enable-new-animator', 'false');
-      el.setAttribute('style', 'animation: turn 1600ms linear infinite;');
-      page.appendChild(view);
-      page.appendChild(other);
-      view.appendChild(el);
-      const ref = el.element as unknown as FakeEl;
-
-      // As CDK's DomPortal hands its element back when its view is
-      // destroyed: the element leaves the view before the view's removal
-      // commits.
-      view.markDestroyed();
       el.remove();
-      other.appendChild(el);
-      ref.styles.delete('__inline');
-      view.remove();
       processPendingRemovals();
 
-      // Moved as it is, and given its inline styles again.
-      expect(el.element).toBe(ref);
-      expect(ref.styles.get('__inline')).toContain('animation: turn');
-      writes.length = 0;
-      el.markDestroyed();
-      expect(writes).toEqual(['view animation: none']);
+      expect(ended()).toEqual(['view animation: none', 'view animation: none']);
     });
 
-    it('keeps a list item that left a destroyed view, and ends its animation with its list', () => {
+    it('ends it in a list item moved into a list, when the list goes', () => {
       const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
       const page = document.createRootElement();
       const view = document.createElement('view');
@@ -2009,294 +2068,41 @@ describe('renderer teardown', () => {
       view.appendChild(item);
       const ref = item.element as unknown as FakeEl;
 
-      // Moved into the list in the cycle its old parent is destroyed: the
-      // old parent's children still name it when the parent is released.
+      // Moved into the list in the cycle its old parent is destroyed, before
+      // or after Angular marks it: the old parent's children still name it
+      // until its removal from them commits.
+      view.markDestroyed();
       item.remove();
       list.appendChild(item);
-      view.markDestroyed();
       view.remove();
       processPendingRemovals();
 
       expect(registered([ref])).toEqual([true]);
-      writes.length = 0;
+      expect(ended()).toEqual([]);
       list.markDestroyed();
-      expect([...writes]).toEqual(['list-item animation: none']);
+      list.remove();
+      processPendingRemovals();
+      expect(ended()).toEqual(['list-item animation: none']);
     });
 
-    it('starts them again in a list item moved out of a view after the view was destroyed', () => {
+    it('keeps a list item that left a view destroyed after it moved', () => {
       const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
       const page = document.createRootElement();
       const view = document.createElement('view');
       const list = document.createElement('list');
       const item = document.createElement('list-item');
-      item.setAttribute('enable-new-animator', 'false');
-      item.setAttribute('style', 'animation: turn 1600ms linear infinite;');
       page.appendChild(view);
       page.appendChild(list);
       view.appendChild(item);
       const ref = item.element as unknown as FakeEl;
 
-      // The view is destroyed first, which ends the item's animation, and
-      // the item moves into the list before the view's removal commits.
-      view.markDestroyed();
       item.remove();
       list.appendChild(item);
-      ref.styles.delete('__inline');
+      view.markDestroyed();
       view.remove();
       processPendingRemovals();
 
       expect(registered([ref])).toEqual([true]);
-      expect(ref.styles.get('__inline')).toContain('animation: turn');
-      writes.length = 0;
-      list.markDestroyed();
-      expect([...writes]).toEqual(['list-item animation: none']);
-    });
-
-    it('keeps the animation ended in an element moved into another destroyed view', () => {
-      const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
-      const page = document.createRootElement();
-      const view = document.createElement('view');
-      const other = document.createElement('view');
-      const el = document.createElement('view');
-      el.setAttribute('enable-new-animator', 'false');
-      el.setAttribute('style', 'animation: turn 1600ms linear infinite;');
-      page.appendChild(view);
-      page.appendChild(other);
-      view.appendChild(el);
-      const ref = el.element as unknown as FakeEl;
-
-      // Moved out of the first view into another destroyed after it, which
-      // is released last.
-      view.markDestroyed();
-      el.remove();
-      other.appendChild(el);
-      other.markDestroyed();
-      ref.styles.delete('__inline');
-      view.remove();
-      processPendingRemovals();
-
-      // Still in a view that's going: not started again.
-      expect(ref.styles.has('__inline')).toBe(false);
-      other.remove();
-      processPendingRemovals();
-      expect(ref.styles.has('__inline')).toBe(false);
-      // Ended once, and never written again: the two views went.
-      expect(writes).toEqual([
-        'view animation: none',
-        'remove view',
-        'remove view',
-      ]);
-    });
-
-    it('starts the animation again when that other view is put back', () => {
-      const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
-      const page = document.createRootElement();
-      const view = document.createElement('view');
-      const other = document.createElement('view');
-      const el = document.createElement('view');
-      const own = document.createElement('view');
-      for (const animated of [el, own]) {
-        animated.setAttribute('enable-new-animator', 'false');
-        animated.setAttribute(
-          'style',
-          'animation: turn 1600ms linear infinite;',
-        );
-      }
-      page.appendChild(view);
-      page.appendChild(other);
-      view.appendChild(el);
-      other.appendChild(own);
-      const refs = [el, own].map((e) => e.element as unknown as FakeEl);
-
-      // The other view ends its own element's animation too, and takes the
-      // moved one beside it.
-      view.markDestroyed();
-      el.remove();
-      other.appendChild(el);
-      other.markDestroyed();
-      view.remove();
-      processPendingRemovals();
-      for (const ref of refs) ref.styles.delete('__inline');
-      other.remove();
-      page.appendChild(other);
-      processPendingRemovals();
-
-      for (const ref of refs) {
-        expect(ref.styles.get('__inline')).toContain('animation: turn');
-      }
-    });
-
-    it('keeps the animation ended in a moved element destroyed itself, until it is put back', () => {
-      const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
-      const page = document.createRootElement();
-      const view = document.createElement('view');
-      const el = document.createElement('view');
-      el.setAttribute('enable-new-animator', 'false');
-      el.setAttribute('style', 'animation: turn 1600ms linear infinite;');
-      page.appendChild(view);
-      view.appendChild(el);
-      const ref = el.element as unknown as FakeEl;
-
-      view.markDestroyed();
-      el.remove();
-      page.appendChild(el);
-      el.markDestroyed();
-      ref.styles.delete('__inline');
-      view.remove();
-      processPendingRemovals();
-      expect(ref.styles.has('__inline')).toBe(false);
-
-      el.remove();
-      page.appendChild(el);
-      processPendingRemovals();
-      // Its native element, rebuilt or not.
-      const shown = el.element as unknown as FakeEl;
-      expect(shown.styles.get('__inline')).toContain('animation: turn');
-    });
-
-    it('keeps it ended when the first view is put back while the other still goes', () => {
-      const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
-      const page = document.createRootElement();
-      const view = document.createElement('view');
-      const other = document.createElement('view');
-      const el = document.createElement('view');
-      el.setAttribute('enable-new-animator', 'false');
-      el.setAttribute('style', 'animation: turn 1600ms linear infinite;');
-      page.appendChild(view);
-      page.appendChild(other);
-      view.appendChild(el);
-      const ref = el.element as unknown as FakeEl;
-
-      // Moved into another destroyed view, then the first view is put back.
-      view.markDestroyed();
-      el.remove();
-      other.appendChild(el);
-      other.markDestroyed();
-      ref.styles.delete('__inline');
-      view.remove();
-      page.appendChild(view);
-      processPendingRemovals();
-      expect(ref.styles.has('__inline')).toBe(false);
-
-      // It goes with the other view, its animation still ended.
-      other.remove();
-      processPendingRemovals();
-      expect(ref.styles.has('__inline')).toBe(false);
-    });
-
-    it('leaves it alone when the first view is put back after the other went', () => {
-      const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
-      const page = document.createRootElement();
-      const view = document.createElement('view');
-      const other = document.createElement('view');
-      const el = document.createElement('view');
-      el.setAttribute('enable-new-animator', 'false');
-      el.setAttribute('style', 'animation: turn 1600ms linear infinite;');
-      page.appendChild(view);
-      page.appendChild(other);
-      view.appendChild(el);
-      const ref = el.element as unknown as FakeEl;
-
-      // The other view goes, and the element with it, before the first view
-      // is put back.
-      view.markDestroyed();
-      el.remove();
-      other.appendChild(el);
-      other.markDestroyed();
-      other.remove();
-      processPendingRemovals();
-      ref.styles.delete('__inline');
-      view.remove();
-      page.appendChild(view);
-      processPendingRemovals();
-
-      expect(registered([ref])).toEqual([false]);
-      expect(ref.styles.has('__inline')).toBe(false);
-    });
-
-    it('keeps it ended in a destroyed element put into another destroyed view', () => {
-      const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
-      const page = document.createRootElement();
-      const other = document.createElement('view');
-      const el = document.createElement('view');
-      el.setAttribute('enable-new-animator', 'false');
-      el.setAttribute('style', 'animation: turn 1600ms linear infinite;');
-      page.appendChild(el);
-      page.appendChild(other);
-      const ref = el.element as unknown as FakeEl;
-
-      // Put back, but into a view that's going too: it goes with it.
-      el.markDestroyed();
-      other.markDestroyed();
-      ref.styles.delete('__inline');
-      el.remove();
-      other.appendChild(el);
-      other.remove();
-      processPendingRemovals();
-
-      // Moved as it is, and its animation never started again.
-      expect(el.element).toBe(ref);
-      expect(registered([ref])).toEqual([false]);
-      expect(ref.styles.has('__inline')).toBe(false);
-    });
-
-    it('leaves an element moved out of a destroyed view alone once it has gone too', () => {
-      const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
-      const page = document.createRootElement();
-      const view = document.createElement('view');
-      const other = document.createElement('view');
-      const el = document.createElement('view');
-      el.setAttribute('enable-new-animator', 'false');
-      el.setAttribute('style', 'animation: turn 1600ms linear infinite;');
-      page.appendChild(view);
-      page.appendChild(other);
-      view.appendChild(el);
-      const ref = el.element as unknown as FakeEl;
-
-      // Moved into another view destroyed in the same cycle, whose release
-      // comes first and takes the element with it.
-      view.markDestroyed();
-      el.remove();
-      other.appendChild(el);
-      other.markDestroyed();
-      ref.styles.delete('__inline');
-      other.remove();
-      view.remove();
-      processPendingRemovals();
-
-      // Not shown, so its styles aren't written again, nor is it kept for
-      // its animation.
-      expect(registered([ref])).toEqual([false]);
-      expect(ref.styles.has('__inline')).toBe(false);
-    });
-
-    it('starts them again when the element goes back in the tree', () => {
-      const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
-      const page = document.createRootElement();
-      const el = document.createElement('view');
-      el.setAttribute('enable-new-animator', 'false');
-      el.setAttribute('style', 'animation: turn 1600ms linear infinite;');
-      page.appendChild(el);
-      const ref = el.element as unknown as FakeEl;
-
-      el.markDestroyed();
-      el.remove();
-      expect(writes).toEqual(['view animation: none']);
-      ref.styles.delete('__inline');
-      page.appendChild(el);
-      processPendingRemovals();
-
-      // Its inline styles written again, the animation with them, and
-      // ended once more when it's destroyed for good.
-      expect(ref.styles.get('__inline')).toContain('animation: turn');
-      el.markDestroyed();
-      el.remove();
-      processPendingRemovals();
-      expect(writes).toEqual([
-        'view animation: none',
-        'view animation: none',
-        'remove view',
-      ]);
     });
   });
 });

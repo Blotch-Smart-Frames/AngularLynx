@@ -1313,25 +1313,12 @@ export class LynxElement implements BaseLynxElement {
 
   /**
    * The elements that asked for the platform's animators
-   * (`enable-new-animator` false), which Angular hasn't destroyed. A handful
+   * (`enable-new-animator` false) and haven't gone: Angular hasn't destroyed
+   * and removed them, or released them (see #endPlatformAnimations). A handful
    * at most: `ui-spinner`'s turning view, a skeleton, an indeterminate
    * progress bar. See #endPlatformAnimations.
    */
   static #platformAnimated = new Set<LynxElement>();
-
-  /**
-   * The platform-animated elements under each element Angular destroyed
-   * whose animations it ended, until it's released, or put back in the tree
-   * and given them again (see #keepIfDestroyed).
-   */
-  static #endedAnimations = new Map<LynxElement, LynxElement[]>();
-
-  /**
-   * The elements whose animations start again at the end of the cycle,
-   * because the destroyed element they were ended for was put back (see
-   * #keepIfDestroyed and #commitPendingRestarts).
-   */
-  static #pendingRestarts = new Set<LynxElement>();
 
   /**
    * Set when Angular destroys this element, until it's released (see
@@ -1448,7 +1435,6 @@ export class LynxElement implements BaseLynxElement {
     if (this.isRootPageElement) return;
     this.#destroyed = true;
     LynxElement.#pendingReleases.add(this);
-    if (LynxElement.#platformAnimated.size > 0) this.#endPlatformAnimations();
     // A view destroyed outside change detection (a detached route view the
     // reuse strategy drops) has no end() to commit it.
     scheduleSettleFlush();
@@ -3924,7 +3910,6 @@ export class LynxElement implements BaseLynxElement {
       }
     }
     LynxElement.#commitPendingReleases();
-    LynxElement.#commitPendingRestarts();
     scheduleCollection();
   }
 
@@ -4165,36 +4150,12 @@ export class LynxElement implements BaseLynxElement {
     if (!this.#destroyed) return;
     this.#destroyed = false;
     LynxElement.#pendingReleases.delete(this);
-    // The animations markDestroyed ended run again, at the end of the cycle
-    // (see #commitPendingRestarts): this runs before the element is put in
-    // its new parent, which may be going too.
-    const ended = LynxElement.#endedAnimations.get(this);
-    if (ended) {
-      LynxElement.#endedAnimations.delete(this);
-      for (const el of ended) LynxElement.#pendingRestarts.add(el);
-    }
-  }
-
-  /**
-   * Starts again the animations of the elements a destroyed element put
-   * back in the tree had ended (see #keepIfDestroyed), once the cycle's moves
-   * are done and their parents are what they'll be: not in one released
-   * since, with another destroyed element it went into, and as the record of
-   * one that's in a destroyed element now (see #restartAnimation).
-   */
-  static #commitPendingRestarts(): void {
-    if (LynxElement.#pendingRestarts.size === 0) return;
-    const elements = [...LynxElement.#pendingRestarts];
-    LynxElement.#pendingRestarts.clear();
-    for (const el of elements) {
-      if (el.#isRegistered()) el.#restartAnimation();
-    }
   }
 
   /**
    * Ends the animations of the platform-animated elements in this element's
-   * subtree, which Angular just destroyed, before their removal reaches
-   * native.
+   * subtree, which Angular destroyed, as its removal commits (see #doRemove),
+   * before the removal reaches native.
    *
    * On iOS, an element with `enable-new-animator` false is animated by
    * Lynx's LynxKeyframeAnimator, which hands its `@keyframes` to Core
@@ -4205,96 +4166,23 @@ export class LynxElement implements BaseLynxElement {
    * stop it (Lynx 4.1). So a spinner that had gone kept costing the UI
    * thread a Core Animation commit every frame, for the life of the app:
    * the benchmark app, whose list showed a spinner while its first page
-   * loaded, used twice ReactLynx's CPU scrolling (issue #841). Ending
-   * the animation (`animation: none`) while the element is still in the tree
+   * loaded, used twice ReactLynx's CPU scrolling (issue #841). Ending the
+   * animation (`animation: none`) while the element is still in the tree
    * stops the animator for good.
    *
-   * Written straight to native, not to the element's inline styles: if
-   * Angular puts the element back after all, #keepIfDestroyed writes those
-   * again. Each platform-animated element looks up from itself for this
-   * one, rather than this element searching its subtree, since there are a
-   * handful of them and every destroyed view would pay for a search.
+   * At the commit rather than when Angular destroys the view, because the
+   * cycle's moves are done then: an element moved out of the view (CDK's
+   * DomPortal hands its element back) keeps turning, and one moved in goes
+   * with it. Nothing has to start again: an element Angular puts back never
+   * had its animation ended. Written straight to native, not to the
+   * element's inline styles, which it's released with.
    */
   #endPlatformAnimations(): void {
-    let ended: LynxElement[] | undefined;
     for (const el of LynxElement.#platformAnimated) {
       if (!el.#isInSubtreeOf(this)) continue;
       LynxElement.#platformAnimated.delete(el);
       __AddInlineStyle(el.element, 'animation', 'none');
-      (ended ??= []).push(el);
     }
-    if (ended) LynxElement.#endedAnimations.set(this, ended);
-  }
-
-  /**
-   * Starts the animations markDestroyed ended again in the elements moved
-   * out of this one before it was released, as CDK's DomPortal hands its
-   * element back when its view is destroyed: they're still shown. The ones
-   * still under it go with it, and so does one released already, with
-   * another element destroyed in the same cycle that it moved into: it's
-   * out of the registry then. Not its painting state: a list item moved out
-   * after this was destroyed is marked painting-dead with it, but its list
-   * still shows it.
-   *
-   * One moved into another element Angular destroyed, not released yet,
-   * goes to that one instead: its animation stays ended until that element
-   * is released with it, or put back (see #keepIfDestroyed).
-   */
-  #restoreAnimationsMovedOut(): void {
-    const ended = LynxElement.#endedAnimations.get(this);
-    if (!ended) return;
-    LynxElement.#endedAnimations.delete(this);
-    for (const el of ended) {
-      if (el.#isRegistered() && !el.#isInSubtreeOf(this)) {
-        el.#restartAnimation();
-      }
-    }
-  }
-
-  /**
-   * Starts this element's animation again, which markDestroyed ended, from
-   * the inline styles it keeps (the write that ended it left those as they
-   * were), and notes it for its next destruction. Unless it's in another
-   * element Angular destroyed and hasn't released (or is one itself): the
-   * record goes to that one, and the animation stays ended until it's
-   * released with it, or put back.
-   */
-  #restartAnimation(): void {
-    const holder = this.#destroyedAncestor();
-    if (holder) {
-      const held = LynxElement.#endedAnimations.get(holder);
-      // Its own record holds it already when it's the one destroyed.
-      if (!held) LynxElement.#endedAnimations.set(holder, [this]);
-      else if (!held.includes(this)) held.push(this);
-      return;
-    }
-    this.#rewriteInlineStyle();
-    LynxElement.#platformAnimated.add(this);
-  }
-
-  /**
-   * Whether this is still the registered wrapper of its native element:
-   * only a release (see #release) takes it out.
-   */
-  #isRegistered(): boolean {
-    return LynxElement.#registered(__GetElementUniqueID(this.element)) === this;
-  }
-
-  /**
-   * This element, or the nearest of its parents (as #isInSubtreeOf walks
-   * them), that Angular destroyed and hasn't released yet; undefined when
-   * none is.
-   */
-  #destroyedAncestor(): LynxElement | undefined {
-    if (this.#destroyed) return this;
-    for (
-      let el = this._virtualParent ?? this.#jsParent;
-      el;
-      el = el._virtualParent ?? el.#jsParent
-    ) {
-      if (el.#destroyed) return el;
-    }
-    return undefined;
   }
 
   /**
@@ -4428,6 +4316,11 @@ export class LynxElement implements BaseLynxElement {
     // painting node dies, and the next re-insert rebuilds it from cache (see
     // #recreateSubtree). That is why we mark the whole subtree painting-dead just
     // below rather than "parking" the children somewhere to keep them alive.
+    // While the element is still in the tree, the animations under it that
+    // iOS's platform animator would keep running (see #endPlatformAnimations).
+    if (this.#destroyed && LynxElement.#platformAnimated.size > 0) {
+      this.#endPlatformAnimations();
+    }
     __RemoveElement(parent, this.element);
     // The native painting nodes of this element and its entire subtree are now
     // gone (Lynx tears them down for a non-move removal — is_move=false). Unlink
@@ -4479,10 +4372,15 @@ export class LynxElement implements BaseLynxElement {
   #release(): void {
     this.#destroyed = false;
     this.#paintingDead = true;
-    this.#restoreAnimationsMovedOut();
-    // Destroyed with an ancestor its parents no longer led to: it goes too.
-    if (LynxElement.#platformAnimated.size > 0) {
-      LynxElement.#platformAnimated.delete(this);
+    // Released without a removal of its own that ended its animation (see
+    // #doRemove): a static list item the list took out, which native keeps
+    // in the list, or one an ancestor's removal reached through its parents
+    // no longer.
+    if (
+      LynxElement.#platformAnimated.size > 0 &&
+      LynxElement.#platformAnimated.delete(this)
+    ) {
+      __AddInlineStyle(this.element, 'animation', 'none');
     }
     noteReleased();
     this.deregisterNative();

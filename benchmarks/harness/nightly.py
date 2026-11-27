@@ -137,22 +137,21 @@ def ratio(record, metric):
 
 def sustained_changes(history, nights=3, window=14, threshold=0.10, min_baseline=3):
     """Each metric whose ratio was more than threshold off its baseline, the
-    same way, on each of the last `nights` nights, the last of them being the
-    newest night in the history. The baseline is the median ratio of up to
-    `window` nights before those, and needs at least min_baseline of them."""
-    if not history:
-        return []
-    newest = history[-1]
+    same way, on each of the last `nights` nights in the history. The
+    baseline is the median ratio of up to `window` nights before those that
+    have one, and needs at least min_baseline of them."""
     changes = []
     for metric in METRICS:
-        series = [(record, ratio(record, metric)) for record in history]
-        series = [(record, value) for record, value in series if value is not None]
-        # Tonight's ratio has to be one of them: a night that measured
-        # nothing for this metric says nothing about it.
-        if len(series) < nights + min_baseline or series[-1][0] is not newest:
+        recent = [(record, ratio(record, metric)) for record in history[-nights:]]
+        # Each of the last nights needs a ratio: one that measured nothing
+        # for this metric (no screen, or a cost that came out zero or less)
+        # breaks the run of nights rather than being skipped.
+        if len(recent) < nights or any(value is None for _, value in recent):
             continue
-        recent = series[-nights:]
-        before = series[-nights - window : -nights]
+        before = [(record, ratio(record, metric)) for record in history[:-nights]]
+        before = [(record, value) for record, value in before if value is not None][-window:]
+        if len(before) < min_baseline:
+            continue
         baseline = median(value for _, value in before)
         moves = [value / baseline - 1 for _, value in recent]
         if all(move > threshold for move in moves):

@@ -56,7 +56,10 @@ def record(date, ratios):
         "date": date,
         "commit": commit_of(date),
         "run": f"https://example.invalid/{date}",
-        "metrics": {metric: {nightly.OURS: value * 100, nightly.RIVAL: 100} for metric, value in ratios.items()},
+        "metrics": {
+            metric: {nightly.OURS: None if value is None else value * 100, nightly.RIVAL: 100}
+            for metric, value in ratios.items()
+        },
     }
 
 
@@ -126,6 +129,18 @@ class SustainedChangeTest(unittest.TestCase):
         history = [record(f"night-{i:02d}", {"launch.fully_drawn_ms": v}) for i, v in enumerate(values)]
         [change] = nightly.sustained_changes(history)
         self.assertAlmostEqual(change["baseline"], 1.0)
+
+    def test_a_night_without_a_ratio_breaks_the_run(self):
+        # The fifth night's cost came out below zero, so it has no ratio.
+        history = nights(1.0, 1.0, 1.0, 1.3, -0.1, 1.3, 1.3, metric="mount.text.us_per_element")
+        self.assertEqual(nightly.sustained_changes(history), [])
+        # The nights before the run that have no ratio are left out of the
+        # baseline, which still needs three.
+        history = nights(1.0, None, 1.0, 1.0, 1.3, 1.3, 1.3, metric="mount.text.us_per_element")
+        [change] = nightly.sustained_changes(history)
+        self.assertEqual(change["since"], history[3]["commit"])
+        history = nights(1.0, None, None, 1.0, 1.3, 1.3, 1.3, metric="mount.text.us_per_element")
+        self.assertEqual(nightly.sustained_changes(history), [])
 
     def test_a_night_without_the_metric_says_nothing_about_it(self):
         history = nights(1.0, 1.0, 1.0, 1.3, 1.3, 1.3)

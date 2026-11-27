@@ -30,6 +30,7 @@ import {
   vi,
 } from 'vitest';
 import { LynxDocument } from '../lynx-document';
+import { setDocumentLanguage } from '../lynx-element/quotes';
 import { setPageElementRef } from '../lynx-document/page-ref';
 import {
   ANONYMOUS_TEXT_CLASS,
@@ -3363,5 +3364,75 @@ describe('<q>, element by element', () => {
     expect(leafText(openRef)).toBe('“');
     expect(leafText(innerOpenRef)).toBe('‘');
     expect(leafText(innerCloseRef)).toBe('’');
+  });
+
+  it('draws the marks of its own lang, or the nearest above it', () => {
+    const div = doc.createElement('div');
+    div.setAttribute('lang', 'de');
+    page.appendChild(div);
+    const q = doc.createElement('q');
+    div.appendChild(q);
+    const inner = doc.createElement('q');
+    q.appendChild(inner);
+    commit();
+    expect(drawn(q)).toEqual(['„', '‚', '‘', '“']);
+
+    // Its own lang wins over its ancestor's, at its own depth.
+    inner.setAttribute('lang', 'fr');
+    commit();
+    expect(drawn(q)).toEqual(['„', '«', '»', '“']);
+    // Setting it again changes nothing.
+    inner.setAttribute('lang', 'fr');
+    expect(drawn(q)).toEqual(['„', '«', '»', '“']);
+
+    // And a <q> moved out of the lang draws the document's.
+    inner.removeAttribute('lang');
+    page.appendChild(inner);
+    commit();
+    expect(drawn(inner)).toEqual(['“', '”']);
+  });
+
+  it("draws the document's language's marks without a lang", () => {
+    setDocumentLanguage('fr');
+    try {
+      const q = doc.createElement('q');
+      page.appendChild(q);
+      commit();
+      expect(drawn(q)).toEqual(['«', '»']);
+    } finally {
+      setDocumentLanguage('');
+    }
+  });
+
+  it("takes a server render's lang from its native ancestors", () => {
+    // A snapshot's tree (see LynxHydrateDocument), which hydration puts no
+    // element in a JS parent of: a view with a lang, a native element
+    // Angular never made between it and the <q>, then the <q>.
+    const g = globalThis as unknown as FakeNativeGlobal<FakeEl>;
+    const viewRef = g.__CreateView();
+    const wrapperRef = g.__CreateView();
+    const qRef = g.__CreateText();
+    const openRef = g.__CreateRawText('');
+    const closeRef = g.__CreateRawText('');
+    g.__AppendElement(native(page), viewRef);
+    g.__AppendElement(viewRef, wrapperRef);
+    g.__AppendElement(wrapperRef, qRef);
+    g.__AppendElement(qRef, openRef);
+    g.__AppendElement(qRef, closeRef);
+    // An id no wrapper has: the ids start again in each test, and an earlier
+    // test's wrapper may still be registered under the wrapper's.
+    wrapperRef.id = -1;
+    const view = new LynxElement(viewRef as never);
+    view.tagName = 'view';
+    view.setAttribute('lang', 'fr');
+    const q = new LynxElement(qRef as never);
+    q.tagName = 'text';
+    q.markQuote([openRef as never, closeRef as never]);
+    expect(leafText(openRef)).toBe('«');
+
+    // Its own lang, which Angular sets after it hydrates it.
+    q.setAttribute('lang', 'de');
+    expect(leafText(openRef)).toBe('„');
+    expect(leafText(closeRef)).toBe('“');
   });
 });

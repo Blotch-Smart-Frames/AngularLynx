@@ -77,6 +77,7 @@ import {
   textPropertyBit,
   textPropertyFlags,
 } from './text-flow';
+import { getDocumentLanguage, quotesFor } from './quotes';
 import {
   type LayoutRect,
   LayoutTracker,
@@ -1094,6 +1095,11 @@ export class LynxElement implements BaseLynxElement {
    */
   #holdsQuote = false;
   /**
+   * Its `lang` attribute, which a `<q>` in it draws the marks of (see
+   * #setQuoteDepth); undefined without one.
+   */
+  #lang: string | undefined = undefined;
+  /**
    * On an anchor (`tagName` 'comment'): whether its native element is the
    * empty raw-text it is in a `<text>`, rather than the hidden view
    * LynxDocument makes (see #anchorFor and hydrateAnchor).
@@ -1530,6 +1536,9 @@ export class LynxElement implements BaseLynxElement {
     if (name === 'alt' && this.tagName === 'image') {
       name = 'accessibility-label';
     }
+    // HTML's `lang`, whose language a <q> in it draws the marks of (see
+    // #setQuoteDepth). It still goes to native below.
+    if (name === 'lang') this.#setLang(value);
     // An `<a href>` or `<abbr title>` gets the class the build's browser
     // styles for it match, as Lynx can't match `a[href]` (see
     // ATTRIBUTE_STYLED_TAGS). The attribute still goes to native below.
@@ -2612,17 +2621,58 @@ export class LynxElement implements BaseLynxElement {
     open.#jsParent = this;
     close.#jsParent = this;
     this.#quoteMarks = [open, close];
-    let depth = 0;
-    if (existing) {
-      for (let at = __GetParent(this.element); at; at = __GetParent(at)) {
-        const ancestor = LynxElement.#registered(__GetElementUniqueID(at));
-        if (ancestor && ancestor.#quoteMarks) depth++;
-      }
-    } else {
+    if (!existing) {
       __AppendElement(this.element, open.element);
       __AppendElement(this.element, close.element);
     }
-    this.#setQuoteDepth(depth);
+    const [depth, language] = this.#outerQuoteContext();
+    this.#setQuoteDepth(depth, language);
+  }
+
+  /**
+   * How many `<q>`s are around this element, and the language it inherits:
+   * the depth and language #setQuoteDepth gives it. From its JS parent, or,
+   * for a hydrated element, which hydration puts in no parent (the
+   * snapshot's tree is built already), from its native ancestors, which
+   * hydrate before it with their attributes. An element that's in neither
+   * has no `<q>`s around it, and the document's language.
+   */
+  #outerQuoteContext(): [depth: number, language: string] {
+    const parent = this.#jsParent;
+    if (parent) return [parent.#quoteDepth(), parent.#language()];
+    let depth = 0;
+    let language: string | undefined;
+    for (let at = __GetParent(this.element); at; at = __GetParent(at)) {
+      const ancestor = LynxElement.#registered(__GetElementUniqueID(at));
+      if (!ancestor) continue;
+      if (ancestor.#quoteMarks) depth++;
+      language ??= ancestor.#lang;
+    }
+    return [depth, language ?? getDocumentLanguage()];
+  }
+
+  /**
+   * The language of this element: the nearest `lang` attribute on it or
+   * above it, or the document's, as a browser's content language is.
+   */
+  #language(): string {
+    if (this.#lang !== undefined) return this.#lang;
+    const parent = this.#jsParent;
+    return parent ? parent.#language() : getDocumentLanguage();
+  }
+
+  /**
+   * Records a `lang` attribute, and gives the `<q>`s in this element the
+   * marks of their language now, as a browser restyles them.
+   */
+  #setLang(value: unknown): void {
+    const lang = value == null ? undefined : String(value);
+    if (lang === this.#lang) return;
+    this.#lang = lang;
+    if (this.#quoteMarks || this.#holdsQuote) {
+      const [depth, language] = this.#outerQuoteContext();
+      this.#setQuoteDepth(depth, language);
+    }
   }
 
   /**
@@ -2669,24 +2719,31 @@ export class LynxElement implements BaseLynxElement {
 
   /**
    * Gives the `<q>`s in this element, itself included, the marks for how
-   * deep each is, `depth` being this one's: “ ” outside any other, and ‘ ’
-   * inside one, as a browser's `quotes: auto` draws English quotes, which
-   * repeats its last pair for deeper ones. Run when a `<q>`, or an element
-   * one is in, goes into an element (see #adoptChild): when Angular builds
-   * one, when content projection moves one into another, and when an
-   * element built with a `<q>` inside goes in after it.
+   * deep each is and for its language, `depth` being this one's and
+   * `language` the one it inherits. As a browser's `quotes: auto` does, a
+   * `<q>` draws its language's outer pair outside any other (“ ” in
+   * English, « » in French) and its inner pair inside one (‘ ’, « »),
+   * which deeper ones repeat; each takes the language of its own nearest
+   * `lang` (see quotes.ts). Run when a `<q>`, or an element one is in, goes
+   * into an element (see #adoptChild): when Angular builds one, when
+   * content projection moves one into another, and when an element built
+   * with a `<q>` inside goes in after it; and when a `lang` changes (see
+   * #setLang).
    */
-  #setQuoteDepth(depth: number): void {
+  #setQuoteDepth(depth: number, outerLanguage: string): void {
     let inner = depth;
+    const language = this.#lang ?? outerLanguage;
     if (this.#quoteMarks) {
       const [open, close] = this.#quoteMarks;
-      open.#setQuoteMark(depth === 0 ? '“' : '‘');
-      close.#setQuoteMark(depth === 0 ? '”' : '’');
+      const marks = quotesFor(language);
+      const pair = depth === 0 ? 0 : 2;
+      open.#setQuoteMark(marks[pair]!);
+      close.#setQuoteMark(marks[pair + 1]!);
       inner++;
     }
     for (const child of this.#children ?? NO_CHILDREN) {
       if (child.#holdsQuote || child.#quoteMarks) {
-        child.#setQuoteDepth(inner);
+        child.#setQuoteDepth(inner, language);
       }
     }
   }
@@ -3015,7 +3072,7 @@ export class LynxElement implements BaseLynxElement {
     // And a <q>'s marks on how many <q>s it's in (see #setQuoteDepth).
     if (newChild.#quoteMarks || newChild.#holdsQuote) {
       this.#holdQuote();
-      newChild.#setQuoteDepth(this.#quoteDepth());
+      newChild.#setQuoteDepth(this.#quoteDepth(), this.#language());
     }
   }
 

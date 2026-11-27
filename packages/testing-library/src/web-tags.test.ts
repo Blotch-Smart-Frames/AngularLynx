@@ -6,7 +6,7 @@
  * and the like.
  */
 
-import { Component, signal } from '@angular/core';
+import { Component, LOCALE_ID, signal } from '@angular/core';
 import { RouterLink, RouterOutlet, type Routes } from '@angular/router';
 import { LYNX_ELEMENTS, provideRouter } from '@blotch/angular-lynx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -246,4 +246,55 @@ describe('<q>', () => {
 
     expect(text(container, 'view.projected')).toBe('“‘this’ one”');
   });
+  it("draws its language's marks, from its own lang or an ancestor's", async () => {
+    const { container } = await render(WebLangQuote);
+
+    expect(text(container, 'text.fr')).toBe('«bonjour»');
+    expect(text(container, 'text.de')).toBe('„Ja, ‚hallo‘“');
+    // A lang on the inner <q> picks its own marks, at its own depth.
+    expect(text(container, 'text.mixed')).toBe('„ja, «oui»“');
+    expect(text(container, 'text.ja')).toBe('「こんにちは」');
+  });
+
+  it('draws the marks of a lang again when it changes', async () => {
+    const { container, componentRef } = await render(WebLangQuote);
+    expect(text(container, 'view.bound')).toBe('«x»');
+
+    componentRef.instance.lang.set('de');
+    await waitForUpdate();
+    expect(text(container, 'view.bound')).toBe('„x“');
+
+    componentRef.instance.lang.set(null);
+    await waitForUpdate();
+    expect(text(container, 'view.bound')).toBe('“x”');
+  });
+
+  it("draws the app's locale's marks without a lang, as <html lang> would", async () => {
+    const { container } = await render(WebQuote, {
+      providers: [{ provide: LOCALE_ID, useValue: 'fr-FR' }],
+    });
+
+    expect(text(container, 'text.said')).toBe('He said «hello».');
+    expect(text(container, 'text.nested')).toBe('«She wrote «hi» to me»');
+  });
 });
+
+@Component({
+  selector: 'web-lang-quote',
+  template: `
+    <p class="fr"><q lang="fr">bonjour</q></p>
+    <view lang="de-CH">
+      <p class="de">
+        <q>Ja, <q>hallo</q></q>
+      </p>
+      <p class="mixed">
+        <q>ja, <q lang="fr">oui</q></q>
+      </p>
+    </view>
+    <p class="ja" lang="ja"><q>こんにちは</q></p>
+    <view class="bound" [attr.lang]="lang()"><q>x</q></view>
+  `,
+})
+class WebLangQuote {
+  readonly lang = signal<string | null>('fr');
+}

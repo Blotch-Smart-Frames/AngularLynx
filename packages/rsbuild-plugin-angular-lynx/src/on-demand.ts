@@ -74,6 +74,12 @@ const GLOBALS: readonly { enable: string; names: readonly string[] }[] = [
   },
 ];
 
+/**
+ * A Unicode or hexadecimal escape, with which a string or an identifier can
+ * spell a name (`\u0066`, `\u{66}`, `\x66`).
+ */
+const ESCAPE = /\\[ux]/;
+
 const GLOBAL_NAMES: ReadonlySet<string> = new Set(
   GLOBALS.flatMap(({ names }) => names),
 );
@@ -143,8 +149,16 @@ export const namedGlobals = (
   filename: string,
 ): Map<string, number> => {
   const found = new Map<string, number>();
-  // Most modules name none of them, and parsing is the slow part.
-  if (![...GLOBAL_NAMES].some((name) => code.includes(name))) return found;
+  // Most modules name none of them, and parsing is the slow part. A string or
+  // an identifier can spell a name with escapes (`'\u0066etch'` is
+  // `'fetch'`), which no search of the text finds, so a module with any goes
+  // on to be parsed: its tokens hold the names decoded.
+  if (
+    ![...GLOBAL_NAMES].some((name) => code.includes(name)) &&
+    !ESCAPE.test(code)
+  ) {
+    return found;
+  }
   const sourceFile = ts.createSourceFile(
     filename,
     code,

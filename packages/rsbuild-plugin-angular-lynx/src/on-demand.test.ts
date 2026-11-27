@@ -226,6 +226,22 @@ describe('enableOnDemand, for the main thread’s globals', () => {
     }
   });
 
+  it('reads a name spelled with escapes, which is as static as one without', () => {
+    for (const code of [
+      `export const get = (u) => globalThis['\\u0066etch'](u);`,
+      `export const get = (u) => globalThis['\\u{66}etch'](u);`,
+      `export const get = (u) => globalThis['\\x66etch'](u);`,
+      `export const get = (u) => \\u0066etch(u);`,
+    ]) {
+      expect(enableOnDemand(code, '/app/src/get.ts')).toBe(
+        calls('ɵenableFetch') + code,
+      );
+    }
+    // An escape alone isn't a name.
+    const other = `export const s = '\\u0041';`;
+    expect(enableOnDemand(other, '/app/src/s.ts')).toBe(other);
+  });
+
   it('leaves a module that only mentions them in comments or other strings as it is', () => {
     const code = `// Fetch the user, then read the Response.\n/* new XMLHttpRequest() */\nexport const m = 'Response status: ' + \`fetch failed\`;\nexport const fetcher = 1;\nclass A { #fetch = 1; }`;
     expect(enableOnDemand(code, '/app/src/a.ts')).toBe(code);

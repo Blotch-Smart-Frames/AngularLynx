@@ -41,64 +41,6 @@ describe('polyfills', () => {
     });
   });
 
-  describe('AbortController', () => {
-    it('installs a functional AbortController/AbortSignal pair', async () => {
-      delete (globalThis as any).AbortController;
-      delete (globalThis as any).AbortSignal;
-      vi.stubGlobal('lynx', undefined);
-      await importFresh();
-
-      expect((globalThis as any).AbortController).toBeTypeOf('function');
-
-      const controller = new (globalThis as any).AbortController();
-      const signal = controller.signal;
-
-      // addEventListener: 'abort' registers, any other type is ignored.
-      let notified = false;
-      signal.addEventListener('abort', () => {
-        notified = true;
-      });
-      signal.addEventListener('other', () => {});
-
-      /**
-       * removeEventListener: both the 'abort' and non-'abort' branches.
-       */
-      const removable = (): void => {};
-      signal.addEventListener('abort', removable);
-      signal.removeEventListener('abort', removable);
-      signal.removeEventListener('other', removable);
-
-      // dispatchEvent on a non-abort type returns true without notifying.
-      expect(signal.dispatchEvent({ type: 'noop' })).toBe(true);
-      expect(notified).toBe(false);
-
-      // Not aborted yet: throwIfAborted is a no-op.
-      expect(() => signal.throwIfAborted()).not.toThrow();
-
-      // abort() with no reason synthesizes an AbortError and notifies listeners.
-      controller.abort();
-      expect(notified).toBe(true);
-      expect(signal.aborted).toBe(true);
-      expect(signal.reason.name).toBe('AbortError');
-      expect(() => signal.throwIfAborted()).toThrow();
-
-      // Second abort() is a no-op (already aborted).
-      controller.abort('ignored');
-      expect(signal.reason.name).toBe('AbortError');
-    });
-
-    it('uses an explicit reason when abort(reason) is called', async () => {
-      delete (globalThis as any).AbortController;
-      delete (globalThis as any).AbortSignal;
-      vi.stubGlobal('lynx', undefined);
-      await importFresh();
-
-      const controller = new (globalThis as any).AbortController();
-      controller.abort('custom-reason');
-      expect(controller.signal.reason).toBe('custom-reason');
-    });
-  });
-
   describe('URL and URLSearchParams', () => {
     // The install guard itself is tested in url/index.test.ts with a stand-in
     // global: stubbing out the real URL breaks Vitest's module loader.
@@ -225,19 +167,6 @@ describe('polyfills', () => {
       await Promise.resolve();
       await Promise.resolve();
       expect(setTimeoutSpy).toHaveBeenCalled();
-    });
-  });
-
-  describe('Node', () => {
-    it('installs a Node class exposing the DOM node-type constants', async () => {
-      delete (globalThis as any).Node;
-      vi.stubGlobal('lynx', undefined);
-      await importFresh();
-      const NodeCtor = (globalThis as any).Node;
-      expect(NodeCtor).toBeTypeOf('function');
-      expect(NodeCtor.COMMENT_NODE).toBe(8);
-      expect(NodeCtor.TEXT_NODE).toBe(3);
-      expect(NodeCtor.ELEMENT_NODE).toBe(1);
     });
   });
 

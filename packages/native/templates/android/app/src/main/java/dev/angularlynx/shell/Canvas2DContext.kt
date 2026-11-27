@@ -661,8 +661,13 @@ class Canvas2DContext(
         // paint's color, so a gradient, a pattern or an image would cast its
         // shadow in its own colors, not in shadowColor (issue #759). Those
         // go through the filter's layer, with no filter, which casts the
-        // shadow from the layer's alpha, as the canvas spec has it.
-        if (s.filterSteps.isNotEmpty() || (shadowVisible() && (drawsImage || paint.shader != null))) {
+        // shadow from the layer's alpha, as the canvas spec has it. Not when
+        // the shadow reaches past the layer's cap, though: the layer would
+        // leave out a shape far off the canvas that casts its shadow onto
+        // it, and the shadow would be lost, where the paint's shadow layer
+        // still draws it, if in the shape's colors.
+        val ownColors = drawsImage || paint.shader != null
+        if (s.filterSteps.isNotEmpty() || (ownColors && shadowVisible() && shadowFitsLayer())) {
             compositeFiltered(c, matrix, draw)
             return
         }
@@ -775,6 +780,17 @@ class Canvas2DContext(
             pad += ceil(max(abs(s.shadowOffsetX), abs(s.shadowOffsetY)) + s.shadowBlur * 1.5f).toDouble()
         }
         return min(pad, 256.0).toInt()
+    }
+
+    /**
+     * Whether a filter's layer, grown by the shadow's reach, takes in every
+     * shape that casts its shadow onto the canvas: [layerPadding] caps the
+     * reach at 256 pixels.
+     */
+    private fun shadowFitsLayer(): Boolean {
+        val s = state
+        val reach = s.filterPadding + ceil(max(abs(s.shadowOffsetX), abs(s.shadowOffsetY)) + s.shadowBlur * 1.5f)
+        return reach <= 256f
     }
 
     /**

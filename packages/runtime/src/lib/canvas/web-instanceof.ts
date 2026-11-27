@@ -100,9 +100,17 @@ const acceptPageInstancesOf = (target: Realm, name: string): void => {
   ) {
     return;
   }
+  // What the class took before: the prototype walk for the browser's own
+  // (Element's check, for HTMLElement, which asks it of HTMLElement), and the
+  // runtime's check where the realm had none and installCanvasGlobals put
+  // the runtime's class in. Either way it keeps taking all it took.
+  const takes = Class[Symbol.hasInstance] as (
+    this: unknown,
+    value: unknown,
+  ) => boolean;
   Object.defineProperty(Class, Symbol.hasInstance, {
     value(this: unknown, value: unknown): boolean {
-      if (isOwnInstance.call(this, value)) return true;
+      if (takes.call(this, value)) return true;
       // The DOM's subclasses inherit HTMLElement's static methods, this one
       // with them, so `this` says which class is asking: only the class
       // itself takes the page's instances, as on Lynx, where none of its

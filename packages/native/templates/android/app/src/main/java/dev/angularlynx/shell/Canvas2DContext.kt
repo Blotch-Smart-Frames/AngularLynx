@@ -54,9 +54,11 @@ import kotlin.math.sqrt
  *
  * What the canvas spec has that Android's canvas doesn't is made here:
  * compositing that clears what the shape doesn't cover (source-in and the
- * like) draws the shape in a layer the canvas's size first, and shadows,
- * whose offset and blur are the canvas's pixels whatever the transform, are
- * undone through the transform where a shape is drawn under it.
+ * like) draws the shape in a layer the canvas's size first; shadows, whose
+ * offset and blur are the canvas's pixels whatever the transform, are
+ * undone through the transform where a shape is drawn under it; and a
+ * filter draws the shape in a layer whose pixels it then works on
+ * (CanvasFilter).
  *
  * Lynx calls `run` on its engine thread; the view's surface comes and goes
  * on the UI thread, which shows the bitmap again then. The context's lock
@@ -142,6 +144,9 @@ class Canvas2DContext(
         var rtl: Boolean = false,
         var letterSpacing: Float = 0f,
         var smoothing: Boolean = true,
+        /** The filter, as its steps (see CanvasFilter), and how far they reach. */
+        var filterSteps: DoubleArray = DoubleArray(0),
+        var filterPadding: Int = 0,
     ) {
         fun copyState(): State = copy(transform = transform.copyOf(), lineDash = lineDash.copyOf())
     }
@@ -440,6 +445,11 @@ class Canvas2DContext(
                 s.smoothing = r.int() != 0
                 r.int()
             }
+            Canvas2DOps.SET_FILTER -> {
+                s.filterPadding = max(0, r.int())
+                val steps = r.array()
+                s.filterSteps = DoubleArray(steps.size()) { steps.getDouble(it) }
+            }
             Canvas2DOps.CREATE_PATTERN -> {
                 val id = r.int()
                 val source = r.map()
@@ -643,6 +653,10 @@ class Canvas2DContext(
     private fun composite(paint: Paint, matrix: Matrix?, draw: (Canvas) -> Unit) {
         val c = canvas ?: return
         val s = state
+        if (s.filterSteps.isNotEmpty()) {
+            compositeFiltered(c, matrix, draw)
+            return
+        }
         if (shadowVisible()) applyShadow(paint, matrix)
         val unbounded = s.composite in UNBOUNDED
         if (unbounded) {
@@ -659,6 +673,58 @@ class Canvas2DContext(
         draw(c)
         c.restore()
         if (unbounded) c.restore()
+        if (!alpha && s.composite in REDUCES_ALPHA) keepOpaque()
+    }
+
+    /**
+     * Draws with a filter, which works on pixels: the shape is drawn into a
+     * layer, bigger than the canvas by how far the filter reaches (so a shape
+     * just off the canvas blurs, or casts its shadow, onto it), and the
+     * filter is applied to the layer's pixels (CanvasFilter). The layer is
+     * then drawn over the canvas with the alpha, the operation and the
+     * shadow, inside the clip: the canvas spec filters what's drawn before
+     * all of those.
+     */
+    private fun compositeFiltered(c: Canvas, matrix: Matrix?, draw: (Canvas) -> Unit) {
+        val s = state
+        val pad = s.filterPadding
+        val layerWidth = width + pad * 2
+        val layerHeight = height + pad * 2
+        val layer = try {
+            Bitmap.createBitmap(layerWidth, layerHeight, Bitmap.Config.ARGB_8888)
+        } catch (_: OutOfMemoryError) {
+            null
+        } ?: run {
+            Log.w(TAG, "The filter's ${layerWidth}x$layerHeight layer is too big to allocate")
+            return
+        }
+        val layerCanvas = Canvas(layer)
+        layerCanvas.translate(pad.toFloat(), pad.toFloat())
+        if (matrix != null) layerCanvas.concat(matrix)
+        draw(layerCanvas)
+        // The bytes as stored, premultiplied RGBA, which is what the filter
+        // works on.
+        val pixels = ByteBuffer.allocate(layerWidth * layerHeight * 4)
+        layer.copyPixelsToBuffer(pixels)
+        CanvasFilter.apply(pixels.array(), layerWidth, layerHeight, s.filterSteps)
+        pixels.rewind()
+        layer.copyPixelsFromBuffer(pixels)
+        val paint = Paint()
+        // The layer is in the canvas's pixels, so the shadow needs no matrix.
+        if (shadowVisible()) applyShadow(paint, null)
+        val unbounded = s.composite in UNBOUNDED
+        if (unbounded) {
+            val layerPaint = Paint()
+            setBlend(layerPaint, s.composite)
+            layerPaint.alpha = (s.globalAlpha * 255).roundToInt()
+            c.saveLayer(null, layerPaint)
+        } else {
+            setBlend(paint, s.composite)
+            paint.alpha = (s.globalAlpha * 255).roundToInt()
+        }
+        c.drawBitmap(layer, -pad.toFloat(), -pad.toFloat(), paint)
+        if (unbounded) c.restore()
+        layer.recycle()
         if (!alpha && s.composite in REDUCES_ALPHA) keepOpaque()
     }
 

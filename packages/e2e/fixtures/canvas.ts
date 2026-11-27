@@ -58,7 +58,8 @@ void main() {
  * drawn on a second one with drawImage() through a transform, read back with
  * getImageData(), and uploaded from the second as the WebGL texture, drawn
  * and read back. Both reads have to give the green; when they don't, the line
- * shows each.
+ * shows each. After them, "filter ok" checks the 2D context's `filter`
+ * (issue #698, see #drawFilters).
  *
  * Beside the canvas, under the WebGL line, "Bitmap: ok" checks ImageBitmaps
  * of canvases (issue #697), each drawn on a 2D canvas and read back: one
@@ -165,7 +166,55 @@ export class CanvasRoute {
     const pixel = new Uint8Array(4);
     gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
     const uploaded = Array.from(pixel).join(',');
-    return read === uploaded ? read : `${read} / ${uploaded}`;
+    const reads = read === uploaded ? read : `${read} / ${uploaded}`;
+    return `${reads} filter ${this.#drawFilters()}`;
+  }
+
+  /**
+   * The filter check (issue #698): `filter` applied to what's drawn, read
+   * back with getImageData(). A red square through grayscale(1) is the
+   * spec's 21% gray; drop-shadow() puts a blue copy of one beside it; and
+   * blur() softens a black square's edge to partly see-through. A string
+   * that isn't a filter leaves the last one. Gives "ok", or the reads.
+   */
+  #drawFilters(): string {
+    const make = (width: number, height: number) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      return canvas.getContext('2d')!;
+    };
+    const pixel = (context: CanvasRenderingContext2D, x: number, y: number) =>
+      Array.from(context.getImageData(x, y, 1, 1).data);
+
+    const gray = make(2, 2);
+    gray.filter = 'grayscale(1)';
+    gray.filter = 'nope';
+    gray.fillStyle = 'rgb(255, 0, 0)';
+    gray.fillRect(0, 0, 2, 2);
+    const grayRead = pixel(gray, 0, 0);
+
+    const shadow = make(6, 2);
+    shadow.filter = 'drop-shadow(3px 0 blue)';
+    shadow.fillStyle = 'rgb(255, 0, 0)';
+    shadow.fillRect(0, 0, 2, 2);
+    const shadowReads = [pixel(shadow, 0, 0), pixel(shadow, 4, 0)];
+
+    const blur = make(12, 12);
+    blur.filter = 'blur(2px)';
+    blur.fillRect(0, 0, 6, 12);
+    const edge = pixel(blur, 6, 6)[3];
+
+    const near = (actual: number[], expected: number[]) =>
+      actual.every((value, index) => Math.abs(value - expected[index]) <= 2);
+    const ok =
+      gray.filter === 'grayscale(1)' &&
+      near(grayRead, [54, 54, 54, 255]) &&
+      near(shadowReads[0], [255, 0, 0, 255]) &&
+      near(shadowReads[1], [0, 0, 255, 255]) &&
+      edge >= 64 &&
+      edge <= 160;
+    return ok ? 'ok' : [gray.filter, grayRead, ...shadowReads, edge].join(' ');
   }
 
   /**

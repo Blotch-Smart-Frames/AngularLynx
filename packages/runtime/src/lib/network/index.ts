@@ -1,5 +1,10 @@
 import { lynxAtob, lynxBtoa } from './base64';
-import { createObjectURL, LynxBlob, revokeObjectURL } from './blob';
+import { LynxBlob } from './blob';
+import {
+  createObjectURL,
+  installObjectURLs,
+  revokeObjectURL,
+} from './blob-urls';
 import { LynxDOMException } from './dom-exception';
 import { LynxRequest, LynxResponse, relayFetch } from './fetch';
 import { LynxHeaders } from './headers';
@@ -9,6 +14,7 @@ import { LynxXMLHttpRequest } from './xhr';
 
 export {
   createObjectURL,
+  installObjectURLs,
   LynxBlob,
   revokeObjectURL,
   lynxAtob,
@@ -58,48 +64,66 @@ export const installBase64Globals = (target: Record<string, unknown>): void => {
 };
 
 /**
- * Installs the web's body and encoding APIs on `target`, Lynx's main thread,
- * where they're missing: `TextEncoder`, `TextDecoder`, `ReadableStream`,
- * `Blob`, and `URL.createObjectURL()` / `revokeObjectURL()`.
+ * Installs `TextEncoder` on `target`, Lynx's main thread, where it's missing.
  *
- * Every app has these, unlike `fetch` and `XMLHttpRequest` (see
- * installFetch()): the canvas's images and `toBlob()` use the same classes,
- * so they're in every main-thread script already.
- *
- * Each is installed only where it's missing, so the web preview, whose main
- * thread is a browser frame, keeps its own. Takes the global as a parameter
- * so tests can pass a stand-in, as installUrl() does.
+ * Not every app gets it, nor `TextDecoder`, `ReadableStream` or `Blob`: the
+ * build plugin calls each one's enable function in each module that names it
+ * (see enable.ts), and `fetch` brings them all (installFetch()). Each is
+ * installed only where it's missing, so the web preview, whose main thread is
+ * a browser frame, keeps its own. Each takes the global as a parameter so
+ * tests can pass a stand-in, as installUrl() does.
  *
  * @param target - The global object.
  */
-export const installNetworkGlobals = (
+export const installTextEncoder = (target: Record<string, unknown>): void => {
+  installer(target)('TextEncoder', LynxTextEncoder);
+};
+
+/**
+ * Installs `TextDecoder` on `target`, Lynx's main thread, where it's missing
+ * (see installTextEncoder()).
+ *
+ * @param target - The global object.
+ */
+export const installTextDecoder = (target: Record<string, unknown>): void => {
+  installer(target)('TextDecoder', LynxTextDecoder);
+};
+
+/**
+ * Installs `ReadableStream` on `target`, Lynx's main thread, where it's
+ * missing (see installTextEncoder()). Code checks for the global before it
+ * reads a response's `body` as a stream, and Firestore's WebChannel drops a
+ * response it reads any other way (readable-stream.ts), so a module that
+ * names it gets it whether or not it names `fetch`.
+ *
+ * @param target - The global object.
+ */
+export const installReadableStream = (
   target: Record<string, unknown>,
 ): void => {
-  const install = installer(target);
-  install('TextEncoder', LynxTextEncoder);
-  install('TextDecoder', LynxTextDecoder);
-  // On its own, not with fetch: code checks for the global before it reads
-  // a response's `body` as a stream, and Firestore's WebChannel drops a
-  // response it reads any other way (readable-stream.ts).
-  install('ReadableStream', LynxReadableStream);
-  // three.js's glTF loader makes a Blob and an object URL of each image a
-  // .glb holds, then loads the URL (see blob.ts).
-  install('Blob', LynxBlob);
-  const url = target['URL'] as
-    | { createObjectURL?: unknown; revokeObjectURL?: unknown }
-    | undefined;
-  if (url && typeof url.createObjectURL !== 'function') {
-    url.createObjectURL = createObjectURL;
-    url.revokeObjectURL = revokeObjectURL;
-  }
+  installer(target)('ReadableStream', LynxReadableStream);
+};
+
+/**
+ * Installs `Blob` on `target`, Lynx's main thread, where it's missing (see
+ * installTextEncoder()). three.js's glTF loader makes a Blob and an object
+ * URL of each image a .glb holds, then loads the URL (see blob.ts); a
+ * canvas's `toBlob()` and LynxImagePicker's photos are Blobs too. Object
+ * URLs themselves are in every app (blob-urls.ts's installObjectURLs()).
+ *
+ * @param target - The global object.
+ */
+export const installBlob = (target: Record<string, unknown>): void => {
+  installer(target)('Blob', LynxBlob);
 };
 
 /**
  * Installs `fetch`, relayed to the background thread's, on `target`, Lynx's
  * main thread, where it's missing, with `Headers`, `Request` and `Response`.
- * With them, `provideHttpClient()` works as it does in a browser
- * (`FetchBackend` is its default), and so do `httpResource` and libraries
- * that call `fetch`. `DOMException`, which Angular's HTTP backends throw on a
+ * `TextEncoder`, `TextDecoder`, `ReadableStream` and `Blob` come with it,
+ * for reading a response. With them, `provideHttpClient()` works as it does
+ * in a browser (`FetchBackend` is its default), and so do `httpResource` and
+ * libraries that call `fetch`. `DOMException`, which Angular's HTTP backends throw on a
  * timeout, comes from installBase64Globals(), on both threads.
  *
  * Not every app gets it: the build plugin calls ɵenableFetch(), which calls
@@ -112,6 +136,16 @@ export const installFetch = (target: Record<string, unknown>): void => {
   // The classes go together: the relayed fetch builds a LynxResponse, and
   // Angular checks `headers instanceof Headers`.
   if (typeof target['fetch'] !== 'undefined') return;
+  // A response's body is read with them (`body` is a ReadableStream,
+  // `blob()` makes a Blob), and code that fetches uses them on what it gets
+  // back without naming them: Angular's FetchBackend decodes each `json` and
+  // `text` response with a TextDecoder of @angular/common's, which doesn't
+  // count (on-demand.ts's ANGULAR_UNUSED). The relayed fetch brings their
+  // classes anyway.
+  installTextEncoder(target);
+  installTextDecoder(target);
+  installReadableStream(target);
+  installBlob(target);
   const install = installer(target);
   install('fetch', relayFetch);
   install('Headers', LynxHeaders);

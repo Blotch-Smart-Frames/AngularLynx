@@ -1,15 +1,27 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ɵenableFetch, ɵenableXMLHttpRequest } from './enable';
+import { LynxBlob } from './blob';
+import {
+  ɵenableBlob,
+  ɵenableFetch,
+  ɵenableReadableStream,
+  ɵenableTextDecoder,
+  ɵenableTextEncoder,
+  ɵenableXMLHttpRequest,
+} from './enable';
 import { relayFetch } from './fetch';
 import { LynxHeaders } from './headers';
+import { LynxReadableStream } from './readable-stream';
+import { LynxTextDecoder, LynxTextEncoder } from './text-codec';
 import { LynxXMLHttpRequest } from './xhr';
 
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+const BODY_APIS = ['TextEncoder', 'TextDecoder', 'ReadableStream', 'Blob'];
+
 /**
- * Lynx's main thread, which has no fetch or XMLHttpRequest.
+ * Lynx's main thread, which has no fetch, XMLHttpRequest or body APIs.
  */
 const mainThread = (): void => {
   vi.stubGlobal('__MAIN_THREAD__', true);
@@ -18,6 +30,7 @@ const mainThread = (): void => {
     vi.stubGlobal(name, undefined);
   }
   vi.stubGlobal('XMLHttpRequest', undefined);
+  for (const name of BODY_APIS) vi.stubGlobal(name, undefined);
 };
 
 describe('ɵenableFetch', () => {
@@ -29,6 +42,10 @@ describe('ɵenableFetch', () => {
     expect(globalThis.fetch).toBe(relayFetch);
     expect(globalThis.Headers).toBe(LynxHeaders);
     expect(globalThis.XMLHttpRequest).toBeUndefined();
+    // And what a response is read with.
+    expect(globalThis.TextDecoder).toBe(LynxTextDecoder);
+    expect(globalThis.ReadableStream).toBe(LynxReadableStream);
+    expect(globalThis.Blob).toBe(LynxBlob);
   });
 
   it('leaves the background thread and the web preview their own', () => {
@@ -60,5 +77,40 @@ describe('ɵenableXMLHttpRequest', () => {
     vi.stubGlobal('__WEB__', true);
     ɵenableXMLHttpRequest();
     expect(globalThis.XMLHttpRequest).toBeUndefined();
+  });
+});
+
+describe.each([
+  ['ɵenableTextEncoder', ɵenableTextEncoder, 'TextEncoder', LynxTextEncoder],
+  ['ɵenableTextDecoder', ɵenableTextDecoder, 'TextDecoder', LynxTextDecoder],
+  [
+    'ɵenableReadableStream',
+    ɵenableReadableStream,
+    'ReadableStream',
+    LynxReadableStream,
+  ],
+  ['ɵenableBlob', ɵenableBlob, 'Blob', LynxBlob],
+] as const)('%s', (_name, enable, global, value) => {
+  it('gives the main thread only its global, once', () => {
+    mainThread();
+    enable();
+    enable();
+    for (const name of BODY_APIS) {
+      expect((globalThis as Record<string, unknown>)[name]).toBe(
+        name === global ? value : undefined,
+      );
+    }
+    expect(globalThis.fetch).toBeUndefined();
+  });
+
+  it('leaves the background thread and the web preview their own', () => {
+    mainThread();
+    vi.stubGlobal('__MAIN_THREAD__', false);
+    enable();
+    expect((globalThis as Record<string, unknown>)[global]).toBeUndefined();
+    vi.stubGlobal('__MAIN_THREAD__', true);
+    vi.stubGlobal('__WEB__', true);
+    enable();
+    expect((globalThis as Record<string, unknown>)[global]).toBeUndefined();
   });
 });

@@ -32,7 +32,7 @@ import {
   fetchForMainThread,
   type RelayedRequest,
 } from './background-fetch';
-import { installNetworkGlobals, installXMLHttpRequest } from './index';
+import { installXMLHttpRequest } from './index';
 
 vi.mock('../background-call', () => ({ callOnBackground: vi.fn() }));
 
@@ -90,9 +90,9 @@ describe('HttpClient on the main thread', () => {
 
   beforeEach(() => {
     const target: Record<string, unknown> = {};
-    installNetworkGlobals(target);
     // What an app that provides HttpClient gets (the build plugin's
-    // on-demand.ts): fetch for FetchBackend, and XMLHttpRequest with withXhr().
+    // on-demand.ts): fetch for FetchBackend, with the body APIs it brings, and
+    // XMLHttpRequest with withXhr().
     installXMLHttpRequest(target);
     for (const [name, value] of Object.entries(target)) {
       // Node's Response, which the fake server answers with, needs Node's

@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   installBase64Globals,
-  createObjectURL,
+  installBlob,
   installFetch,
-  installNetworkGlobals,
+  installReadableStream,
+  installTextDecoder,
+  installTextEncoder,
   installXMLHttpRequest,
   LynxBlob,
   lynxAtob,
@@ -17,7 +19,6 @@ import {
   LynxTextEncoder,
   LynxXMLHttpRequest,
   relayFetch,
-  revokeObjectURL,
 } from './index';
 
 describe('installBase64Globals', () => {
@@ -45,59 +46,42 @@ describe('installBase64Globals', () => {
   });
 });
 
-describe('installNetworkGlobals', () => {
-  it("installs the body and encoding APIs where the runtime has none (Lynx's main thread)", () => {
+describe.each([
+  ['installTextEncoder', installTextEncoder, 'TextEncoder', LynxTextEncoder],
+  ['installTextDecoder', installTextDecoder, 'TextDecoder', LynxTextDecoder],
+  [
+    'installReadableStream',
+    installReadableStream,
+    'ReadableStream',
+    LynxReadableStream,
+  ],
+  ['installBlob', installBlob, 'Blob', LynxBlob],
+] as const)('%s', (_name, install, global, value) => {
+  it("installs only its global where the runtime has none (Lynx's main thread)", () => {
     const target: Record<string, unknown> = {};
-    installNetworkGlobals(target);
+    install(target);
+    expect(target).toEqual({ [global]: value });
+  });
 
-    // fetch and XMLHttpRequest come only to the apps that use them.
+  it("keeps the runtime's own (the web preview)", () => {
+    const own = () => {};
+    const target: Record<string, unknown> = { [global]: own };
+    install(target);
+    expect(target).toEqual({ [global]: own });
+  });
+});
+
+describe('installFetch', () => {
+  it('installs fetch with its classes and the body APIs where the runtime has none', () => {
+    const target: Record<string, unknown> = {};
+    installFetch(target);
+    // With what a response is read with, which code that fetches uses
+    // without naming it.
     expect(target).toEqual({
       TextEncoder: LynxTextEncoder,
       TextDecoder: LynxTextDecoder,
       ReadableStream: LynxReadableStream,
       Blob: LynxBlob,
-    });
-  });
-
-  it('gives URL object URLs, unless it has them', () => {
-    const LynxURLLike = class {};
-    const target: Record<string, unknown> = { URL: LynxURLLike };
-    installNetworkGlobals(target);
-    expect((LynxURLLike as any).createObjectURL).toBe(createObjectURL);
-    expect((LynxURLLike as any).revokeObjectURL).toBe(revokeObjectURL);
-
-    const own = () => '';
-    const BrowserURL = class {
-      static createObjectURL = own;
-    };
-    installNetworkGlobals({ URL: BrowserURL });
-    expect(BrowserURL.createObjectURL).toBe(own);
-  });
-
-  it("keeps the runtime's own (the web preview)", () => {
-    const own = () => {};
-    const target: Record<string, unknown> = {
-      TextEncoder: own,
-      TextDecoder: own,
-      ReadableStream: own,
-      Blob: own,
-    };
-    installNetworkGlobals(target);
-
-    expect(target).toEqual({
-      TextEncoder: own,
-      TextDecoder: own,
-      ReadableStream: own,
-      Blob: own,
-    });
-  });
-});
-
-describe('installFetch', () => {
-  it('installs fetch with its classes where the runtime has none', () => {
-    const target: Record<string, unknown> = {};
-    installFetch(target);
-    expect(target).toEqual({
       fetch: relayFetch,
       Headers: LynxHeaders,
       Request: LynxRequest,
@@ -126,6 +110,10 @@ describe('installXMLHttpRequest', () => {
     const target: Record<string, unknown> = {};
     installXMLHttpRequest(target);
     expect(target).toEqual({
+      TextEncoder: LynxTextEncoder,
+      TextDecoder: LynxTextDecoder,
+      ReadableStream: LynxReadableStream,
+      Blob: LynxBlob,
       fetch: relayFetch,
       Headers: LynxHeaders,
       Request: LynxRequest,

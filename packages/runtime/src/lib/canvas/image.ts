@@ -1,4 +1,4 @@
-import { blobForURL, decodeDataURL, LynxBlob } from '../network/blob';
+import { blobForURL, decodeDataURL, isHeldBlob } from '../network/blob-urls';
 import { relayBytes } from '../network/relay';
 import { type CanvasSource, canvasSourceOf } from './canvas-source';
 import { type WebGLBridge, getWebGLBridge, toWords } from './webgl-bridge';
@@ -233,7 +233,7 @@ export const createImageBitmap = async (
     return imageBitmapOfCanvas(canvas, options, false);
   }
   let bytes: Uint8Array;
-  if (source instanceof LynxBlob) {
+  if (isHeldBlob(source)) {
     bytes = source.bytesSync();
   } else if (source instanceof LynxImageElement) {
     bytes = await source.fileBytes();

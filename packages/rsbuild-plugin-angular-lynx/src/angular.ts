@@ -673,8 +673,8 @@ export const applyAngularRules = async (
         // nothing uses it (kitchen-sink's background bundle kept the
         // IntersectionObserver and XMLHttpRequest classes, 8.6 kB).
         // Then what the module asks for of the runtime's on-demand code: the
-        // WebGL2 context, fetch, XMLHttpRequest, IntersectionObserver (see
-        // on-demand.ts).
+        // WebGL2 context, fetch, XMLHttpRequest, IntersectionObserver and the
+        // body APIs (see on-demand.ts).
         return {
           code: enableAskedFor(
             transformPrivateMethods(

@@ -28,7 +28,8 @@ import {
   installGlobalWindow,
 } from './global-events';
 import { installElementGlobal } from './lynx-element/element-global';
-import { installBase64Globals, installNetworkGlobals } from './network';
+import { installBase64Globals } from './network';
+import { installObjectURLs } from './network/blob-urls';
 import { installUrl } from './url';
 
 // Web-only: fail loud and clear when the page is not a secure context.
@@ -129,17 +130,18 @@ installUrl(globalThis);
 // parameter by these names (unlike `fetch`), so globalThis tells the truth.
 installBase64Globals(globalThis as unknown as Record<string, unknown>);
 
-// Lynx's main thread has no Headers, ReadableStream, TextEncoder, TextDecoder
-// or Blob, which fetch-based code and the canvas's images use.
-// The background thread keeps its own globals.
+// Lynx's main thread has no URL.createObjectURL(), which three.js's glTF
+// loader and an <image> showing a picked photo use. The background thread
+// keeps its own globals.
 //
-// fetch, XMLHttpRequest and IntersectionObserver aren't installed here: the
-// build plugin calls ɵenableFetch(), ɵenableXMLHttpRequest() and
-// ɵenableIntersectionObserver() in each module that names them, so an app
-// that never uses them leaves them out of its main-thread script, which
-// PrimJS reads whole as it loads it (#719; network/enable.ts).
+// Nor has it fetch, XMLHttpRequest, IntersectionObserver, TextEncoder,
+// TextDecoder, ReadableStream or Blob, which aren't installed here either:
+// the build plugin calls each one's enable function (ɵenableFetch() and the
+// like) in each module that names it, so an app that never uses one leaves it
+// out of its main-thread script, which PrimJS reads whole as it loads it
+// (#719, #760; network/enable.ts).
 if (typeof __MAIN_THREAD__ !== 'undefined' && __MAIN_THREAD__) {
-  installNetworkGlobals(globalThis as unknown as Record<string, unknown>);
+  installObjectURLs(globalThis as unknown as Record<string, unknown>);
 }
 
 // Angular core uses queueMicrotask for effect scheduling and change detection.

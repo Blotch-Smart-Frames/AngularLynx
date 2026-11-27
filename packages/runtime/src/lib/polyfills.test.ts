@@ -139,30 +139,39 @@ describe('polyfills', () => {
   });
 
   describe('network APIs', () => {
-    // The install guards themselves are tested in network/index.test.ts with
-    // a stand-in global. Node has a ReadableStream, so a missing one shows
-    // whether they were installed.
-    it('installs the body and encoding APIs on the main thread', async () => {
+    // The install guards themselves are tested in network/index.test.ts and
+    // network/blob.test.ts with a stand-in global. Node's URL has object
+    // URLs, so a URL without them shows whether they were installed.
+    const BODY_APIS = ['TextEncoder', 'TextDecoder', 'ReadableStream', 'Blob'];
+    const urlWithoutObjectURLs = (): typeof URL => {
+      const Url = class extends URL {};
+      for (const name of ['createObjectURL', 'revokeObjectURL']) {
+        Object.defineProperty(Url, name, { value: undefined, writable: true });
+      }
+      return Url;
+    };
+
+    it('gives URL object URLs on the main thread', async () => {
       vi.stubGlobal('__MAIN_THREAD__', true);
-      vi.stubGlobal('ReadableStream', undefined);
+      vi.stubGlobal('URL', urlWithoutObjectURLs());
       vi.stubGlobal('lynx', undefined);
       await importFresh();
-      expect((globalThis as any).ReadableStream?.name).toBe(
-        'LynxReadableStream',
-      );
+      expect(URL.createObjectURL).toBeTypeOf('function');
+      expect(URL.revokeObjectURL).toBeTypeOf('function');
     });
 
     it('leaves the background thread alone', async () => {
       vi.stubGlobal('__MAIN_THREAD__', false);
-      vi.stubGlobal('ReadableStream', undefined);
+      vi.stubGlobal('URL', urlWithoutObjectURLs());
       vi.stubGlobal('lynx', undefined);
       await importFresh();
-      expect((globalThis as any).ReadableStream).toBeUndefined();
+      expect(URL.createObjectURL).toBeUndefined();
     });
 
-    it('leaves fetch, XMLHttpRequest and IntersectionObserver to the modules that name them', async () => {
+    it('leaves fetch, XMLHttpRequest, IntersectionObserver and the body APIs to the modules that name them', async () => {
       // The build plugin calls their enable functions there (network/enable.ts).
       vi.stubGlobal('__MAIN_THREAD__', true);
+      for (const name of BODY_APIS) vi.stubGlobal(name, undefined);
       vi.stubGlobal('fetch', undefined);
       vi.stubGlobal('XMLHttpRequest', undefined);
       vi.stubGlobal('IntersectionObserver', undefined);
@@ -171,6 +180,9 @@ describe('polyfills', () => {
       expect((globalThis as any).fetch).toBeUndefined();
       expect((globalThis as any).XMLHttpRequest).toBeUndefined();
       expect((globalThis as any).IntersectionObserver).toBeUndefined();
+      for (const name of BODY_APIS) {
+        expect((globalThis as any)[name]).toBeUndefined();
+      }
     });
   });
 

@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import { LynxBlob } from './blob';
 import {
   blobForURL,
   createObjectURL,
   dataURLForObjectURL,
   decodeDataURL,
-  LynxBlob,
+  installObjectURLs,
+  isHeldBlob,
   revokeObjectURL,
-} from './blob';
+} from './blob-urls';
 
 const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 
@@ -68,6 +70,39 @@ describe('object URLs', () => {
   });
 });
 
+describe('isHeldBlob', () => {
+  it('tells the runtime’s Blobs from anything else', () => {
+    expect(isHeldBlob(new LynxBlob(['x']))).toBe(true);
+    // A Blob of another realm, or a look-alike, is read through arrayBuffer().
+    expect(isHeldBlob(new Blob(['x']))).toBe(false);
+    expect(isHeldBlob({ type: '', bytesSync: () => new Uint8Array() })).toBe(
+      false,
+    );
+    expect(isHeldBlob(null)).toBe(false);
+    expect(isHeldBlob('blob')).toBe(false);
+  });
+});
+
+describe('installObjectURLs', () => {
+  it('gives URL object URLs, unless it has them', () => {
+    const LynxURLLike = class {};
+    installObjectURLs({ URL: LynxURLLike });
+    expect((LynxURLLike as any).createObjectURL).toBe(createObjectURL);
+    expect((LynxURLLike as any).revokeObjectURL).toBe(revokeObjectURL);
+
+    const own = () => '';
+    const BrowserURL = class {
+      static createObjectURL = own;
+    };
+    installObjectURLs({ URL: BrowserURL });
+    expect(BrowserURL.createObjectURL).toBe(own);
+    // A global with no URL is left as it is.
+    const target: Record<string, unknown> = {};
+    installObjectURLs(target);
+    expect(target).toEqual({});
+  });
+});
+
 describe('decodeDataURL', () => {
   it('reads base64 and percent-encoded data, with its type', () => {
     expect(decodeDataURL('data:image/png;base64,AQI D')).toEqual({
@@ -77,6 +112,10 @@ describe('decodeDataURL', () => {
     const plain = decodeDataURL('data:,a%20b')!;
     expect(text(plain.bytes)).toBe('a b');
     expect(plain.type).toBe('text/plain;charset=US-ASCII');
+    // Percent-encoded UTF-8 comes back as the same bytes.
+    expect([...decodeDataURL('data:,%C3%A9%F0%9F%98%80')!.bytes]).toEqual([
+      0xc3, 0xa9, 0xf0, 0x9f, 0x98, 0x80,
+    ]);
     expect(decodeDataURL('data:;base64,AQ==')!.type).toBe(
       'text/plain;charset=US-ASCII',
     );

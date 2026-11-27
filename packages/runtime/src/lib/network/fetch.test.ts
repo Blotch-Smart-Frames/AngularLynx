@@ -4,7 +4,8 @@ import type { RelayedResponse } from './background-fetch';
 import { LynxRequest, LynxResponse, relayFetch } from './fetch';
 import { LynxHeaders } from './headers';
 import { LynxReadableStream } from './readable-stream';
-import { createObjectURL, LynxBlob, revokeObjectURL } from './blob';
+import { LynxBlob } from './blob';
+import { createObjectURL, revokeObjectURL } from './blob-urls';
 import { toWords } from './words';
 
 vi.mock('../background-call', () => ({ callOnBackground: vi.fn() }));

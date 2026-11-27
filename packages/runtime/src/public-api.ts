@@ -136,9 +136,17 @@ export type { LynxWebGL2RenderingContext } from './lib/canvas/webgl2-context';
 // so apps that never draw leave the context out of their bundle.
 export { ɵenableWebGL2 } from './lib/canvas/enable-webgl2';
 // Called by the build plugin in each main-thread module that names fetch,
-// XMLHttpRequest or IntersectionObserver (or compiles `@defer (on viewport)`),
-// so apps that use none of them leave them out of their bundle.
-export { ɵenableFetch, ɵenableXMLHttpRequest } from './lib/network/enable';
+// XMLHttpRequest, IntersectionObserver (or compiles `@defer (on viewport)`),
+// TextEncoder, TextDecoder, ReadableStream or Blob, so apps that use none of
+// them leave them out of their bundle.
+export {
+  ɵenableBlob,
+  ɵenableFetch,
+  ɵenableReadableStream,
+  ɵenableTextDecoder,
+  ɵenableTextEncoder,
+  ɵenableXMLHttpRequest,
+} from './lib/network/enable';
 export { ɵenableIntersectionObserver } from './lib/lynx-element/intersection-observer';
 export type { LynxPointerEvent } from './lib/lynx-element/pointer-events';
 export type { LynxDOMRect } from './lib/lynx-element/layout';

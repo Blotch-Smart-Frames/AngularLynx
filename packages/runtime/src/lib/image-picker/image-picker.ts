@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { callOnBackground } from '../background-call';
 import { base64ToBytes } from '../network/base64';
+import { installBlob } from '../network/index';
 import type { PlatformType } from '../system-info/system-info';
 
 /**
@@ -442,6 +443,10 @@ export class LynxImagePicker {
       );
     }
     const type = result.type;
+    // Not every app's main thread has a Blob (network/enable.ts), and an app
+    // that picks photos needn't name it, so the picker brings it. It's only
+    // installed where it's missing.
+    installBlob(globalThis as unknown as Record<string, unknown>);
     return {
       blob: new Blob([base64ToBytes(result.base64)], { type }),
       name: result.name,

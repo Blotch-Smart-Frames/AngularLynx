@@ -1,4 +1,4 @@
-import { bytesToBase64 } from './base64';
+import { isHeldBlob, registerHeldBlob } from './blob-urls';
 import { LynxTextDecoder, LynxTextEncoder } from './text-codec';
 import { LynxReadableStream } from './readable-stream';
 
@@ -11,14 +11,20 @@ import { LynxReadableStream } from './readable-stream';
  * `responseType: 'blob'` need the class too. A Blob here holds its bytes in
  * memory, so it reads back at once; an object URL is a key into a map of
  * them, which the main thread's `fetch` (fetch.ts) and `Image` (canvas/image.ts)
- * look up instead of making a request.
+ * look up instead of making a request. The map is in blob-urls.ts, which
+ * code every app runs can read without bringing this class (#760).
  */
 
 type BlobPart = ArrayBuffer | ArrayBufferView | LynxBlob | string;
 
 const bytesOfPart = (part: BlobPart): Uint8Array => {
   if (typeof part === 'string') return new LynxTextEncoder().encode(part);
-  if (part instanceof LynxBlob) return part.bytesSync();
+  // isHeldBlob() rather than `instanceof LynxBlob`: with this function and
+  // the class naming each other, and SWC hoisting the class's
+  // `[Symbol.toStringTag]` key out of it as a call, the minifier kept the
+  // class, and the stream and decoder it uses, in every app's main-thread
+  // script, used or not (#760).
+  if (isHeldBlob(part)) return part.bytesSync();
   if (part instanceof ArrayBuffer) return new Uint8Array(part);
   if (ArrayBuffer.isView(part)) {
     return new Uint8Array(part.buffer, part.byteOffset, part.byteLength);
@@ -43,6 +49,8 @@ export class LynxBlob {
     // The spec lowercases the type, and drops one that isn't printable ASCII.
     const type = options.type ?? '';
     this.type = /^[\x20-\x7e]*$/.test(type) ? type.toLowerCase() : '';
+    // So createImageBitmap() reads its bytes at once (isHeldBlob()).
+    registerHeldBlob(this);
   }
 
   get size(): number {
@@ -90,56 +98,3 @@ export class LynxBlob {
     return 'Blob';
   }
 }
-
-const objectURLs = new Map<string, LynxBlob>();
-let nextObjectURL = 1;
-
-/** `URL.createObjectURL()`: a `blob:` URL for the blob, until it's revoked. */
-export const createObjectURL = (blob: LynxBlob): string => {
-  const url = `blob:lynx/${nextObjectURL++}`;
-  objectURLs.set(url, blob);
-  return url;
-};
-
-export const revokeObjectURL = (url: string): void => {
-  objectURLs.delete(url);
-};
-
-/** The blob an object URL names, or undefined once it's revoked. */
-export const blobForURL = (url: string): LynxBlob | undefined =>
-  objectURLs.get(url);
-
-/**
- * The `data:` URL of the blob an object URL names, for an `<image>`'s `src`,
- * or undefined for any other URL. Lynx's `<image>` loads its own URLs, so a
- * `blob:` URL only this thread knows would show nothing; a data: URL holds
- * the bytes themselves. It's what lets `URL.createObjectURL(picked.blob)`
- * show a photo LynxImagePicker picked, as it would in a browser.
- */
-export const dataURLForObjectURL = (url: string): string | undefined => {
-  const blob = url.startsWith('blob:') ? objectURLs.get(url) : undefined;
-  if (!blob) return undefined;
-  return `data:${blob.type || 'application/octet-stream'};base64,${bytesToBase64(blob.bytesSync())}`;
-};
-
-/**
- * A `data:` URL's bytes and type, for `fetch` and `Image`: Lynx's own fetch
- * may not read them, and they need no request.
- */
-export const decodeDataURL = (
-  url: string,
-): { bytes: Uint8Array; type: string } | null => {
-  const match = /^data:([^,]*?)(;base64)?,(.*)$/s.exec(url);
-  if (!match) return null;
-  const [, type, base64, data] = match;
-  if (base64) {
-    const binary = atob(data.replace(/\s/g, ''));
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    return { bytes, type: type || 'text/plain;charset=US-ASCII' };
-  }
-  return {
-    bytes: new LynxTextEncoder().encode(decodeURIComponent(data)),
-    type: type || 'text/plain;charset=US-ASCII',
-  };
-};

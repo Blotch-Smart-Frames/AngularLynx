@@ -72,6 +72,7 @@ import { getAngularWorkspace } from './utils/angular/read-workspace.js';
 import { resolvePrimaryBuild } from './utils/angular/resolve-primary-build.js';
 import { resolvePages } from './utils/angular/resolve-pages.js';
 import { scanTemplatesForCappedTextWithoutEllipsis } from './capped-text.js';
+import { takeInlineSourceMap } from './inline-source-map.js';
 import {
   createLynxDiagnosticsReporter,
   scanCompiledOutputForHtmlElements,
@@ -837,13 +838,17 @@ export const applyAngularRules = async (
   /**
    * A module compiled for one thread, with the ES built-ins it names imported
    * at its top (see es-builtins.ts). From its final code, which is what runs.
+   * Its inline source map, if Angular left one, goes to the next loader as
+   * the module's map rather than in a comment (see inline-source-map.ts).
    */
   const transformForThread = async (
     context: Parameters<typeof transformModule>[0],
     background: boolean,
-  ): Promise<{ code: string }> => {
+  ): Promise<{ code: string; map?: string }> => {
     const { code } = await transformModule(context, background);
-    return { code: importEsBuiltinsWhereNamed(code, context.resourcePath) };
+    return takeInlineSourceMap(
+      importEsBuiltinsWhereNamed(code, context.resourcePath),
+    );
   };
 
   // One transform per layer, as the background layer compiles the app's

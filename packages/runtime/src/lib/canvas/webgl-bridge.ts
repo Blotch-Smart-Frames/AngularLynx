@@ -40,12 +40,36 @@ export type WebGLCreateResult = {
   error?: string;
 };
 
-/** What `decodeImage` returns. */
+/** What `decodeImage` and the methods that copy an image return. */
 export type DecodedImage = {
   width: number;
   height: number;
   /** Set instead of the size when the bytes aren't an image the OS decodes. */
   error?: string;
+  /**
+   * The crop rectangle was applied. A shell from before cropping leaves it
+   * out, having ignored the rectangle.
+   */
+  cropped?: boolean;
+};
+
+/**
+ * createImageBitmap()'s options, as `decodeImage` and the methods that copy
+ * an image send them: a resize of 0 keeps the source's size, and a crop
+ * width of 0 keeps all of it. The crop rectangle is in the source's pixels,
+ * rows top to bottom, its sizes positive; what it covers outside the source
+ * is transparent black. The shell crops first, then resizes, flips and
+ * premultiplies.
+ */
+export type ImageCopyOptions = {
+  imageOrientation: string;
+  premultiplyAlpha: string;
+  resizeWidth: number;
+  resizeHeight: number;
+  cropX: number;
+  cropY: number;
+  cropWidth: number;
+  cropHeight: number;
 };
 
 /**
@@ -54,14 +78,16 @@ export type DecodedImage = {
  * whether the canvas's bitmap is cleared after it's read, as
  * `OffscreenCanvas.transferToImageBitmap()` leaves it.
  */
-export type CanvasImageOptions = {
-  imageOrientation: string;
-  premultiplyAlpha: string;
-  resizeWidth: number;
-  resizeHeight: number;
+export type CanvasImageOptions = ImageCopyOptions & {
   width: number;
   height: number;
   transfer: boolean;
+};
+
+/** What `imageFromPixels` sends the shell: the options, and the pixels' size. */
+export type PixelsImageOptions = ImageCopyOptions & {
+  width: number;
+  height: number;
 };
 
 /** What `encodeImage` sends the shell. */
@@ -101,7 +127,7 @@ export type WebGLBridge = {
   decodeImage(
     imageId: number,
     bytes: number[],
-    options: Record<string, unknown>,
+    options: ImageCopyOptions,
   ): DecodedImage;
   releaseImage(imageId: number): void;
   /**
@@ -114,6 +140,26 @@ export type WebGLBridge = {
     imageId: number,
     canvasId: string,
     options: CanvasImageOptions,
+  ): DecodedImage;
+  /**
+   * Copies an image the shell keeps (an ImageBitmap's, or an `<img>`'s) into
+   * a new one, with createImageBitmap()'s options: what it makes of an
+   * ImageBitmap or a loaded Image. The pixels stay in the shell.
+   */
+  imageFromImage(
+    imageId: number,
+    sourceId: number,
+    options: ImageCopyOptions,
+  ): DecodedImage;
+  /**
+   * Keeps RGBA pixels the app has (an ImageData's: straight, rows top to
+   * bottom), sent as words, as a new image, with createImageBitmap()'s
+   * options.
+   */
+  imageFromPixels(
+    imageId: number,
+    bytes: number[],
+    options: PixelsImageOptions,
   ): DecodedImage;
   /**
    * Reads the drawing buffer and encodes it as a PNG or JPEG file, for
@@ -188,24 +234,24 @@ const lookUpBridge = (): WebGLBridge | null => {
         error: `${WEBGL_MODULE_NAME} isn't registered in this app's shell`,
       },
     releaseImage: (imageId) => void handle.invoke('releaseImage', imageId),
-    imageFromCanvas: (imageId, canvasId, options) => {
-      let image: DecodedImage | undefined;
-      try {
-        image = handle.invoke('imageFromCanvas', imageId, canvasId, options) as
-          | DecodedImage
-          | undefined;
-      } catch {
-        // A shell from before imageFromCanvas, which Lynx may answer by
-        // throwing or with nothing.
-      }
-      return (
-        image ?? {
-          width: 0,
-          height: 0,
-          error: `This app's shell can't make an ImageBitmap of a canvas: build it again with \`ng build --platform\``,
-        }
-      );
-    },
+    imageFromCanvas: (imageId, canvasId, options) =>
+      copyImage(handle, 'imageFromCanvas', 'a canvas', [
+        imageId,
+        canvasId,
+        options,
+      ]),
+    imageFromImage: (imageId, sourceId, options) =>
+      copyImage(handle, 'imageFromImage', 'an ImageBitmap or an Image', [
+        imageId,
+        sourceId,
+        options,
+      ]),
+    imageFromPixels: (imageId, bytes, options) =>
+      copyImage(handle, 'imageFromPixels', 'an ImageData', [
+        imageId,
+        bytes,
+        options,
+      ]),
     encodeImage: (contextId, options) => {
       let encoded: EncodedImage | undefined;
       try {
@@ -223,6 +269,32 @@ const lookUpBridge = (): WebGLBridge | null => {
       );
     },
   };
+};
+
+/**
+ * One of the methods that copy an image into a new one, or why the shell
+ * couldn't: one from before the method, which Lynx may answer by throwing or
+ * with nothing.
+ */
+const copyImage = (
+  handle: LynxModuleHandle,
+  method: string,
+  source: string,
+  args: unknown[],
+): DecodedImage => {
+  let image: DecodedImage | undefined;
+  try {
+    image = handle.invoke(method, ...args) as DecodedImage | undefined;
+  } catch {
+    // Answered below, as nothing.
+  }
+  return (
+    image ?? {
+      width: 0,
+      height: 0,
+      error: `This app's shell can't make an ImageBitmap of ${source}: build it again with \`ng build --platform\``,
+    }
+  );
 };
 
 /**

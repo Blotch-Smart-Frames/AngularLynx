@@ -161,7 +161,19 @@ Textures and models load as on the web:
 
 The phone decodes images, and the pixels go straight to the GPU. A canvas, drawn in 2D or with WebGL, uploads as a texture too (`CanvasTexture`, or `texImage2D()` with the canvas): the phone reads its pixels and hands them to the GPU. Loaders that need Web Workers or WebAssembly, such as `DRACOLoader` and `KTX2Loader`, don't work.
 
-`createImageBitmap()` takes a canvas too (a `<canvas>`, `document.createElement('canvas')` or an `OffscreenCanvas`), and `OffscreenCanvas.transferToImageBitmap()` hands over its image and clears it, as on the web. The phone copies the pixels, so keeping a frame costs no trip through JavaScript. Make a WebGL canvas's bitmap in the same function that draws, as with `toBlob()` below: once the frame is on screen, its drawing buffer is cleared, unless you asked for `preserveDrawingBuffer: true`.
+`createImageBitmap()` takes the same sources as on the web, and makes a bitmap of a part of one with the crop arguments:
+
+```typescript
+// The second 32 by 32 sprite of a sprite sheet.
+const sprite = await createImageBitmap(sheet, 32, 0, 32, 32);
+```
+
+- **Any source can be cropped:** a `Blob`, a loaded `Image`, a canvas (a `<canvas>`, `document.createElement('canvas')` or an `OffscreenCanvas`), an `ImageBitmap` or an `ImageData`. The part of the rectangle outside the source is transparent.
+- **An `ImageBitmap` is copied** with the options you pass: flipped, premultiplied or resized.
+- **The phone copies the pixels.** A canvas, a bitmap or an `Image` is copied from the pixels the phone already has, so nothing crosses to JavaScript and no file is decoded again. An `ImageData`'s pixels go to the phone once.
+- **`OffscreenCanvas.transferToImageBitmap()`** hands over its image and clears the canvas, as on the web.
+- **An ejected app keeps its older shell**, which rejects an `ImageBitmap`, an `ImageData`, a loaded `Image` and a crop. To take them in without losing your own native changes, merge the new `App/AngularLynxWebGL.m` (iOS) or `WebGLModule.kt` (Android) from `node_modules/@blotch/angular-lynx-native/templates` into your copy.
+- **Make a WebGL canvas's bitmap in the function that draws**, as with `toBlob()` below. Once the frame is on screen, its drawing buffer is cleared, unless you asked for `preserveDrawingBuffer: true`.
 
 ## Videos
 
@@ -264,7 +276,6 @@ The iOS Simulator and the Android emulator both draw on the Mac's GPU, so a scen
 - `wordSpacing`, `fontKerning`, `fontStretch`, `fontVariantCaps` and `textRendering` are kept but don't change the text. Text drawn with a gradient, a pattern or `strokeText()` is drawn from the glyphs' outlines, so color emoji show only with a plain `fillStyle`.
 - A `<video>` draws its current frame, on a 2D canvas or as a texture, only once it has one (`readyState` at least `HAVE_CURRENT_DATA`). On Android, a video with `display: none` has no frame to draw: hide it with `opacity: 0` or behind other elements instead.
 - `getContext('bitmaprenderer')` is `null`: draw an `ImageBitmap` with a 2D context's `drawImage()` instead.
-- `createImageBitmap()` doesn't take the crop arguments (`sx, sy, sw, sh`), an `ImageBitmap` or `ImageData`: draw the part you want on a canvas, then make the bitmap of that.
 - `toBlob()` and `toDataURL()` make the main thread wait while the phone reads and encodes the canvas (tens of milliseconds for a photo), where a browser's `toBlob()` encodes in the background.
 - A lost context isn't restored: make a new renderer.
 - `crypto.randomUUID()`, which AngularLynx adds for angular-three, isn't cryptographically secure: don't use it for secrets.

@@ -23,7 +23,9 @@ appId: ${APP_ID}
     timeout: 15000
 # ImageBitmaps of canvases (issue #697): createImageBitmap() of the WebGL
 # canvas and of an OffscreenCanvas, transferToImageBitmap(), which clears the
-# OffscreenCanvas, and a bitmap uploaded as a texture.
+# OffscreenCanvas, and a bitmap uploaded as a texture; and createImageBitmap()
+# with a crop rectangle, of an ImageData, an ImageBitmap and an Image
+# (issue #731).
 - extendedWaitUntil:
     visible: 'Bitmap: ok'
     timeout: 15000

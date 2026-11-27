@@ -556,13 +556,19 @@ const changedTokens = (
  * LynxDocument.createComment), and `__GetParent` is not guaranteed to return the
  * same JS handle across calls.
  */
-const wouldFormCycle = (parent: ElementRef, candidate: ElementRef): boolean => {
+const wouldFormCycle = (
+  parent: ElementRef,
+  candidate: ElementRef,
+  candidateUnplaced: boolean,
+): boolean => {
   const candidateId = __GetElementUniqueID(candidate);
   const parentId = __GetElementUniqueID(parent);
   if (parentId === candidateId) return true;
   const first = __FirstElement(candidate);
   if (!first) return false;
-  const current = __GetParent(candidate);
+  // A candidate its wrapper knows is in no tree has no parent to read (see
+  // LynxElement's #unplaced).
+  const current = candidateUnplaced ? null : __GetParent(candidate);
   if (current && __GetElementUniqueID(current) === parentId) return false;
   const inSubtree = subtreeHolds(first, parentId);
   if (inSubtree !== undefined) return inSubtree;
@@ -1023,8 +1029,19 @@ export class LynxElement implements BaseLynxElement {
    * go through NO_CHILDREN.
    */
   #children: LynxElement[] | null = null;
-  /** Back-pointer to the JS parent, for O(1) detach from its #children. */
-  #jsParent: LynxElement | null = null;
+  /**
+   * Back-pointer to the JS parent, for O(1) detach from its #children.
+   *
+   * Undefined, rather than null, from when LynxDocument makes the element's
+   * native element (see markNew) until it's first put in a parent: the
+   * native element is then in no tree, so an insert needn't ask native for
+   * its parent (see #unplaced). Null is a wrapper whose native element may be
+   * anywhere: one made for an element already in the tree (a hydrated one, a
+   * query's hit), one a list took (see adoptVirtualChild), or one removed.
+   * markNew gives the element this property of its own a little early, as
+   * nearly every element gets it when it's inserted anyway.
+   */
+  #jsParent: LynxElement | null | undefined = null;
   /**
    * An anonymous `<text>`: one the runtime made to draw loose text, and the
    * inline tags beside it, which Angular never sees (see #regroup).
@@ -3095,7 +3112,7 @@ export class LynxElement implements BaseLynxElement {
       // native tree and hang the layout pass (see wouldFormCycle). Skipping is
       // safe: a cyclic insert is a corrupt request, and leaving newChild where it
       // is beats freezing the app.
-      if (wouldFormCycle(this.element, newChild.element)) return;
+      if (this.#wouldFormCycle(newChild)) return;
       const moving = isWebMove(newChild);
       if (insertHidesBlurView(this, newChild)) {
         this.#appendBefore(newChild, refChild);
@@ -3163,7 +3180,7 @@ export class LynxElement implements BaseLynxElement {
   #appendPrepared(newChild: LynxElement): void {
     // Guard against a cycle-forming attach (see wouldFormCycle) — the same hang
     // insertBefore protects against.
-    if (wouldFormCycle(this.element, newChild.element)) return;
+    if (this.#wouldFormCycle(newChild)) return;
     const moving = isWebMove(newChild);
     // A <q>'s children go before its closing mark (see markQuote).
     const close = this.#quoteMarks?.[1];
@@ -3291,6 +3308,9 @@ export class LynxElement implements BaseLynxElement {
    * as #adoptChild, it passes text styles down to the #webText inside.
    */
   adoptVirtualChild(child: LynxElement): void {
+    // The list puts its native element in the native list when native asks
+    // for it (see create-list-element.ts), not through #adoptChild.
+    if (child.#unplaced()) child.#jsParent = null;
     if (child.#webText || child.#passesTextStyles) this.#passTextStyles();
     child.#ancestorsChanged();
     if (child.#passedSizeSeen !== undefined) child.#outerSizeChanged();
@@ -3678,6 +3698,67 @@ export class LynxElement implements BaseLynxElement {
    */
   markNew(): void {
     this.#nativeClasses = true;
+    this.markUnplaced();
+  }
+
+  /**
+   * @internal LynxDocument has just made this element's native element, which
+   * is in no tree yet (see #unplaced). markNew does it too; a raw-text and a
+   * comment, which never have classes, have only this.
+   */
+  markUnplaced(): void {
+    this.#jsParent = undefined;
+  }
+
+  /**
+   * Whether this element's native element is known to be in no tree: made
+   * by LynxDocument (see markNew) and put in no parent since. #adoptChild
+   * ends it on every insert through a LynxElement, and adoptVirtualChild when
+   * a list takes it, as the list puts it in the native list itself. The other
+   * places the runtime puts an element's native element in a parent (a <q>'s
+   * marks, a rebuilt subtree, a static block's elements) don't put a new
+   * one there.
+   */
+  #unplaced(): boolean {
+    return this.#jsParent === undefined;
+  }
+
+  /**
+   * Whether inserting `child` here would put an element inside its own
+   * subtree (see wouldFormCycle), with no native read for what this wrapper
+   * knows: an unplaced child (see #unplaced) is the root of its own tree, so
+   * it has no parent to read, and if nothing was ever put in it either, only
+   * this being the child itself can form a cycle. A wrapper of another
+   * element is never it: a second wrapper is made only for a native element
+   * no wrapper is registered for (see #canonicalFor), and a new one is
+   * registered until it's released. These are the `@for` rows' inserts: the
+   * native reads cost the same as the insert itself on PrimJS, and each
+   * `__GetParent` or `__FirstElement` makes a handle.
+   */
+  #wouldFormCycle(child: LynxElement): boolean {
+    if (!child.#unplaced()) {
+      return wouldFormCycle(this.element, child.element, false);
+    }
+    // The ways the runtime puts native children in an element: #attach and
+    // #appendPrepared (which keep #children), a <q>'s marks, a static block's
+    // elements, and a list's items, which it keeps apart (see
+    // LynxListElement). Without the last three, an unplaced element's native
+    // children are its #children.
+    if (child.#quoteMarks || child.#staticBlock || child.tagName === 'list') {
+      return wouldFormCycle(this.element, child.element, true);
+    }
+    const children = child.#children;
+    if (!children) return child === this;
+    // A `<text>` row holds its raw-text: a raw-text or an anchor that nothing
+    // was put in has no children, wherever its native element came from, so
+    // the subtree is the child and these.
+    for (const node of children) {
+      const leaf = node.tagName === 'raw-text' || node.tagName === 'comment';
+      if (!leaf || node.#children?.length) {
+        return wouldFormCycle(this.element, child.element, true);
+      }
+    }
+    return child === this || children.includes(this);
   }
 
   /**
@@ -4068,6 +4149,8 @@ export class LynxElement implements BaseLynxElement {
    */
   #removeIfMoveWouldBeLost(newParent: LynxElement): void {
     if (__WEB__ || this.#paintingDead || this._virtualParent) return;
+    // A new element, being put in its first parent: nothing to move from.
+    if (this.#unplaced()) return;
     const oldParent = __GetParent(this.element);
     if (
       !oldParent ||

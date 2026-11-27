@@ -180,7 +180,9 @@ jobs:
           ${MOUNT_SCREENS:+--screens "$MOUNT_SCREENS"} ${MAX_LOAD:+--max-load "$MAX_LOAD"} --max-wait "$MAX_WAIT"
       # The last night's history, from the newest run of this workflow on
       # master that finished. Artifacts last 90 days, so a gap that long
-      # starts a new history, as does the first night.
+      # starts a new history, as does the first night. A history that's
+      # there but doesn't download fails the step instead: starting again
+      # would throw away every night's baseline.
       - name: Download the history
         if: env.NIGHTLY == 'true'
         env:
@@ -190,12 +192,27 @@ jobs:
           run=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow simulator-benchmarks.yml --branch master \
             --status success --limit 30 --json databaseId,event \
             --jq '[.[] | select(.event != "pull_request")][0].databaseId // empty')
-          if [ -n "$run" ] && gh run download "$run" --repo "$GITHUB_REPOSITORY" \
-            --name simulator-benchmark-history --dir "$RUNNER_TEMP/history"; then
-            echo "The history of run $run: $(wc -l < "$RUNNER_TEMP/history/history.jsonl") nights"
-          else
-            echo "::warning::No earlier night's history, so this night starts a new one."
+          if [ -z "$run" ]; then
+            echo "::warning::No earlier night on master, so this night starts the history."
+            exit 0
           fi
+          artifact=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/artifacts" \
+            --jq '.artifacts[] | select(.name == "simulator-benchmark-history" and .expired == false) | .id')
+          if [ -z "$artifact" ]; then
+            echo "::warning::Run $run has no history left (expired after 90 days?), so this night starts a new one."
+            exit 0
+          fi
+          for attempt in 1 2 3; do
+            if gh run download "$run" --repo "$GITHUB_REPOSITORY" \
+              --name simulator-benchmark-history --dir "$RUNNER_TEMP/history"; then
+              echo "The history of run $run: $(wc -l < "$RUNNER_TEMP/history/history.jsonl") nights"
+              exit 0
+            fi
+            echo "Downloading run $run's history failed ($attempt of 3)."
+            sleep 30
+          done
+          echo "::error::Run $run's history is there but didn't download."
+          exit 1
       # Fails when an app drew nothing for a measure (after writing the
       # summary), so a night that broke an app reports a failure rather than
       # a history with a gap in it.

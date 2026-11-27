@@ -172,6 +172,8 @@ describe('styleIndexOf', () => {
     ['font-size: 2em', FONT_SIZE | RELATIVE_SIZE_FLAG],
     ['font-size: 80%', FONT_SIZE | RELATIVE_SIZE_FLAG],
     ['font-size: 1.25rem', FONT_SIZE],
+    // A rule that sets the variable itself keeps its value, not `1em`.
+    ['font-size: 2em; --angular-lynx-font-size: 20px', FONT_SIZE],
     // Any vertical-align, whose distance is in verticalAligns (issue #715).
     ['vertical-align: 0.4em', VERTICAL_ALIGN_FLAG],
     ['vertical-align: super', VERTICAL_ALIGN_FLAG],

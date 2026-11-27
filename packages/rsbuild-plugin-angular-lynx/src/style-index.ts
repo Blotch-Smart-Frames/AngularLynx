@@ -95,6 +95,9 @@ const SMALLER_SIZE = new RegExp(
   'i',
 );
 
+/** The variable a `font-size` is copied to (see text-inheritance.ts). */
+const SIZE_VARIABLE = inheritanceVariable('font-size');
+
 /** The `display` values that lay children out in a column, as a block. */
 const BLOCK_DISPLAYS = new Set(['linear', 'block', 'flow-root', 'none']);
 
@@ -366,9 +369,16 @@ export const styleIndexOf = (stylesheets: readonly string[]): StyleIndex => {
     root.walkRules((rule) => {
       if (inNonSelectorAtRule(rule)) return;
       let flags = 0;
+      let setsSizeVariable = false;
       rule.each((node) => {
-        if (node.type === 'decl') flags |= flagsOf(node.prop, node.value);
+        if (node.type !== 'decl') return;
+        flags |= flagsOf(node.prop, node.value);
+        if (node.prop.toLowerCase() === SIZE_VARIABLE) setsSizeVariable = true;
       });
+      // A rule that sets the variable itself keeps its own value, with no
+      // copy (see text-inheritance.ts): the variable isn't `1em` there, so
+      // the runtime divides it for each `<small>` as it divides any size.
+      if (setsSizeVariable) flags &= ~RELATIVE_SIZE_FLAG;
       if (!flags) return;
       const distance =
         flags & VERTICAL_ALIGN_FLAG ? verticalAlignOf(rule) : undefined;

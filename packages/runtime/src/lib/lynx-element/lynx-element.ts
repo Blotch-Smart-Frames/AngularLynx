@@ -60,6 +60,7 @@ import {
   hasAncestorTextRules,
   inlineBaselineShift,
   inheritanceCopiesFor,
+  inheritanceVariable,
   isRelativeFontSize,
   inheritanceStyleFor,
   inlineTextStyles,
@@ -329,6 +330,12 @@ const withAddedTraits = (
  * property and drops it.
  */
 const isCustomProperty = (name: string): boolean => name.startsWith('--');
+
+/**
+ * The variable an element's `font-size` is copied to, which HTML text tags
+ * inside it read (see text-flow.ts).
+ */
+const SIZE_VARIABLE = inheritanceVariable('font-size');
 
 /** A declaration of a CSS variable in an inline style string. */
 const VARIABLE_DECLARATION = /(?:^|;)\s*--/;
@@ -1757,6 +1764,9 @@ export class LynxElement implements BaseLynxElement {
       (this.#customProperties ??= new Map()).set(key, text);
       if (readsSafeAreaInsets(text)) this.#readsSafeArea = true;
       this.#rewriteInlineStyle();
+      // It decides whether the size passed down is relative (see
+      // #relativeSize), so the tags inside work out their levels again.
+      if (key === SIZE_VARIABLE) this.#inheritAgain();
       return;
     }
     // `[style.display]="open ? 'block' : 'none'"` would lay the element out
@@ -1785,7 +1795,10 @@ export class LynxElement implements BaseLynxElement {
   }
   removeStyle(key: string): void {
     if (isCustomProperty(key)) {
-      if (this.#customProperties?.delete(key)) this.#rewriteInlineStyle();
+      if (this.#customProperties?.delete(key)) {
+        this.#rewriteInlineStyle();
+        if (key === SIZE_VARIABLE) this.#inheritAgain();
+      }
       return;
     }
     const textStyles = this.#textStylesBefore(key);
@@ -1849,6 +1862,7 @@ export class LynxElement implements BaseLynxElement {
       ? this.#inlineTextFlags()
       : -1;
     const before = this.#inlineStyleWhole;
+    const sizeVariable = inlineDeclaration(before, SIZE_VARIABLE);
     this.#inlineStyleWhole = inlineStyle;
     // Written as #rewriteInlineStyle writes it, with the [style.x] styles
     // the app hasn't removed: __SetInlineStyles replaces them all, and the
@@ -1858,6 +1872,11 @@ export class LynxElement implements BaseLynxElement {
     // [style.x] styles go into the string (see #setsVariables).
     this.#rewriteInlineStyle();
     if (textStyles >= 0) this.#inlineTextStylesChanged(textStyles);
+    // A variable of its own decides whether the size it passes down is
+    // relative (see #relativeSize).
+    if (inlineDeclaration(inlineStyle, SIZE_VARIABLE) !== sizeVariable) {
+      this.#inheritAgain();
+    }
     this.#layoutChanged();
     for (const property of SHIFT_STYLES) {
       if (
@@ -2239,14 +2258,31 @@ export class LynxElement implements BaseLynxElement {
   }
 
   /**
+   * The `--angular-lynx-font-size` the app's inline style sets itself, from
+   * a `[style.--angular-lynx-font-size]` binding or its style="..." string,
+   * or undefined where it sets none.
+   */
+  #ownSizeVariable(): string | undefined {
+    return (
+      this.#customProperties?.get(SIZE_VARIABLE) ??
+      inlineDeclaration(this.#inlineStyleWhole, SIZE_VARIABLE)
+    );
+  }
+
+  /**
    * Whether the size this element passes to the text inside is relative to
    * its parent's (see RELATIVE_SIZE_FLAG): its inline `font-size`'s, which
    * wins over its rules, or else its rules'. Its copy is then `1em`, the size
    * of the parent of the tag that reads it. Below it, each `<small>`'s own
    * rule divides that once, and the text inside it reads it as it is: a class
    * dividing it for each `<small>` above would divide it again (issue #701).
+   *
+   * A variable the app's inline style sets itself wins over the copies, the
+   * runtime's and its rules' (see #inlineTextCopies): it isn't `1em`, so the
+   * levels divide it as they divide any size.
    */
   #relativeSize(): boolean {
+    if (this.#ownSizeVariable() !== undefined) return false;
     const inline = this.#inlineStyle('font-size');
     if (inline != null && inline !== '') {
       return isRelativeFontSize(String(inline));

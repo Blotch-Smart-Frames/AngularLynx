@@ -469,6 +469,7 @@ class SmallerHost {
       class="sizer"
       [class.rel]="relative()"
       [style.font-size]="size()"
+      [style.--angular-lynx-font-size]="ownVariable()"
     >
       a
       <small class="outer"
@@ -483,6 +484,7 @@ class SmallerHost {
 class RelativeSmallerHost {
   readonly relative = signal(true);
   readonly size = signal<string | null>(null);
+  readonly ownVariable = signal<string | null>(null);
 }
 
 @Component({
@@ -1195,6 +1197,21 @@ describe('loose text', () => {
       ['_ngsmaller-2'],
       ['_ngsmaller-2'],
     ]);
+
+    // A variable the app sets itself wins over the `1em` copy, so the levels
+    // divide it as any size (review of #751).
+    fixture.componentInstance.size.set('2em');
+    fixture.componentInstance.ownVariable.set('20px');
+    fixture.detectChanges();
+    expect(levels().slice(0, 3)).toEqual([
+      ['_ngsmaller-1'],
+      ['_ngsmaller-2'],
+      ['_ngsmaller-2'],
+    ]);
+
+    fixture.componentInstance.ownVariable.set(null);
+    fixture.detectChanges();
+    expect(levels().slice(0, 3)).toEqual([[], [], []]);
   });
 
   // A rule with the build's smaller size can require an ancestor, as
@@ -1833,6 +1850,39 @@ describe('loose text, element by element', () => {
     view.setInlineStyles('linear-direction: row');
     commit();
     expect(lines(view)).toEqual(['"a"', '"b"']);
+  });
+
+  // Review of #751: a variable the app's style="..." sets itself wins over
+  // the `1em` copy of a relative size, so the levels of <small> divide it.
+  it('gives the text in a <small> its level below a variable an inline style sets', () => {
+    (
+      globalThis as { __angularLynxStyleIndex?: unknown }
+    ).__angularLynxStyleIndex = {
+      rules: [
+        [['sm'], SMALLER_FLAG],
+        [['_ngsmaller-1'], SMALLER_FLAG],
+      ],
+    };
+    const p = doc.createElement('p');
+    page.appendChild(p);
+    const small = doc.createElement('small');
+    small.addClass('sm');
+    p.appendChild(small);
+    const bold = doc.createElement('b');
+    small.appendChild(bold);
+    bold.appendChild(doc.createText('b'));
+    p.setInlineStyles('font-size: 2em');
+    commit();
+    const level = () => native(bold).classes.has('_ngsmaller-1');
+    expect(level()).toBe(false);
+
+    p.setInlineStyles('font-size: 2em; --angular-lynx-font-size: 20px');
+    commit();
+    expect(level()).toBe(true);
+
+    p.setInlineStyles('font-size: 2em');
+    commit();
+    expect(level()).toBe(false);
   });
 
   it('reads a flex container by its id from the style index', () => {

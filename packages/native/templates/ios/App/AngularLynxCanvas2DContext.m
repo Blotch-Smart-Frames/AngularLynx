@@ -629,11 +629,25 @@ static void scaleAlpha(uint8_t *bytes, size_t pixels, double alpha) {
   for (size_t i = 0; i < pixels * 4; i++) bytes[i] = clampByte(bytes[i] * alpha);
 }
 
-/// A step of the filter: its kind and its numbers.
+/// A step of the filter: its kind and its numbers, and, for a drop shadow,
+/// whether it's cast from a layer of its own when the filter reaches past
+/// the layers' cap (see lastFar): one of the filter's last
+/// MAX_OWN_LAYERS drop shadows moved by an offset, which parsedFilter marks.
 typedef struct {
   NSInteger kind;
   double values[20];
+  BOOL castsAlone;
 } ALFilterStep;
+
+static BOOL isMovedShadow(const ALFilterStep *step);
+
+/// The most drop shadows in one filter that can be cast from a layer of
+/// their own (see lastFar): the last ones moved by an offset. Each works out
+/// the steps before it twice, over the layer it goes under and over that
+/// moved back by its offset, so the draws double with each one; past this,
+/// the earlier ones are planned as any step is, within the layers' cap, as
+/// before issue #824. Three keep a fill to eight draws.
+static const NSUInteger MAX_OWN_LAYERS = 3;
 
 /// The filter's steps, as the runtime sends them: ALFilterSteps, end to end.
 static NSData *parsedFilter(NSArray<NSNumber *> *steps) {
@@ -645,10 +659,17 @@ static NSData *parsedFilter(NSArray<NSNumber *> *steps) {
     // A step it doesn't know, or one cut short, ends the list: what's after
     // it would be read as the wrong numbers.
     if (arity == 0 || i + arity > count) break;
-    ALFilterStep step = {kind, {0}};
+    ALFilterStep step = {kind, {0}, NO};
     for (NSUInteger k = 0; k < arity; k++) step.values[k] = steps[i + k].doubleValue;
     [parsed appendBytes:&step length:sizeof(step)];
     i += arity;
+  }
+  ALFilterStep *parsedSteps = parsed.mutableBytes;
+  NSUInteger marked = 0;
+  for (NSUInteger k = parsed.length / sizeof(ALFilterStep); k > 0 && marked < MAX_OWN_LAYERS; k--) {
+    if (!isMovedShadow(&parsedSteps[k - 1])) continue;
+    parsedSteps[k - 1].castsAlone = YES;
+    marked++;
   }
   return parsed;
 }
@@ -1318,8 +1339,9 @@ static double reachOf(const ALFilterStep *steps, NSUInteger count) {
 }
 
 /// The index of the last far drop shadow in the steps, or -1. When the
-/// steps reach past MAX_REACH, every drop shadow moved by an offset is far:
-/// it's cast from a layer of its own (-newFarShadow:...), so its offset
+/// steps reach past MAX_REACH, a drop shadow moved by an offset is far (up
+/// to the filter's last few, castsAlone, as each doubles the draws): it's
+/// cast from a layer of its own (-newFarShadow:...), so its offset
 /// doesn't count toward the reach the layers are planned for. Counted, an
 /// offset past the cap would leave out a shape that far off the canvas
 /// (issue #824), as the capped layer doesn't reach it, and it would lower
@@ -1328,7 +1350,7 @@ static double reachOf(const ALFilterStep *steps, NSUInteger count) {
 static NSInteger lastFar(const ALFilterStep *steps, NSUInteger count) {
   if (!(reachOf(steps, count) > MAX_REACH)) return -1;
   for (NSUInteger i = count; i > 0; i--) {
-    if (isMovedShadow(&steps[i - 1])) return (NSInteger)(i - 1);
+    if (steps[i - 1].castsAlone) return (NSInteger)(i - 1);
   }
   return -1;
 }
@@ -1647,7 +1669,7 @@ static CGFloat area(CGRect rect) {
     return NULL;
   }
   memcpy(blurred, steps, sizeof(ALFilterStep) * before);
-  blurred[before] = (ALFilterStep){ALFilterBlur, {v[2]}};
+  blurred[before] = (ALFilterStep){ALFilterBlur, {v[2]}, NO};
   uint8_t *cast = [self newOver:movedLayer(layer, -v[0], -v[1]) steps:blurred count:count draw:draw];
   free(blurred);
   uint8_t *shadow = cast ? newShadowBytes(cast, layer.width, layer.height, 0, 0, 0, v[3], v[4],

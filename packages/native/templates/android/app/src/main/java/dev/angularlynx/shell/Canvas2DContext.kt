@@ -806,8 +806,9 @@ class Canvas2DContext(
 
     /**
      * The index of the last far drop shadow in `steps`, or -1. When the
-     * steps reach past [MAX_REACH], every drop shadow moved by an offset is
-     * far: it's cast from a layer of its own ([farShadow]), so its offset
+     * steps reach past [MAX_REACH], a drop shadow moved by an offset is far
+     * (up to the filter's last few, [CanvasFilter.Step.castsAlone], as each
+     * doubles the draws): it's cast from a layer of its own ([farShadow]), so its offset
      * doesn't count toward the reach the layers are planned for. Counted, an
      * offset past the cap would leave out a shape that far off the canvas
      * (issue #824), as the capped layer doesn't reach it, and it would lower
@@ -815,7 +816,7 @@ class Canvas2DContext(
      * keep a blur beside it at the canvas's resolution, cut short by the cap.
      */
     private fun lastFar(steps: List<CanvasFilter.Step>): Int =
-        if (steps.sumOf { it.reach } > MAX_REACH) steps.indexOfLast { it.isMovedShadow } else -1
+        if (steps.sumOf { it.reach } > MAX_REACH) steps.indexOfLast { it.castsAlone } else -1
 
     /** The steps the layers are planned for: those after the last far drop shadow ([lastFar]). */
     private fun planned(steps: List<CanvasFilter.Step>): List<CanvasFilter.Step> =

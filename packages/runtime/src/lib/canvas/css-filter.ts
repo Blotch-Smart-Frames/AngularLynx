@@ -58,7 +58,8 @@ export const NO_FILTER: CanvasFilter = { steps: [], padding: 0 };
  * over the reach: alone, a blur needs a deviation past about 85 px. A drop
  * shadow moved by an offset, when the filter reaches past this, casts from
  * a layer of its own, the canvas moved back by the offset (issue #824), so
- * its offset leaves out no shape, and isn't counted toward the scale.
+ * its offset leaves out no shape, and isn't counted toward the scale. Only
+ * a filter's last three do, as each doubles the draws.
  */
 const MAX_PADDING = 256;
 

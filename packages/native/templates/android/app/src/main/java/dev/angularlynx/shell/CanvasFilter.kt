@@ -29,12 +29,30 @@ internal object CanvasFilter {
     private const val MATRIX = 1
     private const val DROP_SHADOW = 2
 
+    /**
+     * The most drop shadows in one filter that can be cast from a layer of
+     * their own (see Canvas2DContext.lastFar): the last ones moved by an
+     * offset. Each works out the steps before it twice, over the layer it
+     * goes under and over that moved back by its offset, so the draws double
+     * with each one; past this, the earlier ones are planned as any step is,
+     * within the layers' cap, as before issue #824. Three keep a fill to
+     * eight draws.
+     */
+    private const val MAX_OWN_LAYERS = 3
+
     /** A step of the filter: its kind (as css-filter.ts's FILTER_STEP numbers them) and its numbers. */
     class Step(val kind: Int, val values: DoubleArray) {
         val isBlur: Boolean get() = kind == BLUR
 
         /** Whether it's a drop shadow moved by an offset. */
         val isMovedShadow: Boolean get() = kind == DROP_SHADOW && (values[0] != 0.0 || values[1] != 0.0)
+
+        /**
+         * Whether, when the filter reaches past the layers' cap, it's cast
+         * from a layer of its own: one of the filter's last MAX_OWN_LAYERS
+         * drop shadows moved by an offset, which [parse] marks.
+         */
+        var castsAlone: Boolean = false
 
         /** Its deviation, for a blur or a drop shadow; 0 for a color matrix. */
         val sigma: Double get() = when (kind) {
@@ -79,6 +97,7 @@ internal object CanvasFilter {
             parsed.add(Step(kind, steps.copyOfRange(i, i + arity)))
             i += arity
         }
+        for (step in parsed.filter { it.isMovedShadow }.takeLast(MAX_OWN_LAYERS)) step.castsAlone = true
         return parsed
     }
 

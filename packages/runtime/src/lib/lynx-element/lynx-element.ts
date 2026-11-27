@@ -2683,7 +2683,10 @@ export class LynxElement implements BaseLynxElement {
     const lang = value == null ? undefined : String(value);
     if (lang === this.#lang) return;
     this.#lang = lang;
-    if (this.#quoteMarks || this.#holdsQuote) {
+    // And one with no JS children, which may hold a hydrated <q> without
+    // the flag (see #eachQuoteChild); one Angular is building has none in
+    // it yet, so that costs a look at no children.
+    if (this.#quoteMarks || this.#holdsQuote || !this.#children) {
       const [depth, language] = this.#outerQuoteContext();
       this.#setQuoteDepth(depth, language);
     }
@@ -2768,14 +2771,15 @@ export class LynxElement implements BaseLynxElement {
   }
 
   /**
-   * Calls `fn` with each element among the native descendants of `ref`
-   * that holds a `<q>` or is one, nearest first (see #holdsQuote). It looks
-   * through the elements a flag can't be trusted on, which a `<q>` can be
-   * in without it: an anonymous `<text>` (see #regroup), a snapshot's
-   * element without a wrapper, and a wrapper with no JS children, which
-   * hydration leaves an element (or parentNode() makes one for a snapshot's
-   * element, after the `<q>`s below it flagged their ancestors). A wrapper
-   * Angular put children in has the flag if a `<q>` went in.
+   * Calls `fn` with each nearest wrapper among the native descendants of
+   * `ref` that holds a `<q>` or is one (see #holdsQuote), or may without
+   * the flag: a wrapper with no JS children, which hydration leaves an
+   * element, or parentNode() makes for a snapshot's element after the
+   * `<q>`s below it flagged their ancestors. `fn` gets those too, rather
+   * than their children, so their own `lang` applies below them. A wrapper
+   * Angular put children in has the flag if a `<q>` went in. It looks
+   * through what isn't one of Angular's elements: an anonymous `<text>`
+   * (see #regroup) and a snapshot's element without a wrapper.
    */
   static #eachQuoteChild(
     ref: ElementRef,
@@ -2783,10 +2787,10 @@ export class LynxElement implements BaseLynxElement {
   ): void {
     for (let at = __FirstElement(ref); at; at = __NextElement(at)) {
       const child = LynxElement.#registered(__GetElementUniqueID(at));
-      if (child && (child.#holdsQuote || child.#quoteMarks)) {
-        fn(child);
-      } else if (!child || child.#anonymous || !child.#children) {
+      if (!child || child.#anonymous) {
         LynxElement.#eachQuoteChild(at, fn);
+      } else if (child.#holdsQuote || child.#quoteMarks || !child.#children) {
+        fn(child);
       }
     }
   }

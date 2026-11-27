@@ -3442,9 +3442,15 @@ describe('<q>, element by element', () => {
 
     // A wrapper made later for the element between them (as parentNode()
     // makes one) has no flag, and the change still reaches the <q>.
-    new LynxElement(wrapperRef as never);
+    const wrapper = new LynxElement(wrapperRef as never);
     view.setAttribute('lang', 'fr');
     expect(leafText(openRef)).toBe('«');
+    // Its own lang, set then, reaches the <q>, and keeps it when the
+    // view's changes.
+    wrapper.setAttribute('lang', 'de');
+    expect(leafText(openRef)).toBe('„');
+    view.setAttribute('lang', 'ja');
+    expect(leafText(openRef)).toBe('„');
   });
 
   it('gives a <q> put in a hydrated element the language above it', () => {
@@ -3493,6 +3499,10 @@ describe('<q>, element by element', () => {
     expect(drawn(q)).toEqual(['«', '»']);
 
     list.setAttribute('lang', 'de');
+    expect(drawn(q)).toEqual(['„', '“']);
+    // A lang on the element with no <q> beside it changes nothing of the
+    // <q>'s.
+    other.setAttribute('lang', 'fr');
     expect(drawn(q)).toEqual(['„', '“']);
   });
 

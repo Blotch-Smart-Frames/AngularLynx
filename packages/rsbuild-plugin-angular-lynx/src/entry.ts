@@ -223,9 +223,21 @@ export const applyEntry = (
       });
 
       const mainThreadEntry = `${entryName}__main-thread`;
-      const mainThreadName = path.posix.join(`${entryName}/main-thread.js`);
+      // The native bundle's scripts go in the intermediate folder (`.lynx/`),
+      // as React Lynx's do: the bundle carries them, and LynxEncodePlugin
+      // deletes them after encoding unless DEBUG keeps them. The web bundle's
+      // stay at the top, where WebEncodePlugin keeps their source maps after
+      // inlining the scripts. When both were at `main/main-thread.js`, the web
+      // build's map overwrote the native one beside the native script that
+      // DEBUG keeps, and didn't fit it (issue #722).
+      const scriptsDir = isLynx ? lynxConfig.resolveIntermediateDir() : '';
+      const mainThreadName = path.posix.join(
+        scriptsDir,
+        `${entryName}/main-thread.js`,
+      );
       const backgroundEntry = entryName;
       const backgroundThreadName = path.posix.join(
+        scriptsDir,
         `${entryName}/background-thread.js`,
       );
 

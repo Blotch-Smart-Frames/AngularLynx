@@ -6,6 +6,7 @@ import {
   PACKAGES_DIR,
   THIRD_PARTY,
 } from './layers.js';
+import { findInlineSourceMap } from './inline-source-map.js';
 import { definesClassPurely } from './pure-classes.js';
 
 export type PrivateMethodsOptions = {
@@ -1531,43 +1532,6 @@ const keyForFile = (filename: string, root: string): string => {
 };
 
 /**
- * The inline source map Angular's transformer and compiler append, as the
- * text of a `//` comment.
- */
-const INLINE_SOURCE_MAP =
-  /^\/\/# sourceMappingURL=data:application\/json(?:;charset=utf-8)?;base64,([A-Za-z0-9+/]+=*)/;
-
-/**
- * Where the base64 of the module's inline source map is: in the last `//`
- * comment at its top level that holds one, the one a bundler reads. Only a
- * comment between the module's statements, or before or after them, counts:
- * the same text in a template literal or a block comment is the code's own.
- * The map isn't always the last thing in the module: the plugin appends the
- * code that takes hot updates, and component scope IDs, after the one
- * Angular's compiler left (transform-module.ts).
- */
-const findInlineSourceMap = (
-  sourceFile: ts.SourceFile,
-): { start: number; end: number } | undefined => {
-  const { text } = sourceFile;
-  let found: { start: number; end: number } | undefined;
-  const readComments = (position: number) =>
-    ts.forEachLeadingCommentRange(text, position, (start, end, kind) => {
-      const match =
-        kind === ts.SyntaxKind.SingleLineCommentTrivia &&
-        INLINE_SOURCE_MAP.exec(text.slice(start, end));
-      if (match) {
-        found = { start: end - match[1]!.length, end };
-      }
-    });
-  readComments(0);
-  for (const statement of sourceFile.statements) {
-    readComments(statement.end);
-  }
-  return found;
-};
-
-/**
  * The edit that moves the columns of the module's inline source map by
  * `edits`, made to the code the map was written for. None when it has no
  * inline map, or one this can't read: the build goes on, with a map that's as
@@ -1623,7 +1587,8 @@ const shiftInlineSourceMap = (
     return undefined;
   }
   return {
-    ...found,
+    start: found.start,
+    end: found.end,
     text: Buffer.from(JSON.stringify(map)).toString('base64'),
   };
 };

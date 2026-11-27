@@ -163,8 +163,9 @@ const createLynxConfig = () => ({
     ({ entryName, platform }: { entryName: string; platform: string }) =>
       `${entryName}.${platform}.bundle`,
   ),
-  resolveIntermediateDir: vi.fn(
-    ({ entryName }: { entryName: string }) => `.lynx/${entryName}`,
+  // Rspeedy's: the folder itself without an entry, or the entry's in it.
+  resolveIntermediateDir: vi.fn((context?: { entryName: string }) =>
+    context ? `.lynx/${context.entryName}` : '.lynx',
   ),
   // `undefined` is what the real config returns unless `output.filename.bundle`
   // is a function.
@@ -762,6 +763,40 @@ describe('applyEntry', () => {
     const templateUse = pluginUses[0];
     expect((templateUse.args[0] as any).filename).toBe('main.lynx.bundle');
     expect((templateUse.args[0] as any).intermediate).toBe('.lynx/main');
+  });
+
+  // The web build keeps each script's source map at the script's name after
+  // inlining the script. When the native bundle's scripts had the same
+  // names, the web map overwrote the native one beside the script DEBUG
+  // keeps (issue #722). React Lynx puts the native ones in the intermediate
+  // folder too.
+  it("puts the native bundle's scripts in the intermediate folder, and the web bundle's at the top", () => {
+    const filenames = (name: string) => {
+      const { api, triggerChain } = createMockApi();
+      const { chain, entryBuilders } = createMockChain({
+        entries: { main: { values: () => ['./src/main.ts'] } },
+      });
+      applyEntry(
+        api as never,
+        entryOptions,
+        createBackgroundEntries(),
+        new Set(),
+      );
+      triggerChain(chain, { name, config: {} }, false);
+      return [
+        entryBuilders['main__main-thread'].add.mock.calls[0][0].filename,
+        entryBuilders['main'].add.mock.calls[0][0].filename,
+      ];
+    };
+
+    expect(filenames('lynx')).toEqual([
+      '.lynx/main/main-thread.js',
+      '.lynx/main/background-thread.js',
+    ]);
+    expect(filenames('web')).toEqual([
+      'main/main-thread.js',
+      'main/background-thread.js',
+    ]);
   });
 
   it('leaves the lazy bundle filename to the template plugin by default', () => {

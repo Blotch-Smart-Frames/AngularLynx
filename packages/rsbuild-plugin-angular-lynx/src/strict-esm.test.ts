@@ -117,7 +117,7 @@ declare module 'module-wrapper';
       cwd: appDir,
       rspeedyConfig: {
         // A development build (`optimization: false`) keeps the main
-        // thread's code in its own file next to the bundle.
+        // thread's code in its own file, in the intermediate folder.
         mode: 'development',
         // No hot update clients: run from source, they're TypeScript that
         // only the package's own build compiles.
@@ -156,7 +156,10 @@ declare module 'module-wrapper';
     const logged: unknown[][] = [];
     const noop = () => {};
     vm.runInNewContext(
-      fs.readFileSync(path.join(appDir, 'dist/main/main-thread.js'), 'utf8'),
+      fs.readFileSync(
+        path.join(appDir, 'dist/.lynx/main/main-thread.js'),
+        'utf8',
+      ),
       {
         console: {
           info: (...args: unknown[]) => logged.push(args),

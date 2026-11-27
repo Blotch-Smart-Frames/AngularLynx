@@ -193,6 +193,7 @@ describe('applyLayers', () => {
         THIRD_PARTY,
       );
       expect(getOneOf(LAYERS.BACKGROUND)._use.options).toHaveBeenCalledWith({
+        inputSourceMap: false,
         jsc: {
           target: 'es2015',
           assumptions: { privateFieldsAsProperties: true },
@@ -219,6 +220,7 @@ describe('applyLayers', () => {
       expect(thirdParty.test).toHaveBeenCalledWith(/\.[cm]?[jt]sx?$/);
       expect(thirdParty.exclude.add).not.toHaveBeenCalled();
       expect(thirdParty._use.options).toHaveBeenCalledWith({
+        inputSourceMap: false,
         jsc: {
           target: 'es2015',
           parser: { syntax: 'typescript' },
@@ -303,6 +305,7 @@ describe('applyLayers', () => {
         THIRD_PARTY,
       );
       expect(getOneOf(LAYERS.MAIN_THREAD)._use.options).toHaveBeenCalledWith({
+        inputSourceMap: false,
         jsc: {
           target: 'es2019',
           assumptions: { privateFieldsAsProperties: true },
@@ -329,6 +332,7 @@ describe('applyLayers', () => {
       expect(thirdParty.test).toHaveBeenCalledWith(/\.[cm]?[jt]sx?$/);
       expect(thirdParty.exclude.add).not.toHaveBeenCalled();
       expect(thirdParty._use.options).toHaveBeenCalledWith({
+        inputSourceMap: false,
         jsc: {
           target: 'es2019',
           parser: { syntax: 'typescript' },
@@ -420,6 +424,32 @@ describe("the first-party branch's compile", () => {
     expect(code).toContain('new WeakMap');
     expect(runInNewContext(code)).toEqual(['1:0', '0:1', 2, 0]);
   });
+});
+
+describe('source maps', () => {
+  // Left to itself, SWC took a module's map from its `sourceMappingURL`
+  // comment, or from the file beside it with `.map` added: a published
+  // library's map, laid over code the plugin's transform had rewritten
+  // (issue #722). The transform hands the loader chain the map the code does
+  // have (inline-source-map.ts), which rspack passes SWC whatever this says.
+  it.each([LAYERS.BACKGROUND, LAYERS.MAIN_THREAD])(
+    "never has SWC look for a module's map itself in the %s layer",
+    (layer) => {
+      const { api, triggerHandler } = createMockApi();
+      const { chain, getOneOf } = createMockChain();
+      applyLayers(api as never);
+      triggerHandler(chain);
+
+      for (const branch of [
+        `${layer}-angular-lynx`,
+        layer,
+        `${layer}-third-party`,
+      ]) {
+        const [options] = getOneOf(branch)._use.options.mock.calls[0]!;
+        expect(options.inputSourceMap).toBe(false);
+      }
+    },
+  );
 });
 
 describe("AngularLynx's packages' branch", () => {

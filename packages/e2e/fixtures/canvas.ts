@@ -287,7 +287,9 @@ export class CanvasRoute {
    * and one off a corner draws once over its shadow (issue #755), whose
    * strength follows the shape's alpha (issue #792), with a filter and
    * without; a shadow with a blur wider than the layers' 256 px cap still
-   * reaches a shape the canvas's 256 px round keeps (issue #795); a faded square's shadow takes globalAlpha and, with no blur,
+   * reaches a shape the canvas's 256 px round keeps (issue #795), and a
+   * shadow, a blur() and a drop-shadow() that wide reach a shape farther
+   * off still (issue #814); a faded square's shadow takes globalAlpha and, with no blur,
    * has sharp edges (issue #796); a green image, and a square filled with a
    * green gradient and with a green pattern, each cast a red shadow, and so
    * does a green image far off the canvas (issue #759); and blur() softens a
@@ -383,6 +385,38 @@ export class CanvasRoute {
       return pixel(wide, 1, 4);
     })();
 
+    // A shadow, a blur() and a drop-shadow() whose deviation is past about
+    // 85 px reach farther than the layers' 256 px cap: the shapes end 300 px
+    // off the canvas, and their faint edge reaches it (issue #814). They
+    // were cut away, and the canvas stayed see-through; now each blur is
+    // worked out in a smaller layer that takes in its whole reach. Chromium
+    // reads alpha 64 and 49 at the canvas's left and right edges for the
+    // shadow, and 38 and 21 for the blur and the drop shadow. The shadow is
+    // cast through grayscale(1), as Chromium caps the blur of a shadow
+    // without a filter (every shadowBlur from 300 to 1000 draws the same, and
+    // this one not at all); the shells cast both alike.
+    const widerReads = [
+      (() => {
+        const wider = make(100, 100);
+        wider.filter = 'grayscale(1)';
+        wider.shadowColor = 'rgb(255, 0, 0)';
+        wider.shadowBlur = 1000;
+        wider.fillRect(-1000, -1000, 700, 2000);
+        return [pixel(wider, 0, 50), pixel(wider, 99, 50)];
+      })(),
+      ...['blur(300px)', 'drop-shadow(0 0 300px red)'].map((filter) => {
+        const wider = make(100, 100);
+        wider.filter = filter;
+        wider.fillRect(-2000, -2000, 1700, 4000);
+        return [pixel(wider, 0, 50), pixel(wider, 99, 50)];
+      }),
+    ];
+    const widerExpected = [
+      [255, 0, 0, 64, 49],
+      [0, 0, 0, 38, 21],
+      [255, 0, 0, 39, 21],
+    ];
+
     // A shape faded with globalAlpha casts a shadow faded as much, and a
     // shadow with no blur has sharp edges (issue #796): both of the 2 px
     // square's shadow columns read half red. Android's paint shadow read
@@ -465,6 +499,20 @@ export class CanvasRoute {
       wideBlurRead[2] <= 2 &&
       wideBlurRead[3] > 0 &&
       wideBlurRead[3] <= 40 &&
+      widerReads.every(([edge, across], index) => {
+        const [r, g, b, alpha, acrossAlpha] = widerExpected[index];
+        /**
+         * The blur is three box blurs, within a few percent of the
+         * Gaussian, and a faint color loses precision as getImageData() divides
+         * its alpha back out.
+         */
+        const close = (actual: number[], expected: number[], within: number) =>
+          actual.every((value, at) => Math.abs(value - expected[at]) <= within);
+        return (
+          close(edge, [r, g, b, alpha], 8) &&
+          close(across, [r, g, b, acrossAlpha], 12)
+        );
+      }) &&
       fadedShadowReads.every((read) => near(read, [255, 0, 0, 128])) &&
       ownColorReads.every(
         ([shape, cast]) =>
@@ -486,6 +534,7 @@ export class CanvasRoute {
           ...farReads,
           ...cornerReads,
           wideBlurRead,
+          ...widerReads.flat(),
           ...fadedShadowReads,
           ...ownColorReads.flat(),
           ...farImageReads,

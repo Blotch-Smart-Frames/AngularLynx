@@ -192,7 +192,7 @@ typedef struct {
 @property(nonatomic) CGFloat letterSpacing;
 @property(nonatomic) BOOL smoothing;
 @property(nonatomic) NSInteger smoothingQuality;
-/// The filter, as its steps (see applyFilter), and how far they reach.
+/// The filter, as its steps (see parsedFilter), and how far they reach.
 @property(nonatomic, copy) NSArray<NSNumber *> *filterSteps;
 @property(nonatomic) NSInteger filterPadding;
 @end
@@ -582,13 +582,16 @@ static void gaussianBlur(uint8_t *bytes, size_t width, size_t height, double sig
   free(scratch);
 }
 
-/// drop-shadow(): the alpha of what's drawn, moved by the offset (to the
-/// nearest pixel), blurred and in the color, drawn under it.
-static void dropShadow(uint8_t *bytes, size_t width, size_t height, double dx, double dy,
-                       double sigma, double r, double g, double b, double a) {
+/// The shadow of what's in `bytes`: its alpha, moved by the offset (to the
+/// nearest pixel), blurred by the deviation and in the color (red, green and
+/// blue 0 to 255, alpha 0 to 1), as new premultiplied bytes the caller
+/// frees, or NULL if they can't be made.
+static uint8_t *newShadowBytes(const uint8_t *bytes, size_t width, size_t height, double dx,
+                               double dy, double sigma, double r, double g, double b,
+                               double a) {
   size_t length = width * height * 4;
   uint8_t *shadow = calloc(length, 1);
-  if (!shadow) return;
+  if (!shadow) return NULL;
   long offsetX = lround(dx), offsetY = lround(dy);
   for (size_t y = 0; y < height; y++) {
     long fromY = (long)y - offsetY;
@@ -602,13 +605,23 @@ static void dropShadow(uint8_t *bytes, size_t width, size_t height, double dx, d
   gaussianBlur(shadow, width, height, sigma);
   for (size_t i = 0; i < length; i += 4) {
     double shadowAlpha = shadow[i + 3] / 255.0 * a;
-    double under = 1 - bytes[i + 3] / 255.0;
-    bytes[i] = clampByte(bytes[i] + r * shadowAlpha * under);
-    bytes[i + 1] = clampByte(bytes[i + 1] + g * shadowAlpha * under);
-    bytes[i + 2] = clampByte(bytes[i + 2] + b * shadowAlpha * under);
-    bytes[i + 3] = clampByte(bytes[i + 3] + 255 * shadowAlpha * under);
+    shadow[i] = clampByte(r * shadowAlpha);
+    shadow[i + 1] = clampByte(g * shadowAlpha);
+    shadow[i + 2] = clampByte(b * shadowAlpha);
+    shadow[i + 3] = clampByte(255 * shadowAlpha);
   }
-  free(shadow);
+  return shadow;
+}
+
+/// `under` drawn under `bytes`, source-over, as drop-shadow() puts its
+/// shadow under what's drawn. Both are premultiplied, `pixels` long.
+static void drawUnder(uint8_t *bytes, const uint8_t *under, size_t pixels) {
+  for (size_t i = 0; i < pixels * 4; i += 4) {
+    double uncovered = 1 - bytes[i + 3] / 255.0;
+    for (int channel = 0; channel < 4; channel++) {
+      bytes[i + channel] = clampByte(bytes[i + channel] + under[i + channel] * uncovered);
+    }
+  }
 }
 
 /// globalAlpha on a layer's bytes, which are premultiplied, so every
@@ -618,30 +631,146 @@ static void scaleAlpha(uint8_t *bytes, size_t pixels, double alpha) {
   for (size_t i = 0; i < pixels * 4; i++) bytes[i] = clampByte(bytes[i] * alpha);
 }
 
-/// The filter's steps, as the runtime sends them, on a layer's bytes.
-static void applyFilter(uint8_t *bytes, size_t width, size_t height, NSArray<NSNumber *> *steps) {
-  NSUInteger count = steps.count, i = 0;
+/// A step of the filter: its kind and its numbers.
+typedef struct {
+  NSInteger kind;
   double values[20];
+} ALFilterStep;
+
+/// The filter's steps, as the runtime sends them: ALFilterSteps, end to end.
+static NSData *parsedFilter(NSArray<NSNumber *> *steps) {
+  NSUInteger count = steps.count, i = 0;
+  NSMutableData *parsed = [NSMutableData data];
   while (i < count) {
     NSInteger kind = steps[i++].integerValue;
     NSUInteger arity = kind == ALFilterBlur ? 1 : kind == ALFilterMatrix ? 20 : kind == ALFilterDropShadow ? 7 : 0;
     // A step it doesn't know, or one cut short, ends the list: what's after
     // it would be read as the wrong numbers.
-    if (arity == 0 || i + arity > count) return;
-    for (NSUInteger k = 0; k < arity; k++) values[k] = steps[i + k].doubleValue;
+    if (arity == 0 || i + arity > count) break;
+    ALFilterStep step = {kind, {0}};
+    for (NSUInteger k = 0; k < arity; k++) step.values[k] = steps[i + k].doubleValue;
+    [parsed appendBytes:&step length:sizeof(step)];
     i += arity;
-    switch (kind) {
-      case ALFilterBlur:
-        gaussianBlur(bytes, width, height, values[0]);
-        break;
-      case ALFilterMatrix:
-        applyColorMatrix(bytes, width * height, values);
-        break;
-      default:
-        dropShadow(bytes, width, height, values[0], values[1], values[2], values[3], values[4],
-                   values[5], values[6]);
+  }
+  return parsed;
+}
+
+/// A step's deviation, for a blur or a drop shadow; 0 for a color matrix.
+static double stepSigma(const ALFilterStep *step) {
+  return step->kind == ALFilterBlur ? step->values[0] : step->kind == ALFilterDropShadow ? step->values[2] : 0;
+}
+
+/// How far a step can move what's drawn, in the canvas's pixels, as
+/// css-filter.ts counts a step's padding: three deviations, and a drop
+/// shadow's offset. Uncapped, unlike the padding the runtime sends, which
+/// stops at 256.
+static double stepReach(const ALFilterStep *step) {
+  if (step->kind == ALFilterBlur) return ceil(step->values[0] * 3);
+  if (step->kind == ALFilterDropShadow) {
+    return ceil(step->values[2] * 3) + ceil(MAX(fabs(step->values[0]), fabs(step->values[1])));
+  }
+  return 0;
+}
+
+/// One step on a layer's bytes, in a layer `scale` of whose pixels make a
+/// canvas pixel: its lengths (a deviation, an offset) are in the canvas's
+/// pixels, so they're scaled to the layer's.
+static void applyStep(uint8_t *bytes, size_t width, size_t height, const ALFilterStep *step,
+                      double scale) {
+  const double *v = step->values;
+  switch (step->kind) {
+    case ALFilterBlur:
+      gaussianBlur(bytes, width, height, v[0] * scale);
+      break;
+    case ALFilterMatrix:
+      applyColorMatrix(bytes, width * height, v);
+      break;
+    default: {
+      uint8_t *shadow = newShadowBytes(bytes, width, height, v[0] * scale, v[1] * scale,
+                                       v[2] * scale, v[3], v[4], v[5], v[6]);
+      if (!shadow) return;
+      drawUnder(bytes, shadow, width * height);
+      free(shadow);
     }
   }
+}
+
+/// A layer a draw goes into, over part of the canvas's pixels: from (left,
+/// top), `width` by `height` of its pixels, `scale` of them to a canvas
+/// pixel; `exists` is NO for none. A layer at the canvas's resolution
+/// (scale 1) lies on whole pixels, so its pixels line up with the canvas's.
+typedef struct {
+  BOOL exists;
+  CGFloat left, top;
+  size_t width, height;
+  CGFloat scale;
+} ALLayer;
+
+static const ALLayer NO_LAYER = {NO, 0, 0, 0, 0, 0};
+
+static ALLayer layerOfRect(CGRect rect) {
+  return (ALLayer){YES, rect.origin.x, rect.origin.y, (size_t)rect.size.width,
+                   (size_t)rect.size.height, 1};
+}
+
+/// Where a layer lies in the canvas's pixels.
+static CGRect layerBounds(ALLayer layer) {
+  return CGRectMake(layer.left, layer.top, layer.width / layer.scale, layer.height / layer.scale);
+}
+
+/// The bytes of layer `from` resampled onto layer `to`, moved by (shiftX,
+/// shiftY) canvas pixels: read with bilinear filtering at the center of each
+/// of `to`'s pixels, transparent past `from`'s edges, as new bytes the
+/// caller frees (NULL if they can't be made). It's how a blur worked out in
+/// a smaller layer is scaled up, and how a drop shadow's offset lands
+/// between two pixels, which a blur that wide has no edge to show.
+static uint8_t *newResampled(const uint8_t *src, ALLayer from, ALLayer to, double shiftX,
+                             double shiftY) {
+  uint8_t *dst = calloc(to.width * to.height * 4, 1);
+  long *xs = malloc(sizeof(long) * (to.width + 1));
+  double *fx = malloc(sizeof(double) * (to.width + 1));
+  if (!dst || !xs || !fx) {
+    free(dst);
+    free(xs);
+    free(fx);
+    return NULL;
+  }
+  // Where each column's center falls in `from`, as the pixel before it and
+  // how far past that pixel's center it is. Clamped, so a far shift stays a
+  // long (and reads nothing).
+  for (size_t i = 0; i < to.width; i++) {
+    double u = (to.left + (i + 0.5) / to.scale - shiftX - from.left) * from.scale - 0.5;
+    u = MIN(MAX(u, -2.0), (double)from.width + 1);
+    xs[i] = (long)floor(u);
+    fx[i] = u - floor(u);
+  }
+  long w = (long)from.width, h = (long)from.height;
+  for (size_t j = 0; j < to.height; j++) {
+    double v = (to.top + (j + 0.5) / to.scale - shiftY - from.top) * from.scale - 0.5;
+    v = MIN(MAX(v, -2.0), (double)from.height + 1);
+    long y = (long)floor(v);
+    double wy = v - floor(v);
+    if (y < -1 || y >= h) continue;
+    for (size_t i = 0; i < to.width; i++) {
+      long x = xs[i];
+      if (x < -1 || x >= w) continue;
+      double wx = fx[i];
+      uint8_t *out = dst + (j * to.width + i) * 4;
+      for (int channel = 0; channel < 4; channel++) {
+        double corners[4] = {0, 0, 0, 0};
+        for (int k = 0; k < 4; k++) {
+          long cx = x + (k & 1), cy = y + (k >> 1);
+          if (cx >= 0 && cy >= 0 && cx < w && cy < h) corners[k] = src[(cy * w + cx) * 4 + channel];
+        }
+        double top = corners[0] * (1 - wx) + corners[1] * wx;
+        double bottom = corners[2] * (1 - wx) + corners[3] * wx;
+        out[channel] = clampByte(top * (1 - wy) + bottom * wy);
+      }
+    }
+  }
+  free(xs);
+  free(fx);
+  return dst;
 }
 
 #pragma mark - The context
@@ -1135,91 +1264,352 @@ static BOOL reducesAlpha(NSInteger composite) {
   return s.shadowA > 0 && (s.shadowBlur > 0 || s.shadowOffsetX != 0 || s.shadowOffsetY != 0);
 }
 
-/// Where, in the canvas's pixels, the layers a draw goes into lie (see
-/// composite:). `shape` is the canvas grown by the filter's reach, so a
-/// shape just off the canvas still blurs onto it. With a shadow, the shadow
-/// needs the part of the shape that casts onto the canvas: the canvas moved
-/// back by the shadow's offset, grown by its blur (three of its deviations,
-/// which are half the blur) and the filter's reach, capped at 256 pixels, as
-/// css-filter.ts caps the filter's, so a huge blur makes no huge layer.
-/// When one rectangle round both is no bigger than the two, `shape` grows to
-/// take that part in, and `shadow` is CGRectNull. Otherwise it's `shadow`, a
-/// second layer: one rectangle round both would grow with the offset, and a
-/// shadow cast from far off the canvas (shadowOffsetX = 10000 and a shape at
-/// x = -10000) would make a huge layer, or, capped, cut the shape away.
-///
-/// When the blur's reach passes the cap, the shadow's part also takes in the
-/// part of the canvas grown by 256 pixels (the one layer it was cast from
-/// before #787) that lies within the blur's whole reach, so a shape the old
-/// layer kept still casts its shadow (issue #795): with shadowOffsetX = -100,
-/// the part round the moved canvas starts at x = -156, and a shape at
-/// x = -250 would be cut away. It does so only when one rectangle round the
-/// two is no bigger than the two, so a far offset still makes no huge layer.
+/// The most a layer at the canvas's resolution reaches past the part of the
+/// canvas it's for, as css-filter.ts caps the filter's padding. A blur or
+/// shadow that reaches farther goes through a smaller layer too (see
+/// -layers:count:), which this keeps about the capped layer's size.
+static const CGFloat MAX_REACH = 256;
+
+/// The deviation, in a smaller layer's pixels, from which a blur is worked
+/// out there and scaled up (see isWide): a blur that wide has no detail a
+/// pixel of that layer would lose.
+static const CGFloat WIDE_SIGMA = 4;
+
+/// Whether a step blurs widely enough, in a layer at `scale`, to be worked
+/// out there and scaled up: its deviation there is at least WIDE_SIGMA of
+/// the layer's pixels, so the detail the smaller layer loses is blurred
+/// away. Skia scales a wide blur down the same way.
+static BOOL isWide(const ALFilterStep *step, CGFloat scale) {
+  return stepSigma(step) * scale >= WIDE_SIGMA;
+}
+
+static double reachOf(const ALFilterStep *steps, NSUInteger count) {
+  double reach = 0;
+  for (NSUInteger i = 0; i < count; i++) reach += stepReach(&steps[i]);
+  return reach;
+}
+
+/// A layer over `base` grown by `reach`, at `scale`, which keeps it about
+/// the size `base` grown by MAX_REACH is.
+static ALLayer lowLayer(CGRect base, double reach, double scale) {
+  // (side + 2 * reach) * scale, without multiplying a huge reach out.
+  return (ALLayer){YES,
+                   base.origin.x - reach,
+                   base.origin.y - reach,
+                   (size_t)ceil(base.size.width * scale + 2 * reach * scale),
+                   (size_t)ceil(base.size.height * scale + 2 * reach * scale),
+                   scale};
+}
+
+/// The layers one filtered draw (or the shadow cast from it) goes into:
+/// `full`, at the canvas's resolution, and `low`, a smaller one that reaches
+/// as far as the filter's wide blurs do (see -newRendered:...), or either
+/// alone. The shape's plan always has `full`.
 typedef struct {
-  CGRect shape;
-  CGRect shadow;
+  ALLayer full;
+  ALLayer low;
+} ALPlan;
+
+static const ALPlan NO_PLAN = {{NO, 0, 0, 0, 0, 0}, {NO, 0, 0, 0, 0, 0}};
+
+/// The plan the shape is drawn into, and the one the shadow is cast from,
+/// or NO_PLAN, when it's cast from the shape's.
+typedef struct {
+  ALPlan shape;
+  ALPlan shadow;
 } ALLayers;
 
 static CGFloat area(CGRect rect) {
   return rect.size.width * rect.size.height;
 }
 
-- (ALLayers)layers {
+/// The plan for a filtered draw that needs `base` (the canvas, or the
+/// canvas moved back by the shadow's offset) and the filter's reach round
+/// it, and `extra` more for the full layer (a shadow's blur, when the
+/// shadow is cast from it).
+///
+/// A layer the canvas's resolution grows by the reach, capped at MAX_REACH,
+/// so a huge blur makes no huge layer. Past the cap, when a step blurs
+/// widely (isWide), a low layer, scaled down by MAX_REACH over the reach,
+/// takes in the whole reach at about the size the capped layer was (issue
+/// #814), and the full layer needs to reach only as far as the steps after
+/// the last wide blur do.
+- (ALPlan)planFor:(CGRect)base
+            steps:(const ALFilterStep *)steps
+            count:(NSUInteger)count
+            extra:(CGFloat)extra {
   ALCanvas2DState *s = _state;
-  CGRect canvas = CGRectMake(0, 0, _width, _height);
-  CGFloat filterReach = s.filterSteps.count > 0 ? MIN(s.filterPadding, 256) : 0;
-  CGRect shape = CGRectInset(canvas, -filterReach, -filterReach);
-  if (![self shadowVisible]) return (ALLayers){shape, CGRectNull};
-  CGFloat fullReach = filterReach + ceil(s.shadowBlur * 1.5);
-  CGFloat reach = MIN(fullReach, 256);
-  CGRect moved = CGRectOffset(canvas, -s.shadowOffsetX, -s.shadowOffsetY);
-  // Whole pixels, so the layer's pixels line up with the canvas's.
-  CGRect source = CGRectIntegral(CGRectInset(moved, -reach, -reach));
-  if (fullReach > 256) {
-    // The old layer, cut to the blur's whole reach round the moved canvas:
-    // past that, a shape casts nothing onto the canvas.
-    CGRect kept = CGRectIntersection(CGRectInset(canvas, -256, -256),
-                                     CGRectInset(moved, -fullReach, -fullReach));
-    if (!CGRectIsEmpty(kept)) {
-      kept = CGRectIntegral(kept);
-      CGRect grown = CGRectUnion(source, kept);
-      if (area(grown) <= area(source) + area(kept)) source = grown;
+  double reach = reachOf(steps, count);
+  CGFloat capped = count > 0 ? MIN(s.filterPadding, MAX_REACH) : 0;
+  CGFloat margin = capped + extra;
+  ALLayer low = NO_LAYER;
+  if (reach > MAX_REACH && isfinite(reach)) {
+    double scale = MAX_REACH / reach;
+    NSInteger lastWideBlur = -1;
+    BOOL anyWide = NO;
+    for (NSUInteger i = 0; i < count; i++) {
+      if (!isWide(&steps[i], scale)) continue;
+      anyWide = YES;
+      if (steps[i].kind == ALFilterBlur) lastWideBlur = (NSInteger)i;
+    }
+    if (anyWide) {
+      double after = 0;
+      for (NSUInteger i = (NSUInteger)(lastWideBlur + 1); i < count; i++) {
+        if (!isWide(&steps[i], scale)) after += stepReach(&steps[i]);
+      }
+      margin = after + extra;
+      low = lowLayer(base, reach, scale);
     }
   }
-  CGRect both = CGRectUnion(shape, source);
-  if (area(both) > area(shape) + area(source)) return (ALLayers){shape, source};
-  return (ALLayers){both, CGRectNull};
+  CGFloat grown = ceil(MIN(margin, MAX_REACH));
+  return (ALPlan){layerOfRect(CGRectIntegral(CGRectInset(base, -grown, -grown))), low};
 }
 
-/// What `draw` draws over `rect` of the canvas's pixels, as an image: drawn
-/// into a transparent layer, then, with a filter, through globalAlpha and
-/// the filter. NULL if the layer can't be made.
-- (CGImageRef)newLayerImage:(CGRect)rect draw:(void (^)(CGContextRef c))draw CF_RETURNS_RETAINED {
+/// Where, in the canvas's pixels, the layers a draw goes into lie (see
+/// composite:). The shape's is the canvas grown by the filter's reach, so a
+/// shape just off the canvas still blurs onto it (see -planFor:...). With a
+/// shadow, the shadow needs the part of the shape that casts onto the
+/// canvas: the canvas moved back by the shadow's offset, grown by its blur
+/// (three of its deviations, which are half the blur) and the filter's
+/// reach.
+///
+/// Within MAX_REACH of that, when one rectangle round both is no bigger than
+/// the two, the shape's layer grows to take that part in, and the shadow's
+/// plan is NO_PLAN. Otherwise it's a second layer: one rectangle round both
+/// would grow with the offset, and a shadow cast from far off the canvas
+/// (shadowOffsetX = 10000 and a shape at x = -10000) would make a huge
+/// layer, or, capped, cut the shape away.
+///
+/// Past MAX_REACH, the shadow's layer is a smaller one that takes in the
+/// whole reach (issue #814): a 1000 px shadowBlur reaches 1500 px, and a
+/// layer that far round the canvas would be thousands of pixels a side.
+/// When the shadow's blur is wide at that layer's scale (WIDE_SIGMA), the
+/// shape is drawn, filtered and cast from in it, and the shadow is scaled up
+/// as it's drawn, as Skia scales a wide blur down: the detail the layer
+/// loses is blurred away. Otherwise the reach is the filter's, and the
+/// shadow's layer is planned as the shape's is, grown by the shadow's blur
+/// too.
+- (ALLayers)layers:(const ALFilterStep *)steps count:(NSUInteger)count {
   ALCanvas2DState *s = _state;
-  size_t width = (size_t)rect.size.width, height = (size_t)rect.size.height;
+  CGRect canvas = CGRectMake(0, 0, _width, _height);
+  ALPlan shape = [self planFor:canvas steps:steps count:count extra:0];
+  if (![self shadowVisible]) return (ALLayers){shape, NO_PLAN};
+  CGFloat blurReach = ceil(s.shadowBlur * 1.5);
+  double fullReach = reachOf(steps, count) + blurReach;
+  CGRect moved = CGRectOffset(canvas, -s.shadowOffsetX, -s.shadowOffsetY);
+  if (fullReach > MAX_REACH) {
+    // Whole pixels, so a full layer's pixels line up with the canvas's.
+    CGRect base = CGRectIntegral(moved);
+    double scale = MAX_REACH / fullReach;
+    if (isfinite(fullReach) && s.shadowBlur / 2 * scale >= WIDE_SIGMA) {
+      return (ALLayers){shape, {NO_LAYER, lowLayer(base, fullReach, scale)}};
+    }
+    return (ALLayers){shape, [self planFor:base steps:steps count:count extra:blurReach]};
+  }
+  // Within MAX_REACH, so is the filter's reach: the shape's plan is a layer
+  // at the canvas's resolution alone.
+  CGRect source = CGRectIntegral(CGRectInset(moved, -fullReach, -fullReach));
+  CGRect shapeRect = layerBounds(shape.full);
+  CGRect both = CGRectUnion(shapeRect, source);
+  if (area(both) > area(shapeRect) + area(source)) {
+    return (ALLayers){shape, {layerOfRect(source), NO_LAYER}};
+  }
+  return (ALLayers){{layerOfRect(both), NO_LAYER}, NO_PLAN};
+}
+
+/// What `draw` draws into `layer`, as new bytes the caller frees (NULL if
+/// they can't be made): premultiplied RGBA, rows top to bottom, and, with a
+/// filter, through globalAlpha.
+///
+/// The canvas spec takes what's drawn through globalAlpha first, then the
+/// filter, then casts the shadow and composites, outside the clip until then
+/// (since whatwg/html#10674): so a drop-shadow() shows through a see-through
+/// shape. Without a filter, the alpha goes on as the layer's drawn, which
+/// comes to the same.
+- (uint8_t *)newDrawn:(ALLayer)layer draw:(void (^)(CGContextRef c))draw {
+  size_t width = layer.width, height = layer.height;
+  if (width == 0 || height == 0) return NULL;
+  uint8_t *bytes = calloc(width * height * 4, 1);
+  if (!bytes) return NULL;
   CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
-  CGContextRef layer =
-      CGBitmapContextCreate(NULL, width, height, 8, width * 4, space,
+  CGContextRef c = CGBitmapContextCreate(bytes, width, height, 8, width * 4, space,
+                                         kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
+  CGColorSpaceRelease(space);
+  if (!c) {
+    free(bytes);
+    return NULL;
+  }
+  // The canvas's flip, and the layer's place in its pixels, worked out
+  // first in doubles: a small layer's left can be far off the canvas.
+  CGContextTranslateCTM(c, 0, height);
+  CGContextScaleCTM(c, 1, -1);
+  CGContextTranslateCTM(c, -layer.left * layer.scale, -layer.top * layer.scale);
+  if (layer.scale != 1) CGContextScaleCTM(c, layer.scale, layer.scale);
+  draw(c);
+  CGContextRelease(c);
+  if (_state.filterSteps.count > 0) scaleAlpha(bytes, width * height, _state.globalAlpha);
+  return bytes;
+}
+
+/// What `draw` draws through the filter's steps, as `plan` has it: new
+/// bytes (which the caller frees, NULL if they can't be made) over its
+/// `full` layer, or over its `low` one when it has only that.
+///
+/// With both, the low layer is drawn too, and the steps whose deviation is
+/// wide enough there (isWide) are worked out in it and scaled up onto the
+/// full one (newResampled): a wide blur replaces the full layer (so the
+/// steps before it are worked out only in the low one), and a wide drop
+/// shadow's shadow goes under it. The other steps are applied in both. So
+/// whatever the wide steps bring onto the canvas from past the full layer's
+/// reach comes from the low one, which reaches as far as the steps do, and
+/// the rest keeps the canvas's resolution.
+- (uint8_t *)newRendered:(ALPlan)plan
+                   steps:(const ALFilterStep *)steps
+                   count:(NSUInteger)count
+                    draw:(void (^)(CGContextRef c))draw {
+  ALLayer full = plan.full, low = plan.low;
+  if (!full.exists || !low.exists) {
+    ALLayer only = full.exists ? full : low;
+    if (!only.exists) return NULL;
+    uint8_t *bytes = [self newDrawn:only draw:draw];
+    if (!bytes) return NULL;
+    for (NSUInteger i = 0; i < count; i++) {
+      applyStep(bytes, only.width, only.height, &steps[i], only.scale);
+    }
+    return bytes;
+  }
+  NSInteger lastWide = -1, lastWideBlur = -1;
+  for (NSUInteger i = 0; i < count; i++) {
+    if (!isWide(&steps[i], low.scale)) continue;
+    lastWide = (NSInteger)i;
+    if (steps[i].kind == ALFilterBlur) lastWideBlur = (NSInteger)i;
+  }
+  uint8_t *lowBytes = [self newDrawn:low draw:draw];
+  if (!lowBytes) return NULL;
+  uint8_t *fullBytes = NULL;
+  if (lastWideBlur < 0) {
+    fullBytes = [self newDrawn:full draw:draw];
+    if (!fullBytes) {
+      free(lowBytes);
+      return NULL;
+    }
+  }
+  BOOL failed = NO;
+  for (NSUInteger i = 0; i < count && !failed; i++) {
+    const ALFilterStep *step = &steps[i];
+    if (!isWide(step, low.scale)) {
+      // The low layer is read only up to the last wide step.
+      if ((NSInteger)i < lastWide) applyStep(lowBytes, low.width, low.height, step, low.scale);
+      if (fullBytes) applyStep(fullBytes, full.width, full.height, step, 1);
+    } else if (step->kind == ALFilterBlur) {
+      applyStep(lowBytes, low.width, low.height, step, low.scale);
+      if ((NSInteger)i == lastWideBlur) {
+        fullBytes = newResampled(lowBytes, low, full, 0, 0);
+        failed = !fullBytes;
+      }
+    } else {
+      // The shadow is cast unmoved, then moved as it's resampled onto each
+      // layer, so its offset needn't be whole pixels of the low one.
+      const double *v = step->values;
+      uint8_t *cast = newShadowBytes(lowBytes, low.width, low.height, 0, 0, v[2] * low.scale,
+                                     v[3], v[4], v[5], v[6]);
+      if (!cast) {
+        failed = YES;
+        break;
+      }
+      if (fullBytes) {
+        uint8_t *moved = newResampled(cast, low, full, v[0], v[1]);
+        if (moved) drawUnder(fullBytes, moved, full.width * full.height);
+        failed = !moved;
+        free(moved);
+      }
+      if (!failed && (NSInteger)i < lastWide) {
+        uint8_t *moved = newResampled(cast, low, low, v[0], v[1]);
+        if (moved) drawUnder(lowBytes, moved, low.width * low.height);
+        failed = !moved;
+        free(moved);
+      }
+      free(cast);
+    }
+  }
+  free(lowBytes);
+  if (failed) {
+    free(fullBytes);
+    return NULL;
+  }
+  return fullBytes;
+}
+
+/// Premultiplied RGBA bytes, rows top to bottom, as an image.
+static CGImageRef newImageOfBytes(const uint8_t *bytes, size_t width,
+                                  size_t height) CF_RETURNS_RETAINED {
+  CFDataRef data = CFDataCreate(NULL, bytes, (CFIndex)(width * height * 4));
+  if (!data) return NULL;
+  CGDataProviderRef provider = CGDataProviderCreateWithCFData(data);
+  CFRelease(data);
+  CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  CGImageRef image =
+      CGImageCreate(width, height, 8, 32, width * 4, space,
+                    kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big, provider, NULL,
+                    false, kCGRenderingIntentDefault);
+  CGColorSpaceRelease(space);
+  CGDataProviderRelease(provider);
+  return image;
+}
+
+/// What `draw` draws through the plan's layer at the canvas's resolution,
+/// as an image over that layer. NULL if the layer can't be made.
+- (CGImageRef)newLayerImage:(ALPlan)plan
+                      steps:(const ALFilterStep *)steps
+                      count:(NSUInteger)count
+                       draw:(void (^)(CGContextRef c))draw CF_RETURNS_RETAINED {
+  uint8_t *bytes = [self newRendered:plan steps:steps count:count draw:draw];
+  if (!bytes) return NULL;
+  CGImageRef image = newImageOfBytes(bytes, plan.full.width, plan.full.height);
+  free(bytes);
+  return image;
+}
+
+static CGRect bitmapRect(CGRect rect, size_t height);
+
+/// The shadow a plan with only a smaller layer casts, as an image the
+/// canvas's size: cast in that layer, blurred by the shadow's deviation at
+/// its scale (newShadowBytes, as drop-shadow() is), and scaled up onto the
+/// canvas, moved by the shadow's offset. Core Graphics' own shadow would
+/// blur the layer scaled up, at the canvas's resolution. NULL if a layer
+/// can't be made.
+- (CGImageRef)newScaledShadowOf:(ALPlan)plan
+                          steps:(const ALFilterStep *)steps
+                          count:(NSUInteger)count
+                           draw:(void (^)(CGContextRef c))draw CF_RETURNS_RETAINED {
+  ALCanvas2DState *s = _state;
+  ALLayer low = plan.low;
+  uint8_t *bytes = [self newRendered:plan steps:steps count:count draw:draw];
+  if (!bytes) return NULL;
+  uint8_t *shadow = newShadowBytes(bytes, low.width, low.height, 0, 0,
+                                   s.shadowBlur / 2 * low.scale, s.shadowR, s.shadowG,
+                                   s.shadowB, s.shadowA);
+  free(bytes);
+  if (!shadow) return NULL;
+  CGImageRef image = newImageOfBytes(shadow, low.width, low.height);
+  free(shadow);
+  if (!image) return NULL;
+  CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  CGContextRef bitmap =
+      CGBitmapContextCreate(NULL, _width, _height, 8, _width * 4, space,
                             kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
   CGColorSpaceRelease(space);
-  if (!layer) return NULL;
-  // The canvas's flip, and the layer's place in its pixels.
-  CGContextTranslateCTM(layer, 0, height);
-  CGContextScaleCTM(layer, 1, -1);
-  CGContextTranslateCTM(layer, -rect.origin.x, -rect.origin.y);
-  draw(layer);
-  // The canvas spec takes what's drawn through globalAlpha first, then the
-  // filter, then casts the shadow and composites, outside the clip until
-  // then (since whatwg/html#10674): so a drop-shadow() shows through a
-  // see-through shape. Without a filter, the alpha goes on as the layer's
-  // drawn, which comes to the same.
-  if (s.filterSteps.count > 0) {
-    scaleAlpha(CGBitmapContextGetData(layer), width * height, s.globalAlpha);
-    applyFilter(CGBitmapContextGetData(layer), width, height, s.filterSteps);
+  if (!bitmap) {
+    CGImageRelease(image);
+    return NULL;
   }
-  CGImageRef image = CGBitmapContextCreateImage(layer);
-  CGContextRelease(layer);
-  return image;
+  CGContextSetInterpolationQuality(bitmap, kCGInterpolationHigh);
+  CGRect bounds = CGRectOffset(layerBounds(low), s.shadowOffsetX, s.shadowOffsetY);
+  CGContextDrawImage(bitmap, bitmapRect(bounds, _height), image);
+  CGImageRelease(image);
+  CGImageRef cast = CGBitmapContextCreateImage(bitmap);
+  CGContextRelease(bitmap);
+  return cast;
 }
 
 /// The part of the canvas's pixels a context draws on: the canvas, or a
@@ -1262,12 +1652,21 @@ static CGRect bitmapRect(CGRect rect, size_t height) {
     [self keepOpaque];
     return;
   }
-  ALLayers layers = [self layers];
-  CGImageRef image = [self newLayerImage:layers.shape draw:draw];
+  NSData *parsed = parsedFilter(s.filterSteps);
+  const ALFilterStep *steps = parsed.bytes;
+  NSUInteger count = parsed.length / sizeof(ALFilterStep);
+  ALLayers layers = [self layers:steps count:count];
+  CGImageRef image = [self newLayerImage:layers.shape steps:steps count:count draw:draw];
   if (!image) return;
+  CGRect shapeRect = layerBounds(layers.shape.full);
+  // The shadow's own layer at the canvas's resolution, or a smaller one
+  // alone, whose shadow is scaled up (see -layers:count:).
+  BOOL scaledShadow = !layers.shadow.full.exists && layers.shadow.low.exists;
   CGImageRef shadowImage = NULL;
-  if (!CGRectIsNull(layers.shadow)) {
-    shadowImage = [self newLayerImage:layers.shadow draw:draw];
+  CGRect shadowRect = CGRectNull;
+  if (layers.shadow.full.exists) {
+    shadowRect = layerBounds(layers.shadow.full);
+    shadowImage = [self newLayerImage:layers.shadow steps:steps count:count draw:draw];
     if (!shadowImage) {
       CGImageRelease(image);
       return;
@@ -1277,11 +1676,16 @@ static CGRect bitmapRect(CGRect rect, size_t height) {
   // clip with the operation (its drawing model's steps 6 and 7). With an
   // operation like source-in, Core Graphics composites only the shape, and
   // drops the shadow's step, so for those the shadow is cast alone into an
-  // image of its own, and the two are drawn one after the other.
+  // image of its own, and the two are drawn one after the other. So is one
+  // scaled up from a smaller layer, which Core Graphics doesn't cast.
   CGImageRef cast = NULL;
-  if (shadow && isUnbounded(s.composite)) {
-    cast = shadowImage ? [self newShadowOf:shadowImage rect:layers.shadow]
-                       : [self newShadowOf:image rect:layers.shape];
+  if (shadow && (isUnbounded(s.composite) || scaledShadow)) {
+    if (scaledShadow) {
+      cast = [self newScaledShadowOf:layers.shadow steps:steps count:count draw:draw];
+    } else {
+      cast = shadowImage ? [self newShadowOf:shadowImage rect:shadowRect]
+                         : [self newShadowOf:image rect:shapeRect];
+    }
     // A layer that can't be made drops the draw, as the shape's does.
     if (!cast) {
       CGImageRelease(shadowImage);
@@ -1306,12 +1710,12 @@ static CGRect bitmapRect(CGRect rect, size_t height) {
     // Graphics casts to the same pixels (it casts the shadow of what's drawn
     // off the bitmap). Then the shape's layer is drawn without one, as the
     // spec composites the shadow, then the shape.
-    CGFloat away = MAX(0, CGRectGetMaxX(layers.shadow));
+    CGFloat away = MAX(0, CGRectGetMaxX(shadowRect));
     [self setShadow:c movedBy:away];
-    CGContextDrawImage(c, CGRectOffset(bitmapRect(layers.shadow, _height), -away, 0), shadowImage);
+    CGContextDrawImage(c, CGRectOffset(bitmapRect(shadowRect, _height), -away, 0), shadowImage);
     CGContextSetShadowWithColor(c, CGSizeZero, 0, NULL);
   }
-  CGContextDrawImage(c, bitmapRect(layers.shape, _height), image);
+  CGContextDrawImage(c, bitmapRect(shapeRect, _height), image);
   CGContextRestoreGState(c);
   CGImageRelease(cast);
   CGImageRelease(shadowImage);
@@ -1497,8 +1901,21 @@ static CGRect bitmapRect(CGRect rect, size_t height) {
   CGRect bounds =
       CGRectIntegral(CGRectIntersection(CGContextGetClipBoundingBox(c), drawableRect(c)));
   if (CGRectIsEmpty(bounds)) return;
-  size_t width = (size_t)bounds.size.width;
-  size_t height = (size_t)bounds.size.height;
+  // A pixel of the context's own, which in the smaller layer of a wide blur
+  // or shadow (issue #814) is several of the canvas's: the gradient is
+  // worked out at that density, not over every canvas pixel the layer
+  // reaches.
+  CGAffineTransform ctm = CGContextGetCTM(c);
+  CGFloat density = MIN(1, sqrt(ctm.a * ctm.a + ctm.b * ctm.b));
+  if (!(density > 0)) return;
+  size_t width = (size_t)ceil(bounds.size.width * density);
+  size_t height = (size_t)ceil(bounds.size.height * density);
+  if (width == 0 || height == 0) return;
+  // The image is drawn over `bounds`, so each of its pixels covers this much
+  // of the canvas: sampled at those pixels' centers, not at 1 / density,
+  // which rounding the size up would leave apart from where they're drawn.
+  // At density 1 the bounds are whole pixels, and a step is one.
+  CGFloat stepX = bounds.size.width / width, stepY = bounds.size.height / height;
   NSMutableData *pixels = [NSMutableData dataWithLength:width * height * 4];
   uint8_t *p = pixels.mutableBytes;
   // 256 colors around the circle, as the stops give them.
@@ -1513,7 +1930,8 @@ static CGRect bitmapRect(CGRect rect, size_t height) {
   for (size_t y = 0; y < height; y++) {
     for (size_t x = 0; x < width; x++) {
       CGPoint point = CGPointApplyAffineTransform(
-          CGPointMake(bounds.origin.x + x + 0.5, bounds.origin.y + y + 0.5), inverse);
+          CGPointMake(bounds.origin.x + (x + 0.5) * stepX, bounds.origin.y + (y + 0.5) * stepY),
+          inverse);
       CGFloat angle = atan2(point.y - cy, point.x - cx) - start;
       CGFloat t = fmod(angle / (2 * M_PI), 1);
       if (t < 0) t += 1;
@@ -1532,7 +1950,7 @@ static CGRect bitmapRect(CGRect rect, size_t height) {
   // Drawn upright in the canvas's flipped space.
   CGContextTranslateCTM(c, bounds.origin.x, bounds.origin.y + bounds.size.height);
   CGContextScaleCTM(c, 1, -1);
-  CGContextDrawImage(c, CGRectMake(0, 0, width, height), image);
+  CGContextDrawImage(c, CGRectMake(0, 0, bounds.size.width, bounds.size.height), image);
   CGImageRelease(image);
 }
 

@@ -189,9 +189,14 @@ export class LynxOffscreenCanvas extends LynxCanvasBase {
       this.surface.didTransfer();
       return new LynxImageBitmap(0, 0, 0);
     }
-    const bitmap = imageBitmapOfCanvas(source, {}, true);
-    this.surface.didTransfer();
-    return bitmap;
+    try {
+      return imageBitmapOfCanvas(source, {}, true);
+    } finally {
+      // Also when the copy failed: the shell clears the canvas before it
+      // copies, so a bitmaprenderer canvas is blank either way, and the
+      // shell's blank has to be the size the runtime reports.
+      this.surface.didTransfer();
+    }
   }
 }
 

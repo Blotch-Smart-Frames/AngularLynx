@@ -360,6 +360,23 @@ describe('a canvas with a bitmaprenderer context', () => {
     expect(canvasSourceOf(canvas)!.width).toBe(0);
   });
 
+  it('leaves the shell’s blank at the bitmap’s size when the transfer’s copy fails', () => {
+    const canvas = new LynxOffscreenCanvas(8, 4);
+    contextOf(canvas).transferFromImageBitmap(new LynxImageBitmap(7, 3, 2));
+    bridgeGL.imageFromCanvas.mockReturnValueOnce({
+      width: 0,
+      height: 0,
+      error: 'out of memory',
+    });
+    expect(() => canvas.transferToImageBitmap()).toThrow('out of memory');
+    expect(bridge.transferToBitmapRenderer).toHaveBeenLastCalledWith(
+      contextIdOf(),
+      0,
+      3,
+      2,
+    );
+  });
+
   it('converts to a Blob by the size of what it shows, not the canvas’s', async () => {
     // A canvas of no size showing a bitmap encodes the bitmap.
     const sized = new LynxOffscreenCanvas(8, 4);

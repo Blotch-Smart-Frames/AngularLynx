@@ -159,7 +159,26 @@ const FIXTURES: Record<string, string> = {
       await h(null),
       await h(node('c', null)).catch(name),
       await h({ next: { m: null } }),
+      // A function's own \`call\` and \`bind\` don't take part.
+      await g({ m: Object.assign((x) => x, { call: null }), tag: Object.assign((strings, x) => x, { bind: null }) }),
     ])();
+  `,
+  'a call of a nullish chain in parentheses, after its arguments': `
+    const log = [];
+    function* g(a) {
+      const [v = (a?.m)(yield 1)] = [];
+      return v;
+    }
+    const run = (a) => {
+      const it = g(a);
+      log.push(it.next().value);
+      try {
+        return it.next('x').value;
+      } catch (error) {
+        return error.constructor.name;
+      }
+    };
+    [run(null), run({ m(x) { return x; } }), log];
   `,
   '`delete` of a chain': `
     async function g(a) {
@@ -338,7 +357,7 @@ describe('lowerYieldingDefaultChains', () => {
   it('gives a chain in parentheses that is called its receiver', () => {
     // The last link's read is the object.
     expect(lower('async (a) => { const [v = (a?.m)(await 1)] = []; }')).toBe(
-      'async (a) => { var __chain0, __chain1; const [v = (((__chain1 = a) == null ? void 0 : (__chain0 = __chain1).m)).call(__chain0, await 1)] = []; }',
+      'async (a) => { var __chain0, __chain1; const [v = Reflect.apply((((__chain1 = a) == null ? void 0 : (__chain0 = __chain1).m)), __chain0, [await 1])] = []; }',
     );
     // The object is read where the last link's part of the chain starts.
     expect(
@@ -346,14 +365,14 @@ describe('lowerYieldingDefaultChains', () => {
     ).toBe(
       'async (a) => { var __chain0, __chain1, __chain2; const [v = ((__chain0 = (((__chain2 = a) == null ? void 0 : (__chain1 = __chain2.b).c))) == null ? void 0 : __chain0.call(__chain1, await 1))] = []; }',
     );
-    // A tag gets it through `bind`, and a call of another kind of link needs
-    // none.
+    // A tag gets it through a function that passes its arguments on, and a
+    // call of another kind of link needs none.
     expect(
       lower(
         'async (a) => { const [v = (a?.[0])`${await 1}`, w = (a?.f())(await 1)] = []; }',
       ),
     ).toBe(
-      'async (a) => { var __chain0, __chain1, __chain2; const [v = (((__chain1 = a) == null ? void 0 : (__chain0 = __chain1)[0])).bind(__chain0)`${await 1}`, w = (((__chain2 = a) == null ? void 0 : __chain2.f()))(await 1)] = []; }',
+      'async (a) => { var __chain0, __chain1, __chain2; const [v = ((f, r) => function () { return Reflect.apply(f, r, arguments); })((((__chain1 = a) == null ? void 0 : (__chain0 = __chain1)[0])), __chain0)`${await 1}`, w = (((__chain2 = a) == null ? void 0 : __chain2.f()))(await 1)] = []; }',
     );
     // Outside such a default value, it's left alone.
     expect(lower('async (a) => { const [v = (a?.m)()] = [await 1]; }')).toBe(
@@ -363,7 +382,7 @@ describe('lowerYieldingDefaultChains', () => {
     expect(
       lower('async (a) => { const [v = (a?.m)() + (await 1)] = []; }'),
     ).toBe(
-      'async (a) => { var __chain0, __chain1; const [v = (((__chain1 = a) == null ? void 0 : (__chain0 = __chain1).m)).call(__chain0) + (await 1)] = []; }',
+      'async (a) => { var __chain0, __chain1; const [v = Reflect.apply((((__chain1 = a) == null ? void 0 : (__chain0 = __chain1).m)), __chain0, []) + (await 1)] = []; }',
     );
   });
 

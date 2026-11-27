@@ -52,7 +52,7 @@ const YIELD_HINT = /\b(?:yield|await)\b/;
  * parentheses too. A chain in parentheses that's called (`(a?.m)(x)`,
  * `(a?.b.c)?.()`) or tags a template keeps its receiver, as natively: the
  * chain reads the object of its last member into a variable, and the call is
- * made through `call`, or the tag through `bind`, on it.
+ * made on it with `Reflect.apply()`.
  *
  * Edits never add or remove a line, and an inline source map's columns are
  * moved to match, as for the passes after it.
@@ -292,6 +292,11 @@ export const lowerYieldingDefaultChains = (
    * Gives a chain in parentheses that's called (`(a?.m)(x)`) or tags a
    * template its receiver: natively the call gets the last member's object
    * as `this`, which a conditional loses.
+   *
+   * The call is made with `Reflect.apply()`, not the function's `call`, as
+   * natively: a function's own `call` (or `bind`) property doesn't take part,
+   * and the arguments (or the template's substitutions) are evaluated before
+   * a callee that isn't a function throws, as when the chain short-circuits.
    */
   const called = (node: ts.CallExpression | ts.TaggedTemplateExpression) => {
     const callee = ts.isCallExpression(node) ? node.expression : node.tag;
@@ -299,21 +304,32 @@ export const lowerYieldingDefaultChains = (
     if (!chain) return;
     const name = declare(receiverScope(node));
     captures.set(chain, name);
+    const start = callee.getStart(sourceFile);
     if (ts.isTaggedTemplateExpression(node)) {
-      edits.push({
-        start: callee.end,
-        end: callee.end,
-        text: `.bind(${name})`,
-      });
+      // A tag gets the template's strings and substitutions as arguments,
+      // which a function in its place passes on.
+      edits.push(
+        {
+          start,
+          end: start,
+          text: '((f, r) => function () { return Reflect.apply(f, r, arguments); })(',
+        },
+        { start: callee.end, end: callee.end, text: `, ${name})` },
+      );
       return;
     }
-    edits.push({ start: callee.end, end: callee.end, text: '.call' });
-    const at = node.arguments.pos;
-    edits.push({
-      start: at,
-      end: at,
-      text: node.arguments.length > 0 ? `${name}, ` : name,
-    });
+    // `(callee)(x, y)` becomes `Reflect.apply((callee), r, [x, y])`: the
+    // arguments' parentheses, right before and at the end of them, become
+    // the list's brackets.
+    edits.push(
+      { start, end: start, text: 'Reflect.apply(' },
+      {
+        start: node.arguments.pos - 1,
+        end: node.arguments.pos,
+        text: `, ${name}, [`,
+      },
+      { start: node.end - 1, end: node.end, text: '])' },
+    );
   };
 
   /**

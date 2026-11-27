@@ -219,7 +219,7 @@ For a mesh, pass the same element to three.js: `new THREE.VideoTexture(video)`. 
 - Before its first frame, `videoWidth` is 0, `readyState` is `HAVE_NOTHING`, and nothing is drawn, as in a browser.
 - Check `readyState` before you draw, and try again if there's no frame yet, as above. On the phone the frame is usually there when `bindfirstframe` arrives, but iOS waits for it for half a second at most, then sends the event anyway. The web preview never sends `bindfirstframe`: draw from a tap or a `bindtimeupdate` there.
 - A video whose file says to turn it (a phone recording in portrait) is drawn turned, as it plays, and `videoWidth` and `videoHeight` are its turned size, as in a browser.
-- The web preview doesn't take a template's `<video>` in `drawImage()`, `texImage2D()` or `createImageBitmap()` yet ([#732](https://github.com/Blotch-Smart-Frames/AngularLynx/issues/732)).
+- The web preview takes a template's `<video>` and `<canvas>` too: the browser's `drawImage()`, `createPattern()`, `texImage2D()`, `texSubImage2D()` and `createImageBitmap()` read the element itself.
 
 ## Save it as an image
 

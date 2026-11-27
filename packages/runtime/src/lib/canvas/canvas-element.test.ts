@@ -456,6 +456,23 @@ describe('LynxCanvasElement on Lynx for Web', () => {
     canvas.removeEventListener('webglcontextlost', listener);
   });
 
+  it('gives a context that draws a template’s <video> and <canvas>', () => {
+    vi.stubGlobal('__WEB__', true);
+    // The page's context, which takes only DOM elements as images.
+    const drawImage = vi.fn();
+    const context = Object.create({ drawImage }) as {
+      drawImage(...args: unknown[]): void;
+    };
+    const dom = { style: {}, getContext: vi.fn(() => context) };
+    const canvas = new LynxCanvasElement(dom as unknown as ElementRef);
+    const other = new LynxCanvasElement({
+      style: {},
+    } as unknown as ElementRef);
+    expect(canvas.getContext('2d')).toBe(context);
+    context.drawImage(other, 0, 0);
+    expect(drawImage).toHaveBeenCalledWith(other.element, 0, 0);
+  });
+
   it('saves the image with the browser’s canvas, as a Blob of the app’s realm', async () => {
     vi.stubGlobal('__WEB__', true);
     // The page's Blob, which the app's realm (web-core's iframe) wouldn't

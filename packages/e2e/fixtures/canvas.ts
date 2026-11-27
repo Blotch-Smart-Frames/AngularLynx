@@ -449,7 +449,13 @@ export class CanvasRoute {
     gl: WebGL2RenderingContext,
     program: WebGLProgram,
   ): Promise<string> {
-    const ofWebGL = createImageBitmap(gl.canvas as HTMLCanvasElement);
+    // The template's <canvas>, as an app passes it: on a phone it's also
+    // `gl.canvas`, while in the web preview it's AngularLynx's element around
+    // the page's canvas, which the browser's createImageBitmap() threw for
+    // (issue #732).
+    const ofWebGL = createImageBitmap(
+      this.canvas().nativeElement as unknown as HTMLCanvasElement,
+    );
     const source = new OffscreenCanvas(2, 2);
     const sourceContext = source.getContext('2d')!;
     sourceContext.fillStyle = 'rgb(255, 0, 0)';

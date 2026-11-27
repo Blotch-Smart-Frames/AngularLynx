@@ -116,11 +116,25 @@ class VideoFrameTarget private constructor(
     }
 
     /**
-     * The latest frame, drawn at `width` by `height` (the size the frame is
-     * shown at, stretched by its pixel aspect ratio), as RGBA rows top to
-     * bottom, or null without one.
+     * Reads the latest frame, drawn at `width` by `height` (the size the
+     * frame is shown at, stretched by its pixel aspect ratio), as RGBA rows
+     * top to bottom, and hands it to `done` on the target's thread, or null
+     * without one. It doesn't wait: the caller decides how long to, and a
+     * read that comes after the caller stopped waiting still hands its frame
+     * over, which VideoUI keeps for the next read that can't wait (issues
+     * #806 and #817).
      */
-    fun read(width: Int, height: Int): DecodedImage? = onThread { readNow(width, height) }
+    fun read(width: Int, height: Int, done: (DecodedImage?) -> Unit) {
+        handler.post {
+            done(
+                try {
+                    readNow(width, height)
+                } catch (_: RuntimeException) {
+                    null
+                },
+            )
+        }
+    }
 
     /** Lets go of the texture and the surface, once the player has let go of it. */
     fun release() {
@@ -237,9 +251,10 @@ class VideoFrameTarget private constructor(
 
     companion object {
         /**
-         * How long the engine thread waits for the target's thread. A latch
-         * and a read take a few milliseconds; one that doesn't come in time
-         * reads nothing, as PixelCopy's does in VideoUI.
+         * How long the engine thread waits for the target's thread to say
+         * whether it has a frame (`videoWidth` asks). A latch takes well
+         * under a millisecond; one that doesn't come in time reads as no
+         * frame yet.
          */
         private const val WAIT_MS = 250L
 
@@ -308,6 +323,11 @@ class VideoFrameTarget private constructor(
 
         private fun makeTarget(): VideoFrameTarget? {
             if (!makeContext()) return null
+            // The program is compiled now, while nothing waits for the
+            // thread, rather than on the first read, which the engine thread
+            // waits for: on CI's software-drawn emulator, compiling it there
+            // was part of what made a first read miss its wait (issue #806).
+            program()
             val names = IntArray(1)
             GLES20.glGenTextures(1, names, 0)
             GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, names[0])

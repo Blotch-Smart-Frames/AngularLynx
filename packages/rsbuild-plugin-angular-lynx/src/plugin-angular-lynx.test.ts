@@ -12,6 +12,10 @@ vi.mock('./display.js', () => ({ applyDisplay: vi.fn() }));
 vi.mock('./entry.js', () => ({ applyEntry: vi.fn() }));
 vi.mock('./generator.js', () => ({ applyGenerator: vi.fn() }));
 vi.mock('./layers.js', () => ({ applyLayers: vi.fn() }));
+vi.mock('./native-features.js', () => ({
+  applyNativeFeatures: vi.fn(),
+  createNativeFeaturesCollector: vi.fn(() => ({ _nativeFeatures: true })),
+}));
 vi.mock('./nested-calc.js', () => ({ applyNestedCalc: vi.fn() }));
 vi.mock('./resolve.js', () => ({ applyResolve: vi.fn() }));
 vi.mock('./safe-area.js', () => ({ applySafeArea: vi.fn() }));
@@ -46,6 +50,7 @@ import { applyDisplay } from './display.js';
 import { applyEntry } from './entry.js';
 import { applyGenerator } from './generator.js';
 import { applyLayers } from './layers.js';
+import { applyNativeFeatures } from './native-features.js';
 import { applyNestedCalc } from './nested-calc.js';
 import { applyResolve } from './resolve.js';
 import { applySafeArea } from './safe-area.js';
@@ -100,6 +105,7 @@ describe('pluginAngularLynx', () => {
   describe('setup', () => {
     const mockApi = { context: { rootPath: '/proj' } } as any;
     const backgroundEntries = { _backgroundEntries: true };
+    const nativeFeatures = { _nativeFeatures: true };
 
     beforeEach(() => {
       vi.clearAllMocks();
@@ -222,6 +228,7 @@ describe('pluginAngularLynx', () => {
         expect.any(Object),
         backgroundEntries,
         expect.any(Set),
+        nativeFeatures,
       );
     });
 
@@ -233,6 +240,17 @@ describe('pluginAngularLynx', () => {
 
       const appEntries = vi.mocked(applyEntry).mock.calls[0][3];
       expect(vi.mocked(applyAngularRules).mock.calls[0][3]).toBe(appEntries);
+    });
+
+    // angular.ts's transform records each module, and the lynx
+    // environment's plugin writes what they need, so both get the same one.
+    it('shares one native features collector between the Angular rules and the plugin that writes the file', () => {
+      const plugin = pluginAngularLynx();
+      plugin.setup(mockApi);
+
+      const collector = vi.mocked(applyNativeFeatures).mock.calls[0][1];
+      expect(collector).toEqual(nativeFeatures);
+      expect(vi.mocked(applyAngularRules).mock.calls[0][4]).toBe(collector);
     });
 
     it('calls applyResolve with api', () => {
@@ -272,6 +290,7 @@ describe('pluginAngularLynx', () => {
         expect.any(Object),
         backgroundEntries,
         expect.any(Set),
+        nativeFeatures,
       );
     });
 

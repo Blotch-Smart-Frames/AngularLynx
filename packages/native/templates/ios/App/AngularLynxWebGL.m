@@ -110,6 +110,41 @@ NSData *AngularLynxBytesFromWords(NSArray *words) {
   return data;
 }
 
+/// RGBA pixels, rows top to bottom, as a PNG or JPEG file in base64:
+/// `{ base64, type }`, or `{ error }`. Every kind of context encodes with
+/// it, so it's here rather than in one of theirs: an app that draws only in
+/// 2D has no AngularLynxWebGLContext.m (issue #847).
+NSDictionary *AngularLynxEncodeImage(NSData *pixels, size_t width, size_t height,
+                                     CGBitmapInfo alphaInfo, NSString *type, double quality) {
+  size_t stride = width * 4;
+  BOOL jpeg = [type isEqualToString:@"image/jpeg"];
+  CGDataProviderRef provider = CGDataProviderCreateWithCFData((__bridge CFDataRef)pixels);
+  CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  CGImageRef image =
+      CGImageCreate(width, height, 8, 32, stride, colorSpace,
+                    alphaInfo | kCGBitmapByteOrder32Big, provider, NULL, false,
+                    kCGRenderingIntentDefault);
+  CGColorSpaceRelease(colorSpace);
+  CGDataProviderRelease(provider);
+  if (!image) return @{@"error" : @"Could not make an image of the canvas's pixels"};
+  NSMutableData *file = [NSMutableData data];
+  NSString *fileType = jpeg ? @"public.jpeg" : @"public.png";
+  CGImageDestinationRef destination = CGImageDestinationCreateWithData(
+      (__bridge CFMutableDataRef)file, (__bridge CFStringRef)fileType, 1, NULL);
+  BOOL written = NO;
+  if (destination) {
+    NSDictionary *properties =
+        jpeg ? @{(__bridge NSString *)kCGImageDestinationLossyCompressionQuality : @(quality)}
+             : @{};
+    CGImageDestinationAddImage(destination, image, (__bridge CFDictionaryRef)properties);
+    written = CGImageDestinationFinalize(destination);
+    CFRelease(destination);
+  }
+  CGImageRelease(image);
+  if (!written) return @{@"error" : @"Could not encode the canvas's pixels"};
+  return @{@"base64" : [file base64EncodedStringWithOptions:0], @"type" : type};
+}
+
 /// An image's RGBA bytes, as createImageBitmap's options ask:
 /// `imageOrientation: 'flipY'` flips it, `premultiplyAlpha: 'premultiply'`
 /// keeps CoreGraphics' premultiplied pixels (otherwise they're divided back),
@@ -334,8 +369,15 @@ static NSDictionary *keptImage(NSNumber *imageId, AngularLynxDecodedImage *image
 
 #pragma mark - Module
 
+// The WebGL2 context's lines, between the `angular-lynx:webgl` markers, go
+// with AngularLynxWebGLContext.m, AngularLynxWebGLOps.h and ANGLE from an app
+// that draws on a canvas only in 2D (@blotch/angular-lynx-native's
+// features.ts): the runtime then has no WebGL2 context to call them, and
+// nothing else names the class (issue #847).
 @implementation AngularLynxWebGLModule {
+  // angular-lynx:webgl
   NSMutableDictionary<NSNumber *, AngularLynxWebGLContext *> *_contexts;
+  // /angular-lynx:webgl
   NSMutableDictionary<NSNumber *, AngularLynxCanvas2DContext *> *_contexts2D;
   NSMutableDictionary<NSNumber *, AngularLynxBitmapRendererContext *> *_bitmapRenderers;
   /// The 2D contexts' gradients and patterns, which any of them can paint
@@ -349,15 +391,17 @@ static NSDictionary *keptImage(NSNumber *imageId, AngularLynxDecodedImage *image
 
 + (NSDictionary<NSString *, NSString *> *)methodLookup {
   return @{
+    // angular-lynx:webgl
     @"create" : NSStringFromSelector(@selector(create:canvasId:attributes:)),
     @"run" : NSStringFromSelector(@selector(run:commands:)),
     @"destroy" : NSStringFromSelector(@selector(destroy:)),
+    @"encodeImage" : NSStringFromSelector(@selector(encodeImage:options:)),
+    // /angular-lynx:webgl
     @"decodeImage" : NSStringFromSelector(@selector(decodeImage:bytes:options:)),
     @"releaseImage" : NSStringFromSelector(@selector(releaseImage:)),
     @"imageFromCanvas" : NSStringFromSelector(@selector(imageFromCanvas:canvasId:options:)),
     @"imageFromImage" : NSStringFromSelector(@selector(imageFromImage:sourceId:options:)),
     @"imageFromPixels" : NSStringFromSelector(@selector(imageFromPixels:bytes:options:)),
-    @"encodeImage" : NSStringFromSelector(@selector(encodeImage:options:)),
     @"create2D" : NSStringFromSelector(@selector(create2D:canvasId:attributes:)),
     @"run2D" : NSStringFromSelector(@selector(run2D:commands:)),
     @"destroy2D" : NSStringFromSelector(@selector(destroy2D:)),
@@ -375,7 +419,9 @@ static NSDictionary *keptImage(NSNumber *imageId, AngularLynxDecodedImage *image
 
 - (instancetype)init {
   if ((self = [super init])) {
+    // angular-lynx:webgl
     _contexts = [NSMutableDictionary dictionary];
+    // /angular-lynx:webgl
     _contexts2D = [NSMutableDictionary dictionary];
     _bitmapRenderers = [NSMutableDictionary dictionary];
     _canvas2DObjects = [NSMutableDictionary dictionary];
@@ -388,9 +434,11 @@ static NSDictionary *keptImage(NSNumber *imageId, AngularLynxDecodedImage *image
 }
 
 - (void)dealloc {
+  // angular-lynx:webgl
   for (AngularLynxWebGLContext *context in _contexts.allValues) {
     [context destroy];
   }
+  // /angular-lynx:webgl
   for (AngularLynxCanvas2DContext *context in _contexts2D.allValues) {
     [AngularLynxCanvasRegistry setContext:nil forCanvasId:context.canvasId];
   }
@@ -399,6 +447,7 @@ static NSDictionary *keptImage(NSNumber *imageId, AngularLynxDecodedImage *image
   }
 }
 
+// angular-lynx:webgl
 - (NSDictionary *)create:(NSNumber *)contextId
                 canvasId:(NSString *)canvasId
               attributes:(NSDictionary *)attributes {
@@ -431,6 +480,7 @@ static NSDictionary *keptImage(NSNumber *imageId, AngularLynxDecodedImage *image
   }
   return @YES;
 }
+// /angular-lynx:webgl
 
 /// The size of the frame a `<video>` shows (AngularLynxVideo.m), by its
 /// `video-id`: the runtime's videoWidth and videoHeight, and the size a
@@ -570,6 +620,7 @@ static NSDictionary *keptImage(NSNumber *imageId, AngularLynxDecodedImage *image
   return keptImage(imageId, image, options, error, @"The pixels could not be copied");
 }
 
+// angular-lynx:webgl
 /// The drawing buffer as an image file, for canvas.toBlob() and toDataURL():
 /// `options` holds the MIME type (image/jpeg, or image/png for anything
 /// else, as browsers fall back), the JPEG quality and premultipliedAlpha.
@@ -584,6 +635,7 @@ static NSDictionary *keptImage(NSNumber *imageId, AngularLynxDecodedImage *image
                 quality:[quality isKindOfClass:NSNumber.class] ? quality.doubleValue : 0.92
           premultiplied:![options[@"premultipliedAlpha"] isEqual:@NO]];
 }
+// /angular-lynx:webgl
 
 #pragma mark - 2D
 

@@ -277,8 +277,12 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
             // <canvas>'s WebGL (WebGLModule.kt), which the runtime calls from
             // the main thread, where Angular runs: main-thread modules let
             // it get its answers synchronously, with lynx.module(name). Lynx
-            // calls them on its engine thread, not the UI thread.
+            // calls them on its engine thread, not the UI thread. An app
+            // that never draws on a canvas is built without the canvas code
+            // and these lines (@blotch/angular-lynx-native's features.ts).
+            // angular-lynx:canvas
             registerModule(WebGLModule.NAME, WebGLModule::class.java, null)
+            // /angular-lynx:canvas
             // Bundled files for the main thread's fetch and Image (AssetsModule.kt).
             registerModule(AssetsModule.NAME, AssetsModule::class.java, null)
             setEnableMTSModule(true)
@@ -289,10 +293,13 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
             // In an edge-to-edge app an <overlay>'s window fills the screen as
             // the page does, under the navigation bar too (EdgeToEdgeOverlay.kt).
             if (edgeToEdge) addBehavior(EdgeToEdgeOverlay.behavior())
+            // angular-lynx:canvas
             // The shell's own <canvas> (CanvasUI.kt): Lynx has none.
             addBehavior(CanvasUI.behavior())
             // XElement's <video>, with frames a canvas can read (VideoUI.kt).
+            // Without the canvas, XElementBehaviors' own <video> plays.
             addBehavior(VideoUI.behavior())
+            // /angular-lynx:canvas
             // Live reload, in the debug build: it renders the bundle again
             // after every edit.
             DevServer.register(this) { lynxView.renderTemplateUrl(bundleUrl, "") }

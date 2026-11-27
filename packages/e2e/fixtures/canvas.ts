@@ -98,8 +98,8 @@ const colorName = ({ 0: r, 1: g, 2: b }: ArrayLike<number>): string =>
  * cleared, and its draw buffer, still NONE. Then createImageBitmap()'s crop
  * rectangle and its other sources (issue #731, see #cropBitmaps). When a
  * read is wrong, the line shows them all. It's in the canvas's row, and short, so the page
- * is no taller: the links under it stay on the Android emulator's screen,
- * where the flows tap them.
+ * is no taller: the links under the row stay on the Android emulator's
+ * screen, where the flows tap them.
  *
  * On the 2D line, "Video: 32x64 red,blue / red,blue" checks a `<video>`
  * read as an image (issue #696): fixtures/video.mp4, served by the E2E static
@@ -121,9 +121,14 @@ const colorName = ({ 0: r, 1: g, 2: b }: ArrayLike<number>): string =>
  * "| hidden", when they don't. It waits for both, so a hidden video that never
  * shows a first frame leaves it unfinished.
  *
- * Below it, the prebuilt library fixture (fixtures/prebuilt-library), which
- * the counter page has no room for, and "Open linking" and "Open photo",
- * which open linking.ts and photo.ts.
+ * "Open linking" and "Open photo", which open linking.ts and photo.ts, are
+ * between the canvas's row and the 2D line, rather than under the line: a
+ * read that's wrong makes the line longer (a hidden video that reads
+ * differently wraps it to a third row), which pushed them off the Android
+ * emulator's screen, so linking.yaml failed rather than canvas.yaml, which
+ * checks the line (issue #805). Below the line, the prebuilt library fixture
+ * (fixtures/prebuilt-library), which the counter page has no room for. No
+ * native flow reads it: the web test does.
  */
 @Component({
   selector: 'app-canvas',
@@ -159,10 +164,6 @@ const colorName = ({ 0: r, 1: g, 2: b }: ArrayLike<number>): string =>
         <text flatten="false">Bitmap: {{ resultBitmap() }}</text>
       </view>
     </view>
-    <text flatten="false"
-      >2D: {{ result2D() }}; Video: {{ resultVideo() }}</text
-    >
-    <e2e-library-frame />
     <view style="display: flex; flex-direction: row; margin-top: 8px;">
       <view
         [flatten]="false"
@@ -185,6 +186,10 @@ const colorName = ({ 0: r, 1: g, 2: b }: ArrayLike<number>): string =>
         <text>Open photo</text>
       </view>
     </view>
+    <text flatten="false"
+      >2D: {{ result2D() }}; Video: {{ resultVideo() }}</text
+    >
+    <e2e-library-frame />
   `,
 })
 export class CanvasRoute {

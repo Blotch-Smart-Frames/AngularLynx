@@ -7,6 +7,7 @@ import android.os.Looper
 import android.view.PixelCopy
 import android.view.SurfaceHolder
 import android.view.SurfaceView
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
@@ -43,6 +44,10 @@ import kotlin.math.roundToInt
  * video is drawn as a browser's is (issue #726). When the view has a surface
  * again, the player goes back to it. One that's only out of sight (behind
  * other elements, or `opacity: 0`) keeps its surface.
+ *
+ * The player saying it drew a frame into the target doesn't mean the target
+ * has one (issue #805), so `bindfirstframe` waits for the target's frame,
+ * and a frame that doesn't come is drawn again: see checkTargetFrame.
  */
 class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
     private var videoId: String? = null
@@ -73,6 +78,19 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
     private var makingTarget = false
     private var drawingOffscreen = false
     private var destroyed = false
+
+    /**
+     * XElement's first-frame event (its duration), held back while the
+     * player draws into the target and the target has no frame yet, so the
+     * app never hears of a frame it can't read.
+     */
+    private var heldFirstFrame: Long? = null
+
+    /** How many times the frame was drawn again since the player last went to the target. */
+    private var redraws = 0
+
+    /** Checks the target got the frame the player says it drew: see checkTargetFrame. */
+    private val frameCheck = Runnable { checkTargetFrame() }
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -137,7 +155,7 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
             // `onFirstFrame` only once: the frame is there again from here.
             // It also tells of the first frame on each new surface, so once
             // it's back in the view, the view is read again.
-            frameRendered()
+            if (drawingOffscreen) expectTargetFrame() else frameRendered()
         }
     }
 
@@ -177,6 +195,7 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
         hasFrame = false
         readTarget = offscreen
         drawingOffscreen = true
+        redraws = 0
         // The player renders the next frame here even while paused (it does
         // for each new surface), and tells of it with onRenderedFirstFrame.
         player.setVideoSurface(offscreen.surface)
@@ -199,6 +218,7 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
                     return@post
                 }
                 target = made ?: return@post
+                made.onFrame = { mainHandler.post { targetFrameCame(made) } }
                 if (surfaceView?.holder?.surface?.isValid != true) drawOffscreen()
             }
         }
@@ -213,22 +233,96 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
         if (!drawingOffscreen) return
         val player = playerView?.player ?: return
         drawingOffscreen = false
+        // The view's first frame sends a held first-frame event now, in
+        // frameRendered(): the target's no longer what the app reads.
+        mainHandler.removeCallbacks(frameCheck)
         player.setVideoSurfaceView(surfaceView)
     }
 
-    /** The player drew a frame on its surface, or XElement says it did. */
+    /** The player drew a frame on the view's surface, or XElement says it did. */
     private fun frameRendered() {
         if (drawingOffscreen) return
         hasFrame = true
         readTarget = null
+        releaseFirstFrame()
+    }
+
+    /**
+     * The player says it drew a frame into the target. It may not have come:
+     * see checkTargetFrame, which runs unless it does.
+     */
+    private fun expectTargetFrame() {
+        if (target?.frameIsCurrent() == true) {
+            targetFrameCame(target)
+            return
+        }
+        mainHandler.removeCallbacks(frameCheck)
+        mainHandler.postDelayed(frameCheck, FRAME_WAIT_MS)
+    }
+
+    /** The target has a frame since the player last went to it. */
+    private fun targetFrameCame(from: VideoFrameTarget?) {
+        if (from == null || from !== target) return
+        mainHandler.removeCallbacks(frameCheck)
+        redraws = 0
+        releaseFirstFrame()
+    }
+
+    /**
+     * The player said it drew a frame into the target a while ago, and the
+     * target still has none. The frame was lost on its way: the decoder
+     * started on a surface of media3's own (the target is made off the UI
+     * thread, so it can come after), and a frame it decoded there before the
+     * switch fails to queue on the target (`queueBuffer failed: -32` in
+     * logcat), though media3 counts it as drawn. A paused player draws
+     * nothing more, so the video would have no frame until it plays (issue
+     * #805). Seeking to where it is draws the frame there again, decoded
+     * after the switch, as a paused player does after any seek. ExoPlayer
+     * ignores a seek to the position it's at, so it seeks a millisecond away
+     * first and straight back: the second is a real seek, to the frame the
+     * video shows. A seek makes XElement send `bindbuffering`, which only
+     * this rare case pays for.
+     * After a few tries, the app hears of the first frame anyway, as it did
+     * before the target.
+     */
+    private fun checkTargetFrame() {
+        val offscreen = target
+        val player = playerView?.player
+        if (destroyed || !drawingOffscreen || offscreen == null || offscreen.frameIsCurrent() ||
+            player == null || player.playbackState == Player.STATE_IDLE || redraws >= MAX_REDRAWS
+        ) {
+            releaseFirstFrame()
+            return
+        }
+        redraws++
+        val position = player.currentPosition
+        val duration = player.duration
+        val away = if (duration != C.TIME_UNSET && position + 1 > duration) position - 1 else position + 1
+        player.seekTo(away.coerceAtLeast(0))
+        player.seekTo(position)
+        // In case the seek draws nothing either, it's checked again.
+        mainHandler.postDelayed(frameCheck, FRAME_WAIT_MS)
+    }
+
+    /** Sends the first-frame event held back for the target's frame, if there is one. */
+    private fun releaseFirstFrame() {
+        val durationMs = heldFirstFrame ?: return
+        heldFirstFrame = null
+        if (!destroyed) super.onFirstFrame(durationMs)
     }
 
     /**
      * The player drew its first frame: XElement's element sends
      * `bindfirstframe` from here, so the frame is there for a canvas before
-     * the app hears of it.
+     * the app hears of it. While the player draws into the target, that
+     * waits for the target to have it.
      */
     override fun onFirstFrame(durationMs: Long) {
+        if (drawingOffscreen && target?.frameIsCurrent() != true) {
+            heldFirstFrame = durationMs
+            expectTargetFrame()
+            return
+        }
         frameRendered()
         super.onFirstFrame(durationMs)
     }
@@ -324,6 +418,8 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
             val player = playerView?.player
             player?.removeListener(listener)
             surfaceView?.holder?.removeCallback(surfaceCallback)
+            mainHandler.removeCallbacks(frameCheck)
+            heldFirstFrame = null
             readTarget = null
             target?.let { offscreen ->
                 // The player lets go of the target's surface (and waits for
@@ -350,6 +446,17 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
          * software. A copy that doesn't come in time draws nothing.
          */
         private const val COPY_TIMEOUT_MS = 250L
+
+        /**
+         * How long after the player says it drew a frame into the target the
+         * target should have it. A frame reaches it in a few milliseconds;
+         * this leaves room for an emulator drawing in software, and a frame
+         * that comes later only costs a redraw.
+         */
+        private const val FRAME_WAIT_MS = 500L
+
+        /** How many times a frame that didn't reach the target is drawn again. */
+        private const val MAX_REDRAWS = 3
 
         private val copyHandler: Handler by lazy {
             Handler(HandlerThread("AngularLynxVideoCopy").apply { start() }.looper)

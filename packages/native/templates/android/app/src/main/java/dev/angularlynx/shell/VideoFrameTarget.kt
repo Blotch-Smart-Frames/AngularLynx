@@ -59,6 +59,16 @@ class VideoFrameTarget private constructor(
     /** The timestamp of the frame the last reset forgot, which a latch with nothing new keeps. */
     private var staleTimestamp = 0L
     private var released = false
+
+    /**
+     * Told on the target's thread each time a frame becomes current: the
+     * first one, or the first after a reset. The player saying it drew a
+     * frame doesn't mean one came (see VideoUI's frame check), so VideoUI
+     * waits for this before the app hears of it.
+     */
+    @Volatile
+    var onFrame: (() -> Unit)? = null
+
     private var framebuffer = 0
     private var colorTexture = 0
     private var framebufferWidth = 0
@@ -89,6 +99,12 @@ class VideoFrameTarget private constructor(
     }
 
     /**
+     * Whether a frame has come since the last reset, as far as the target's
+     * thread has latched: for the UI thread, which mustn't wait for it.
+     */
+    fun frameIsCurrent(): Boolean = hasImage
+
+    /**
      * Whether a frame has come since the last reset. A frame the player
      * rendered may not have been latched yet (the listener's post can come
      * after `bindfirstframe` reaches the app), so without one it latches
@@ -111,6 +127,7 @@ class VideoFrameTarget private constructor(
         handler.post {
             if (released) return@post
             released = true
+            onFrame = null
             surfaceTexture.setOnFrameAvailableListener(null)
             surface.release()
             surfaceTexture.release()
@@ -136,9 +153,11 @@ class VideoFrameTarget private constructor(
         // only if it came after the last reset. The player stamps each frame
         // with the time it's released to be shown, so two never share one.
         val timestamp = surfaceTexture.timestamp
-        synchronized(readiness) {
-            if (resetsPending == 0 && timestamp != 0L && timestamp != staleTimestamp) hasImage = true
+        val arrived = synchronized(readiness) {
+            val current = resetsPending == 0 && timestamp != 0L && timestamp != staleTimestamp
+            (current && !hasImage).also { if (current) hasImage = true }
         }
+        if (arrived) onFrame?.invoke()
     }
 
     private fun readNow(width: Int, height: Int): DecodedImage? {

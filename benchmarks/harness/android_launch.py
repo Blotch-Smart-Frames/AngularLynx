@@ -288,19 +288,30 @@ def main():
     if args.memory_after >= args.seconds:
         parser.error("--memory-after has to be under --seconds: the app is stopped at the end of each launch")
 
+    os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
+    new_file = not os.path.exists(args.out) or os.path.getsize(args.out) == 0
+    if not new_file:
+        # Rows go by FIELDS' order, so a CSV from a version of the harness
+        # with other columns (such as one without previous_app) would get
+        # each value under the wrong heading.
+        with open(args.out, newline="") as existing:
+            header = next(csv.reader(existing), [])
+        if header != FIELDS:
+            raise SystemExit(
+                f"{args.out} has other columns than this harness writes: name a new --out\n"
+                f"  its columns: {','.join(header)}\n  these: {','.join(FIELDS)}"
+            )
+    out = open(args.out, "a", newline="")
+    writer = csv.DictWriter(out, fieldnames=FIELDS)
+    if new_file:
+        writer.writeheader()
+
     device = Device(find_adb(), args.device)
     name, os_build = device.info()
     device.run("reverse", f"tcp:{args.fixture_port}", f"tcp:{args.fixture_port}")
     apps = [tuple(app.split("=", 1)) for app in args.app]
     activities = {package: device.activity(package) for _, package in apps}
     watcher = FullyDrawnWatcher(device)
-
-    os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
-    new_file = not os.path.exists(args.out)
-    out = open(args.out, "a", newline="")
-    writer = csv.DictWriter(out, fieldnames=FIELDS)
-    if new_file:
-        writer.writeheader()
 
     # The app launched before each one, counting the warm-ups and the runs
     # dropped over --max-load, which the CSV doesn't hold: summarize.py

@@ -3,15 +3,17 @@ import { definePolyfills, promiseCapability } from './shared.js';
 // ES2025 Promise.try.
 definePolyfills(Promise, {
   try(callback, ...args) {
-    const capability = promiseCapability(this);
+    // Destructured, so each function is called with no `this`, as the spec
+    // calls them: a custom constructor's resolve and reject can tell.
+    const { promise, resolve, reject } = promiseCapability(this);
     let value;
     try {
       value = callback(...args);
     } catch (error) {
-      capability.reject(error);
-      return capability.promise;
+      reject(error);
+      return promise;
     }
-    capability.resolve(value);
-    return capability.promise;
+    resolve(value);
+    return promise;
   },
 });

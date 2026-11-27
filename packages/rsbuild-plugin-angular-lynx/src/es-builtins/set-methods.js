@@ -1,4 +1,5 @@
 import {
+  call,
   definePolyfills,
   isObject,
   requireCallable,
@@ -38,7 +39,7 @@ const copySet = (set) => {
  * Opens the set-like's keys() iterator (GetIteratorFromMethod).
  */
 const keysOf = (record) => {
-  const iterator = record.keys.call(record.set);
+  const iterator = call(record.keys, record.set);
   if (!isObject(iterator)) throw new TypeError('keys() must return an object');
   return iteratorRecord(iterator);
 };
@@ -73,7 +74,7 @@ definePolyfills(Set.prototype, {
     const result = new Set();
     if (size <= record.size) {
       for (const value of setValues.call(this)) {
-        if (record.has.call(record.set, value)) setAdd.call(result, value);
+        if (call(record.has, record.set, value)) setAdd.call(result, value);
       }
     } else {
       someKey(keysOf(record), (key) => {
@@ -88,7 +89,7 @@ definePolyfills(Set.prototype, {
     const result = copySet(this);
     if (size <= record.size) {
       for (const value of setValues.call(result)) {
-        if (record.has.call(record.set, value)) setDelete.call(result, value);
+        if (call(record.has, record.set, value)) setDelete.call(result, value);
       }
     } else {
       someKey(keysOf(record), (key) => {
@@ -112,7 +113,7 @@ definePolyfills(Set.prototype, {
     const record = getSetRecord(other);
     if (size > record.size) return false;
     for (const value of setValues.call(this)) {
-      if (!record.has.call(record.set, value)) return false;
+      if (!call(record.has, record.set, value)) return false;
     }
     return true;
   },
@@ -127,7 +128,7 @@ definePolyfills(Set.prototype, {
     const record = getSetRecord(other);
     if (size <= record.size) {
       for (const value of setValues.call(this)) {
-        if (record.has.call(record.set, value)) return false;
+        if (call(record.has, record.set, value)) return false;
       }
       return true;
     }

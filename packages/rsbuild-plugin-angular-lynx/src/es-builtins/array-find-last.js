@@ -1,4 +1,5 @@
 import {
+  call,
   definePolyfills,
   lengthOf,
   requireCallable,
@@ -14,7 +15,7 @@ definePolyfills(Array.prototype, {
     const thisArg = arguments[1];
     for (let index = length - 1; index >= 0; index--) {
       const value = object[index];
-      if (predicate.call(thisArg, value, index, object)) return value;
+      if (call(predicate, thisArg, value, index, object)) return value;
     }
     return undefined;
   },
@@ -24,7 +25,7 @@ definePolyfills(Array.prototype, {
     requireCallable(predicate);
     const thisArg = arguments[1];
     for (let index = length - 1; index >= 0; index--) {
-      if (predicate.call(thisArg, object[index], index, object)) return index;
+      if (call(predicate, thisArg, object[index], index, object)) return index;
     }
     return -1;
   },

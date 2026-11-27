@@ -367,6 +367,58 @@ describe('ES2021–ES2026 built-in polyfills', () => {
         `Array.prototype.toReversed.call({ length: 2 ** 32 })`,
       ]);
     });
+
+    it('calls a function without reading its own call property', () => {
+      expectSameAsNative([
+        `(() => {
+          const predicate = (value) => value > 1;
+          predicate.call = undefined;
+          return [[1, 2, 3].findLast(predicate), [1, 2, 3].findLastIndex(predicate)];
+        })()`,
+      ]);
+    });
+
+    it("creates own elements, which a setter on Array.prototype can't intercept", () => {
+      expectSameAsNative([
+        `(() => {
+          // A counter, not an array: pushing onto an array would set its 0.
+          let intercepted = 0;
+          Object.defineProperty(Array.prototype, 0, {
+            set() { intercepted++; },
+            configurable: true,
+          });
+          try {
+            return [
+              [1, 2].toReversed(),
+              [2, 1].toSorted(),
+              [1, 2].toSpliced(0, 0, 9),
+              [1, 2].toSpliced(0, 1),
+              [1, 2].with(1, 5),
+              Object.getOwnPropertyNames([1, 2].toReversed()),
+              intercepted,
+            ].map(String);
+          } finally {
+            delete Array.prototype[0];
+          }
+        })()`,
+      ]);
+    });
+
+    it('checks the spliced length before it rounds near 2^53', () => {
+      expectSameAsNative([
+        `Array.prototype.toSpliced.call({ length: 2 ** 53 - 1 }, 0, 1, 1)`,
+      ]);
+      // 2^53 - 2 + 3 - 1 is 2^53, past the spec's limit, so it's a TypeError.
+      // Adding first rounds 2^53 + 1 down to 2^53, which leaves 2^53 - 1 and
+      // fails in ArrayCreate as a RangeError instead. Node 24 does that, so
+      // this is checked on its own.
+      realm = polyfilled;
+      expect(
+        run(
+          `describeResult(() => Array.prototype.toSpliced.call({ length: 2 ** 53 - 2 }, 1, 1, 1, 2, 3))`,
+        ),
+      ).toBe('throws TypeError');
+    });
   });
 
   describe('typed array methods', () => {
@@ -395,6 +447,35 @@ describe('ES2021–ES2026 built-in polyfills', () => {
             log.push(error.name);
           }
           return log;
+        })()`,
+      ]);
+    });
+
+    it('builds the kind the app started with, and reads the own length', () => {
+      expectSameAsNative([
+        `(() => {
+          const Original = Uint8Array;
+          globalThis.Uint8Array = function Replaced() {};
+          try {
+            return [
+              new Original([1, 2]).toReversed() instanceof Original,
+              new Original([2, 1]).toSorted() instanceof Original,
+              new Original([1, 2]).with(0, 3) instanceof Original,
+            ];
+          } finally {
+            globalThis.Uint8Array = Original;
+          }
+        })()`,
+        `(() => {
+          const bytes = new Uint8Array([1, 2, 3]);
+          Object.defineProperty(bytes, 'length', { value: 1 });
+          return [bytes.at(-1), bytes.at(2)];
+        })()`,
+        `(() => {
+          class Bytes extends Uint8Array {
+            get length() { return 1; }
+          }
+          return new Bytes([1, 2, 3]).at(-1);
         })()`,
       ]);
     });
@@ -551,6 +632,36 @@ describe('ES2021–ES2026 built-in polyfills', () => {
     });
   });
 
+  describe('promise capabilities', () => {
+    it("checks the constructor's executor calls, and calls resolve and reject without a this", async () => {
+      await expectSameAsNativeAsync([
+        `Promise.withResolvers.call(function (executor) { executor(() => {}, () => {}); executor(() => {}, () => {}); })`,
+        `Promise.withResolvers.call(function (executor) { executor(1, 2); })`,
+        `Promise.withResolvers.call(function () {})`,
+        `(() => {
+          const { promise, resolve, reject } = Promise.withResolvers.call(function (executor) { executor(); executor(() => {}, () => {}); });
+          return [typeof promise, typeof resolve, typeof reject];
+        })()`,
+        `(() => {
+          const seen = [];
+          const Constructor = function (executor) {
+            executor(function () { seen.push(this); }, function () { seen.push(this); });
+          };
+          Promise.try.call(Constructor, () => 1);
+          Promise.try.call(Constructor, () => { throw new RangeError(); });
+          return seen;
+        })()`,
+        `(async () => {
+          const resolve = (value) => Promise.resolve(value);
+          resolve.call = undefined;
+          class Custom extends Promise {}
+          Custom.resolve = resolve;
+          return Custom.any([Promise.reject(1), 2]);
+        })()`,
+      ]);
+    });
+  });
+
   describe('Array.fromAsync', () => {
     it('collects async and sync iterables and array-likes', async () => {
       await expectSameAsNativeAsync([
@@ -627,6 +738,144 @@ describe('ES2021–ES2026 built-in polyfills', () => {
           return log;
         })()`,
         `(() => { const result = Array.fromAsync(null); result.catch(() => {}); return result instanceof Promise; })()`,
+      ]);
+    });
+
+    it('follows the spec through each step of the iteration', async () => {
+      await expectSameAsNativeAsync([
+        // Each iterator method is read once.
+        `(async () => {
+          let reads = 0;
+          const items = { get [Symbol.iterator]() { reads++; return function* () { yield 1; }; } };
+          return [await Array.fromAsync(items), reads];
+        })()`,
+        `(async () => {
+          let reads = 0;
+          const items = { get [Symbol.asyncIterator]() { reads++; return async function* () { yield 1; }; } };
+          return [await Array.fromAsync(items), reads];
+        })()`,
+        `Array.fromAsync({ [Symbol.asyncIterator]: 1 })`,
+        `Array.fromAsync({ [Symbol.asyncIterator]: null, [Symbol.iterator]: 1 })`,
+        // Functions are called without reading their own call property.
+        `(async () => {
+          const mapper = (value) => value * 2;
+          mapper.call = undefined;
+          const next = async () => ({ done: true });
+          next.call = undefined;
+          return [
+            await Array.fromAsync([1, 2], mapper),
+            await Array.fromAsync({ length: 1, 0: 3 }, mapper),
+            await Array.fromAsync({ [Symbol.asyncIterator]: () => ({ next }) }),
+          ];
+        })()`,
+        // A constructor that's a proxy is still one, even when reading its
+        // prototype throws.
+        `(() => {
+          const Constructor = new Proxy(function () {}, {
+            get(target, key) {
+              if (key === 'prototype') throw new RangeError();
+              return target[key];
+            },
+          });
+          return Array.fromAsync.call(Constructor, [1]);
+        })()`,
+      ]);
+    });
+
+    it("doesn't close an async iterable whose step's value throws", async () => {
+      // The spec reads the value with IteratorValue and returns the error as
+      // it is (only what comes after the step closes the iterator), as
+      // `for await` does. Node 24's Array.fromAsync closes it, so this is
+      // checked on its own.
+      realm = polyfilled;
+      expect(
+        await run(`describeAsyncResult(async () => {
+          const log = [];
+          const items = {
+            [Symbol.asyncIterator]() {
+              return {
+                next: async () => ({ done: false, get value() { throw new RangeError(); } }),
+                return: async () => { log.push('closed'); return {}; },
+              };
+            },
+          };
+          try {
+            await Array.fromAsync(items);
+          } catch (error) {
+            log.push(error.name);
+          }
+          return log;
+        })`),
+      ).toBe('["RangeError"]');
+    });
+
+    it("reads a sync iterable's last step's value, and waits for its return()", async () => {
+      // As the spec's async-from-sync iterator does. Node 24's own
+      // Array.fromAsync does both, so each is compared with it too.
+      await expectSameAsNativeAsync([
+        // A value is resolved once: its `then` is read once.
+        `(async () => {
+          let reads = 0;
+          const value = {
+            get then() {
+              if (reads++) throw new RangeError();
+              return undefined;
+            },
+          };
+          const [result] = await Array.fromAsync([value]);
+          return [result === value, reads];
+        })()`,
+        // Each step waits for the async-from-sync iterator's own promise, so
+        // the next one runs after what settling the value queued.
+        `(() => {
+          let ready = false;
+          let calls = 0;
+          const items = {
+            [Symbol.iterator]() {
+              return {
+                next() {
+                  calls++;
+                  if (calls === 1) {
+                    Promise.resolve().then(() => {}).then(() => { ready = true; });
+                    return { value: 1, done: false };
+                  }
+                  return calls === 2 ? { value: ready ? 2 : 3, done: false } : { done: true };
+                },
+              };
+            },
+          };
+          return Array.fromAsync(items);
+        })()`,
+        `Array.fromAsync({
+          [Symbol.iterator]() {
+            return { next: () => ({ done: true, get value() { throw new RangeError(); } }) };
+          },
+        })`,
+        `Array.fromAsync({
+          [Symbol.iterator]() {
+            return { next: () => ({ done: true, value: Promise.reject(new RangeError()) }) };
+          },
+        })`,
+        `(async () => {
+          const log = [];
+          const items = {
+            [Symbol.iterator]() {
+              return {
+                next: () => ({ value: 1, done: false }),
+                return() {
+                  const value = Promise.resolve().then().then().then().then(() => log.push('returned'));
+                  return { done: true, value };
+                },
+              };
+            },
+          };
+          try {
+            await Array.fromAsync(items, () => { throw new RangeError(); });
+          } catch (error) {
+            log.push(error.name);
+          }
+          return log;
+        })()`,
       ]);
     });
 
@@ -771,6 +1020,26 @@ describe('ES2021–ES2026 built-in polyfills', () => {
             },
           };
           return [new Set([1, 2]).isDisjointFrom(other), log];
+        })()`,
+      ]);
+    });
+  });
+
+  describe("Set methods' set-likes", () => {
+    it('calls has() and keys() without reading their own call property', () => {
+      expectSameAsNative([
+        `(() => {
+          const has = (value) => value === 1;
+          has.call = undefined;
+          const keys = () => [1, 3][Symbol.iterator]();
+          keys.call = undefined;
+          const other = { size: 2, has, keys };
+          return [
+            new Set([1, 2]).intersection(other),
+            new Set([1, 2, 3]).intersection(other),
+            new Set([1, 2]).union(other),
+            new Set([1]).isSubsetOf(other),
+          ];
         })()`,
       ]);
     });
@@ -949,6 +1218,90 @@ describe('ES2021–ES2026 built-in polyfills', () => {
         `(() => { const wrapper = Iterator.from({ next() {} }); return Object.getPrototypeOf(wrapper).next.call({}); })()`,
       ]);
     });
+
+    it('calls the iterator protocol without reading call properties', () => {
+      expectSameAsNative([
+        `(() => {
+          const log = [];
+          const next = () => ({ value: 1, done: false });
+          next.call = undefined;
+          const close = () => { log.push('closed'); return {}; };
+          close.call = undefined;
+          const source = { __proto__: Iterator.prototype, next, return: close };
+          const plain = { next, return: close };
+          const open = () => [1, 2].values();
+          open.call = undefined;
+          return [
+            source.take(1).toArray(),
+            Iterator.from(plain).next(),
+            Iterator.from(plain).return(),
+            (() => { try { source.map(() => { throw new RangeError(); }).next(); } catch (error) { return error.name; } })(),
+            [1].values().flatMap(() => ({ [Symbol.iterator]: open })).toArray(),
+            log,
+          ];
+        })()`,
+      ]);
+    });
+
+    it("can't be called again from its source's return() while it closes", () => {
+      // A helper that has yielded closes its source from inside its
+      // generator (GeneratorResumeAbrupt), which is executing until the
+      // source's return() returns, so calling the helper from there throws.
+      // One that hasn't started is completed first, and answers done. Node
+      // 24's helpers answer done in both cases, so this is checked on its
+      // own.
+      realm = polyfilled;
+      expect(
+        run(`describeResult(() => {
+          const log = [];
+          let helper;
+          const source = {
+            __proto__: Iterator.prototype,
+            next: () => ({ value: 1, done: false }),
+            return() {
+              for (const method of ['next', 'return']) {
+                try { log.push(helper[method]()); } catch (error) { log.push(error.name); }
+              }
+              return {};
+            },
+          };
+          helper = source.map((x) => x);
+          helper.next();
+          helper.return();
+          log.push('started');
+          helper = source.map((x) => x);
+          helper.return();
+          return log;
+        })`),
+      ).toBe(
+        '["TypeError","TypeError","started",{value:undefined,done:true},{value:undefined,done:true}]',
+      );
+    });
+
+    it("defines Iterator.prototype's constructor and toStringTag as accessors", () => {
+      expectSameAsNative(
+        ['`constructor`', 'Symbol.toStringTag'].flatMap((key) => [
+          `(() => {
+            const { get, set, enumerable, configurable } = Object.getOwnPropertyDescriptor(Iterator.prototype, ${key});
+            return [typeof get, typeof set, get.name, set.name, get.length, set.length, enumerable, configurable, String(get.call(1) === Iterator || get.call(1))];
+          })()`,
+          `(() => {
+            const object = Object.create(Iterator.prototype);
+            object[${key}] = 5;
+            const own = Object.getOwnPropertyDescriptor(object, ${key});
+            object[${key}] = 6;
+            return [own.value, own.writable, own.enumerable, own.configurable, object[${key}], Object.create(object)[${key}]];
+          })()`,
+          `(() => { Iterator.prototype[${key}] = 1; })()`,
+          `Object.getOwnPropertyDescriptor(Iterator.prototype, ${key}).set.call(1, 2)`,
+          `Object.getOwnPropertyDescriptor(Iterator.prototype, ${key}).set.call(Object.freeze({ __proto__: Iterator.prototype }), 2)`,
+          `(() => {
+            const object = Object.freeze({ __proto__: Iterator.prototype, [${key}]: 1 });
+            Object.getOwnPropertyDescriptor(Iterator.prototype, ${key}).set.call(object, 2);
+          })()`,
+        ]),
+      );
+    });
   });
 
   describe('RegExp.escape', () => {
@@ -1034,7 +1387,22 @@ describe('ES2021–ES2026 built-in polyfills', () => {
         `[new Error(), new TypeError(), new (class extends Error {})(), new AggregateError([])].map(Error.isError)`,
         `[{}, null, 'Error', Object.create(Error.prototype), { name: 'Error', message: '' }].map(Error.isError)`,
         `Error.isError()`,
+        `(() => { const error = new Error(); error[Symbol.toStringTag] = 'Custom'; return Error.isError(error); })()`,
+        `(() => { class Tagged extends TypeError { get [Symbol.toStringTag]() { return 'Tagged'; } } return Error.isError(new Tagged()); })()`,
+        `Error.isError({ [Symbol.toStringTag]: 'Error' })`,
       ]);
+    });
+
+    it('counts a tagged object that only inherits from Error.prototype as an error', () => {
+      // A known difference: only the engine can see that such an object
+      // lacks [[ErrorData]] once its tag hides the mark from
+      // Object.prototype.toString (see error-is-error.js). Native is false.
+      realm = polyfilled;
+      expect(
+        run(
+          `Error.isError(Object.assign(Object.create(Error.prototype), { [Symbol.toStringTag]: 'Custom' }))`,
+        ),
+      ).toBe(true);
     });
   });
 });
@@ -1464,6 +1832,16 @@ describe('ES2026 built-ins Node 24 lacks', () => {
           return log.join();
         })()`),
       ).toBe('before start,close a');
+    });
+
+    it("opens each iterable without reading its method's own call property", () => {
+      expect(
+        run(`describeResult(() => {
+          const open = () => [1, 2].values();
+          open.call = undefined;
+          return Iterator.concat({ [Symbol.iterator]: open }).toArray();
+        })`),
+      ).toBe('[1,2]');
     });
 
     it('takes only iterable objects', () => {

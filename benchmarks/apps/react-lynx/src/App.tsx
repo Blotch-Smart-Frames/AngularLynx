@@ -6,7 +6,10 @@ import { TabBar } from './components/TabBar';
 import { queryClient } from './lib/queryClient';
 import { shell } from './lib/shell';
 import { useNavigation } from './navigation';
+import BenchBusy from './screens/BenchBusy';
 import BenchMount from './screens/BenchMount';
+import BenchTap from './screens/BenchTap';
+import BenchUpdate from './screens/BenchUpdate';
 import Favourites from './screens/Favourites';
 import Index from './screens/Index';
 import PokemonScreen from './screens/PokemonScreen';
@@ -41,6 +44,15 @@ export function App() {
 
   if (benchScreen?.name === 'mount') {
     return <BenchMount params={benchScreen.params} />;
+  }
+  if (benchScreen?.name === 'tap') {
+    return <BenchTap params={benchScreen.params} />;
+  }
+  if (benchScreen?.name === 'update') {
+    return <BenchUpdate params={benchScreen.params} />;
+  }
+  if (benchScreen?.name === 'busy') {
+    return <BenchBusy params={benchScreen.params} />;
   }
 
   return (

@@ -8,6 +8,10 @@ import {
   SCROLL_SESSIONS,
   SESSIONS,
   SIZES,
+  type Tap,
+  type TapBench,
+  type TapSession,
+  TAP_SESSIONS,
 } from './data';
 import { launchPoints, type Metric, MetricChart } from './metric-chart';
 import styles from './index.module.scss';
@@ -387,5 +391,163 @@ export const ScrollCharts = () => {
       </figure>
       <ScrollCaption />
     </div>
+  );
+};
+
+/**
+ * "42 / 58 ms": a median and its p90, or a dash with no values.
+ */
+const medianAndP90 = (values: readonly number[], unit = ' ms'): string =>
+  values.length === 0
+    ? '–'
+    : `${Math.round(percentile(values, 0.5))} / ${Math.round(percentile(values, 0.9))}${unit}`;
+
+const BUTTON_NAMES = ['1 row', 'Every 10th row', 'Every row'];
+
+/**
+ * The sessions of one tap benchmark, in the apps' order.
+ */
+const sessionsOf = (bench: TapBench) =>
+  TAP_SESSIONS.filter((session) => session.bench === bench).sort(
+    (a, b) =>
+      Object.keys(APPS).indexOf(a.rival) - Object.keys(APPS).indexOf(b.rival),
+  );
+
+const valuesOf = (
+  taps: readonly Tap[],
+  app: string,
+  value: (tap: Tap) => number | undefined,
+  keep: (tap: Tap) => boolean = () => true,
+) =>
+  taps.flatMap((tap) => {
+    const v = tap.app === app && keep(tap) ? value(tap) : undefined;
+    return v === undefined ? [] : [v];
+  });
+
+/**
+ * A tap benchmark as a table: each row one session, AngularLynx and the other
+ * app side by side, as median / p90 of every tap. The update screen has a row
+ * per button.
+ */
+export const TapTable = ({
+  bench,
+}: {
+  readonly bench: 'tap' | 'update' | 'busy';
+}) => {
+  const sessions = sessionsOf(bench);
+  if (sessions.length === 0) return null;
+  // The update screen's taps split by button; the others' all in one row.
+  const rows = sessions.flatMap(
+    (session): { session: TapSession; name: string; button?: number }[] =>
+      bench === 'update'
+        ? BUTTON_NAMES.map((name, button) => ({ session, name, button }))
+        : [{ session, name: '' }],
+  );
+  return (
+    <table>
+      <thead>
+        <tr>
+          <th>Other app</th>
+          {bench === 'update' && <th>Button</th>}
+          <th>AngularLynx</th>
+          <th>Other app</th>
+          {bench === 'busy' && <th>Frames held up, AngularLynx</th>}
+          {bench === 'busy' && <th>Frames held up, other app</th>}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map(({ session, name, button }) => {
+          const keep = (tap: Tap) =>
+            button === undefined || tap.button === button;
+          const frame = (app: string) =>
+            medianAndP90(
+              valuesOf(session.taps, app, (tap) => tap.frameMs, keep),
+            );
+          const stalled = (app: string) =>
+            medianAndP90(
+              valuesOf(session.taps, app, (tap) => tap.stalledFrames),
+              '',
+            );
+          return (
+            <tr key={`${session.rival}-${session.date}-${name}`}>
+              <td>{APPS[session.rival]?.label ?? session.rival}</td>
+              {bench === 'update' && <td>{name}</td>}
+              <td>{frame('angular-lynx')}</td>
+              <td>{frame(session.rival)}</td>
+              {bench === 'busy' && <td>{stalled('angular-lynx')}</td>}
+              {bench === 'busy' && <td>{stalled(session.rival)}</td>}
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+};
+
+/**
+ * The first tap after launch: from the process starting to the first change a
+ * tap made, and how many taps the app didn't answer before it.
+ */
+export const FirstTapTable = () => {
+  const sessions = sessionsOf('first-tap');
+  if (sessions.length === 0) return null;
+  return (
+    <table>
+      <thead>
+        <tr>
+          <th>App</th>
+          <th>First tap answered</th>
+          <th>Fully drawn</th>
+          <th>Taps before it</th>
+        </tr>
+      </thead>
+      <tbody>
+        {sessions.flatMap((session) =>
+          ['angular-lynx', session.rival].map((app) => (
+            <tr key={`${session.rival}-${session.date}-${app}`}>
+              <td>
+                {APPS[app]?.label ?? app}
+                {app === 'angular-lynx'
+                  ? ` (with ${APPS[session.rival]?.label ?? session.rival})`
+                  : ''}
+              </td>
+              <td>
+                {medianAndP90(
+                  valuesOf(session.taps, app, (tap) => tap.firstChangeMs),
+                )}
+              </td>
+              <td>
+                {medianAndP90(
+                  valuesOf(session.taps, app, (tap) => tap.fullyDrawnMs),
+                )}
+              </td>
+              <td>
+                {medianAndP90(
+                  valuesOf(session.taps, app, (tap) => tap.tapsBefore),
+                  '',
+                )}
+              </td>
+            </tr>
+          )),
+        )}
+      </tbody>
+    </table>
+  );
+};
+
+/** Where and when the tap sessions ran, under the tap tables. */
+export const TapCaption = () => {
+  const taps = TAP_SESSIONS.flatMap((session) => session.taps);
+  if (taps.length === 0) return null;
+  const devices = [...new Set(taps.map((tap) => deviceName(tap.device)))];
+  const builds = [...new Set(taps.map((tap) => tap.osBuild))];
+  return (
+    <p className={styles['caption']}>
+      {devices.join(', ')}, iOS {builds.join(', ')},{' '}
+      {dateRange(taps.map((tap) => tap.timestamp))}. Median / p90 of every tap,
+      in milliseconds unless it says frames. Each row is one session, the two
+      apps launched in turn. Release builds.{' '}
+      <a href="/guide/benchmarks#responding-to-a-tap">How we measured</a>
+    </p>
   );
 };

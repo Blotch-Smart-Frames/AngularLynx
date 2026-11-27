@@ -29,8 +29,11 @@ export default function RootLayout() {
               contentStyle: { backgroundColor: Colors.white },
             }}
           />
-          {/* The benchmark's deep-link screen: no header, so only what it mounts is on screen. */}
+          {/* The benchmark's deep-link screens: no header, so only what they mount is on screen. */}
           <Stack.Screen name="bench/mount" options={{ headerShown: false }} />
+          <Stack.Screen name="bench/tap" options={{ headerShown: false }} />
+          <Stack.Screen name="bench/update" options={{ headerShown: false }} />
+          <Stack.Screen name="bench/busy" options={{ headerShown: false }} />
         </Stack>
       </QueryClientProvider>
     </GestureHandlerRootView>

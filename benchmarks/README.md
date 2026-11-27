@@ -19,7 +19,7 @@ frameworks never touch the monorepo's build.
 | `apps/react-lynx` | The port to ReactLynx, in the same native shell as the AngularLynx app, on iOS and Android |
 | `apps/angular-native` | The port to Angular Native (Expo SDK 58) |
 | `fixtures/` | Recorded PokeAPI responses and sprites, and the server that hands them to the apps |
-| `harness/` | The scripts that launch the apps under Instruments and read the traces, the UI test that scrolls them (`ios-scroll/`), and the ones that launch them on Android with adb (`android_*`) |
+| `harness/` | The scripts that launch the apps under Instruments and read the traces, the UI test that scrolls them (`ios-scroll/`), the probe every app compiles for the tap benchmarks (`harness/probe`), the XCUITest bundle that taps them (`harness/tapper`), and the ones that launch them on Android with adb (`android_*`) |
 | `results/` | Every run, as CSV |
 
 ## The app
@@ -47,7 +47,7 @@ milliseconds in every run, and "fully drawn" measures the framework.
 
 ## Results
 
-[`results/ios`](results/ios) holds every run, one CSV per session: `launch-<date>-<app>.csv` for the launches, `mount-<date>-<kind>-<count>-<app>.csv` for the screens of many elements, `scroll-<date>-<app>.csv` for the swipes (a row per swipe), `size.csv` for the apps' sizes and `apps.json` for their versions. The website's [Benchmarks page](https://angularlynx.js.org/guide/benchmarks) charts them as they are, and `harness/summarize.py` prints the same medians.
+[`results/ios`](results/ios) holds every run, one CSV per session: `launch-<date>-<app>.csv` for the launches, `mount-<date>-<kind>-<count>-<app>.csv` for the screens of many elements, `scroll-<date>-<app>.csv` for the swipes (a row per swipe), `tap-<date>-<app>.csv`, `update-<date>-<app>.csv`, `busy-<date>-<app>.csv` and `first-tap-<date>-<app>.csv` for the taps (one row per tap, or per launch for the first tap), `size.csv` for the apps' sizes and `apps.json` for their versions. The website's [Benchmarks page](https://angularlynx.js.org/guide/benchmarks) charts them as they are, and `harness/summarize.py` prints the same medians.
 
 Two things the runs showed, which shape how they're read:
 
@@ -97,7 +97,25 @@ python3 harness/ios_scroll.py --device <UDID> --runs 10 \
 sh harness/ios_size.sh <app> path/to/App.app >> results/ios/size.csv
 python3 harness/summarize.py results/ios/launch-*.csv
 python3 harness/summarize.py results/ios/scroll-*.csv
+
+# 7. The tap benchmarks: builds both apps for each benchmark (the tap,
+#    update and busy screens, and the Pokédex for the first tap), and runs
+#    them with the tapper, one installed at a time beside its runner, as in
+#    step 5
+python3 harness/ios_tap_session.py --device <UDID> --rival react-lynx --runs 10
+python3 harness/ios_tap_session.py --device <UDID> --rival react-lynx --handler main-thread --runs 10
+python3 harness/summarize_taps.py results/ios/tap-*.csv results/ios/update-*.csv results/ios/busy-*.csv results/ios/first-tap-*.csv
 ```
+
+The tap benchmarks need [XcodeGen](https://github.com/yonaskolb/XcodeGen)
+(`brew install xcodegen`) for the tapper's project, and the phone set to
+allow UI automation (Settings → Developer → Enable UI Automation). The
+tapper's test runner goes on the phone before either app comes off, and stays
+for the whole session while the two apps take turns beside it: iOS forgets it
+trusts a developer when the last app that developer signed leaves the phone.
+Add `--simulator` to `ios_tap.py` to check the harness on a simulator,
+with apps built by `sh harness/build_ios_app.sh --simulator …`;
+`--keep-traces <folder>` keeps each run's trace and the tapper's log.
 
 The harness needs Xcode and `ideviceinfo` (`brew install libimobiledevice`)
 for the battery level. The first launch of each app asks for local network

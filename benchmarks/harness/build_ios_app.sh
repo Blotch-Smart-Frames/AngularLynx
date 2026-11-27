@@ -17,6 +17,11 @@
 # `expo prebuild` run once with the bundle ID first (see their READMEs): prebuild writes it into
 # the Xcode project, where a command-line setting would also rename every
 # pod's resource bundle.
+#
+# Every app is built with the probe (probe/BenchProbe.m), which does nothing
+# unless the app is launched with BENCH_PROBE=1: the Lynx apps' generated
+# projects compile every file in App/, so it's copied there before
+# xcodebuild; the React Native apps' startup module links to it.
 set -eu
 simulator=
 if [ "${1:-}" = --simulator ]; then
@@ -34,6 +39,7 @@ else
   origin="${FIXTURE_ORIGIN:-http://$(ipconfig getifaddr en0):8787}"
 fi
 team="${TEAM_ID:-F64LTK85F6}"
+probe="$here/probe/BenchProbe.m"
 log="$(mktemp -t "build-$app")"
 cd "$dir"
 
@@ -43,25 +49,34 @@ cd "$dir"
 case "$app" in
   angular-lynx)
     if [ -n "$simulator" ]; then
-      # The builder's own simulator .app, with the bundle ID set where the
-      # builder takes it, so nothing renames it after the build.
+      # With the bundle ID set where the builder takes it, so nothing renames
+      # it after the build.
       BENCH_SCREEN="$screen" FIXTURE_ORIGIN="$origin" npx ng build --platform ios --app-id "$bundle_id" >"$log" 2>&1
-      built=dist/ios/LaunchPerfAL-simulator.app
     else
       BENCH_SCREEN="$screen" FIXTURE_ORIGIN="$origin" npx ng build --platform ios >"$log" 2>&1
-      # The builder writes the project into Angular's cache folder, which is
-      # named for @angular/build's version (its normalize-cache.js), so a
-      # checkout that has built on an older Angular keeps a project per
-      # version, each with the bundle it was last built with. Take the one
-      # this ng build used: neither the first one listed nor the newest is it,
-      # because the builder only copies a new bundle into a project whose
-      # inputs haven't changed, leaving the project's own date as it was.
-      version=$(node -p "require('@angular/build/package.json').version")
-      project=.angular/cache/$version/angular-lynx/lynx-native/ios/App.xcodeproj
-      if [ ! -d "$project" ]; then
-        echo "ng build wrote no project at $project" >&2
-        exit 1
-      fi
+    fi
+    # The builder writes the project into Angular's cache folder, which is
+    # named for @angular/build's version (its normalize-cache.js), so a
+    # checkout that has built on an older Angular keeps a project per
+    # version, each with the bundle it was last built with. Take the one
+    # this ng build used: neither the first one listed nor the newest is it,
+    # because the builder only copies a new bundle into a project whose
+    # inputs haven't changed, leaving the project's own date as it was.
+    version=$(node -p "require('@angular/build/package.json').version")
+    project=.angular/cache/$version/angular-lynx/lynx-native/ios/App.xcodeproj
+    if [ ! -d "$project" ]; then
+      echo "ng build wrote no project at $project" >&2
+      exit 1
+    fi
+    # Built again with xcodebuild, even for the Simulator, for which the
+    # builder builds an .app itself: the probe has to be in App/ first.
+    cp "$probe" "$(dirname "$project")/App/BenchProbe.m"
+    if [ -n "$simulator" ]; then
+      xcodebuild build -project "$project" -scheme App -configuration Release \
+        -sdk iphonesimulator -destination "generic/platform=iOS Simulator" -derivedDataPath .angular/xcode-simulator \
+        PRODUCT_BUNDLE_IDENTIFIER="$bundle_id" CODE_SIGNING_ALLOWED=NO >>"$log" 2>&1
+      built=.angular/xcode-simulator/Build/Products/Release-iphonesimulator/LaunchPerfAL.app
+    else
       xcodebuild build -project "$project" -scheme App -configuration Release \
         -sdk iphoneos -destination generic/platform=iOS -derivedDataPath .angular/xcode-device \
         DEVELOPMENT_TEAM="$team" PRODUCT_BUNDLE_IDENTIFIER="$bundle_id" \
@@ -70,14 +85,17 @@ case "$app" in
     fi
     ;;
   react-lynx)
+    # The project only, so the probe goes into App/ before xcodebuild, also
+    # for the Simulator, for which build-ios.mjs builds an .app itself.
+    BENCH_SCREEN="$screen" APP_ID="$bundle_id" FIXTURE_ORIGIN="$origin" TEAM_ID="$team" \
+      node scripts/build-ios.mjs --project-only >"$log" 2>&1
+    cp "$probe" build/native/ios/App/BenchProbe.m
     if [ -n "$simulator" ]; then
-      # build-ios.mjs builds the Release simulator .app itself.
-      BENCH_SCREEN="$screen" APP_ID="$bundle_id" FIXTURE_ORIGIN="$origin" \
-        node scripts/build-ios.mjs >"$log" 2>&1
-      built="build/ios/$bundle_id/LaunchPerfReactLynx-simulator.app"
+      xcodebuild build -project build/native/ios/App.xcodeproj -scheme App -configuration Release \
+        -sdk iphonesimulator -destination "generic/platform=iOS Simulator" -derivedDataPath build/work/build/ios-simulator \
+        PRODUCT_BUNDLE_IDENTIFIER="$bundle_id" CODE_SIGNING_ALLOWED=NO >>"$log" 2>&1
+      built=build/work/build/ios-simulator/Build/Products/Release-iphonesimulator/LaunchPerfReactLynx.app
     else
-      BENCH_SCREEN="$screen" APP_ID="$bundle_id" FIXTURE_ORIGIN="$origin" TEAM_ID="$team" \
-        node scripts/build-ios.mjs --project-only >"$log" 2>&1
       xcodebuild build -project build/native/ios/App.xcodeproj -scheme App -configuration Release \
         -destination generic/platform=iOS -derivedDataPath build/work/build/ios-device \
         DEVELOPMENT_TEAM="$team" PRODUCT_BUNDLE_IDENTIFIER="$bundle_id" \

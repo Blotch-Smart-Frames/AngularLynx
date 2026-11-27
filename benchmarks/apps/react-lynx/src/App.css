@@ -421,3 +421,133 @@ page {
   width: 24px;
   height: 24px;
 }
+
+/* screens/BenchTap.tsx, as the AngularLynx app's screens/tap.ts */
+.tap-screen {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  background-color: #fff;
+}
+
+.tap-top {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.tap-box {
+  width: 100px;
+  height: 100px;
+}
+
+.tap-count {
+  margin-top: 16px;
+  font-size: 20px;
+  color: #000;
+}
+
+.tap-button {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  background-color: #e3e3e3;
+}
+
+.tap-label {
+  font-size: 20px;
+  color: #000;
+}
+
+/* screens/BenchUpdate.tsx, as the AngularLynx app's screens/update.ts */
+.update-screen {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  background-color: #fff;
+}
+
+.update-rows {
+  flex: 1;
+}
+
+.update-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  height: 24px;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+.update-box {
+  width: 16px;
+  height: 16px;
+  margin-right: 8px;
+}
+
+.update-name {
+  flex: 1;
+  font-size: 14px;
+  color: #000;
+}
+
+.update-value {
+  font-size: 14px;
+  color: #000;
+}
+
+.update-buttons {
+  display: flex;
+  flex-direction: row;
+  height: 25%;
+}
+
+.update-button {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  background-color: #e3e3e3;
+  margin: 1px;
+}
+
+.update-label {
+  font-size: 16px;
+  color: #000;
+}
+
+/* screens/BenchBusy.tsx, as the AngularLynx app's screens/busy.ts */
+.busy-track {
+  height: 40px;
+}
+
+.busy-mover {
+  width: 40px;
+  height: 40px;
+  animation: move 1s linear infinite alternate;
+}
+
+@keyframes move {
+  from {
+    transform: translateX(0px);
+  }
+  to {
+    transform: translateX(300px);
+  }
+}
+
+.busy-button {
+  display: flex;
+  height: 50%;
+  align-items: center;
+  justify-content: center;
+  background-color: #e3e3e3;
+}

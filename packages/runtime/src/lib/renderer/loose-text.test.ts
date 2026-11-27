@@ -570,7 +570,10 @@ class RaisedHost {
     >
     y<span class="lift" [style.vertical-align]="lift()"
       ><b class="in-lift">b</b
-      ><sup class="sup-in-lift">s<b class="in-sup-in-lift">t</b></sup></span
+      ><sup class="sup-in-lift">s<b class="in-sup-in-lift">t</b></sup
+      ><b class="own-in-lift" [style.vertical-align]="ownLift()"
+        >c<i class="in-own-in-lift">d</i></b
+      ><b class="attr-in-lift" style="vertical-align: 2px">e</b></span
     >
     <span [class.note]="note()"
       ><sup class="note-sup">a<b class="in-note-sup">b</b></sup></span
@@ -580,6 +583,7 @@ class RaisedHost {
 class OwnAlignHost {
   readonly sized = signal(false);
   readonly lift = signal<string | null>(null);
+  readonly ownLift = signal<string | null>(null);
   readonly note = signal(false);
 }
 
@@ -1539,6 +1543,91 @@ describe('loose text', () => {
     }
   });
 
+  // Issue #736: a tag's own inline vertical-align comes after the runtime's
+  // declarations and won over them, so a `<b style="vertical-align: 2px">`
+  // inside a tag raised 4px moved 2px, where a browser moves it 6px (its 2px
+  // from the span's raised baseline). The runtime's total now goes after the
+  // app's value, as a binding or in the style attribute, and wins natively,
+  // where Lynx can hold it as one length.
+  it("adds a tag's own inline vertical-align to the distance of the tag around it", () => {
+    (
+      globalThis as { __angularLynxStyleIndex?: unknown }
+    ).__angularLynxStyleIndex = {
+      rules: [
+        [['_ngtag-sup'], SMALLER_FLAG | VERTICAL_ALIGN_FLAG],
+        [['lift'], VERTICAL_ALIGN_FLAG],
+      ],
+      verticalAligns: [
+        ...BUILD_VERTICAL_ALIGNS,
+        [['lift'], [], [0, 4], 1000, 0, 2],
+      ],
+    };
+    // What native draws: the last vertical-align of the whole inline style,
+    // unless a later __AddInlineStyle of the key replaced it.
+    const native = globalThis as unknown as {
+      __AddInlineStyle: (el: FakeEl, key: string, value: unknown) => void;
+      __SetInlineStyles: (el: FakeEl, value: unknown) => void;
+    };
+    const drawn = new Map<FakeEl, string | undefined>();
+    const add = native.__AddInlineStyle;
+    const set = native.__SetInlineStyles;
+    native.__AddInlineStyle = (el, key, value) => {
+      if (key === 'vertical-align') {
+        drawn.set(el, value == null ? undefined : String(value));
+      }
+      add(el, key, value);
+    };
+    native.__SetInlineStyles = (el, value) => {
+      const all = [
+        ...String(value ?? '').matchAll(/vertical-align:\s*([^;]+)/g),
+      ];
+      drawn.set(el, all.at(-1)?.[1]?.trim());
+      set(el, value);
+    };
+    const align = (cls: string): string | undefined => drawn.get(byClass(cls));
+    try {
+      const fixture = TestBed.createComponent(OwnAlignHost);
+      fixture.detectChanges();
+      const host = fixture.componentInstance;
+
+      // The style attribute's 2px adds to the rule's 4px.
+      expect(align('attr-in-lift')).toBe('6px');
+
+      host.ownLift.set('2px');
+      fixture.detectChanges();
+      expect(align('own-in-lift')).toBe('6px');
+      // The text inside the <b> rises with it, as it did before.
+      expect(align('in-own-in-lift')).toBe('6px');
+      // The runtime reads the app's value, not its own total, for the next
+      // one.
+      host.ownLift.set('3px');
+      fixture.detectChanges();
+      expect(align('own-in-lift')).toBe('7px');
+      expect(align('in-own-in-lift')).toBe('7px');
+
+      // An em of its own and the span's pixels make no single length Lynx
+      // takes (issue #734), so the <b> keeps its own value alone.
+      host.ownLift.set('0.5em');
+      fixture.detectChanges();
+      expect(align('own-in-lift')).toBe('0.5em');
+      expect(String(byClass('own-in-lift').attrs.get('style'))).not.toContain(
+        'calc(',
+      );
+
+      // Without a value of its own, it rises with the span again.
+      host.ownLift.set('1px');
+      fixture.detectChanges();
+      expect(align('own-in-lift')).toBe('5px');
+      host.ownLift.set(null);
+      fixture.detectChanges();
+      expect(align('own-in-lift')).toBe('4px');
+      expect(align('in-own-in-lift')).toBe('4px');
+    } finally {
+      native.__AddInlineStyle = add;
+      native.__SetInlineStyles = set;
+    }
+  });
+
   // Issue #643: the build gives `<em>`, `<u>`, `<s>` and their kin the
   // browser's italic and lines, in rules on their tags' classes. As for
   // `<b>`'s weight, the index entries must keep the inherited value off, and
@@ -1950,6 +2039,187 @@ describe('loose text, element by element', () => {
     expect(level()).toBe(true);
 
     text.setStyle('font-size', '150%');
+    commit();
+    expect(level()).toBe(false);
+  });
+
+  // Issue #750: a relative size on a view further up is copied as `1em` too,
+  // so the text in a <small> below it takes no level, and works its level out
+  // again when the view's classes or inline size change, or it moves.
+  it('gives the text in a <small> no level below a relative size on a view, and works it out again when the view changes', () => {
+    const fontSize = 1 << INHERITED_TEXT_PROPERTIES.indexOf('font-size');
+    (
+      globalThis as { __angularLynxStyleIndex?: unknown }
+    ).__angularLynxStyleIndex = {
+      rules: [
+        [['big'], fontSize | RELATIVE_SIZE_FLAG],
+        [['px'], fontSize],
+        [['sm'], SMALLER_FLAG],
+        [['_ngsmaller-1'], SMALLER_FLAG],
+        [['_ngsmaller-2'], SMALLER_FLAG],
+      ],
+    };
+    const outer = doc.createElement('view');
+    page.appendChild(outer);
+    const div = doc.createElement('div');
+    div.addClass('big');
+    outer.appendChild(div);
+    // A view between them that sets no size passes the div's on.
+    const inner = doc.createElement('view');
+    div.appendChild(inner);
+    inner.appendChild(doc.createText('a '));
+    const small = doc.createElement('small');
+    small.addClass('sm');
+    inner.appendChild(small);
+    small.appendChild(doc.createText('b '));
+    const bold = doc.createElement('b');
+    small.appendChild(bold);
+    bold.appendChild(doc.createText('c'));
+    commit();
+    const level = (): string[] =>
+      [...native(bold).classes].filter((name) =>
+        name.startsWith('_ngsmaller-'),
+      );
+    expect(level()).toEqual([]);
+    expect(String(native(bold).attrs.get('style') ?? '')).toContain(
+      'font-size: var(--angular-lynx-font-size)',
+    );
+
+    // An absolute size's copy is the size, which the level divides.
+    div.setAttribute('class', 'px');
+    commit();
+    expect(level()).toEqual(['_ngsmaller-1']);
+    div.setAttribute('class', 'big');
+    commit();
+    expect(level()).toEqual([]);
+
+    // A view's inline size wins over its rules, as on a text tag.
+    div.setStyle('font-size', '20px');
+    commit();
+    expect(level()).toEqual(['_ngsmaller-1']);
+    div.removeStyle('font-size');
+    commit();
+    expect(level()).toEqual([]);
+    div.setInlineStyles('font-size: 20px');
+    commit();
+    expect(level()).toEqual(['_ngsmaller-1']);
+    div.setInlineStyles('font-size: 150%');
+    commit();
+    expect(level()).toEqual([]);
+    div.setStyle('--angular-lynx-font-size', '20px');
+    commit();
+    expect(level()).toEqual(['_ngsmaller-1']);
+    div.removeStyle('--angular-lynx-font-size');
+    commit();
+    expect(level()).toEqual([]);
+
+    // A view nearer the text that sets an absolute size passes that on
+    // instead, and one that sets none passes the size from above it.
+    inner.setAttribute('class', 'px');
+    commit();
+    expect(level()).toEqual(['_ngsmaller-1']);
+    inner.setAttribute('class', '');
+    commit();
+    expect(level()).toEqual([]);
+
+    // Moved out from under the relative size, it reads an absolute one.
+    const sized = doc.createElement('view');
+    sized.addClass('px');
+    page.appendChild(sized);
+    sized.appendChild(inner);
+    commit();
+    expect(level()).toEqual(['_ngsmaller-1']);
+    div.appendChild(inner);
+    commit();
+    expect(level()).toEqual([]);
+
+    // A class that leaves the kind of size as it was changes no level, and
+    // an empty tag in the <small> takes its styles again too.
+    small.appendChild(doc.createElement('i'));
+    div.setAttribute('class', 'big other');
+    commit();
+    expect(level()).toEqual([]);
+    sized.setAttribute('class', 'px other');
+    commit();
+    expect(level()).toEqual([]);
+  });
+
+  // Review of #786: a variable an HTML text tag between them sets itself is
+  // the size the text inside reads, not the relative one from the view, so
+  // the levels divide it.
+  it('gives the text in a <small> its level below a variable a tag sets itself, under a relative size on a view', () => {
+    const fontSize = 1 << INHERITED_TEXT_PROPERTIES.indexOf('font-size');
+    (
+      globalThis as { __angularLynxStyleIndex?: unknown }
+    ).__angularLynxStyleIndex = {
+      rules: [
+        [['big'], fontSize | RELATIVE_SIZE_FLAG],
+        [['sm'], SMALLER_FLAG],
+        [['_ngsmaller-1'], SMALLER_FLAG],
+      ],
+    };
+    const div = doc.createElement('div');
+    div.addClass('big');
+    page.appendChild(div);
+    const small = doc.createElement('small');
+    small.addClass('sm');
+    div.appendChild(small);
+    const bold = doc.createElement('b');
+    small.appendChild(bold);
+    bold.appendChild(doc.createText('c'));
+    small.setStyle('--angular-lynx-font-size', '20px');
+    commit();
+    const level = () => native(bold).classes.has('_ngsmaller-1');
+    expect(level()).toBe(true);
+
+    small.removeStyle('--angular-lynx-font-size');
+    commit();
+    expect(level()).toBe(false);
+  });
+
+  // Issue #750: a list's items take the size the list passes on, which they
+  // read through the list (see LynxListElement), not their #jsParent.
+  it('gives the text in a <small> in a list item its level from the size above the list', () => {
+    const fontSize = 1 << INHERITED_TEXT_PROPERTIES.indexOf('font-size');
+    (
+      globalThis as { __angularLynxStyleIndex?: unknown }
+    ).__angularLynxStyleIndex = {
+      rules: [
+        [['big'], fontSize | RELATIVE_SIZE_FLAG],
+        [['px'], fontSize],
+        [['sm'], SMALLER_FLAG],
+        [['_ngsmaller-1'], SMALLER_FLAG],
+      ],
+    };
+    const outer = doc.createElement('view');
+    outer.addClass('big');
+    page.appendChild(outer);
+    const list = doc.createElement('list');
+    outer.appendChild(list);
+    const item = doc.createElement('list-item');
+    list.appendChild(item);
+    const small = doc.createElement('small');
+    small.addClass('sm');
+    item.appendChild(small);
+    const bold = doc.createElement('b');
+    small.appendChild(bold);
+    bold.appendChild(doc.createText('c'));
+    commit();
+    const level = () => native(bold).classes.has('_ngsmaller-1');
+    expect(level()).toBe(false);
+
+    outer.setAttribute('class', 'px');
+    commit();
+    expect(level()).toBe(true);
+
+    // Moved to a list below a relative size, it reads that.
+    const other = doc.createElement('view');
+    other.addClass('big');
+    page.appendChild(other);
+    const otherList = doc.createElement('list');
+    other.appendChild(otherList);
+    item.remove();
+    otherList.appendChild(item);
     commit();
     expect(level()).toBe(false);
   });

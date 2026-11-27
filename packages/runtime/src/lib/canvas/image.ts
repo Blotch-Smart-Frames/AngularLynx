@@ -1,7 +1,14 @@
 import { blobForURL, decodeDataURL, isHeldBlob } from '../network/blob-urls';
 import { relayBytes } from '../network/relay';
+import { LynxImageData } from './canvas-2d-context';
 import { type CanvasSource, canvasSourceOf } from './canvas-source';
-import { type WebGLBridge, getWebGLBridge, toWords } from './webgl-bridge';
+import {
+  type DecodedImage,
+  type ImageCopyOptions,
+  type WebGLBridge,
+  getWebGLBridge,
+  toWords,
+} from './webgl-bridge';
 import {
   NATIVE_IMAGE,
   type NativeImage,
@@ -17,7 +24,12 @@ import {
  * keeps the pixels, which `texImage2D` uploads by id (see webgl2-context.ts),
  * so the pixels never travel through JavaScript; the file's bytes do, once.
  * An ImageBitmap of a canvas is a copy the shell makes of the canvas's pixels
- * (`imageFromCanvas`), so nothing at all crosses the bridge but the ids.
+ * (`imageFromCanvas`), and one of an ImageBitmap or a loaded `Image` a copy
+ * of the pixels it keeps for them (`imageFromImage`), so nothing at all
+ * crosses the bridge but the ids. An ImageData's bytes cross once, as
+ * `texImage2D` sends them (`imageFromPixels`). Each takes createImageBitmap's
+ * crop rectangle, which the shell applies before the resize and the flip, as
+ * the HTML spec orders them.
  * Where there's no module (Lynx Explorer, tests), decoding fails as a broken
  * image does: `createImageBitmap()` rejects and an `<img>` fires `error`.
  *
@@ -44,6 +56,53 @@ type DecodeOptions = {
 };
 
 /**
+ * createImageBitmap()'s `sx, sy, sw, sh`, with the sizes made positive: a
+ * negative one reaches left of, or above, the corner it names.
+ */
+type CropRect = { x: number; y: number; width: number; height: number };
+
+/**
+ * The options as the shell reads them, every one there: an omitted resize
+ * is 0 (keep the source's size), and no crop a crop width of 0 (all of it).
+ */
+const copyOptions = (
+  options: DecodeOptions,
+  crop: CropRect | null = null,
+): ImageCopyOptions => ({
+  imageOrientation: options.imageOrientation ?? 'from-image',
+  premultiplyAlpha: options.premultiplyAlpha ?? 'default',
+  resizeWidth: options.resizeWidth ?? 0,
+  resizeHeight: options.resizeHeight ?? 0,
+  cropX: crop?.x ?? 0,
+  cropY: crop?.y ?? 0,
+  cropWidth: crop?.width ?? 0,
+  cropHeight: crop?.height ?? 0,
+});
+
+/**
+ * The image the shell kept, as an ImageBitmap, or why it couldn't. A shell
+ * from before cropping ignores the crop rectangle, and answers without
+ * `cropped`: the bitmap would be all of the source, so it's refused.
+ */
+const bitmapOf = (
+  id: number,
+  image: DecodedImage,
+  options: ImageCopyOptions,
+  failure: string,
+): LynxImageBitmap => {
+  if (image.error || !image.width || !image.height) {
+    throw new Error(image.error ?? failure);
+  }
+  if (options.cropWidth && !image.cropped) {
+    getWebGLBridge()?.releaseImage(id);
+    throw new Error(
+      "This app's shell can't crop an ImageBitmap: build it again with `ng build --platform`",
+    );
+  }
+  return new LynxImageBitmap(id, image.width, image.height);
+};
+
+/**
  * The module that keeps decoded images, or why there's none.
  */
 const imageBridge = (): WebGLBridge => {
@@ -65,12 +124,7 @@ const decode = (
 ): { id: number; width: number; height: number } => {
   const bridge = imageBridge();
   const id = nextNativeImageId();
-  const decoded = bridge.decodeImage(id, toWords(bytes), {
-    imageOrientation: options.imageOrientation ?? 'from-image',
-    premultiplyAlpha: options.premultiplyAlpha ?? 'default',
-    resizeWidth: options.resizeWidth ?? 0,
-    resizeHeight: options.resizeHeight ?? 0,
-  });
+  const decoded = bridge.decodeImage(id, toWords(bytes), copyOptions(options));
   if (decoded.error || !decoded.width || !decoded.height) {
     throw new Error(decoded.error ?? 'The image could not be decoded');
   }
@@ -148,27 +202,106 @@ export const imageBitmapOfCanvas = (
   canvas: CanvasSource,
   options: DecodeOptions,
   transfer: boolean,
+  crop: CropRect | null = null,
 ): LynxImageBitmap => {
   const bridge = imageBridge();
   // The calls the canvas's context has recorded go first, so the copy is of
   // the canvas as the app has drawn it so far, as a browser reads it.
   canvas.flush();
   const id = nextNativeImageId();
+  const copy = copyOptions(options, crop);
   const image = bridge.imageFromCanvas(id, canvas.canvasId, {
-    imageOrientation: options.imageOrientation ?? 'from-image',
-    premultiplyAlpha: options.premultiplyAlpha ?? 'default',
-    resizeWidth: options.resizeWidth ?? 0,
-    resizeHeight: options.resizeHeight ?? 0,
+    ...copy,
     // For a canvas without a context, which the shell has no pixels of: its
     // image is transparent black, of its size, as in a browser.
     width: canvas.width,
     height: canvas.height,
     transfer,
   });
-  if (image.error || !image.width || !image.height) {
-    throw new Error(image.error ?? 'The canvas could not be read');
+  return bitmapOf(id, image, copy, 'The canvas could not be read');
+};
+
+/**
+ * An ImageBitmap of pixels the shell already keeps (an ImageBitmap's, or a
+ * loaded `Image`'s), copied there with createImageBitmap()'s options, so
+ * neither the pixels nor the file cross the bridge again.
+ */
+const imageBitmapOfImage = (
+  sourceId: number,
+  options: DecodeOptions,
+  crop: CropRect | null,
+): LynxImageBitmap => {
+  const bridge = imageBridge();
+  const id = nextNativeImageId();
+  const copy = copyOptions(options, crop);
+  const image = bridge.imageFromImage(id, sourceId, copy);
+  return bitmapOf(id, image, copy, 'The image could not be copied');
+};
+
+/**
+ * An ImageBitmap of an ImageData's pixels, which are straight RGBA, rows top
+ * to bottom. They cross the bridge once, as words, as `texImage2D` sends
+ * them.
+ */
+const imageBitmapOfImageData = (
+  data: LynxImageData,
+  options: DecodeOptions,
+  crop: CropRect | null,
+): LynxImageBitmap => {
+  const bridge = imageBridge();
+  const id = nextNativeImageId();
+  const copy = copyOptions(options, crop);
+  const pixels = data.data;
+  const image = bridge.imageFromPixels(
+    id,
+    toWords(
+      new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength),
+    ),
+    { ...copy, width: data.width, height: data.height },
+  );
+  return bitmapOf(id, image, copy, 'The pixels could not be copied');
+};
+
+/**
+ * The thrown error of a DOMException, by name, as a browser rejects with.
+ */
+const domError = (name: string, message: string): Error => {
+  const error = new Error(
+    `Failed to execute 'createImageBitmap' on 'Window': ${message}`,
+  );
+  error.name = name;
+  return error;
+};
+
+/**
+ * The crop arguments as Web IDL's `long` converts them (ToInt32: `'8'` is 8,
+ * 8.7 is 8, NaN is 0), with a negative size turned round, as the HTML spec
+ * reads one. A size of 0 is a RangeError.
+ */
+const cropRect = (
+  sx: unknown,
+  sy: unknown,
+  sw: unknown,
+  sh: unknown,
+): CropRect => {
+  let x = Number(sx) | 0;
+  let y = Number(sy) | 0;
+  let width = Number(sw) | 0;
+  let height = Number(sh) | 0;
+  if (width === 0 || height === 0) {
+    throw new RangeError(
+      `Failed to execute 'createImageBitmap' on 'Window': The crop rect ${width === 0 ? 'width' : 'height'} is 0.`,
+    );
   }
-  return new LynxImageBitmap(id, image.width, image.height);
+  if (width < 0) {
+    x += width;
+    width = -width;
+  }
+  if (height < 0) {
+    y += height;
+    height = -height;
+  }
+  return { x, y, width, height };
 };
 
 /**
@@ -199,18 +332,25 @@ const resizeOption = (value: unknown, member: string): number | undefined => {
 
 /**
  * `createImageBitmap()`, from a Blob (a file's bytes), an image that has
- * loaded, or a canvas (`<canvas>`, `document.createElement('canvas')` or an
- * OffscreenCanvas). Cropping (the `sx, sy, sw, sh` arguments) isn't
- * supported.
+ * loaded, a canvas (`<canvas>`, `document.createElement('canvas')` or an
+ * OffscreenCanvas), an ImageBitmap or an ImageData, whole or the part the
+ * crop arguments (`sx, sy, sw, sh`) name: what falls outside the source is
+ * transparent black, as in a browser.
  */
 export const createImageBitmap = async (
   source: unknown,
   ...rest: unknown[]
 ): Promise<LynxImageBitmap> => {
-  if (rest.length > 1) {
-    throw new Error('createImageBitmap() cropping is not supported on Lynx');
+  // Web IDL's overloads take 1 or 2 arguments, or 5 or 6, and ignore any
+  // past the sixth.
+  const count = rest.length + 1;
+  if (count === 3 || count === 4) {
+    throw new TypeError(
+      `Failed to execute 'createImageBitmap' on 'Window': It takes 1, 2, 5 or 6 arguments, but ${count} were given.`,
+    );
   }
-  const given = (rest[0] ?? {}) as DecodeOptions;
+  const crop = count >= 5 ? cropRect(rest[0], rest[1], rest[2], rest[3]) : null;
+  const given = ((count >= 5 ? rest[4] : rest[0]) ?? {}) as DecodeOptions;
   // Each option read by name, as Web IDL reads a dictionary: a spread would
   // drop the ones an object inherits.
   const options: DecodeOptions = {
@@ -224,28 +364,50 @@ export const createImageBitmap = async (
     // Read before anything is awaited, so the bitmap is of the canvas as it
     // is at the call, as a browser takes it.
     if (canvas.width === 0 || canvas.height === 0) {
-      const error = new Error(
-        `Failed to execute 'createImageBitmap' on 'Window': The source image ${canvas.width === 0 ? 'width' : 'height'} is 0.`,
+      throw domError(
+        'InvalidStateError',
+        `The source image ${canvas.width === 0 ? 'width' : 'height'} is 0.`,
       );
-      error.name = 'InvalidStateError';
-      throw error;
     }
-    return imageBitmapOfCanvas(canvas, options, false);
+    return imageBitmapOfCanvas(canvas, options, false, crop);
+  }
+  if (source instanceof LynxImageBitmap) {
+    // A closed bitmap has no pixels left to copy.
+    const { id } = source[NATIVE_IMAGE];
+    if (!id) {
+      throw domError('InvalidStateError', 'The image source is detached.');
+    }
+    return imageBitmapOfImage(id, options, crop);
+  }
+  if (source instanceof LynxImageData) {
+    // A buffer transferred away (to a worker, say) has no bytes left.
+    if ((source.data.buffer as { detached?: boolean }).detached) {
+      throw domError('InvalidStateError', 'The source data has been detached.');
+    }
+    return imageBitmapOfImageData(source, options, crop);
+  }
+  if (source instanceof LynxImageElement) {
+    // The pixels it decoded, still in the shell, neither flipped nor
+    // premultiplied: its file isn't sent or decoded again. decode() rejects
+    // for an image that didn't load, as a browser rejects a broken one.
+    await source.decode();
+    return imageBitmapOfImage(source[NATIVE_IMAGE].id, options, crop);
   }
   let bytes: Uint8Array;
   if (isHeldBlob(source)) {
     bytes = source.bytesSync();
-  } else if (source instanceof LynxImageElement) {
-    bytes = await source.fileBytes();
   } else if (source && typeof (source as Blob).arrayBuffer === 'function') {
     bytes = new Uint8Array(await (source as Blob).arrayBuffer());
   } else {
     throw new TypeError(
-      'createImageBitmap() on Lynx takes a Blob, a loaded Image or a canvas',
+      'createImageBitmap() on Lynx takes a Blob, a loaded Image, a canvas, an ImageBitmap or an ImageData',
     );
   }
-  const { id, width, height } = decode(bytes, options);
-  return new LynxImageBitmap(id, width, height);
+  const bridge = imageBridge();
+  const id = nextNativeImageId();
+  const copy = copyOptions(options, crop);
+  const image = bridge.decodeImage(id, toWords(bytes), copy);
+  return bitmapOf(id, image, copy, 'The image could not be decoded');
 };
 
 type ImageListener = (event: { type: string; target: unknown }) => void;
@@ -260,7 +422,6 @@ type ImageListener = (event: { type: string; target: unknown }) => void;
 export class LynxImageElement {
   #src = '';
   #image: NativeImage = { id: 0, width: 0, height: 0, bakedOptions: false };
-  #bytes: Uint8Array | null = null;
   #complete = true;
   #load = 0;
   readonly #listeners = new Map<string, Set<ImageListener>>();
@@ -308,15 +469,6 @@ export class LynxImageElement {
     return this.#image;
   }
 
-  /**
-   * @internal The file's bytes, for createImageBitmap().
-   */
-  async fileBytes(): Promise<Uint8Array> {
-    // decode() resolves only once a load set the bytes.
-    await this.decode();
-    return this.#bytes!;
-  }
-
   async #start(load: number): Promise<void> {
     try {
       const bytes = await fetchBytes(this.#src);
@@ -329,7 +481,6 @@ export class LynxImageElement {
       registry?.unregister(this);
       registry?.register(this, id, this);
       this.#image = { id, width, height, bakedOptions: false };
-      this.#bytes = bytes;
       if (!this.width) this.width = width;
       if (!this.height) this.height = height;
       this.#complete = true;

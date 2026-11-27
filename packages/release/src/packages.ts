@@ -163,11 +163,35 @@ export const readInternalPins = (pkg: PublishablePackage) =>
     .map(([name, version]) => ({ name, version }));
 
 /**
- * Each publishable package's version, from its source `package.json`, and
- * each pin from one to another. The packages are released in lockstep, so
- * these should all be equal: the `consistent-package-versions` lint rule
- * checks that on every lint run, and `check-version.ts` checks them against
- * the tag before a release.
+ * The peer ranges of one publishable package on another (such as
+ * @blotch/angular-lynx-testing-library on @blotch/angular-lynx), and the
+ * version each starts at: `floor` is the version of a `^x.y.z` range, or the
+ * whole range when it isn't one, so a range of another shape never matches a
+ * version.
+ *
+ * Each range starts at its own release's version. A package imports what its
+ * own release of the other one exports, so a floor left on an older release
+ * lets npm pair it with a version that lacks those exports, and the ES module
+ * then fails to link. A release never moved the testing library's
+ * `^22.3.0` floor, while it imported `ɵenableFetch` and others that 22.3.0 and
+ * 22.3.1 don't export (#774). `set-version.ts` moves them with the version.
+ */
+export const readInternalPeers = (pkg: PublishablePackage) =>
+  Object.entries(readPackageJson(pkg).peerDependencies ?? {})
+    .filter(([name]) => PUBLISHABLE_NAMES.has(name))
+    .map(([name, range]) => ({
+      name,
+      range,
+      floor: /^\^(\d+\.\d+\.\d+(?:-[\w.-]+)?)$/.exec(range)?.[1] ?? range,
+    }));
+
+/**
+ * Each publishable package's version, from its source `package.json`, each
+ * pin from one to another, and the floor of each peer range from one on
+ * another. The packages are released in lockstep, so these should all be
+ * equal: the `consistent-package-versions` lint rule checks that on every
+ * lint run, and `check-version.ts` checks them against the tag before a
+ * release.
  */
 export const readVersions = () =>
   PUBLISHABLE_PACKAGES.flatMap((pkg) => [
@@ -175,6 +199,10 @@ export const readVersions = () =>
     ...readInternalPins(pkg).map((pin) => ({
       name: `${pkg.name}'s dependency ${pin.name}`,
       version: pin.version,
+    })),
+    ...readInternalPeers(pkg).map((peer) => ({
+      name: `${pkg.name}'s peer ${peer.name}`,
+      version: peer.floor,
     })),
   ]);
 

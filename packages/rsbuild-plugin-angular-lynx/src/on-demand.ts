@@ -117,17 +117,75 @@ const GLOBAL_NAMES: ReadonlySet<string> = new Set(
 );
 
 /**
+ * A string's line continuation, a backslash before a line terminator, which
+ * adds nothing to the string: `'2\<newline>d'` is `'2d'`.
+ */
+const CONTINUATION = String.raw`(?:\\(?:\r\n|[\n\r\u2028\u2029]))*`;
+
+/**
+ * The ways a string can spell one character that ESCAPE doesn't find: the
+ * character itself, a legacy octal escape (`\62` is `2`), and for a
+ * character with no escape of its own, the character after a backslash
+ * (`\d` is `d`).
+ */
+/**
+ * The letters a backslash makes another character of in a string (`\n` is a
+ * newline), or starts an escape with (`\x32`).
+ */
+const ESCAPE_LETTERS: ReadonlySet<string> = new Set([
+  'b',
+  'f',
+  'n',
+  'r',
+  't',
+  'v',
+  'u',
+  'x',
+]);
+
+const stringCharacter = (character: string): string => {
+  const literal = character.replace(/[\\^$.*+?()[\]{}|]/g, String.raw`\$&`);
+  const spellings = [
+    literal,
+    String.raw`\\0*` + character.charCodeAt(0).toString(8),
+  ];
+  if (!/\d/.test(character) && !ESCAPE_LETTERS.has(character)) {
+    spellings.push(String.raw`\\` + literal);
+  }
+  return `(?:${spellings.join('|')})`;
+};
+
+/**
+ * A string of only the name, in quotes or backticks, spelled any way
+ * namedGlobals() reads as the name, apart from the escapes ESCAPE finds.
+ */
+const quotedName = (name: string): RegExp =>
+  new RegExp(
+    `['"\`]${CONTINUATION}${[...name]
+      .map((character) => stringCharacter(character) + CONTINUATION)
+      .join('')}['"\`]`,
+  );
+
+/**
+ * For each name that isn't an identifier, `2d`, the strings that spell it
+ * (see mayName()).
+ */
+const QUOTED_NAMES: ReadonlyMap<string, RegExp> = new Map(
+  [...GLOBAL_NAMES]
+    .filter((name) => /^\d/.test(name))
+    .map((name) => [name, quotedName(name)]),
+);
+
+/**
  * Whether the module's text can hold the name, as namedGlobals() reads it,
  * before it's parsed. A name that isn't an identifier, `2d`, can only be a
  * string's, so it's looked for in quotes: bare, it's in hashes, numbers and
- * CSS of many modules that would be parsed for nothing.
+ * CSS of many modules that would be parsed for nothing. A string can spell
+ * it with escapes and line continuations, which QUOTED_NAMES (or ESCAPE)
+ * finds, so those modules are parsed too.
  */
 const mayName = (code: string, name: string): boolean =>
-  /^\d/.test(name)
-    ? code.includes(`'${name}'`) ||
-      code.includes(`"${name}"`) ||
-      code.includes(`\`${name}\``)
-    : code.includes(name);
+  QUOTED_NAMES.get(name)?.test(code) ?? code.includes(name);
 
 /**
  * Names that Angular's packages use for code an app doesn't run, or runs only

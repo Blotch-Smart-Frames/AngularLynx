@@ -265,6 +265,23 @@ export const m = 'Not a Blob';`;
         calls('ɵenableCanvas2D') + code,
       );
     }
+    // Spelled with escapes or line continuations, a string is as static.
+    for (const code of [
+      `export const kind = '2\\\nd';`,
+      `export const kind = "2\\\r\nd";`,
+      `export const kind = '\\\n2d\\\u2028';`,
+      `export const kind = '\\62d';`,
+      `export const kind = '2\\144';`,
+      `export const kind = '2\\d';`,
+      `export const kind = '\\x32d';`,
+    ]) {
+      expect(enableOnDemand(code, '/app/src/kind.ts'), code).toBe(
+        calls('ɵenableCanvas2D') + code,
+      );
+    }
+    // An escape that's another character isn't the name.
+    const other = `export const kinds = ['\\2d', '2\\nd'];`;
+    expect(enableOnDemand(other, '/app/src/other.ts')).toBe(other);
     // The bare word isn't a request: CSS, hashes and comments hold it.
     const prose = `// Draws 2d shapes.
 export const css = 'transform: translate2d(0)';

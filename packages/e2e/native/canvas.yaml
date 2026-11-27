@@ -29,7 +29,8 @@ appId: ${APP_ID}
     timeout: 15000
 # A <video> read as an image (issue #696): its first frame, red above and
 # blue below, drawn on a 2D canvas and read back at the top and the bottom,
-# and uploaded as a texture and read back.
+# and uploaded as a texture and read back. A copy with display: none (issue
+# #726) has to read the same, or the line shows it after "| hidden".
 - extendedWaitUntil:
     visible: '.*; Video: red,blue / red'
     timeout: 20000

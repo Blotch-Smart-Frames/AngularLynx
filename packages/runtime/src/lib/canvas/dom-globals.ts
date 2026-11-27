@@ -12,6 +12,7 @@ import { LynxImageBitmapRenderingContext } from './bitmap-renderer-context';
 import { LynxDetachedCanvas, LynxOffscreenCanvas } from './detached-canvas';
 import { createImageBitmap, LynxImageBitmap, LynxImageElement } from './image';
 import { LynxPath2D } from './path';
+import { wrapRealmImageMethods } from './web-image-sources';
 
 /**
  * A template's element: a LynxElement, told apart by shape rather than class,
@@ -72,6 +73,9 @@ const isLynxElement = (value: unknown): value is LayoutElement =>
  *   answers with empty values.
  * - `ResizeObserver`: from each element's `layoutchange` (see layout.ts), as
  *   angular-three sizes its canvas by observing its host.
+ * - In the web preview, the browser's `drawImage()`, `createPattern()`,
+ *   `texImage2D()` and the like, and `createImageBitmap()`, take a template's
+ *   `<video>` or `<canvas>` (see web-image-sources.ts).
  */
 export const installCanvasGlobals = (target: Record<string, any>): void => {
   const install = (name: string, value: unknown): void => {
@@ -101,6 +105,9 @@ export const installCanvasGlobals = (target: Record<string, any>): void => {
   install('ImageBitmap', LynxImageBitmap);
   install('ImageBitmapRenderingContext', LynxImageBitmapRenderingContext);
   install('createImageBitmap', createImageBitmap);
+  // The web preview's own classes, which the ones above leave in place. On
+  // Lynx, they're the runtime's, which read a template's element already.
+  if (__WEB__) wrapRealmImageMethods(target);
   if (typeof target['devicePixelRatio'] === 'undefined') {
     target['devicePixelRatio'] = pixelRatio();
   }

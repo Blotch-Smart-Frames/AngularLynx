@@ -295,3 +295,30 @@ describe('ResizeObserver on the web', () => {
     expect(disconnect).toHaveBeenCalled();
   });
 });
+
+describe('the canvas APIs on the web', () => {
+  it('take a template’s <video> or <canvas> as an image', () => {
+    vi.stubGlobal('__WEB__', true);
+    const drawImage = vi.fn();
+    class CanvasRenderingContext2D {}
+    Object.assign(CanvasRenderingContext2D.prototype, { drawImage });
+    const target: Record<string, any> = { CanvasRenderingContext2D };
+    installCanvasGlobals(target);
+    const video = element();
+    const context = new CanvasRenderingContext2D() as {
+      drawImage(...args: unknown[]): void;
+    };
+    context.drawImage(video, 0, 0);
+    expect(drawImage).toHaveBeenCalledWith(video.element, 0, 0);
+  });
+
+  it('are left alone on Lynx, whose own take one already', () => {
+    const drawImage = vi.fn();
+    class CanvasRenderingContext2D {}
+    Object.assign(CanvasRenderingContext2D.prototype, { drawImage });
+    installCanvasGlobals({ CanvasRenderingContext2D });
+    expect(
+      (CanvasRenderingContext2D.prototype as { drawImage: unknown }).drawImage,
+    ).toBe(drawImage);
+  });
+});

@@ -247,9 +247,12 @@ export class CanvasRoute {
    * back with getImageData(). A red square through grayscale(1) is the
    * spec's 21% gray; drop-shadow() puts a blue copy of one beside it, and
    * shows through one half see-through (globalAlpha comes first); a
-   * filtered square off the canvas casts its canvas shadow onto it; and
-   * blur() softens a black square's edge to partly see-through. A string
-   * that isn't a filter leaves the last one. Gives "ok", or the reads.
+   * filtered square off the canvas casts its canvas shadow onto it; a square
+   * far off the canvas casts its shadow onto it, with a filter and without,
+   * and a filtered one off a corner draws once over its shadow (issue
+   * #755); and blur() softens a black square's edge to partly see-through.
+   * A string that isn't a filter leaves the last one. Gives "ok", or the
+   * reads.
    */
   #drawFilters(): string {
     const make = (width: number, height: number) => {
@@ -293,6 +296,37 @@ export class CanvasRoute {
     offCanvas.fillRect(-4, 0, 4, 2);
     const offCanvasRead = pixel(offCanvas, 3, 0);
 
+    // A shape drawn far off the canvas, with only its shadow brought onto
+    // it, as glows and shadow-only effects are drawn: the shadow's layer
+    // lies where the shape is, not round the canvas. It's read inside the
+    // shadow, as Android softens a shadow's edge by half a pixel even with
+    // no blur.
+    const farReads = [false, true].map((filtered) => {
+      const far = make(8, 8);
+      if (filtered) far.filter = 'grayscale(1)';
+      far.shadowColor = 'rgb(255, 0, 0)';
+      far.shadowOffsetX = 10000;
+      far.fillRect(-10000, 0, 4, 8);
+      return pixel(far, 1, 4);
+    });
+
+    // A shadow whose shape lies diagonally off a corner, so its layer is
+    // drawn apart from the shape's though it overlaps the canvas: the half
+    // see-through black corner on the canvas is drawn once, over its red
+    // shadow (85, 0, 0, 191; twice would be darker), and the shadow beside
+    // it is half red. With a filter, so Android takes the layers too (without
+    // one, its paint casts the shadow, from no layer).
+    const cornerReads = (() => {
+      const corner = make(8, 8);
+      corner.filter = 'grayscale(1)';
+      corner.shadowColor = 'rgb(255, 0, 0)';
+      corner.shadowOffsetX = 4;
+      corner.shadowOffsetY = 4;
+      corner.fillStyle = 'rgba(0, 0, 0, 0.5)';
+      corner.fillRect(-4, -4, 6, 6);
+      return [pixel(corner, 1, 1), pixel(corner, 4, 4)];
+    })();
+
     const blur = make(12, 12);
     blur.filter = 'blur(2px)';
     blur.fillRect(0, 0, 6, 12);
@@ -307,6 +341,16 @@ export class CanvasRoute {
       near(shadowReads[1], [0, 0, 255, 255]) &&
       Math.abs(fadedAlpha - 191) <= 3 &&
       near(offCanvasRead, [255, 0, 0, 255]) &&
+      farReads.every((read) => near(read, [255, 0, 0, 255])) &&
+      cornerReads.every((read, index) =>
+        read.every(
+          (value, channel) =>
+            Math.abs(
+              value -
+                (index === 0 ? [85, 0, 0, 191] : [255, 0, 0, 128])[channel],
+            ) <= 4,
+        ),
+      ) &&
       edge >= 64 &&
       edge <= 160;
     return ok
@@ -317,6 +361,8 @@ export class CanvasRoute {
           ...shadowReads,
           fadedAlpha,
           offCanvasRead,
+          ...farReads,
+          ...cornerReads,
           edge,
         ].join(' ');
   }
@@ -424,7 +470,13 @@ export class CanvasRoute {
     gl: WebGL2RenderingContext,
     program: WebGLProgram,
   ): Promise<string> {
-    const ofWebGL = createImageBitmap(gl.canvas as HTMLCanvasElement);
+    // The template's <canvas>, as an app passes it: on a phone it's also
+    // `gl.canvas`, while in the web preview it's AngularLynx's element around
+    // the page's canvas, which the browser's createImageBitmap() threw for
+    // (issue #732).
+    const ofWebGL = createImageBitmap(
+      this.canvas().nativeElement as unknown as HTMLCanvasElement,
+    );
     const source = new OffscreenCanvas(2, 2);
     const sourceContext = source.getContext('2d')!;
     sourceContext.fillStyle = 'rgb(255, 0, 0)';

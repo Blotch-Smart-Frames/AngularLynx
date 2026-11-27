@@ -5,6 +5,7 @@ import {
   CanvasSurface,
   dispatchContextEvent,
 } from './canvas-surface';
+import { wrapContextImageMethods } from './web-image-sources';
 
 /** The context's events, which the canvas fires itself (see getContext). */
 const CONTEXT_EVENTS: ReadonlySet<string> = new Set([
@@ -83,7 +84,9 @@ const createStyle = (element: LynxElement): Record<string, string> => {
  * - `webglcontextlost` fires when `WEBGL_lose_context` loses the context,
  *   which three.js does when it's disposed.
  * - It can be drawn with `drawImage()`, made a pattern, or uploaded as a
- *   WebGL texture (three.js's CanvasTexture), as an image is.
+ *   WebGL texture (three.js's CanvasTexture), as an image is. In the web
+ *   preview too, where the browser's contexts take it, and a `<video>`, in
+ *   place of their DOM elements (see web-image-sources.ts).
  */
 export class LynxCanvasElement extends LynxElement {
   readonly #surface: CanvasSurface;
@@ -167,7 +170,11 @@ export class LynxCanvasElement extends LynxElement {
 
   getContext(type: string, attributes?: Record<string, unknown>): unknown {
     if (__WEB__) {
-      return this.#dom.getContext(type, attributes);
+      // The browser's context takes only DOM elements as images, and a
+      // template's <video> or <canvas> is AngularLynx's element around one.
+      const context = this.#dom.getContext(type, attributes);
+      wrapContextImageMethods(context);
+      return context;
     }
     return this.#surface.getContext(type, attributes);
   }

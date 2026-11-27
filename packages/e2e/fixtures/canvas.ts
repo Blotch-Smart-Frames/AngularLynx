@@ -839,7 +839,20 @@ export class CanvasRoute {
     const bitmap = await createImageBitmap(
       new Blob([png], { type: 'image/png' }),
     );
-    gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
+    const texture = gl.createTexture();
+    // The objects the context makes are instances of WebGL's object classes,
+    // as twgl.js checks to tell one from the options to make it: on a phone,
+    // the runtime's globals, and in the web preview the iframe's, though
+    // they're the page's (issue #809).
+    const objects = [
+      texture instanceof WebGLTexture,
+      !(texture instanceof WebGLBuffer),
+      buffer instanceof WebGLBuffer,
+      program instanceof WebGLProgram,
+      gl.getUniformLocation(program, 'image') instanceof WebGLUniformLocation,
+    ];
+    if (objects.includes(false)) return `objects ${objects.join(',')}`;
+    gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bitmap);

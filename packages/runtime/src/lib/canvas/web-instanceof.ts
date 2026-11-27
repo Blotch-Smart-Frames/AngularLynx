@@ -1,3 +1,5 @@
+import { WEBGL_OBJECT_NAMES } from './webgl2-brand';
+
 /**
  * `instanceof` in the web preview, answering as it does on iOS and Android
  * for a template's elements and the canvas contexts they make.
@@ -32,6 +34,9 @@ const PAGE_CLASSES: readonly string[] = [
   'CanvasPattern',
   'ImageData',
   'TextMetrics',
+  // What a page canvas's WebGL context makes: its buffers, textures,
+  // uniform locations and the rest (issue #809).
+  ...WEBGL_OBJECT_NAMES,
 ];
 
 /**

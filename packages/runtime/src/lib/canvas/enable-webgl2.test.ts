@@ -14,6 +14,11 @@ import { WEBGL2_CONSTANTS as GL } from './webgl-constants';
 import { ɵenableWebGL2 } from './enable-webgl2';
 import { setWebGLBridgeForTesting } from './webgl-bridge';
 import { LynxWebGL2RenderingContext } from './webgl2-context';
+import {
+  LynxWebGLActiveInfo,
+  LynxWebGLShaderPrecisionFormat,
+  LynxWebGLUniformLocation,
+} from './webgl-objects';
 
 const canvasWithBridge = (): {
   canvas: LynxCanvasElement;
@@ -64,6 +69,45 @@ describe('ɵenableWebGL2', () => {
     );
     expect(target['WebGL2RenderingContext'].FLOAT).toBe(GL.FLOAT);
     expect(target['WebGL2RenderingContext'].TEXTURE_2D).toBe(GL.TEXTURE_2D);
+  });
+
+  it('makes the objects the context hands out instances of the WebGL object globals', () => {
+    const { canvas } = canvasWithBridge();
+    const target: Record<string, any> = {};
+    installCanvasGlobals(target);
+    ɵenableWebGL2();
+    const gl = canvas.getContext('webgl2') as LynxWebGL2RenderingContext;
+    const program = gl.createProgram();
+    const made: Record<string, unknown> = {
+      WebGLBuffer: gl.createBuffer(),
+      WebGLFramebuffer: gl.createFramebuffer(),
+      WebGLRenderbuffer: gl.createRenderbuffer(),
+      WebGLTexture: gl.createTexture(),
+      WebGLProgram: program,
+      WebGLShader: gl.createShader(GL.VERTEX_SHADER),
+      WebGLVertexArrayObject: gl.createVertexArray(),
+      WebGLQuery: gl.createQuery(),
+      WebGLSampler: gl.createSampler(),
+      WebGLSync: gl.fenceSync(GL.SYNC_GPU_COMMANDS_COMPLETE, 0),
+      WebGLTransformFeedback: gl.createTransformFeedback(),
+      // These three need a linked program's reflection, or the shell's
+      // precisions: their classes are what the context returns them as.
+      WebGLUniformLocation: new LynxWebGLUniformLocation(program, 0, 0),
+      WebGLActiveInfo: new LynxWebGLActiveInfo('color', 1, GL.FLOAT_VEC4),
+      WebGLShaderPrecisionFormat: new LynxWebGLShaderPrecisionFormat(
+        127,
+        127,
+        23,
+      ),
+    };
+    for (const [name, value] of Object.entries(made)) {
+      expect(value, name).not.toBeNull();
+      expect(value instanceof target[name], name).toBe(true);
+      // A texture isn't a buffer, as in a browser.
+      const other = name === 'WebGLBuffer' ? 'WebGLTexture' : 'WebGLBuffer';
+      expect(value instanceof target[other], name).toBe(false);
+    }
+    expect(gl instanceof target['WebGLTexture']).toBe(false);
   });
 
   it('leaves a canvas without a WebGL2 context until it’s called, and says so once', () => {

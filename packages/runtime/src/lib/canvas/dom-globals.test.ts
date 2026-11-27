@@ -12,7 +12,11 @@ import { LynxImageBitmapRenderingContext } from './bitmap-renderer-context';
 import { createImageBitmap, LynxImageBitmap, LynxImageElement } from './image';
 import { LynxPath2D } from './path';
 import { CANVAS_SOURCE } from './canvas-source';
-import { WEBGL2_CONTEXT } from './webgl2-brand';
+import {
+  WEBGL2_CONTEXT,
+  WEBGL_OBJECT,
+  WEBGL_OBJECT_NAMES,
+} from './webgl2-brand';
 import type { LayoutRect } from '../lynx-element/layout';
 
 /**
@@ -127,6 +131,30 @@ describe('installCanvasGlobals', () => {
     );
   });
 
+  it('makes each WebGL object an instance of its interface’s global, and of no other', () => {
+    const target: Record<string, any> = {};
+    installCanvasGlobals(target);
+    for (const name of WEBGL_OBJECT_NAMES) {
+      const Global = target[name];
+      // twgl.js asks `typeof WebGLTexture !== 'undefined'` before its check.
+      expect(typeof Global).toBe('function');
+      expect(Global.name).toBe(name);
+      // The runtime's object, as the global tells one apart: by its mark.
+      for (const other of WEBGL_OBJECT_NAMES) {
+        expect({ [WEBGL_OBJECT]: other } instanceof Global).toBe(
+          other === name,
+        );
+      }
+      expect({} instanceof Global).toBe(false);
+      expect(null instanceof Global).toBe(false);
+      expect(name instanceof Global).toBe(false);
+      // The context isn't one of its objects.
+      expect({ [WEBGL2_CONTEXT]: true } instanceof Global).toBe(false);
+      // The objects come from the context, as in a browser.
+      expect(() => new Global()).toThrow('Illegal constructor');
+    }
+  });
+
   it('fires progress events', () => {
     const target: Record<string, any> = {};
     installCanvasGlobals(target);
@@ -169,6 +197,7 @@ describe('installCanvasGlobals', () => {
     const createElement = () => 'div';
     class WebGL2RenderingContext {}
     class WebGLRenderingContext {}
+    class WebGLTexture {}
     const target: Record<string, any> = {
       performance: own,
       crypto: own,
@@ -176,11 +205,13 @@ describe('installCanvasGlobals', () => {
       document: { createElement },
       WebGL2RenderingContext,
       WebGLRenderingContext,
+      WebGLTexture,
     };
     installCanvasGlobals(target);
     expect(target['performance']).toBe(own);
     expect(target['WebGL2RenderingContext']).toBe(WebGL2RenderingContext);
     expect(target['WebGLRenderingContext']).toBe(WebGLRenderingContext);
+    expect(target['WebGLTexture']).toBe(WebGLTexture);
     expect(target['crypto']).toBe(own);
     expect(target['devicePixelRatio']).toBe(2);
     expect(target['document'].createElement).toBe(createElement);

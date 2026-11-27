@@ -15,8 +15,7 @@
  * (0 linear, 1 radial, 2 conic), six numbers, and its stops as one array of
  * offset, red, green, blue, alpha. A pattern's image is made once in the
  * shell (`createPattern`), and its transform crosses with the style.
- * A filter crosses as its padding and its steps as one array (see
- * css-filter.ts).
+ * A filter crosses as its steps, in one array (see css-filter.ts).
  */
 export const OP = {
   save: 1,

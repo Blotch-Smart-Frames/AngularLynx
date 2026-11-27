@@ -70,12 +70,15 @@ def scroll_runs(rows):
         }
 
 
-def table(order, samples, metrics, failed):
+def table(order, samples, metrics, failed, runs=None):
+    """A Markdown table of each app's median and p90 per metric. `runs` counts
+    each app's launches; without it, the longest metric's samples do."""
     header = ["app", "runs"] + [f"{m} median / p90" for m in metrics] + ["failed"]
     print("| " + " | ".join(header) + " |")
     print("|" + "---|" * len(header))
     for app in order:
-        cells = [app, str(max((len(v) for v in samples[app].values()), default=0))]
+        count = runs[app] if runs is not None else max((len(v) for v in samples[app].values()), default=0)
+        cells = [app, str(count)]
         for metric in metrics:
             values = samples[app][metric]
             cells.append(
@@ -90,6 +93,9 @@ def main(paths):
     # own table when both are given.
     launch = (defaultdict(lambda: defaultdict(list)), defaultdict(int), [])
     scroll = (defaultdict(lambda: defaultdict(list)), defaultdict(int), [])
+    # A scroll launch can lack a metric, so its metrics' samples don't count
+    # its launches.
+    scroll_launches = defaultdict(int)
     for path in paths:
         with open(path, newline="") as file:
             rows = list(csv.DictReader(file))
@@ -98,6 +104,7 @@ def main(paths):
             for app, values in scroll_runs(rows):
                 if app not in order:
                     order.append(app)
+                scroll_launches[app] += 1
                 for metric, value in values.items():
                     if value is not None:
                         samples[app][metric].append(value)
@@ -120,15 +127,15 @@ def main(paths):
                 if row.get(metric):
                     samples[app][metric].append(float(row[metric]))
     both = launch[2] and scroll[2]
-    for title, (samples, failed, order), metrics in (
-        ("Launches", launch, METRICS),
-        ("Scrolling", scroll, SCROLL_METRICS),
+    for title, (samples, failed, order), metrics, runs in (
+        ("Launches", launch, METRICS, None),
+        ("Scrolling", scroll, SCROLL_METRICS, scroll_launches),
     ):
         if not order:
             continue
         if both:
             print(f"\n{title}\n")
-        table(order, samples, metrics, failed)
+        table(order, samples, metrics, failed, runs)
 
 
 if __name__ == "__main__":

@@ -140,26 +140,37 @@ describe('polyfills', () => {
 
   describe('network APIs', () => {
     // The install guards themselves are tested in network/index.test.ts with
-    // a stand-in global. Node has fetch but no XMLHttpRequest, so XHR shows
+    // a stand-in global. Node has a ReadableStream, so a missing one shows
     // whether they were installed.
-    it("installs them on the main thread, keeping the platform's fetch", async () => {
-      const nativeFetch = globalThis.fetch;
+    it('installs the body and encoding APIs on the main thread', async () => {
       vi.stubGlobal('__MAIN_THREAD__', true);
-      vi.stubGlobal('XMLHttpRequest', undefined);
+      vi.stubGlobal('ReadableStream', undefined);
       vi.stubGlobal('lynx', undefined);
       await importFresh();
-      expect((globalThis as any).XMLHttpRequest?.name).toBe(
-        'LynxXMLHttpRequest',
+      expect((globalThis as any).ReadableStream?.name).toBe(
+        'LynxReadableStream',
       );
-      expect(globalThis.fetch).toBe(nativeFetch);
     });
 
     it('leaves the background thread alone', async () => {
       vi.stubGlobal('__MAIN_THREAD__', false);
-      vi.stubGlobal('XMLHttpRequest', undefined);
+      vi.stubGlobal('ReadableStream', undefined);
       vi.stubGlobal('lynx', undefined);
       await importFresh();
+      expect((globalThis as any).ReadableStream).toBeUndefined();
+    });
+
+    it('leaves fetch, XMLHttpRequest and IntersectionObserver to the modules that name them', async () => {
+      // The build plugin calls their enable functions there (network/enable.ts).
+      vi.stubGlobal('__MAIN_THREAD__', true);
+      vi.stubGlobal('fetch', undefined);
+      vi.stubGlobal('XMLHttpRequest', undefined);
+      vi.stubGlobal('IntersectionObserver', undefined);
+      vi.stubGlobal('lynx', undefined);
+      await importFresh();
+      expect((globalThis as any).fetch).toBeUndefined();
       expect((globalThis as any).XMLHttpRequest).toBeUndefined();
+      expect((globalThis as any).IntersectionObserver).toBeUndefined();
     });
   });
 

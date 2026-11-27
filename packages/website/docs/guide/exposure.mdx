@@ -81,6 +81,7 @@ export class SceneFrame {
 - **It reports each element once observing starts**, as a browser does, then each time the element comes into view or leaves it. The first report waits for the element's first layout. After that, the same rules as `lynxExposure` decide what counts as visible.
 - **Entries have the browser's fields**: `isIntersecting`, `intersectionRatio`, `boundingClientRect`, `intersectionRect`, `rootBounds` and `target`. The boxes are measured when Lynx notices the change, so an element scrolling into view reports a small `intersectionRatio`.
 - **In tests**, [`fireEvent.uiappear()` and `fireEvent.uidisappear()`](/api/testing-library/event-reference#coming-into-view) bring an element into view and take it out.
+- **It's in your app's bundle only when the app uses it**: the build adds it where a file of your app or its libraries names `IntersectionObserver`, or has an `@defer (on viewport)` block. Code that looks it up by a name it builds at runtime finds it missing, unless another file names it: call `ɵenableIntersectionObserver()` from `@blotch/angular-lynx` first.
 
 ### Thresholds, a root margin and a root
 

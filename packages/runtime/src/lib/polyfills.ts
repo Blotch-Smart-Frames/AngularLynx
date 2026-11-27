@@ -21,7 +21,6 @@ import {
   installGlobalWindow,
 } from './global-events';
 import { installElementGlobal } from './lynx-element/element-global';
-import { installIntersectionObserver } from './lynx-element/intersection-observer';
 import { installBase64Globals, installNetworkGlobals } from './network';
 import { installUrl } from './url';
 
@@ -123,11 +122,15 @@ installUrl(globalThis);
 // parameter by these names (unlike `fetch`), so globalThis tells the truth.
 installBase64Globals(globalThis as unknown as Record<string, unknown>);
 
-// Lynx's main thread has no fetch, XMLHttpRequest, Headers, ReadableStream or
-// TextDecoder, and the background thread, which has fetch, runs no Angular. So HttpClient, httpResource and fetch-based
-// libraries failed wherever they ran. These versions send each request to the background thread's fetch.
-// The background thread keeps its own globals: its fetch is passed into the
-// bundle's wrapper function, so it isn't on globalThis and would look missing.
+// Lynx's main thread has no Headers, ReadableStream, TextEncoder, TextDecoder
+// or Blob, which fetch-based code and the canvas's images use.
+// The background thread keeps its own globals.
+//
+// fetch, XMLHttpRequest and IntersectionObserver aren't installed here: the
+// build plugin calls ɵenableFetch(), ɵenableXMLHttpRequest() and
+// ɵenableIntersectionObserver() in each module that names them, so an app
+// that never uses them leaves them out of its main-thread script, which
+// PrimJS reads whole as it loads it (#719; network/enable.ts).
 if (isMainThread()) {
   installNetworkGlobals(globalThis as unknown as Record<string, unknown>);
 }
@@ -372,9 +375,4 @@ if (isMainThread()) {
   // triggers check before listening to one (issue #459).
   installElementGlobal(globalThis as unknown as Record<string, any>);
   installCanvasGlobals(globalThis as unknown as Record<string, any>);
-  // Lynx's main thread has no IntersectionObserver either, so code written
-  // for the browser that watches whether an element is on screen threw as it
-  // started (issue #226). Lynx's exposure events say instead
-  // (lynx-element/intersection-observer.ts).
-  installIntersectionObserver(globalThis as unknown as Record<string, any>);
 }

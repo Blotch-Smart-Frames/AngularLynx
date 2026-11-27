@@ -650,13 +650,14 @@ class Canvas2DContext(
      */
     private fun compositeFiltered(c: Canvas, matrix: Matrix?, draw: (Canvas) -> Unit) {
         val s = state
-        val layers = layers()
+        // Parsed once, so the layers are planned and drawn from the same steps.
+        val steps = CanvasFilter.parse(s.filterSteps)
+        val layers = layers(steps)
         // The shape's plan always has a layer at the canvas's resolution.
         val shapeLayer = layers.shape.full ?: return
         var layer: Bitmap? = null
         var shadow: Bitmap? = null
         try {
-            val steps = CanvasFilter.parse(s.filterSteps)
             val pixels = rendered(layers.shape, steps, matrix, draw)
             // The canvas shadow, cast from the filtered layer's alpha and
             // drawn before it, as the spec has it. It's cast from the shape's
@@ -894,7 +895,7 @@ class Canvas2DContext(
     )
 
     /**
-     * The layers a filtered draw goes into. The shape's is the canvas grown
+     * The layers a filtered draw with `steps` goes into. The shape's is the canvas grown
      * by the filter's reach, so a shape just off the canvas still blurs onto
      * it (see [planFor]). With a shadow, the shadow needs the part of the
      * shape that casts onto the canvas: the canvas moved back by the
@@ -918,9 +919,8 @@ class Canvas2DContext(
      * and the shadow's layer is planned as the shape's is, grown by the
      * shadow's blur too.
      */
-    private fun layers(): Layers {
+    private fun layers(steps: List<CanvasFilter.Step>): Layers {
         val s = state
-        val steps = CanvasFilter.parse(s.filterSteps)
         val canvasRect = Rect(0, 0, width, height)
         val shape = planFor(canvasRect, steps, 0.0)
         if (!shadowVisible()) return Layers(shape, null)

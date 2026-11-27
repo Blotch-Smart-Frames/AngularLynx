@@ -306,7 +306,9 @@ const ScrollCaption = () => {
   const devices = [...new Set(runs.map((run) => deviceName(run.device)))];
   const builds = [...new Set(runs.map((run) => run.osBuild))];
   const swipes = [...new Set(runs.map((run) => run.swipes))];
-  const perApp = APP_ORDER.flatMap((app) => {
+  // Every app in apps.json, not APP_ORDER, which lists only the apps with
+  // launches: an app could have scroll runs alone.
+  const perApp = Object.keys(APPS).flatMap((app) => {
     const count = runs.filter((run) => run.app === app).length;
     return count > 0 ? [`${APPS[app].label} ${count}`] : [];
   });

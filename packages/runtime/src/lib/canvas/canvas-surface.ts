@@ -9,11 +9,12 @@ import {
   type EncodedImage,
   getCanvas2DBridge,
   getWebGLBridge,
+  type WebGLBridge,
 } from './webgl-bridge';
 import {
   contextAttributesFrom,
   type LynxWebGLContextAttributes,
-  LynxWebGL2RenderingContext,
+  type LynxWebGL2RenderingContext,
 } from './webgl2-context';
 
 // A page-unique prefix for canvas ids, so two LynxViews in one app (each with
@@ -21,6 +22,51 @@ import {
 const ID_PREFIX = `c${Math.floor(Math.random() * 0x7fffffff).toString(36)}`;
 let nextCanvasId = 1;
 let nextContextId = 1;
+
+/**
+ * Makes a canvas's WebGL2 context (see {@link setWebGL2ContextFactory}). The
+ * owner is the canvas object the app holds, which the context's `canvas` is.
+ */
+export type WebGL2ContextFactory = (
+  bridge: WebGLBridge,
+  contextId: number,
+  owner: CanvasOwner,
+  attributes: LynxWebGLContextAttributes,
+) => LynxWebGL2RenderingContext;
+
+/**
+ * What makes a canvas's WebGL2 context, once `ɵenableWebGL2()` (see
+ * enable-webgl2.ts) has set it. Until then a canvas has no WebGL2 context to
+ * give.
+ *
+ * The context is 3,000 lines of the runtime (about 37 kB of a minified
+ * main-thread script, with its constants), and PrimJS reads a script's whole
+ * bytecode when it loads it, so every app paid for it in memory, drawing or
+ * not (#707). Constructed here, as it was, it couldn't be left out: every
+ * `<canvas>`, `document.createElement('canvas')` and `OffscreenCanvas` has a
+ * surface, whatever the app draws with. Through this slot only the modules
+ * that name `'webgl2'`, as code that asks for the context does, bring it: the
+ * build plugin calls `ɵenableWebGL2()` at the top of each one (webgl2.ts
+ * there).
+ */
+let webGL2ContextFactory: WebGL2ContextFactory | null = null;
+
+/**
+ * Whether getContext() has said why it had no WebGL2 context to give, so it
+ * says so once rather than on every frame a library asks.
+ */
+let warnedNotEnabled = false;
+
+/**
+ * @internal Sets what makes a canvas's WebGL2 context (see
+ * {@link webGL2ContextFactory}); `null` takes it away again, for tests.
+ */
+export const setWebGL2ContextFactory = (
+  factory: WebGL2ContextFactory | null,
+): void => {
+  webGL2ContextFactory = factory;
+  warnedNotEnabled = false;
+};
 
 /** The JPEG quality toBlob() and toDataURL() use without one: Chrome's and Firefox's. */
 const DEFAULT_JPEG_QUALITY = 0.92;
@@ -179,6 +225,20 @@ export class CanvasSurface {
       this.#owner.dispatchContextEvent('webglcontextcreationerror');
       return null;
     }
+    const createContext = webGL2ContextFactory;
+    if (!createContext) {
+      // The build left WebGL2 out: no module it bundled names 'webgl2', as
+      // code that asks for the context does (see webGL2ContextFactory).
+      // Only a context name built at runtime gets here.
+      if (!warnedNotEnabled) {
+        warnedNotEnabled = true;
+        console.warn(
+          "[angular-lynx] getContext('webgl2') has no context to give: the build includes WebGL2 only when a module names 'webgl2', and none did. Write the name out where you call getContext(), or call ɵenableWebGL2() from @blotch/angular-lynx before it.",
+        );
+      }
+      this.#owner.dispatchContextEvent('webglcontextcreationerror');
+      return null;
+    }
     const contextId = nextContextId++;
     const created = bridge.create(contextId, this.canvasId, {
       ...resolved,
@@ -190,12 +250,7 @@ export class CanvasSurface {
       this.#owner.dispatchContextEvent('webglcontextcreationerror');
       return null;
     }
-    const context = new LynxWebGL2RenderingContext(
-      bridge,
-      contextId,
-      this.#owner,
-      resolved,
-    );
+    const context = createContext(bridge, contextId, this.#owner, resolved);
     this.#context = context;
     this.#contextType = 'webgl2';
     contextFinalizer?.register(this.#owner, () => bridge.destroy(contextId));

@@ -33,6 +33,7 @@ import {
 } from './private-methods.js';
 import { wrapPureClasses } from './pure-classes.js';
 import { wrapPureInitializers } from './pure-initializers.js';
+import { enableWebGL2WhereNamed, resolveRuntimeEntry } from './webgl2.js';
 import { markHostElementsPure } from './pure-host-elements.js';
 import { seedCompilationSourceFiles } from './seed-compilation-source-files.js';
 import { addEntryHotAccept, hotUpdatesEnabled } from './hot-updates.js';
@@ -588,6 +589,16 @@ export const applyAngularRules = async (
    * Compiles one module for one thread. `background` is set for the
    * background layer.
    */
+  // Where the WebGL2 call (webgl2.ts) imports the runtime from, resolved
+  // once, when the first module needs it.
+  let runtimeEntry: string | undefined;
+  const enableWebGL2 = (code: string, file: string): string =>
+    enableWebGL2WhereNamed(
+      code,
+      file,
+      (runtimeEntry ??= resolveRuntimeEntry(api.context.rootPath)),
+    );
+
   const transformModule = async (
     context: {
       code: string;
@@ -643,10 +654,14 @@ export const applyAngularRules = async (
         // SWC's minifier inlines the IIFE, and then can't drop the class when
         // nothing uses it (kitchen-sink's background bundle kept the
         // IntersectionObserver and XMLHttpRequest classes, 8.6 kB).
+        // Then the WebGL2 context, if the module names it (see webgl2.ts).
         return {
-          code: transformPrivateMethods(code, context.resourcePath, {
-            root: api.context.rootPath,
-          }),
+          code: enableWebGL2(
+            transformPrivateMethods(code, context.resourcePath, {
+              root: api.context.rootPath,
+            }),
+            context.resourcePath,
+          ),
         };
       }
       const classesWrapped = wrapPureClasses(
@@ -722,9 +737,12 @@ export const applyAngularRules = async (
       // the transforms buildTransformedCode makes, so the cross-thread IDs
       // come from the same code as the background thread's.
       return {
-        code: transformPrivateMethods(code, context.resourcePath, {
-          root: api.context.rootPath,
-        }),
+        code: enableWebGL2(
+          transformPrivateMethods(code, context.resourcePath, {
+            root: api.context.rootPath,
+          }),
+          context.resourcePath,
+        ),
       };
     }
     // The background thread runs a module like this for its background

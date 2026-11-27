@@ -172,7 +172,7 @@ const sprite = await createImageBitmap(sheet, 32, 0, 32, 32);
 - **An `ImageBitmap` is copied** with the options you pass: flipped, premultiplied or resized.
 - **The phone copies the pixels.** A canvas, a bitmap or an `Image` is copied from the pixels the phone already has, so nothing crosses to JavaScript and no file is decoded again. An `ImageData`'s pixels go to the phone once.
 - **`OffscreenCanvas.transferToImageBitmap()`** hands over its image and clears the canvas, as on the web.
-- **An ejected app keeps its older shell**, which rejects an `ImageBitmap`, an `ImageData`, a loaded `Image` and a crop. To take them in without losing your own native changes, merge the new `App/AngularLynxWebGL.m` (iOS) or `WebGLModule.kt` (Android) from `node_modules/@blotch/angular-lynx-native/templates` into your copy.
+- **An ejected app keeps its older shell**, which rejects an `ImageBitmap`, an `ImageData`, a loaded `Image` and a crop. To take them in without losing your own native changes, merge the new canvas files from `node_modules/@blotch/angular-lynx-native/templates` into your copy: `App/AngularLynxWebGL.h`, `App/AngularLynxWebGL.m` and `App/AngularLynxBitmapRendererContext.m` on iOS, or `WebGLModule.kt`, `Canvas2DContext.kt`, `BitmapRendererContext.kt` and `BitmapPresenter.kt` on Android. The module uses the bitmaprenderer context's classes, so copying it alone doesn't build.
 - **Make a WebGL canvas's bitmap in the function that draws**, as with `toBlob()` below. Once the frame is on screen, its drawing buffer is cleared, unless you asked for `preserveDrawingBuffer: true`.
 
 ## Videos
@@ -236,7 +236,7 @@ const visible = this.canvas().nativeElement.getContext(
 visible.transferFromImageBitmap(offscreen.transferToImageBitmap());
 ```
 
-The canvas shows the bitmap scaled to its CSS size, whatever its `width` and `height`, and draws, uploads and encodes as that bitmap. The bitmap is handed over, not copied: afterwards its `width` and `height` are 0, and it can't be drawn or shown again. `transferFromImageBitmap(null)` clears the canvas to transparent (black, for a context made with `{ alpha: false }`).
+The canvas shows the bitmap scaled to its CSS size, whatever its `width` and `height`, and draws, uploads and encodes as that bitmap. The bitmap is handed over, not copied: afterwards its `width` and `height` are 0, and it can't be drawn or shown again. `transferFromImageBitmap(null)` clears the canvas to transparent (black, for a context made with `{ alpha: false }`). An ejected app's older shell has no bitmaprenderer context, so `getContext('bitmaprenderer')` stays `null` there until you merge in the canvas files listed above.
 
 ## Save it as an image
 

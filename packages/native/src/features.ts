@@ -17,13 +17,24 @@ export const NATIVE_FEATURES_FILE = '.angular-lynx-native.json';
  * frames a canvas reads, and on iOS ANGLE, which WebGL draws with. Without
  * it, an app's iOS executable is about 176 kB smaller and it embeds no ANGLE
  * frameworks, about 6 MB (issue #837).
+ *
+ * `webgl` is the part of it only the WebGL2 context uses: the context itself
+ * (`AngularLynxWebGLContext.m`, `WebGLContext.kt`), its command numbers and,
+ * on iOS, ANGLE. An app that draws only in 2D (a chart, a signature pad, an
+ * image editor) keeps the canvas without it, since the 2D context draws with
+ * Core Graphics and `android.graphics.Canvas` (issue #847). It's never true
+ * without `canvas`.
  */
 export type NativeFeatures = {
   readonly canvas: boolean;
+  readonly webgl: boolean;
 };
 
 /** Everything: what an app gets when nothing says what it needs. */
-export const ALL_NATIVE_FEATURES: NativeFeatures = { canvas: true };
+export const ALL_NATIVE_FEATURES: NativeFeatures = {
+  canvas: true,
+  webgl: true,
+};
 
 /**
  * What the bundle in `bundleDir` needs, from NATIVE_FEATURES_FILE.
@@ -33,7 +44,8 @@ export const ALL_NATIVE_FEATURES: NativeFeatures = { canvas: true };
  * canvas added while it runs has to draw), or no file or one this version
  * can't read (a bundle from an older plugin or another build): leaving out
  * code the app uses would leave it a blank canvas, while keeping what it
- * doesn't use only costs size.
+ * doesn't use only costs size. For the same reason a file with
+ * `"canvas": true` and no `webgl`, from a plugin before #847, keeps WebGL.
  *
  * @param bundleDir - The rspeedy output folder, or undefined for the
  *   development app.
@@ -46,12 +58,15 @@ export const readNativeFeatures = (
   if (!existsSync(file)) return ALL_NATIVE_FEATURES;
   try {
     const features: unknown = JSON.parse(readFileSync(file, 'utf8'));
-    if (
-      typeof features === 'object' &&
-      features !== null &&
-      (features as { canvas?: unknown }).canvas === false
-    ) {
-      return { canvas: false };
+    if (typeof features === 'object' && features !== null) {
+      const { canvas, webgl } = features as {
+        canvas?: unknown;
+        webgl?: unknown;
+      };
+      if (canvas === false) return { canvas: false, webgl: false };
+      if (canvas === true && webgl === false) {
+        return { canvas: true, webgl: false };
+      }
     }
   } catch {
     // An unreadable file says nothing, so the app gets everything.

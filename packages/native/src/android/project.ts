@@ -62,7 +62,20 @@ export const androidGenerator: PlatformGenerator = {
     writeAndroidSplash(dir, app, projectRoot);
   },
   leaveOut: (dir, features) => {
-    if (features.canvas) return;
+    if (features.webgl) return;
+    if (features.canvas) {
+      // A 2D canvas keeps the module, without the WebGL2 context and the
+      // module's lines that make one (`// angular-lynx:webgl`).
+      removeTemplateFiles(
+        dir,
+        ANDROID_WEBGL_SOURCES.map((file) => path.join(SHELL_SOURCES, file)),
+      );
+      removeMarkedLines(
+        path.join(dir, SHELL_SOURCES, 'WebGLModule.kt'),
+        'webgl',
+      );
+      return;
+    }
     removeTemplateFiles(
       dir,
       ANDROID_CANVAS_SOURCES.map((file) => path.join(SHELL_SOURCES, file)),
@@ -95,6 +108,17 @@ export const ANDROID_CANVAS_SOURCES = [
   'VideoUI.kt',
   'WebGLContext.kt',
   'WebGLModule.kt',
+  'WebGLOps.kt',
+] as const;
+
+/**
+ * The WebGL2 context, which an app that draws only in 2D leaves out, and
+ * `WebGLModule.kt`'s lines that make one (issue #847). `VideoFrameTarget.kt`
+ * reads a video's frames with an EGL context of its own, for the 2D
+ * context's `drawImage()` too, so it stays.
+ */
+export const ANDROID_WEBGL_SOURCES = [
+  'WebGLContext.kt',
   'WebGLOps.kt',
 ] as const;
 

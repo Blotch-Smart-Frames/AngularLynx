@@ -19,6 +19,7 @@ import {
   entitlementsPlist,
   infoPlistEntries,
   IOS_CANVAS_SOURCES,
+  IOS_WEBGL_SOURCES,
   iosGenerator,
   LOCAL_NETWORK_REASON,
   withoutFrameworks,
@@ -487,7 +488,7 @@ describe('iosGenerator.leaveOut', () => {
 
   it('keeps everything for an app that draws', () => {
     const before = project();
-    iosGenerator.leaveOut(dir, { canvas: true });
+    iosGenerator.leaveOut(dir, { canvas: true, webgl: true });
     expect(project()).toBe(before);
     for (const file of IOS_CANVAS_SOURCES) {
       expect(existsSync(path.join(dir, file))).toBe(true);
@@ -496,7 +497,7 @@ describe('iosGenerator.leaveOut', () => {
 
   it('takes out the canvas sources and ANGLE for an app that never draws', () => {
     expect(project()).toContain('libEGL.xcframework');
-    iosGenerator.leaveOut(dir, { canvas: false });
+    iosGenerator.leaveOut(dir, { canvas: false, webgl: false });
     for (const file of IOS_CANVAS_SOURCES) {
       expect(existsSync(path.join(dir, file))).toBe(false);
     }
@@ -508,7 +509,7 @@ describe('iosGenerator.leaveOut', () => {
   it('leaves no file that needs what it took out', () => {
     // Swift reaches the canvas classes only by name (NSClassFromString), so
     // no file left may import their headers, or the shell wouldn't build.
-    iosGenerator.leaveOut(dir, { canvas: false });
+    iosGenerator.leaveOut(dir, { canvas: false, webgl: false });
     const app = path.join(dir, 'App');
     for (const file of readdirSync(app).filter((f) =>
       /\.(swift|m|h)$/.test(f),
@@ -517,6 +518,89 @@ describe('iosGenerator.leaveOut', () => {
       expect(source, file).not.toMatch(/#import "AngularLynx/);
       expect(source, file).not.toMatch(
         /\bAngularLynx(WebGL|Canvas|Video)\w*\.(self|alloc)\b/,
+      );
+    }
+  });
+});
+
+describe('iosGenerator.leaveOut for an app that draws only in 2D', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(path.join(os.tmpdir(), 'angular-lynx-ios-'));
+    cpSync(path.join(TEMPLATES_DIR, 'ios'), dir, { recursive: true });
+    iosGenerator.leaveOut(dir, { canvas: true, webgl: false });
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  const project = () =>
+    readFileSync(path.join(dir, 'App.xcodeproj/project.pbxproj'), 'utf8');
+  const module = () =>
+    readFileSync(path.join(dir, 'App/AngularLynxWebGL.m'), 'utf8');
+
+  it('takes out the WebGL2 context and ANGLE, and keeps the rest of the canvas', () => {
+    for (const file of IOS_WEBGL_SOURCES) {
+      expect(existsSync(path.join(dir, file)), file).toBe(false);
+    }
+    for (const file of IOS_CANVAS_SOURCES.filter(
+      (file) => !(IOS_WEBGL_SOURCES as readonly string[]).includes(file),
+    )) {
+      expect(existsSync(path.join(dir, file)), file).toBe(true);
+    }
+    expect(project()).not.toMatch(/libEGL|libGLESv2/);
+    expect(project()).toContain('Lynx.xcframework in Embed Frameworks');
+  });
+
+  it("takes the module's WebGL2 methods out, and keeps its 2D and image methods", () => {
+    const source = module();
+    expect(source).not.toMatch(/^\s*\/\/ \/?angular-lynx:webgl$/m);
+    expect(source).not.toContain('@"create" :');
+    expect(source).not.toContain('@"encodeImage" :');
+    expect(source).not.toContain('- (NSDictionary *)create:');
+    expect(source).toContain('@"create2D" :');
+    expect(source).toContain('- (NSDictionary *)create2D:');
+    expect(source).toContain('@"decodeImage" :');
+    expect(source).toContain('@"videoSize" :');
+  });
+
+  it('leaves no file that calls a function only the WebGL2 context defined', () => {
+    // A C function the files taken out define, outside a static: the 2D and
+    // bitmaprenderer contexts encoded with AngularLynxEncodeImage() from
+    // AngularLynxWebGLContext.m, and failed to link without it. The template
+    // is read from TEMPLATES_DIR, as the beforeEach already took them out.
+    const defined = new Set<string>();
+    for (const file of IOS_WEBGL_SOURCES) {
+      const source = readFileSync(
+        path.join(TEMPLATES_DIR, 'ios', file),
+        'utf8',
+      );
+      for (const [, name] of source.matchAll(
+        /^(?!static\b|typedef\b)[A-Za-z_][\w\s*]*?\b(\w+)\([^;]*?\)\s*\{/gm,
+      )) {
+        defined.add(name!);
+      }
+    }
+    const app = path.join(dir, 'App');
+    for (const file of readdirSync(app).filter((f) => /\.(m|swift)$/.test(f))) {
+      const source = readFileSync(path.join(app, file), 'utf8');
+      for (const name of defined) {
+        expect(source, `${file} calls ${name}()`).not.toMatch(
+          new RegExp(`\\b${name}\\(`),
+        );
+      }
+    }
+  });
+
+  it('leaves no code that needs the WebGL2 context or ANGLE', () => {
+    const app = path.join(dir, 'App');
+    for (const file of readdirSync(app).filter((f) =>
+      /\.(swift|m|h)$/.test(f),
+    )) {
+      const source = readFileSync(path.join(app, file), 'utf8')
+        // What a comment names isn't code.
+        .replace(/\/\/.*$/gm, '')
+        .replace(/\/\*[\s\S]*?\*\//g, '');
+      expect(source, file).not.toMatch(
+        /\bAngularLynxWebGLContext\b|AngularLynxWebGLOps|<(EGL|GLES\d?)\//,
       );
     }
   });

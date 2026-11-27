@@ -22,10 +22,19 @@ export const NATIVE_FEATURES_FILE = '.angular-lynx-native.json';
  * and `createImageBitmap()`), `<video>`'s readable frames and, on iOS,
  * ANGLE. That's about 176 kB of the iOS executable and 6 MB of ANGLE
  * frameworks (issue #837), which an app that never draws leaves out.
+ *
+ * `webgl` is whether it can draw with the WebGL2 context, the only one
+ * that needs ANGLE: an app that draws only in 2D (a chart, a signature pad,
+ * an image editor) leaves the context and ANGLE out and keeps the rest
+ * (issue #847). It's true only with `canvas`.
  */
 export type NativeFeatures = {
   readonly canvas: boolean;
+  readonly webgl: boolean;
 };
+
+/** What every module that can draw in 3D asks for, and a build can't tell. */
+const EVERYTHING: NativeFeatures = { canvas: true, webgl: true };
 
 /**
  * The names that make a module a canvas's user, as an identifier or as a
@@ -85,6 +94,50 @@ const QUOTED_NAMES: readonly RegExp[] = [
 ];
 
 /**
+ * The names that bring the runtime's WebGL2 context, besides `webgl2`
+ * (WEBGL2) anywhere: its class, which code checks a context against, and
+ * its enable function, which an app calls where it builds the context's name
+ * at run time (on-demand.ts). Both are CANVAS_NAMES too, so a module that
+ * names one draws on a canvas as well.
+ */
+const WEBGL_NAMES: ReadonlySet<string> = new Set([
+  'WebGL2RenderingContext',
+  'ɵenableWebGL2',
+]);
+
+const QUOTED_WEBGL_NAMES: readonly RegExp[] = [...WEBGL_NAMES].map(quotedName);
+
+/**
+ * Whether `node`, or any node in it, is an identifier or a string of only
+ * one of `names` or `strings`.
+ */
+const namesAny = (
+  node: ts.Node,
+  names: ReadonlySet<string>,
+  strings: ReadonlyMap<string, unknown> = new Map(),
+): boolean => {
+  if (ts.isIdentifier(node) && names.has(node.text)) return true;
+  if (
+    (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) &&
+    (names.has(node.text) || strings.has(node.text))
+  ) {
+    return true;
+  }
+  return (
+    ts.forEachChild(node, (child) => namesAny(child, names, strings)) ?? false
+  );
+};
+
+const parse = (code: string, filename: string): ts.SourceFile =>
+  ts.createSourceFile(
+    filename,
+    code,
+    ts.ScriptTarget.Latest,
+    false,
+    scriptKind(filename),
+  );
+
+/**
  * Whether a main-thread module can draw on a canvas: it names one of
  * CANVAS_NAMES as an identifier or a string, one of CANVAS_STRINGS as a
  * string, or `webgl2` anywhere, as the runtime's WebGL2 context comes where
@@ -109,24 +162,30 @@ export const canvasNamed = (code: string, filename: string): boolean => {
   ) {
     return false;
   }
-  const sourceFile = ts.createSourceFile(
-    filename,
-    code,
-    ts.ScriptTarget.Latest,
-    false,
-    scriptKind(filename),
-  );
-  const names = (node: ts.Node): boolean => {
-    if (ts.isIdentifier(node) && CANVAS_NAMES.has(node.text)) return true;
-    if (
-      (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) &&
-      (CANVAS_NAMES.has(node.text) || CANVAS_STRINGS.has(node.text))
-    ) {
-      return true;
-    }
-    return ts.forEachChild(node, names) ?? false;
-  };
-  return names(sourceFile);
+  return namesAny(parse(code, filename), CANVAS_NAMES, CANVAS_STRINGS);
+};
+
+/**
+ * Whether a main-thread module can draw with the WebGL2 context: it names
+ * `webgl2` anywhere, as the runtime's context comes where it does
+ * (on-demand.ts), or one of WEBGL_NAMES as an identifier or a string. Every
+ * such module is canvasNamed() too. AngularLynx's own packages don't count.
+ *
+ * @param code - The module's code.
+ * @param filename - The module's path.
+ */
+export const webglNamed = (code: string, filename: string): boolean => {
+  if (isAngularLynxPackageModule(filename)) return false;
+  if (WEBGL2.test(code)) return true;
+  // As in canvasNamed(): only a module whose text can spell a name is parsed.
+  if (
+    ![...WEBGL_NAMES].some((name) => code.includes(name)) &&
+    !QUOTED_WEBGL_NAMES.some((pattern) => pattern.test(code)) &&
+    !ESCAPE.test(code)
+  ) {
+    return false;
+  }
+  return namesAny(parse(code, filename), WEBGL_NAMES);
 };
 
 /** A JavaScript or TypeScript module, which the main thread's transform sees. */
@@ -150,16 +209,25 @@ export type NativeFeaturesCollector = {
 };
 
 export const createNativeFeaturesCollector = (): NativeFeaturesCollector => {
-  const drawing = new Map<string, boolean>();
+  const drawing = new Map<string, NativeFeatures>();
   return {
     record(file, code) {
-      drawing.set(path.normalize(file), canvasNamed(code, file));
+      // A module that names `webgl2` draws on a canvas, whatever else it
+      // names: three.js asks for its context by that name alone.
+      const webgl = webglNamed(code, file);
+      drawing.set(path.normalize(file), {
+        canvas: webgl || canvasNamed(code, file),
+        webgl,
+      });
     },
     featuresOf(files) {
+      let canvas = false;
       for (const file of files) {
-        if (drawing.get(path.normalize(file))) return { canvas: true };
+        const features = drawing.get(path.normalize(file));
+        if (features?.webgl) return EVERYTHING;
+        canvas ||= features?.canvas ?? false;
       }
-      return { canvas: false };
+      return { canvas, webgl: false };
     },
   };
 };
@@ -196,9 +264,9 @@ export class NativeFeaturesPlugin {
       typeof cache === 'object' &&
       cache !== null &&
       cache.type === 'persistent';
-    let features: NativeFeatures = { canvas: true };
+    let features: NativeFeatures = EVERYTHING;
     compiler.hooks.thisCompilation.tap(PLUGIN_NAME, (compilation) => {
-      features = { canvas: true };
+      features = EVERYTHING;
       compilation.hooks.finishModules.tap(PLUGIN_NAME, (modules) => {
         if (persistent) return;
         const files: string[] = [];

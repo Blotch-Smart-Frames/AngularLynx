@@ -15,6 +15,7 @@ import {
   createNativeFeaturesCollector,
   NATIVE_FEATURES_FILE,
   NativeFeaturesPlugin,
+  webglNamed,
 } from './native-features.js';
 
 describe('canvasNamed', () => {
@@ -103,22 +104,80 @@ describe('canvasNamed', () => {
   });
 });
 
+const NOTHING = { canvas: false, webgl: false };
+const ONLY_2D = { canvas: true, webgl: false };
+const EVERYTHING = { canvas: true, webgl: true };
+
+describe('webglNamed', () => {
+  it.each([
+    ['a module that never draws', `export const a = 1;`],
+    ['a 2D canvas', `ɵɵelementStart(0, "canvas"); c.getContext('2d');`],
+    ['an Image and createImageBitmap()', `new Image(); createImageBitmap(b);`],
+    ['the word in another case or another word', `const webgl = 'WEBGL2x';`],
+  ])('is false for %s', (_, code) => {
+    expect(webglNamed(code, '/app/src/draw.js')).toBe(false);
+  });
+
+  it.each([
+    ['the WebGL2 context', `c.getContext('webgl2');`],
+    ['three.js’s context name', `const contextName = 'webgl2';`],
+    ['WebGL2, even in a comment', `// draws with webgl2`],
+    ['a check against the context', `x instanceof WebGL2RenderingContext;`],
+    ['the enable function the app calls itself', `ɵenableWebGL2();`],
+    ['the class as a string', `globalThis['WebGL2RenderingContext'];`],
+    [
+      'a name spelled with an escape',
+      `globalThis['\\u0057ebGL2RenderingContext'];`,
+    ],
+    [
+      'a name spelled with an identity escape',
+      `globalThis['\\WebGL2RenderingContext'];`,
+    ],
+  ])('is true for %s', (_, code) => {
+    expect(webglNamed(code, '/app/src/scene.js')).toBe(true);
+  });
+
+  it('is canvasNamed too wherever it’s true', () => {
+    for (const code of [
+      `c.getContext('webgl2');`,
+      `x instanceof WebGL2RenderingContext;`,
+      `ɵenableWebGL2();`,
+    ]) {
+      expect(canvasNamed(code, '/app/src/scene.js')).toBe(true);
+    }
+  });
+
+  it('leaves out AngularLynx’s own packages', () => {
+    expect(
+      webglNamed(
+        `c.getContext('webgl2');`,
+        '/app/node_modules/@blotch/angular-lynx/fesm2022/blotch-angular-lynx.mjs',
+      ),
+    ).toBe(false);
+  });
+});
+
 describe('createNativeFeaturesCollector', () => {
-  it('asks for the canvas when one of the files draws', () => {
+  it('asks for the canvas when one of the files draws, and WebGL when one draws in 3D', () => {
     const collector = createNativeFeaturesCollector();
     collector.record('/app/src/a.ts', 'export const a = 1;');
     collector.record('/app/src/b.ts', `c.getContext('2d');`);
-    expect(collector.featuresOf(['/app/src/a.ts'])).toEqual({ canvas: false });
-    expect(collector.featuresOf(['/app/src/a.ts', '/app/src/b.ts'])).toEqual({
-      canvas: true,
-    });
+    collector.record('/app/src/c.ts', `c.getContext('webgl2');`);
+    expect(collector.featuresOf(['/app/src/a.ts'])).toEqual(NOTHING);
+    expect(collector.featuresOf(['/app/src/a.ts', '/app/src/b.ts'])).toEqual(
+      ONLY_2D,
+    );
+    expect(collector.featuresOf(['/app/src/c.ts'])).toEqual(EVERYTHING);
+    expect(
+      collector.featuresOf(['/app/src/a.ts', '/app/src/b.ts', '/app/src/c.ts']),
+    ).toEqual(EVERYTHING);
   });
 
   it('takes a module’s new code over its old, as a watch rebuild sends it', () => {
     const collector = createNativeFeaturesCollector();
     collector.record('/app/src/b.ts', `c.getContext('2d');`);
     collector.record('/app/src/b.ts', 'export const b = 1;');
-    expect(collector.featuresOf(['/app/src/b.ts'])).toEqual({ canvas: false });
+    expect(collector.featuresOf(['/app/src/b.ts'])).toEqual(NOTHING);
   });
 });
 
@@ -181,9 +240,21 @@ describe('NativeFeaturesPlugin', () => {
   it('writes what the bundle’s main-thread modules need', () => {
     const collector = createNativeFeaturesCollector();
     collector.record('/app/src/app.ts', 'export const app = 1;');
-    expect(runPlugin([module('/app/src/app.ts')], {}, collector)).toEqual({
-      canvas: false,
-    });
+    expect(runPlugin([module('/app/src/app.ts')], {}, collector)).toEqual(
+      NOTHING,
+    );
+  });
+
+  it('asks for the canvas without WebGL when a main-thread module draws only in 2D', () => {
+    const collector = createNativeFeaturesCollector();
+    collector.record('/app/src/chart.ts', `c.getContext('2d');`);
+    expect(
+      runPlugin(
+        [module('/app/src/app.ts'), module('/app/src/chart.ts')],
+        {},
+        collector,
+      ),
+    ).toEqual(ONLY_2D);
   });
 
   it('asks for the canvas when a main-thread module draws', () => {
@@ -195,7 +266,7 @@ describe('NativeFeaturesPlugin', () => {
         {},
         collector,
       ),
-    ).toEqual({ canvas: true });
+    ).toEqual(EVERYTHING);
   });
 
   it('leaves out a module rspack didn’t bundle, or bundled for the background thread or as a stylesheet', () => {
@@ -212,7 +283,7 @@ describe('NativeFeaturesPlugin', () => {
         {},
         collector,
       ),
-    ).toEqual({ canvas: false });
+    ).toEqual(NOTHING);
   });
 
   it('asks for everything with rspack’s persistent cache, whose modules aren’t transformed again', () => {
@@ -224,10 +295,10 @@ describe('NativeFeaturesPlugin', () => {
         { cache: { type: 'persistent' } },
         collector,
       ),
-    ).toEqual({ canvas: true });
+    ).toEqual(EVERYTHING);
     expect(
       runPlugin([module('/app/src/app.ts')], { cache: true }, collector),
-    ).toEqual({ canvas: false });
+    ).toEqual(NOTHING);
   });
 });
 

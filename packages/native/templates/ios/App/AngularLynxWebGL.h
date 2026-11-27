@@ -103,6 +103,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)clearForTransfer;
 @end
 
+// angular-lynx:webgl
 /// One WebGL context: an EGL context on ANGLE's Metal display, with an
 /// offscreen default framebuffer the size of the canvas's `width` and
 /// `height`.
@@ -120,6 +121,7 @@ NS_ASSUME_NONNULL_BEGIN
                       premultiplied:(BOOL)premultiplied;
 - (void)destroy;
 @end
+// /angular-lynx:webgl
 
 /// One 2D context: a Core Graphics bitmap the size of the canvas's `width`
 /// and `height`, which the runtime's CanvasRenderingContext2D draws on (see

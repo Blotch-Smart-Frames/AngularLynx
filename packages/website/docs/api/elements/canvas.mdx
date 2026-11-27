@@ -140,7 +140,9 @@ Like an HTML canvas:
 
 An app that never draws leaves out the canvas, its WebGL and 2D contexts, and `<video>`'s readable frames. That's about 176 kB of the iOS app. It also leaves out ANGLE, which iOS draws WebGL with: about 6 MB.
 
-Without that code, a `<canvas>` shows nothing and `getContext()` returns `null`. If your app builds every canvas name at runtime, call `ɵenableCanvas2D()` or `ɵenableWebGL2()` from `@blotch/angular-lynx`. Either one brings the native code too.
+An app that draws only in 2D, such as a chart or a signature pad, keeps the canvas and leaves out the WebGL context and ANGLE. The 2D context draws with Core Graphics on iOS and `android.graphics.Canvas` on Android, and needs neither. The WebGL context comes only when a module names `'webgl2'` (anywhere, even in a comment), `WebGL2RenderingContext` or `ɵenableWebGL2`.
+
+Without that code, a `<canvas>` shows nothing and `getContext()` returns `null`. If your app builds every canvas name at runtime, call `ɵenableCanvas2D()` or `ɵenableWebGL2()` from `@blotch/angular-lynx`. Either one brings the native code too, and `ɵenableWebGL2()` brings the WebGL context and ANGLE as well.
 
 The development app from `ng serve --platform` always has the native code, since you can add a canvas while it runs.
 

@@ -62,10 +62,9 @@ internal object CanvasFilter {
         }
 
         /**
-         * How far it can move what's drawn, in the canvas's pixels, as
-         * css-filter.ts counts a step's padding: three deviations, and a
-         * drop shadow's offset. Uncapped, unlike the padding the runtime
-         * sends, which stops at 256.
+         * How far it can move what's drawn, in the canvas's pixels: three
+         * deviations, and a drop shadow's offset. Uncapped: planFor caps
+         * the layer it sizes (MAX_REACH).
          */
         val reach: Double get() = when (kind) {
             BLUR -> ceil(values[0] * 3)

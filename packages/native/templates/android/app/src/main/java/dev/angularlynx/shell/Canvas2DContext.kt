@@ -399,9 +399,8 @@ class Canvas2DContext(
                 r.int()
             }
             Canvas2DOps.SET_FILTER -> {
-                // The filter's padding: the layers are planned from the
-                // steps' own reach instead (see planFor).
-                r.int()
+                // Only the steps: the layers are planned from their own
+                // reach (see planFor).
                 val steps = r.array()
                 s.filterSteps = DoubleArray(steps.size()) { steps.getDouble(it) }
             }
@@ -951,10 +950,10 @@ class Canvas2DContext(
      * only as far as the steps after the last wide blur do.
      *
      * The reach is the steps' own, from those after the last far drop shadow
-     * ([planned]), which casts from a layer of its own. The runtime sends
-     * the whole filter's reach, capped, as its padding, which comes to the
-     * same when there's no far drop shadow, but is too much for part of the
-     * filter and too little for a layer at another resolution.
+     * ([planned]), which casts from a layer of its own. That's why the
+     * runtime sends only the steps: the whole filter's reach, which it once
+     * sent too, is too much for part of the filter and too little for a
+     * layer at another resolution.
      */
     private fun planFor(base: Layer, steps: List<CanvasFilter.Step>, extra: Double): Plan {
         val rest = planned(steps)
@@ -1502,9 +1501,9 @@ class Canvas2DContext(
 
         /**
          * The most a layer at the canvas's resolution reaches past the part
-         * of the canvas it's for, as css-filter.ts caps the filter's padding.
-         * A blur or shadow that reaches farther goes through a smaller layer
-         * too (see layers), which this keeps about the capped layer's size.
+         * of the canvas it's for, so a huge blur makes no huge layer. A blur
+         * or shadow that reaches farther goes through a smaller layer too
+         * (see layers), which this keeps about the capped layer's size.
          */
         private const val MAX_REACH = 256.0
 

@@ -679,10 +679,9 @@ static double stepSigma(const ALFilterStep *step) {
   return step->kind == ALFilterBlur ? step->values[0] : step->kind == ALFilterDropShadow ? step->values[2] : 0;
 }
 
-/// How far a step can move what's drawn, in the canvas's pixels, as
-/// css-filter.ts counts a step's padding: three deviations, and a drop
-/// shadow's offset. Uncapped, unlike the padding the runtime sends, which
-/// stops at 256.
+/// How far a step can move what's drawn, in the canvas's pixels: three
+/// deviations, and a drop shadow's offset. Uncapped: -planFor:... caps the
+/// layer it sizes (MAX_REACH).
 static double stepReach(const ALFilterStep *step) {
   if (step->kind == ALFilterBlur) return ceil(step->values[0] * 3);
   if (step->kind == ALFilterDropShadow) {
@@ -1180,9 +1179,8 @@ static BOOL reducesAlpha(NSInteger composite) {
       s.smoothingQuality = readInt(r);
       break;
     case ALCanvas2DOpSetFilter:
-      // The filter's padding: the layers are planned from the steps' own
-      // reach instead (see -planFor:...).
-      readInt(r);
+      // Only the steps: the layers are planned from their own reach (see
+      // -planFor:...).
       s.filterSteps = readArray(r);
       break;
     case ALCanvas2DOpCreatePattern: {
@@ -1309,8 +1307,8 @@ static BOOL reducesAlpha(NSInteger composite) {
 }
 
 /// The most a layer at the canvas's resolution reaches past the part of the
-/// canvas it's for, as css-filter.ts caps the filter's padding. A blur or
-/// shadow that reaches farther goes through a smaller layer too (see
+/// canvas it's for, so a huge blur makes no huge layer. A blur or shadow
+/// that reaches farther goes through a smaller layer too (see
 /// -layers:count:), which this keeps about the capped layer's size.
 static const CGFloat MAX_REACH = 256;
 
@@ -1409,10 +1407,10 @@ static CGFloat area(CGRect rect) {
 /// far as the steps after the last wide blur do.
 ///
 /// The reach is the steps' own, from those after the last far drop shadow
-/// (lastFar), which casts from a layer of its own. The runtime sends the
-/// whole filter's reach, capped, as its padding, which comes to the same
-/// when there's no far drop shadow, but is too much for part of the filter
-/// and too little for a layer at another resolution.
+/// (lastFar), which casts from a layer of its own. That's why the runtime
+/// sends only the steps: the whole filter's reach, which it once sent too,
+/// is too much for part of the filter and too little for a layer at another
+/// resolution.
 - (ALPlan)planFor:(ALLayer)base
             steps:(const ALFilterStep *)allSteps
             count:(NSUInteger)allCount

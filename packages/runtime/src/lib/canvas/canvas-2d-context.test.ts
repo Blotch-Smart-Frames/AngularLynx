@@ -316,15 +316,12 @@ describe('LynxCanvasRenderingContext2D', () => {
     const grayscale = parseFilter('grayscale(1)')!.steps;
     expect(await sent()).toEqual([
       OP.setFilter,
-      6,
       [FILTER_STEP.blur, 2, ...grayscale],
       OP.save,
       OP.setFilter,
-      2,
       [FILTER_STEP.dropShadow, 1, 2, 0, 255, 0, 0, 1],
       OP.restore,
       OP.setFilter,
-      0,
       [],
     ]);
     // reset() puts it back to none, here and in the shell.

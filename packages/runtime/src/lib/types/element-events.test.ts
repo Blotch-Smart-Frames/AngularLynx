@@ -1,8 +1,11 @@
-import { NgtscProgram } from '@angular/compiler-cli';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import ts from 'typescript';
+import { Worker } from 'node:worker_threads';
 import { beforeAll, describe, expect, it } from 'vitest';
+import type {
+  CompileDiagnostic,
+  CompileRequest,
+} from '../testing/element-events-compiler.mjs';
 
 // These types do their work in Angular's template type-checker, which Vitest
 // doesn't run. So the test compiles components with the compiler `ng build`
@@ -13,6 +16,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 const here = dirname(fileURLToPath(import.meta.url));
 const fixtureFile = join(here, '__fixture__.ts');
 const publicApi = join(here, '../../public-api.ts');
+const compiler = join(here, '../testing/element-events-compiler.mts');
 
 type Case = {
   readonly name: string;
@@ -236,54 +240,35 @@ const caseAt = (position: number): number =>
   fixtureSource.slice(0, position).split("selector: 'app-case-").length - 2;
 
 /**
- * Type-checks the fixture with the runtime, as `ng build` does.
+ * Type-checks the fixture with the runtime, as `ng build` does, in a worker
+ * thread that coverage doesn't slow (see testing/element-events-compiler.mts).
  */
-const compile = async (): Promise<readonly ts.Diagnostic[]> => {
-  const options: ts.CompilerOptions & Record<string, unknown> = {
-    strict: true,
-    strictTemplates: true,
-    skipLibCheck: true,
-    noEmit: true,
-    target: ts.ScriptTarget.ES2022,
-    module: ts.ModuleKind.ES2022,
-    moduleResolution: ts.ModuleResolutionKind.Bundler,
-    lib: ['lib.es2022.d.ts', 'lib.dom.d.ts'],
-    types: [],
-  };
-  const host = ts.createCompilerHost(options);
-  const { fileExists, readFile, getSourceFile } = host;
-  host.fileExists = (file) => file === fixtureFile || fileExists(file);
-  host.readFile = (file) =>
-    file === fixtureFile ? fixtureSource : readFile(file);
-  host.getSourceFile = (file, language, ...rest) =>
-    file === fixtureFile
-      ? ts.createSourceFile(file, fixtureSource, language, true)
-      : getSourceFile(file, language, ...rest);
-  const program = new NgtscProgram([fixtureFile, publicApi], options, host);
-  await program.loadNgStructureAsync();
-  return [
-    ...program.getTsSemanticDiagnostics(),
-    ...program.getNgSemanticDiagnostics(),
-  ];
-};
-
-const message = (diagnostic: ts.Diagnostic): string =>
-  // The first line: the rest explains it, which these cases don't check.
-  ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n').split('\n')[0];
+const compile = (): Promise<readonly CompileDiagnostic[]> =>
+  new Promise((resolve, reject) => {
+    const request: CompileRequest = { fixtureFile, fixtureSource, publicApi };
+    const worker = new Worker(compiler, { workerData: request });
+    worker.once('message', resolve);
+    worker.once('error', reject);
+    worker.once('exit', (code) =>
+      reject(new Error(`The compile worker exited with code ${code}`)),
+    );
+  });
 
 describe('element event types', () => {
-  let diagnostics: readonly ts.Diagnostic[];
+  let diagnostics: readonly CompileDiagnostic[];
 
+  // The compile takes a second or two on its own, but CI runs every package's
+  // tests at once on a few cores, where it has taken 40 to 60 seconds with
+  // coverage (issue #741). The limit is there to catch a hung worker, so it
+  // leaves room for a busy runner.
   beforeAll(async () => {
     diagnostics = await compile();
-  }, 60_000);
+  }, 180_000);
 
   it('type-checks the runtime’s own templates and host listeners', () => {
     const elsewhere = diagnostics
-      .filter(({ file }) => file?.fileName !== fixtureFile)
-      .map(
-        (diagnostic) => `${diagnostic.file?.fileName}: ${message(diagnostic)}`,
-      );
+      .filter(({ fileName }) => fileName !== fixtureFile)
+      .map(({ fileName, message }) => `${fileName}: ${message}`);
     expect(elsewhere).toEqual([]);
   });
 
@@ -292,10 +277,10 @@ describe('element event types', () => {
     ({ index, errors }) => {
       const reported = diagnostics
         .filter(
-          ({ file, start }) =>
-            file?.fileName === fixtureFile && caseAt(start ?? 0) === index,
+          ({ fileName, start }) =>
+            fileName === fixtureFile && caseAt(start ?? 0) === index,
         )
-        .map(message);
+        .map(({ message }) => message);
       expect(reported).toEqual(errors);
     },
   );

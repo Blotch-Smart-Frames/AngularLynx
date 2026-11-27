@@ -13,6 +13,8 @@ const realmClasses = () => {
   class HTMLVideoElement extends HTMLElement {}
   class CanvasRenderingContext2D {}
   class WebGL2RenderingContext {}
+  class WebGLTexture {}
+  class WebGLUniformLocation {}
   class CanvasGradient {}
   class ImageData {}
   return {
@@ -22,6 +24,8 @@ const realmClasses = () => {
     HTMLVideoElement,
     CanvasRenderingContext2D,
     WebGL2RenderingContext,
+    WebGLTexture,
+    WebGLUniformLocation,
     CanvasGradient,
     ImageData,
   };
@@ -89,6 +93,14 @@ describe('acceptPageInstances', () => {
     );
     expect(new page['ImageData']()).toBeInstanceOf(iframe['ImageData']);
     expect(context).not.toBeInstanceOf(iframe['WebGL2RenderingContext']);
+    // What the WebGL context makes, which twgl.js checks (issue #809).
+    expect(new page['WebGLTexture']()).toBeInstanceOf(iframe['WebGLTexture']);
+    expect(new page['WebGLUniformLocation']()).toBeInstanceOf(
+      iframe['WebGLUniformLocation'],
+    );
+    expect(new page['WebGLTexture']()).not.toBeInstanceOf(
+      iframe['WebGLUniformLocation'],
+    );
   });
 
   it('keeps the iframe’s own instances, and turns away the rest', () => {

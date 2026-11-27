@@ -14,7 +14,12 @@ import { createImageBitmap, LynxImageBitmap, LynxImageElement } from './image';
 import { LynxPath2D } from './path';
 import { wrapRealmImageMethods } from './web-image-sources';
 import { acceptPageInstances } from './web-instanceof';
-import { WEBGL2_CONTEXT } from './webgl2-brand';
+import {
+  WEBGL2_CONTEXT,
+  WEBGL_OBJECT,
+  WEBGL_OBJECT_NAMES,
+  type WebGLObjectName,
+} from './webgl2-brand';
 
 /**
  * A template's element: a LynxElement, told apart by shape rather than class,
@@ -75,6 +80,11 @@ const isLynxElement = (value: unknown): value is LayoutElement =>
  *   against it answers rather than throwing, though nothing is an instance of
  *   it: Lynx has no WebGL1 context, and in a browser a WebGL2 context isn't
  *   one either.
+ * - `WebGLBuffer`, `WebGLTexture`, `WebGLProgram` and WebGL2's other object
+ *   classes (see webgl2-brand.ts): what the context's `createBuffer()`,
+ *   `createTexture()`, `getUniformLocation()`, `getActiveUniform()` and the
+ *   rest return is an instance of the one a browser's would be, as WebGL
+ *   helper libraries check to tell an object from the options to make one.
  * - `devicePixelRatio`: from Lynx's SystemInfo, so a 3D scene renders at the
  *   screen's resolution.
  * - `getComputedStyle()`: ngxtension's resize directive reads an element's
@@ -119,6 +129,11 @@ export const installCanvasGlobals = (target: Record<string, any>): void => {
   install('createImageBitmap', createImageBitmap);
   install('WebGL2RenderingContext', LynxWebGL2RenderingContextGlobal);
   install('WebGLRenderingContext', LynxWebGLRenderingContextGlobal);
+  for (const name of WEBGL_OBJECT_NAMES) {
+    if (typeof target[name] === 'undefined') {
+      target[name] = webGLObjectGlobal(name);
+    }
+  }
   // The web preview's own classes, which the ones above leave in place. On
   // Lynx, they're the runtime's, which read a template's element already.
   if (__WEB__) {
@@ -296,6 +311,35 @@ class LynxWebGLRenderingContextGlobal {
     return false;
   }
 }
+
+/**
+ * The global for one of WebGL's object interfaces on iOS and Android, such
+ * as `WebGLTexture` (see installCanvasGlobals). Like the
+ * `WebGL2RenderingContext` global, it knows the runtime's objects by the mark
+ * they carry, as their classes are in the build only with the context (see
+ * webgl2-brand.ts). Named as a browser's is, so `WebGLTexture.name` reads as
+ * there.
+ */
+const webGLObjectGlobal = (name: WebGLObjectName) => {
+  const Global = class {
+    /**
+     * Throws, as a browser's does: the objects come from the context.
+     */
+    constructor() {
+      throw new TypeError('Illegal constructor');
+    }
+
+    static [Symbol.hasInstance](value: unknown): boolean {
+      return (
+        typeof value === 'object' &&
+        value !== null &&
+        (value as Record<symbol, unknown>)[WEBGL_OBJECT] === name
+      );
+    }
+  };
+  Object.defineProperty(Global, 'name', { value: name });
+  return Global;
+};
 
 /**
  * `document.createElement()` on Lynx's main thread: images and canvases,

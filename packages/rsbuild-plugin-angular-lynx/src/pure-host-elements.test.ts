@@ -135,6 +135,24 @@ describe('markHostElementsPure', () => {
     );
   });
 
+  // The engine reads `\u0275` in a name as `ɵ`, so this is the name the
+  // declaration would take.
+  it('counts a name written with a Unicode escape as the name it spells', () => {
+    expect(
+      mark(
+        "import { registerHostElement } from '@blotch/angular-lynx';",
+        'const \\u0275hostElement0 = 1;',
+        "registerHostElement(UiText, 'text');",
+      ),
+    ).toBe(
+      [
+        "import { registerHostElement } from '@blotch/angular-lynx';",
+        'const \\u0275hostElement0 = 1;',
+        "const _ɵhostElement0 = /*#__PURE__*/ registerHostElement(UiText, 'text');",
+      ].join('\n'),
+    );
+  });
+
   it('returns a module that never names it as it is', () => {
     const code = "import { LYNX_ELEMENTS } from '@blotch/angular-lynx';";
     expect(markHostElementsPure(code, FILE)).toBe(code);

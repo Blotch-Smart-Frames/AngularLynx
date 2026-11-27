@@ -104,10 +104,24 @@ export const markHostElementsPure = (
     if (registers) starts.push(statement.expression.getStart(sourceFile));
   }
 
-  // A name no identifier in the module contains, so a declaration can't
-  // shadow or redeclare one of the module's own.
+  if (starts.length === 0) {
+    return code;
+  }
+
+  // A name no identifier in the module starts with, so a declaration can't
+  // shadow or redeclare one of the module's own. Read from the parsed
+  // identifiers, which hold a name as the engine reads it: written with a
+  // Unicode escape (`\u0275hostElement0`), it's the same name as `ɵhostElement0`.
+  const identifiers: string[] = [];
+  const collect = (node: ts.Node): void => {
+    if (ts.isIdentifier(node)) identifiers.push(node.text);
+    ts.forEachChild(node, collect);
+  };
+  collect(sourceFile);
   let name = DECLARATION;
-  while (code.includes(name)) name = `_${name}`;
+  while (identifiers.some((identifier) => identifier.startsWith(name))) {
+    name = `_${name}`;
+  }
 
   // From the end, so earlier offsets stay valid.
   let result = code;

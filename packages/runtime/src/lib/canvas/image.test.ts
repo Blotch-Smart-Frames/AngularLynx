@@ -63,7 +63,7 @@ describe('createImageBitmap', () => {
     });
     expect(bitmap).toBeInstanceOf(LynxImageBitmap);
     expect(bitmap.width).toBe(8);
-    expect(bitmap.height).toBe(2);
+    expect(bitmap.height).toBe(4);
     const [id, words, options] = bridge.decodeImage.mock.calls[0];
     expect(fromWords(words)).toEqual(PNG);
     expect(options).toEqual({
@@ -79,7 +79,7 @@ describe('createImageBitmap', () => {
     expect(native(bitmap)).toEqual({
       id,
       width: 8,
-      height: 2,
+      height: 4,
       bakedOptions: true,
     });
   });
@@ -400,7 +400,7 @@ describe('createImageBitmap of an ImageBitmap', () => {
     expect(native(copy)).toEqual({
       id,
       width: 8,
-      height: 2,
+      height: 4,
       bakedOptions: true,
     });
     // The source is left as it was: only one file was decoded.

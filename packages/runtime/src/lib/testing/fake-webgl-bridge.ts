@@ -76,7 +76,9 @@ export const createFakeWebGLBridge = (): FakeWebGLBridge => {
 
 /**
  * What the shell answers for a copy of a source of `width` by `height`: the
- * resize's size, or the crop's, or the source's, and whether it cropped.
+ * crop's size, or the source's, resized, and whether it cropped. A resize of
+ * one side scales the other to keep the aspect ratio, rounded up, as the
+ * shells and the HTML spec do.
  */
 const copied = (
   options: ImageCopyOptions,
@@ -84,9 +86,20 @@ const copied = (
   height: number,
 ): DecodedImage => {
   const crop = !!options.cropWidth;
+  const fromWidth = crop ? options.cropWidth : width;
+  const fromHeight = crop ? options.cropHeight : height;
+  const { resizeWidth, resizeHeight } = options;
   return {
-    width: options.resizeWidth || (crop ? options.cropWidth : width),
-    height: options.resizeHeight || (crop ? options.cropHeight : height),
+    width:
+      resizeWidth ||
+      (resizeHeight
+        ? Math.ceil((fromWidth * resizeHeight) / fromHeight)
+        : fromWidth),
+    height:
+      resizeHeight ||
+      (resizeWidth
+        ? Math.ceil((fromHeight * resizeWidth) / fromWidth)
+        : fromHeight),
     ...(crop ? { cropped: true } : {}),
   };
 };

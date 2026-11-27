@@ -37,8 +37,6 @@ import {
   LYNX_TEXT_INHERITANCE_CLASS,
   NOT_BLOCK_CONTAINERS,
   INHERITED_TEXT_PROPERTIES,
-  LOWERED_FLAG,
-  RAISED_FLAG,
   resetStyleIndex,
   SMALLER_FLAG,
   VERTICAL_ALIGN_FLAG,
@@ -217,6 +215,12 @@ const descendants = (): FakeEl[] => {
 
 const flush = (): Promise<void> =>
   new Promise<void>((resolve) => setTimeout(resolve));
+
+/** The build's `sub` and `sup` rules, as the style index lists them. */
+const BUILD_VERTICAL_ALIGNS = [
+  [['_ngtag-sub'], [], [-0.24, 0], 1000, 0, 0],
+  [['_ngtag-sup'], [], [0.4, 0], 1000, 0, 1],
+];
 
 @Component({
   selector: 'loose-host',
@@ -527,6 +531,29 @@ class RaisedHost {
   readonly size = signal<string | null>(null);
   readonly subAlign = signal<string | null>(null);
   readonly color = signal<string | null>(null);
+}
+
+@Component({
+  selector: 'own-align-host',
+  encapsulation: ViewEncapsulation.None,
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: `<p>
+    x<span class="exp" [class.sized]="sized()"
+      >n<b class="in-exp">2</b><sup class="sup-in-exp">m</sup></span
+    >
+    y<span class="lift" [style.vertical-align]="lift()"
+      ><b class="in-lift">b</b
+      ><sup class="sup-in-lift">s<b class="in-sup-in-lift">t</b></sup></span
+    >
+    <span [class.note]="note()"
+      ><sup class="note-sup">a<b class="in-note-sup">b</b></sup></span
+    >
+  </p>`,
+})
+class OwnAlignHost {
+  readonly sized = signal(false);
+  readonly lift = signal<string | null>(null);
+  readonly note = signal(false);
 }
 
 @Component({
@@ -1157,9 +1184,14 @@ describe('loose text', () => {
       rules: [
         [['big'], fontSize],
         [['_ngtag-small'], SMALLER_FLAG],
-        [['_ngtag-sub'], SMALLER_FLAG | LOWERED_FLAG],
-        [['_ngtag-sup'], SMALLER_FLAG | RAISED_FLAG],
+        [['_ngtag-sub'], SMALLER_FLAG | VERTICAL_ALIGN_FLAG],
+        [['_ngtag-sup'], SMALLER_FLAG | VERTICAL_ALIGN_FLAG],
         [['own'], VERTICAL_ALIGN_FLAG],
+      ],
+      verticalAligns: [
+        ...BUILD_VERTICAL_ALIGNS,
+        // A distance the runtime can't copy, such as `super`.
+        [['own'], [], null, 1000, 0, 2],
       ],
     };
     const fixture = TestBed.createComponent(RaisedHost);
@@ -1175,7 +1207,9 @@ describe('loose text', () => {
     expect(style('small-in-sup')).toContain('vertical-align: 0.48em');
     expect(style('sup-in-sup')).toContain('vertical-align: 0.88em');
 
-    // An app's own vertical-align wins, as it would in a browser.
+    // An app's rule for the inner <sup> beats the build's, with a distance
+    // the runtime can't copy, so it leaves the tag to Lynx, where a browser
+    // would add the outer <sup>'s distance to it.
     fixture.componentInstance.own.set(true);
     fixture.detectChanges();
     expect(style('sup-in-sup')).not.toContain('vertical-align');
@@ -1186,17 +1220,23 @@ describe('loose text', () => {
   });
 
   // The index sees neither an inline size nor an inline vertical-align
-  // (review of #714): with either, the distance can't be worked out.
-  it('leaves the tags inside a <sup> alone when an inline style sets the size or another distance', () => {
+  // (review of #714): the runtime reads an inline distance as a rule's, and
+  // with an inline size the distance can't be worked out.
+  it('reads the inline style of the tags around the tags inside a <sup>', () => {
     (
       globalThis as { __angularLynxStyleIndex?: unknown }
     ).__angularLynxStyleIndex = {
       rules: [
-        [['_ngtag-sub'], SMALLER_FLAG | LOWERED_FLAG],
-        [['_ngtag-sup'], SMALLER_FLAG | RAISED_FLAG],
-        // An app's `sup { vertical-align: -0.24em }`, merged with the
-        // build's: the index can't tell which one wins.
-        [['own'], RAISED_FLAG | LOWERED_FLAG],
+        [['_ngtag-small'], SMALLER_FLAG],
+        [['_ngtag-sub'], SMALLER_FLAG | VERTICAL_ALIGN_FLAG],
+        [['_ngtag-sup'], SMALLER_FLAG | VERTICAL_ALIGN_FLAG],
+        [['own'], VERTICAL_ALIGN_FLAG],
+      ],
+      verticalAligns: [
+        ...BUILD_VERTICAL_ALIGNS,
+        // An app's `.own { vertical-align: -0.24em }`, later in the
+        // stylesheet than the build's `sup`, which it beats.
+        [['own'], [], [-0.24, 0], 1000, 0, 2],
       ],
     };
     const fixture = TestBed.createComponent(RaisedHost);
@@ -1213,8 +1253,13 @@ describe('loose text', () => {
     fixture.detectChanges();
     expect(style('in-sup')).toContain('vertical-align: 0.4em');
 
-    // A distance of the <sup>'s own, which the runtime doesn't read.
+    // A distance of the <sup>'s own, which wins over its rule.
     fixture.componentInstance.supAlign.set('0.8em');
+    fixture.detectChanges();
+    expect(style('in-sup')).toContain('vertical-align: 0.8em');
+    expect(style('small-in-sup')).toContain('vertical-align: 0.96em');
+    // One the runtime can't copy.
+    fixture.componentInstance.supAlign.set('super');
     fixture.detectChanges();
     expect(style('in-sup')).not.toContain('vertical-align');
     expect(style('small-in-sup')).not.toContain('vertical-align');
@@ -1222,9 +1267,11 @@ describe('loose text', () => {
     fixture.detectChanges();
     expect(style('in-sup')).toContain('vertical-align: 0.4em');
 
+    // The inner <sup> is lowered by its own rule, and raised by the outer
+    // one's distance, 1.2 times as many of its em.
     fixture.componentInstance.own.set(true);
     fixture.detectChanges();
-    expect(style('sup-in-sup')).not.toContain('vertical-align');
+    expect(style('sup-in-sup')).toContain('vertical-align: 0.24em');
   });
 
   // A binding's style covers the runtime's own declaration of it while it's
@@ -1233,7 +1280,8 @@ describe('loose text', () => {
     (
       globalThis as { __angularLynxStyleIndex?: unknown }
     ).__angularLynxStyleIndex = {
-      rules: [[['_ngtag-sub'], SMALLER_FLAG | LOWERED_FLAG]],
+      rules: [[['_ngtag-sub'], SMALLER_FLAG | VERTICAL_ALIGN_FLAG]],
+      verticalAligns: BUILD_VERTICAL_ALIGNS,
     };
     const fixture = TestBed.createComponent(RaisedHost);
     fixture.detectChanges();
@@ -1276,7 +1324,8 @@ describe('loose text', () => {
       (
         globalThis as { __angularLynxStyleIndex?: unknown }
       ).__angularLynxStyleIndex = {
-        rules: [[['_ngtag-sup'], SMALLER_FLAG | RAISED_FLAG]],
+        rules: [[['_ngtag-sup'], SMALLER_FLAG | VERTICAL_ALIGN_FLAG]],
+        verticalAligns: BUILD_VERTICAL_ALIGNS,
       };
       const fixture = TestBed.createComponent(RaisedHost);
       fixture.detectChanges();
@@ -1286,6 +1335,67 @@ describe('loose text', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  // Issue #715: an app's own rule moves the tags inside its tag too, by its
+  // distance in em or px, and wins over the build's rule for a <sup> where
+  // it's more specific.
+  it("moves the tags inside a tag with the app's own vertical-align", () => {
+    const fontSize = 1 << INHERITED_TEXT_PROPERTIES.indexOf('font-size');
+    (
+      globalThis as { __angularLynxStyleIndex?: unknown }
+    ).__angularLynxStyleIndex = {
+      rules: [
+        [['_ngtag-sub'], SMALLER_FLAG | VERTICAL_ALIGN_FLAG],
+        [['_ngtag-sup'], SMALLER_FLAG | VERTICAL_ALIGN_FLAG],
+        [['exp'], VERTICAL_ALIGN_FLAG],
+        [['sized'], fontSize],
+        [['_ngtag-sup'], VERTICAL_ALIGN_FLAG, [[' ', ['note']]]],
+      ],
+      verticalAligns: [
+        ...BUILD_VERTICAL_ALIGNS,
+        [['exp'], [], [0.5, 0], 1000, 0, 2],
+        [['_ngtag-sup'], [[' ', ['note']]], [0.3, 0], 2000, 0, 3],
+      ],
+    };
+    const fixture = TestBed.createComponent(OwnAlignHost);
+    fixture.detectChanges();
+    const style = (cls: string): string =>
+      String(byClass(cls).attrs.get('style') ?? '');
+
+    expect(style('exp')).not.toContain('vertical-align');
+    expect(style('in-exp')).toContain('vertical-align: 0.5em');
+    // A <sup> in it rises by both, its em 1.2 times smaller.
+    expect(style('sup-in-exp')).toContain('vertical-align: 1em');
+
+    // A size of the span's own passes to the tags inside, which measure its
+    // em by it.
+    fixture.componentInstance.sized.set(true);
+    fixture.detectChanges();
+    expect(style('in-exp')).toContain('vertical-align: 0.5em');
+    expect(style('sup-in-exp')).toContain('vertical-align: 1em');
+
+    // An inline distance in pixels moves the tags inside by as much. A
+    // <sup> in it would need both its em and the pixels, which Lynx drops
+    // as a calc(), so it's left to its own rule.
+    expect(style('in-lift')).not.toContain('vertical-align');
+    fixture.componentInstance.lift.set('4px');
+    fixture.detectChanges();
+    expect(style('in-lift')).toContain('vertical-align: 4px');
+    expect(style('sup-in-lift')).not.toContain('vertical-align');
+    // The tags inside the <sup> still rise with its own text (review of
+    // #735).
+    expect(style('in-sup-in-lift')).toContain('vertical-align: 0.4em');
+    fixture.componentInstance.lift.set(null);
+    fixture.detectChanges();
+    expect(style('in-lift')).not.toContain('vertical-align');
+
+    // `.note sup` wins over the build's `sup`: the tags inside move by its
+    // distance, not the build's.
+    expect(style('in-note-sup')).toContain('vertical-align: 0.4em');
+    fixture.componentInstance.note.set(true);
+    fixture.detectChanges();
+    expect(style('in-note-sup')).toContain('vertical-align: 0.3em');
   });
 
   // Issue #643: the build gives `<em>`, `<u>`, `<s>` and their kin the

@@ -80,6 +80,85 @@ class WebGLModule(context: Context, param: Any?) : LynxModule(context, param) {
     }
 
     /**
+     * An ImageBitmap of a canvas, for createImageBitmap() and
+     * OffscreenCanvas.transferToImageBitmap(): a copy of the canvas's pixels
+     * now, kept under [imageId] as a decoded image is, so texture uploads and
+     * drawImage read it as they read one. The pixels never cross the bridge.
+     * [options] holds createImageBitmap's options, the canvas's size (a
+     * canvas with no context is transparent black, as in a browser) and
+     * `transfer`, which clears the canvas after it's read. `{ width, height }`,
+     * or `{ error }`.
+     */
+    @LynxMethod
+    fun imageFromCanvas(imageId: Int, canvasId: String?, options: ReadableMap?): JavaOnlyMap {
+        val context = canvasId?.let { CanvasRegistry.context(it) }
+        return try {
+            val snapshot = if (context != null) {
+                // A context that has pixels but couldn't read them is a
+                // failure, not a blank canvas.
+                context.snapshot() ?: return imageFailed("The canvas's pixels could not be read")
+            } else {
+                val width = options?.optInt("width") ?: 0
+                val height = options?.optInt("height") ?: 0
+                if (width <= 0 || height <= 0) return imageFailed("The canvas has no pixels")
+                val bytes = rgbaByteCount(width, height) ?: return imageFailed("The canvas is too large to copy")
+                DecodedImage(ByteBuffer.allocateDirect(bytes).order(ByteOrder.nativeOrder()), width, height, true)
+            }
+            if (options?.optBool("transfer") == true) context?.clearForTransfer()
+            val image = pixelsOfSnapshot(snapshot, options)
+            DecodedImages.put(imageId, image)
+            JavaOnlyMap.from(mapOf("width" to image.width, "height" to image.height))
+        } catch (_: OutOfMemoryError) {
+            imageFailed("The canvas is too large to copy")
+        } catch (_: IllegalArgumentException) {
+            // A resize larger than a Bitmap or a buffer can hold.
+            imageFailed("The canvas is too large to copy")
+        }
+    }
+
+    private fun imageFailed(message: String) =
+        JavaOnlyMap.from(mapOf("width" to 0, "height" to 0, "error" to message))
+
+    /**
+     * A canvas's pixels (its context's snapshot, a copy of its own) as
+     * createImageBitmap's options ask. Without a resize, the bytes are
+     * flipped and premultiplied or divided as asked, exactly; a resize scales
+     * them, as a decode does.
+     */
+    private fun pixelsOfSnapshot(snapshot: DecodedImage, options: ReadableMap?): DecodedImage {
+        val premultiply = options?.optString("premultiplyAlpha") == "premultiply"
+        val resizeWidth = options?.optInt("resizeWidth") ?: 0
+        val resizeHeight = options?.optInt("resizeHeight") ?: 0
+        var pixels = snapshot.pixels
+        var width = snapshot.width
+        var height = snapshot.height
+        pixels.rewind()
+        if (resizeWidth > 0 || resizeHeight > 0) {
+            // Scaling draws, which Android only does on premultiplied bitmaps.
+            if (!snapshot.premultiplied) premultiply(pixels)
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            // ARGB_8888 is R, G, B, A in memory, premultiplied.
+            bitmap.copyPixelsFromBuffer(pixels)
+            width = resizedSide(resizeWidth, snapshot.width, resizeHeight, snapshot.height)
+            height = resizedSide(resizeHeight, snapshot.height, resizeWidth, snapshot.width)
+            val bytes = rgbaByteCount(width, height) ?: throw IllegalArgumentException("The resize is too large")
+            val scaled = Bitmap.createScaledBitmap(bitmap, width, height, true)
+            pixels = ByteBuffer.allocateDirect(bytes).order(ByteOrder.nativeOrder())
+            scaled.copyPixelsToBuffer(pixels)
+            pixels.rewind()
+            if (scaled !== bitmap) scaled.recycle()
+            bitmap.recycle()
+            if (!premultiply) unpremultiply(pixels)
+        } else if (premultiply && !snapshot.premultiplied) {
+            premultiply(pixels)
+        } else if (!premultiply && snapshot.premultiplied) {
+            unpremultiply(pixels)
+        }
+        if (options?.optString("imageOrientation") == "flipY") flipRows(pixels, width * 4, height)
+        return DecodedImage(pixels, width, height, premultiply)
+    }
+
+    /**
      * The drawing buffer as an image file, for canvas.toBlob() and
      * toDataURL(): `{ base64, type }`, or `{ error }`. [options] holds the
      * MIME type (image/jpeg, or image/png for anything else, as browsers fall
@@ -258,8 +337,8 @@ class WebGLModule(context: Context, param: Any?) : LynxModule(context, param) {
         }
         var bitmap = BitmapFactory.decodeByteArray(array, 0, array.size, decodeOptions) ?: return null
         if (resize) {
-            val width = if (resizeWidth > 0) resizeWidth else maxOf(1, bitmap.width * resizeHeight / bitmap.height)
-            val height = if (resizeHeight > 0) resizeHeight else maxOf(1, bitmap.height * resizeWidth / bitmap.width)
+            val width = resizedSide(resizeWidth, bitmap.width, resizeHeight, bitmap.height)
+            val height = resizedSide(resizeHeight, bitmap.height, resizeWidth, bitmap.width)
             bitmap = Bitmap.createScaledBitmap(bitmap, width, height, true)
         }
         if (bitmap.config != Bitmap.Config.ARGB_8888) bitmap = bitmap.copy(Bitmap.Config.ARGB_8888, false)
@@ -277,6 +356,9 @@ class WebGLModule(context: Context, param: Any?) : LynxModule(context, param) {
 
     private fun ReadableMap.optInt(key: String): Int =
         if (hasKey(key) && getType(key) in NUMBER_TYPES) getDouble(key).toInt() else 0
+
+    private fun ReadableMap.optBool(key: String): Boolean =
+        hasKey(key) && getType(key) == ReadableType.Boolean && getBoolean(key)
 
     companion object {
         const val NAME = "AngularLynxWebGL"
@@ -307,6 +389,15 @@ interface CanvasContext {
 
     /** The canvas's pixels now, rows top to bottom, or null when it has none. */
     fun snapshot(): DecodedImage?
+
+    /**
+     * After `OffscreenCanvas.transferToImageBitmap()` took the pixels: a 2D
+     * bitmap is cleared to transparent black (opaque black without alpha),
+     * and a WebGL drawing buffer too, even with preserveDrawingBuffer, which
+     * the HTML spec says has no effect on a transfer. The context's state
+     * stays.
+     */
+    fun clearForTransfer()
 }
 
 internal object DecodedImages {
@@ -403,6 +494,41 @@ internal fun flipRows(pixels: ByteBuffer, stride: Int, height: Int) {
         pixels.position(other * stride); pixels.put(top)
     }
     pixels.rewind()
+}
+
+/**
+ * The bytes of a [width] by [height] RGBA image, or null when a buffer can't
+ * hold that many. The pixel count of two Ints fits in a Long, and is checked
+ * before it's multiplied by 4: a canvas of 32768 by 32768 has 2^32 bytes,
+ * which an Int wraps round to 0, and one of Int.MAX_VALUE by Int.MAX_VALUE
+ * more than a Long holds.
+ */
+internal fun rgbaByteCount(width: Int, height: Int): Int? {
+    val pixels = width.toLong() * height
+    return if (pixels in 0..(Int.MAX_VALUE / 4).toLong()) (pixels * 4).toInt() else null
+}
+
+/**
+ * One side of the size createImageBitmap's resize asks for: [resize] when
+ * it's given, otherwise the side scaled by the other side's resize, keeping
+ * the aspect ratio, rounded up, as the HTML spec has it. In Long, so a big
+ * image can't wrap round.
+ */
+internal fun resizedSide(resize: Int, side: Int, otherResize: Int, otherSide: Int): Int {
+    if (resize > 0) return resize
+    val scaled = (side.toLong() * otherResize + otherSide - 1) / otherSide
+    return scaled.coerceIn(1L, Int.MAX_VALUE.toLong()).toInt()
+}
+
+internal fun premultiply(pixels: ByteBuffer) {
+    for (i in 0 until pixels.limit() step 4) {
+        val alpha = pixels.get(i + 3).toInt() and 0xff
+        if (alpha == 255) continue
+        for (c in 0 until 3) {
+            val value = pixels.get(i + c).toInt() and 0xff
+            pixels.put(i + c, ((value * alpha + 127) / 255).toByte())
+        }
+    }
 }
 
 internal fun unpremultiply(pixels: ByteBuffer) {

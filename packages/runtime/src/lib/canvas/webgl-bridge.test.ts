@@ -1,4 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { CanvasImageOptions } from './webgl-bridge';
+
+const CANVAS_IMAGE: CanvasImageOptions = {
+  imageOrientation: 'from-image',
+  premultiplyAlpha: 'default',
+  resizeWidth: 0,
+  resizeHeight: 0,
+  width: 4,
+  height: 5,
+  transfer: false,
+};
 
 /**
  * The bridge is looked up once per page, so each test loads a fresh copy.
@@ -46,7 +57,9 @@ describe('getWebGLBridge', () => {
             ? { width: 2, height: 3 }
             : method === 'encodeImage'
               ? { base64: 'AQI=', type: 'image/png' }
-              : undefined,
+              : method === 'imageFromCanvas'
+                ? { width: 4, height: 5 }
+                : undefined,
     );
     const module = vi.fn(() => ({ invoke }));
     vi.stubGlobal('lynx', { module });
@@ -69,6 +82,10 @@ describe('getWebGLBridge', () => {
       base64: 'AQI=',
       type: 'image/png',
     });
+    expect(bridge.imageFromCanvas(3, 'c-1', CANVAS_IMAGE)).toEqual({
+      width: 4,
+      height: 5,
+    });
     expect(invoke.mock.calls).toEqual([
       ['create', 1, 'c-1', { alpha: true }],
       ['run', 1, [OP_CLEAR]],
@@ -76,6 +93,7 @@ describe('getWebGLBridge', () => {
       ['decodeImage', 2, [0, 0], {}],
       ['releaseImage', 2],
       ['encodeImage', 1, encodeOptions],
+      ['imageFromCanvas', 3, 'c-1', CANVAS_IMAGE],
     ]);
   });
 
@@ -98,13 +116,20 @@ describe('getWebGLBridge', () => {
         premultipliedAlpha: true,
       }),
     ).toEqual({ error: expect.stringMatching(/ng build --platform/) });
+    expect(bridge.imageFromCanvas(1, 'c', CANVAS_IMAGE)).toEqual({
+      width: 0,
+      height: 0,
+      error: expect.stringMatching(/ng build --platform/),
+    });
   });
 
   it('answers for a shell from before encodeImage, which throws for it', async () => {
     vi.stubGlobal('lynx', {
       module: () => ({
         invoke: (method: string) => {
-          if (method === 'encodeImage') throw new Error('no such method');
+          if (method === 'encodeImage' || method === 'imageFromCanvas') {
+            throw new Error('no such method');
+          }
           return undefined;
         },
       }),
@@ -117,6 +142,9 @@ describe('getWebGLBridge', () => {
         premultipliedAlpha: true,
       }),
     ).toEqual({ error: expect.stringMatching(/can't encode a canvas/) });
+    expect(bridge.imageFromCanvas(1, 'c', CANVAS_IMAGE)).toMatchObject({
+      error: expect.stringMatching(/can't make an ImageBitmap of a canvas/),
+    });
   });
 
   it('can be replaced, and restored, for tests', async () => {

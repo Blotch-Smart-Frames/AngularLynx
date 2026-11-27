@@ -108,19 +108,13 @@ NSData *AngularLynxBytesFromWords(NSArray *words) {
   return data;
 }
 
-/// Decodes an image file to RGBA bytes, as createImageBitmap's options ask:
+/// An image's RGBA bytes, as createImageBitmap's options ask:
 /// `imageOrientation: 'flipY'` flips it, `premultiplyAlpha: 'premultiply'`
 /// keeps CoreGraphics' premultiplied pixels (otherwise they're divided back),
-/// and `resizeWidth`/`resizeHeight` scale it.
-static AngularLynxDecodedImage *decodeImage(NSData *bytes, NSDictionary *options,
-                                            NSString **error) {
-  CGImageSourceRef source = CGImageSourceCreateWithData((__bridge CFDataRef)bytes, NULL);
-  CGImageRef image = source ? CGImageSourceCreateImageAtIndex(source, 0, NULL) : NULL;
-  if (source) CFRelease(source);
-  if (!image) {
-    *error = @"The data is not an image iOS can decode";
-    return nil;
-  }
+/// and `resizeWidth`/`resizeHeight` scale it. A size given alone keeps the
+/// aspect ratio, the other side rounded up, as the HTML spec has it.
+static AngularLynxDecodedImage *pixelsOfImage(CGImageRef image, NSDictionary *options,
+                                              NSString **error) {
   size_t width = CGImageGetWidth(image);
   size_t height = CGImageGetHeight(image);
   NSNumber *resizeWidth = options[@"resizeWidth"];
@@ -129,12 +123,17 @@ static AngularLynxDecodedImage *decodeImage(NSData *bytes, NSDictionary *options
     size_t w = resizeWidth.unsignedIntegerValue;
     height = [resizeHeight isKindOfClass:NSNumber.class] && resizeHeight.integerValue > 0
                  ? resizeHeight.unsignedIntegerValue
-                 : MAX(1, (size_t)llround((double)height * w / width));
+                 : MAX(1, (size_t)ceil((double)height * w / width));
     width = w;
   } else if ([resizeHeight isKindOfClass:NSNumber.class] && resizeHeight.integerValue > 0) {
     size_t h = resizeHeight.unsignedIntegerValue;
-    width = MAX(1, (size_t)llround((double)width * h / height));
+    width = MAX(1, (size_t)ceil((double)width * h / height));
     height = h;
+  }
+  // A resize can name sides up to 2^32 - 1, whose bytes would wrap round.
+  if (width > SIZE_MAX / 4 / height) {
+    *error = @"The image is too large";
+    return nil;
   }
   NSMutableData *pixels = [NSMutableData dataWithLength:width * height * 4];
   CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
@@ -144,7 +143,6 @@ static AngularLynxDecodedImage *decodeImage(NSData *bytes, NSDictionary *options
       kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
   CGColorSpaceRelease(colorSpace);
   if (!context) {
-    CGImageRelease(image);
     *error = @"Could not allocate the image's pixels";
     return nil;
   }
@@ -159,7 +157,6 @@ static AngularLynxDecodedImage *decodeImage(NSData *bytes, NSDictionary *options
   }
   CGContextDrawImage(context, CGRectMake(0, 0, width, height), image);
   CGContextRelease(context);
-  CGImageRelease(image);
   BOOL premultiply = [options[@"premultiplyAlpha"] isEqual:@"premultiply"];
   if (!premultiply) {
     uint8_t *p = pixels.mutableBytes;
@@ -169,6 +166,86 @@ static AngularLynxDecodedImage *decodeImage(NSData *bytes, NSDictionary *options
         p[i] = (uint8_t)MIN(255, (p[i] * 255 + alpha / 2) / alpha);
         p[i + 1] = (uint8_t)MIN(255, (p[i + 1] * 255 + alpha / 2) / alpha);
         p[i + 2] = (uint8_t)MIN(255, (p[i + 2] * 255 + alpha / 2) / alpha);
+      }
+    }
+  }
+  return [[AngularLynxDecodedImage alloc] initWithPixels:pixels
+                                                   width:width
+                                                  height:height
+                                           premultiplied:premultiply];
+}
+
+/// Decodes an image file to RGBA bytes, with createImageBitmap's options (see
+/// pixelsOfImage).
+static AngularLynxDecodedImage *decodeImage(NSData *bytes, NSDictionary *options,
+                                            NSString **error) {
+  CGImageSourceRef source = CGImageSourceCreateWithData((__bridge CFDataRef)bytes, NULL);
+  CGImageRef image = source ? CGImageSourceCreateImageAtIndex(source, 0, NULL) : NULL;
+  if (source) CFRelease(source);
+  if (!image) {
+    *error = @"The data is not an image iOS can decode";
+    return nil;
+  }
+  AngularLynxDecodedImage *decoded = pixelsOfImage(image, options, error);
+  CGImageRelease(image);
+  return decoded;
+}
+
+/// A canvas's pixels (its context's snapshot) as createImageBitmap's options
+/// ask, for an ImageBitmap of the canvas. Without a resize, the bytes are
+/// copied, flipped and premultiplied or divided as asked, exactly; a resize
+/// draws them at the new size, as a decode does.
+static AngularLynxDecodedImage *pixelsOfSnapshot(AngularLynxDecodedImage *snapshot,
+                                                 NSDictionary *options, NSString **error) {
+  NSNumber *resizeWidth = options[@"resizeWidth"];
+  NSNumber *resizeHeight = options[@"resizeHeight"];
+  BOOL resize = ([resizeWidth isKindOfClass:NSNumber.class] && resizeWidth.integerValue > 0) ||
+                ([resizeHeight isKindOfClass:NSNumber.class] && resizeHeight.integerValue > 0);
+  if (resize) {
+    CGDataProviderRef provider =
+        CGDataProviderCreateWithCFData((__bridge CFDataRef)snapshot.pixels);
+    CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+    CGImageRef image = CGImageCreate(
+        snapshot.width, snapshot.height, 8, 32, snapshot.width * 4, space,
+        (snapshot.premultiplied ? kCGImageAlphaPremultipliedLast : kCGImageAlphaLast) |
+            kCGBitmapByteOrder32Big,
+        provider, NULL, false, kCGRenderingIntentDefault);
+    CGColorSpaceRelease(space);
+    CGDataProviderRelease(provider);
+    if (!image) {
+      *error = @"Could not read the canvas's pixels";
+      return nil;
+    }
+    AngularLynxDecodedImage *pixels = pixelsOfImage(image, options, error);
+    CGImageRelease(image);
+    return pixels;
+  }
+  NSInteger width = snapshot.width;
+  NSInteger height = snapshot.height;
+  NSUInteger stride = (NSUInteger)width * 4;
+  NSMutableData *pixels = [NSMutableData dataWithLength:stride * height];
+  if (!pixels) {
+    *error = @"Could not allocate the image's pixels";
+    return nil;
+  }
+  const uint8_t *from = snapshot.pixels.bytes;
+  uint8_t *to = pixels.mutableBytes;
+  BOOL flipY = [options[@"imageOrientation"] isEqual:@"flipY"];
+  for (NSInteger y = 0; y < height; y++) {
+    memcpy(to + (NSUInteger)y * stride, from + (NSUInteger)(flipY ? height - 1 - y : y) * stride,
+           stride);
+  }
+  BOOL premultiply = [options[@"premultiplyAlpha"] isEqual:@"premultiply"];
+  if (premultiply != snapshot.premultiplied) {
+    for (NSUInteger i = 0; i < stride * height; i += 4) {
+      uint8_t alpha = to[i + 3];
+      if (alpha == 255) continue;
+      for (NSUInteger c = 0; c < 3; c++) {
+        if (premultiply) {
+          to[i + c] = (uint8_t)((to[i + c] * alpha + 127) / 255);
+        } else if (alpha != 0) {
+          to[i + c] = (uint8_t)MIN(255, (to[i + c] * 255 + alpha / 2) / alpha);
+        }
       }
     }
   }
@@ -199,6 +276,7 @@ static AngularLynxDecodedImage *decodeImage(NSData *bytes, NSDictionary *options
     @"destroy" : NSStringFromSelector(@selector(destroy:)),
     @"decodeImage" : NSStringFromSelector(@selector(decodeImage:bytes:options:)),
     @"releaseImage" : NSStringFromSelector(@selector(releaseImage:)),
+    @"imageFromCanvas" : NSStringFromSelector(@selector(imageFromCanvas:canvasId:options:)),
     @"encodeImage" : NSStringFromSelector(@selector(encodeImage:options:)),
     @"create2D" : NSStringFromSelector(@selector(create2D:canvasId:attributes:)),
     @"run2D" : NSStringFromSelector(@selector(run2D:commands:)),
@@ -282,6 +360,64 @@ static AngularLynxDecodedImage *decodeImage(NSData *bytes, NSDictionary *options
 - (NSNumber *)releaseImage:(NSNumber *)imageId {
   [decodedImages() removeObjectForKey:imageId];
   return @YES;
+}
+
+/// An ImageBitmap of a canvas, for createImageBitmap() and
+/// OffscreenCanvas.transferToImageBitmap(): a copy of the canvas's pixels
+/// now, kept under `imageId` as a decoded image is, so texture uploads and
+/// drawImage read it as they read one. The pixels never cross the bridge.
+/// `options` holds createImageBitmap's options, the canvas's size (a canvas
+/// with no context is transparent black, as in a browser) and `transfer`,
+/// which clears the canvas after it's read. `{ width, height }`, or
+/// `{ error }`.
+- (NSDictionary *)imageFromCanvas:(NSNumber *)imageId
+                         canvasId:(NSString *)canvasId
+                          options:(NSDictionary *)options {
+  if (![options isKindOfClass:NSDictionary.class]) options = @{};
+  id<AngularLynxCanvasContext> context =
+      [canvasId isKindOfClass:NSString.class]
+          ? [AngularLynxCanvasRegistry contextForCanvasId:canvasId]
+          : nil;
+  // A WebGL context's snapshot makes it current; the next batch of any
+  // context makes its own current again (see AngularLynxWebGLContext run:).
+  AngularLynxDecodedImage *snapshot = [context snapshot];
+  // A context that has pixels but couldn't read them is a failure, not a
+  // blank canvas.
+  if (context && !snapshot) {
+    return @{@"width" : @0, @"height" : @0, @"error" : @"The canvas's pixels could not be read"};
+  }
+  if (!snapshot) {
+    NSInteger width = [options[@"width"] isKindOfClass:NSNumber.class]
+                          ? [options[@"width"] integerValue]
+                          : 0;
+    NSInteger height = [options[@"height"] isKindOfClass:NSNumber.class]
+                           ? [options[@"height"] integerValue]
+                           : 0;
+    if (width <= 0 || height <= 0) {
+      return @{@"width" : @0, @"height" : @0, @"error" : @"The canvas has no pixels"};
+    }
+    // Checked before it's multiplied: two sides near 2^32 would wrap round
+    // to a small count, and the copy would read past it.
+    NSMutableData *blank =
+        (NSUInteger)width <= NSIntegerMax / 4 / (NSUInteger)height
+            ? [NSMutableData dataWithLength:(NSUInteger)width * height * 4]
+            : nil;
+    if (!blank) {
+      return @{@"width" : @0, @"height" : @0, @"error" : @"The canvas is too large to copy"};
+    }
+    snapshot = [[AngularLynxDecodedImage alloc] initWithPixels:blank
+                                                         width:width
+                                                        height:height
+                                                 premultiplied:YES];
+  }
+  if ([options[@"transfer"] isEqual:@YES]) [context clearForTransfer];
+  NSString *error = nil;
+  AngularLynxDecodedImage *image = pixelsOfSnapshot(snapshot, options, &error);
+  if (!image) {
+    return @{@"width" : @0, @"height" : @0, @"error" : error ?: @"The canvas could not be read"};
+  }
+  decodedImages()[imageId] = image;
+  return @{@"width" : @(image.width), @"height" : @(image.height)};
 }
 
 /// The drawing buffer as an image file, for canvas.toBlob() and toDataURL():

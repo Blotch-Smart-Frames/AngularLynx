@@ -50,14 +50,14 @@ import {
   INHERITANCE_CLASS,
   LYNX_TEXT_INHERITANCE_CLASS,
   LAYOUT_FLAG,
-  LOWERED_FLAG,
   NOT_BLOCK_CONTAINERS,
-  RAISED_FLAG,
   SMALLER_FLAG,
+  type BaselineDistance,
+  type ShiftLink,
   VERTICAL_ALIGN_FLAG,
   TAKES_RAW_TEXT,
-  baselineShiftFor,
   hasAncestorTextRules,
+  inlineBaselineShift,
   inheritanceCopiesFor,
   inheritanceStyleFor,
   inlineTextStyles,
@@ -67,6 +67,8 @@ import {
   isRowOrientation,
   ancestorTextRulesRead,
   matchedStyleFlagsFor,
+  matchedVerticalAlignFor,
+  parseVerticalAlign,
   smallerClassFor,
   styleFlagsFor,
   textPropertyBit,
@@ -346,16 +348,109 @@ const withStyleKeys = (
   return own ? `${own}; ${declarations}` : declarations;
 };
 
+/**
+ * The children of an element that has none, which LynxElement reads in place
+ * of its `#children` while that's null. Frozen, so a write to it by mistake
+ * throws rather than giving every childless element the child.
+ */
+const NO_CHILDREN: readonly LynxElement[] = Object.freeze([]);
+
+/**
+ * Starts the public fields LynxElement declares with a constant on its
+ * prototype (see LynxElement's tagName). Run by the first element's
+ * constructor, as the hooks are, rather than in a static block, which would
+ * make the class a side effect of every bundle that imports the runtime (see
+ * side-effects.test.ts). Nothing reads them before an element exists.
+ */
+const setPrototypeDefaults = (): void => {
+  const prototype: Pick<
+    LynxElement,
+    | 'isRootPageElement'
+    | '_virtualParent'
+    | '_virtualPrev'
+    | '_virtualNext'
+    | '_listItemAttributes'
+    | '_ownedByListSource'
+  > = LynxElement.prototype;
+  prototype.isRootPageElement = false;
+  prototype._virtualParent = null;
+  prototype._virtualPrev = null;
+  prototype._virtualNext = null;
+  prototype._listItemAttributes = undefined;
+  prototype._ownedByListSource = false;
+};
+
+/**
+ * The fewest entries LynxElement's registry holds before it first sweeps out
+ * the collected ones (see its #sweepCollected): a screen's worth, so a small
+ * app never sweeps.
+ */
+const MIN_SWEEP_AT = 1024;
+
 const WHITESPACE = /\s/;
 
 /**
  * Whether a class name comes back as itself when its element's class string
  * is split on whitespace: not empty, and without whitespace of its own. An
- * element keeps a set of such names beside its class string (see
- * LynxElement's #classNames).
+ * element whose names are all plain looks them up in its class string (see
+ * LynxElement's #classesListed).
  */
 const isPlainClassName = (name: string): boolean =>
   name !== '' && !WHITESPACE.test(name);
+
+/**
+ * The names in a class string, in order.
+ */
+const splitClasses = (classes: string): string[] =>
+  classes.split(/\s+/).filter(Boolean);
+
+const SPACE = 0x20;
+
+/**
+ * Where `name` is in `classes`, a class string whose names are joined by
+ * single spaces, as a whole name: -1 if it isn't. Found without splitting
+ * the string, or making one with spaces around it, as an element looks for
+ * each class Angular adds (see LynxElement's #addClassName).
+ */
+const classNameIndex = (classes: string, name: string): number => {
+  // The names are plain, so one that isn't is never among them, though it
+  // may be found as a run of them: 'odd name' in 'a odd name'. And
+  // indexOf('') finds the empty name at every index, the end included, so
+  // the search below would never end.
+  if (!isPlainClassName(name)) return -1;
+  let at = classes.indexOf(name);
+  while (at !== -1) {
+    const end = at + name.length;
+    if (
+      (at === 0 || classes.charCodeAt(at - 1) === SPACE) &&
+      (end === classes.length || classes.charCodeAt(end) === SPACE)
+    ) {
+      return at;
+    }
+    at = classes.indexOf(name, at + 1);
+  }
+  return -1;
+};
+
+/**
+ * Whether `name` is one of the names in `classes` (see classNameIndex).
+ */
+const hasClassName = (classes: string, name: string): boolean =>
+  classNameIndex(classes, name) !== -1;
+
+/**
+ * `classes`, a class string whose names are joined by single spaces and are
+ * each there once, without `name`; the same string if it isn't there.
+ */
+const withoutClassName = (classes: string, name: string): string => {
+  const at = classNameIndex(classes, name);
+  if (at === -1) return classes;
+  const end = at + name.length;
+  // The space after it goes with it, or the one before it if it's last.
+  if (end < classes.length)
+    return classes.slice(0, at) + classes.slice(end + 1);
+  return classes.slice(0, Math.max(0, at - 1));
+};
 
 /**
  * Whether native, given `classes` as a whole class string, has exactly its
@@ -530,23 +625,25 @@ const flushesBefore = (first: ElementRef, second: ElementRef): boolean => {
 
 /**
  * The inline styles that change how far a `<sub>` or `<sup>` moves the HTML
- * text tags inside it (see LynxElement's #inlineShiftFlags).
+ * text tags inside it (see LynxElement's #shiftLink).
  */
 const SHIFT_STYLES = new Set(['font-size', 'vertical-align']);
 
 /**
- * The inline `vertical-align` that moves an HTML text tag inside a `<sub>`
- * or `<sup>` off the baseline as far as the tags around it do together,
- * which Lynx doesn't do for it (see baselineShiftFor), from the flags of its
- * rules and theirs. None where nothing above moves it, and none in the web
+ * The inline `vertical-align` that moves an HTML text tag inside a `<sub>`,
+ * a `<sup>` or another tag with a `vertical-align` off the baseline as far
+ * as the tags around it do together, which Lynx doesn't do for it (see
+ * baselineShiftFor). None where nothing above moves it, and none in the web
  * preview, whose browser moves it already, so it would move twice. An `em`
  * inline resolves against the tag's own size (iOS 27 Simulator and Android
  * API 34 emulator, November 2026).
  */
-const baselineShiftStyle = (chain: readonly number[]): string => {
+const baselineShiftStyle = (chain: readonly ShiftLink[]): string => {
   if (__WEB__) return '';
-  const shift = baselineShiftFor(chain);
-  return shift === null ? '' : `vertical-align: ${shift}em`;
+  const shift = inlineBaselineShift(chain);
+  if (!shift) return '';
+  const [em, px] = shift;
+  return `vertical-align: ${px ? `${px}px` : `${em}em`}`;
 };
 
 /**
@@ -653,6 +750,17 @@ export class LynxElement implements BaseLynxElement {
   }
   tagName = '';
 
+  // The public fields below start as a constant, and nearly every element
+  // keeps it: they're declared here, and start on the prototype (see
+  // setPrototypeDefaults), so an element has a property of its own only
+  // once one is set. In PrimJS each property of its own costs an element
+  // about 45 bytes, whatever its value (see "In PrimJS every own property
+  // costs each object about 45 bytes" in
+  // investigations/lynx-vs-web-differences.md). The build plugin does the
+  // same for the private fields (see private-methods.ts in the rsbuild
+  // plugin), but leaves public ones alone, which code outside can tell from
+  // an own property.
+
   /**
    * When true, this element is the root page element and must not be
    * re-parented (appendChild/insertBefore) or removed from the tree.
@@ -660,16 +768,16 @@ export class LynxElement implements BaseLynxElement {
    * but the page element is the immutable root — moving or removing it
    * would corrupt the native element tree.
    */
-  isRootPageElement = false;
+  declare isRootPageElement: boolean;
 
   /**
    * Virtual tree tracking — used when parent manages children outside the
    * native element tree (e.g., list manages children via componentAtIndex
    * callbacks rather than __AppendElement)
    */
-  _virtualParent: LynxElement | null = null;
-  _virtualPrev: LynxElement | null = null;
-  _virtualNext: LynxElement | null = null;
+  declare _virtualParent: LynxElement | null;
+  declare _virtualPrev: LynxElement | null;
+  declare _virtualNext: LynxElement | null;
 
   /**
    * @internal A `<list-item>`'s layout attributes (`full-span`, `sticky-top`
@@ -679,7 +787,7 @@ export class LynxElement implements BaseLynxElement {
    * object for each change, so the list can tell one by identity. Undefined
    * until one is set, as on most items.
    */
-  _listItemAttributes: ListItemAttributes | undefined = undefined;
+  declare _listItemAttributes: ListItemAttributes | undefined;
 
   /**
    * @internal Set on the `<list-item>` of a `*lynxListFor` item. Its list
@@ -689,7 +797,7 @@ export class LynxElement implements BaseLynxElement {
    * elements: the list checks it while componentAtIndex runs, where keying a
    * Set on an element is what crashed (see create-list-element.ts).
    */
-  _ownedByListSource = false;
+  declare _ownedByListSource: boolean;
 
   // Tracks animations started on this element via animate().
   // Canceled when the element is destroyed (see #doRemove) to clear stale
@@ -715,8 +823,8 @@ export class LynxElement implements BaseLynxElement {
   // collections, are null until their first write. Every view, text,
   // raw-text and anchor is a LynxElement, and most use two or three of them,
   // if any: a dozen empty Maps, Sets and arrays made with each element would
-  // live as long as its screen, as work for PrimJS's collector. #children is
-  // the exception, made with the element: nearly every path walks it.
+  // live as long as its screen, as work for PrimJS's collector, and as heap
+  // PrimJS keeps for each (see #children).
   #attrs: Map<string, unknown> | null = null;
   /**
    * The static block built under this element, and its scope class, which
@@ -729,15 +837,20 @@ export class LynxElement implements BaseLynxElement {
   /** Full space-separated class string, mirroring __SetClasses semantics. */
   #classes = '';
   /**
-   * The names in #classes, in order, while #classes is exactly their join
-   * and each is a plain class name (see isPlainClassName). addClass then adds
-   * a name by appending it, rather than splitting and joining the whole
-   * string again: Angular adds a `[class]` binding's classes one at a time,
-   * often ten or more on a component's host. Null until the first class, and
+   * Set while #classes is exactly the join of its names with single spaces,
+   * each a plain class name (see isPlainClassName) and each once. addClass
+   * then adds a name by appending it, after looking for it in the string
+   * (see hasClassName), rather than splitting and joining the whole string
+   * again: Angular adds a `[class]` binding's classes one at a time, often
+   * ten or more on a component's host. Unset until the first class, and
    * after a removal that takes the classes from native (see removeClass);
-   * the next addClass builds it from #classes, as it always did.
+   * the next addClass builds the string again, as it always did.
+   *
+   * A flag rather than a Set of the names: every element with a class kept
+   * one, which cost PrimJS about 540 bytes for each (issue #708), and a
+   * look-up in a string of a few names is as quick.
    */
-  #classNames: Set<string> | null = null;
+  #classesListed = false;
   /**
    * What the native element's class list is known to be:
    *
@@ -872,8 +985,15 @@ export class LynxElement implements BaseLynxElement {
    * appendChild/insertBefore/#doRemove. This is the CANONICAL wrapper list — the
    * wrappers Angular stores in its LView — which is what recreation must rebuild;
    * never the throwaway wrappers parentNode()/nextSibling()/querySelector mint.
+   *
+   * Null until the first child, as most elements never have one: a `@for`
+   * row's `<view>`, every raw-text and anchor. A constant start keeps it off
+   * the instance until then (see "In PrimJS every own property costs each
+   * object about 45 bytes" in investigations/lynx-vs-web-differences.md), and
+   * an empty array made with each element cost each one an array too. Reads
+   * go through NO_CHILDREN.
    */
-  #children: LynxElement[] = [];
+  #children: LynxElement[] | null = null;
   /** Back-pointer to the JS parent, for O(1) detach from its #children. */
   #jsParent: LynxElement | null = null;
   /**
@@ -1078,24 +1198,36 @@ export class LynxElement implements BaseLynxElement {
   static #byNativeId = new Map<number, WeakRef<LynxElement>>();
 
   /**
-   * Deletes a collected wrapper's entry (see #byNativeId). Each registration
-   * holds the id it was registered under, never the wrapper, which would keep
-   * it alive. Null where the engine has no FinalizationRegistry: the entries
-   * left, an id and an empty WeakRef each, are small.
+   * How many entries #byNativeId may hold before #register sweeps out the
+   * ones whose wrapper was collected (see #sweepCollected).
    */
-  static #collected: FinalizationRegistry<number> | null =
-    typeof FinalizationRegistry === 'function'
-      ? new FinalizationRegistry((id) => {
-          // A newer element may hold the id now (native ids are reused).
-          if (!LynxElement.#byNativeId.get(id)?.deref()) {
-            LynxElement.#byNativeId.delete(id);
-          }
-        })
-      : null;
+  static #sweepAt = MIN_SWEEP_AT;
 
   static #register(id: number, element: LynxElement): void {
-    LynxElement.#byNativeId.set(id, new WeakRef(element));
-    LynxElement.#collected?.register(element, id);
+    const registry = LynxElement.#byNativeId;
+    registry.set(id, new WeakRef(element));
+    if (registry.size > LynxElement.#sweepAt) LynxElement.#sweepCollected();
+  }
+
+  /**
+   * Deletes the entries whose wrapper was collected (see #byNativeId), and
+   * sweeps again once the registry has grown to twice what's left, so the
+   * sweeps cost each registration a step or two however many there are.
+   * Entries whose element Angular destroyed go at once (see #release), so
+   * these are the few nobody released: the wrappers a renderer that wraps
+   * this one made and dropped, and the throwaways #canonicalFor makes.
+   *
+   * A sweep rather than a FinalizationRegistry, which deleted each entry
+   * as its wrapper was collected: registering every element with one kept
+   * a record for each as long as the element lived (about 70 bytes under
+   * V8, issue #708), to delete the few entries nobody released.
+   */
+  static #sweepCollected(): void {
+    const registry = LynxElement.#byNativeId;
+    for (const [id, ref] of registry) {
+      if (!ref.deref()) registry.delete(id);
+    }
+    LynxElement.#sweepAt = Math.max(MIN_SWEEP_AT, registry.size * 2);
   }
 
   static #registered(id: number): LynxElement | undefined {
@@ -1158,6 +1290,7 @@ export class LynxElement implements BaseLynxElement {
     // element exists.
     if (!hooksInstalled) {
       hooksInstalled = true;
+      setPrototypeDefaults();
       setMeasureFlush(scheduleSettleFlush);
       setAfterAnimate(countNativeWrite);
       // What reads native's classes, or has native resolve the tree, without
@@ -1332,14 +1465,13 @@ export class LynxElement implements BaseLynxElement {
    * Writes the positionally edge-trimmed DISPLAY text onto the live raw-text
    * element, bypassing setAttribute so it does NOT overwrite #rawText or re-queue
    * this node for normalization. Called only by the flush-time normalization
-   * pass. Keeps #text and the recreation attr cache (#attrs['text']) in sync with
-   * the displayed value so a remounted raw-text rebuilds with the correct text.
+   * pass. Keeps #text in sync with the displayed value so a remounted raw-text
+   * rebuilds with the correct text.
    */
   #setDisplayedText(displayed: string): void {
     if (this.#text === displayed) return;
     __SetAttribute(this.element, 'text', displayed);
     this.#text = displayed;
-    (this.#attrs ??= new Map()).set('text', displayed);
   }
   setAttribute(name: string, value: any): void {
     // A class, id, data-* or `hidden` asks for no flush itself (see
@@ -1383,9 +1515,7 @@ export class LynxElement implements BaseLynxElement {
       // What it had, to tell which classes changed (see #rulesChanged):
       // unknown while native has classes the string doesn't.
       const before =
-        this.#nativeClasses === false
-          ? undefined
-          : (this.#classNames ?? this.#classes.split(/\s+/).filter(Boolean));
+        this.#nativeClasses === false ? undefined : splitClasses(this.#classes);
       // The split's names are plain, and the scope classes Angular and the
       // runtime name are too; an odd one an app gave setRuntimeClass leaves
       // the set to the next addClass.
@@ -1416,7 +1546,7 @@ export class LynxElement implements BaseLynxElement {
         this.#nativeClasses = plain;
       }
       this.#classes = classes;
-      this.#classNames = plain ? names : null;
+      this.#classesListed = plain;
       this.#rulesChanged(before && changedTokens(before, names));
     } else if (name === 'style') {
       this.setInlineStyles(value);
@@ -1485,16 +1615,20 @@ export class LynxElement implements BaseLynxElement {
         // it reaches native only with a flush (see scheduleSettleFlush).
         scheduleSettleFlush();
       }
+      // raw-text carries its text via the 'text' attribute (renderer.setValue).
+      // It isn't mirrored with the other attributes: #text holds it, which a
+      // rebuilt raw-text is made with (see #recreateSubtree), and a Map for
+      // it alone cost each raw-text about 170 bytes of PrimJS's heap (issue
+      // #708).
+      const isRawText = this.tagName === 'raw-text' && name === 'text';
       // Mirror for recreation. removeAttribute() funnels here with value=null,
-      // so drop the key then rather than replaying a cleared attribute. raw-text
-      // carries its text via the 'text' attribute (renderer.setValue) — keep
-      // #text in sync so a rebuilt raw-text bakes the current text in.
+      // so drop the key then rather than replaying a cleared attribute.
       if (value == null) {
         this.#attrs?.delete(name);
-      } else {
+      } else if (!isRawText) {
         (this.#attrs ??= new Map()).set(name, value);
       }
-      if (this.tagName === 'raw-text' && name === 'text') {
+      if (isRawText) {
         // The renderer feeds this the COLLAPSED-but-untrimmed value (see
         // renderer.setValue → collapseWhitespace). Stash it as the raw source and
         // queue the enclosing text for the positional edge-trim pass; #text is
@@ -1755,7 +1889,7 @@ export class LynxElement implements BaseLynxElement {
   /**
    * An inline `font-size` or `vertical-align` came or went: the HTML text
    * tags from here down work out again how far a `<sub>` or `<sup>` moves
-   * them (see #inlineShiftFlags).
+   * them (see #shiftLink).
    */
   #shiftStylesChanged(): void {
     if (this.#webText) this.#inheritAgain();
@@ -1806,7 +1940,8 @@ export class LynxElement implements BaseLynxElement {
     if (!(this.#webText || this.#passesTextStyles)) return;
     if (!hasAncestorTextRules()) return;
     if (this.#webText) LynxElement.#pendingInheritance.add(this);
-    for (const child of this.#children) child.#ancestorsChanged();
+    for (const child of this.#children ?? NO_CHILDREN)
+      child.#ancestorsChanged();
     for (const item of this.virtualChildren()) item.#ancestorsChanged();
   }
 
@@ -1820,7 +1955,7 @@ export class LynxElement implements BaseLynxElement {
    */
   #inheritAgain(): void {
     if (this.#webText) LynxElement.#pendingInheritance.add(this);
-    for (const child of this.#children) {
+    for (const child of this.#children ?? NO_CHILDREN) {
       if (child.#webText) child.#inheritAgain();
     }
   }
@@ -1845,7 +1980,7 @@ export class LynxElement implements BaseLynxElement {
     const tokens = new Set(
       this.#nativeClasses === false
         ? __GetClasses(this.element)
-        : (this.#classNames ?? this.#classes.split(/\s+/).filter(Boolean)),
+        : splitClasses(this.#classes),
     );
     if (this.#id) tokens.add(`#${this.#id}`);
     tokens.add(`<${this.tagName}>`);
@@ -1881,15 +2016,54 @@ export class LynxElement implements BaseLynxElement {
   }
 
   /**
-   * The style index flags this element's inline style stands for in
-   * baselineShiftFor, which the index can't see: a `vertical-align` of its
-   * own, by a distance the runtime doesn't read. A size of its own needs no
-   * flag here: it's among the chain's flags already, and ends the chain
-   * (see #sizeChain).
+   * The app's inline `vertical-align`, or undefined where it has none.
    */
-  #inlineShiftFlags(): number {
+  #inlineVerticalAlign(): string | undefined {
     const value = this.#inlineStyle('vertical-align');
-    return value != null && value !== '' ? VERTICAL_ALIGN_FLAG : 0;
+    return value == null || value === '' ? undefined : String(value);
+  }
+
+  /**
+   * This element's link in baselineShiftFor's chain, from its flags (an
+   * inline size among them, see #textTagChain): the distance of its
+   * `vertical-align`, its inline one's if it has one, which wins over its
+   * rules.
+   */
+  #shiftLink(flags: number): ShiftLink {
+    const inline = this.#inlineVerticalAlign();
+    return [
+      flags,
+      inline !== undefined
+        ? parseVerticalAlign(inline)
+        : flags & VERTICAL_ALIGN_FLAG
+          ? this.#matchedVerticalAlign()
+          : undefined,
+    ];
+  }
+
+  /**
+   * The inline `vertical-align` that moves this #webText element with the
+   * HTML text tags above it (see baselineShiftFor), or none: from the
+   * elements of #textTagChain. Only a tag above with a `vertical-align` moves
+   * it. None where the tag's own inline style sets one, which comes after
+   * the runtime's and would win over it: the tag then moves by its own
+   * distance only, where a browser adds it to those above (issue #736).
+   */
+  #baselineShift(elements: readonly [LynxElement, number][]): string {
+    if (
+      this.#inlineVerticalAlign() !== undefined ||
+      !elements.some(
+        ([element, flags], index) =>
+          index > 0 &&
+          (flags & VERTICAL_ALIGN_FLAG ||
+            element.#inlineVerticalAlign() !== undefined),
+      )
+    ) {
+      return '';
+    }
+    return baselineShiftStyle(
+      elements.map(([element, flags]) => element.#shiftLink(flags)),
+    );
   }
 
   /**
@@ -1912,8 +2086,8 @@ export class LynxElement implements BaseLynxElement {
     // A <small>'s own rule divides the size around it once: the text inside
     // it, or a second <small>, needs a class that divides it more (see
     // #sizeChain). The class sets the size, so it reads no variable.
-    const elements = this.#sizeChain();
-    const chain = elements.map(([, flags]) => flags);
+    const tags = this.#textTagChain();
+    const chain = this.#sizeChain(tags).map(([, flags]) => flags);
     const levels = chain.filter((flags) => flags & SMALLER_FLAG).length;
     const ownLevel = this.#ruleFlags(false) & SMALLER_FLAG ? 1 : 0;
     const smaller = levels > ownLevel ? smallerClassFor(levels) : null;
@@ -1923,15 +2097,7 @@ export class LynxElement implements BaseLynxElement {
         this.#drawnAtDefault() |
         (smaller ? FONT_SIZE_FLAG : 0),
     );
-    // Only a <sub> or <sup> above it moves the tag, and only then do the
-    // inline styles of those between count (see #inlineShiftFlags).
-    const shift = chain.some((flags) => flags & (RAISED_FLAG | LOWERED_FLAG))
-      ? baselineShiftStyle(
-          elements.map(
-            ([element, flags]) => flags | element.#inlineShiftFlags(),
-          ),
-        )
-      : '';
+    const shift = this.#baselineShift(tags);
     const style = shift
       ? [inherited, shift].filter(Boolean).join('; ')
       : inherited;
@@ -1978,12 +2144,19 @@ export class LynxElement implements BaseLynxElement {
    */
   #ruleFlags(inState: boolean): number {
     if (this.#anonymous) return 0;
+    return this.#matchedStyleFlags(this.#ruleTokens(), inState);
+  }
+
+  /**
+   * The tokens this element's own rules match it by (see #ruleFlags).
+   */
+  #ruleTokens(): Set<string> {
     const tokens = this.#styleTokens();
     if (this.#webText) tokens.delete('<text>');
     // The runtime's own class for nested <small>s follows from these flags
     // (see #setSmallerClass), so it can't count among them.
     if (this.#smallerClass) tokens.delete(this.#smallerClass);
-    return this.#matchedStyleFlags(tokens, inState);
+    return tokens;
   }
 
   /**
@@ -2009,14 +2182,11 @@ export class LynxElement implements BaseLynxElement {
   }
 
   /**
-   * Each of this #webText element and the HTML text tags above it, nearest
-   * first, with the style index flags of its rules: up to the nearest
-   * ancestor whose rules set the size with a copy, which the variable holds.
-   * Those with
-   * SMALLER_FLAG are the `<small>`, `<sub>` and `<sup>` tags that make its
-   * text smaller, itself included, and those with RAISED_FLAG or
-   * LOWERED_FLAG the ones that move it off the baseline (see
-   * baselineShiftFor).
+   * Of #textTagChain's elements, this #webText element and the HTML text
+   * tags above it up to the nearest ancestor whose rules set the size with a
+   * copy, which the variable holds. Those with SMALLER_FLAG are the
+   * `<small>`, `<sub>` and `<sup>` tags that make its text smaller, itself
+   * included.
    *
    * The build's rule for the tags divides the parent's variable by 1.2 and,
    * reading the variable it would be copied to, has no copy (see
@@ -2032,22 +2202,39 @@ export class LynxElement implements BaseLynxElement {
    * a view sizes its own text. Moving the element or changing an ancestor's
    * classes works it out again (see #inheritAgain and #ancestorsChanged).
    */
-  #sizeChain(): [LynxElement, number][] {
+  #sizeChain(tags: [LynxElement, number][]): [LynxElement, number][] {
+    if (tags[0]![1] & FONT_SIZE_FLAG) return tags.slice(0, 1);
+    const sized = tags.findIndex(
+      ([, flags], index) => index > 0 && flags & FONT_SIZE_FLAG,
+    );
+    return sized < 0 ? tags : tags.slice(0, sized);
+  }
+
+  /**
+   * This #webText element and each HTML text tag above it, nearest first,
+   * with the style index flags of its rules: for #sizeChain, and for
+   * baselineShiftFor, which follows the tags with a `vertical-align` past
+   * one that sets its size, as a `px` distance there still moves the text
+   * inside it. It stops at an element that isn't an HTML text tag, as
+   * #drawnAtDefault does: a Lynx `<text>` or a view lays out its own text.
+   */
+  #textTagChain(): [LynxElement, number][] {
     // A state's rule counts for none of them, as in #drawnAtDefault: the
     // levels are those of the tags as they usually draw.
     // An inline size sets it as a rule does, and an ancestor's has its copy
     // in the variable (see #inlineTextCopies).
-    const own = this.#ruleFlags(false) | this.#inlineTextFlags();
-    const chain: [LynxElement, number][] = [[this, own]];
-    if (own & FONT_SIZE_FLAG) return chain;
+    const chain: [LynxElement, number][] = [
+      [this, this.#ruleFlags(false) | this.#inlineTextFlags()],
+    ];
     for (
       let parent = this.#jsParent;
       parent && parent.#webText;
       parent = parent.#jsParent
     ) {
-      const flags = parent.#ruleFlags(false) | parent.#inlineTextFlags();
-      if (flags & FONT_SIZE_FLAG) break;
-      chain.push([parent, flags]);
+      chain.push([
+        parent,
+        parent.#ruleFlags(false) | parent.#inlineTextFlags(),
+      ]);
     }
     return chain;
   }
@@ -2158,16 +2345,31 @@ export class LynxElement implements BaseLynxElement {
    * there.
    */
   #matchedStyleFlags(tokens: ReadonlySet<string>, inState: boolean): number {
+    return matchedStyleFlagsFor(tokens, this.#ancestorTokens(), inState);
+  }
+
+  /**
+   * The distance of the `vertical-align` this element's rules give it (see
+   * matchedVerticalAlignFor).
+   */
+  #matchedVerticalAlign(): BaselineDistance | null | undefined {
+    return matchedVerticalAlignFor(this.#ruleTokens(), this.#ancestorTokens());
+  }
+
+  /**
+   * The tokens of this element's ancestors, nearest first, read as a rule
+   * asks for them (see matchedStyleFlagsFor).
+   */
+  #ancestorTokens(): (index: number) => Set<string> | undefined {
     const ancestors: Set<string>[] = [];
     let next = this._virtualParent ?? this.#jsParent;
-    const ancestorAt = (index: number): Set<string> | undefined => {
+    return (index) => {
       while (ancestors.length <= index && next) {
         ancestors.push(next.#styleTokens());
         next = next._virtualParent ?? next.#jsParent;
       }
       return ancestors[index];
     };
-    return matchedStyleFlagsFor(tokens, ancestorAt, inState);
   }
 
   /**
@@ -2272,7 +2474,7 @@ export class LynxElement implements BaseLynxElement {
       close.#setQuoteMark(depth === 0 ? '”' : '’');
       inner++;
     }
-    for (const child of this.#children) {
+    for (const child of this.#children ?? NO_CHILDREN) {
       if (child.#holdsQuote || child.#quoteMarks) {
         child.#setQuoteDepth(inner);
       }
@@ -2548,12 +2750,12 @@ export class LynxElement implements BaseLynxElement {
   #adoptChild(newChild: LynxElement, refChild?: LynxElement): void {
     const prev = newChild.#jsParent;
     if (prev) {
-      const i = prev.#children.indexOf(newChild);
+      const i = prev.#children!.indexOf(newChild);
       // Defensive: if newChild is tracked as a child of `prev`, indexOf always
       // finds it. The i < 0 branch would only fire on a bookkeeping mismatch
       // that shouldn't happen through the public API.
       /* v8 ignore next */
-      if (i >= 0) prev.#children.splice(i, 1);
+      if (i >= 0) prev.#children!.splice(i, 1);
       // The loose text it leaves may need regrouping (see #regroup).
       if (prev !== this && !LynxElement.#regrouping) {
         const holder = prev.#anonymous ? prev.#jsParent : prev;
@@ -2561,18 +2763,19 @@ export class LynxElement implements BaseLynxElement {
       }
     }
     newChild.#jsParent = this;
+    const children = (this.#children ??= []);
     if (refChild) {
       // From the end: `@for` puts each new item before its anchor, which
       // follows them all, so searching from the front cost a step per item
       // already there. A child is in #children once, so both find the same.
-      const idx = this.#children.lastIndexOf(refChild);
+      const idx = children.lastIndexOf(refChild);
       // Defensive: refChild always sits in #children when it's used as an
       // anchor for insertBefore. If a caller passes a foreign refChild, fall
       // back to appending at the tail rather than throwing.
       /* v8 ignore next */
-      this.#children.splice(idx < 0 ? this.#children.length : idx, 0, newChild);
+      children.splice(idx < 0 ? children.length : idx, 0, newChild);
     } else {
-      this.#children.push(newChild);
+      children.push(newChild);
     }
     if (newChild.#webText || newChild.#passesTextStyles) {
       this.#passTextStyles();
@@ -2651,7 +2854,8 @@ export class LynxElement implements BaseLynxElement {
     if (this.#nativeHandlers?.has('layoutchange')) {
       restartWebLayoutChange(this.element);
     }
-    for (const child of this.#children) child.#restartWebLayoutChanges();
+    for (const child of this.#children ?? NO_CHILDREN)
+      child.#restartWebLayoutChanges();
   }
 
   /**
@@ -2731,8 +2935,11 @@ export class LynxElement implements BaseLynxElement {
    * An element that isn't text can then go between the two.
    */
   #splitBefore(wrapper: LynxElement, member: LynxElement): LynxElement {
-    const moving = wrapper.#children.slice(wrapper.#children.indexOf(member));
-    const after = this.#children[this.#children.indexOf(wrapper) + 1] ?? null;
+    // Both hold what they're asked about, so neither is without children.
+    const members = wrapper.#children!;
+    const moving = members.slice(members.indexOf(member));
+    const children = this.#children!;
+    const after = children[children.indexOf(wrapper) + 1] ?? null;
     const split = LynxElement.#anonymousText();
     this.#attach(split, after);
     for (const node of moving) split.#attach(node, null);
@@ -2777,9 +2984,14 @@ export class LynxElement implements BaseLynxElement {
    */
   #regroup(): void {
     // Angular's order of the children: each anonymous <text> opened up.
+    // An element regroups once loose text or an inline tag has gone into it
+    // (see #hasFlow), but one whose insert was refused as a cycle (see
+    // #appendPrepared) never took it, and may have no children at all. Each
+    // anonymous text has its members: it's made for them.
+    const children = this.#children ?? NO_CHILDREN;
     const nodes: LynxElement[] = [];
-    for (const child of this.#children) {
-      if (child.#anonymous) nodes.push(...child.#children);
+    for (const child of children) {
+      if (child.#anonymous) nodes.push(...child.#children!);
       else nodes.push(child);
     }
     const lines = this.#laysOutLines();
@@ -2822,14 +3034,14 @@ export class LynxElement implements BaseLynxElement {
     let at = 0;
     for (const item of plan) {
       const target = Array.isArray(item) ? this.#textFor(item, used) : item;
-      if (this.#children[at] !== target) {
-        this.#attach(target, this.#children[at] ?? null);
+      if (children[at] !== target) {
+        this.#attach(target, children[at] ?? null);
       }
       at++;
       if (!Array.isArray(item)) continue;
       item.forEach((member, index) => {
-        if (target.#children[index] !== member) {
-          target.#attach(member, target.#children[index] ?? null);
+        if (target.#children?.[index] !== member) {
+          target.#attach(member, target.#children?.[index] ?? null);
         }
       });
       // Its edges may have moved, when a member left for another line.
@@ -2844,7 +3056,7 @@ export class LynxElement implements BaseLynxElement {
     }
     // What's left are anonymous texts the plan has no use for, which every
     // member has left by now.
-    for (const unused of this.#children.slice(at)) {
+    for (const unused of children.slice(at)) {
       unused.#destroyed = true;
       unused.#doRemove();
     }
@@ -2888,19 +3100,17 @@ export class LynxElement implements BaseLynxElement {
     // Keep the cached class string in sync (deduped) so recreation replays the
     // full class list in one __SetClasses.
     const plain = isPlainClassName(name);
-    const names = this.#classNames;
-    if (names && plain) {
-      // #classes is their join, so a new name goes on its end: the same
-      // string the rebuild below makes.
-      if (!names.has(name)) {
-        names.add(name);
+    if (this.#classesListed && plain) {
+      // #classes is the names' join, so a new name goes on its end: the
+      // same string the rebuild below makes.
+      if (!hasClassName(before, name)) {
         this.#classes = before ? `${before} ${name}` : name;
       }
     } else {
-      const rebuilt = new Set(before.split(/\s+/).filter(Boolean));
+      const rebuilt = new Set(splitClasses(before));
       rebuilt.add(name);
       this.#classes = [...rebuilt].join(' ');
-      this.#classNames = plain ? rebuilt : null;
+      this.#classesListed = plain;
     }
     // While native has the names in #classes and no others (see
     // #nativeClasses), a plain name the string didn't have is one native
@@ -2973,12 +3183,9 @@ export class LynxElement implements BaseLynxElement {
       !__WEB__ &&
       isInsideChangeDetection()
     ) {
-      // Each name is there once, so the set stays the string's.
-      const names = this.#classNames;
-      const joined = names
-        ? names.delete(name)
-          ? [...names].join(' ')
-          : before
+      // Each name is there once, so the string stays their join.
+      const joined = this.#classesListed
+        ? withoutClassName(before, name)
         : before
             .split(' ')
             .filter((c) => c !== name)
@@ -2993,9 +3200,9 @@ export class LynxElement implements BaseLynxElement {
       const joined = classes.join(' ');
       __SetClasses(this.element, joined);
       this.#classes = joined;
-      // Native's list is the truth here, and may hold what the set can't (a
-      // name twice), so the next addClass builds the set from #classes.
-      this.#classNames = null;
+      // Native's list is the truth here, and may hold what a list of names
+      // can't (a name twice), so the next addClass builds one from #classes.
+      this.#classesListed = false;
       // Native has the string's names now, and if each is plain and there
       // once, it has what #classes says from here.
       this.#nativeClasses = isWholeClassList(joined);
@@ -3343,7 +3550,7 @@ export class LynxElement implements BaseLynxElement {
     // A <q>'s marks are text of the line, as a browser's generated content
     // is: the space after `<q>` sits after the opening mark, not at an edge.
     if (el.#quoteMarks) out.push(el.#quoteMarks[0]);
-    for (const child of el.#children) {
+    for (const child of el.#children ?? NO_CHILDREN) {
       if (child.tagName === 'raw-text') {
         out.push(child);
       } else if (child.tagName === 'text') {
@@ -3478,11 +3685,11 @@ export class LynxElement implements BaseLynxElement {
     // rebuilds fresh native elements instead of re-attaching empty ones.
     const jsParent = this.#jsParent;
     if (jsParent) {
-      const i = jsParent.#children.indexOf(this);
+      const i = jsParent.#children!.indexOf(this);
       // Defensive: jsParent's #children was kept in lock-step with the native
       // tree via #adoptChild, so indexOf always finds `this` here.
       /* v8 ignore next */
-      if (i >= 0) jsParent.#children.splice(i, 1);
+      if (i >= 0) jsParent.#children!.splice(i, 1);
       this.#jsParent = null;
     }
     this.#markPaintingDead();
@@ -3529,7 +3736,7 @@ export class LynxElement implements BaseLynxElement {
         removeNativeHandler(this.element, eventType, eventName);
       }
     }
-    for (const child of this.#children) child.#release();
+    for (const child of this.#children ?? NO_CHILDREN) child.#release();
     for (const child of this.virtualChildren()) child.#release();
     if (this.#quoteMarks) {
       for (const mark of this.#quoteMarks) mark.deregisterNative();
@@ -3544,7 +3751,7 @@ export class LynxElement implements BaseLynxElement {
    */
   #markPaintingDead(): void {
     this.#paintingDead = true;
-    for (const child of this.#children) {
+    for (const child of this.#children ?? NO_CHILDREN) {
       child.#markPaintingDead();
     }
   }
@@ -3660,7 +3867,7 @@ export class LynxElement implements BaseLynxElement {
     // around its children (see markQuote).
     const marks = this.#quoteMarks;
     if (marks) __AppendElement(fresh, marks[0].#renewQuoteMark());
-    for (const child of this.#children) {
+    for (const child of this.#children ?? NO_CHILDREN) {
       child.#recreateSubtree();
       __AppendElement(fresh, child.element);
     }

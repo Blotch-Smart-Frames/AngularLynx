@@ -1,0 +1,7 @@
+{
+  "name": "LaunchPerfIonic",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "angular-standalone"
+}

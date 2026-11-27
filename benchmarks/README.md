@@ -18,6 +18,8 @@ frameworks never touch the monorepo's build.
 | `apps/angular-lynx` | The port to AngularLynx, on this repository's packages |
 | `apps/react-lynx` | The port to ReactLynx, in the same native shell as the AngularLynx app |
 | `apps/angular-native` | The port to Angular Native (Expo SDK 58) |
+| `apps/nativescript-angular` | The port to NativeScript Angular (NativeScript 9) |
+| `apps/ionic-angular` | The port to Ionic Angular on Capacitor 8 |
 | `fixtures/` | Recorded PokeAPI responses and sprites, and the server that hands them to the apps |
 | `harness/` | The scripts that launch the apps under Instruments and read the traces |
 | `results/` | Every run, as CSV |
@@ -65,7 +67,8 @@ node fixtures/server.mjs
 # 2. Build and install each app on the phone. build_ios_app.sh builds any of
 #    them for a phone with the Mac's LAN address as the fixture origin (the
 #    Expo apps need `expo prebuild` with the bundle ID first, see their
-#    READMEs)
+#    READMEs; NativeScript's CLI needs Ruby's xcodeproj gem, which the
+#    script borrows from Homebrew's CocoaPods)
 xcrun devicectl device install app --device <UDID> \
   "$(sh harness/build_ios_app.sh angular-lynx com.angularlynx.bench.angularlynx)"
 

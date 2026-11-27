@@ -4,8 +4,9 @@
 #
 #   sh build_ios_app.sh <app> <bundle id> [bench screen]
 #
-#   app          angular-lynx, react-lynx, react-native, react-native-0.88
-#                or angular-native (a folder in ../apps)
+#   app          angular-lynx, react-lynx, react-native, react-native-0.88,
+#                angular-native, nativescript-angular or ionic-angular (a folder
+#                in ../apps)
 #   bundle id    what the phone knows it as
 #   bench screen e.g. 'mount?kind=view&count=1500': open on that screen
 #                instead of the tabs (BENCH_SCREEN in each app's README)
@@ -67,6 +68,29 @@ case "$app" in
       -configuration Release -sdk iphoneos -destination generic/platform=iOS -derivedDataPath build/ios-device \
       DEVELOPMENT_TEAM="$team" CODE_SIGN_STYLE=Automatic -allowProvisioningUpdates >"$log" 2>&1
     built=build/ios-device/Build/Products/Release-iphoneos/LaunchPerfAngularNative.app
+    ;;
+  nativescript-angular)
+    # The NativeScript CLI edits the Xcode project with Ruby's xcodeproj gem;
+    # CocoaPods (Homebrew) carries one, so borrow it if Ruby has none.
+    if ! ruby -e 'require "xcodeproj"' 2>/dev/null; then
+      GEM_PATH="$(ls -d "$(brew --prefix)"/Cellar/cocoapods/*/libexec | tail -1)"
+      export GEM_PATH
+    fi
+    BENCH_SCREEN="$screen" FIXTURE_ORIGIN="$origin" BUNDLE_ID="$bundle_id" \
+      npx ns prepare ios --release >"$log" 2>&1
+    xcodebuild build -project platforms/ios/nativescriptangular.xcodeproj -scheme nativescriptangular \
+      -configuration Release -sdk iphoneos -destination generic/platform=iOS -derivedDataPath build/ios-device \
+      DEVELOPMENT_TEAM="$team" CODE_SIGN_STYLE=Automatic PRODUCT_BUNDLE_IDENTIFIER="$bundle_id" \
+      -allowProvisioningUpdates >>"$log" 2>&1
+    built=build/ios-device/Build/Products/Release-iphoneos/nativescriptangular.app
+    ;;
+  ionic-angular)
+    BENCH_SCREEN="$screen" FIXTURE_ORIGIN="$origin" node scripts/build.mjs >"$log" 2>&1
+    xcodebuild build -project ios/App/App.xcodeproj -scheme App -configuration Release \
+      -sdk iphoneos -destination generic/platform=iOS -derivedDataPath ios/DerivedData-device \
+      DEVELOPMENT_TEAM="$team" CODE_SIGN_STYLE=Automatic PRODUCT_BUNDLE_IDENTIFIER="$bundle_id" \
+      -allowProvisioningUpdates >>"$log" 2>&1
+    built=ios/DerivedData-device/Build/Products/Release-iphoneos/App.app
     ;;
   *)
     echo "Unknown app: $app" >&2

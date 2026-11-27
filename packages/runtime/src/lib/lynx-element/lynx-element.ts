@@ -2716,7 +2716,14 @@ export class LynxElement implements BaseLynxElement {
     const rules = hasQuotesRules();
     if (!rules && !LynxElement.#inlineQuotesSeen) return 'inherit';
     const inline = String(this.#inlineStyle('quotes') ?? '');
-    const inlineValue = inline ? parseQuotes(inline) : undefined;
+    // An inline `revert-layer` rolls the inline style back to the rules, as
+    // though there were none (the style attribute is a layer of its own
+    // above them); a rule's, like `revert`, goes back to inheriting, as no
+    // rule of the build's index is in a `@layer` (see its QuotesRule).
+    const inlineValue =
+      inline && !/^[ \t\n\r\f]*revert-layer\b/i.test(inline)
+        ? parseQuotes(inline)
+        : undefined;
     const matched = rules
       ? matchedQuotesFor(this.#ruleTokens(), this.#quoteAncestorTokens())
       : undefined;

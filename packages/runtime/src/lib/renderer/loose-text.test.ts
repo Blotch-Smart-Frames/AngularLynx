@@ -3687,6 +3687,12 @@ describe('<q>, element by element', () => {
       expect(drawn(q)).toEqual(['r', 'r']);
       q.setStyle('quotes', `"i" "i" !important`);
       expect(drawn(q)).toEqual(['i', 'i']);
+      // An inline revert-layer leaves the rule's, important or not.
+      q.setStyle('quotes', 'revert-layer !important');
+      expect(drawn(q)).toEqual(['r', 'r']);
+      quotesRules([['_ngtag-q'], [], `"r" "r"`, 1, 0, 0]);
+      q.setStyle('quotes', 'revert-layer');
+      expect(drawn(q)).toEqual(['r', 'r']);
     });
 
     it("takes a style attribute's quotes, without any rule", () => {

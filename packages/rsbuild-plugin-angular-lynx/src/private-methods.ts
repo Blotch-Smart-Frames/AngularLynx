@@ -842,6 +842,24 @@ export const renamePrivateMethods = (
 };
 
 /**
+ * Names a sloppy script can bind that a class can't take, as a class's code
+ * is strict.
+ */
+const STRICT_RESERVED = new Set([
+  'arguments',
+  'eval',
+  'implements',
+  'interface',
+  'let',
+  'package',
+  'private',
+  'protected',
+  'public',
+  'static',
+  'yield',
+]);
+
+/**
  * Wraps a top-level class in a pure IIFE, `/*#__PURE__*\/ (() => class X
  * {…})()`, once renamePrivateMethods has given it a `static {}` block.
  *
@@ -898,14 +916,46 @@ const pureClassWrap = (
       { start: end, end, text: ')()' },
     ];
   }
-  // An anonymous class takes its variable's name (`A.name`) only as an
-  // initializer. Inside the arrow it's the value of a property of that name,
-  // which names it the same way (`({ A: class {} }).A.name` is `'A'`) and,
-  // unlike a variable, binds nothing: the class's own code still reads the
-  // module's `A`, whenever and however that is written. A property named
-  // `__proto__` would set the object's prototype instead.
   if (!ts.isIdentifier(declaration.name)) return [];
   const name = declaration.name.text;
+  // An anonymous class takes its variable's name (`A.name`) only as an
+  // initializer, so inside the arrow it needs a name of its own. SWC lowers
+  // a class expression's static block to a sequence, `(_class = class {…},
+  // _class.prototype[__a] = null, _class)`, which leaves the arrow's body one
+  // expression, and the minifier inlines such an IIFE, pure mark and all,
+  // when something reads it (another class nothing uses, which the same
+  // pass drops). What was left was an assignment to a property of the
+  // class's prototype, which it keeps, and with it the class and all it
+  // reaches: hello-world's main-thread script kept LynxTextDecoder (#768).
+  // A named class's block lowers to statements after it, which the minifier
+  // doesn't inline. When nothing in the class reads the variable (or could,
+  // through `eval`), the name `class A` binds is one its code never sees, so
+  // the class is given it, as it is named. Not a name strict code can't
+  // bind, which a sloppy script's variable can have: a class's code is
+  // strict.
+  if (
+    !STRICT_RESERVED.has(name) &&
+    !contains(
+      node,
+      (inner) =>
+        ts.isIdentifier(inner) &&
+        (inner.text === name || inner.text === 'eval'),
+    )
+  ) {
+    const keywordEnd = start + 'class'.length;
+    return [
+      { start, end: start, text: iife },
+      { start: keywordEnd, end: keywordEnd, text: ` ${name}` },
+      { start: end, end, text: ')()' },
+    ];
+  }
+  // Otherwise the class's code must still read the module's `A`, whenever
+  // and however that is written, which the name would hide. The class is
+  // the value of a property of that name, which names it the same way
+  // (`({ A: class {} }).A.name` is `'A'`) and binds nothing. The minifier
+  // can inline that IIFE, but it never drops a variable that its own
+  // initializer reads, whatever wraps it, so there's nothing to keep. A
+  // property named `__proto__` would set the object's prototype instead.
   if (name === '__proto__') return [];
   return [
     { start, end: start, text: `${iife}({ ${name}: ` },

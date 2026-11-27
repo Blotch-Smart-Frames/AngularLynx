@@ -156,7 +156,16 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
             // `stop` and `play` clear the items (a transition to null) and
             // add the same one back without that, so the event is kept
             // through an empty transition and for the same source.
-            if (mediaItem != null && mediaItem.localConfiguration?.uri != heldSource) heldFirstFrame = null
+            if (mediaItem == null) {
+                // Nothing plays until `play`, so a pending check would only
+                // send the held event with no frame: the next frame drawn
+                // starts a check again.
+                mainHandler.removeCallbacks(frameCheck)
+            } else if (mediaItem.localConfiguration?.uri != heldSource) {
+                heldFirstFrame = null
+                // A new source gets its own redraws.
+                redraws = 0
+            }
         }
 
         override fun onRenderedFirstFrame() {

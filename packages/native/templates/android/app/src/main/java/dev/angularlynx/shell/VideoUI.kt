@@ -262,7 +262,10 @@ class VideoUI(context: LynxContext) : LynxUIVideo(context), CanvasContext {
 
     /** The target has a frame since the player last went to it. */
     private fun targetFrameCame(from: VideoFrameTarget?) {
-        if (from == null || from !== target) return
+        // The post can come after a reset (a new source, or the player going
+        // back to the target) forgot the frame it was for: the check that's
+        // pending then still runs.
+        if (from == null || from !== target || !from.frameIsCurrent()) return
         mainHandler.removeCallbacks(frameCheck)
         redraws = 0
         releaseFirstFrame()

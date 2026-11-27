@@ -1,15 +1,15 @@
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { DateTimeFormat } from '@formatjs/intl-datetimeformat';
-import { NumberFormat } from '@formatjs/intl-numberformat';
-import { PluralRules } from '@formatjs/intl-pluralrules';
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import type { CollationData } from './collation-format';
 import { collationData } from './collation-data';
 import {
+  HOST_DEFAULT_LOCALE,
   localZoneTransitions,
   pickLocale,
   setUpIntl,
   UNKNOWN_TIME_ZONE,
+  useAppLocaleAsHostDefault,
 } from './runtime';
 
 /**
@@ -18,21 +18,65 @@ import {
  * ponyfills, which don't install themselves), as Lynx has after the
  * polyfills load, and load locale data into it the way the data files do:
  * through `Intl.<constructor>.__addLocaleData`.
+ *
+ * FormatJS takes a host's default locale and time zone from the global
+ * `Intl`, once, as its modules load, and Lynx has none of its own. So each
+ * load hides Node's while FormatJS's modules load afresh (vitest.config.ts
+ * inlines them, for vi.resetModules()), after `useAppLocaleAsHostDefault()`
+ * has run for the phone the test sets up, as the generated module runs it
+ * before the polyfills.
  */
 const require = createRequire(import.meta.url);
 
-type IntlLike = Record<string, any>;
+type IntlLike = Record<PropertyKey, any>;
 
 const loadData = (intl: IntlLike, file: string): void => {
   const source = readFileSync(require.resolve(file), 'utf8');
   new Function('Intl', 'globalThis', source)(intl, {});
 };
 
-const formatJsIntl = (): IntlLike => {
-  const intl: IntlLike = { getCanonicalLocales: Intl.getCanonicalLocales };
+const setGlobalProps = (props: Record<string, unknown> | undefined) => {
+  (globalThis as any).lynx = props && { __globalProps: props };
+};
+
+/**
+ * FormatJS, set up for an `en-US` app with `en`, `fr` and `de` data, on a
+ * phone that sends `props`.
+ */
+const loadFormatJs = async (
+  props: Record<string, unknown> | undefined,
+  {
+    collation,
+    strings = {},
+  }: { collation?: CollationData; strings?: object } = {},
+) => {
+  setGlobalProps(props);
+  const host = globalThis.Intl;
+  const intl: IntlLike = { getCanonicalLocales: host.getCanonicalLocales };
+  vi.resetModules();
+  let modules;
+  try {
+    (globalThis as any).Intl = intl;
+    useAppLocaleAsHostDefault();
+    modules = await Promise.all([
+      import('@formatjs/intl-datetimeformat'),
+      import('@formatjs/intl-listformat'),
+      import('@formatjs/intl-numberformat'),
+      import('@formatjs/intl-pluralrules'),
+    ]);
+  } finally {
+    (globalThis as any).Intl = host;
+  }
+  const [
+    { DateTimeFormat },
+    { default: ListFormat },
+    { NumberFormat },
+    { PluralRules },
+  ] = modules;
   // Not enumerable, as FormatJS's polyfills define them.
   for (const [name, value] of Object.entries({
     DateTimeFormat,
+    ListFormat,
     NumberFormat,
     PluralRules,
   })) {
@@ -43,11 +87,17 @@ const formatJsIntl = (): IntlLike => {
     });
   }
   for (const locale of ['en', 'fr', 'de']) {
-    loadData(intl, `@formatjs/intl-pluralrules/locale-data/${locale}.js`);
-    loadData(intl, `@formatjs/intl-numberformat/locale-data/${locale}.js`);
-    loadData(intl, `@formatjs/intl-datetimeformat/locale-data/${locale}.js`);
+    for (const api of [
+      'pluralrules',
+      'numberformat',
+      'datetimeformat',
+      'listformat',
+    ]) {
+      loadData(intl, `@formatjs/intl-${api}/locale-data/${locale}.js`);
+    }
   }
-  return intl;
+  setUpIntl({ sourceLocale: 'en-US', collation }, { intl, strings });
+  return { intl, DateTimeFormat: DateTimeFormat as any };
 };
 
 /**
@@ -55,23 +105,19 @@ const formatJsIntl = (): IntlLike => {
  */
 const spaces = (text: string) => text.replace(/[\u202f\u00a0]/g, ' ');
 
-const setGlobalProps = (props: Record<string, unknown> | undefined) => {
-  (globalThis as any).lynx = props && { __globalProps: props };
-};
-
 let intl: IntlLike;
+let DateTimeFormat: any;
 let strings: { localeCompare?: (...args: any[]) => number };
 // The zones FormatJS had before the tests changed them, and its default.
 let zones: Record<string, unknown>;
 
-beforeAll(() => {
-  intl = formatJsIntl();
-  zones = DateTimeFormat.tzData;
+beforeAll(async () => {
   strings = {};
-  setUpIntl(
-    { sourceLocale: 'en-US', collation: collationData(['en-US', 'de']) },
-    { intl, strings },
-  );
+  ({ intl, DateTimeFormat } = await loadFormatJs(undefined, {
+    collation: collationData(['en-US', 'de']),
+    strings,
+  }));
+  zones = DateTimeFormat.tzData;
 });
 
 afterEach(() => {
@@ -101,26 +147,51 @@ describe('pickLocale', () => {
 });
 
 describe('the default locale', () => {
-  it("is the phone's language when the app has data for it", () => {
-    setGlobalProps({ appLocale: 'fr-FR' });
+  it("is the phone's language when the app has data for it", async () => {
+    const { intl } = await loadFormatJs({ appLocale: 'fr-FR' });
     // FormatJS takes `fr` data to serve `fr-FR` too.
     expect(new intl['NumberFormat']().resolvedOptions().locale).toBe('fr-FR');
     expect(new intl['NumberFormat']().format(1234.5)).toBe('1\u202f234,5');
     expect(new intl['PluralRules']().resolvedOptions().locale).toBe('fr-FR');
+    // ListFormat has no default of its own to set, only the host's.
+    expect(new intl['ListFormat']().format(['a', 'b'])).toBe('a et b');
   });
 
-  it('is the source locale otherwise, or without a host app', () => {
-    setGlobalProps({ appLocale: 'ja-JP' });
-    expect(new intl['NumberFormat']().resolvedOptions().locale).toBe('en-US');
-    setGlobalProps({ appLocale: '' });
-    expect(new intl['NumberFormat']().resolvedOptions().locale).toBe('en-US');
-    setGlobalProps(undefined);
-    expect(new intl['NumberFormat']().resolvedOptions().locale).toBe('en-US');
+  it('is the source locale otherwise, or without a host app', async () => {
+    for (const props of [
+      { appLocale: 'ja-JP' },
+      { appLocale: '' },
+      { appLocale: 'not a locale' },
+      undefined,
+    ]) {
+      const { intl } = await loadFormatJs(props);
+      expect(new intl['NumberFormat']().resolvedOptions().locale).toBe('en-US');
+      expect(new intl['ListFormat']().format(['a', 'b'])).toBe('a and b');
+    }
   });
 
   it("isn't changed by more locale data loading", () => {
-    NumberFormat.__defaultLocale = 'de';
+    intl['NumberFormat'].__defaultLocale = 'de';
     expect(new intl['NumberFormat']().resolvedOptions().locale).toBe('en-US');
+    expect(intl['NumberFormat'].__defaultLocale).toBe('en-US');
+  });
+
+  it('is read from __defaultLocale on every call by earlier FormatJS releases', () => {
+    // As FormatJS before NumberFormat 10.1 and DateTimeFormat 8.2 kept it.
+    const NumberFormat = {
+      availableLocales: new Set(['en', 'en-US', 'fr']),
+      __defaultLocale: 'en',
+    };
+    setUpIntl(
+      { sourceLocale: 'en-US' },
+      {
+        intl: { getCanonicalLocales: Intl.getCanonicalLocales, NumberFormat },
+        strings: {},
+      },
+    );
+    expect(NumberFormat.__defaultLocale).toBe('en-US');
+    setGlobalProps({ appLocale: 'fr-CA' });
+    expect(NumberFormat.__defaultLocale).toBe('fr');
   });
 
   it("is the Collator's too", () => {
@@ -162,7 +233,17 @@ describe('the default time zone', () => {
           summer,
         ),
       ),
-    ).toBe('7/15/2026, 9 AM Eastern Daylight Time');
+    ).toBe(
+      spaces(
+        new Intl.DateTimeFormat('en', {
+          timeZoneName: 'long',
+          timeZone: 'America/New_York',
+        }).format(summer),
+      ),
+    );
+    expect(
+      new intl['DateTimeFormat']('en', { timeZoneName: 'long' }).format(summer),
+    ).toContain('Eastern Daylight Time');
   });
 
   it("goes by CLDR's unknown zone when the host sends no name", () => {
@@ -208,6 +289,26 @@ describe('the default time zone', () => {
   it('can still be set to another zone', () => {
     DateTimeFormat.__setDefaultTimeZone('UTC');
     expect(new intl['DateTimeFormat']().resolvedOptions().timeZone).toBe('UTC');
+  });
+});
+
+describe('useAppLocaleAsHostDefault', () => {
+  const hostDefault = (props: Record<string, unknown> | undefined) => {
+    setGlobalProps(props);
+    const bare: IntlLike = { getCanonicalLocales: Intl.getCanonicalLocales };
+    useAppLocaleAsHostDefault(bare);
+    return bare[HOST_DEFAULT_LOCALE];
+  };
+
+  it("is the phone's language, canonical and without its extensions", () => {
+    expect(hostDefault({ appLocale: 'fr-fr' })).toBe('fr-FR');
+    // Android 14 sends the user's regional preferences with it.
+    expect(hostDefault({ appLocale: 'en-GB-u-mu-celsius' })).toBe('en-GB');
+  });
+
+  it("is left to FormatJS without a host app's locale", () => {
+    expect(hostDefault(undefined)).toBeUndefined();
+    expect(hostDefault({ appLocale: 'not a locale' })).toBeUndefined();
   });
 });
 

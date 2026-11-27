@@ -1911,6 +1911,11 @@ static CGRect bitmapRect(CGRect rect, size_t height) {
   size_t width = (size_t)ceil(bounds.size.width * density);
   size_t height = (size_t)ceil(bounds.size.height * density);
   if (width == 0 || height == 0) return;
+  // The image is drawn over `bounds`, so each of its pixels covers this much
+  // of the canvas: sampled at those pixels' centers, not at 1 / density,
+  // which rounding the size up would leave apart from where they're drawn.
+  // At density 1 the bounds are whole pixels, and a step is one.
+  CGFloat stepX = bounds.size.width / width, stepY = bounds.size.height / height;
   NSMutableData *pixels = [NSMutableData dataWithLength:width * height * 4];
   uint8_t *p = pixels.mutableBytes;
   // 256 colors around the circle, as the stops give them.
@@ -1925,7 +1930,7 @@ static CGRect bitmapRect(CGRect rect, size_t height) {
   for (size_t y = 0; y < height; y++) {
     for (size_t x = 0; x < width; x++) {
       CGPoint point = CGPointApplyAffineTransform(
-          CGPointMake(bounds.origin.x + (x + 0.5) / density, bounds.origin.y + (y + 0.5) / density),
+          CGPointMake(bounds.origin.x + (x + 0.5) * stepX, bounds.origin.y + (y + 0.5) * stepY),
           inverse);
       CGFloat angle = atan2(point.y - cy, point.x - cx) - start;
       CGFloat t = fmod(angle / (2 * M_PI), 1);

@@ -712,7 +712,10 @@ export const runFlows = async (
       // One allowance per flow for both kinds of device fault, so a flow
       // run again because Maestro lost the device doesn't get another run
       // when its log then shows a slow launch: a flow that fails twice
-      // fails the run, with its first failure.
+      // fails the run. The second failure is the one reported, as for any
+      // device fault: it happened on a device that answered, where the
+      // first can be only Maestro's DeviceUnreachableException. (The first
+      // stands only when the session ends before the flow runs again.)
       const retries = deviceFaultRetries.get(flow) ?? 0;
       if (outcome.status === 'failed' && retries < DEVICE_FAULT_RETRIES) {
         const fault = deviceLost

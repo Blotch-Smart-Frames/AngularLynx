@@ -236,11 +236,20 @@ const runWorklet = (ctx: unknown, params: unknown[]): unknown => {
 // starts or stops listening to one doesn't change web-core's handlers in the
 // middle of it (see addNativeEvent). iOS and Android don't need it, and run
 // this for every frame of a scroll.
-// @ts-expect-error
-globalThis.runWorklet = (ctx: unknown, params: unknown[]) =>
-  __WEB__
-    ? runLynxEvent(() => runWorklet(ctx, params))
-    : runWorklet(ctx, params);
+//
+// Main thread only: Lynx calls runWorklet on the main thread's VM, where the
+// events and the elements are, and React Lynx installs it from its
+// main-thread worklet runtime. A background function comes in through
+// listenForCalls() below instead. On the background thread the assignment
+// kept MainThreadElement and LynxAnimation (transformParams wraps element
+// handles in them) in the script for nothing (issue #717).
+if (__MAIN_THREAD__) {
+  // @ts-expect-error
+  globalThis.runWorklet = (ctx: unknown, params: unknown[]) =>
+    __WEB__
+      ? runLynxEvent(() => runWorklet(ctx, params))
+      : runWorklet(ctx, params);
+}
 
 const RUN_ON_BACKGROUND_EVENT = 'Lynx.Worklet.runOnBackground';
 const RETURN_EVENT = 'Lynx.Worklet.BgFunctionCallRet';

@@ -70,6 +70,7 @@ describe('global-callbacks', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     delete (globalThis as any).runOnBackground;
+    delete (globalThis as any).runWorklet;
     delete (globalThis as any).ssrEncode;
     delete (globalThis as any).ssrHydrate;
     delete (globalThis as any).__LYNX_IS_HYDRATING__;
@@ -372,7 +373,7 @@ describe('global-callbacks', () => {
 
   describe('worklet registration + invocation', () => {
     beforeEach(async () => {
-      await load({ mainThread: false });
+      await load({ mainThread: true });
     });
 
     it('registerWorklet stores a fn that runWorklet can invoke by _wkltId', () => {
@@ -383,6 +384,16 @@ describe('global-callbacks', () => {
       ]);
       expect(fn).toHaveBeenCalledWith('arg1');
       expect(result).toBe('result');
+    });
+
+    // Lynx calls runWorklet on the main thread only. Installed on the
+    // background thread too, it kept MainThreadElement and LynxAnimation in
+    // that thread's script (issue #717).
+    it('leaves runWorklet off the background thread', async () => {
+      delete (globalThis as any).runWorklet;
+      await load({ mainThread: false });
+
+      expect((globalThis as any).runWorklet).toBeUndefined();
     });
 
     it('exposes __workletRefMap as the shared main-thread ref map', () => {
@@ -454,7 +465,7 @@ describe('global-callbacks', () => {
     });
 
     it('warns in dev mode when a worklet _wkltId is not registered', async () => {
-      await load({ mainThread: false });
+      await load({ mainThread: true });
       vi.stubGlobal('__DEV__', true);
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
       (globalThis as any).runWorklet({ _wkltId: 'ghost' }, []);

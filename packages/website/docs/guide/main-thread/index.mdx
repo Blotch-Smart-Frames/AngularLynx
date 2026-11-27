@@ -199,7 +199,7 @@ Set the `backgroundTreeShaking` build option to `"aggressive"` to drop the value
 }
 ```
 
-The kitchen-sink example's background script goes from 216 KB to 170 KB. The main thread's script doesn't change, and neither do your background functions, refs and the values they read.
+The kitchen-sink example's background script goes from 101 KB to 56 KB. The main thread's script doesn't change, and neither do your background functions, refs and the values they read.
 
 The cost: a top-level declaration whose value nothing on the background thread reads no longer runs there, even when its initializer does something on purpose. This one stops subscribing:
 

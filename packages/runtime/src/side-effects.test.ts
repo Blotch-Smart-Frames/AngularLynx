@@ -111,6 +111,36 @@ describe('module side effects', () => {
     expect(found).toEqual([]);
   });
 
+  it("decides each module-level block's thread at build time", () => {
+    // The build defines __MAIN_THREAD__, so rspack drops a block that tests it
+    // from the other thread's bundle, with everything only that block reaches.
+    // It can't see through a call: behind `if (isMainThread())`, polyfills.ts
+    // kept the network classes (Blob, ReadableStream, TextDecoder) in the
+    // background thread's script, and the minifier, which does see that the
+    // block never runs, left part of them there (issue #717). Test
+    // `typeof __MAIN_THREAD__ !== 'undefined' && __MAIN_THREAD__` instead
+    // where unit tests load the module without the define.
+    const found: string[] = [];
+    for (const { name, file } of parsed) {
+      for (const statement of file.statements) {
+        if (!ts.isIfStatement(statement)) continue;
+        const visit = (node: ts.Node): void => {
+          if (
+            ts.isCallExpression(node) &&
+            ts.isIdentifier(node.expression) &&
+            node.expression.text === 'isMainThread'
+          ) {
+            found.push(at(name, file, statement));
+          }
+          ts.forEachChild(node, visit);
+        };
+        visit(statement.expression);
+      }
+    }
+
+    expect(found).toEqual([]);
+  });
+
   it('has no class static blocks', () => {
     // A static block runs when its class is defined, so it makes the class
     // a side effect wherever it is. Neither Angular's build nor the build

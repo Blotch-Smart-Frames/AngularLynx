@@ -9,6 +9,12 @@ static void *const kAngularLynxVideoItemContext = (void *)&kAngularLynxVideoItem
 
 #pragma mark - Frames
 
+@interface AngularLynxVideoFrames ()
+/// Whether the frames have an output whose transform is still loading, so
+/// they have no frame to give yet however many the output has.
+- (BOOL)waitsForTransform;
+@end
+
 /// Where a frame of `size` lands through a track's `transform`. A file's
 /// transform turns the frame about its top-left corner, so a turned frame
 /// can land left of or above zero: only the rect's size and how far it's
@@ -76,6 +82,12 @@ static CGSize displaySize(CGSize size, CGAffineTransform transform) {
     CVPixelBufferRelease(_frame);
     _frame = NULL;
     _hasTransform = NO;
+  }
+}
+
+- (BOOL)waitsForTransform {
+  @synchronized(self) {
+    return _output && !_hasTransform;
   }
 }
 
@@ -262,7 +274,11 @@ static const int64_t kFrameNanoseconds = 16666667;
 /// a canvas drawing the video from `bindfirstframe` read nothing, which the
 /// E2E canvas flow caught. So the event waits for the output's frame, a
 /// frame at a time and for half a second at most, then goes as XElement's
-/// would. Android's frame is there first already (VideoUI.onFirstFrame).
+/// would. It also waits for the track's transform, past the half second if
+/// it has to: the frames give none without it, and its load always ends
+/// (loadTransformOf:forOutput:), so a handler that draws once gets the
+/// frame turned. Android's frame is there first already
+/// (VideoUI.onFirstFrame).
 - (void)playableDidLoadFirstFrame:(id<LynxVideoPlayable>)playable
                          duration:(NSTimeInterval)duration {
   [self sendFirstFrame:playable item:_item duration:duration triesLeft:kFirstFrameTries];
@@ -275,7 +291,8 @@ static const int64_t kFrameNanoseconds = 16666667;
               duration:(NSTimeInterval)duration
              triesLeft:(NSInteger)triesLeft {
   if (item != _item) return;
-  if (!_frames || triesLeft <= 0 || [_frames frameSize].width > 0) {
+  if (!_frames || [_frames frameSize].width > 0 ||
+      (triesLeft <= 0 && ![_frames waitsForTransform])) {
     [super playableDidLoadFirstFrame:playable duration:duration];
     return;
   }

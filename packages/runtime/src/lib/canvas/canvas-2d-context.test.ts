@@ -19,6 +19,9 @@ import { FILTER_STEP, parseFilter } from './css-filter';
 import { CANVAS_SOURCE, type CanvasSource } from './canvas-source';
 import { NATIVE_IMAGE } from './native-image';
 import { LynxPath2D } from './path';
+import { LynxVideoElement } from './video-element';
+import { setVideoFrameSizeForTesting } from './webgl-bridge';
+import type { ElementRef } from '../types/lynx';
 
 const { moveTo: M, lineTo: L, close: Z } = PATH_OP;
 
@@ -988,10 +991,46 @@ describe('LynxCanvasRenderingContext2D', () => {
     );
   });
 
-  it('says a video can’t be drawn yet, and refuses what isn’t an image', () => {
+  it('draws a video’s frame by its id, and nothing before it has one', () => {
+    globalThis.__SetAttribute = vi.fn();
+    let uid = 1;
+    globalThis.__GetElementUniqueID = vi.fn(() => uid++);
+    let size = { width: 0, height: 0 };
+    setVideoFrameSizeForTesting(() => size);
+    try {
+      const video = new LynxVideoElement({} as ElementRef);
+      const context = make();
+      // HAVE_NOTHING: nothing is drawn, and there's no pattern, as in a
+      // browser.
+      context.drawImage(video, 0, 0);
+      expect(context.createPattern(video, 'repeat')).toBeNull();
+      context.flush();
+      expect(bridge.batches.flat()).not.toContain(OP.drawImage);
+      size = { width: 16, height: 9 };
+      context.drawImage(video, 1, 2);
+      context.flush();
+      expect(bridge.batches.at(-1)).toEqual([
+        OP.drawImage,
+        { canvas: video.videoId },
+        0,
+        0,
+        16,
+        9,
+        1,
+        2,
+        16,
+        9,
+      ]);
+      expect(context.createPattern(video, 'repeat')).not.toBeNull();
+    } finally {
+      setVideoFrameSizeForTesting(undefined);
+    }
+  });
+
+  it('refuses what isn’t an image', () => {
     const context = make();
     expect(() => context.drawImage({ tagName: 'video' }, 0, 0)).toThrow(
-      /<video>/,
+      /is not of type/,
     );
     expect(() => context.drawImage({}, 0, 0)).toThrow(/is not of type/);
     expect(() => context.createPattern(null, 'repeat')).toThrow(

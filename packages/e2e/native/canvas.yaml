@@ -19,7 +19,7 @@ appId: ${APP_ID}
 # getImageData(), and uploaded as a texture and read back; and its filter
 # (issue #698): a color matrix, drop-shadow() and blur() read back.
 - extendedWaitUntil:
-    visible: '2D: 0,128,0,255 filter ok'
+    visible: '2D: 0,128,0,255 filter ok;.*'
     timeout: 15000
 # ImageBitmaps of canvases (issue #697): createImageBitmap() of the WebGL
 # canvas and of an OffscreenCanvas, transferToImageBitmap(), which clears the
@@ -27,4 +27,10 @@ appId: ${APP_ID}
 - extendedWaitUntil:
     visible: 'Bitmap: ok'
     timeout: 15000
+# A <video> read as an image (issue #696): its first frame, red above and
+# blue below, drawn on a 2D canvas and read back at the top and the bottom,
+# and uploaded as a texture and read back.
+- extendedWaitUntil:
+    visible: '.*; Video: red,blue / red'
+    timeout: 20000
 - takeScreenshot: canvas

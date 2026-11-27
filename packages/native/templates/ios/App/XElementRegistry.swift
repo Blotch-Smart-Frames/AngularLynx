@@ -13,7 +13,8 @@ import XElement
 /// classes under the same names here, before the first LynxConfig or LynxView
 /// exists. `<blur-view>` is XElement's with UIKit's blur materials and glass
 /// transitions added (BlurView). `<canvas>` is the shell's own, for WebGL
-/// (AngularLynxWebGL.h). `<webview>`'s loader is XElement's, wrapped so its web
+/// (AngularLynxWebGL.h), and `<video>` XElement's with frames a canvas can
+/// read (AngularLynxVideo.h). `<webview>`'s loader is XElement's, wrapped so its web
 /// view doesn't outlive the element (ShellWebViewLoader).
 enum XElementRegistry {
   static func register() {
@@ -33,11 +34,14 @@ enum XElementRegistry {
       ("scroll-coordinator-slot-drag", LynxUIScrollCoordinatorSlotDrag.self),
       ("scroll-coordinator-toolbar", LynxUIScrollCoordinatorToolbar.self),
       ("webview", LynxUIWebView.self),
-      ("video", LynxUIVideo.self),
     ]
     for (name, ui) in elements {
       LynxComponentRegistry.registerUI(ui, withName: name)
     }
+    // <video> is XElement's, with frames the canvas contexts can read
+    // (AngularLynxVideo.h).
+    LynxComponentRegistry.registerUI(
+      NSClassFromString("AngularLynxVideo") ?? LynxUIVideo.self, withName: "video")
     // The shell's own <canvas> (AngularLynxWebGL.h): Lynx has none.
     if let canvas = NSClassFromString("AngularLynxCanvas") {
       LynxComponentRegistry.registerUI(canvas, withName: "canvas")

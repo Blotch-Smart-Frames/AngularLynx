@@ -4,6 +4,10 @@
  * `document.createElement('canvas')`, or an OffscreenCanvas. The shell reads
  * its pixels by the canvas's id, from its 2D context's bitmap or its WebGL
  * context's drawing buffer, so they never travel through JavaScript.
+ *
+ * A `<video>` is one too (video-element.ts): the shell's video element
+ * registers its latest frame under the video's id, where the contexts read
+ * it as they read a canvas.
  */
 export type CanvasSource = {
   /** The id the shell knows the canvas's context by. */
@@ -12,6 +16,11 @@ export type CanvasSource = {
   readonly height: number;
   /** Whether it has a context the shell can read. */
   readonly readable: boolean;
+  /**
+   * Whether it's a `<video>`, which has no size before its first frame and
+   * then draws nothing, as in a browser, where a canvas of no size throws.
+   */
+  readonly video?: boolean;
   /**
    * Sends the calls its context has recorded, so the shell reads the canvas
    * as the app has drawn it so far.
@@ -30,13 +39,3 @@ export const canvasSourceOf = (source: unknown): CanvasSource | null => {
       | undefined) ?? null
   );
 };
-
-/**
- * Whether the value is a `<video>`: Lynx's video element can't be read as an
- * image yet, which the callers say rather than drawing nothing.
- */
-export const isVideo = (source: unknown): boolean =>
-  typeof source === 'object' &&
-  source !== null &&
-  ((source as { tagName?: unknown }).tagName === 'video' ||
-    (source as { tagName?: unknown }).tagName === 'VIDEO');

@@ -1,0 +1,21 @@
+# Layer 6, the app's own builds only: a <video> switched between shown and
+# display: none (issue #791). The video page (fixtures/video-toggle.ts) reads
+# a paused video drawn on a 2D canvas while it's shown, then hides it, shows
+# it and hides it again, reading it after each: on Android, VideoUI moves the
+# player between the view's surface and its own target at each toggle (issue
+# #726), and a move that goes wrong leaves the video with no frame, and a
+# videoWidth of 0, without an error. The line shows one read when all four
+# agree, or each step's. Lynx Explorer has no canvas.
+appId: ${APP_ID}
+---
+- runFlow: open-app.yaml
+- tapOn: Open storage
+- tapOn: Open canvas
+- tapOn: Open photo
+- tapOn: Open video
+# Three toggles, each given a second to reach the view and up to five more
+# for the video to have a frame.
+- extendedWaitUntil:
+    visible: 'Video toggled: 32x64 red,blue'
+    timeout: 30000
+- takeScreenshot: video-toggle

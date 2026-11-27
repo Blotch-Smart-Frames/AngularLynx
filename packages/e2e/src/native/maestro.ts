@@ -253,6 +253,14 @@ export const FLOWS: readonly Flow[] = [
     only: { host: 'shell' },
   },
   {
+    file: 'video-toggle.yaml',
+    description:
+      'reads a video as it goes from shown to display: none and back, twice',
+    // Only the app's own builds have <video> drawn on a canvas, and the
+    // photo page that links to it (see webview.yaml).
+    only: { host: 'shell' },
+  },
+  {
     file: 'webview.yaml',
     description: "loads and draws a page in XElement's web view",
     // Only the app's own builds, where a web view that isn't linked or

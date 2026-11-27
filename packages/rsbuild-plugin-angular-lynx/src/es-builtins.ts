@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as ts from 'typescript';
@@ -215,6 +216,43 @@ const isBuiltinModule = (file: string, dir: string): boolean => {
   return !relative.startsWith('..') && !path.isAbsolute(relative);
 };
 
+/** Whether each folder's nearest `package.json` has `"type": "module"`. */
+const modulePackageFolders = new Map<string, boolean>();
+
+/**
+ * Whether `file`'s nearest `package.json` has `"type": "module"`, as rspack
+ * reads it for strict-esm.ts's rule. A folder with none, up to the root, is
+ * CommonJS's, as it is to Node.
+ *
+ * @param file - The module's path.
+ */
+const isInModulePackage = (file: string): boolean => {
+  const folder = path.dirname(file);
+  let isModule = modulePackageFolders.get(folder);
+  if (isModule === undefined) {
+    let text: string | undefined;
+    try {
+      text = readFileSync(path.join(folder, 'package.json'), 'utf8');
+    } catch {
+      // No package.json here: the folder above decides.
+    }
+    if (text !== undefined) {
+      try {
+        isModule = (JSON.parse(text) as { type?: unknown }).type === 'module';
+      } catch {
+        // One rspack can't read either, which then fails the build itself.
+        isModule = false;
+      }
+    } else {
+      isModule =
+        path.dirname(folder) !== folder &&
+        isInModulePackage(path.join(path.dirname(folder), 'package.json'));
+    }
+    modulePackageFolders.set(folder, isModule);
+  }
+  return isModule;
+};
+
 /**
  * Imports, at the top of a module, the module of each built-in Lynx lacks
  * that the module names (ES_BUILTINS), so an app carries only those its code
@@ -246,7 +284,9 @@ export const importEsBuiltinsWhereNamed = (
   // Most modules name at least one, but text that names none needs no parse.
   if (
     isBuiltinModule(filename, dir) ||
-    ![...NAMES].some((name) => code.includes(name))
+    // A name can be written with escapes (`a.\u0061t(-1)`), which only the
+    // parse decodes.
+    (!code.includes('\\') && ![...NAMES].some((name) => code.includes(name)))
   ) {
     return code;
   }
@@ -273,9 +313,14 @@ export const importEsBuiltinsWhereNamed = (
     head = end.index + end[0].length;
   }
   // An `.mjs` or `.mts` file is an ES module even with no import or export,
-  // and has no `require` (strict-esm.ts builds it as one). Imports run in the
+  // and so is a `.js` file in a `"type": "module"` package: neither has
+  // `require` (strict-esm.ts builds both as ES modules). Imports run in the
   // order they're written, so these, first, run before the module's own.
-  if (ts.isExternalModule(sourceFile) || /\.m[jt]s$/.test(filename)) {
+  if (
+    ts.isExternalModule(sourceFile) ||
+    /\.m[jt]s$/.test(filename) ||
+    (filename.endsWith('.js') && isInModulePackage(filename))
+  ) {
     const imports = specifiers.map((specifier) => `import ${specifier}; `);
     return `${code.slice(0, head)}${imports.join('')}${code.slice(head)}`;
   }

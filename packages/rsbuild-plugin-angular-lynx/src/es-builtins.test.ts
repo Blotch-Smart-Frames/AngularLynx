@@ -1,5 +1,6 @@
 import { buildSync } from 'esbuild';
-import { readdirSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createContext, runInContext, type Context } from 'node:vm';
 import * as ts from 'typescript';
@@ -1770,6 +1771,46 @@ describe('importEsBuiltinsWhereNamed', () => {
     expect(importEsBuiltinsWhereNamed(`a.at(0);`, '/lib/index.cjs', dir)).toBe(
       `;require(${specifier('at.js')}); a.at(0);`,
     );
+  });
+
+  it('imports into a .js file of a "type": "module" package, which has no require', () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'es-builtins-'));
+    mkdirSync(path.join(root, 'esm', 'lib', 'deep'), { recursive: true });
+    mkdirSync(path.join(root, 'cjs'));
+    mkdirSync(path.join(root, 'broken'));
+    writeFileSync(path.join(root, 'esm', 'package.json'), '{"type":"module"}');
+    writeFileSync(path.join(root, 'cjs', 'package.json'), '{}');
+    writeFileSync(path.join(root, 'broken', 'package.json'), '{');
+    const code = `globalThis.last = [1].at(0);`;
+    const transform = (file: string) =>
+      importEsBuiltinsWhereNamed(code, path.join(root, file), dir);
+    // From the package.json above, read once per folder.
+    expect(transform('esm/lib/deep/init.js')).toBe(
+      `import ${specifier('at.js')}; ${code}`,
+    );
+    expect(transform('esm/lib/deep/other.js')).toBe(
+      `import ${specifier('at.js')}; ${code}`,
+    );
+    expect(transform('cjs/init.js')).toBe(
+      `;require(${specifier('at.js')}); ${code}`,
+    );
+    expect(transform('broken/init.js')).toBe(
+      `;require(${specifier('at.js')}); ${code}`,
+    );
+    // No package.json up to the root.
+    expect(
+      importEsBuiltinsWhereNamed(
+        code,
+        path.join(path.parse(root).root, 'init.js'),
+        dir,
+      ),
+    ).toBe(`;require(${specifier('at.js')}); ${code}`);
+  });
+
+  it('reads a name written with escapes', () => {
+    expect(
+      importEsBuiltinsWhereNamed(`a.\\u0061t(-1);`, '/lib/index.mjs', dir),
+    ).toBe(`import ${specifier('at.js')}; a.\\u0061t(-1);`);
   });
 
   it('keeps a hashbang first, after the whole of its line break', () => {

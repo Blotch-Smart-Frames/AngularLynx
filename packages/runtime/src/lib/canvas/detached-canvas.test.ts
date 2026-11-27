@@ -10,8 +10,12 @@ import {
 import { LynxCanvasRenderingContext2D } from './canvas-2d-context';
 import { OP } from './canvas-2d-ops';
 import { canvasSourceOf } from './canvas-source';
-import { setWebGL2ContextFactory } from './canvas-surface';
+import {
+  setCanvas2DContextFactory,
+  setWebGL2ContextFactory,
+} from './canvas-surface';
 import { LynxDetachedCanvas, LynxOffscreenCanvas } from './detached-canvas';
+import { ɵenableCanvas2D } from './enable-canvas-2d';
 import { ɵenableWebGL2 } from './enable-webgl2';
 import { LynxImageBitmap } from './image';
 import {
@@ -24,6 +28,8 @@ let bridge2D: FakeCanvas2DBridge;
 let bridgeGL: FakeWebGLBridge;
 
 beforeEach(() => {
+  // As the build plugin does for a module that names '2d'.
+  ɵenableCanvas2D();
   bridge2D = createFakeCanvas2DBridge();
   bridgeGL = createFakeWebGLBridge();
   setCanvas2DBridgeForTesting(bridge2D);
@@ -33,6 +39,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  setCanvas2DContextFactory(null);
   setWebGL2ContextFactory(null);
   setCanvas2DBridgeForTesting(undefined);
   setWebGLBridgeForTesting(undefined);
@@ -218,6 +225,7 @@ describe('LynxDetachedCanvas', () => {
     bridges.setWebGLBridgeForTesting(bridgeGL);
     const { LynxDetachedCanvas: Fresh } = await import('./detached-canvas');
     (await import('./enable-webgl2')).ɵenableWebGL2();
+    (await import('./enable-canvas-2d')).ɵenableCanvas2D();
     const canvas = new Fresh();
     canvas.getContext('2d');
     canvas.surface.release();

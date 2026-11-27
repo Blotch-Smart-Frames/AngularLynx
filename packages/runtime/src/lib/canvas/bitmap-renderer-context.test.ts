@@ -19,8 +19,12 @@ import {
 import type { LynxCanvasRenderingContext2D } from './canvas-2d-context';
 import { LynxCanvasElement } from './canvas-element';
 import { canvasSourceOf } from './canvas-source';
-import { setWebGL2ContextFactory } from './canvas-surface';
+import {
+  setCanvas2DContextFactory,
+  setWebGL2ContextFactory,
+} from './canvas-surface';
 import { LynxDetachedCanvas, LynxOffscreenCanvas } from './detached-canvas';
+import { ɵenableCanvas2D } from './enable-canvas-2d';
 import { ɵenableWebGL2 } from './enable-webgl2';
 import { createImageBitmap, LynxImageBitmap } from './image';
 import {
@@ -34,6 +38,8 @@ let bridge: FakeBitmapRendererBridge;
 let bridgeGL: FakeWebGLBridge;
 
 beforeEach(() => {
+  // As the build plugin does for a module that names '2d'.
+  ɵenableCanvas2D();
   bridge = createFakeBitmapRendererBridge();
   bridgeGL = createFakeWebGLBridge();
   setBitmapRendererBridgeForTesting(bridge);
@@ -41,6 +47,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  setCanvas2DContextFactory(null);
   setBitmapRendererBridgeForTesting(undefined);
   setWebGLBridgeForTesting(undefined);
   vi.restoreAllMocks();

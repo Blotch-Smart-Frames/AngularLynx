@@ -8,7 +8,11 @@ import { createFakeCanvas2DBridge } from '../testing/fake-canvas-2d-bridge';
 import { LynxCanvasRenderingContext2D } from './canvas-2d-context';
 import { LynxCanvasElement } from './canvas-element';
 import { canvasSourceOf } from './canvas-source';
-import { setWebGL2ContextFactory } from './canvas-surface';
+import {
+  setCanvas2DContextFactory,
+  setWebGL2ContextFactory,
+} from './canvas-surface';
+import { ɵenableCanvas2D } from './enable-canvas-2d';
 import { ɵenableWebGL2 } from './enable-webgl2';
 import {
   setCanvas2DBridgeForTesting,
@@ -21,6 +25,8 @@ let bridge: FakeWebGLBridge;
 let uid = 1;
 
 beforeEach(() => {
+  // As the build plugin does for a module that names '2d'.
+  ɵenableCanvas2D();
   bridge = createFakeWebGLBridge();
   setWebGLBridgeForTesting(bridge);
   // As the build plugin does for a module that names 'webgl2'.
@@ -35,6 +41,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  setCanvas2DContextFactory(null);
   setWebGLBridgeForTesting(undefined);
   setWebGL2ContextFactory(null);
   vi.unstubAllGlobals();

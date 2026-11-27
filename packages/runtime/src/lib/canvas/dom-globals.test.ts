@@ -1,16 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { installCanvasGlobals } from './dom-globals';
-import {
-  LynxCanvasGradient,
-  LynxCanvasPattern,
-  LynxCanvasRenderingContext2D,
-  LynxImageData,
-  LynxTextMetrics,
-} from './canvas-2d-context';
+import { LynxCanvasRenderingContext2D } from './canvas-2d-context';
+import { LynxImageData } from './image-data';
 import { LynxDetachedCanvas, LynxOffscreenCanvas } from './detached-canvas';
 import { LynxImageBitmapRenderingContext } from './bitmap-renderer-context';
 import { createImageBitmap, LynxImageBitmap, LynxImageElement } from './image';
-import { LynxPath2D } from './path';
 import { CANVAS_SOURCE } from './canvas-source';
 import {
   WEBGL2_CONTEXT,
@@ -75,17 +69,19 @@ describe('installCanvasGlobals', () => {
       /elements come from templates/,
     );
     expect(target['OffscreenCanvas']).toBe(LynxOffscreenCanvas);
-    expect(target['CanvasRenderingContext2D']).toBe(
-      LynxCanvasRenderingContext2D,
-    );
-    expect(target['OffscreenCanvasRenderingContext2D']).toBe(
-      LynxCanvasRenderingContext2D,
-    );
-    expect(target['CanvasGradient']).toBe(LynxCanvasGradient);
-    expect(target['CanvasPattern']).toBe(LynxCanvasPattern);
-    expect(target['TextMetrics']).toBe(LynxTextMetrics);
     expect(target['ImageData']).toBe(LynxImageData);
-    expect(target['Path2D']).toBe(LynxPath2D);
+    // The 2D context's classes come with the context (enable-canvas-2d.ts),
+    // in the apps that ask for one: here they'd be in every app.
+    for (const name of [
+      'CanvasRenderingContext2D',
+      'OffscreenCanvasRenderingContext2D',
+      'CanvasGradient',
+      'CanvasPattern',
+      'TextMetrics',
+      'Path2D',
+    ]) {
+      expect(target[name], name).toBeUndefined();
+    }
   });
 
   it('makes a template’s elements HTMLElements, and canvases HTMLCanvasElements', () => {

@@ -1,6 +1,6 @@
 import { blobForURL, decodeDataURL, isHeldBlob } from '../network/blob-urls';
 import { relayBytes } from '../network/relay';
-import { LynxImageData } from './canvas-2d-context';
+import { LynxImageData } from './image-data';
 import { type CanvasSource, canvasSourceOf } from './canvas-source';
 import {
   type DecodedImage,

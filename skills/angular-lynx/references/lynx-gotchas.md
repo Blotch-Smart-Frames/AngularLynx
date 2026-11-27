@@ -249,7 +249,7 @@ Inside a transformed (or CSS-`zoom`ed) `<lynx-view>`, `getBoundingClientRect()` 
 
 ### `<canvas>` only in built apps
 
-`<canvas>` has its 2D and WebGL2 contexts only in the `--platform ios|android` apps (`ng build` and `ng serve`) and the web preview: in Lynx Explorer, `getContext('2d')` and `getContext('webgl2')` are `null`. The build includes the WebGL2 context only when some module names `'webgl2'` literally: on iOS and Android, a context name built at runtime gets `null` and a console warning unless another module named it. See "2D with `<canvas>`" and "3D with `<canvas>`" in [lynx-elements.md](lynx-elements.md).
+`<canvas>` has its 2D and WebGL2 contexts only in the `--platform ios|android` apps (`ng build` and `ng serve`) and the web preview: in Lynx Explorer, `getContext('2d')` and `getContext('webgl2')` are `null`. The build includes the WebGL2 context only when some module names `'webgl2'` literally, and the 2D context only when one names `'2d'` in quotes or one of its classes (`Path2D`, `CanvasRenderingContext2D`, …): on iOS and Android, a context name built at runtime gets `null` and a console warning unless another module named it. See "2D with `<canvas>`" and "3D with `<canvas>`" in [lynx-elements.md](lynx-elements.md).
 
 ### `<video>` in the web preview only plays and pauses
 

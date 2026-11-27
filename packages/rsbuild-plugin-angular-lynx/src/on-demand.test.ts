@@ -253,6 +253,65 @@ export const m = 'Not a Blob';`;
     expect(enableOnDemand(prose, '/app/src/m.ts')).toBe(prose);
   });
 
+  it('gives the 2D context to a module that asks for it by its quoted name', () => {
+    for (const code of [
+      `export const draw = (c) => c.getContext('2d');`,
+      `export const draw = (c) => c.getContext("2d", { alpha: false });`,
+      'export const draw = (c) => c.getContext(`2d`);',
+      // A library's own table of context names.
+      `export const kinds = { '2d': 1, bitmaprenderer: 2 };`,
+    ]) {
+      expect(enableOnDemand(code, '/app/src/draw.ts')).toBe(
+        calls('ɵenableCanvas2D') + code,
+      );
+    }
+    // Spelled with escapes or line continuations, a string is as static.
+    for (const code of [
+      `export const kind = '2\\\nd';`,
+      `export const kind = "2\\\r\nd";`,
+      `export const kind = '\\\n2d\\\u2028';`,
+      `export const kind = '\\62d';`,
+      `export const kind = '2\\144';`,
+      `export const kind = '2\\d';`,
+      `export const kind = '\\x32d';`,
+    ]) {
+      expect(enableOnDemand(code, '/app/src/kind.ts'), code).toBe(
+        calls('ɵenableCanvas2D') + code,
+      );
+    }
+    // An escape that's another character isn't the name.
+    const other = `export const kinds = ['\\2d', '2\\nd'];`;
+    expect(enableOnDemand(other, '/app/src/other.ts')).toBe(other);
+    // The bare word isn't a request: CSS, hashes and comments hold it.
+    const prose = `// Draws 2d shapes.
+export const css = 'transform: translate2d(0)';
+export const id = 'a2d4';
+export const t = \`2d\${1}\`;`;
+    expect(enableOnDemand(prose, '/app/src/prose.ts')).toBe(prose);
+  });
+
+  it('gives the 2D context to a module that names one of its classes', () => {
+    for (const code of [
+      `export const p = new Path2D('M0 0h1');`,
+      `export const is = (c) => c instanceof CanvasRenderingContext2D;`,
+      `export const is = (c) => c instanceof OffscreenCanvasRenderingContext2D;`,
+      `CanvasRenderingContext2D.prototype.roundRect ??= function () {};`,
+      `export const g = (x) => x instanceof CanvasGradient || x instanceof CanvasPattern;`,
+      `export const has = typeof TextMetrics !== 'undefined';`,
+    ]) {
+      expect(enableOnDemand(code, '/app/node_modules/chart/index.mjs')).toBe(
+        calls('ɵenableCanvas2D') + code,
+      );
+    }
+  });
+
+  it('gives a module that draws in 2D and fetches both, the context first', () => {
+    const code = `export const load = (c, url) => fetch(url).then(() => c.getContext('2d'));`;
+    expect(enableOnDemand(code, '/app/src/load.ts')).toBe(
+      calls('ɵenableCanvas2D', 'ɵenableFetch') + code,
+    );
+  });
+
   it('gives @angular/localize the TextEncoder its message ids are hashed with', () => {
     const code = `let textEncoder;\nfunction fingerprint(str) { textEncoder ??= new TextEncoder(); }`;
     expect(

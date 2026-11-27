@@ -178,7 +178,8 @@ export const buildNativeApp = async (
     packageVersion: PACKAGE_VERSION,
     development: !!devServer,
     // The native code the bundle uses: an app that never draws on a canvas
-    // leaves the canvas, WebGL and video frame code out (issue #837).
+    // leaves the canvas, WebGL and video frame code out (issue #837), and
+    // one that draws only in 2D leaves out WebGL and ANGLE (issue #847).
     features: readNativeFeatures(bundleDir),
   });
   if (

@@ -28,10 +28,29 @@ const write = (text: string) =>
 
 describe('readNativeFeatures', () => {
   it('reads what the build plugin wrote', () => {
+    write('{ "canvas": false, "webgl": false }\n');
+    expect(readNativeFeatures(dir)).toEqual({ canvas: false, webgl: false });
+    write('{ "canvas": true, "webgl": false }\n');
+    expect(readNativeFeatures(dir)).toEqual({ canvas: true, webgl: false });
+    write('{ "canvas": true, "webgl": true }\n');
+    expect(readNativeFeatures(dir)).toEqual({ canvas: true, webgl: true });
+  });
+
+  it('reads a file from a plugin before webgl: without a canvas, nothing; with one, everything', () => {
     write('{ "canvas": false }\n');
-    expect(readNativeFeatures(dir)).toEqual({ canvas: false });
+    expect(readNativeFeatures(dir)).toEqual({ canvas: false, webgl: false });
     write('{ "canvas": true }\n');
-    expect(readNativeFeatures(dir)).toEqual({ canvas: true });
+    expect(readNativeFeatures(dir)).toEqual(ALL_NATIVE_FEATURES);
+  });
+
+  it('never leaves WebGL in without the canvas it draws on', () => {
+    write('{ "canvas": false, "webgl": true }\n');
+    expect(readNativeFeatures(dir)).toEqual({ canvas: false, webgl: false });
+  });
+
+  it('keeps WebGL for a webgl it can’t read', () => {
+    write('{ "canvas": true, "webgl": "no" }\n');
+    expect(readNativeFeatures(dir)).toEqual(ALL_NATIVE_FEATURES);
   });
 
   it.each([

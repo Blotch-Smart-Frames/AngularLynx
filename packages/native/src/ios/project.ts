@@ -1,7 +1,7 @@
 import { copyFileSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
-import { removeTemplateFiles } from '../features.ts';
+import { removeMarkedLines, removeTemplateFiles } from '../features.ts';
 import type { PlatformGenerator } from '../generate.ts';
 import { ANGLE_IOS_FRAMEWORKS } from './frameworks.ts';
 import { readPngSize } from '../png.ts';
@@ -84,8 +84,20 @@ export const iosGenerator: PlatformGenerator = {
     writeIosSplash(dir, app, projectRoot);
   },
   leaveOut: (dir, features) => {
-    if (features.canvas) return;
-    removeTemplateFiles(dir, IOS_CANVAS_SOURCES);
+    if (features.webgl) return;
+    if (features.canvas) {
+      // A 2D canvas keeps the module and the canvas's view, without the
+      // WebGL2 context and the module's lines that make one.
+      removeTemplateFiles(dir, IOS_WEBGL_SOURCES);
+      for (const file of IOS_WEBGL_MARKED) {
+        removeMarkedLines(path.join(dir, file), 'webgl');
+      }
+    } else {
+      removeTemplateFiles(dir, IOS_CANVAS_SOURCES);
+    }
+    // Only the WebGL2 context draws with ANGLE. The canvas's view is still
+    // a CAMetalLayer, which is QuartzCore's: a 2D context shows its bitmap
+    // in a CALayer over it.
     const projectFile = path.join(dir, PROJECT_FILE);
     writeFileSync(
       projectFile,
@@ -116,6 +128,25 @@ export const IOS_CANVAS_SOURCES = [
   'App/AngularLynxWebGL.m',
   'App/AngularLynxWebGLContext.m',
   'App/AngularLynxWebGLOps.h',
+] as const;
+
+/**
+ * The WebGL2 context, which an app that draws only in 2D leaves out with
+ * ANGLE (issue #847).
+ */
+export const IOS_WEBGL_SOURCES = [
+  'App/AngularLynxWebGLContext.m',
+  'App/AngularLynxWebGLOps.h',
+] as const;
+
+/**
+ * The files whose lines between `// angular-lynx:webgl` markers name the
+ * WebGL2 context, and go with it: the class's declaration, and the module's
+ * methods that make and run one. Nothing else names it.
+ */
+const IOS_WEBGL_MARKED = [
+  'App/AngularLynxWebGL.h',
+  'App/AngularLynxWebGL.m',
 ] as const;
 
 const PROJECT_FILE = 'App.xcodeproj/project.pbxproj';

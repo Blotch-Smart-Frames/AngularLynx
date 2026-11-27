@@ -146,7 +146,7 @@ describe('prepareProject', () => {
         app: app(),
         bundleDir: dist,
         packageVersion: '1.0.0',
-        features: { canvas },
+        features: { canvas, webgl: canvas },
       });
     const webGL = path.join(workDir, 'ios/App/AngularLynxWebGL.m');
     const withCanvas = generate(true);
@@ -161,6 +161,33 @@ describe('prepareProject', () => {
 
     expect(generate(true).regenerated).toBe(true);
     expect(existsSync(webGL)).toBe(true);
+  });
+
+  it('leaves out the WebGL2 context for an app that draws only in 2D, and puts it back when it draws in 3D', () => {
+    const generate = (webgl: boolean) =>
+      prepareProject({
+        platform: 'ios',
+        generator: iosGenerator,
+        projectRoot: root,
+        workDir,
+        app: app(),
+        bundleDir: dist,
+        packageVersion: '1.0.0',
+        features: { canvas: true, webgl },
+      });
+    const module = path.join(workDir, 'ios/App/AngularLynxWebGL.m');
+    const context = path.join(workDir, 'ios/App/AngularLynxWebGLContext.m');
+    const with3D = generate(true);
+    expect(existsSync(context)).toBe(true);
+
+    const only2D = generate(false);
+    expect(only2D.regenerated).toBe(true);
+    expect(only2D.hash).not.toBe(with3D.hash);
+    expect(existsSync(module)).toBe(true);
+    expect(existsSync(context)).toBe(false);
+
+    expect(generate(true).regenerated).toBe(true);
+    expect(existsSync(context)).toBe(true);
   });
 
   // Generating the Android icons resizes 1024 px images, which a CI runner

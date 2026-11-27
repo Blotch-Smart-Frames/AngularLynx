@@ -16,6 +16,7 @@ import { TEMPLATES_DIR } from '../generate.ts';
 import { resolveAppOptions } from '../options.ts';
 import {
   ANDROID_CANVAS_SOURCES,
+  ANDROID_WEBGL_SOURCES,
   androidGenerator,
   deepLinkEntries,
   findAndroidSdk,
@@ -374,7 +375,7 @@ describe('androidGenerator.leaveOut', () => {
 
   it('keeps everything for an app that draws', () => {
     const before = mainActivity();
-    androidGenerator.leaveOut(dir, { canvas: true });
+    androidGenerator.leaveOut(dir, { canvas: true, webgl: true });
     expect(mainActivity()).toBe(before);
     for (const file of ANDROID_CANVAS_SOURCES) {
       expect(existsSync(path.join(shell(), file))).toBe(true);
@@ -382,7 +383,7 @@ describe('androidGenerator.leaveOut', () => {
   });
 
   it('takes out the canvas sources and the lines that register them', () => {
-    androidGenerator.leaveOut(dir, { canvas: false });
+    androidGenerator.leaveOut(dir, { canvas: false, webgl: false });
     for (const file of ANDROID_CANVAS_SOURCES) {
       expect(existsSync(path.join(shell(), file))).toBe(false);
     }
@@ -410,7 +411,7 @@ describe('androidGenerator.leaveOut', () => {
     }
     expect(declared).toContain('bitmapOf');
     expect(declared).toContain('CanvasRegistry');
-    androidGenerator.leaveOut(dir, { canvas: false });
+    androidGenerator.leaveOut(dir, { canvas: false, webgl: false });
     const names = new RegExp(`\\b(${[...declared].join('|')})\\b`);
     for (const main of ['main', 'debug', 'release']) {
       for (const file of readdirSync(shell(main))) {
@@ -421,5 +422,65 @@ describe('androidGenerator.leaveOut', () => {
         expect(source.match(names)?.[0], file).toBeUndefined();
       }
     }
+  });
+
+  describe('for an app that draws only in 2D', () => {
+    const module = () =>
+      readFileSync(path.join(shell(), 'WebGLModule.kt'), 'utf8');
+
+    it('takes out the WebGL2 context, and keeps the rest of the canvas and its registration', () => {
+      const before = mainActivity();
+      androidGenerator.leaveOut(dir, { canvas: true, webgl: false });
+      for (const file of ANDROID_WEBGL_SOURCES) {
+        expect(existsSync(path.join(shell(), file)), file).toBe(false);
+      }
+      for (const file of ANDROID_CANVAS_SOURCES.filter(
+        (file) => !(ANDROID_WEBGL_SOURCES as readonly string[]).includes(file),
+      )) {
+        expect(existsSync(path.join(shell(), file)), file).toBe(true);
+      }
+      expect(mainActivity()).toBe(before);
+    });
+
+    it("takes the module's WebGL2 methods out, and keeps its 2D and image methods", () => {
+      androidGenerator.leaveOut(dir, { canvas: true, webgl: false });
+      const source = module();
+      expect(source).not.toMatch(/^\s*\/\/ \/?angular-lynx:webgl$/m);
+      expect(source).not.toMatch(
+        /fun (create|run|destroy|encodeImage)\(contextId/,
+      );
+      expect(source).toContain('fun create2D(');
+      expect(source).toContain('fun decodeImage(');
+      expect(source).toContain('fun videoSize(');
+      expect(source).toContain('override fun destroy()');
+      expect(source).toContain('private fun encodeFailed(');
+    });
+
+    it('leaves no code that needs the WebGL2 context', () => {
+      const declared = new Set<string>();
+      for (const file of ANDROID_WEBGL_SOURCES) {
+        const source = readFileSync(path.join(shell(), file), 'utf8');
+        for (const [, name] of source.matchAll(
+          /^(?:(?:internal|public|abstract|open|data|sealed|enum|const)\s+)*(?:class|interface|object|fun|val|var)\s+(?:<[^>]*>\s*)?(?:[\w.]+\.)?(\w+)/gm,
+        )) {
+          declared.add(name!);
+        }
+      }
+      expect(declared).toContain('WebGLContext');
+      expect(declared).toContain('WebGLOps');
+      // Declared in WebGLModule.kt for the WebGL2 context alone, and taken
+      // out with its lines.
+      declared.add('DrawingBufferPixels');
+      androidGenerator.leaveOut(dir, { canvas: true, webgl: false });
+      const names = new RegExp(`\\b(${[...declared].join('|')})\\b`);
+      for (const main of ['main', 'debug', 'release']) {
+        for (const file of readdirSync(shell(main))) {
+          const source = readFileSync(path.join(shell(main), file), 'utf8')
+            .replace(/\/\/.*$/gm, '')
+            .replace(/\/\*[\s\S]*?\*\//g, '');
+          expect(source.match(names)?.[0], file).toBeUndefined();
+        }
+      }
+    });
   });
 });

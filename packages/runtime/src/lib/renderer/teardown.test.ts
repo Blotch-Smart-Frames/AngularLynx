@@ -1966,6 +1966,37 @@ describe('renderer teardown', () => {
       expect(writes).toEqual(['view animation: none']);
     });
 
+    it('starts them again in an element moved out of the destroyed view before it goes', () => {
+      const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
+      const page = document.createRootElement();
+      const view = document.createElement('view');
+      const other = document.createElement('view');
+      const el = document.createElement('view');
+      el.setAttribute('enable-new-animator', 'false');
+      el.setAttribute('style', 'animation: turn 1600ms linear infinite;');
+      page.appendChild(view);
+      page.appendChild(other);
+      view.appendChild(el);
+      const ref = el.element as unknown as FakeEl;
+
+      // As CDK's DomPortal hands its element back when its view is
+      // destroyed: the element leaves the view before the view's removal
+      // commits.
+      view.markDestroyed();
+      el.remove();
+      other.appendChild(el);
+      ref.styles.delete('__inline');
+      view.remove();
+      processPendingRemovals();
+
+      // Moved as it is, and given its inline styles again.
+      expect(el.element).toBe(ref);
+      expect(ref.styles.get('__inline')).toContain('animation: turn');
+      writes.length = 0;
+      el.markDestroyed();
+      expect(writes).toEqual(['view animation: none']);
+    });
+
     it('starts them again when the element goes back in the tree', () => {
       const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
       const page = document.createRootElement();

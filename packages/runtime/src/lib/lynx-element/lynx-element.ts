@@ -4205,6 +4205,23 @@ export class LynxElement implements BaseLynxElement {
   }
 
   /**
+   * Starts the animations markDestroyed ended again in the elements moved
+   * out of this one before it was released, as CDK's DomPortal hands its
+   * element back when its view is destroyed: they're still shown. The ones
+   * still under it go with it.
+   */
+  #restoreAnimationsMovedOut(): void {
+    const ended = LynxElement.#endedAnimations.get(this);
+    if (!ended) return;
+    LynxElement.#endedAnimations.delete(this);
+    for (const el of ended) {
+      if (el.#isInSubtreeOf(this)) continue;
+      el.#rewriteInlineStyle();
+      LynxElement.#platformAnimated.add(el);
+    }
+  }
+
+  /**
    * Whether this element is `root` or under it, through the parents Angular
    * gave it. A list's item goes through its list first, as parentNode()
    * does: one moved in from another parent keeps that one as its JS parent
@@ -4386,7 +4403,7 @@ export class LynxElement implements BaseLynxElement {
   #release(): void {
     this.#destroyed = false;
     this.#paintingDead = true;
-    LynxElement.#endedAnimations.delete(this);
+    this.#restoreAnimationsMovedOut();
     // Destroyed with an ancestor its parents no longer led to: it goes too.
     if (LynxElement.#platformAnimated.size > 0) {
       LynxElement.#platformAnimated.delete(this);

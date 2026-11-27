@@ -4415,7 +4415,13 @@ export class LynxElement implements BaseLynxElement {
         removeNativeHandler(this.element, eventType, eventName);
       }
     }
-    for (const child of this.#children ?? NO_CHILDREN) child.#release();
+    for (const child of this.#children ?? NO_CHILDREN) {
+      // Moved into a list in the cycle this was destroyed: its removal from
+      // here hasn't committed, but the list shows it now, and releases it
+      // with its own items.
+      if (child._virtualParent && child._virtualParent !== this) continue;
+      child.#release();
+    }
     for (const child of this.virtualChildren()) child.#release();
     if (this.#quoteMarks) {
       for (const mark of this.#quoteMarks) mark.deregisterNative();

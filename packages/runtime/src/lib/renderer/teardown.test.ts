@@ -1997,6 +1997,32 @@ describe('renderer teardown', () => {
       expect(writes).toEqual(['view animation: none']);
     });
 
+    it('keeps a list item that left a destroyed view, and ends its animation with its list', () => {
+      const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
+      const page = document.createRootElement();
+      const view = document.createElement('view');
+      const list = document.createElement('list');
+      const item = document.createElement('list-item');
+      item.setAttribute('enable-new-animator', 'false');
+      page.appendChild(view);
+      page.appendChild(list);
+      view.appendChild(item);
+      const ref = item.element as unknown as FakeEl;
+
+      // Moved into the list in the cycle its old parent is destroyed: the
+      // old parent's children still name it when the parent is released.
+      item.remove();
+      list.appendChild(item);
+      view.markDestroyed();
+      view.remove();
+      processPendingRemovals();
+
+      expect(registered([ref])).toEqual([true]);
+      writes.length = 0;
+      list.markDestroyed();
+      expect([...writes]).toEqual(['list-item animation: none']);
+    });
+
     it('starts them again when the element goes back in the tree', () => {
       const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
       const page = document.createRootElement();

@@ -233,8 +233,9 @@ export class CanvasRoute {
    * that isn't a filter leaves the last one. Then a green image, and a
    * square filled with a green gradient and with a green pattern, each cast
    * a red canvas shadow, without a filter (issue #759): what's drawn in
-   * colors of its own still casts its shadow in shadowColor. Gives "ok", or
-   * the reads.
+   * colors of its own still casts its shadow in shadowColor, and an image
+   * far off the canvas still casts its shadow onto it. Gives "ok", or the
+   * reads.
    */
   #drawFilters(): string {
     const make = (width: number, height: number) => {
@@ -308,6 +309,15 @@ export class CanvasRoute {
         return [pixel(cast, 0, 0), pixel(cast, 4, 0)];
       },
     );
+    // An image 300 pixels off the canvas still casts its shadow onto it,
+    // past the 256 pixels Android's filter layer reaches. Only the alpha is
+    // read: Android draws that shadow with the paint's shadow layer, still
+    // in the image's colors (issue #798).
+    const far = make(8, 2);
+    far.shadowColor = 'rgb(255, 0, 0)';
+    far.shadowOffsetX = 303;
+    far.drawImage(green, -300, 0, 4, 2);
+    const farAlphas = [pixel(far, 1, 0)[3], pixel(far, 5, 0)[3]];
 
     const blur = make(12, 12);
     blur.filter = 'blur(2px)';
@@ -327,6 +337,8 @@ export class CanvasRoute {
         ([shape, cast]) =>
           near(shape, [0, 128, 0, 255]) && near(cast, [255, 0, 0, 255]),
       ) &&
+      farAlphas[0] === 0 &&
+      farAlphas[1] >= 250 &&
       edge >= 64 &&
       edge <= 160;
     return ok
@@ -338,6 +350,7 @@ export class CanvasRoute {
           fadedAlpha,
           offCanvasRead,
           ...ownColorReads.flat(),
+          ...farAlphas,
           edge,
         ].join(' ');
   }

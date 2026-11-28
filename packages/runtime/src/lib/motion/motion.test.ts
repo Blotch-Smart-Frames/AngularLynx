@@ -241,6 +241,25 @@ describe('LynxMotion', () => {
     expect(shell.module.stop).toHaveBeenCalledWith('heading');
   });
 
+  // Watches made outside an injection context outlive the app.
+  it("doesn't start a sensor again when a watch stops after the app is destroyed", async () => {
+    const shell = stubShell();
+    const { motion, injector } = createMotion();
+    const stopFirst = motion.watchAcceleration(
+      { interval: 20 },
+      () => undefined,
+    );
+    motion.watchAcceleration({ interval: 50 }, () => undefined);
+    const stopShake = motion.onShake(() => undefined);
+    motion.onShake(() => undefined);
+    (injector as unknown as { destroy(): void }).destroy();
+    shell.module.start.mockClear();
+    stopFirst();
+    stopShake();
+    motion.watchRotation(() => undefined);
+    expect(shell.module.start).not.toHaveBeenCalled();
+  });
+
   it('reports the sensors the shell has', async () => {
     stubShell({ acceleration: true, rotation: false, heading: true });
     await expect(createMotion().motion.availability()).resolves.toEqual({

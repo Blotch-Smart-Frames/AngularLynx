@@ -291,10 +291,17 @@ export class LynxMotion {
   #listening = false;
   /** The web preview's listeners, while they're added. */
   #web?: { remove(): void };
+  /** The app is gone, so nothing may start a sensor again. */
+  #destroyed = false;
 
   constructor() {
     // The app is gone: nothing should keep the sensors on for it.
     inject(DestroyRef).onDestroy(() => {
+      // A watch made outside an injection context outlives the app, and
+      // stopping one would otherwise start the sensor again for the others.
+      this.#destroyed = true;
+      for (const watchers of Object.values(this.#watchers)) watchers.clear();
+      this.#shakeHandlers.clear();
       // A Map carries on past the entries deleted as it goes.
       for (const sensor of this.#running.keys()) this.#stop(sensor);
       this.#web?.remove();
@@ -473,6 +480,7 @@ export class LynxMotion {
    * at the shortest interval any of them asked for.
    */
   #update(sensor: Sensor): void {
+    if (this.#destroyed) return;
     let interval: number | undefined;
     if (sensor === 'shake') {
       interval = this.#shakeHandlers.size > 0 ? 0 : undefined;

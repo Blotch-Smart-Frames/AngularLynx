@@ -27,6 +27,20 @@ export type PluginAngularLynxOptions = {
   debugInfoOutside?: boolean;
   defaultDisplayLinear?: boolean;
   /**
+   * Compile the app's `import()`s on the main thread, such as a lazy
+   * route's `loadComponent: () => import('./x')`, as static imports, so
+   * rspack can concatenate the modules they share with the rest of the app
+   * and the main-thread script is smaller (24 kB of the benchmark app's
+   * 625 kB). Off by default, because each module they load then runs when
+   * the app starts, as a static import does: its top-level code runs at
+   * launch, and an import cycle through the routes file that an `import()`
+   * broke can make a top-level read a used-before-defined error. `@defer`
+   * blocks' imports stay lazy. Has no effect with
+   * `experimental_isLazyBundle`. The same as the `eagerImports` build option
+   * in angular.json, which this replaces when set.
+   */
+  eagerImports?: boolean | undefined;
+  /**
    * Make `overflow: visible` the default for every element, as on the web.
    * With `false`, elements clip their children unless they set `overflow`,
    * Lynx's older default.
@@ -205,6 +219,10 @@ export const normalizeOptions = (
     //@ts-expect-error
     customCSSInheritanceList: undefined,
     debugInfoOutside: true,
+    // Undefined so angular.json's `eagerImports` build option decides (see
+    // eager-imports.ts); off unless one of them turns it on.
+    //@ts-expect-error
+    eagerImports: undefined,
     // True like React Lynx: on Android, Lynx uses real Views for accessibility
     // while TalkBack is on. The cost is that while it's off, Lynx draws the
     // page flat and UiAutomator-based test tools (Maestro, Appium) see no

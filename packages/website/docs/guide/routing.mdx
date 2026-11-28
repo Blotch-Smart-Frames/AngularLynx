@@ -330,7 +330,7 @@ export const routes: Routes = [
 ];
 ```
 
-It doesn't split your code, though. The build keeps every route's code in the [bundle](/guide/glossary#bundle), so nothing downloads when the user navigates.
+It doesn't split your code, though. The build keeps every route's code in the [bundle](/guide/glossary#bundle), so nothing downloads when the user navigates. To make the bundle smaller, you can have the build load lazy routes as the app starts: see [`eagerImports`](/guide/building-for-production#make-the-script-smaller-with-eagerimports).
 
 ## Differences from web Angular
 

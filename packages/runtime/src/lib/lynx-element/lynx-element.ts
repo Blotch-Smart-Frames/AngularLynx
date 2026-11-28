@@ -600,6 +600,74 @@ const SUBTREE_SEARCH_LIMIT = 16;
 const MAX_TAIL_ELEMENTS = 4;
 
 /**
+ * How many elements a cycle puts in before the same anchor, with a flushed
+ * element after it, before the rest are appended (see LynxElement's
+ * #appendsBeforeTail). Appending them moves the flushed element's view at
+ * the end of the cycle, which the UI thread takes out and puts back: a cycle
+ * adding a row or a few, as a chat's new message or an `@if` does, keeps
+ * the view where it is and pays their few searches instead. A page of rows
+ * arriving at once saves far more than the move costs: on the iOS
+ * Simulator, 5,000 rows under a footer on the screen took 237 ms to build
+ * inserted and 123 ms appended past the first 32, and 1,000 took 25 and
+ * 22 ms (#913).
+ */
+const MIN_INSERTS_BEFORE_FLUSHED_TAIL = 32;
+
+/**
+ * The elements whose views can move between two parents' positions without
+ * anything on the screen changing: a removal and an insert of a UIView or
+ * an Android View keep its layout, its drawing and its children. Every
+ * other element may hold state the move loses: an `<input>` or a
+ * `<textarea>` its focus and keyboard (a UITextField removed from its
+ * window resigns first responder, and Android's removeView clears a focused
+ * child's focus), a `<video>` its surface, a `<webview>` or a native
+ * module's view whatever it keeps (see LynxElement's #appendsBeforeTail).
+ */
+const MOVABLE_TAGS: ReadonlySet<string> = new Set([
+  'view',
+  'text',
+  'raw-text',
+  'image',
+  'inline-text',
+  'inline-image',
+  'inline-truncation',
+]);
+
+/**
+ * How many elements {@link movableSubtree} looks at before it gives up: a
+ * footer, a "load more" button or an empty state is a few elements.
+ */
+const MOVABLE_SEARCH_LIMIT = 64;
+
+/**
+ * Whether every native element in `elements` and their subtrees is one of
+ * {@link MOVABLE_TAGS}, from the native tree, which holds the anonymous
+ * `<text>`s and a hydrated snapshot's elements the wrappers don't. False
+ * as soon as it finds more than {@link MOVABLE_SEARCH_LIMIT} elements, so a
+ * footer of many children isn't read in full first.
+ */
+const movableSubtree = (elements: readonly ElementRef[]): boolean => {
+  const pending: ElementRef[] = [...elements];
+  let seen = 0;
+  while (pending.length > 0) {
+    const element = pending.pop()!;
+    seen++;
+    if (!MOVABLE_TAGS.has(__GetTag(element))) return false;
+    for (
+      let child = __FirstElement(element);
+      child;
+      child = __NextElement(child)
+    ) {
+      // Counted as it's found (the elements looked at and those still to
+      // look at), not as it's looked at.
+      if (seen + pending.length >= MOVABLE_SEARCH_LIMIT) return false;
+      pending.push(child);
+    }
+  }
+  return true;
+};
+
+/**
  * Whether the element with unique id `id` is `first`, one of its following
  * siblings, or inside one of them: so, with `first` a candidate's first
  * child, inside the candidate. Undefined once it has looked at
@@ -1277,7 +1345,7 @@ export class LynxElement implements BaseLynxElement {
   /**
    * The parents whose last children native has out of place, each with
    * those children in order (see #appendsBeforeTail): anchors, and the few
-   * elements not yet flushed among them. Native has every other child of the
+   * elements among them. Native has every other child of the
    * parent in #children's order, and the tail still among them, only before
    * the children appended since. Put back at the end of the cycle (see
    * #settleDisplacedTails), and before anything reads the parent's native
@@ -1290,11 +1358,17 @@ export class LynxElement implements BaseLynxElement {
 
   /**
    * The parents that have had an element put in before an anchor that
-   * elements follow this cycle, each with that anchor (see
-   * #appendsBeforeTail). A second element going in before the same anchor
-   * is appended. Emptied at the end of the cycle, with #displacedTails.
+   * elements follow this cycle, each with that anchor and how many have gone
+   * in before it (see #appendsBeforeTail). The second element going in
+   * before the same anchor is appended, or with a flushed element after it,
+   * the one after {@link MIN_INSERTS_BEFORE_FLUSHED_TAIL}. `refused` once
+   * the tail has an element whose view can't move, so the rows after it
+   * don't look again. Emptied at the end of the cycle, with #displacedTails.
    */
-  static #tailInserts = new Map<LynxElement, LynxElement>();
+  static #tailInserts = new Map<
+    LynxElement,
+    { anchor: LynxElement; inserts: number; refused: boolean }
+  >();
 
   /**
    * The attributes removed (set to null) since the last flush, which haven't
@@ -3537,8 +3611,9 @@ export class LynxElement implements BaseLynxElement {
    * Whether `newChild`, going in before `refChild`, can be appended to the
    * native element instead, because `refChild` is an anchor (`@for`'s,
    * `@if`'s, a `@switch` case's) and every child from it to the end is an
-   * anchor or one of a few elements not flushed yet (see
-   * MAX_TAIL_ELEMENTS). That tail then stays where it is natively until the
+   * anchor or one of a few elements (see MAX_TAIL_ELEMENTS), not flushed
+   * yet or, for a cycle putting many rows in, views that can move (below).
+   * That tail then stays where it is natively until the
    * end of the cycle, before the elements appended since, and goes back to
    * the end in one move each (see #settleDisplacedTails), in the same flush.
    * Anchors are hidden views with nothing in them, and an element never
@@ -3556,12 +3631,18 @@ export class LynxElement implements BaseLynxElement {
    * has nothing after it (`SnapshotInstance.insertBefore`), and builds a
    * new list's children in order, its footer after its rows.
    *
-   * An element in the tail that has been flushed keeps the insert: moving
-   * it would move its view on the screen too, which costs the UI thread a
-   * removal and an insert, and takes the focus from a field in it, every
-   * cycle that adds a row. Rows added in a later cycle then still search the
-   * children; a container built in one cycle, as a screen's first render
-   * is, doesn't.
+   * A tail with a flushed element in it, such as a footer already on the
+   * screen under rows that load later, is moved only for a cycle that puts
+   * many elements in before the anchor (see
+   * MIN_INSERTS_BEFORE_FLUSHED_TAIL), and only when the tail holds nothing
+   * but views, texts and images (see MOVABLE_TAGS). Moving a flushed element
+   * moves its view too: Lynx's painting context takes it out of its parent
+   * and puts it back (`LynxUIOwner`'s `detachNode` and `insertNode` on iOS,
+   * `remove` and `insert` on Android, which ignore `is_move`). That costs
+   * the UI thread a removal and an insert, and would take the focus from a
+   * field in the tail. The elements before the count are inserted, so a
+   * cycle adding a row or a few to a list on the screen moves nothing that's
+   * drawn.
    *
    * Only during change detection, whose end() puts the tail back before
    * any flush. Not on Lynx for Web, where an insert finds its place in the
@@ -3582,6 +3663,7 @@ export class LynxElement implements BaseLynxElement {
     // From the end, as far as the tail goes: a parent with more children
     // after `refChild` is searched no further than they are.
     let elements = 0;
+    let flushed = false;
     for (let i = children.length - 1; i >= 0; i--) {
       const child = children[i]!;
       // A child of the tail moving before it (a footer, or an anchor, put
@@ -3589,13 +3671,34 @@ export class LynxElement implements BaseLynxElement {
       // after the anchors: it's inserted.
       if (child === newChild) return false;
       if (child === refChild) {
-        // An `@if` puts one element in before its anchor, and moving the
-        // elements after it would cost more than the one search it saves:
-        // the first element before the anchor in a cycle is inserted, as
-        // anything else is, and an `@for`'s second row is appended.
-        if (elements > 0 && LynxElement.#tailInserts.get(this) !== refChild) {
-          LynxElement.#tailInserts.set(this, refChild);
-          return false;
+        if (elements > 0) {
+          // An `@if` puts one element in before its anchor, and moving the
+          // elements after it would cost more than the one search it saves:
+          // the first element before the anchor in a cycle is inserted, as
+          // anything else is, and an `@for`'s second row is appended. With
+          // a flushed element in the tail, the first
+          // MIN_INSERTS_BEFORE_FLUSHED_TAIL are inserted.
+          let inserts = LynxElement.#tailInserts.get(this);
+          if (inserts?.anchor !== refChild) {
+            inserts = { anchor: refChild, inserts: 0, refused: false };
+            LynxElement.#tailInserts.set(this, inserts);
+          }
+          if (inserts.refused) return false;
+          if (++inserts.inserts === 1) return false;
+          if (flushed) {
+            if (inserts.inserts <= MIN_INSERTS_BEFORE_FLUSHED_TAIL) {
+              return false;
+            }
+            const views: ElementRef[] = [];
+            for (let k = i + 1; k < children.length; k++) {
+              const element = children[k]!;
+              if (element.tagName !== 'comment') views.push(element.element);
+            }
+            if (!movableSubtree(views)) {
+              inserts.refused = true;
+              return false;
+            }
+          }
         }
         // Natively too, the tail has to be the last children, in order. A
         // hydrated parent's snapshot children aren't in #children, and may
@@ -3614,11 +3717,9 @@ export class LynxElement implements BaseLynxElement {
         LynxElement.#displacedTails.set(this, tail);
         return true;
       }
-      if (
-        child.tagName !== 'comment' &&
-        (++elements > MAX_TAIL_ELEMENTS || !child.#unflushed())
-      ) {
-        return false;
+      if (child.tagName !== 'comment') {
+        if (++elements > MAX_TAIL_ELEMENTS) return false;
+        if (!child.#unflushed()) flushed = true;
       }
     }
     return false;

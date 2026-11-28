@@ -91,6 +91,17 @@ const TEMPLATE_PROJECT_DIR = path.join(
 );
 
 /**
+ * Where the template's changed files are written before they're renamed into
+ * place: outside templates/, so the generator's template hash and cpSync
+ * never come across a half-written file, and on the same file system, so the
+ * rename is atomic. Git-ignored.
+ */
+const TEMPLATE_STAGING_DIR = path.join(
+  import.meta.dirname,
+  '../.ios-project-staging',
+);
+
+/**
  * Brings an .xcodeproj folder in line with freshly rendered files, without
  * ever removing it first.
  *
@@ -100,17 +111,30 @@ const TEMPLATE_PROJECT_DIR = path.join(
  * own tests, whose generator and eject tests cpSync the template. Deleting
  * the folder and writing it back left a moment with no project, and a copy
  * caught there failed with ENOENT (#963). So a file whose contents already
- * match is left alone, a changed one is written beside itself and renamed
+ * match is left alone, a changed one is written in `stagingDir` and renamed
  * over the old (a reader sees one or the other, never a half-written file),
  * and only files the render no longer has are removed.
  */
-export const writeIosProject = (dir: string, files: IosProjectFiles) => {
+export const writeIosProject = (
+  dir: string,
+  files: IosProjectFiles,
+  stagingDir = path.dirname(dir),
+) => {
   const rendered = new Set(
     Object.keys(files).map((file) => path.join(dir, file)),
   );
-  if (existsSync(dir)) {
-    removeStale(dir, rendered);
+  // The folders that hold a rendered file. Pruning never removes one, even
+  // when this pass emptied it: another render may be about to write there.
+  const ancestors = new Set<string>();
+  for (const file of rendered) {
+    for (let folder = path.dirname(file); folder !== dir;) {
+      ancestors.add(folder);
+      folder = path.dirname(folder);
+    }
   }
+  removeStale(dir, rendered, ancestors);
+
+  mkdirSync(stagingDir, { recursive: true });
   for (const [file, contents] of Object.entries(files)) {
     const target = path.join(dir, file);
     if (existsSync(target) && readFileSync(target, 'utf8') === contents) {
@@ -119,44 +143,60 @@ export const writeIosProject = (dir: string, files: IosProjectFiles) => {
     mkdirSync(path.dirname(target), { recursive: true });
     // The pid keeps two processes rendering at once off each other's
     // temporary file.
-    const temporary = `${target}.${process.pid}.tmp`;
+    const temporary = path.join(
+      stagingDir,
+      `${path.basename(target)}.${process.pid}.tmp`,
+    );
     writeFileSync(temporary, contents);
     renameSync(temporary, target);
   }
 };
 
-/** Matches the temporary file writeIosProject renames into place. */
-const TEMPORARY_FILE = /\.\d+\.tmp$/;
-
 /**
- * Removes what's under `folder` that isn't one of the rendered files (such as
- * the xcuserdata Xcode adds when the template is opened), and each folder
- * that leaves empty. It keeps another render's temporary files, and a folder
- * that was already empty, which may be one another render has just made and
- * is about to write into. Returns whether it removed anything.
+ * Removes what's under `folder` that isn't a rendered file (such as the
+ * xcuserdata Xcode adds when the template is opened), and every empty folder
+ * that holds no rendered file. Another render may be pruning the same
+ * folders at once, so one that's already gone counts as done, and one that
+ * isn't empty is kept.
  */
 const removeStale = (
   folder: string,
   rendered: ReadonlySet<string>,
-): boolean => {
-  let removed = false;
-  for (const entry of readdirSync(folder, { withFileTypes: true })) {
+  ancestors: ReadonlySet<string>,
+) => {
+  let entries;
+  try {
+    entries = readdirSync(folder, { withFileTypes: true });
+  } catch (error) {
+    if (errorCode(error) === 'ENOENT') return;
+    throw error;
+  }
+  for (const entry of entries) {
     const entryPath = path.join(folder, entry.name);
     if (entry.isDirectory()) {
-      if (
-        removeStale(entryPath, rendered) &&
-        readdirSync(entryPath).length === 0
-      ) {
-        rmdirSync(entryPath);
-        removed = true;
-      }
-    } else if (!rendered.has(entryPath) && !TEMPORARY_FILE.test(entry.name)) {
+      removeStale(entryPath, rendered, ancestors);
+      if (!ancestors.has(entryPath)) removeIfEmpty(entryPath);
+    } else if (!rendered.has(entryPath)) {
       rmSync(entryPath, { force: true });
-      removed = true;
     }
   }
-  return removed;
 };
+
+/**
+ * rmdir, which fails on a folder that isn't empty: that one stays.
+ */
+const removeIfEmpty = (folder: string) => {
+  try {
+    rmdirSync(folder);
+  } catch (error) {
+    const code = errorCode(error);
+    if (code !== 'ENOENT' && code !== 'ENOTEMPTY' && code !== 'EEXIST') {
+      throw error;
+    }
+  }
+};
+
+const errorCode = (error: unknown) => (error as NodeJS.ErrnoException).code;
 
 /**
  * Renders templates/ios/App.xcodeproj. It runs in configResolved, the one
@@ -170,7 +210,11 @@ const removeStale = (
 export const iosTemplateProject = (): Plugin => ({
   name: 'ios-template-project',
   configResolved() {
-    writeIosProject(TEMPLATE_PROJECT_DIR, renderIosProject(APP_PROJECT));
+    writeIosProject(
+      TEMPLATE_PROJECT_DIR,
+      renderIosProject(APP_PROJECT),
+      TEMPLATE_STAGING_DIR,
+    );
   },
 });
 

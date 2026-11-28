@@ -1,5 +1,4 @@
 import {
-  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -85,16 +84,29 @@ describe('writeIosProject', () => {
     expect(readdirSync(dir)).toEqual(['project.pbxproj']);
   });
 
+  it('writes a changed file in the staging folder, never inside the project', () => {
+    const staging = path.join(root, 'staging');
+    writeIosProject(dir, files, staging);
+
+    writeIosProject(dir, { ...files, 'project.pbxproj': 'changed' }, staging);
+
+    expect(readFileSync(path.join(dir, 'project.pbxproj'), 'utf8')).toBe(
+      'changed',
+    );
+    expect(readdirSync(staging)).toEqual([]);
+  });
+
   // Two renders can run at once on a fresh checkout (Vitest and `vite build`
-  // in one turbo run), so neither may delete what the other is writing.
-  it("keeps another render's temporary file and a folder it has just made", () => {
-    writeIosProject(dir, files);
-    writeFileSync(path.join(dir, 'project.pbxproj.12345.tmp'), 'partial');
-    mkdirSync(path.join(dir, 'project.xcworkspace'));
+  // in one turbo run), so pruning must never take away a folder the other is
+  // about to write a rendered file into.
+  it('keeps a folder of rendered files that only held stale ones', () => {
+    mkdirSync(path.join(dir, 'xcshareddata/xcschemes'), { recursive: true });
+    writeFileSync(path.join(dir, 'xcshareddata/xcschemes/Old.xcscheme'), 'x');
 
     writeIosProject(dir, files);
 
-    expect(existsSync(path.join(dir, 'project.pbxproj.12345.tmp'))).toBe(true);
-    expect(existsSync(path.join(dir, 'project.xcworkspace'))).toBe(true);
+    expect(readdirSync(path.join(dir, 'xcshareddata/xcschemes'))).toEqual([
+      'App.xcscheme',
+    ]);
   });
 });

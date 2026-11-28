@@ -395,3 +395,90 @@ export const SCROLL_SESSIONS: readonly ScrollSession[] = scrollFiles
     (a, b) =>
       Object.keys(APPS).indexOf(a.rival) - Object.keys(APPS).indexOf(b.rival),
   );
+
+const tapFiles = import.meta.webpackContext(
+  '../../../../../benchmarks/results/ios',
+  { recursive: false, regExp: /^\.\/(tap|update|busy|first-tap)-.*\.csv$/ },
+);
+
+export type TapBench = 'tap' | 'update' | 'busy' | 'first-tap';
+
+/**
+ * One tap (or, for the first tap, one launch), one CSV row. Every time is in
+ * milliseconds.
+ */
+export type Tap = {
+  readonly app: string;
+  readonly timestamp: string;
+  readonly device: string;
+  readonly osBuild: string;
+  /** The update screen's button: 0 one row, 1 every 10th, 2 every row. */
+  readonly button?: number;
+  /** From the touch reaching the app to the frame that shows the change. */
+  readonly frameMs?: number;
+  /** The busy screen: frames its box stood still in the half second after the touch. */
+  readonly stalledFrames?: number;
+  /** The busy screen: the same, in the half second before the touch. */
+  readonly idleStalledFrames?: number;
+  /** The busy screen: the longest the box stood still after the touch. */
+  readonly longestStallMs?: number;
+  /** The first tap: from the process starting to the first change a tap made. */
+  readonly firstChangeMs?: number;
+  /** The first tap: from the process starting to fully drawn. */
+  readonly fullyDrawnMs?: number;
+  /** The first tap: taps the app didn't answer before it. */
+  readonly tapsBefore?: number;
+};
+
+/** One tap session: a benchmark, AngularLynx and one other app, tapped in turn. */
+export type TapSession = {
+  readonly bench: TapBench;
+  readonly date: string;
+  readonly rival: string;
+  readonly taps: readonly Tap[];
+};
+
+export const TAP_SESSIONS: readonly TapSession[] = tapFiles
+  .keys()
+  .flatMap((file) => {
+    // <bench>-<date>-<rival>.csv; the rival's name can hold dashes.
+    const match =
+      /^\.\/(tap|update|busy|first-tap)-(\d{4}-\d{2}-\d{2})-(.+)\.csv$/.exec(
+        file,
+      );
+    if (!match) return [];
+    const [, bench, date, rival] = match;
+    const taps = parseCsv<
+      | 'app'
+      | 'timestamp'
+      | 'device'
+      | 'os_build'
+      | 'button'
+      | 'frame_ms'
+      | 'stalled_frames'
+      | 'idle_stalled_frames'
+      | 'longest_stall_ms'
+      | 'first_change_ms'
+      | 'fully_drawn_ms'
+      | 'taps_before'
+      | 'error'
+    >(tapFiles(file) as string)
+      // A run the harness couldn't measure is in the CSV with its error,
+      // and has no taps to show.
+      .filter((row) => !row.error)
+      .map((row) => ({
+        app: row.app,
+        timestamp: row.timestamp,
+        device: row.device,
+        osBuild: row.os_build,
+        button: number(row.button ?? ''),
+        frameMs: number(row.frame_ms ?? ''),
+        stalledFrames: number(row.stalled_frames ?? ''),
+        idleStalledFrames: number(row.idle_stalled_frames ?? ''),
+        longestStallMs: number(row.longest_stall_ms ?? ''),
+        firstChangeMs: number(row.first_change_ms ?? ''),
+        fullyDrawnMs: number(row.fully_drawn_ms ?? ''),
+        tapsBefore: number(row.taps_before ?? ''),
+      }));
+    return [{ bench: bench as TapBench, date, rival, taps }];
+  });

@@ -95,6 +95,80 @@ also opens by deep link, `{scheme}://bench/mount?kind=...&count=...`.
   at 24×24. It reports fully drawn (the same call as the list) after the
   commit that shows all `count` elements, so the harness measures from the
   process starting to them being on screen.
+- **Tap** (`tap`): the top half of the screen holds a 100×100 box over a
+  20px text "Taps: {n}"; the bottom half is a button (`#E3E3E3`, a 20px
+  "Tap", accessibility label "Tap") that fills it, so the tapper hits it at
+  three quarters of the screen's height in every app. Each tap adds one to
+  `n` and sets the box's background to `#0201FE` when `n` is odd and
+  `#FE0102` when it's even (the probe's sentinel colors, below).
+- **Update** (`update?rows=1000`): `rows` rows (1,000 by default) in a plain,
+  not virtualized, vertical scroll view under the safe area, each 24px tall
+  with 16px side padding: a 16×16 box (8px to its right), the 14px text
+  "Row {i}" filling the row, and the 14px text "{value}". Under it, the
+  bottom quarter of the screen holds three buttons side by side, each a third
+  of the width with 1px around it: "1 row", "Every 10th" and "Every row"
+  (16px, accessibility labels the same). A button adds one to the value of
+  row 0, of every 10th row (0, 10, 20…) or of every row, and sets each of
+  those rows' box to `#0201FE` when its value is odd and `#FE0102` when it's
+  even. Each framework's usual way to change part of a list: a signal per
+  row, read by a row component, in AngularLynx (Angular tracks signals per
+  component view, so the screen's own template reading them would refresh
+  every row); state and `memo` rows in React.
+
+- **Busy** (`busy`): the tap screen with two changes. A 40×40 box in
+  `#01FE02` (the probe's third sentinel) moves across a 40px strip under the
+  safe area, from 0 to 300px and back, 1 s each way, linear, forever: a CSS
+  animation in the Lynx apps (`move 1s linear infinite alternate`, on
+  `transform: translateX`), `Animated` with the native driver in React
+  Native (one 2 s timing mapped there and back: a sequence of the two legs
+  shows the turn for two frames). The button (bottom half, "Busy") spends 50 ms busy on the thread
+  its handler runs on before it counts the tap, as a handler that parses,
+  sorts or formats a lot would. It shows what a busy handler costs a running
+  animation.
+
+ReactLynx builds each of those three screens twice: with its default
+`bindtap`, which runs on the background thread and changes the screen
+through React's state, and with `handler=main-thread` (`tap?handler=main-thread`),
+a `main-thread:bindtap` whose `'main thread'` function sets the boxes' colors
+(`setStyleProperty`) and the texts (`setAttribute('text', …)` on each
+`<text>`'s `<raw-text>`) on the elements itself, which is what a ReactLynx app does when a tap has to answer at once.
+
+The **first tap** benchmark uses no screen of its own: it taps the Pokédex's
+first row's heart (accessibility label "Add to favorites" or "Remove from
+favorites") over and over from launch. XCTest can't tap that early: it sees
+the app in front about 1.3 s after launch, and its first tap waits for
+SpringBoard to settle, so on the Simulator the first tap lands about 2 s in,
+after the list is fully drawn. So it measures how fast the first tap after
+launch is answered, not how soon an app starts answering. The harness gives
+the first change to the last touch before its commit: right while an app
+answers faster than the taps come (XCTest's are about 0.36 s apart), and a
+lower bound when a late answer to one tap lands after the next.
+
+## Probe
+
+The tap benchmarks time what each framework does from a touch to the native
+views it changes, so the marks are made in UIKit, the same way in every app:
+`harness/probe/BenchProbe.m`, an Objective-C file each app compiles (copied
+into the Lynx apps' generated projects by `harness/build_ios_app.sh`, linked
+from the React Native apps' `modules/app-startup-module/ios`). It does nothing
+unless the app is launched with `BENCH_PROBE=1` in its environment, so the
+launch and mount benchmarks run without it. When it's on, it emits
+`os_signpost` events in the Points of Interest category:
+
+- **Touch**, in `-[UIApplication sendEvent:]`: a touch going down or up,
+  before UIKit hands it to a view.
+- **Commit**: the end of a main run loop pass, after Core Animation's commit,
+  in which a layer's background was set to a sentinel color (`#FE0102`,
+  `#0201FE`; nothing else in the apps uses them) or a view's accessibility
+  label changed from one text to another (the heart).
+- **Frame**: the display link tick after that commit, whose target time is
+  the first frame the commit can be shown in.
+- **Stall**: the busy screen's box stood still on screen (its presentation
+  layer didn't move) for one or more display link ticks, or the ticks came
+  late, then moved again.
+
+Every time in their messages is `CACurrentMediaTime()`, the app's own clock,
+in whole microseconds: Instruments shows a `%f` to four decimals.
 
 ## Build
 

@@ -2,8 +2,8 @@ import { inject } from '@angular/core';
 import { Router, type Routes } from '@angular/router';
 
 /**
- * The tabs, the detail sheet over them, and the benchmark's mount screen.
- * Every screen is loaded lazily.
+ * The tabs, the detail sheet over them, and the benchmark's screens (mount,
+ * tap, update and busy). Every screen is loaded lazily.
  */
 export const routes: Routes = [
   {
@@ -18,6 +18,18 @@ export const routes: Routes = [
   {
     path: 'bench/mount',
     loadComponent: () => import('./screens/mount').then((m) => m.Mount),
+  },
+  {
+    path: 'bench/tap',
+    loadComponent: () => import('./screens/tap').then((m) => m.Tap),
+  },
+  {
+    path: 'bench/update',
+    loadComponent: () => import('./screens/update').then((m) => m.Update),
+  },
+  {
+    path: 'bench/busy',
+    loadComponent: () => import('./screens/busy').then((m) => m.Busy),
   },
   {
     // Shown over whatever the primary outlet shows, as the original's form

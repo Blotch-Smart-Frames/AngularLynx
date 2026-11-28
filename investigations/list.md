@@ -60,9 +60,9 @@ After #884, the runtime's own share of a rebound row is small. Most of `componen
 
 The benchmark app keeps `track type`. The ReactLynx app keys its `PokemonTypeDot`s by type (`key={type}`), so tracking by `$index` would have the Angular app do less than its rival does.
 
-**The tick after each bind.** Before #877, every bind of this row notified Angular's scheduler about five times: three times from signal input writes, and once each from the `@for` view it attaches and the one it detaches. One tick follows each batch of binds, on the scheduler's timer. In the bench, a tick run after every bind cost 11.5 µs, 14% of the bind. On a device, a frame's binds share one. The runtime can't drop the tick: it runs the `afterNextRender`/`afterRenderEffect` callbacks a row registered. Since #877 (the next section), the tick no longer walks down from the root to the rebound rows, and `end()` no longer flushes the whole tree after rows that wrote only inside their items. What's left is Angular's own bookkeeping.
+**The tick after each bind.** Before #877, every bind of this row notified Angular's scheduler about five times: three times from signal input writes, and once each from the `@for` view it attaches and the one it detaches. One tick follows each batch of binds, on the scheduler's timer. In the bench, a tick run after every bind cost 11.5 µs, 14% of the bind. On the Simulator, each row bound while the list scrolls gets a tick of its own (#894, below). The runtime can't drop the tick: it runs the `afterNextRender`/`afterRenderEffect` callbacks a row registered. Since #877 (the next section), the tick no longer walks down from the root to the rebound rows, and `end()` no longer flushes the whole tree after rows that wrote only inside their items. What's left is Angular's own bookkeeping.
 
-On the Simulator the tick happens, but a Time Profiler trace can't single it out. #856's probe counted about 86 ticks in 5 swipes. Angular races a `setTimeout` against `requestAnimationFrame` for each tick, so a tick runs in either Lynx's timer task (`SetTimeTask`) or its frame callback. The timer task also runs the runtime's other timers, and the trace names no JavaScript functions. The traces below put 2–10 ms per 4-swipe trace in the timer task's JavaScript: the most that the ticks run from the timer cost. Timing the tick itself on a device takes a probe built into the app (there's no console in a Release build). These traces predate #877, which changed what the tick does, so timing it is #894.
+On the Simulator the tick happens, but a Time Profiler trace can't single it out. #856's probe counted about 86 ticks in 5 swipes. Angular races a `setTimeout` against `requestAnimationFrame` for each tick, so a tick runs in either Lynx's timer task (`SetTimeTask`) or its frame callback. The timer task also runs the runtime's other timers, and the trace names no JavaScript functions. The traces below put 2–10 ms per 4-swipe trace in the timer task's JavaScript: the most that the ticks run from the timer cost. Timing the tick itself on a device takes a probe built into the app (there's no console in a Release build). These traces predate #877, which changed what the tick does. #894 timed the tick itself, below.
 
 **On the iOS Simulator** the shapes barely show. That's the benchmark app's scroll test, 4 swipes, 3 rounds alternating. Each build was the benchmark app on master before #877, with its dots as in the benchmark, tracked by `$index`, or written out as two views. XCTCPUMetric instructions per swipe averaged about 660M, 649M (−2%) and 632M (−4%). That's inside the first build's own spread from swipe to swipe (602–723M), with ReactLynx at about 460M (#856). The Time Profiler put 15–29 ms of each 4-swipe trace in `componentAtIndex`'s JavaScript for every build, and 2–10 ms in the timer task's. A swipe binds only a handful of rows, so their checks are a small part of what the engine thread does in it. A cheaper row matters most where native waits for it: in the layout pass, as a row scrolls in.
 
@@ -84,6 +84,39 @@ Measured under `node --jitless` against `list-for.test.ts`'s fake list, Angular 
 | Whole-tree flushes per bind      | 1.00         | 0            |
 
 What's left of the tick is Angular's: its scheduler and `afterTick` subscribers, and `end()`'s commit passes with nothing to commit. A row whose check marks nothing (no child components) used to schedule no tick, and now gets one from its `reattach()`, with nothing to flush. The fake flushes cost nothing here, so the table shows none of the native flush's cost; #871 found empty flushes too cheap for the simulator to tell apart.
+
+## The tick after a bind, timed on the Simulator (2026-11-28, #894)
+
+On the iOS Simulator, the tick after a bind takes about 65 µs on master, and #889 (#877) halved it. That's under 4% of what `componentAtIndex` spends on the row it bound, so the tick isn't where a swipe's engine-thread time goes: the bind is.
+
+**The setup.** This was a throwaway build of the benchmark app (`benchmarks/apps/angular-lynx`), on master and on master with #889's runtime changes reverted. It wraps three things:
+
+- `ApplicationRef._tick()`, which Angular's zoneless scheduler calls from its timer or its frame callback.
+- The list's `componentAtIndex`. Native gets it from `__CreateList`, and again from `__UpdateListCallbacks` on every list update, so the probe wraps both.
+- `__FlushElementTree()`, telling a tree flush (no element) from an item's.
+
+A tick is "after a bind" when `componentAtIndex` ran since the tick before. A later run of master also tagged each tick with Angular's notification sources (`ChangeDetectionScheduler.notify()`). It shows the totals in an overlay above the list. The scroll test's screenshots before and after its swipes give the difference: 5 swipes (a warm-up and 4 measured), 3 rounds alternating, a Release build on the iPhone 18 Pro Simulator (iOS 27).
+
+**The clock.** `performance.now()` on the main thread is the runtime's own, built on `Date.now()` (`canvas/dom-globals.ts`), so it steps in whole milliseconds, longer than most ticks. The probe used `__date_clock()` instead. That's a main-thread global of the engine, which isn't documented, and it returns microseconds since the epoch.
+
+**Per 5 swipes** (each run bound 38 rows; the ranges are the 3 runs of each build):
+
+|                                     | master         | #889 reverted                            |
+| ----------------------------------- | -------------- | ---------------------------------------- |
+| Ticks after a bind                  | 38             | 38                                       |
+| … their time                        | 2.4–2.8 ms     | 5.2–6.1 ms                               |
+| … per tick                          | 63–74 µs       | 138–161 µs                               |
+| … tree flushes in them              | 0              | 38, 0.7–0.9 ms in all (about 20 µs each) |
+| `componentAtIndex`                  | 67–73 ms       | 69–81 ms                                 |
+| … of which the item's flush         | 36–37 ms       | 38–41 ms                                 |
+| Other ticks, each with a tree flush | 10, 4.5–4.8 ms | 10, 4.4–5.2 ms                           |
+
+- **Every row bound while the list scrolls gets its own tick.** Native asks for the rows one at a time as they come on screen, and each bind's tick runs before the next bind. Only the 10 rows of the first screen shared ticks (2 for 10 binds).
+- **#889 saved about 90 µs per tick, about 3.4 ms per 5 swipes.** Only about 20 µs of that was the tree flush, which had nothing to commit. The rest was Angular's walk down from the root to the rebound row. A bind still notifies the scheduler about 7 times: about 3 marks from its signal input writes (`MarkAncestorsForTraversal`), 2.4 view attaches (its `reattach()` and the `@for`'s new dots) and 1.1 detaches (the dots it drops).
+- **What's left is Angular's own bookkeeping**, at about 4% of the 1.8–1.9 ms a bind takes here. The item's native flush is about half of `componentAtIndex`, and Angular's check of the row is most of the rest (see #885 above).
+- **The other ticks come from the row's pressed state.** Each swipe's finger lands on a row, and `PokemonItem` sets `pressing` on `bindtouchstart` and clears it on `bindtouchend`/`bindtouchcancel`. That's two listener ticks per swipe (Angular's `Listener` notification), each with a tree flush, at about 0.46 ms each.
+
+XCTCPUMetric's instructions per swipe didn't tell the two builds apart: about 751M on master and 757M with #889 reverted, probe included. The difference is under 1%, inside the spread from swipe to swipe.
 
 ## No flush for a cycle that wrote nothing (2026-11-28, #856)
 

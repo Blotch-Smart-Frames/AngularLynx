@@ -2820,7 +2820,7 @@ There is no equivalent to `role`, `tabindex`, `aria-expanded`, or most other ARI
 
 ### What Lynx does
 
-`performance.now()` is **not available** in native Lynx: there's no `performance` global on the main thread or the background thread (checked in Lynx Explorer 4.1 on iOS). The web preview has one on both, since it runs in the browser. For simple timing, `Date.now()` is available everywhere, in whole milliseconds; `LynxDevTools`' `lastCdDurationMs` falls back to it.
+`performance.now()` is **not available** in native Lynx: there's no `performance` global on the main thread or the background thread (checked in Lynx Explorer 4.1 on iOS). The web preview has one on both, since it runs in the browser. On the main thread, the runtime adds a `performance.now()` for three.js (`canvas/dom-globals.ts`), built on `Date.now()`, so it steps in whole milliseconds rather than fractions of one. For simple timing, `Date.now()` is available everywhere, in whole milliseconds; `LynxDevTools`' `lastCdDurationMs` falls back to it. The engine's main thread also has an undocumented `__date_clock()`, which returns microseconds since the epoch (iOS Simulator, the shells' Lynx; #894 timed ticks with it).
 
 For profiling and performance tracing, use `lynx.performance` (wrapped by `LynxPerformance`), which exists on both threads:
 

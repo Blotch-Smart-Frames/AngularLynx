@@ -20,11 +20,17 @@ appId: ${APP_ID}
     when:
       platform: iOS
     commands:
+      # The prompt, or, on a simulator where an earlier run already
+      # answered it, the answer: iOS asks once per install.
       - extendedWaitUntil:
-          visible: Ask App Not to Track
+          visible: 'Ask App Not to Track|Tracking: denied'
           timeout: 15000
-      - takeScreenshot: tracking-prompt
-      - tapOn: Ask App Not to Track
+      - runFlow:
+          when:
+            visible: Ask App Not to Track
+          commands:
+            - takeScreenshot: tracking-prompt
+            - tapOn: Ask App Not to Track
       - extendedWaitUntil:
           visible: 'Tracking: denied'
           timeout: 15000

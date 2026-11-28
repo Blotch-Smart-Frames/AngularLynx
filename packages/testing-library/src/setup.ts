@@ -24,6 +24,7 @@ import '@angular/compiler';
 import '@testing-library/jest-dom/vitest';
 import { LynxTestingEnv } from '@lynx-js/testing-environment';
 import { installShellModule } from './back-button.js';
+import { installBiometricsModule } from './biometrics.js';
 import { installLinkingModule } from './linking.js';
 import { installShortcutsModule } from './shortcuts.js';
 
@@ -118,6 +119,9 @@ const frameOnInstalledTimers = (threadGlobals: any): void => {
   // LynxBackButton enables the back handler pressBackButton() checks (see
   // back-button.ts).
   installShellModule(threadGlobals);
+  // LynxBiometrics' prompts and LynxSecureStorage's guarded values, which
+  // setBiometrics() and queueBiometricResult() steer (see biometrics.ts).
+  installBiometricsModule(threadGlobals);
 };
 
 // ─── Install LynxTestingEnv ──────────────────────────────────────────────────

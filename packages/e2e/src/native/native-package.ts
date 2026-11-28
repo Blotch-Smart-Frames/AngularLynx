@@ -54,6 +54,7 @@ export const buildFromBundle = async ({
   workDir,
   outputDir,
   log,
+  overrides = {},
 }: {
   native: typeof Native;
   platform: Platform;
@@ -63,6 +64,8 @@ export const buildFromBundle = async ({
   workDir: string;
   outputDir: string;
   log: (message: string) => void;
+  /** Options to build with in place of the app's, as a configuration sets them. */
+  overrides?: Record<string, unknown>;
 }) => {
   const [projectName, project] = Object.entries(
     readAngularJson(appDir).projects,
@@ -73,6 +76,7 @@ export const buildFromBundle = async ({
     ...(build.defaultConfiguration
       ? build.configurations?.[build.defaultConfiguration]
       : {}),
+    ...overrides,
   };
   return native.buildNativeApp({
     platform,

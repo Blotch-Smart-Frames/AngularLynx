@@ -220,6 +220,40 @@ await waitForUpdate();
 expect(screen.getByText('Today: 2 January')).toBeInTheDocument();
 ```
 
+### Biometrics
+
+```typescript
+function setBiometrics(phone: {
+  readonly type?: BiometryType;
+  readonly enrolled?: boolean;
+  readonly deviceCredential?: boolean;
+}): void;
+function queueBiometricResult(result: 'success' | BiometricsErrorCode): void;
+function biometricPrompts(): readonly {
+  readonly reason: string;
+  readonly allowDeviceCredential: boolean;
+}[];
+```
+
+Each test starts with a phone that has **Face ID set up behind a passcode**, where every prompt succeeds. [`LynxBiometrics`](/api/angular-lynx/biometrics) and `LynxSecureStorage`'s `requireBiometrics` see it as they see the shells' module.
+
+- **`setBiometrics()`** changes the phone. What you leave out keeps its value. `{ type: 'none' }` is a phone without a sensor, or an app without `permissions.biometrics`.
+- **`queueBiometricResult()`** has the next prompt end that way, such as `'canceled'`. Results queue one per prompt; once they run out, prompts succeed.
+- **`biometricPrompts()`** lists the prompts the app showed, oldest first: each `authenticate()`, and each read of a value kept behind biometrics.
+
+```typescript
+await render(Unlock);
+queueBiometricResult('canceled');
+
+fireEvent.tap(screen.getByText('Unlock'));
+await waitForUpdate();
+
+expect(screen.getByText('Still locked')).toBeInTheDocument();
+expect(biometricPrompts()).toEqual([
+  { reason: 'Unlock your notes', allowDeviceCredential: false },
+]);
+```
+
 ### `*ByAccessibilityLabel`
 
 ```typescript

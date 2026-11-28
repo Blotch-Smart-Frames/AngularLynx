@@ -1966,6 +1966,247 @@ describe('renderer teardown', () => {
     });
   });
 
+  // The registry holds an element in the page as it is, since the page holds
+  // it already, and any other through a WeakRef (issue #912). Every way out
+  // of the page must hold it weakly again, or it brings back #279 and #280.
+  describe('its registry of wrappers', () => {
+    const doc = (): LynxDocument =>
+      TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
+
+    /**
+     * Counts the WeakRefs made while `fn` runs.
+     */
+    const weakRefsMadeBy = (fn: () => void): number => {
+      const Native = WeakRef;
+      let count = 0;
+      vi.stubGlobal(
+        'WeakRef',
+        class<T extends WeakKey> extends Native<T> {
+          constructor(target: T) {
+            super(target);
+            count++;
+          }
+        },
+      );
+      try {
+        fn();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+      return count;
+    };
+
+    /**
+     * Weak references to `elements`, for a test to see them collected.
+     */
+    const watch = (...elements: LynxElement[]): WeakRef<LynxElement>[] =>
+      elements.map((el) => new WeakRef(el));
+
+    const alive = (refs: WeakRef<LynxElement>[]): boolean[] =>
+      refs.map((ref) => ref.deref() !== undefined);
+
+    it('makes no WeakRef for what goes in the page, and one for what goes nowhere', () => {
+      const document = doc();
+      const page = document.createRootElement();
+      let inPage!: LynxElement;
+      let loose!: LynxElement;
+      const made = weakRefsMadeBy(() => {
+        inPage = document.createElement('view');
+        inPage.appendChild(document.createElement('text'));
+        page.appendChild(inPage);
+        loose = document.createElement('view');
+        processPendingRemovals();
+      });
+
+      expect(made).toBe(1);
+      expect(LynxElement.byUniqueId(inPage.uniqueId)).toBe(inPage);
+      expect(LynxElement.byUniqueId(loose.uniqueId)).toBe(loose);
+    });
+
+    it('holds weakly what goes in an element that never goes in the page', () => {
+      const document = doc();
+      document.createRootElement();
+      let child!: LynxElement;
+      const made = weakRefsMadeBy(() => {
+        // Made before the element it goes in, as #regroup's anonymous texts
+        // are: it's settled first, while that element is held strongly.
+        child = document.createElement('view');
+        const parent = document.createElement('view');
+        parent.appendChild(child);
+        processPendingRemovals();
+      });
+
+      expect(made).toBe(2);
+      expect(LynxElement.byUniqueId(child.uniqueId)).toBe(child);
+    });
+
+    it('lets go of a subtree removed from the page without being destroyed', async () => {
+      const document = doc();
+      const page = document.createRootElement();
+      const refs = ((): WeakRef<LynxElement>[] => {
+        const outer = document.createElement('view');
+        const inner = document.createElement('view');
+        outer.appendChild(inner);
+        page.appendChild(outer);
+        processPendingRemovals();
+        // A view Angular detached, which nothing keeps then.
+        outer.remove();
+        processPendingRemovals();
+        return watch(outer, inner);
+      })();
+      await collectGarbage();
+
+      expect(alive(refs)).toEqual([false, false]);
+    });
+
+    it('lets go of a subtree moved out of the page', async () => {
+      const document = doc();
+      const page = document.createRootElement();
+      const refs = ((): WeakRef<LynxElement>[] => {
+        const outer = document.createElement('view');
+        const inner = document.createElement('view');
+        const elsewhere = document.createElement('view');
+        outer.appendChild(inner);
+        page.appendChild(outer);
+        processPendingRemovals();
+        // Into a parent held weakly already, which its own settling can't
+        // reach the move from.
+        elsewhere.appendChild(outer);
+        processPendingRemovals();
+        return watch(elsewhere, outer, inner);
+      })();
+      await collectGarbage();
+
+      expect(alive(refs)).toEqual([false, false, false]);
+    });
+
+    it('holds an element moved within the page as it is', () => {
+      const document = doc();
+      const page = document.createRootElement();
+      const first = document.createElement('view');
+      const second = document.createElement('view');
+      const moved = document.createElement('view');
+      page.appendChild(first);
+      page.appendChild(second);
+      first.appendChild(moved);
+      processPendingRemovals();
+
+      const made = weakRefsMadeBy(() => {
+        moved.remove();
+        second.appendChild(moved);
+        processPendingRemovals();
+      });
+
+      expect(made).toBe(0);
+      expect(LynxElement.byUniqueId(moved.uniqueId)).toBe(moved);
+    });
+
+    it('holds an element strongly again once it is back in the page', () => {
+      const document = doc();
+      const page = document.createRootElement();
+      const moved = document.createElement('view');
+      const outside = document.createElement('view');
+      outside.appendChild(moved);
+      processPendingRemovals();
+
+      const made = weakRefsMadeBy(() => {
+        page.appendChild(moved);
+        processPendingRemovals();
+        // In the page, it's held as it is: moving it out makes a WeakRef.
+        outside.appendChild(moved);
+        processPendingRemovals();
+      });
+
+      expect(made).toBe(1);
+    });
+
+    it('lets go of a list item the list let go of', async () => {
+      const document = doc();
+      const page = document.createRootElement();
+      const refs = ((): WeakRef<LynxElement>[] => {
+        const list = document.createElement('list');
+        const item = document.createElement('list-item');
+        const content = document.createElement('view');
+        item.appendChild(content);
+        list.appendChild(item);
+        page.appendChild(list);
+        processPendingRemovals();
+        item.remove();
+        processPendingRemovals();
+        processPendingListUpdates();
+        return watch(item, content);
+      })();
+      await collectGarbage();
+
+      expect(alive(refs)).toEqual([false, false]);
+    });
+
+    it("holds a list's items weakly when the list is removed without being destroyed", () => {
+      const document = doc();
+      const page = document.createRootElement();
+      const list = document.createElement('list');
+      const item = document.createElement('list-item');
+      list.appendChild(item);
+      page.appendChild(list);
+      processPendingRemovals();
+      processPendingListUpdates();
+
+      // A list's native element holds its callbacks, and they hold the list,
+      // until it's released: so the list isn't collected while removed, but
+      // its items mustn't be the registry's to keep.
+      const made = weakRefsMadeBy(() => {
+        list.remove();
+        processPendingRemovals();
+      });
+
+      expect(made).toBe(2);
+    });
+
+    it("holds a *lynxListFor item weakly, with what's in it, as its list doesn't hold it", () => {
+      const document = doc();
+      const page = document.createRootElement();
+      const list = document.createElement('list');
+      page.appendChild(list);
+      processPendingRemovals();
+
+      const made = weakRefsMadeBy(() => {
+        const item = document.createElement('list-item');
+        item.appendChild(document.createElement('view'));
+        // What LynxListItemViews marks the root of each view it builds.
+        item._ownedByListSource = true;
+        list.appendChild(item);
+        processPendingRemovals();
+      });
+
+      expect(made).toBe(2);
+    });
+
+    it("lets go of the old page's elements when a new app takes the page", async () => {
+      const refs = ((): WeakRef<LynxElement>[] => {
+        const old = new LynxDocument();
+        const page = old.createRootElement();
+        const child = old.createElement('view');
+        page.appendChild(child);
+        processPendingRemovals();
+        return watch(page, child);
+      })();
+      // A re-bootstrap's document, which takes the page over.
+      new LynxDocument().createRootElement();
+      await collectGarbage();
+
+      expect(alive(refs)).toEqual([false, false]);
+    });
+
+    it("finds an element before its cycle's end", () => {
+      const document = doc();
+      const page = document.createRootElement();
+      const view = document.createElement('view');
+      page.appendChild(view);
+
+      expect(LynxElement.byUniqueId(view.uniqueId)).toBe(view);
+    });
+  });
+
   describe('LynxElement.markDestroyed', () => {
     const doc = (): LynxDocument =>
       TestBed.inject(LYNX_DOCUMENT) as LynxDocument;

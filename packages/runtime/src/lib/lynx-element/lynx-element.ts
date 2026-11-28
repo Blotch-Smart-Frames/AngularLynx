@@ -1302,9 +1302,8 @@ export class LynxElement implements BaseLynxElement {
    * An entry goes when its native ref does: when recreation swaps the ref, and
    * when Angular destroys the element's view (see markDestroyed / #release).
    *
-   * Each wrapper is held weakly, as a browser holds a node's JavaScript
-   * wrapper. The registry finds wrappers; it mustn't be what keeps one alive.
-   * A wrapper in the tree is held by its parent's `#children`, up to the page,
+   * The registry finds wrappers; it mustn't be what keeps one alive. A
+   * wrapper in the page is held by its parent's `#children`, up to the page,
    * which the document holds; one out of the tree that can come back is held
    * by the view Angular keeps it in; one with listeners is held by the
    * handlers on its native element. One that nothing else holds can never be
@@ -1317,8 +1316,34 @@ export class LynxElement implements BaseLynxElement {
    * whole screen, its elements and their native UIs (#279), and a scene
    * component's host holds the canvas store, and so the `<canvas>` and its
    * native view (#280).
+   *
+   * So an element out of the page is held through a WeakRef, as a browser
+   * holds a node's JavaScript wrapper, and one in the page is held as it is:
+   * the page holds it already, so the registry keeps nothing alive that
+   * wouldn't be. A WeakRef for each element, and the sweeps reading them,
+   * were about 5% of the main thread's JavaScript in mounting a screen
+   * (issue #912), and nearly every element is in the page. An element is
+   * sorted into one or the other once its cycle has put it where it goes
+   * (see #settleRegistry), and every way out of the page holds it, and
+   * everything under it, weakly again (see #holdWeakly): its removal, a move
+   * to a parent out of the page, a list letting it go, and a new page (see
+   * usePage). A strong entry's element is in the page once its cycle has
+   * ended, which #inPage relies on.
    */
-  static #byNativeId = new Map<number, WeakRef<LynxElement>>();
+  static #byNativeId = new Map<number, LynxElement | WeakRef<LynxElement>>();
+
+  /**
+   * The elements made, given a new native element, or moved since the
+   * registry was last settled (see #settleRegistry), in that order. Held
+   * strongly until then, which is the end of the cycle at most.
+   */
+  static #unsettled: LynxElement[] = [];
+
+  /**
+   * The app's page (see usePage): what an element must be under to be held
+   * strongly.
+   */
+  static #page: LynxElement | null = null;
 
   /**
    * Elements a list took whose native element a removal marked dead this
@@ -1327,15 +1352,125 @@ export class LynxElement implements BaseLynxElement {
   static #deadListItems = new Set<LynxElement>();
 
   /**
-   * How many entries #byNativeId may hold before #register sweeps out the
-   * ones whose wrapper was collected (see #sweepCollected).
+   * How many entries #byNativeId may hold before #settleRegistry sweeps out
+   * the ones whose wrapper was collected (see #sweepCollected).
    */
   static #sweepAt = MIN_SWEEP_AT;
 
-  static #register(id: number, element: LynxElement): void {
+  /**
+   * Registers this element as the canonical wrapper of its native element
+   * (see #byNativeId): strongly, as it's found before its cycle ends, until
+   * #settleRegistry sees where the cycle put it.
+   */
+  #register(): void {
+    LynxElement.#byNativeId.set(this.#uniqueId, this);
+    LynxElement.#unsettled.push(this);
+  }
+
+  /**
+   * Holds weakly each element made, given a new native element or moved
+   * since the last time (see #unsettled) that isn't in the page, with what's
+   * under it, and strongly each one in it (see #byNativeId). Runs at the end
+   * of the cycle, once its inserts, moves and removals are in (see
+   * commitPendingRemovals), so a screen built out of the page and put in it
+   * whole is in it by then.
+   *
+   * An element made this cycle is held strongly until here, before it's
+   * known to be in the page, so #inPage could take one for an ancestor in
+   * the page that isn't. Each comes later in the list than what it holds,
+   * or settles after it, which a cycle's own parents do: Angular makes a
+   * parent before what goes in it, and #regroup makes an anonymous text
+   * when its members are made already. One that isn't in the page then
+   * holds weakly what's under it, which #inPage took for in it.
+   */
+  static #settleRegistry(): void {
+    const elements = LynxElement.#unsettled;
+    if (elements.length === 0) return;
+    LynxElement.#unsettled = [];
     const registry = LynxElement.#byNativeId;
-    registry.set(id, new WeakRef(element));
+    for (const el of elements) {
+      const id = el.#uniqueId;
+      const entry = registry.get(id);
+      if (entry === el) {
+        if (!el.#inPage()) el.#holdWeakly();
+      } else if (
+        // Held weakly while it was out of the page, and back in it. An
+        // entry that isn't this element's was released (see #release), has
+        // a new id since, or has an id a newer element has now (native
+        // reuses an id once its element is gone).
+        entry !== undefined &&
+        !(entry instanceof LynxElement) &&
+        entry.deref() === el &&
+        el.#inPage()
+      ) {
+        registry.set(id, el);
+      }
+    }
     if (registry.size > LynxElement.#sweepAt) LynxElement.#sweepCollected();
+  }
+
+  /**
+   * Whether this element is in the app's page, through the parents the
+   * registry follows: a list item's list (see adoptVirtualChild) and
+   * everything else's JS parent. An ancestor held strongly is in the page
+   * (see #byNativeId and #settleRegistry), so the walk mostly ends at the
+   * parent.
+   */
+  #inPage(): boolean {
+    const page = LynxElement.#page;
+    if (!page) return false;
+    if (this === page) return true;
+    // A `*lynxListFor` item hangs off its list, which doesn't hold it: its
+    // run's views do (see LynxListItemViews). #holdWeakly can't reach it
+    // from the list, so it and what's in it stay weak.
+    if (this._ownedByListSource) return false;
+    const registry = LynxElement.#byNativeId;
+    for (
+      let at = this._virtualParent ?? this.#jsParent;
+      at;
+      at = at._virtualParent ?? at.#jsParent
+    ) {
+      if (at === page) return true;
+      if (at._ownedByListSource) return false;
+      if (registry.get(at.#uniqueId) === at) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Holds this element and everything under it weakly (see #byNativeId):
+   * they left the page, or may have. Reaches what the registry's parents
+   * do (see #inPage): the children, a list's items and a `<q>`'s marks.
+   */
+  #holdWeakly(): void {
+    const registry = LynxElement.#byNativeId;
+    const id = this.#uniqueId;
+    if (registry.get(id) === this) registry.set(id, new WeakRef(this));
+    // Under an element held weakly there can be ones held strongly (made
+    // after it was put in the page), so every one is looked at.
+    for (const child of this.#children ?? NO_CHILDREN) child.#holdWeakly();
+    for (const item of this.virtualChildren()) item.#holdWeakly();
+    if (this.#quoteMarks) {
+      for (const mark of this.#quoteMarks) mark.#holdWeakly();
+    }
+  }
+
+  /**
+   * @internal `page` is the app's page (LynxDocument.createRootElement, once
+   * for each document): the elements under it are held strongly from now on
+   * (see #byNativeId). A new page is a new app (a re-bootstrap takes the
+   * page over, see takeOverPage), and the old one's elements, which no one
+   * may destroy, are held weakly again, or its whole tree would stay.
+   */
+  static usePage(page: LynxElement): void {
+    const previous = LynxElement.#page;
+    LynxElement.#page = page;
+    if (!previous) return;
+    LynxElement.#settleRegistry();
+    const registry = LynxElement.#byNativeId;
+    for (const [id, entry] of registry) {
+      if (entry instanceof LynxElement) registry.set(id, new WeakRef(entry));
+    }
   }
 
   /**
@@ -1353,14 +1488,26 @@ export class LynxElement implements BaseLynxElement {
    */
   static #sweepCollected(): void {
     const registry = LynxElement.#byNativeId;
-    for (const [id, ref] of registry) {
-      if (!ref.deref()) registry.delete(id);
+    for (const [id, entry] of registry) {
+      // An element held as it is is in the page (see #byNativeId).
+      if (!(entry instanceof LynxElement) && !entry.deref()) {
+        registry.delete(id);
+      }
     }
     LynxElement.#sweepAt = Math.max(MIN_SWEEP_AT, registry.size * 2);
   }
 
+  /**
+   * The wrapper an entry of #byNativeId holds, if it's still there.
+   */
+  static #held(
+    entry: LynxElement | WeakRef<LynxElement> | undefined,
+  ): LynxElement | undefined {
+    return entry instanceof LynxElement ? entry : entry?.deref();
+  }
+
   static #registered(id: number): LynxElement | undefined {
-    return LynxElement.#byNativeId.get(id)?.deref();
+    return LynxElement.#held(LynxElement.#byNativeId.get(id));
   }
 
   /**
@@ -1454,7 +1601,7 @@ export class LynxElement implements BaseLynxElement {
     // Register as the canonical wrapper for this native ref. #canonicalFor()
     // checks the map before constructing, so this never overwrites an existing
     // canonical wrapper with a throwaway.
-    LynxElement.#register(this.#uniqueId, this);
+    this.#register();
   }
 
   /**
@@ -1465,7 +1612,7 @@ export class LynxElement implements BaseLynxElement {
   #setNativeRef(ref: ElementRef): void {
     this.#nativeRef = ref;
     this.#uniqueId = __GetElementUniqueID(ref);
-    LynxElement.#register(this.#uniqueId, this);
+    this.#register();
   }
 
   /**
@@ -1476,11 +1623,10 @@ export class LynxElement implements BaseLynxElement {
    */
   deregisterNative(): void {
     const id = this.#uniqueId;
+    const registry = LynxElement.#byNativeId;
     // Only clear if WE are the registered wrapper — a later element that reused
     // this id (native id reuse) must keep its entry.
-    if (LynxElement.#registered(id) === this) {
-      LynxElement.#byNativeId.delete(id);
-    }
+    if (LynxElement.#held(registry.get(id)) === this) registry.delete(id);
   }
 
   /**
@@ -1931,8 +2077,8 @@ export class LynxElement implements BaseLynxElement {
    * on rotation, and once at launch on iOS.
    */
   static refreshSafeAreaInsets(): void {
-    for (const ref of LynxElement.#byNativeId.values()) {
-      const element = ref.deref();
+    for (const entry of LynxElement.#byNativeId.values()) {
+      const element = LynxElement.#held(entry);
       if (element && element.#readsSafeArea) element.#rewriteInlineStyle();
     }
   }
@@ -3596,6 +3742,8 @@ export class LynxElement implements BaseLynxElement {
         const holder = prev.#anonymous ? prev.#jsParent : prev;
         if (holder && holder.#hasFlow) LynxElement.#pendingFlow.add(holder);
       }
+      // A move, maybe out of the page: settled again (see #settleRegistry).
+      LynxElement.#unsettled.push(newChild);
     }
     newChild.#jsParent = this;
     const children = (this.#children ??= []);
@@ -4300,6 +4448,9 @@ export class LynxElement implements BaseLynxElement {
       if (typeof vp.removeVirtualChild === 'function') {
         vp.removeVirtualChild(this);
       }
+      // Out of the list, and so of the page, unless it goes back in this
+      // cycle: settled again (see #settleRegistry).
+      LynxElement.#unsettled.push(this);
       return;
     }
     LynxElement.#pendingRemovals.add(this);
@@ -4356,6 +4507,8 @@ export class LynxElement implements BaseLynxElement {
     }
     LynxElement.#commitPendingReleases();
     LynxElement.#rebuildDeadListItems();
+    // The cycle has put what it made where it goes (see #settleRegistry).
+    LynxElement.#settleRegistry();
     scheduleCollection();
   }
 
@@ -4806,6 +4959,9 @@ export class LynxElement implements BaseLynxElement {
     if (jsParent) this.#leftParent(jsParent);
     // Angular destroyed it (see markDestroyed): nothing will put it back.
     if (this.#destroyed) this.#release();
+    // Out of the page, where whoever keeps it holds it (a view Angular
+    // detached), or nothing does: the registry mustn't (see #byNativeId).
+    else this.#holdWeakly();
   }
 
   /**
@@ -4872,6 +5028,8 @@ export class LynxElement implements BaseLynxElement {
     if (i >= 0) jsParent.#children!.splice(i, 1);
     this.#jsParent = null;
     this.#leftParent(jsParent);
+    // In the page now only if its list is (see #settleRegistry).
+    LynxElement.#unsettled.push(this);
   }
 
   /**

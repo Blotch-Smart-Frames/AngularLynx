@@ -161,6 +161,49 @@ describe('LynxElement classes', () => {
     expect(rebuiltClasses(el, parent)).toBe('a odd name b');
   });
 
+  it('writes one static class as it writes a class string, with the scope classes after it', () => {
+    // A static `class="box"` takes a path of its own (issue #909), which
+    // must give native what a string of names gives it.
+    const one = view();
+    one.addScopeClass('_ngcontent-x');
+    one.addScopeClass('_nghost-y');
+    // Native's own split isn't the element's.
+    (globalThis as Record<string, unknown>)['__SetClasses'] = (
+      n: FakeEl,
+      classes: string,
+    ) => log.push(['set', n.id, classes]);
+    const split = vi.spyOn(String.prototype, 'split');
+    one.setAttribute('class', 'box');
+    const splits = split.mock.calls.length;
+    split.mockRestore();
+    const spaced = view();
+    spaced.addScopeClass('_ngcontent-x');
+    spaced.addScopeClass('_nghost-y');
+    spaced.setAttribute('class', ' box ');
+
+    expect(splits).toBe(0);
+    expect(log.filter(([call]) => call === 'set').map(([, , c]) => c)).toEqual([
+      'box _ngcontent-x _nghost-y',
+      'box _ngcontent-x _nghost-y',
+    ]);
+    expect(rebuiltClasses(one, parent)).toBe('box _ngcontent-x _nghost-y');
+  });
+
+  it('writes a static class that is also a scope class once', () => {
+    const el = view();
+    el.addScopeClass('a');
+    el.addScopeClass('b');
+    el.setAttribute('class', 'b');
+    el.addClass('c');
+
+    expect(log.at(-2)).toEqual([
+      'set',
+      (el.element as unknown as FakeEl).id,
+      'b a',
+    ]);
+    expect(rebuiltClasses(el, parent)).toBe('b a c');
+  });
+
   it('adds classes without splitting the class string again', () => {
     // Angular adds a [class] binding's classes one at a time.
     const el = view();

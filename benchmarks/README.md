@@ -10,18 +10,18 @@ numbers.
 This folder is outside the npm workspaces on purpose: Expo and the other
 frameworks never touch the monorepo's build.
 
-| Folder                   | What's in it                                                                                                                                                                                                             |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [`SPEC.md`](SPEC.md)     | What every app does, screen by screen                                                                                                                                                                                    |
-| `apps/react-native`      | [Software Mansion's `launchperf-poke-rn`](https://github.com/software-mansion-labs/launchperf-poke-rn) (MIT), with only the API's base URL changed, and the scene life cycle iOS 27 requires: Expo 54, React Native 0.81 |
-| `apps/react-native-0.88` | The same app on Expo SDK 58 / React Native 0.88, the base Angular Native uses                                                                                                                                            |
-| `apps/angular-lynx`      | The port to AngularLynx, on this repository's packages                                                                                                                                                                   |
-| `apps/react-lynx`        | The port to ReactLynx, in the same native shell as the AngularLynx app, on iOS and Android                                                                                                                               |
-| `apps/angular-native`    | The port to Angular Native (Expo SDK 58)                                                                                                                                                                                 |
-| `apps/flutter`           | The port to Flutter, made with `flutter create`. It draws its own Material and Cupertino widgets rather than UIKit's (its README says which)                                                                             |
-| `fixtures/`              | Recorded PokeAPI responses and sprites, and the server that hands them to the apps                                                                                                                                       |
-| `harness/`               | The scripts that launch the apps under Instruments and read the traces, the UI test that scrolls them (`ios-scroll/`), and the ones that launch them on Android with adb (`android_*`)                                   |
-| `results/`               | Every run, as CSV                                                                                                                                                                                                        |
+| Folder                   | What's in it                                                                                                                                                                                                                                                               |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`SPEC.md`](SPEC.md)     | What every app does, screen by screen                                                                                                                                                                                                                                      |
+| `apps/react-native`      | [Software Mansion's `launchperf-poke-rn`](https://github.com/software-mansion-labs/launchperf-poke-rn) (MIT), with only the API's base URL changed, and the scene life cycle iOS 27 requires: Expo 54, React Native 0.81                                                   |
+| `apps/react-native-0.88` | The same app on Expo SDK 58 / React Native 0.88, the base Angular Native uses                                                                                                                                                                                              |
+| `apps/angular-lynx`      | The port to AngularLynx, on this repository's packages                                                                                                                                                                                                                     |
+| `apps/react-lynx`        | The port to ReactLynx, in the same native shell as the AngularLynx app, on iOS and Android                                                                                                                                                                                 |
+| `apps/angular-native`    | The port to Angular Native (Expo SDK 58)                                                                                                                                                                                                                                   |
+| `apps/flutter`           | The port to Flutter, made with `flutter create`. It draws its own Material and Cupertino widgets rather than UIKit's (its README says which)                                                                                                                               |
+| `fixtures/`              | Recorded PokeAPI responses and sprites, and the server that hands them to the apps                                                                                                                                                                                         |
+| `harness/`               | The scripts that launch the apps under Instruments and read the traces, the UI test that scrolls them (`ios-scroll/`), the ones that launch them on Android with adb (`android_*`), and `node-mount.mjs`, which times the AngularLynx app's main-thread JavaScript in Node |
+| `results/`               | Every run, as CSV                                                                                                                                                                                                                                                          |
 
 ## The app
 
@@ -243,6 +243,35 @@ waits for the Mac's load average to be under `--max-load` before each
 launch, records it with every run, and repeats a run whose load went over.
 Its numbers aren't a phone's, so `results/android-emulator` isn't charted
 either; within a session they compare.
+
+## The main thread's JavaScript, in Node
+
+A device's mount time is AngularLynx's JavaScript and Lynx's native work
+together, and a Simulator's launches drift by more than most changes to the
+runtime save. [`harness/node-mount.mjs`](harness/node-mount.mjs) times the
+JavaScript alone: it runs the app's built main-thread script in Node against
+cheap fakes of Lynx's `__*` element functions, and times a mount screen from
+its `MountStart` mark to its `reportFullyDrawn()` in the main thread's CPU
+time. With `--profile` it says how much of that is Angular's and how much the
+runtime's, and which of the runtime's functions take it (#909).
+
+```sh
+cd apps/angular-lynx
+BENCH_NO_MINIFY=1 BENCH_SCREEN='mount?kind=view&count=15000' npx ng build --environment lynx
+node --jitless ../../harness/node-mount.mjs --runs 10 --profile
+
+# A change against the build before it: the runs alternate between the two
+cp dist/.lynx/main/main-thread.js /tmp/before.js
+# ...change the runtime, run use-local-packages.mjs --build, build the app again...
+node --jitless ../../harness/node-mount.mjs --runs 20 \
+  --script /tmp/before.js --script dist/.lynx/main/main-thread.js
+```
+
+`--jitless` turns V8's compilers off, which is as near as Node gets to
+PrimJS, the interpreter the main thread runs on: with them on, the runtime's
+small functions inline away. Its milliseconds aren't a phone's, so compare
+them only with each other on one machine: two runs of one build agree within
+about 1%. `BENCH_NO_MINIFY` keeps the functions' names for the profile.
 
 ## Tracking AngularLynx against ReactLynx
 

@@ -111,7 +111,9 @@ also opens by deep link, `{scheme}://bench/mount?kind=...&count=...`.
   row 0, of every 10th row (0, 10, 20…) or of every row, and sets each of
   those rows' box to `#0201FE` when its value is odd and `#FE0102` when it's
   even. Each framework's usual way to change part of a list: a signal per
-  row in AngularLynx, state and `memo` rows in React.
+  row, read by a row component, in AngularLynx (Angular tracks signals per
+  component view, so the screen's own template reading them would refresh
+  every row); state and `memo` rows in React.
 
 - **Busy** (`busy`): the tap screen with two changes. A 40×40 box in
   `#01FE02` (the probe's third sentinel) moves across a 40px strip under the
@@ -133,7 +135,14 @@ a `main-thread:bindtap` whose `'main thread'` function sets the boxes' colors
 
 The **first tap** benchmark uses no screen of its own: it taps the Pokédex's
 first row's heart (accessibility label "Add to favorites" or "Remove from
-favorites") over and over from launch.
+favorites") over and over from launch. XCTest can't tap that early: it sees
+the app in front about 1.3 s after launch, and its first tap waits for
+SpringBoard to settle, so on the Simulator the first tap lands about 2 s in,
+after the list is fully drawn. So it measures how fast the first tap after
+launch is answered, not how soon an app starts answering. The harness gives
+the first change to the last touch before its commit: right while an app
+answers faster than the taps come (XCTest's are about 0.36 s apart), and a
+lower bound when a late answer to one tap lands after the next.
 
 ## Probe
 

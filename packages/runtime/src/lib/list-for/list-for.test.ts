@@ -1043,7 +1043,22 @@ describe('*lynxListFor', () => {
       // Its bind checks it in another view, whose input isn't set already,
       // and throws where it would have without binding ahead.
       expect(() => show(2)).toThrow('broken input');
-      expect(show(3)).toBe(sign);
+      // The view isn't reused: its input holds the value that threw.
+      expect(show(3)).not.toBe(sign);
+    });
+
+    it('throws for the same row under another key after it threw when it was bound ahead', async () => {
+      const rows = rowsOf(5);
+      const broken = { ...rows[2]!, kind: 'broken' };
+      // The same object twice: the second gets a key of its own.
+      rows[2] = broken;
+      rows[3] = broken;
+      await renderCards(rows);
+      await idle();
+      hide(show(1)!);
+      await idle();
+
+      expect(() => show(3)).toThrow('broken input');
     });
 
     it('binds nothing once the list is gone', async () => {

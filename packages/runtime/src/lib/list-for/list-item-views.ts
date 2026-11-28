@@ -46,15 +46,6 @@ type ItemView<T> = {
    * that hands it over counts as a reuse.
    */
   ahead: 'checked' | 'stale' | null;
-  /**
-   * The key of the item whose check ahead threw in it, until a check of
-   * another item succeeds. Angular stores a binding's new value before it
-   * sets the input, so an input setter that threw for the item has its
-   * value cached in this view: checked for the item again, it wouldn't set
-   * it, nor throw. The item takes another view from the pool (see
-   * #takeFromPool).
-   */
-  failedFor: string | null;
 };
 
 const EMPTY_RUN: ListItemRun = { keys: [], types: [], attributes: [] };
@@ -220,7 +211,7 @@ export class ListItemViews<T> implements LynxListItemSource {
       this.#pools.get(view.type)?.delete(view.sign);
       reused = view.ahead !== null;
     } else {
-      view = this.#takeFromPool(type, key);
+      view = this.#takeFromPool(type);
       if (view) {
         reused = true;
       } else {
@@ -260,10 +251,14 @@ export class ListItemViews<T> implements LynxListItemSource {
    * `recyclable: false`, which keeps the view it gets out of the pool (see
    * enqueue): a wrong guess would take the view from every other item.
    *
-   * Returns whether it bound a view. A check that throws gives the view back
-   * to the pool unclaimed, for any other item (see failedFor), and the bind
-   * native asks for checks the item in another view, and throws there, where
-   * it would have.
+   * Returns whether it bound a view. A check that throws leaves the view
+   * out of the pool and out of change detection, as bind() leaves a view
+   * whose check threw: Angular stores a binding's new value before it sets
+   * an input, so an input setter that threw has that value cached in the
+   * view, and a later check of any item with the same value (the item
+   * itself, or the same object under another key) wouldn't set it, nor
+   * throw. The bind native asks for checks the item in another view, and
+   * throws there, where it would have.
    */
   bindAhead(index: number): boolean {
     // The list commits this run with its own items, as for bind(). Once the
@@ -273,7 +268,7 @@ export class ListItemViews<T> implements LynxListItemSource {
     if (this.#committedRun.attributes[index]?.recyclable === false) {
       return false;
     }
-    const view = this.#takeFromPool(this.#committedRun.types[index]!, key);
+    const view = this.#takeFromPool(this.#committedRun.types[index]!);
     if (!view) return false;
     view.key = key;
     this.#byKey.set(key, view);
@@ -283,8 +278,8 @@ export class ListItemViews<T> implements LynxListItemSource {
     try {
       this.#check(view);
     } catch {
-      view.failedFor = key;
       this.#unclaim(key, view);
+      this.#pools.get(view.type)!.delete(view.sign);
       return false;
     }
     view.ahead = 'checked';
@@ -343,7 +338,6 @@ export class ListItemViews<T> implements LynxListItemSource {
     try {
       view.ref.detectChanges();
       view.detached = false;
-      view.failedFor = null;
     } finally {
       if (!view.detached) view.ref.reattach();
     }
@@ -399,22 +393,14 @@ export class ListItemViews<T> implements LynxListItemSource {
   }
 
   /**
-   * The oldest view of `type` native let go of, out of its pool, for the
-   * item `key`: not one whose check ahead threw for that item (see
-   * failedFor).
+   * The oldest view of `type` native let go of, out of its pool.
    */
-  #takeFromPool(type: string, key: string): ItemView<T> | undefined {
+  #takeFromPool(type: string): ItemView<T> | undefined {
     const pool = this.#pools.get(type);
-    if (!pool) return undefined;
-    let view: ItemView<T> | undefined;
-    for (const pooled of pool.values()) {
-      if (pooled.failedFor !== key) {
-        view = pooled;
-        break;
-      }
-    }
-    if (!view) return undefined;
-    pool.delete(view.sign);
+    const first = pool?.entries().next();
+    if (!pool || !first || first.done) return undefined;
+    const [sign, view] = first.value;
+    pool.delete(sign);
     // Its last item, if it still has one, has no view now: native asks for
     // it again, and it gets one then.
     if (view.key !== null) this.#byKey.delete(view.key);
@@ -452,7 +438,6 @@ export class ListItemViews<T> implements LynxListItemSource {
       pooled: false,
       detached: false,
       ahead: null,
-      failedFor: null,
     };
     this.#bySign.set(view.sign, view);
     return view;

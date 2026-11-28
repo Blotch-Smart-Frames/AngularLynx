@@ -51,10 +51,21 @@ export type Flow = {
    * For a flow the device itself can hold up: reads the app's log after the
    * flow failed, and says what in it shows the device was at fault, or
    * returns undefined. The flow then runs once more in a new session (see
-   * {@link runFlows}), and fails the run only if it fails again.
+   * {@link runFlows}), and fails the run only if it fails again. The log is
+   * the session's, so it can hold other flows' lines; `ran` is when this
+   * flow ran, for a check that has to tell them apart.
    */
-  readonly deviceFault?: (appLog: string) => string | undefined;
+  readonly deviceFault?: DeviceFaultCheck;
 };
+
+/** When a flow ran, in milliseconds since the epoch. */
+export type FlowWindow = { readonly start: number; readonly end: number };
+
+/** Reads the app's log for a device fault (see {@link Flow.deviceFault}). */
+export type DeviceFaultCheck = (
+  appLog: string,
+  ran?: FlowWindow,
+) => string | undefined;
 
 /**
  * A WebKit process that took this long to start was held up by the
@@ -200,9 +211,13 @@ const LOG_LINE_PROCESS = /^\S+ \S+\s+\S+\s+\S+\s+\S+\s+(\d+)\s/;
 
 /**
  * Says so when an app process in `appLog` asked the simulator's Metal
- * compiler for shaders, and the compiler hadn't begun compiling for it
+ * compiler for shaders while the flow ran (`ran`, or any time without it),
+ * and the compiler hadn't begun compiling for it
  * {@link STALLED_METAL_COMPILER_SECONDS} later, or by that process's last
- * line; otherwise undefined.
+ * line; otherwise undefined. Only a request in the flow's own time counts:
+ * eight flows take this check, and the log holds the whole session, so
+ * another flow's stall would otherwise give a flow that failed for its own
+ * reasons a second run.
  *
  * The first WebGL context an app makes after the simulator boots has ANGLE
  * build its Metal shaders from source, through MTLCompilerService, which the
@@ -223,7 +238,10 @@ const LOG_LINE_PROCESS = /^\S+ \S+\s+\S+\s+\S+\s+\S+\s+(\d+)\s/;
  * line, since a later flow's launchApp may stop a process just after it asked,
  * and the session's log runs on through the flows after it.
  */
-export const stalledMetalCompiler = (appLog: string): string | undefined => {
+export const stalledMetalCompiler = (
+  appLog: string,
+  ran?: FlowWindow,
+): string | undefined => {
   // Each app process's first request that hasn't begun, and its last line.
   const waiting = new Map<string, number>();
   const started = new Set<string>();
@@ -253,6 +271,7 @@ export const stalledMetalCompiler = (appLog: string): string | undefined => {
     lastLine.set(process, time);
     if (
       METAL_COMPILE_REQUEST_LINE.test(line) &&
+      (ran === undefined || (time >= ran.start && time <= ran.end)) &&
       !started.has(process) &&
       !waiting.has(process)
     ) {
@@ -272,10 +291,10 @@ export const stalledMetalCompiler = (appLog: string): string | undefined => {
  * A {@link Flow.deviceFault} that finds whichever of `checks` comes first.
  */
 const anyDeviceFault =
-  (...checks: ((appLog: string) => string | undefined)[]) =>
-  (appLog: string): string | undefined => {
+  (...checks: DeviceFaultCheck[]): DeviceFaultCheck =>
+  (appLog, ran) => {
     for (const check of checks) {
-      const fault = check(appLog);
+      const fault = check(appLog, ran);
       if (fault) {
         return fault;
       }
@@ -744,6 +763,45 @@ const latestMaestroLog = (outputDir: string): string | undefined => {
 };
 
 /**
+ * When `flow` ran in Maestro's latest session in `outputDir`, from its first
+ * command's start to its last one's end, or undefined. Maestro writes each
+ * flow's commands, with when each started and how long it took, to
+ * `<outputDir>/<session>/<flow>/commands.json`, a session folder named by its
+ * start time.
+ */
+const flowWindow = (outputDir: string, flow: Flow): FlowWindow | undefined => {
+  if (!existsSync(outputDir)) {
+    return undefined;
+  }
+  const name = path.basename(flow.file, '.yaml');
+  const session = readdirSync(outputDir)
+    .filter((entry) => existsSync(path.join(outputDir, entry, name)))
+    .sort()
+    .at(-1);
+  const file = session && path.join(outputDir, session, name, 'commands.json');
+  if (!file || !existsSync(file)) {
+    return undefined;
+  }
+  try {
+    const commands = JSON.parse(readFileSync(file, 'utf8')) as {
+      metadata?: { timestamp?: number; duration?: number };
+    }[];
+    const times = commands.flatMap(({ metadata }) =>
+      metadata?.timestamp === undefined
+        ? []
+        : [metadata.timestamp, metadata.timestamp + (metadata.duration ?? 0)],
+    );
+    return times.length > 0
+      ? { start: Math.min(...times), end: Math.max(...times) }
+      : undefined;
+  } catch {
+    // A file Maestro was still writing when it stopped: no window, so the
+    // check reads the whole session's log, as it did without one.
+    return undefined;
+  }
+};
+
+/**
  * Saves what a maintainer needs to see why Maestro hung, since the CI log
  * only shows that a flow never finished: a screenshot of the device, and the
  * end of Maestro's output and log, where the last command started is the one
@@ -841,7 +899,10 @@ export const runFlows = async (
       if (outcome.status === 'failed' && retries < DEVICE_FAULT_RETRIES) {
         const fault = deviceLost
           ? 'Maestro lost the device in that session'
-          : flow.deviceFault?.(options.appLog?.().slice(appLogStart) ?? '');
+          : flow.deviceFault?.(
+              options.appLog?.().slice(appLogStart) ?? '',
+              flowWindow(options.outputDir, flow),
+            );
         if (fault) {
           deviceFaultRetries.set(flow, retries + 1);
           deviceFaultFailures.set(flow, outcome);

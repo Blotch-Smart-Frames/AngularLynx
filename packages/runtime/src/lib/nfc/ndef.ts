@@ -57,6 +57,7 @@ export type RawNdefRecord = {
 const TNF_EMPTY = 0;
 const TNF_WELL_KNOWN = 1;
 const TNF_MEDIA = 2;
+const TNF_UNKNOWN = 5;
 const TNF_UNCHANGED = 6;
 
 /**
@@ -287,6 +288,21 @@ export const encodeRecord = (record: NfcRecordInit): RawNdefRecord => {
         throw new TypeError(
           "A record's recordType and data must be Uint8Arrays.",
         );
+      }
+      // What NDEF asks of these two (NDEF 1.0, 3.2.6), which Android's
+      // NdefRecord checks: an empty record holds nothing, and an unknown
+      // one has no type. Checked here so write() throws for them, as for
+      // any other invalid record, rather than failing on Android alone.
+      if (
+        record.tnf === TNF_EMPTY &&
+        (record.recordType.length > 0 || record.data.length > 0)
+      ) {
+        throw new TypeError(
+          'An empty record (tnf 0) has no recordType and no data.',
+        );
+      }
+      if (record.tnf === TNF_UNKNOWN && record.recordType.length > 0) {
+        throw new TypeError('An unknown record (tnf 5) has no recordType.');
       }
       return raw(record.tnf, record.recordType, record.data);
     }

@@ -158,6 +158,50 @@ describe('encodeRecord', () => {
     }
   });
 
+  it("refuses an empty record that holds something and an unknown one with a type, as Android's NdefRecord does", () => {
+    expect(() =>
+      encodeRecord({
+        type: 'other',
+        tnf: 0,
+        recordType: bytes(),
+        data: bytes(1),
+      }),
+    ).toThrow(/tnf 0/);
+    expect(() =>
+      encodeRecord({
+        type: 'other',
+        tnf: 0,
+        recordType: bytes(1),
+        data: bytes(),
+      }),
+    ).toThrow(/tnf 0/);
+    expect(() =>
+      encodeRecord({
+        type: 'other',
+        tnf: 5,
+        recordType: bytes(1),
+        data: bytes(2),
+      }),
+    ).toThrow(/tnf 5/);
+    // The valid ones still write.
+    expect(
+      encodeRecord({
+        type: 'other',
+        tnf: 0,
+        recordType: bytes(),
+        data: bytes(),
+      }),
+    ).toMatchObject({ tnf: 0 });
+    expect(
+      encodeRecord({
+        type: 'other',
+        tnf: 5,
+        recordType: bytes(),
+        data: bytes(2),
+      }),
+    ).toMatchObject({ tnf: 5 });
+  });
+
   it('refuses a media or raw record without its parts', () => {
     expect(() =>
       encodeRecord({ type: 'mime', mediaType: '', data: bytes() }),

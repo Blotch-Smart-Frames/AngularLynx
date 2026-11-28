@@ -194,11 +194,22 @@ STALL_WINDOW = 0.5
 
 
 def stalls_in(events, start, end):
-    """The box's stalls that overlap [start, end): frames it stood still, and
-    the longest stall in ms."""
-    stalls = [e for e in events if e["name"] == "Stall" and e["to"] > start and e["from"] < end]
-    frames = int(sum(e["ticks"] for e in stalls))
-    longest = max(((e["to"] - e["from"]) * 1e3 for e in stalls), default=0)
+    """The frames the box stood still in [start, end), and the longest stall
+    there in ms. Only a stall's frames inside the window count, so one that
+    crosses a touch isn't counted both before and after it. A Stall runs from
+    the tick the box last moved at to the one it moved again, with its still
+    ticks between, a frame apart."""
+    frames, longest = 0, 0.0
+    for e in events:
+        if e["name"] != "Stall" or e["to"] <= start or e["from"] >= end:
+            continue
+        frame = (e["to"] - e["from"]) / (e["ticks"] + 1)
+        inside = sum(1 for k in range(1, int(e["ticks"]) + 1) if start <= e["from"] + k * frame < end)
+        if inside:
+            frames += inside
+            # From the tick before the first still one inside to the tick
+            # after the last: the whole stall, when it's all inside.
+            longest = max(longest, (inside + 1) * frame * 1e3)
     return frames, longest
 
 
@@ -242,7 +253,11 @@ def measure_taps(trace, points, tapped, busy=False):
 
 def measure_first_tap(trace):
     """From the process starting to the frame of the first change a tap made
-    (the heart's label changing), and which tap it was."""
+    (the heart's label changing), and which tap it was. The probe can't say
+    which touch a change answers, so it's the last touch before the change's
+    commit: right while the app answers faster than the taps come, and a
+    lower bound on tap_to_frame_ms (with taps_before too high) when a late
+    answer to one tap is committed after the next."""
     start, fully_drawn, events, thermal = probe_events(trace)
     offset = clock_offset(events)
     to_ms = lambda seconds: f"{(seconds * 1e9 + offset - start) / 1e6:.1f}"
@@ -492,6 +507,7 @@ def main():
                 "installed": "yes" if fresh else "",
             }
             lines = []
+            process = None
             try:
                 process, lines = tapper.start("testTap", {
                     "TAP_APP": bundle_id,
@@ -511,6 +527,12 @@ def main():
                 # medians (summarize_taps.py).
                 print(f"{name} run {run}: {error}", file=sys.stderr, flush=True)
                 rows = [{"error": str(error).splitlines()[0]}]
+            finally:
+                # A tapper left running after a failed recording would go on
+                # tapping into the next run.
+                if process is not None and process.poll() is None:
+                    process.kill()
+                    process.wait()
             for row in rows:
                 writer.writerow({**base, **row})
             out.flush()

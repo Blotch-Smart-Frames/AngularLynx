@@ -1679,11 +1679,8 @@ export class LynxElement implements BaseLynxElement {
       // the literal class 'foo bar baz' rather than three separate classes,
       // so no CSS rule would ever match. __SetClasses correctly parses the
       // space-separated list. This matches how React Lynx handles className.
-      const names = new Set(
-        String(value ?? '')
-          .split(/\s+/)
-          .filter(Boolean),
-      );
+      const written = String(value ?? '');
+      const scopes = this.#scopeClasses;
       // What it had, to tell which classes changed (see #rulesChanged):
       // unknown while native has classes the string doesn't. Kept as the
       // string, and split only if #rulesChanged asks which changed, as it
@@ -1694,13 +1691,36 @@ export class LynxElement implements BaseLynxElement {
       // runtime name are too; an odd one an app gave setRuntimeClass leaves
       // the set to the next addClass.
       let plain = true;
-      if (this.#scopeClasses) {
-        for (const scope of this.#scopeClasses) {
-          names.add(scope);
-          if (!isPlainClassName(scope)) plain = false;
+      let classes: string;
+      // The names, each once, made only if they're needed: by the split
+      // below, or by #rulesChanged, if it asks which changed.
+      let names: Set<string> | null = null;
+      if (isPlainClassName(written)) {
+        // One name, as a static `class="box"` is: the same string the split
+        // below makes, the scope classes after it, each there once already,
+        // without the regular expression, the Set and the three arrays. Each
+        // element Angular makes has its static class written here, and
+        // skipping them took about 5% off the JavaScript of a screen of
+        // 15,000 views under `node --jitless` (issue #909,
+        // benchmarks/harness/node-mount.mjs).
+        classes = written;
+        if (scopes) {
+          for (const scope of scopes) {
+            if (scope === written) continue;
+            classes += ` ${scope}`;
+            if (!isPlainClassName(scope)) plain = false;
+          }
         }
+      } else {
+        names = new Set(splitClasses(written));
+        if (scopes) {
+          for (const scope of scopes) {
+            names.add(scope);
+            if (!isPlainClassName(scope)) plain = false;
+          }
+        }
+        classes = [...names].join(' ');
       }
-      const classes = [...names].join(' ');
       if (
         !__WEB__ &&
         plain &&
@@ -1721,11 +1741,17 @@ export class LynxElement implements BaseLynxElement {
       }
       this.#classes = classes;
       this.#classesListed = plain;
-      this.#rulesChanged(
-        before === undefined
-          ? undefined
-          : () => changedTokens(splitClasses(before), names),
-      );
+      if (!this.#rulesUnread()) {
+        this.#rulesChanged(
+          before === undefined
+            ? undefined
+            : () =>
+                changedTokens(
+                  splitClasses(before),
+                  names ?? new Set([written, ...(scopes ?? [])]),
+                ),
+        );
+      }
     } else if (name === 'style') {
       this.setInlineStyles(value);
     } else if (name === 'id') {
@@ -2154,6 +2180,43 @@ export class LynxElement implements BaseLynxElement {
    */
   #shiftStylesChanged(): void {
     if (this.#webText) this.#inheritAgain();
+  }
+
+  /**
+   * Whether nothing the runtime works out from the app's rules (see
+   * #rulesChanged) reads this element's classes or id yet: an element
+   * LynxDocument has just made, in no parent and with nothing in it, that
+   * isn't an HTML text tag, a `<q>`, a list or a static block's root. Every element gets
+   * its scope class and its static class at this point, before Angular
+   * inserts it: skipping #rulesChanged for them took a few percent off the
+   * JavaScript of a screen of 15,000 views under `node --jitless` (issue
+   * #909). Each check below stands for what #rulesChanged would do:
+   *
+   * - #inheritAgain and #ancestorsChanged: an HTML text tag's styles, its
+   *   own (#webText) and those of the tags inside it, of which there are
+   *   none (#children, #passesTextStyles, the list's virtual children).
+   * - #passedSizeChanged: a size a tag inside read (#passedSizeSeen).
+   * - #layoutChanged: loose text it holds (#hasFlow).
+   * - #refreshQuotes: the marks of a `<q>` it is (#quoteMarks) or holds,
+   *   found among its native children, which a new element has none of
+   *   unless a static block put them there (#staticBlock).
+   *
+   * Once it's put in a parent, as it is when it's drawn, each change goes
+   * through #rulesChanged again, and what it inherits is worked out as it
+   * goes in (see #adoptChild).
+   */
+  #rulesUnread(): boolean {
+    return (
+      this.#unplaced() &&
+      this.#children === null &&
+      !this.#webText &&
+      !this.#passesTextStyles &&
+      this.#passedSizeSeen === undefined &&
+      !this.#hasFlow &&
+      this.#quoteMarks === null &&
+      this.#staticBlock === null &&
+      this.tagName !== 'list'
+    );
   }
 
   /**
@@ -3903,7 +3966,7 @@ export class LynxElement implements BaseLynxElement {
 
   addClass(name: string): void {
     this.#addClassName(name);
-    this.#rulesChanged([name]);
+    if (!this.#rulesUnread()) this.#rulesChanged([name]);
     this.#settle();
   }
 

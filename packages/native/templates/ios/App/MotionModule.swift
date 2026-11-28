@@ -186,7 +186,16 @@ final class MotionModule: NSObject, LynxContextModule, CLLocationManagerDelegate
     // Its yaw counts from where the phone faced when it started, without the
     // magnetometer, as Android's game rotation vector does.
     let motion = [wanted["rotation"], wanted["orientation"]].compactMap { $0 }.min()
-    if motion != deviceMotionInterval {
+    if let interval = motion, deviceMotionInterval != nil, manager.isDeviceMotionActive {
+      // Already running: only the rate changes. A restart would take the
+      // phone's heading now as the new zero of .xArbitraryZVertical, and a
+      // watch of the orientation would see alpha jump when another watch
+      // starts or stops.
+      if interval != deviceMotionInterval {
+        manager.deviceMotionUpdateInterval = interval
+        deviceMotionInterval = interval
+      }
+    } else if motion != deviceMotionInterval {
       manager.stopDeviceMotionUpdates()
       deviceMotionInterval = motion
       if let interval = motion, manager.isDeviceMotionAvailable {

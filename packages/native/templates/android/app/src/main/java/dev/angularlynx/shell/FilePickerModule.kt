@@ -130,7 +130,9 @@ class FilePickerModule(context: Context, param: Any?) : LynxModule(context, para
     /**
      * The MIME types for `LynxFilePicker`'s `types`, which are given as an
      * `<input type="file">`'s `accept`: MIME types, a family such as
-     * `image/*`, or extensions such as `.docx`, which Android's picker
+     * image's (`image/` and a star: written out, it would open a comment
+     * inside this one, since Kotlin nests them), or extensions such as
+     * `.docx`, which Android's picker
      * doesn't take, so they're looked up. Any document when none is given or
      * known.
      */

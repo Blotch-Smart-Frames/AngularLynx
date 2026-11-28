@@ -42,12 +42,14 @@ const STORE_REVIEW_MODULE = 'AngularLynxStoreReview';
  *
  * @usageNotes
  * ```typescript
- * const storeReview = inject(LynxStoreReview);
+ * // Injected in a field: a method has no injection context, even after
+ * // an await.
+ * readonly #storeReview = inject(LynxStoreReview);
  *
  * async finishOrder() {
  *   await this.orders.place(this.cart());
  *   // A success moment, not a button: the store decides whether to show it.
- *   await storeReview.request();
+ *   await this.#storeReview.request();
  * }
  * ```
  */

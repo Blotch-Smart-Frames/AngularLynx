@@ -333,7 +333,7 @@ export class LynxMotion {
   }
 
   /**
-   * Calls `handler` with how fast the phone turns around each axis, at most
+   * Calls `handler` with how fast the phone turns around each axis, about
    * every `interval` milliseconds, until the function it returns is called
    * or the caller is destroyed.
    */

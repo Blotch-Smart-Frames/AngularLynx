@@ -138,10 +138,13 @@ const collectedFromArrays = async (): Promise<string> => {
  * CalendarError's code: `unavailable` before iOS 17, on an Android phone
  * without a calendar app, and in Lynx Explorer.
  *
- * "Apple", beside "Array slots", shows whether LynxAppleSignIn has the native
+ * "Apple", on the last row, shows whether LynxAppleSignIn has the native
  * sheet once the page opens (issue #932): `native` in the iOS app, which has
  * the module and its entitlement because the harness sets angular.json's
- * `signInWithApple`, and `none` on Android and in Lynx Explorer. A tap opens
+ * `signInWithApple`, and `none` on Android and in Lynx Explorer. It's below
+ * the Android emulator's screen, where no other row has room for it: a
+ * wrapped row pushes Biometrics off the screen, and Android has no sheet to
+ * check. A tap opens
  * the sheet and shows how it ended: the error's code, with "(held)" when the
  * request stayed open for 2 seconds or more. On a Simulator signed in to no
  * Apple Account that's `failed (held)` once iOS's alert closes, and
@@ -184,12 +187,6 @@ const collectedFromArrays = async (): Promise<string> => {
         (bindtap)="checkArraySlots()"
         >Array slots: {{ arraySlots() }}</text
       >
-      <text
-        flatten="false"
-        style="margin-left: 16px;"
-        (bindtap)="signInWithApple()"
-        >Apple: {{ apple() }}</text
-      >
     </view>
     <view style="display: flex; flex-direction: row; margin-top: 8px;">
       <text flatten="false" (bindtap)="copy()"
@@ -208,6 +205,11 @@ const collectedFromArrays = async (): Promise<string> => {
       >
       <text flatten="false" style="margin-left: 16px;" (bindtap)="addEvent()"
         >Calendar: {{ calendar() }}</text
+      >
+    </view>
+    <view style="display: flex; flex-direction: row; margin-top: 8px;">
+      <text flatten="false" (bindtap)="signInWithApple()"
+        >Apple: {{ apple() }}</text
       >
     </view>
   `,

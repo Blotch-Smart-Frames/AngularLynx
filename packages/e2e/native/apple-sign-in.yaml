@@ -6,23 +6,13 @@
 # it shows only for an app with the entitlement (without it the request
 # fails at once). Closing the alert ends the request with
 # ASAuthorizationError 1000, which the storage page's "Apple" line shows as
-# failed (held). Android has no module: the line says "none",
-# and a tap shows the unsupported rejection.
+# failed (held). The app's own iOS build only: Android has no sheet (the
+# runtime's unit tests cover its unsupported rejection), and the line is below
+# the Android emulator's screen.
 appId: ${APP_ID}
 ---
 - runFlow: open-app.yaml
 - tapOn: Open storage
-- runFlow:
-    when:
-      platform: Android
-    commands:
-      - extendedWaitUntil:
-          visible: 'Apple: none'
-          timeout: 15000
-      - tapOn: 'Apple: none'
-      - extendedWaitUntil:
-          visible: 'Apple: unsupported'
-          timeout: 15000
 - runFlow:
     when:
       platform: iOS

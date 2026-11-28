@@ -760,6 +760,14 @@ const isTextish = (el: LynxElement): boolean =>
   el.tagName === 'text' || el.tagName === 'raw-text';
 
 /**
+ * The text one raw-text shows when it's a whole inline context alone: its
+ * leading and trailing space go, as #normalizeTextRoot trims a context's
+ * edges (collapseWhitespace left at most one at each).
+ */
+const trimTextEdges = (text: string): string =>
+  text.replace(/^ /, '').replace(/ $/, '');
+
+/**
  * Whether the first LynxElement has made layout reads ask for a flush, and
  * animations count as writes waiting for one (see the constructor).
  */
@@ -1055,6 +1063,12 @@ export class LynxElement implements BaseLynxElement {
   #children: LynxElement[] | null = null;
   /**
    * Back-pointer to the JS parent, for O(1) detach from its #children.
+   * While it's set, its native element is this one's native parent: every
+   * insert through a LynxElement sets it (see #adoptChild), and a removal
+   * clears it (see #doRemove), so parentNode() and the removal read it
+   * rather than asking native. A list's item moved in from another element
+   * keeps the element it was in until the end of the cycle, as native does
+   * (see adoptVirtualChild).
    *
    * Undefined, rather than null, from when LynxDocument makes the element's
    * native element (see markNew) until it's first put in a parent: the
@@ -1611,6 +1625,12 @@ export class LynxElement implements BaseLynxElement {
     // A class, id, data-* or `hidden` asks for no flush itself (see
     // nativeWriteEpoch).
     nativeWriteEpoch++;
+    // A raw-text's text (renderer.setValue), the commonest write there is:
+    // none of the names below is `text`, so it skips their checks.
+    if (name === 'text' && this.tagName === 'raw-text') {
+      this.#setRawText(value);
+      return;
+    }
     // HTML's `hidden`, as `[hidden]="!open()"` or a bare `hidden` sets it.
     // Like any boolean attribute, it hides whenever it's there, whatever its
     // value; a `false` property binding or a removal takes it away.
@@ -1759,37 +1779,12 @@ export class LynxElement implements BaseLynxElement {
         // it reaches native only with a flush (see scheduleSettleFlush).
         scheduleSettleFlush();
       }
-      // raw-text carries its text via the 'text' attribute (renderer.setValue).
-      // It isn't mirrored with the other attributes: #text holds it, which a
-      // rebuilt raw-text is made with (see #recreateSubtree), and a Map for
-      // it alone cost each raw-text about 170 bytes of PrimJS's heap (issue
-      // #708).
-      const isRawText = this.tagName === 'raw-text' && name === 'text';
       // Mirror for recreation. removeAttribute() funnels here with value=null,
       // so drop the key then rather than replaying a cleared attribute.
       if (value == null) {
         this.#attrs?.delete(name);
-      } else if (!isRawText) {
+      } else {
         (this.#attrs ??= new Map()).set(name, value);
-      }
-      if (isRawText) {
-        // The renderer feeds this the COLLAPSED-but-untrimmed value (see
-        // renderer.setValue → collapseWhitespace). Stash it as the raw source and
-        // queue the enclosing text for the positional edge-trim pass; #text is
-        // the provisional display until that pass corrects it (#setDisplayedText).
-        const text = value == null ? undefined : String(value);
-        const blankChanged = isBlankText(this.#rawText) !== isBlankText(text);
-        this.#text = text;
-        this.#rawText = text;
-        LynxElement.#enqueueTextNormalization(this);
-        // Its anonymous <text> hides while all it holds is blank, which only
-        // a change between blank and not can change: a regroup reads the text
-        // for nothing else (see #regroup), so a counter's every tick needn't
-        // regroup its parent's children.
-        const parent = this.#jsParent;
-        if (blankChanged && parent && parent.#anonymous && parent.#jsParent) {
-          LynxElement.#pendingFlow.add(parent.#jsParent);
-        }
       }
       if (this.tagName === 'blur-view' && BLUR_MATERIAL_ATTRIBUTES.has(name)) {
         this.updateBlurMaterial();
@@ -1802,6 +1797,68 @@ export class LynxElement implements BaseLynxElement {
    * material (see android-blur-material). LynxDocument calls it when it
    * creates one, and setAttribute whenever an attribute it depends on changes.
    */
+  /**
+   * Sets a raw-text's text, which the renderer feeds it COLLAPSED but
+   * untrimmed (see renderer.setValue → collapseWhitespace): its edges are the
+   * text's inline context's to decide (see #normalizeTextRoot).
+   *
+   * It isn't mirrored with the other attributes: #text holds what it shows,
+   * which a rebuilt raw-text is made with (see #recreateSubtree), and a Map
+   * for it alone cost each raw-text about 170 bytes of PrimJS's heap (issue
+   * #708). #rawText holds the untrimmed value, the pass's source.
+   */
+  #setRawText(value: unknown): void {
+    // Alone in its outermost <text>, as most interpolations are
+    // (`<text>{{ name() }}</text>`), it's the whole context: both its edges
+    // go, and native gets that once, now, rather than the untrimmed text now
+    // and the pass over the cycle's texts after it (issue #878). An insert
+    // or removal around it later in the cycle queues the pass, which starts
+    // again from #rawText. Otherwise #text is the provisional display until
+    // the pass corrects it (#setDisplayedText).
+    const soleLeaf = typeof value === 'string' && this.#isSoleTextLeaf();
+    const shown = soleLeaf ? trimTextEdges(value) : value;
+    if (shown == null) {
+      // At the flush, unless it's set again first: see #removedAttributes.
+      (this.#removedAttributes ??= new Set()).add('text');
+      LynxElement.#pendingAttributeRemovals.add(this);
+    } else {
+      this.#removedAttributes?.delete('text');
+      __SetAttribute(this.element, 'text', shown);
+    }
+    // Set outside change detection (from a timer, a promise, a gesture), it
+    // reaches native only with a flush (see scheduleSettleFlush).
+    scheduleSettleFlush();
+    const text = value == null ? undefined : String(value);
+    const blankChanged = isBlankText(this.#rawText) !== isBlankText(text);
+    this.#text = shown == null ? undefined : String(shown);
+    this.#rawText = text;
+    if (!soleLeaf) LynxElement.#enqueueTextNormalization(this);
+    // Its anonymous <text> hides while all it holds is blank, which only a
+    // change between blank and not can change: a regroup reads the text for
+    // nothing else (see #regroup), so a counter's every tick needn't regroup
+    // its parent's children.
+    const parent = this.#jsParent;
+    if (blankChanged && parent && parent.#anonymous && parent.#jsParent) {
+      LynxElement.#pendingFlow.add(parent.#jsParent);
+    }
+  }
+
+  /**
+   * Whether this raw-text is all its outermost <text> holds, which makes it
+   * a whole inline context by itself (see setAttribute): the same root the
+   * pass finds (see commitPendingTextNormalization), with nothing else in it.
+   */
+  #isSoleTextLeaf(): boolean {
+    const parent = this.#jsParent;
+    return (
+      !!parent &&
+      parent.tagName === 'text' &&
+      !parent.#paintingDead &&
+      parent.#children?.length === 1 &&
+      parent.#jsParent?.tagName !== 'text'
+    );
+  }
+
   updateBlurMaterial(): void {
     if (usesAndroidBlurMaterials()) {
       this.#setRuntimeStyle(androidBlurMaterialStyle(this.#attrs ?? new Map()));
@@ -3837,6 +3894,8 @@ export class LynxElement implements BaseLynxElement {
    * `__GetParent` or `__FirstElement` makes a handle.
    */
   #wouldFormCycle(child: LynxElement): boolean {
+    // Already a child of this (an `@for` reorder): this isn't inside it.
+    if (child.#jsParent === this) return false;
     if (!child.#unplaced()) {
       return wouldFormCycle(this.element, child.element, false);
     }
@@ -4325,7 +4384,9 @@ export class LynxElement implements BaseLynxElement {
   #removeIfMoveWouldBeLost(newParent: LynxElement): void {
     if (__WEB__ || this.#paintingDead || this._virtualParent) return;
     // A new element, being put in its first parent: nothing to move from.
-    if (this.#unplaced()) return;
+    // Nor is there for one moving within its parent (an `@for` reorder),
+    // which this wrapper knows without asking native (see #jsParent).
+    if (this.#unplaced() || this.#jsParent === newParent) return;
     const oldParent = __GetParent(this.element);
     if (
       !oldParent ||
@@ -4347,7 +4408,12 @@ export class LynxElement implements BaseLynxElement {
     // The native parent, not parentNode()'s wrapper: the parent may have been
     // released already (an ancestor's removal earlier in this commit released
     // the subtree), and looking it up would register a new wrapper for it.
-    const parent = __GetParent(this.element);
+    // The parent this wrapper was put in holds it natively (see #jsParent),
+    // and its native element is had without asking native, as every `@for`
+    // row a list rebinds removes a view (issue #878).
+    const parent = this.#jsParent
+      ? this.#jsParent.element
+      : __GetParent(this.element);
     if (!parent) {
       return;
     }
@@ -4709,6 +4775,16 @@ export class LynxElement implements BaseLynxElement {
    */
   parentNode(): LynxElement | null {
     if (this._virtualParent) return this._virtualParent;
+    // The parent this wrapper was put in, which is its native element's
+    // parent (see #jsParent): Angular asks for it on every view it inserts
+    // (an `@if`'s, each `@for` row's), and reading it from native cost a
+    // `__GetParent` and a `__GetElementUniqueID` each time (issue #878).
+    // It's also always the canonical wrapper, which native's answer is only
+    // while the parent is registered.
+    const known = this.#jsParent;
+    if (known) return known.#anonymous ? known.parentNode() : known;
+    // Not put in a parent by the runtime (a hydrated element, a query's
+    // hit), or out of the tree: native knows.
     const parent = __GetParent(this.element);
     if (!parent) return null;
     // Return the CANONICAL wrapper, not a throwaway: Angular uses this as the

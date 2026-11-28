@@ -74,7 +74,7 @@ The plugin finds those files in Angular's compiled output, and in installed pack
 | `addClass()`, `removeClass()`   | On iOS and Android during change detection, one `__SetClasses` per element at the end of the cycle. Otherwise `__AddClass`; `__GetClasses` then `__SetClasses`         |
 | `setValue()` on a text node     | `__SetAttribute(el, 'text', value)`                                                                                                                                    |
 | `listen()`                      | `__AddEvent(el, eventType, name, { type: 'worklet', value: listener })`, with `eventType` from the `bind`, `catch`, `capture-` or `global-` prefix                     |
-| `parentNode()`, `nextSibling()` | `__GetParent`, `__NextElement`                                                                                                                                         |
+| `parentNode()`, `nextSibling()` | The parent the runtime put the element in, or `__GetParent` for one it didn't (a hydrated element); `__NextElement`                                                    |
 
 A few choices behind the table:
 
@@ -101,7 +101,7 @@ Element functions change the engine's element tree right away, but nothing is la
 
 1. **`processPendingClasses()`** writes the classes the cycle changed, with one `__SetClasses` per element.
 2. **`processPendingRemovals()`** commits queued removals with `__RemoveElement`.
-3. **`processPendingTextNormalization()`** trims edge spaces from text runs that changed.
+3. **`processPendingTextNormalization()`** trims edge spaces from text runs that changed. A run that's all its `<text>` holds was sent trimmed when it was set, so it skips this.
 4. **`processPendingListUpdates()`** tells each `<list>` that gained, lost or moved items which ones, with its `update-list-info`.
 5. **`__FlushElementTree()`** commits everything to the screen, the lists' updates included, in one flush however many lists changed. The engine asks each list for its items while it lays them out, and each item is flushed on its own as it's added. React Lynx sends the lists of a commit before its one flush the same way.
 

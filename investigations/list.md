@@ -54,7 +54,7 @@ After #884, the runtime's own share of a rebound row is small. Most of `componen
 | … two dot views written out, hidden with `display: none` when there's no type (no `@for`) |  46 |             −45% |
 | … two dot views written out, the heart inlined                                            |  40 |             −52% |
 
-- **An `@for` whose keys change from item to item is most of a row's cost.** Tracking by `$index` keeps the views and updates their bindings in place. That's the right track for values with no identity of their own, such as a row's tags, dots or stars: nothing in them keeps state that should follow a value. Writing out a short list with a known maximum skips the embedded views altogether.
+- **An `@for` whose keys change from item to item is a row's biggest single cost**, about 30% of the bind here. Tracking by `$index` keeps the views and updates their bindings in place. That's the right track for values with no identity of their own, such as a row's tags, dots or stars: nothing in them keeps state that should follow a value. Writing out a short list with a known maximum skips the embedded views altogether.
 - **A child component costs a view check and its input writes**: the heart was 5%. A small leaf with no state of its own can be inlined, though a component doesn't cost much on its own.
 - **An `@if` that stays true costs almost nothing.** It only costs when it flips, since flipping destroys or creates its view.
 

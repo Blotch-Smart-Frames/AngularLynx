@@ -79,6 +79,9 @@ describe('cn', () => {
     const classes = componentClasses();
     expect(classes.length).toBeGreaterThan(300);
     classes.forEach((className, index) => {
+      // Against itself first: twMerge() keeps one of the two, so this fails
+      // for a class cn() has no group for, whatever its neighbors below are.
+      expectTwMerge(merge, className, className);
       expectTwMerge(
         merge,
         className,

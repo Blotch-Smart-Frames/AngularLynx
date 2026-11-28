@@ -479,6 +479,14 @@ export const FLOWS: readonly Flow[] = [
     // open the editor in.
     only: { platform: 'ios', host: 'shell' },
   },
+  {
+    file: 'save-photo.yaml',
+    description: 'saves a photo to the library with LynxPhotoLibrary',
+    // Only the app's own builds have the photo library module. Lynx Explorer
+    // rejects with unavailable.
+    only: { host: 'shell' },
+    deviceFault: stalledMetalCompiler,
+  },
 ];
 
 /**

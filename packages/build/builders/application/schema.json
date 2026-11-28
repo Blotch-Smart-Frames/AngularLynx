@@ -262,11 +262,12 @@
           "type": "string"
         },
         "photos": {
-          "type": "string"
+          "type": "string",
+          "description": "Why the app reads the photo library (NSPhotoLibraryUsageDescription), on iOS only: Android declares nothing for it, since Google Play rejects READ_MEDIA_IMAGES without a core need. LynxImagePicker and LynxPhotoLibrary don't need it."
         },
         "savePhotos": {
           "type": "string",
-          "description": "Why the app adds images to the photo library: iOS shows it the first time someone taps Save Image in LynxShare's share sheet. Defaults to \"Saves the images you choose to your photo library.\""
+          "description": "Why the app adds images and videos to the photo library: iOS shows it the first time LynxPhotoLibrary saves, or someone taps Save Image in LynxShare's share sheet. Without it, the app has no photo library module, and Save Image's reason is \"Saves the images you choose to your photo library.\" Android needs no permission (LynxPhotoLibrary saves from Android 10)."
         },
         "contacts": {
           "type": "string"

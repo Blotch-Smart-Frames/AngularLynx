@@ -204,7 +204,7 @@ Lynx has no date field and no date picker. Don't build a calendar by hand: `npx 
 
 ### No `navigator.share()` or `File`
 
-Share with `LynxShare`: `await sharing.share({ files: [{ blob, name: 'photo.jpg' }], title, text, url })` opens the phone's share sheet and resolves `true`, or `false` when closed (on Android, `true` once the person picks an app). Only the `--platform` apps (`ng build` and `ng serve`) and the web preview have it; Lynx Explorer and specs reject with `unavailable`. See [http-requests.md](http-requests.md#share-files-and-links).
+Share with `LynxShare`: `await sharing.share({ files: [{ blob, name: 'photo.jpg' }], title, text, url })` opens the phone's share sheet and resolves `true`, or `false` when closed (on Android, `true` once the person picks an app). Only the `--platform` apps (`ng build` and `ng serve`) and the web preview have it; Lynx Explorer and specs reject with `unavailable`. See [http-requests.md](http-requests.md#share-files-and-links). To save an image or a video to Photos in one tap, use `LynxPhotoLibrary.save({ blob, name })`, turned on with `permissions.savePhotos` (Android 10 and later only); see [http-requests.md](http-requests.md#save-to-the-photo-library).
 
 ### No `<select>`, `<input type="checkbox">`, `<input type="radio">`
 

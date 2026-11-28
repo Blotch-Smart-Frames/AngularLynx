@@ -152,6 +152,20 @@ export const androidGenerator: PlatformGenerator = {
         'calendar',
       );
     }
+    // The photo library module, and the lines that register it, are only
+    // for an app that asks for savePhotos.
+    if (!app.permissions.savePhotos) {
+      removeTemplateFiles(
+        dir,
+        ANDROID_PHOTO_LIBRARY_SOURCES.map((file) =>
+          path.join(SHELL_SOURCES, file),
+        ),
+      );
+      removeMarkedLines(
+        path.join(dir, SHELL_SOURCES, 'MainActivity.kt'),
+        'photo-library',
+      );
+    }
     leaveOutCanvas(dir, features);
   },
   bundleDir: (dir) => path.join(dir, 'app/src/main/assets'),
@@ -209,6 +223,12 @@ export const ANDROID_BIOMETRICS_SOURCES = ['BiometricsModule.kt'] as const;
  * which only an app with `filePicker` keeps.
  */
 export const ANDROID_FILE_PICKER_SOURCES = ['FilePickerModule.kt'] as const;
+
+/**
+ * The shell's photo library module, `AngularLynxPhotoLibrary`
+ * (LynxPhotoLibrary), which only an app with `permissions.savePhotos` keeps.
+ */
+export const ANDROID_PHOTO_LIBRARY_SOURCES = ['PhotoLibraryModule.kt'] as const;
 
 /** The prompt's default reason, from `permissions.biometrics`. */
 const BIOMETRICS_STRINGS = `${RESOURCES}/values/biometrics.xml`;

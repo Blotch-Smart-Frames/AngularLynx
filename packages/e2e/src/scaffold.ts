@@ -174,6 +174,7 @@ export const scaffoldApp = async (
   addStoreReview(appDir);
   addCalendar(appDir);
   addSignInWithApple(appDir);
+  addSavePhotosPermission(appDir);
   step('Layer 2: compile a prebuilt library');
   await addPrebuiltLibrary(appDir, pm, exec);
 
@@ -1413,6 +1414,34 @@ const addCameraPermission = (appDir: string) => {
   options['permissions'] = {
     ...(options['permissions'] as Record<string, string> | undefined),
     camera: 'Scans the codes in the end-to-end tests',
+  };
+  writeFileSync(workspacePath, `${JSON.stringify(workspace, null, 2)}\n`);
+};
+
+/**
+ * Gives the app `permissions.savePhotos`, which keeps LynxPhotoLibrary's
+ * module in the native projects (issue #927): the photo page's "Save" adds a
+ * photo with it (native/save-photo.yaml). compile-features.ts builds a
+ * variant without it, as most apps are.
+ */
+const addSavePhotosPermission = (appDir: string) => {
+  step('Layer 2: add savePhotos, so the native builds keep the photo library');
+  const workspacePath = path.join(appDir, 'angular.json');
+  const workspace = readJson<{
+    projects: Record<
+      string,
+      { architect?: Record<string, { options?: Record<string, unknown> }> }
+    >;
+  }>(workspacePath);
+  const options = Object.values(workspace.projects)[0]?.architect?.['build']
+    ?.options;
+  check(
+    options !== undefined,
+    "angular.json's build target has no options; the project `ng new` generates has changed shape. Update addSavePhotosPermission() in packages/e2e/src/scaffold.ts.",
+  );
+  options['permissions'] = {
+    ...(options['permissions'] as Record<string, string> | undefined),
+    savePhotos: 'Saves a photo in the end-to-end tests',
   };
   writeFileSync(workspacePath, `${JSON.stringify(workspace, null, 2)}\n`);
 };

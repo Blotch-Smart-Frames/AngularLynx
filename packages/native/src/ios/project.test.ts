@@ -23,6 +23,7 @@ import {
   IOS_ENTITLEMENTS,
   iosEntitlements,
   IOS_FILE_PICKER_SOURCES,
+  IOS_PHOTO_LIBRARY_SOURCES,
   IOS_BARCODE_SCANNER_SOURCE,
   IOS_CANVAS_SOURCES,
   IOS_STORE_REVIEW_SOURCE,
@@ -929,5 +930,44 @@ describe('withoutFrameworks', () => {
     expect(() => withoutFrameworks('a\nb', ['libEGL'])).toThrow(
       'The project has no libEGL.xcframework to leave out.',
     );
+  });
+});
+
+describe('iosGenerator and the photo library', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(path.join(os.tmpdir(), 'angular-lynx-ios-'));
+    cpSync(path.join(TEMPLATES_DIR, 'ios'), dir, { recursive: true });
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('keeps the module for an app with savePhotos, with its reason', () => {
+    const withSave = app({ permissions: { savePhotos: 'Save your edits' } });
+    iosGenerator.configure(dir, withSave, dir);
+    iosGenerator.leaveOut(dir, { canvas: true, webgl: true }, withSave);
+    for (const file of IOS_PHOTO_LIBRARY_SOURCES) {
+      expect(existsSync(path.join(dir, file))).toBe(true);
+    }
+    expect(readFileSync(path.join(dir, 'App/Info.plist'), 'utf8')).toMatch(
+      /<key>NSPhotoLibraryAddUsageDescription<\/key>\s*<string>Save your edits<\/string>/,
+    );
+  });
+
+  it('takes the module out of an app without savePhotos, which names it only by name', () => {
+    iosGenerator.configure(dir, app(), dir);
+    iosGenerator.leaveOut(dir, { canvas: true, webgl: true }, app());
+    for (const file of IOS_PHOTO_LIBRARY_SOURCES) {
+      expect(existsSync(path.join(dir, file))).toBe(false);
+    }
+    const app_ = path.join(dir, 'App');
+    for (const file of readdirSync(app_).filter((f) => f.endsWith('.swift'))) {
+      const source = readFileSync(path.join(app_, file), 'utf8').replace(
+        /\/\/.*$/gm,
+        '',
+      );
+      expect(source, file).not.toMatch(
+        /\bPhotoLibraryModule\b|import Photos\b/,
+      );
+    }
   });
 });

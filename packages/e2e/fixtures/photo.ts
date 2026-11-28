@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
   BarcodeScannerError,
@@ -6,7 +6,22 @@ import {
   LYNX_ELEMENTS,
   LynxBarcodeScanner,
   LynxImagePicker,
+  LynxPhotoLibrary,
+  PhotoLibraryError,
 } from '@blotch/angular-lynx';
+
+/**
+ * An 8x8 red PNG for "Save": the photo library takes only an image it can
+ * read, and the fixture has no canvas to make one with.
+ */
+const RED_PNG = new Uint8Array([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49,
+  0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x08, 0x08, 0x02,
+  0x00, 0x00, 0x00, 0x4b, 0x6d, 0x29, 0xdc, 0x00, 0x00, 0x00, 0x11, 0x49, 0x44,
+  0x41, 0x54, 0x78, 0xda, 0x63, 0x78, 0xe0, 0xe0, 0x80, 0x15, 0x31, 0x0c, 0x2d,
+  0x09, 0x00, 0x8a, 0xc6, 0x58, 0x01, 0xbc, 0x3b, 0x52, 0xd4, 0x00, 0x00, 0x00,
+  0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+]);
 
 /**
  * The static server's echo (HTTP_DATA in src/static-server.ts), which
@@ -45,7 +60,8 @@ const upload = (blob: Blob): Promise<{ reply: string; bytes: number }> =>
  * Android emulator, the canvas page's row of links is the last thing on the
  * screen, so there's no room for another there. "Open video", under the
  * status, opens video-toggle.ts: the row has no room for it either. "Scan
- * code", beside it, opens LynxBarcodeScanner (see scan()).
+ * code", beside it, opens LynxBarcodeScanner (see scan()), and "Save",
+ * beside that, saves a photo with LynxPhotoLibrary (see save()).
  */
 @Component({
   selector: 'app-photo',
@@ -99,15 +115,63 @@ const upload = (blob: Blob): Promise<{ reply: string; bytes: number }> =>
       >
         <text>Scan code</text>
       </view>
+      <view
+        [flatten]="false"
+        [accessibility-element]="true"
+        [accessibility-label]="saveLabel()"
+        accessibility-traits="button"
+        style="margin-left: 8px; padding: 12px; background-color: #e0e0e0;"
+        (bindtap)="save()"
+      >
+        <text>{{ saveLabel() }}</text>
+      </view>
     </view>
     <text flatten="false" style="margin-top: 8px;">Scan: {{ scanned() }}</text>
+    <text flatten="false" style="margin-top: 8px;">Saved: {{ saved() }}</text>
   `,
 })
 export class PhotoRoute {
   readonly #picker = inject(LynxImagePicker);
   readonly #scanner = inject(LynxBarcodeScanner);
+  readonly #photos = inject(LynxPhotoLibrary);
   readonly status = signal('none');
   readonly scanned = signal('none');
+  readonly saved = signal('none');
+  /**
+   * How the save went, on the button itself: CI's 320x640 Android emulator
+   * shows nothing below the scan line, where "Saved:" has the details.
+   */
+  readonly saveLabel = computed(() => {
+    const saved = this.saved();
+    if (saved === 'none') return 'Save';
+    if (saved === '…') return 'Saving';
+    return saved === 'yes' ? 'Saved' : 'Not saved';
+  });
+
+  /**
+   * Saves RED_PNG to the photo library with LynxPhotoLibrary (issue #927),
+   * which the app has because the harness gives it `permissions.savePhotos`
+   * (addSavePhotosPermission in src/scaffold.ts). The button reads "Saved",
+   * and the line under it "Saved: yes", once the shell's module answers with
+   * the new photo's ID; otherwise the line has the error's code and message
+   * (native/save-photo.yaml).
+   */
+  async save(): Promise<void> {
+    this.saved.set('…');
+    try {
+      const id = await this.#photos.save({
+        blob: new Blob([RED_PNG], { type: 'image/png' }),
+        name: 'e2e-red.png',
+      });
+      this.saved.set(id ? 'yes' : 'no ID');
+    } catch (error) {
+      this.saved.set(
+        error instanceof PhotoLibraryError
+          ? `${error.code}, ${error.message}`
+          : (error as Error).message,
+      );
+    }
+  }
 
   /**
    * Opens LynxBarcodeScanner (issue #917), which the app has because the

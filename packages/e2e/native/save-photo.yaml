@@ -1,0 +1,32 @@
+# Layer 6, the app's own builds only: LynxPhotoLibrary (issue #927). The
+# harness gives the app permissions.savePhotos (addSavePhotosPermission in
+# src/scaffold.ts), which keeps the photo library module in the shells. The
+# photo page's "Save" (fixtures/photo.ts) adds an 8x8 PNG to the library, and
+# the button reads "Saved" once the module answers with the new photo's ID: a
+# PHAsset's local identifier on iOS, a MediaStore content:// URI on Android.
+# iOS asks for add-only access the first time, with the app's savePhotos
+# reason; Android (CI's emulator is Android 14) asks nothing. Lynx Explorer
+# has no module.
+appId: ${APP_ID}
+---
+- runFlow: open-app.yaml
+- tapOn: Open storage
+- tapOn: Open canvas
+- tapOn: Open photo
+- tapOn: Save
+# iOS's add-only prompt, the first run on a simulator only: it remembers the
+# answer while the app stays installed.
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - tapOn:
+          text: 'Allow( Access)?|OK'
+          optional: true
+# GitHub's iOS Simulator can take well over 15 seconds to answer the first
+# add: on a run of 2026-11-28 its Photos daemon had taken the request and still
+# hadn't answered 15 seconds later. A local Simulator answers in under one.
+- extendedWaitUntil:
+    visible: Saved
+    timeout: 60000
+- takeScreenshot: save-photo

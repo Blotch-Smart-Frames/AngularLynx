@@ -1,0 +1,125 @@
+# LynxPhotoLibrary
+
+Saves an image or a video to the phone's photo library, without the share sheet. `import { LynxPhotoLibrary, PhotoLibraryError, type PhotoLibraryFile, type PhotoLibraryPermission, type PhotoLibraryErrorCode } from '@blotch/angular-lynx';`
+
+Use it for a one-tap "Save to Photos": a photo editor's export, a ticket or a QR code, media the app downloaded. To let the person choose where a file goes (Messages, Files, AirDrop), use [`LynxShare`](/guide/share) instead.
+
+## Turn it on
+
+The photo library is opt-in. Set `permissions.savePhotos` in the build target's options in angular.json, with the reason iOS shows when it asks:
+
+```jsonc
+"permissions": { "savePhotos": "Save your edits to Photos" }
+```
+
+An app without it has no photo library code, on iOS or Android, and `save()` rejects with `unavailable`. Android needs no permission for it, so the manifest stays the same.
+
+## Usage
+
+```typescript
+const photos = inject(LynxPhotoLibrary);
+
+canvas.toBlob(
+  async (blob) => {
+    if (!blob) return;
+    try {
+      await photos.save({ blob, name: 'edit.jpg' });
+      this.saved.set(true);
+    } catch (error) {
+      if (
+        error instanceof PhotoLibraryError &&
+        error.code === 'permission-denied'
+      ) {
+        // Only Settings can change it now.
+        this.askForSettings.set(true);
+        return;
+      }
+      throw error;
+    }
+  },
+  'image/jpeg',
+  0.9,
+);
+```
+
+A photo from [`LynxImagePicker`](/guide/image-picker) saves as it is: `photos.save(picked)`.
+
+## API
+
+### `LynxPhotoLibrary`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxPhotoLibrary {
+  readonly addPermission: Signal<PhotoLibraryPermission>;
+  save(file: PhotoLibraryFile): Promise<string>;
+}
+```
+
+- **iOS:** `PHPhotoLibrary` with add-only access, the access the share sheet's Save Image uses: the app can add photos and videos but can't see the library. iOS asks the first time, with `permissions.savePhotos`'s reason.
+- **Android:** MediaStore, into `Pictures/<app name>` for a photo and `Movies/<app name>` for a video, where the gallery and Google Photos find them. Android 10 and later need no permission. **Android 7 to 9 aren't supported yet:** there `save()` rejects with `unavailable` and `addPermission` is `unsupported`, since saving there needs a storage permission the app would have to ask for while it runs.
+- **Web preview:** downloads the file, as a browser has no photo library. Call `save()` from the tap's handler, as for `LynxShare`.
+
+Only the apps `--platform` builds, with `ng build` or `ng serve`, have it; elsewhere, such as Lynx Explorer, `save()` rejects with `unavailable`. Under the testing library, [`savedPhotos()`](/api/testing-library#savedphotos) lists what was saved and `setPhotoLibraryPermission()` sets what the person answers.
+
+### `LynxPhotoLibrary.save()`
+
+```typescript
+save(file: PhotoLibraryFile): Promise<string>;
+```
+
+Adds the image or the video to the library, asking the person first if the app hasn't yet, and resolves with the new item's ID: iOS's `PHAsset` local identifier, Android's `content://` URI, and in the web preview the file's name. Rejects with a `TypeError` when `file` has no Blob, and with a [`PhotoLibraryError`](#photolibraryerror) otherwise.
+
+### `PhotoLibraryFile`
+
+```typescript
+type PhotoLibraryFile = {
+  readonly blob: Blob;
+  readonly name?: string;
+};
+```
+
+| Field  | Description                                                                                                                                                                       |
+| ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `blob` | The image or the video. Its `type` says which (`image/jpeg`, `video/mp4`); when it has none, the name's extension does                                                            |
+| `name` | The file name, which Android's gallery and the web preview's download show. A photo without one is saved as `Photo-<time>.<extension>`, and a video as `Video-<time>.<extension>` |
+
+### `addPermission`
+
+```typescript
+readonly addPermission: Signal<PhotoLibraryPermission>;
+
+type PhotoLibraryPermission = 'granted' | 'limited' | 'denied' | 'undetermined' | 'unsupported';
+```
+
+Whether the app may add to the photo library, read from the phone when the service is first injected and again after each `save()`. Use it to show a "Turn on in Settings" hint once the person has said no. You don't need to check it before saving: `save()` asks when it's `undetermined`.
+
+| Value          | Meaning                                                                                             |
+| -------------- | --------------------------------------------------------------------------------------------------- |
+| `granted`      | The app may add. Always so on Android 10 and later, and in the web preview                          |
+| `limited`      | iOS's limited library access. Adding still works                                                    |
+| `denied`       | The person said no, or a restriction such as Screen Time blocks it. Only Settings can change it     |
+| `undetermined` | The app hasn't asked yet; the first `save()` asks. Also what it holds until the phone first answers |
+| `unsupported`  | The host has no photo library module: no `permissions.savePhotos`, Android 7 to 9, Lynx Explorer    |
+
+### `PhotoLibraryError`
+
+```typescript
+class PhotoLibraryError extends Error {
+  readonly code: PhotoLibraryErrorCode;
+}
+
+type PhotoLibraryErrorCode =
+  'permission-denied' | 'unsupported-type' | 'unavailable' | 'failed';
+```
+
+| `code`              | When                                                                                                                 |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `permission-denied` | The person didn't let the app add to the library, now or before. Send them to Settings to change it                  |
+| `unsupported-type`  | The file isn't an image or a video, by its Blob's type or its name's extension, or the library can't read its format |
+| `unavailable`       | The host has no photo library: no `permissions.savePhotos`, Android 7 to 9, or not a `--platform` app                |
+| `failed`            | The file couldn't be written to the library, such as when the phone is out of space                                  |
+
+## Reading the library
+
+`permissions.photos` (`NSPhotoLibraryUsageDescription`) is for an app whose own native code reads the whole library, and it's iOS only: Android declares nothing for it, since Google Play rejects an app that declares `READ_MEDIA_IMAGES` without a core need for the whole library. Neither `LynxPhotoLibrary` nor `LynxImagePicker`, whose pickers need no permission, needs it.

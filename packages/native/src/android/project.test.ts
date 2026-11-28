@@ -24,6 +24,7 @@ import {
   ANDROID_WEBGL_SOURCES,
   androidGenerator,
   biometricsStringsXml,
+  ANDROID_PHOTO_LIBRARY_SOURCES,
   deepLinkEntries,
   findAndroidSdk,
   permissionEntries,
@@ -108,6 +109,57 @@ describe('permissionEntries', () => {
     ).toBe(
       '<uses-permission android:name="android.permission.USE_BIOMETRIC" />',
     );
+  });
+});
+
+describe('permissionEntries and the photo library', () => {
+  it('declares nothing for photos or savePhotos', () => {
+    // Google Play rejects READ_MEDIA_IMAGES without a core need, and saving
+    // needs no permission from Android 10, the first LynxPhotoLibrary saves on.
+    expect(
+      permissionEntries(app({ permissions: { photos: 'x', savePhotos: 'y' } })),
+    ).toBe('');
+  });
+});
+
+describe('androidGenerator and the photo library', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(path.join(os.tmpdir(), 'angular-lynx-android-'));
+    cpSync(path.join(TEMPLATES_DIR, 'android'), dir, { recursive: true });
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  const shell = path.join('app/src/main/java/dev/angularlynx/shell');
+  const read = (file: string) => readFileSync(path.join(dir, file), 'utf8');
+
+  it('keeps the module and its registration for an app with savePhotos', () => {
+    const withSave = app({ permissions: { savePhotos: 'Save your edits' } });
+    androidGenerator.configure(dir, withSave, dir);
+    androidGenerator.leaveOut(dir, { canvas: true, webgl: true }, withSave);
+    for (const file of ANDROID_PHOTO_LIBRARY_SOURCES) {
+      expect(existsSync(path.join(dir, shell, file))).toBe(true);
+    }
+    expect(read(`${shell}/MainActivity.kt`)).toContain(
+      'registerModule(PhotoLibraryModule.NAME',
+    );
+  });
+
+  it('takes them out of an app without savePhotos', () => {
+    androidGenerator.configure(dir, app(), dir);
+    androidGenerator.leaveOut(dir, { canvas: true, webgl: true }, app());
+    for (const file of ANDROID_PHOTO_LIBRARY_SOURCES) {
+      expect(existsSync(path.join(dir, shell, file))).toBe(false);
+    }
+    const activity = read(`${shell}/MainActivity.kt`);
+    expect(activity).not.toContain('angular-lynx:photo-library');
+    expect(activity).toContain('registerModule(ShareModule.NAME');
+    for (const file of readdirSync(path.join(dir, shell))) {
+      const source = read(path.join(shell, file))
+        .replace(/\/\/.*$/gm, '')
+        .replace(/\/\*[\s\S]*?\*\//g, '');
+      expect(source, file).not.toMatch(/\bPhotoLibraryModule\b/);
+    }
   });
 });
 
@@ -597,7 +649,7 @@ describe('androidGenerator.leaveOut', () => {
   // The optional modules an app turns on keep their MainActivity lines, so
   // those don't change with the canvas's.
   const withEveryModule = app({
-    permissions: { biometrics: 'Unlock' },
+    permissions: { biometrics: 'Unlock', savePhotos: 'Save' },
     filePicker: true,
     storeReview: true,
     calendar: true,

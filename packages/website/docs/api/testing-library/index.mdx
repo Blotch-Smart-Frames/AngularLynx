@@ -349,6 +349,36 @@ expect(screen.getByText('Signed in as ada@example.com')).toBeInTheDocument();
 expect(appleSignInRequests()).toEqual([{ scopes: ['email', 'fullName'] }]);
 ```
 
+### `savedPhotos()`
+
+```typescript
+function savedPhotos(): readonly {
+  readonly id: string;
+  readonly name: string;
+  readonly type: string;
+  readonly bytes: Uint8Array;
+}[];
+function setPhotoLibraryPermission(
+  permission: 'granted' | 'limited' | 'denied' | 'undetermined' | 'unsupported',
+): void;
+```
+
+Stand in for the phone's photo library behind [`LynxPhotoLibrary`](/api/angular-lynx/photo-library):
+
+- **`savedPhotos()`** lists what `save()` added in this test, oldest first, with the ID it resolved with.
+- **`setPhotoLibraryPermission()`** sets what the person has answered. `denied` makes `save()` reject with `permission-denied`, and `unsupported` with `unavailable`. Each test starts `undetermined`: the first save asks, and the person allows it.
+
+Set the permission before rendering: the service reads it when it's created, and again after each save. Saves reach the app through the background thread, so wait with `waitForUpdate()`.
+
+```typescript
+await render(Editor);
+
+fireEvent.tap(screen.getByText('Save to Photos'));
+await waitForUpdate();
+
+expect(savedPhotos()).toMatchObject([{ name: 'edit.jpg', type: 'image/jpeg' }]);
+```
+
 ### `pressBackButton()`
 
 ```typescript

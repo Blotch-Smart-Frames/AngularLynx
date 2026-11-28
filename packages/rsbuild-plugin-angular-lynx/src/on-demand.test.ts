@@ -305,6 +305,82 @@ export const t = \`2d\${1}\`;`;
     }
   });
 
+  it('gives the canvas to a template with a <canvas>, and to a module that makes one', () => {
+    for (const code of [
+      // What a template with a <canvas> compiles to.
+      `export function T(rf, ctx) { if (rf & 1) { i0.ɵɵelement(0, "canvas", 0); } }`,
+      `export const c = document.createElement('canvas');`,
+      `export const c = document.createElement('CANVAS');`,
+      'export const c = document.createElementNS(ns, `canvas`);',
+      // three.js's ImageLoader, and an app's own image.
+      `export const i = document.createElementNS('http://www.w3.org/1999/xhtml', 'img');`,
+      `export const i = document.createElement('IMG');`,
+      `export const i = createElement('img');`,
+    ]) {
+      expect(enableOnDemand(code, '/app/src/c.ts'), code).toBe(
+        calls('ɵenableCanvas') + code,
+      );
+    }
+  });
+
+  it('gives the canvas to a module that names one of its classes', () => {
+    for (const code of [
+      `export const c = new OffscreenCanvas(1, 1);`,
+      `export const has = typeof OffscreenCanvas !== 'undefined';`,
+      `export const d = new ImageData(1, 1);`,
+      `export const i = new Image();`,
+      `export const is = (x) => x instanceof HTMLImageElement || x instanceof ImageBitmap;`,
+      `export const b = (x) => createImageBitmap(x);`,
+      `export const is = (x) => x instanceof ImageBitmapRenderingContext;`,
+      `export const has = 'createImageBitmap' in self;`,
+      `export const show = (c) => c.getContext('bitmaprenderer');`,
+    ]) {
+      expect(
+        enableOnDemand(code, '/app/node_modules/img/index.mjs'),
+        code,
+      ).toBe(calls('ɵenableCanvas') + code);
+    }
+  });
+
+  it('leaves a module that only mentions the canvas as it is', () => {
+    for (const code of [
+      // The word, a variable and a property: chart code takes a canvas it
+      // didn't make, from a module that did.
+      `// Draws on the canvas.\nexport const draw = (canvas) => canvas.width;`,
+      `export const m = 'No canvas here';`,
+      `export const t = \`canvas\${1}\`;`,
+      // A template's <img> draws as an <image>, with none of the canvas.
+      `export function T(rf) { if (rf & 1) { i0.ɵɵelement(0, "img", 0); } }`,
+      `export const tags = ['img'];`,
+      // Another element's tag, a tag that isn't a string, or a tag in the
+      // wrong place.
+      `export const v = document.createElement('video');`,
+      `export const v = document.createElement(tag);`,
+      `export const v = document.createElement();`,
+      `export const v = document.createElementNS('img', 'svg');`,
+      `export const v = document.make('img');`,
+      `export const v = factories['createElement']('img');`,
+      // Names longer than the classes'.
+      `export const l = new ImageLoader(); export const o = NgOptimizedImage;`,
+    ]) {
+      expect(enableOnDemand(code, '/app/src/m.ts'), code).toBe(code);
+    }
+  });
+
+  it('counts each tag passed to createElement() apart from the string', () => {
+    expect(
+      namedGlobals(
+        `document.createElement('img'); document.createElement('Canvas');`,
+        '/app/src/m.ts',
+      ),
+    ).toEqual(
+      new Map([
+        ["createElement('img')", 1],
+        ["createElement('canvas')", 1],
+      ]),
+    );
+  });
+
   it('gives a module that draws in 2D and fetches both, the context first', () => {
     const code = `export const load = (c, url) => fetch(url).then(() => c.getContext('2d'));`;
     expect(enableOnDemand(code, '/app/src/load.ts')).toBe(

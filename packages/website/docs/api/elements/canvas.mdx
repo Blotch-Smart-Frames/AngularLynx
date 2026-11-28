@@ -125,6 +125,7 @@ Like an HTML canvas:
 - `width` and `height` are the drawing buffer's size in pixels, 300 by 150 to start. The element's CSS size is how big it's shown.
 - `getContext('2d')` and `getContext('webgl2')` return the same context every time. A canvas has the kind of context it was first asked for: after `getContext('2d')`, `getContext('webgl2')` is `null`, and the other way round. `'webgl'` (WebGL 1) is `null`: three.js needs WebGL2 anyway.
 - The build includes the WebGL2 context only when a module of your app or its libraries names `'webgl2'`, as three.js and `getContext('webgl2')` do, so an app that never draws in 3D doesn't load its code (about 37 kB of the main-thread script). So on iOS and Android, a context name built at runtime gets `null` and a console warning, unless another module named `'webgl2'`: write the name out, or call `ɵenableWebGL2()` from `@blotch/angular-lynx` before `getContext()`. The web preview's canvas is the browser's, which has its own context.
+- So is the canvas itself: the build includes the `<canvas>` element's code, and the classes that make a canvas or an image (`OffscreenCanvas`, `ImageData`, `Image`, `HTMLImageElement`, `ImageBitmap`, `ImageBitmapRenderingContext`, `createImageBitmap()`, and `document.createElement('canvas')` and `('img')`), only when a module names `'canvas'` or `'bitmaprenderer'` in quotes, as a template's `<canvas>` and `document.createElement('canvas')` do, one of those classes, or passes `'img'` to `createElement()`. An app that never makes one doesn't load its code (about 21 kB of the main-thread script), and those classes aren't globals there. A `<canvas>` made from a tag built at runtime is a plain element, with a console warning, unless another module named `'canvas'`: write the tag out in a template, or call `ɵenableCanvas()` from `@blotch/angular-lynx` before making it.
 - The 2D context is the same: the build includes it only when a module names `'2d'` in quotes, as `getContext('2d')` and chart and image libraries do, or one of its classes (`Path2D`, `CanvasRenderingContext2D`, `CanvasGradient`, `CanvasPattern`, `TextMetrics`), which are globals only then. An app that never draws in 2D doesn't load its code (about 40 kB of the main-thread script). A context name built at runtime gets `null` and a console warning on iOS and Android, unless another module named `'2d'`: write the name out, or call `ɵenableCanvas2D()` from `@blotch/angular-lynx` before `getContext()`.
 - An app built with `ng build --platform ios|android` gets the native canvas code only if it can draw. See [The canvas in the native app](#the-canvas-in-the-native-app).
 - Pointer events (`pointerdown`, `pointermove`, `pointerup` and the rest) work, from the finger's touches. They work on every element, not only a canvas: see [Element events](/api/angular-lynx/element-events).
@@ -135,14 +136,14 @@ Like an HTML canvas:
 `ng build --platform ios|android` builds the native code behind `<canvas>` into the app only when a module of your app or its libraries can draw. A module can draw when it names one of these:
 
 - `'webgl2'`, or the 2D context, as above
-- `'canvas'` or `'bitmaprenderer'` in quotes, as a template's `<canvas>` and `document.createElement('canvas')` do
-- `OffscreenCanvas`, `HTMLCanvasElement`, `Image`, `ImageBitmap`, `createImageBitmap` or `ImageBitmapRenderingContext`
+- `'canvas'` or `'bitmaprenderer'` in quotes, as a template's `<canvas>` and `document.createElement('canvas')` do, or `'img'` as `createElement()`'s tag
+- `OffscreenCanvas`, `HTMLCanvasElement`, `Image`, `HTMLImageElement`, `ImageBitmap`, `createImageBitmap` or `ImageBitmapRenderingContext`
 
 An app that never draws leaves out the canvas, its WebGL and 2D contexts, and `<video>`'s readable frames. That's about 176 kB of the iOS app. It also leaves out ANGLE, which iOS draws WebGL with: about 6 MB.
 
 An app that draws only in 2D, such as a chart or a signature pad, keeps the canvas and leaves out the WebGL context and ANGLE. The 2D context draws with Core Graphics on iOS and `android.graphics.Canvas` on Android, and needs neither. The WebGL context comes only when a module names `'webgl2'` (anywhere, even in a comment), `WebGL2RenderingContext` or `ɵenableWebGL2`.
 
-Without that code, a `<canvas>` shows nothing and `getContext()` returns `null`. If your app builds every canvas name at runtime, call `ɵenableCanvas2D()` or `ɵenableWebGL2()` from `@blotch/angular-lynx`. Either one brings the native code too, and `ɵenableWebGL2()` brings the WebGL context and ANGLE as well.
+Without that code, a `<canvas>` shows nothing and `getContext()` returns `null`. If your app builds every canvas name at runtime, call `ɵenableCanvas()`, `ɵenableCanvas2D()` or `ɵenableWebGL2()` from `@blotch/angular-lynx`. Each one brings the native code too, and `ɵenableWebGL2()` brings the WebGL context and ANGLE as well.
 
 The development app from `ng serve --platform` always has the native code, since you can add a canvas while it runs.
 

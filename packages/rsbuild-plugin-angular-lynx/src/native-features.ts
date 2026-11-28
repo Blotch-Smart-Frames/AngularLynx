@@ -3,7 +3,14 @@ import path from 'node:path';
 import type { RsbuildPluginAPI, Rspack } from '@lynx-js/rspeedy';
 import * as ts from 'typescript';
 import { isAngularLynxPackageModule, LAYERS } from './layers.js';
-import { ESCAPE, quotedName, scriptKind, WEBGL2 } from './on-demand.js';
+import {
+  createElementName,
+  ESCAPE,
+  namedGlobals,
+  quotedName,
+  scriptKind,
+  WEBGL2,
+} from './on-demand.js';
 
 /**
  * The file the `lynx` environment writes beside its bundle, which tells
@@ -44,11 +51,17 @@ const EVERYTHING: NativeFeatures = { canvas: true, webgl: true };
  *   (on-demand.ts).
  * - The canvases made outside a template (`OffscreenCanvas`) and the classes
  *   code checks a canvas or a context against.
- * - `Image`, `ImageBitmap` and `createImageBitmap()`, which the shells'
- *   module decodes, and the `bitmaprenderer` context's class.
+ * - `Image` (`HTMLImageElement`), `ImageBitmap` and `createImageBitmap()`,
+ *   which the shells' module decodes, and the `bitmaprenderer` context's
+ *   class.
  * - The runtime's enable functions, which an app can call itself where it
- *   builds a context's name at run time (on-demand.ts): that's then how it
- *   asks for the native code too.
+ *   makes a canvas by a tag, or asks for a context by a name, built at run
+ *   time (on-demand.ts): that's then how it asks for the native code too.
+ *
+ * A module the runtime's canvas comes to (`ɵenableCanvas()`, on-demand.ts)
+ * names one of them, or passes `'img'` to `createElement()` (canvasNamed()),
+ * so an app with the canvas has its native code, unless all it names is
+ * `ImageData`, which is pixels in JavaScript and needs none.
  *
  * `Image` and `HTMLCanvasElement` don't appear in Angular's packages, nor any
  * of the others (native-features.test.ts checks), so they bring nothing into
@@ -65,9 +78,11 @@ const CANVAS_NAMES: ReadonlySet<string> = new Set([
   'HTMLCanvasElement',
   'WebGL2RenderingContext',
   'Image',
+  'HTMLImageElement',
   'ImageBitmap',
   'createImageBitmap',
   'ImageBitmapRenderingContext',
+  'ɵenableCanvas',
   'ɵenableCanvas2D',
   'ɵenableWebGL2',
 ]);
@@ -141,8 +156,10 @@ const parse = (code: string, filename: string): ts.SourceFile =>
  * Whether a main-thread module can draw on a canvas: it names one of
  * CANVAS_NAMES as an identifier or a string, one of CANVAS_STRINGS as a
  * string, or `webgl2` anywhere, as the runtime's WebGL2 context comes where
- * it does (on-demand.ts). AngularLynx's own packages name them all, and
- * would bring the native code into every app, so they don't count.
+ * it does (on-demand.ts), or it makes an image with `createElement('img')`,
+ * which the shells' module decodes, as on-demand.ts reads it. AngularLynx's
+ * own packages name them all, and would bring the native code into every
+ * app, so they don't count.
  *
  * @param code - The module's code.
  * @param filename - The module's path.
@@ -158,11 +175,15 @@ export const canvasNamed = (code: string, filename: string): boolean => {
   if (
     ![...CANVAS_NAMES].some((name) => code.includes(name)) &&
     !QUOTED_NAMES.some((pattern) => pattern.test(code)) &&
+    !code.includes('createElement') &&
     !ESCAPE.test(code)
   ) {
     return false;
   }
-  return namesAny(parse(code, filename), CANVAS_NAMES, CANVAS_STRINGS);
+  return (
+    namesAny(parse(code, filename), CANVAS_NAMES, CANVAS_STRINGS) ||
+    namedGlobals(code, filename).has(createElementName('img'))
+  );
 };
 
 /**

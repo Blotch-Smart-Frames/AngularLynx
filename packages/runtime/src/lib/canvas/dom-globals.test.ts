@@ -1,10 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { installCanvasGlobals } from './dom-globals';
 import { LynxCanvasRenderingContext2D } from './canvas-2d-context';
-import { LynxImageData } from './image-data';
 import { LynxDetachedCanvas, LynxOffscreenCanvas } from './detached-canvas';
-import { LynxImageBitmapRenderingContext } from './bitmap-renderer-context';
-import { createImageBitmap, LynxImageBitmap, LynxImageElement } from './image';
 import { CANVAS_SOURCE } from './canvas-source';
 import {
   WEBGL2_CONTEXT,
@@ -48,31 +45,20 @@ describe('installCanvasGlobals', () => {
     );
     expect(target['crypto'].getRandomValues).toBeUndefined();
     expect(target['self']).toBe(target);
-    expect(target['Image']).toBe(LynxImageElement);
-    expect(target['HTMLImageElement']).toBe(LynxImageElement);
-    expect(target['ImageBitmap']).toBe(LynxImageBitmap);
-    expect(target['createImageBitmap']).toBe(createImageBitmap);
-    expect(target['ImageBitmapRenderingContext']).toBe(
-      LynxImageBitmapRenderingContext,
-    );
     expect(target['devicePixelRatio']).toBe(3);
-    expect(target['document'].createElement('IMG')).toBeInstanceOf(
-      LynxImageElement,
-    );
-    expect(
-      target['document'].createElementNS('http://www.w3.org/1999/xhtml', 'img'),
-    ).toBeInstanceOf(LynxImageElement);
-    expect(target['document'].createElement('Canvas')).toBeInstanceOf(
-      LynxDetachedCanvas,
-    );
-    expect(() => target['document'].createElement('div')).toThrow(
-      /elements come from templates/,
-    );
-    expect(target['OffscreenCanvas']).toBe(LynxOffscreenCanvas);
-    expect(target['ImageData']).toBe(LynxImageData);
-    // The 2D context's classes come with the context (enable-canvas-2d.ts),
-    // in the apps that ask for one: here they'd be in every app.
+    // The classes that make a canvas or an image come with the canvas
+    // (enable-canvas.ts), and the 2D context's with the context
+    // (enable-canvas-2d.ts), in the apps that can use them: here they'd be in
+    // every app.
+    expect(target['document'].createElement).toBeUndefined();
     for (const name of [
+      'OffscreenCanvas',
+      'ImageData',
+      'Image',
+      'HTMLImageElement',
+      'ImageBitmap',
+      'ImageBitmapRenderingContext',
+      'createImageBitmap',
       'CanvasRenderingContext2D',
       'OffscreenCanvasRenderingContext2D',
       'CanvasGradient',
@@ -98,6 +84,27 @@ describe('installCanvasGlobals', () => {
     expect(
       new LynxOffscreenCanvas(1, 1) instanceof target['HTMLCanvasElement'],
     ).toBe(false);
+    // Told apart by their tags, not their classes, which come with the
+    // canvas (enable-canvas.ts).
+    const canvas = { [CANVAS_SOURCE]: {}, tagName: 'canvas' };
+    const video = { [CANVAS_SOURCE]: {}, tagName: 'video' };
+    expect(canvas instanceof target['HTMLCanvasElement']).toBe(true);
+    expect(video instanceof target['HTMLCanvasElement']).toBe(false);
+    expect(video instanceof target['HTMLVideoElement']).toBe(true);
+    expect(canvas instanceof target['HTMLVideoElement']).toBe(false);
+    expect({ tagName: 'canvas' } instanceof target['HTMLCanvasElement']).toBe(
+      false,
+    );
+    expect(
+      { [CANVAS_SOURCE]: {}, tagName: 1 } instanceof
+        target['HTMLCanvasElement'],
+    ).toBe(false);
+    expect(new LynxDetachedCanvas() instanceof target['HTMLElement']).toBe(
+      true,
+    );
+    expect(new LynxOffscreenCanvas(1, 1) instanceof target['HTMLElement']).toBe(
+      false,
+    );
   });
 
   it('makes a WebGL2 context a WebGL2RenderingContext, and nothing a WebGLRenderingContext', () => {
@@ -388,21 +395,6 @@ describe('ResizeObserver on the web', () => {
 });
 
 describe('the canvas APIs on the web', () => {
-  it('take a template’s <video> or <canvas> as an image', () => {
-    vi.stubGlobal('__WEB__', true);
-    const drawImage = vi.fn();
-    class CanvasRenderingContext2D {}
-    Object.assign(CanvasRenderingContext2D.prototype, { drawImage });
-    const target: Record<string, any> = { CanvasRenderingContext2D };
-    installCanvasGlobals(target);
-    const video = element();
-    const context = new CanvasRenderingContext2D() as {
-      drawImage(...args: unknown[]): void;
-    };
-    context.drawImage(video, 0, 0);
-    expect(drawImage).toHaveBeenCalledWith(video.element, 0, 0);
-  });
-
   it('take a template’s <video> as an instance of the browser’s class', () => {
     vi.stubGlobal('__WEB__', true);
     /**
@@ -429,15 +421,5 @@ describe('the canvas APIs on the web', () => {
     expect({ [CANVAS_SOURCE]: {}, tagName: 'video' }).toBeInstanceOf(
       target['HTMLVideoElement'],
     );
-  });
-
-  it('are left alone on Lynx, whose own take one already', () => {
-    const drawImage = vi.fn();
-    class CanvasRenderingContext2D {}
-    Object.assign(CanvasRenderingContext2D.prototype, { drawImage });
-    installCanvasGlobals({ CanvasRenderingContext2D });
-    expect(
-      (CanvasRenderingContext2D.prototype as { drawImage: unknown }).drawImage,
-    ).toBe(drawImage);
   });
 });

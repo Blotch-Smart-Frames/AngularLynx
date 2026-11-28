@@ -8,16 +8,16 @@
       "dir": "benchmarks/apps/angular-lynx",
       "sizes": {
         "main-thread": {
-          "raw": 651008,
-          "gzip": 198977
+          "raw": 641349,
+          "gzip": 196776
         },
         "background": {
           "raw": 50389,
-          "gzip": 16982
+          "gzip": 16983
         },
         "bundle": {
-          "raw": 824305,
-          "gzip": 361734
+          "raw": 813682,
+          "gzip": 357886
         }
       }
     },
@@ -25,16 +25,16 @@
       "dir": "examples/hello-world",
       "sizes": {
         "main-thread": {
-          "raw": 308798,
-          "gzip": 98413
+          "raw": 292391,
+          "gzip": 93502
         },
         "background": {
           "raw": 50807,
-          "gzip": 17189
+          "gzip": 17187
         },
         "bundle": {
-          "raw": 408093,
-          "gzip": 184573
+          "raw": 389896,
+          "gzip": 177062
         }
       }
     }

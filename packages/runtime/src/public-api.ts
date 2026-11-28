@@ -134,6 +134,11 @@ export type { LynxImageBitmapRenderingContext } from './lib/canvas/bitmap-render
 export type { LynxCanvasRenderingContext2D } from './lib/canvas/canvas-2d-context';
 export type { LynxCanvasElement } from './lib/canvas/canvas-element';
 export type { LynxWebGL2RenderingContext } from './lib/canvas/webgl2-context';
+// Called by the build plugin in each main-thread module that can make a
+// canvas (a template's <canvas>, document.createElement('canvas'),
+// OffscreenCanvas, Image and the like), so apps that never make one leave the
+// canvas out of their bundle.
+export { ɵenableCanvas } from './lib/canvas/enable-canvas';
 // Called by the build plugin in each module that asks for a WebGL2 context,
 // so apps that never draw leave the context out of their bundle.
 export { ɵenableWebGL2 } from './lib/canvas/enable-webgl2';

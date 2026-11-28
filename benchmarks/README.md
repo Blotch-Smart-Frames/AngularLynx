@@ -52,7 +52,7 @@ milliseconds in every run, and "fully drawn" measures the framework.
 Two things the runs showed, which shape how they're read:
 
 - **Each session stands alone.** The phone and the network differ from one sitting to the next (AngularLynx's median moved by 60 ms between two sessions with the Mac equally idle), so each app is compared with AngularLynx from its own session.
-- **A launch right after the same app is about 80 ms faster** than one after the other app, for every app: iOS still has its files in memory. The A B, B A order gives each app about half of each, and the charts and `summarize.py` split them (`again`, `after other`) by each row's timestamp.
+- **A launch right after the same app is about 80 ms faster** than one after the other app, for every app: iOS still has its files in memory. The A B, B A order gives each app about half of each, and the charts and `summarize.py` split them (`again`, `after other`) by each row's `previous_app`, the app launched before it, which counts a run the harness dropped and launched again (an older CSV without the column goes by its timestamps).
 
 The first session, run while the Mac was building the other apps, is in `results/ios/pilot` and isn't charted.
 

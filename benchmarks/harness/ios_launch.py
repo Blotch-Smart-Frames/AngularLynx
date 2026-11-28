@@ -29,9 +29,11 @@ From each trace:
 
 The apps take turns run by run (A B, B A, A B... and with more than two, the
 order also rotates), so drift over a session (heat, battery, background work)
-falls on every app alike. Battery level, charging, thermal state, the OS
-build and the Mac's load average (the fixture server runs on it) are recorded
-with every run.
+falls on every app alike. Each row's previous_app is the app launched before
+it, counting a run dropped over --max-load (below), which the CSV doesn't
+hold: summarize.py splits each app's launches by it. Battery level,
+charging, thermal state, the OS build and the Mac's load average (the
+fixture server runs on it) are recorded with every run.
 
 With --simulator, --device is a booted Simulator's UDID, and each launch is
 the light recording (--light) plus a memory reading:
@@ -85,6 +87,7 @@ FIELDS = [
     "app",
     "bundle_id",
     "run",
+    "previous_app",
     "first_frame_ms",
     "fully_drawn_ms",
     "memory_mb",
@@ -388,13 +391,30 @@ def main():
         device = device_value(args.device, "ProductType")
         os_build = f"{device_value(args.device, 'ProductVersion')} ({device_value(args.device, 'BuildVersion')})"
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
-    new_file = not os.path.exists(args.out)
+    new_file = not os.path.exists(args.out) or os.path.getsize(args.out) == 0
+    if not new_file:
+        # Rows go by FIELDS' order, so a CSV from a version of the harness
+        # with other columns (such as one without previous_app) would get
+        # each value under the wrong heading.
+        with open(args.out, newline="") as existing:
+            header = next(csv.reader(existing), [])
+        if header != FIELDS:
+            raise SystemExit(
+                f"{args.out} has other columns than this harness writes: name a new --out\n"
+                f"  its columns: {','.join(header)}\n  these: {','.join(FIELDS)}"
+            )
     work = tempfile.mkdtemp(prefix="ios-launch-")
     out = open(args.out, "a", newline="")
     writer = csv.DictWriter(out, fieldnames=FIELDS)
     if new_file:
         writer.writeheader()
     lock = threading.Lock()
+    # The app launched before each one, counting the runs dropped over
+    # --max-load: a dropped run is launched again straight away, so the run
+    # that replaces it follows its own app, not the one its row comes after
+    # in the CSV. summarize.py splits each app's launches by it ("again" or
+    # "after other").
+    previous = ""
 
     def finish(row, trace, memory=None):
         try:
@@ -425,6 +445,7 @@ def main():
         """Records one launch, and returns its row and (on the Simulator)
         its memory reading, or (None, None) when xctrace failed. A run that
         ends over --max-load is dropped and launched again."""
+        nonlocal previous
         while True:
             if args.max_load is not None:
                 wait_for_load(args.max_load)
@@ -436,6 +457,7 @@ def main():
                 "app": name,
                 "bundle_id": bundle_id,
                 "run": run,
+                "previous_app": previous,
             }
             if not args.simulator:
                 row["battery_percent"] = device_value(args.device, "BatteryCurrentCapacity", "com.apple.mobile.battery")
@@ -454,6 +476,10 @@ def main():
                     out.flush()
                 shutil.rmtree(trace, ignore_errors=True)
                 return None, None
+            finally:
+                # A failed recording counts too: xctrace may have started the
+                # app before it failed, and its row is in the CSV.
+                previous = name
             # The Mac serves the fixtures (a busy Mac answers later) and, on
             # the Simulator, runs the app. The 1-minute average after the
             # recording covers the recording; the one before, the minute

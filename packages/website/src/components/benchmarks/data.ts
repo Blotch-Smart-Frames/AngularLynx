@@ -39,6 +39,12 @@ export type Launch = {
   readonly thermalState: string;
   readonly batteryPercent?: number;
   /**
+   * The app launched before it, from the CSV's `previous_app` column, which
+   * counts a run the harness dropped over `--max-load` and launched again
+   * (not in the CSV). Undefined in an older CSV without the column.
+   */
+  readonly previousApp?: string;
+  /**
    * What ran before it. `again`: this app was the last one launched, so
    * iOS still has its files in memory (a warm launch), the faster case by
    * about 80 ms. `afterOther`: the session's other app ran in between and
@@ -99,23 +105,30 @@ const number = (value: string): number | undefined =>
   value === '' ? undefined : Number(value);
 
 /**
- * Sets each launch's condition from the launch before it. Rows are written
- * as each trace is read, which isn't always the order they ran in, so they're
- * put back in order by when each launch started.
+ * Sets each launch's condition from the app launched before it: its
+ * `previous_app`, as `summarize.py` does, or in an older CSV the row before.
+ * Rows are written as each trace is read, which isn't always the order they
+ * ran in, so they're put back in order by when each launch started.
  */
 const withConditions = (launches: Launch[]): Launch[] => {
   const ordered = [...launches].sort((a, b) =>
     a.timestamp.localeCompare(b.timestamp),
   );
-  return ordered.map((launch, i) => ({
-    ...launch,
-    condition:
-      i === 0
-        ? 'first'
-        : ordered[i - 1].app === launch.app
-          ? 'again'
-          : 'afterOther',
-  }));
+  return ordered.map((launch, i) => {
+    const before =
+      launch.previousApp !== undefined
+        ? launch.previousApp || undefined
+        : ordered[i - 1]?.app;
+    return {
+      ...launch,
+      condition:
+        before === undefined
+          ? 'first'
+          : before === launch.app
+            ? 'again'
+            : 'afterOther',
+    };
+  });
 };
 
 /**
@@ -135,6 +148,7 @@ const readLaunches = (text: string, session: string): Launch[] =>
       | 'peak_memory_mb'
       | 'thermal_state'
       | 'battery_percent'
+      | 'previous_app'
     >(text).map((row) => ({
       app: row.app,
       session,
@@ -148,6 +162,10 @@ const readLaunches = (text: string, session: string): Launch[] =>
       peakMemoryMb: number(row.peak_memory_mb),
       thermalState: row.thermal_state,
       batteryPercent: number(row.battery_percent),
+      // A row has a key only for its CSV's columns: an older CSV has no
+      // previous_app at all, where an empty one marks a session's first
+      // launch.
+      previousApp: 'previous_app' in row ? row.previous_app : undefined,
       condition: 'first' as const,
     })),
   );

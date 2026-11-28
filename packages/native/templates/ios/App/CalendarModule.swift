@@ -90,9 +90,21 @@ final class CalendarModule: NSObject, LynxModule, EKEventEditViewDelegate,
     let store = EKEventStore()
     let draft = EKEvent(eventStore: store)
     draft.title = title
-    draft.startDate = Date(timeIntervalSince1970: start / 1000)
-    draft.endDate = Date(timeIntervalSince1970: end / 1000)
-    draft.isAllDay = (event["allDay"] as? NSNumber)?.boolValue ?? false
+    let allDay = (event["allDay"] as? NSNumber)?.boolValue ?? false
+    let startDate = Date(timeIntervalSince1970: start / 1000)
+    let endDate = Date(timeIntervalSince1970: end / 1000)
+    if allDay {
+      // Only an all-day event's days count, and the runtime accepts one that
+      // ends earlier in its last day than it starts in its first. EventKit
+      // won't save an end before the start, so both become their day's
+      // start, which is how it keeps an all-day event's days.
+      draft.startDate = Calendar.current.startOfDay(for: startDate)
+      draft.endDate = Calendar.current.startOfDay(for: endDate)
+    } else {
+      draft.startDate = startDate
+      draft.endDate = endDate
+    }
+    draft.isAllDay = allDay
     draft.location = event["location"] as? String
     draft.notes = event["notes"] as? String
 

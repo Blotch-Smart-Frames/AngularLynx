@@ -5059,8 +5059,9 @@ export class LynxElement implements BaseLynxElement {
     // If in a virtual tree, use virtual sibling tracking
     if (this._virtualParent) return this._virtualNext;
     // Native's order, which has anchors out of place until the end of the
-    // cycle (see #appendsBeforeAnchors).
-    LynxElement.#settleAnchorsIn(this.#jsParent);
+    // cycle (see #appendsBeforeAnchors). All of them, not just #jsParent's:
+    // a hydrated element has none, and its native parent may be one.
+    LynxElement.#settleDisplacedAnchors();
     const nextSibling = __NextElement(this.element);
     if (nextSibling) {
       // Return the canonical wrapper (see #canonicalFor / parentNode). Angular

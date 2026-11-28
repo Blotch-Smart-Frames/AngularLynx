@@ -387,6 +387,19 @@ describe('inserts before the anchors that end a parent (issue #444)', () => {
     expect(native(hydrated!)).toEqual(['row', 'new-anchor', 'snapshot-anchor']);
   });
 
+  it("answers nextSibling() of a hydrated parent's snapshot child in Angular's order", () => {
+    const [hydrated, snapshotRow] = hydratedParent('snapshot-row');
+    const newAnchor = anchor('new-anchor');
+    hydrated!.appendChild(newAnchor);
+    const row = element('view', 'row');
+
+    hydrated!.insertBefore(row, newAnchor);
+
+    // The snapshot's child has no parent the runtime put it in, so it's
+    // native that knows what follows it.
+    expect(snapshotRow!.nextSibling()).toBe(row);
+  });
+
   it('inserts before the anchors in a <text>, which keeps its order', () => {
     const text = element('text', 'text');
     const textAnchor = anchor('text-anchor');

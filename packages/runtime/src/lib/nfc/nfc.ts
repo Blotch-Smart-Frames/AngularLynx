@@ -411,8 +411,8 @@ export class LynxNfc {
     const scanning = signal(true);
     const error = signal<NfcError | undefined>(undefined);
     let stopped = false;
+    // Called only while the scan runs: stop() and the loop check first.
     const end = (cause?: NfcError) => {
-      if (!scanning()) return;
       scanning.set(false);
       if (cause) {
         error.set(cause);
@@ -428,6 +428,9 @@ export class LynxNfc {
           end(cause as NfcError);
           break;
         }
+        // stop() may have ended the scan while a tag's answer was on its
+        // way: the app stopped listening, so it doesn't get the tag.
+        if (!scanning()) break;
         if (answer.tag) {
           try {
             onTag(toTag(answer.tag));
@@ -437,7 +440,7 @@ export class LynxNfc {
           }
           continue;
         }
-        end(stopped || answer.error === STOPPED ? undefined : toError(answer));
+        end(answer.error === STOPPED ? undefined : toError(answer));
       }
       // The session ended by itself: let the next call open one.
       if (!stopped) await this.#stop();

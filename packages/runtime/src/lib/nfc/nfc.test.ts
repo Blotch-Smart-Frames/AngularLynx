@@ -375,6 +375,21 @@ describe('LynxNfc', () => {
       expect(module.stop).toHaveBeenCalledTimes(1);
     });
 
+    it('drops a tag whose answer comes after stop()', async () => {
+      const { module, answer } = stubModule();
+      // The shells answered with a tag before they heard the stop.
+      module.stop.mockImplementation((_options: unknown, done: Done) =>
+        done({}),
+      );
+      const onTag = vi.fn();
+      const scan = await createNfc().scan({}, onTag);
+      await settle();
+      await scan.stop();
+      await answer({ tag: rawTag });
+      expect(onTag).not.toHaveBeenCalled();
+      expect(scan.scanning()).toBe(false);
+    });
+
     it("hands an app's throwing handler to the ErrorHandler, and keeps scanning", async () => {
       const { answer } = stubModule();
       const failure = new Error('bad handler');

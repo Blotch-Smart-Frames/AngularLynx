@@ -207,6 +207,29 @@ describe('LynxElement classes', () => {
     expect(rebuiltClasses(one, parent)).toBe('box _ngcontent-x _nghost-y');
   });
 
+  it('writes the same class string for each element of a component, past the strings it keeps too', () => {
+    // The string is shared by every element given the same name with the
+    // same scope classes (issue #949): native keeps a copy of each string.
+    // A bound name can be new for every element; those must come out right
+    // once the list keeps no more strings.
+    const names = [
+      'box',
+      'box',
+      ...Array.from({ length: 300 }, (_, i) => `row-${i}`),
+      'box',
+      'row-299',
+    ];
+    for (const name of names) {
+      const el = view();
+      el.addScopeClass('_ngcontent-x');
+      el.setAttribute('class', name);
+    }
+
+    expect(log.filter(([call]) => call === 'set').map(([, , c]) => c)).toEqual(
+      names.map((name) => `${name} _ngcontent-x`),
+    );
+  });
+
   it('writes a static class that is also a scope class once', () => {
     const el = view();
     el.addScopeClass('a');

@@ -399,6 +399,7 @@ class RowsHost {
 class RowCard {
   readonly #row = signal<Row | undefined>(undefined);
   set row(row: Row) {
+    if (row.kind === 'broken') throw new Error('broken input');
     this.#row.set(row);
   }
   readonly name = computed(() => this.#row()?.name);
@@ -1026,6 +1027,23 @@ describe('*lynxListFor', () => {
       await idle();
 
       expect(() => show(2)).toThrow('broken row');
+    });
+
+    it('throws again for a row whose input threw when it was bound ahead', async () => {
+      const rows = rowsOf(5);
+      rows[2] = { ...rows[2]!, kind: 'broken' };
+      await renderCards(rows);
+      await idle();
+      const sign = show(1)!;
+      hide(sign);
+
+      // Item 2's check throws, after Angular stored the input's value.
+      await idle();
+
+      // Its bind checks it in another view, whose input isn't set already,
+      // and throws where it would have without binding ahead.
+      expect(() => show(2)).toThrow('broken input');
+      expect(show(3)).toBe(sign);
     });
 
     it('binds nothing once the list is gone', async () => {

@@ -233,7 +233,7 @@ class MotionModule : LynxContextModule {
         if (flushScheduled) return
         flushScheduled = true
         val wait = maxOf(0L, lastFlush + FLUSH_INTERVAL_MS - SystemClock.uptimeMillis())
-        handler.postDelayed(::flush, wait)
+        handler.postDelayed({ flush() }, wait)
     }
 
     private fun flush() {

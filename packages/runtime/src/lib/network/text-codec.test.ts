@@ -13,6 +13,22 @@ describe('LynxTextEncoder', () => {
     expect(encoder.encode()).toEqual(new Uint8Array(0));
   });
 
+  it('encodes text that mixes ASCII with runs of other characters, and lone surrogates, as the platform encoder does', () => {
+    const encoder = new LynxTextEncoder();
+    for (const text of [
+      'café',
+      '{"name":"漢字のテキスト","note":"é ✓"}',
+      'a🙂b🙂🙂c',
+      'lone \ud800 high',
+      'lone \udc00 low',
+      'swapped \udc00\ud800',
+      'ends high \ud83d',
+      '漢'.repeat(20_000),
+    ]) {
+      expect(encoder.encode(text)).toEqual(encode(text));
+    }
+  });
+
   it('encodes into a buffer, stopping before a character that would not fit', () => {
     const encoder = new LynxTextEncoder();
     const destination = new Uint8Array(4);
@@ -25,6 +41,25 @@ describe('LynxTextEncoder', () => {
       read: 0,
       written: 0,
     });
+  });
+
+  it('encodes into a buffer that fills in the middle of ASCII, as the platform encoder does', () => {
+    const encoder = new LynxTextEncoder();
+    const platform = new TextEncoder();
+    for (const [text, size] of [
+      ['abcdef', 3],
+      ['ab✓cd', 4],
+      ['ab✓cd', 5],
+      ['é🙂x', 6],
+      ['x\ud800y', 4],
+    ] as const) {
+      const ours = new Uint8Array(size);
+      const theirs = new Uint8Array(size);
+      expect(encoder.encodeInto(text, ours)).toEqual(
+        platform.encodeInto(text, theirs),
+      );
+      expect(ours).toEqual(theirs);
+    }
   });
 });
 
@@ -44,6 +79,46 @@ describe('LynxTextDecoder', () => {
   it('decodes a body bigger than one slice', () => {
     const text = 'a✓'.repeat(10_000);
     expect(new LynxTextDecoder().decode(encode(text))).toBe(text);
+  });
+
+  it('decodes sequences that cross a slice, and runs of other characters longer than one', () => {
+    const decoder = new LynxTextDecoder();
+    // 8192 bytes to a slice: shift a multi-byte character across the edge.
+    for (let pad = 8185; pad <= 8193; pad++) {
+      const text = `${'a'.repeat(pad)}🙂✓é${'b'.repeat(10)}`;
+      expect(decoder.decode(encode(text))).toBe(text);
+    }
+    for (const text of [
+      '漢'.repeat(20_000),
+      `${'漢'.repeat(9_000)} ${'字'.repeat(9_000)}`,
+      `${'a'.repeat(8191)}${'漢'.repeat(3_000)}`,
+    ]) {
+      expect(decoder.decode(encode(text))).toBe(text);
+    }
+  });
+
+  it('decodes random text as the platform decoder does', () => {
+    const decoder = new LynxTextDecoder();
+    const platform = new TextDecoder();
+    const alphabet = ['a', ' ', '"', 'é', '✓', '漢', '🙂', '\n'];
+    let seed = 1;
+    const random = () => {
+      seed = (seed * 1_103_515_245 + 12_345) % 2 ** 31;
+      return seed / 2 ** 31;
+    };
+    for (let round = 0; round < 50; round++) {
+      let text = '';
+      const length = Math.floor(random() * 20_000);
+      for (let index = 0; index < length; index++) {
+        text += alphabet[Math.floor(random() * alphabet.length)];
+      }
+      const bytes = encode(text);
+      // Corrupt a few bytes, so invalid sequences land anywhere.
+      for (let flip = 0; flip < 3 && bytes.length > 0; flip++) {
+        bytes[Math.floor(random() * bytes.length)] = Math.floor(random() * 256);
+      }
+      expect(decoder.decode(bytes)).toBe(platform.decode(bytes));
+    }
   });
 
   it('accepts the labels of UTF-8 and rejects others with a RangeError', () => {
@@ -76,6 +151,10 @@ describe('LynxTextDecoder', () => {
     const decoder = new LynxTextDecoder('utf-8', { fatal: true });
     expect(decoder.fatal).toBe(true);
     expect(() => decoder.decode(new Uint8Array([0xff]))).toThrow(TypeError);
+    expect(() => decoder.decode(encode('abc').fill(0xe2, 1, 2))).toThrow(
+      TypeError,
+    );
+    expect(decoder.decode(encode('a✓'))).toBe('a✓');
   });
 
   it('rejects input that is not a buffer', () => {

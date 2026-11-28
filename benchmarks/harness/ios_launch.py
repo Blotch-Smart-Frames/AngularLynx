@@ -53,7 +53,10 @@ thermal state is the Mac's, and battery and charging are left empty. The
 Simulator runs on the Mac's cores, so a busy Mac slows every launch: the
 harness waits for the Mac's load average to be under --max-load before each
 launch (half the Mac's cores by default), and drops and launches again a
-run whose recording ends over it.
+run whose recording ends over it (--max-load off waits for nothing, for a
+host whose load average says nothing of how busy it is). With --max-wait, a launch still waiting for
+the load, or just dropped for it, that many seconds after its first try ends
+the session, for a host (a CI runner) that may never get that quiet.
 
 A Simulator's numbers aren't a phone's: every launch takes about 1.45 s
 longer, and memory doesn't rank the apps as a phone does. They compare runs
@@ -69,6 +72,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -148,10 +152,14 @@ def run_order(apps, run):
     return list(apps) if run % 2 else list(reversed(apps))
 
 
-def wait_for_load(max_load):
-    """Waits until the Mac's 1-minute load average is at most max_load."""
+def wait_for_load(max_load, deadline=None):
+    """Waits until the Mac's 1-minute load average is at most max_load, and
+    ends the session if it's still over at deadline (time.monotonic()), so a
+    host that never gets that quiet fails rather than waits forever."""
     waiting_since = None
     while os.getloadavg()[0] > max_load:
+        if deadline is not None and time.monotonic() > deadline:
+            raise SystemExit(load_error(max_load))
         if waiting_since is None or time.monotonic() - waiting_since > 60:
             print(
                 f"the Mac's load average is {os.getloadavg()[0]:.1f}, over --max-load {max_load}: waiting",
@@ -160,6 +168,21 @@ def wait_for_load(max_load):
             )
             waiting_since = time.monotonic()
         time.sleep(5)
+
+
+def load_error(max_load):
+    return (
+        f"the Mac's load average is {os.getloadavg()[0]:.1f}, and hasn't stayed under --max-load {max_load} "
+        "through a launch within --max-wait: raise --max-load, or run on a quieter host"
+    )
+
+
+def max_load_value(text):
+    """--max-load's value: a load average, or "off" for no limit. On GitHub's
+    3-core macOS runners the 1-minute load average stays between 80 and 200
+    after the Simulator boots (measured on #854's run), so no limit near the
+    core count is ever reached there."""
+    return "off" if text == "off" else float(text)
 
 
 def of_pid(cell, pid):
@@ -301,7 +324,15 @@ def footprint(pid):
     return report["processes"][0]["footprint"] * report.get("bytes per unit", 1)
 
 
-def record_simulator(udid, bundle_id, trace, seconds, memory_after):
+# How long xctrace may take to start a Simulator recording (about a second
+# on a Mac), and to end one after its time limit, before it counts as stuck.
+RECORDING_START_TIMEOUT = 120
+# A session whose recordings fail this many times in a row measures nothing,
+# and would take hours to find out run by run.
+FAILURES_IN_A_ROW = 3
+
+
+def record_simulator(udid, bundle_id, trace, seconds, memory_after, thermal=True):
     """Records a launch on the Simulator, and returns the app's (pid, bytes)
     from footprint memory_after seconds into the recording, or None.
 
@@ -310,40 +341,93 @@ def record_simulator(udid, bundle_id, trace, seconds, memory_after):
     memory comes from footprint: a Simulator app is a process on the Mac.
     It's read once, after the app has drawn and settled rather than during
     the launch, where footprint's reading would take the Mac's time from it.
+
+    thermal=False leaves out the Thermal State instrument, for a Mac (a
+    GitHub runner, a virtual machine) where it keeps xctrace from ever
+    starting the recording.
     """
     command = [
         "xcrun", "xctrace", "record",
         "--instrument", "Points of Interest",
         "--instrument", "dyld Activity",
+    ]
+    if thermal:
         # The Mac's thermal state, which the Simulator runs under.
-        "--instrument", "Thermal State",
+        command += ["--instrument", "Thermal State"]
+    command += [
         "--device", udid,
         "--time-limit", f"{seconds}s",
         "--output", trace,
         "--no-prompt",
         "--launch", "--", bundle_id,
     ]
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    # In a session of its own, so a stuck recording's kill takes the
+    # processes it started too, which would hold its pipes open.
+    process = subprocess.Popen(
+        command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True
+    )
     # xctrace prints this once it has launched the app and started the
     # recording, about a second after it starts (Xcode 27.2). The time limit
-    # counts from here.
-    output = []
-    for line in process.stdout:
-        output.append(line)
-        if "Ctrl-C to stop" in line:
-            break
-    memory = None
-    if process.poll() is None:
-        time.sleep(memory_after)
-        pid = simulator_app_pid(udid, bundle_id)
-        if pid:
-            try:
-                memory = (pid, footprint(pid))
-            except subprocess.CalledProcessError as error:
-                print(f"footprint failed: {error.stderr.strip()[-300:]}", file=sys.stderr, flush=True)
-    stdout, stderr = process.communicate()
+    # counts from here. Both pipes are read on threads, so a full stderr
+    # can't block xctrace, and so a recording that never starts (on a CI
+    # runner, the first launch sat silent for 45 minutes in #854) ends
+    # with what xctrace said rather than hanging the session.
+    try:
+        output, errors = [], []
+        started = threading.Event()
+
+        def read_output():
+            for line in process.stdout:
+                output.append(line)
+                if "Ctrl-C to stop" in line:
+                    started.set()
+            # The process has ended, started or not.
+            started.set()
+
+        def read_errors():
+            errors.extend(process.stderr)
+
+        readers = [threading.Thread(target=read_output, daemon=True), threading.Thread(target=read_errors, daemon=True)]
+        for reader in readers:
+            reader.start()
+
+        def stop(why):
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+            for reader in readers:
+                reader.join(5)
+            raise subprocess.CalledProcessError(-9, command, "".join(output), f"{''.join(output)}{''.join(errors)}{why}")
+
+        if not started.wait(RECORDING_START_TIMEOUT):
+            stop(f"xctrace hadn't started recording after {RECORDING_START_TIMEOUT} s")
+        memory = None
+        if process.poll() is None:
+            time.sleep(memory_after)
+            pid = simulator_app_pid(udid, bundle_id)
+            if pid:
+                try:
+                    memory = (pid, footprint(pid))
+                except subprocess.CalledProcessError as error:
+                    print(f"footprint failed: {error.stderr.strip()[-300:]}", file=sys.stderr, flush=True)
+        try:
+            process.wait(timeout=seconds + RECORDING_START_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            stop(f"xctrace hadn't ended its {seconds} s recording after {seconds + RECORDING_START_TIMEOUT} s")
+    except BaseException:
+        # Anything else that ends the harness from here on (a Ctrl-C, which
+        # the recording's own session doesn't get from the terminal, even
+        # while the readers start) would leave xctrace running, and one
+        # still starting has no time limit. stop() has already killed it
+        # if it raised; a recording that has ended has no group left to
+        # kill.
+        if process.poll() is None:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+        raise
+    for reader in readers:
+        reader.join(5)
     if process.returncode:
-        raise subprocess.CalledProcessError(process.returncode, command, "".join(output) + stdout, stderr)
+        raise subprocess.CalledProcessError(process.returncode, command, "".join(output), "".join(errors))
     return memory
 
 
@@ -374,13 +458,29 @@ def main():
     )
     parser.add_argument(
         "--max-load",
-        type=float,
+        type=max_load_value,
         help="drop a run whose recording ends with the Mac's 1-minute load average over this, and "
-        "launch it again once the load is under it (with --simulator, default: half the Mac's cores)",
+        "launch it again once the load is under it (with --simulator, default: half the Mac's cores; "
+        "off: no limit, every row still records the load)",
+    )
+    parser.add_argument(
+        "--no-thermal",
+        action="store_true",
+        help="with --simulator, record without the Thermal State instrument (its column stays empty), "
+        "for a Mac where it keeps the recording from starting",
+    )
+    parser.add_argument(
+        "--max-wait",
+        type=float,
+        help="with --max-load, end the session when a launch is still waiting for the load to come under it, "
+        "or has just been dropped for going over it, this many seconds after its first try; a launch measured "
+        "under it counts, however long it took (default: wait as long as it takes)",
     )
     args = parser.parse_args()
     if args.simulator and args.max_load is None:
         args.max_load = (os.cpu_count() or 2) / 2
+    if args.max_load == "off":
+        args.max_load = None
     if args.simulator and args.memory_after >= args.seconds:
         parser.error("--memory-after has to be under --seconds: the app ends with the recording")
 
@@ -444,11 +544,13 @@ def main():
     def launch(name, bundle_id, run, trace):
         """Records one launch, and returns its row and (on the Simulator)
         its memory reading, or (None, None) when xctrace failed. A run that
-        ends over --max-load is dropped and launched again."""
+        ends over --max-load is dropped and launched again, until
+        --max-wait has gone by."""
         nonlocal previous
+        deadline = time.monotonic() + args.max_wait if args.max_wait is not None else None
         while True:
             if args.max_load is not None:
-                wait_for_load(args.max_load)
+                wait_for_load(args.max_load, deadline)
             before = os.getloadavg()[0]
             row = {
                 "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
@@ -465,7 +567,9 @@ def main():
             memory = None
             try:
                 if args.simulator:
-                    memory = record_simulator(args.device, bundle_id, trace, args.seconds, args.memory_after)
+                    memory = record_simulator(
+                        args.device, bundle_id, trace, args.seconds, args.memory_after, thermal=not args.no_thermal
+                    )
                 else:
                     record(args.device, bundle_id, trace, args.seconds, [], light=args.light)
             except subprocess.CalledProcessError as error:
@@ -495,14 +599,23 @@ def main():
                 flush=True,
             )
             shutil.rmtree(trace, ignore_errors=True)
+            # A launch can push the load over the limit by itself, on a host
+            # with few cores, and then every run is dropped.
+            if deadline is not None and time.monotonic() > deadline:
+                raise SystemExit(load_error(args.max_load))
 
+    failures = 0
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         for run in range(1, args.runs + 1):
             for name, bundle_id in run_order(apps, run):
                 trace = os.path.join(work, f"{name}-{run}.trace")
                 row, memory = launch(name, bundle_id, run, trace)
                 if row is None:
+                    failures += 1
+                    if failures >= FAILURES_IN_A_ROW:
+                        raise SystemExit(f"xctrace failed {failures} launches in a row: ending the session")
                     continue
+                failures = 0
                 if args.simulator:
                     # Reading a trace keeps the Mac busy, and the Simulator
                     # launches on the Mac's cores: read it before the next

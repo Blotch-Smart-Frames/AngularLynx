@@ -202,3 +202,85 @@ waits for the Mac's load average to be under `--max-load` before each
 launch, records it with every run, and repeats a run whose load went over.
 Its numbers aren't a phone's, so `results/android-emulator` isn't charted
 either; within a session they compare.
+
+## Tracking AngularLynx against ReactLynx
+
+[`simulator-benchmarks.yml`](../.github/workflows/simulator-benchmarks.yml)
+runs the Simulator benchmark on demand: it builds this commit's AngularLynx
+app (on the packed packages, `scripts/use-local-packages.mjs`) and the
+ReactLynx app, launches the Pokédex 20 times each and each of the six mount
+screens 10 times each, and [`harness/track.py`](harness/track.py) reads the
+CSVs. It tracks four things as AngularLynx / ReactLynx: the Pokédex's fully
+drawn time and its memory, and the cost of a view, a text and an image,
+(5,000-element screen − 1,500-element screen) / 3,500. The host moves the
+times by 5–30% from one run to the next, but it moves both apps of a session
+alike, so the ratio keeps most of a change in AngularLynx and little of the
+host's.
+
+The job summary has the run's numbers, each ratio against its baseline (the
+median of the 14 days before) and the last 14 days. The history keeps one
+record a day, the latest run's, and each run on master hands it to the next
+as an artifact (`simulator-benchmark-history`, kept 90 days); its CSVs are in
+`simulator-benchmarks`. A ratio more than 10% off its baseline, the same way,
+on each of the last three days it ran opens an issue labeled
+`benchmark-alert`, or comments on the one that's open: one day is the host,
+three in a row aren't. A run on another branch only measures.
+
+It isn't a per-PR gate (the host moves a single run too much for that, and a
+change of a few percent needs a quiet Mac, above, to see), and it isn't
+scheduled: GitHub's free macOS runner can't run it. With the Simulator
+booted, its 3 cores ran a load average of 84 to 303, and Instruments
+recorded the first launch of each app, four times slower than on a laptop,
+then hung before recording the next (#854). So it runs on a Mac with Xcode
+27, about an hour and a half of builds and launches, in either of two ways.
+
+**As the workflow**, which keeps the history and opens the issue. Register
+the Mac as a
+[self-hosted runner](https://docs.github.com/en/actions/hosting-your-own-runners/managing-self-hosted-runners/adding-self-hosted-runners)
+of the repository (Settings → Actions → Runners → New self-hosted runner),
+start it with `./run.sh`, and run the workflow from the Actions tab, or with
+`gh workflow run simulator-benchmarks.yml --ref master`, whose `runner` input
+is `self-hosted`. When it's done, stop the runner and remove it
+(`./config.sh remove`, with the token from the same page), and delete its
+folder. Don't leave it registered: the workflow runs only on
+`workflow_dispatch`, which takes write access, but a runner left on a public
+repository is one any later workflow could target. If Instruments has never
+recorded on the Mac, record once by hand first (`xcrun xctrace record
+--instrument 'Points of Interest' --device <udid> --time-limit 3s --launch --
+<bundle id>`): macOS asks for an admin's password the first time, and a
+runner can't answer it.
+
+**By hand**, which measures without the history: save these lines as a
+script and run it with `bash` from the repository root, after `npm ci` and
+`npm run build`. Commit or stash any changes to
+`benchmarks/apps/angular-lynx/package.json` and `package-lock.json` first,
+since the script puts both back when it ends.
+
+```sh
+set -e
+cleanup() {
+  [ -z "${fixtures:-}" ] || kill "$fixtures" 2>/dev/null || true
+  python3 benchmarks/harness/track.py shutdown || echo "Shutting the Simulator down failed" >&2
+  git checkout benchmarks/apps/angular-lynx/package.json benchmarks/apps/angular-lynx/package-lock.json
+}
+trap cleanup EXIT
+(cd benchmarks/apps/angular-lynx && node scripts/use-local-packages.mjs)
+(cd benchmarks/apps/react-lynx && npm ci)
+udid=$(python3 benchmarks/harness/track.py boot)
+xcrun simctl install "$udid" "$(sh benchmarks/harness/build_ios_app.sh --simulator angular-lynx com.angularlynx.bench.angularlynx)"
+xcrun simctl install "$udid" "$(sh benchmarks/harness/build_ios_app.sh --simulator react-lynx com.angularlynx.bench.rival)"
+node benchmarks/fixtures/server.mjs & fixtures=$!
+launch="benchmarks/results/ios-simulator/launch-$(date -u +%F)-react-lynx.csv"
+python3 benchmarks/harness/ios_launch.py --simulator --device "$udid" --runs 20 \
+  --app angular-lynx=com.angularlynx.bench.angularlynx --app react-lynx=com.angularlynx.bench.rival --out "$launch"
+python3 benchmarks/harness/ios_mount.py --simulator --device "$udid" --rival react-lynx --runs 10
+python3 benchmarks/harness/track.py report --launch "$launch" --mount-dir benchmarks/results/ios-simulator --summary summary.md
+```
+
+`use-local-packages.mjs` rewrites those two files to the packed packages.
+`cleanup` stops the fixture server and the Simulator and puts the two files
+back however the script ends, a failed build or launch included. Both harnesses append to the day's CSVs, and the report takes each
+app's median of every row in them, so move a day's earlier
+`launch-<date>-react-lynx.csv` and `mount-<date>-*` files out of
+`results/ios-simulator` before a second session that day; the report finds
+the mount CSVs by those names only.

@@ -80,7 +80,7 @@ The apps load recorded PokeAPI responses and images from a server on the Mac, ov
 ### Rules
 
 - **Release builds,** each app in its own native app: never Expo Go, never Lynx Explorer.
-- **A real phone** for every number here. The harness also runs on the iOS Simulator, to compare two builds of one app before a change reaches the phone, but a Simulator's numbers aren't a phone's, so none are charted.
+- **A real phone** for every number here. The harness also runs on the iOS Simulator, to compare two builds of one app before a change reaches the phone, and in a workflow run on a Mac, which tracks AngularLynx against ReactLynx and opens an issue when the gap between them changes on several days in a row. A Simulator's numbers aren't a phone's, so none are charted.
 - **Apps alternate run by run** (A B, B A, A B…), so heat, battery and background work fall on every app alike.
 - **Battery, charging, thermal state and the iOS build** are recorded with every run, in the CSVs.
 - **Two kinds of launch, charted apart.** The apps go A B, B A, A B…, so half of each app's launches come right after its own last launch, and half after the other app's. iOS keeps a closed app's files in memory for a while, so launching it again is about 80 ms faster, at every metric and for every app. After the other app, it depends on how much the other app pushed out. Each chart has a row for each.

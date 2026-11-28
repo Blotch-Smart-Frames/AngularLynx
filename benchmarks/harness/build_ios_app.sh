@@ -35,6 +35,10 @@ else
 fi
 team="${TEAM_ID:-F64LTK85F6}"
 log="$(mktemp -t "build-$app")"
+# The build's output goes to the log, so a build that fails says nothing of
+# why: print the end of the log. A CI run (the Simulator benchmark workflow)
+# has no other way to see it.
+trap 'status=$?; if [ "$status" -ne 0 ] && [ -s "$log" ]; then echo "Building $app failed; the end of $log:" >&2; tail -n 60 "$log" >&2; fi' EXIT
 cd "$dir"
 
 # A Simulator build is unsigned and for both Simulator architectures

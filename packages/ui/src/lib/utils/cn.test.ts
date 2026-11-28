@@ -1,18 +1,11 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { twMerge } from 'tailwind-merge';
 
 import { cn, createCn } from './cn';
 
 // packages/dolan's copy of these tests also checks every class the
-// components use against twMerge(), and that cn.ts is the same file there.
-
-/**
- * A `cn()` of its own, and a spy on the full `twMerge()` it falls back to.
- */
-const freshCn = () => {
-  const fullMerge = vi.fn(twMerge);
-  return { cn: createCn(fullMerge), fullMerge };
-};
+// components use against twMerge(), that the generated config is up to
+// date, and that cn.ts and cn-config.ts are the same files there.
 
 describe('cn', () => {
   it('merges class names', () => {
@@ -37,8 +30,8 @@ describe('cn', () => {
     expect(cn('')).toBe('');
   });
 
-  it("merges the components' kinds of classes as twMerge() does, without the full class map", () => {
-    const { cn: merge, fullMerge } = freshCn();
+  it("merges the components' kinds of classes as twMerge() does", () => {
+    const merge = createCn();
     const lists = [
       'h-12 rounded-lg bg-primary px-4 text-base text-primary-foreground px-6 h-14',
       'hover:px-2 px-1 hover:px-4',
@@ -56,25 +49,17 @@ describe('cn', () => {
       'border-2 border-collapse',
       // Parts only kept groups have: `static` and `sticky` are `position`'s.
       'absolute static sticky',
+      'table/50 block',
     ];
     for (const list of lists) {
       expect(merge(list)).toBe(twMerge(list));
     }
-    expect(fullMerge).not.toHaveBeenCalled();
   });
 
-  it('switches to the full map for good on a class from a group the components lack', () => {
-    const { cn: merge, fullMerge } = freshCn();
+  it('keeps a class of a group no component uses as it is', () => {
+    const merge = createCn();
     expect(merge('px-2 cursor-pointer', 'px-4 cursor-default')).toBe(
-      'px-4 cursor-default',
+      'cursor-pointer px-4 cursor-default',
     );
-    expect(merge('px-2', 'px-4')).toBe('px-4');
-    expect(fullMerge).toHaveBeenCalledTimes(2);
-  });
-
-  it('switches to the full map on a foreign class with a postfix', () => {
-    const { cn: merge, fullMerge } = freshCn();
-    expect(merge('table/50', 'block')).toBe(twMerge('table/50 block'));
-    expect(fullMerge).toHaveBeenCalledTimes(1);
   });
 });

@@ -216,7 +216,7 @@ export class App {
 - **Signals throughout.** Inputs use `input()`, events use `output()`, and two-way values use `model()`, so `[(value)]` and `[(checked)]` work.
 - **Theme tokens, not colors.** Components use classes such as `bg-primary` and `text-muted-foreground`, defined once in your theme. See [Theming](/dolan/theming).
 - **Variants with `cva`.** Variant classes come from [class-variance-authority](https://cva.style/). Components export them, for example `buttonVariants`.
-- **Your classes win.** Most components take a `class` input. It's merged with `cn()`, so a conflicting class you pass replaces the default.
+- **Your classes win.** Most components take a `class` input. It's merged with `cn()`, so a conflicting class you pass replaces the default. `cn()` merges as [tailwind-merge](https://github.com/dcastil/tailwind-merge)'s `twMerge()` does, but knows only the kinds of class the components use, those that conflict with them, and the margins, sizes and text styles apps often pass, to keep the rest of tailwind-merge's config out of your app's script. Two classes of another kind in one list are both kept: `cn('rotate-45', 'rotate-90')` returns both, where `twMerge()` keeps the last. Where you need that, add `tailwind-merge` to your dependencies and call `twMerge()`.
 - **Lynx elements only.** Components are built from `<view>`, `<text>`, `<svg>`, `<overlay>` and other Lynx elements, never HTML.
 
 ## Related

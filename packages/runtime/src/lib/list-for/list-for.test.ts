@@ -744,6 +744,43 @@ describe('*lynxListFor', () => {
     expect(flushes).toEqual([{ element: undefined, options: undefined }]);
   });
 
+  it('flushes the whole tree after the first item with an HTML text tag, which gives the list its inheritance class', async () => {
+    @Component({
+      selector: 'span-host',
+      imports: [LynxListFor],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      encapsulation: ViewEncapsulation.None,
+      template: `
+        <list>
+          <list-item *lynxListFor="let row of rows">
+            <span class="name">{{ row.name }}</span>
+          </list-item>
+        </list>
+      `,
+    })
+    class SpanHost {
+      readonly rows = [];
+    }
+    const fixture = TestBed.createComponent(SpanHost);
+    fixture.detectChanges();
+    setInputs(directives.at(-1)!, { rows: rowsOf(3) });
+    await update(fixture);
+    const appRef = fixture.componentRef.injector.get(ApplicationRef);
+    show(0);
+    flushes.length = 0;
+
+    // The list, outside the item, got the class with the item's insert.
+    appRef.tick();
+    expect(theList().classes.has('_nginherit')).toBe(true);
+    expect(flushes).toEqual([{ element: undefined, options: undefined }]);
+
+    // The list has it now: the next item writes only inside itself.
+    show(1);
+    flushes.length = 0;
+    appRef.tick();
+    expect(flushes).toEqual([]);
+  });
+
   it('leaves a reused view out of change detection when its check throws', async () => {
     const { fixture, set } = await render();
     const sign = show(0)!;

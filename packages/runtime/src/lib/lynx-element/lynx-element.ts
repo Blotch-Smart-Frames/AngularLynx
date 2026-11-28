@@ -3428,6 +3428,10 @@ export class LynxElement implements BaseLynxElement {
         this.#scopeClasses.push(LYNX_TEXT_INHERITANCE_CLASS);
         this.#addClassName(LYNX_TEXT_INHERITANCE_CLASS);
       }
+      // A write to this element, which may be an ancestor of the inserting
+      // one outside a list item being bound: the list, when a row's first
+      // HTML text tag goes in (see #noteBindingWrite).
+      this.#wrote();
       // Its inline text styles, set before the text went in as Angular sets
       // a static style, get their copies now (see #inlineTextCopies). One
       // removed this cycle gets them when it's rebuilt (see

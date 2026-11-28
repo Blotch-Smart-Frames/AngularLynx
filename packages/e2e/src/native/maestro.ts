@@ -188,16 +188,21 @@ const STALLED_METAL_COMPILER_SECONDS = 10;
  * the second because the iOS host's log stream takes in MTLCompilerService's
  * lines that name the app (see runIosHost in ios.ts).
  */
-const METAL_COMPILE_REQUEST_LINE =
-  /\s(\d+)\s+\d+\s+[^:]+: \(Metal\) Metal Compiling Shader$/;
+const METAL_COMPILE_REQUEST_LINE = /: \(Metal\) Metal Compiling Shader$/;
 const METAL_COMPILE_BEGIN_LINE =
   /Compilation BEGIN \(ParentProcessName=[^)]*_(\d+)\)/;
 
 /**
+ * The ID of the process that logged a `log stream` line: the column after
+ * the activity ID ("0x5a3b24a            75118  0    myapp: ...").
+ */
+const LOG_LINE_PROCESS = /^\S+ \S+\s+\S+\s+\S+\s+\S+\s+(\d+)\s/;
+
+/**
  * Says so when an app process in `appLog` asked the simulator's Metal
  * compiler for shaders, and the compiler hadn't begun compiling for it
- * {@link STALLED_METAL_COMPILER_SECONDS} later, or by the log's last line;
- * otherwise undefined.
+ * {@link STALLED_METAL_COMPILER_SECONDS} later, or by that process's last
+ * line; otherwise undefined.
  *
  * The first WebGL context an app makes after the simulator boots has ANGLE
  * build its Metal shaders from source, through MTLCompilerService, which the
@@ -209,35 +214,54 @@ const METAL_COMPILE_BEGIN_LINE =
  * linking.yaml's "Open linking" did nothing. The next flow, in a new app
  * process, got its compiler in about a second, and later ones find the
  * shaders cached and compile nothing.
+ *
+ * Only a process's first compile counts: once the compiler has started for
+ * it, a later compile is no stall, however long after the first it comes. A
+ * process that's stuck keeps logging while it waits (XCTest answers Maestro's
+ * queries in it, about 100 lines a second on the failing runs), so its own
+ * last line is how long it waited. That's its own rather than the log's last
+ * line, since a later flow's launchApp may stop a process just after it asked,
+ * and the session's log runs on through the flows after it.
  */
 export const stalledMetalCompiler = (appLog: string): string | undefined => {
-  // When each app process first asked, and whether its compile began.
-  const requested = new Map<string, number>();
-  const began = new Set<string>();
-  let last: number | undefined;
+  // Each app process's first request that hasn't begun, and its last line.
+  const waiting = new Map<string, number>();
+  const started = new Set<string>();
+  const lastLine = new Map<string, number>();
   for (const line of appLog.split('\n')) {
     const time = logLineTime(line);
     if (time === undefined) {
       continue;
     }
-    last = time;
     const begun = METAL_COMPILE_BEGIN_LINE.exec(line)?.[1];
     if (begun !== undefined) {
-      const seconds = (time - (requested.get(begun) ?? time)) / 1000;
-      if (seconds >= STALLED_METAL_COMPILER_SECONDS) {
-        return `the simulator took ${Math.round(seconds)}s to start compiling the app's Metal shaders`;
+      const asked = waiting.get(begun);
+      if (asked !== undefined) {
+        const seconds = (time - asked) / 1000;
+        if (seconds >= STALLED_METAL_COMPILER_SECONDS) {
+          return `the simulator took ${Math.round(seconds)}s to start compiling the app's Metal shaders`;
+        }
+        waiting.delete(begun);
       }
-      began.add(begun);
+      started.add(begun);
       continue;
     }
-    const process = METAL_COMPILE_REQUEST_LINE.exec(line)?.[1];
-    if (process !== undefined && !requested.has(process)) {
-      requested.set(process, time);
+    const process = LOG_LINE_PROCESS.exec(line)?.[1];
+    if (process === undefined) {
+      continue;
+    }
+    lastLine.set(process, time);
+    if (
+      METAL_COMPILE_REQUEST_LINE.test(line) &&
+      !started.has(process) &&
+      !waiting.has(process)
+    ) {
+      waiting.set(process, time);
     }
   }
-  for (const [process, time] of requested) {
-    const seconds = last === undefined ? 0 : (last - time) / 1000;
-    if (!began.has(process) && seconds >= STALLED_METAL_COMPILER_SECONDS) {
+  for (const [process, asked] of waiting) {
+    const seconds = ((lastLine.get(process) ?? asked) - asked) / 1000;
+    if (seconds >= STALLED_METAL_COMPILER_SECONDS) {
       return `the simulator hadn't started compiling the app's Metal shaders ${Math.round(seconds)}s after the app asked for it`;
     }
   }

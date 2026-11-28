@@ -87,7 +87,7 @@ A call costs 10–30 times as much in the bind as in a loop of its own. An empty
 
 Skipping the empty `end()`'s passes made no difference that showed (−1.1%, 0.0% and +1.0% in three runs with the others). Sixteen rounds across processes, alternating, gave −2.6% on the median and +0.7% on the fastest run.
 
-**What's left** is what each path needs. The registry holds each element strongly until the cycle settles, then weakly under a `*lynxListFor` item (#279, #280), and drops it on release. Classes wait for the end of the cycle, and the insert tail is #908's. The larger changes would be giving `LynxElement` a side object for its rarely set private fields (49 are set up for every element), or lighter registry work for the elements in list items. The second needs a safe alternative to the weak hold. Neither looks like more than a few percent of a bind. Angular's refresh is the rest: about three quarters, the row's `@for` of dots about 30% of it (#885).
+**What's left** is what each path needs. The registry holds each element strongly until the cycle settles, then weakly under a `*lynxListFor` item (#279, #280), and drops it on release. Classes wait for the end of the cycle, and the insert tail is #908's. The larger changes would be giving `LynxElement` a side object for its rarely set private fields (49 are set up for every element), or lighter registry work for the elements in list items. The second needs a safe alternative to the weak hold. Neither looks like more than a few percent of a bind. Angular's refresh is the rest: about three quarters of a bind, the row's `@for` of dots about 30% of the bind on its own (#885).
 
 ## Binding the next row ahead, while the engine thread is idle (2026-11-28, #888)
 

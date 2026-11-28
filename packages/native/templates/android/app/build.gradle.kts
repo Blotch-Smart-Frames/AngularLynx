@@ -168,6 +168,20 @@ dependencies {
     // angular-lynx:biometrics
     implementation("androidx.biometric:biometric:1.1.0")
     // /angular-lynx:biometrics
+    // Google's code scanner, which BarcodeScannerModule opens: it runs in
+    // Google Play services, which shows the camera, so the app needs no
+    // CAMERA permission and ships no ML Kit model. Only an app whose
+    // angular.json sets permissions.camera keeps these lines and the module
+    // (@blotch/angular-lynx-native's android/project.ts).
+    // angular-lynx:barcode-scanner
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
+    // /angular-lynx:barcode-scanner
+    // Google Play's In-App Review API, which StoreReviewModule asks for the
+    // rating prompt. Only an app whose angular.json sets storeReview keeps
+    // these lines (@blotch/angular-lynx-native's android/project.ts).
+    // angular-lynx:store-review
+    implementation("com.google.android.play:review:2.0.2")
+    // /angular-lynx:store-review
 
     // The Lynx engine, its JavaScript runtime (PrimJS) and its JS SDK.
     implementation("org.lynxsdk.lynx:lynx:$lynxVersion")

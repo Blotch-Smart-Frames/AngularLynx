@@ -136,6 +136,26 @@ describe('prepareProject', () => {
     );
   });
 
+  it('brings the store review module back once the app sets storeReview, and drops it once it stops', () => {
+    for (const [platform, module] of [
+      ['ios', 'App/StoreReviewModule.swift'],
+      [
+        'android',
+        'app/src/main/java/dev/angularlynx/shell/StoreReviewModule.kt',
+      ],
+    ] as const) {
+      const file = path.join(workDir, platform, module);
+      expect(prepare(platform).regenerated).toBe(true);
+      expect(existsSync(file)).toBe(false);
+      // The options are inputs, so the project is generated again from the
+      // template, which has the module.
+      expect(prepare(platform, { storeReview: true }).regenerated).toBe(true);
+      expect(existsSync(file)).toBe(true);
+      expect(prepare(platform).regenerated).toBe(true);
+      expect(existsSync(file)).toBe(false);
+    }
+  });
+
   it('leaves out the canvas code for an app that never draws, and puts it back when it does', () => {
     const generate = (canvas: boolean) =>
       prepareProject({

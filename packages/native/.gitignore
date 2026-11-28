@@ -6,3 +6,6 @@ coverage
 # and shipped in the npm package; APP_PROJECT in
 # scripts/generate-ios-project.ts is the source.
 templates/ios/App.xcodeproj
+# Where the iosTemplateProject plugin writes a changed file before renaming it
+# into templates/ios/App.xcodeproj.
+.ios-project-staging

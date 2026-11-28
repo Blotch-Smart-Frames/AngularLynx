@@ -1,7 +1,6 @@
 import '@angular/compiler';
 import { Injector } from '@angular/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { LynxNativeModule } from '../native-module/native-module';
 import {
   LynxWebAuthSession,
   type WebAuthSessionErrorCode,
@@ -16,7 +15,7 @@ type Done = (result: {
 
 const createSession = () =>
   Injector.create({
-    providers: [LynxWebAuthSession, LynxNativeModule],
+    providers: [LynxWebAuthSession],
   }).get(LynxWebAuthSession);
 
 /**
@@ -133,6 +132,36 @@ describe('LynxWebAuthSession', () => {
     );
 
     expect(code).toBe('unavailable');
+  });
+
+  it("sends the main thread's sign-in with no callback to keep, however many sign-ins it makes", async () => {
+    const dispatchEvent = vi.fn();
+    vi.stubGlobal('__MAIN_THREAD__', true);
+    vi.stubGlobal('lynx', {
+      getJSContext: () => ({ addEventListener: () => {}, dispatchEvent }),
+    });
+
+    void createSession().start({
+      url: 'https://example.com',
+      callbackScheme: 'myapp',
+    });
+
+    await vi.waitFor(() => expect(dispatchEvent).toHaveBeenCalled());
+    const { name, args } = JSON.parse(dispatchEvent.mock.calls[0]![0].data);
+    // callNativeModuleAsync keeps the module's callback on the background
+    // thread: a function sent with the call would stay registered here.
+    expect(name).toBe('callNativeModuleAsync');
+    expect(args).toEqual([
+      'AngularLynxWebAuth',
+      'start',
+      [
+        {
+          url: 'https://example.com',
+          callbackScheme: 'myapp',
+          ephemeral: false,
+        },
+      ],
+    ]);
   });
 
   it('rejects as unavailable when the main thread has no background thread to relay to', async () => {

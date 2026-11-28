@@ -64,6 +64,11 @@
       "default": "safe",
       "description": "How much of the app's own code the background thread's script keeps. safe runs every top-level statement of the files the background thread loads (those that define a backgroundFn() or a MainThreadRef, and their imports). aggressive drops the app's module-level values that nothing on the background thread reads, which makes that script smaller, but such a declaration no longer runs there even when its initializer does something on purpose, such as subscribing to a global event emitter."
     },
+    "eagerImports": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the main thread's script compiles the app's import()s, such as a lazy route's loadComponent: () => import('./x'), as static imports. The script is then smaller, because rspack can concatenate the modules a lazy route shares with the rest of the app (24 kB of the benchmark app's 625 kB). But each module an import() loads then runs when the app starts, as a static import does: its top-level code runs at launch even when the route is never shown, and an import cycle through the routes file, which the import() broke, can make a top-level read of an export a used-before-defined error. @defer blocks' imports stay lazy. Has no effect with experimental_isLazyBundle."
+    },
     "browser": {
       "type": "string",
       "description": "Angular: the app's entry point. Read by @blotch/rsbuild-plugin-angular-lynx and `ng test`, and rspeedy's `source.entry` unless lynx.config.ts sets one."
@@ -247,7 +252,8 @@
       "additionalProperties": false,
       "properties": {
         "camera": {
-          "type": "string"
+          "type": "string",
+          "description": "Why the app uses the camera: iOS shows it the first time the app opens the camera. It also turns on LynxBarcodeScanner: without it, the app has no scanner code at all. Android's scanner runs in Google Play services and needs no permission, but Android still declares the camera."
         },
         "microphone": {
           "type": "string"
@@ -287,6 +293,11 @@
       "type": "boolean",
       "default": false,
       "description": "Whether the iOS Files app lists the app's Documents folder under On My iPhone (UIFileSharingEnabled and LSSupportsOpeningDocumentsInPlace), where LynxFilePicker can save a file and pick it again. iOS only."
+    },
+    "storeReview": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the app asks for an App Store or Google Play rating in the app with LynxStoreReview: StoreKit's review prompt on iOS, Google Play's In-App Review API on Android. false leaves the native module out of both apps, and Play's review library out of the Android one."
     },
     "deepLinkSchemes": {
       "type": "array",

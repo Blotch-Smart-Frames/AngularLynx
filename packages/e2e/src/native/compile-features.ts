@@ -27,29 +27,35 @@ import {
  * (issue #837), the build most apps get, and a canvas that draws only in 2D
  * (#847), what a chart or a signature pad gets.
  *
- * The first is also built without `permissions.biometrics`, as most apps
- * are, which leaves the biometrics module out (#918). The E2E app asks for
- * biometrics, so its own build has the module. It's built without
- * angular.json's `filePicker` too, which leaves the file picker module and
- * MainActivity's launcher for it out (#924), while the E2E app sets it.
+ * The first is also built without `permissions.biometrics` and
+ * `permissions.camera`, as most apps are, which leaves the biometrics module
+ * (#918) and the barcode scanner's (#917) out. The E2E app asks for both, so
+ * its own build has the modules. Both are built
+ * without `storeReview`, which the E2E app sets and most apps don't (#931).
+ * `no-canvas` is built without angular.json's `filePicker` too, which leaves
+ * the file picker module and MainActivity's launcher for it out (#924),
+ * while the E2E app sets it.
  */
 export const VARIANTS: readonly {
   readonly name: string;
   readonly features: NativeFeatures;
   readonly biometrics: boolean;
   readonly filePicker: boolean;
+  readonly camera: boolean;
 }[] = [
   {
     name: 'no-canvas',
     features: { canvas: false, webgl: false },
     biometrics: false,
     filePicker: false,
+    camera: false,
   },
   {
     name: 'canvas-2d',
     features: { canvas: true, webgl: false },
     biometrics: true,
     filePicker: true,
+    camera: true,
   },
 ];
 
@@ -66,6 +72,7 @@ const PROBES: Record<
     webgl: string;
     biometrics: string;
     filePicker: string;
+    camera: string;
   }
 > = {
   ios: {
@@ -73,13 +80,26 @@ const PROBES: Record<
     webgl: 'App/AngularLynxWebGLContext.m',
     biometrics: 'App/BiometricsModule.swift',
     filePicker: 'App/FilePickerModule.swift',
+    camera: 'App/BarcodeScannerModule.swift',
   },
   android: {
     canvas: 'app/src/main/java/dev/angularlynx/shell/Canvas2DContext.kt',
     webgl: 'app/src/main/java/dev/angularlynx/shell/WebGLContext.kt',
     biometrics: 'app/src/main/java/dev/angularlynx/shell/BiometricsModule.kt',
     filePicker: 'app/src/main/java/dev/angularlynx/shell/FilePickerModule.kt',
+    camera: 'app/src/main/java/dev/angularlynx/shell/BarcodeScannerModule.kt',
   },
+};
+
+/**
+ * The store review module, which the variants build without: the E2E app
+ * sets angular.json's `storeReview`, which most apps don't, so only these
+ * builds show the shells still compile once it and its registration are
+ * taken out (issue #931).
+ */
+const STORE_REVIEW_PROBES: Record<Platform, string> = {
+  ios: 'App/StoreReviewModule.swift',
+  android: 'app/src/main/java/dev/angularlynx/shell/StoreReviewModule.kt',
 };
 
 /**
@@ -122,7 +142,7 @@ export const compileFeatureVariants = async ({
     const appPermissions =
       (Object.values(readAngularJson(appDir).projects)[0]!.architect.build
         .options['permissions'] as Record<string, string> | undefined) ?? {};
-    for (const { name, features, biometrics, filePicker } of VARIANTS) {
+    for (const { name, features, biometrics, filePicker, camera } of VARIANTS) {
       step(`The ${platform} project with ${name}`);
       const variantDir = path.join(root, name);
       const bundleDir = path.join(variantDir, 'dist');
@@ -159,18 +179,25 @@ export const compileFeatureVariants = async ({
           workDir: path.join(variantDir, 'work'),
           outputDir: path.join(variantDir, 'out'),
           log,
+          // Without storeReview, which the E2E app sets and most apps don't,
+          // and the app's permissions without the ones the variant leaves out.
           overrides: {
-            ...(!biometrics && {
-              permissions: Object.fromEntries(
-                Object.entries(appPermissions).filter(
-                  ([permission]) => permission !== 'biometrics',
-                ),
-              ),
-            }),
+            storeReview: false,
+            ...(biometrics && camera
+              ? {}
+              : {
+                  permissions: Object.fromEntries(
+                    Object.entries(appPermissions).filter(
+                      ([permission]) =>
+                        (biometrics || permission !== 'biometrics') &&
+                        (camera || permission !== 'camera'),
+                    ),
+                  ),
+                }),
             ...(!filePicker && { filePicker: false }),
           },
         });
-        const kept = { ...features, biometrics, filePicker };
+        const kept = { ...features, biometrics, filePicker, camera };
         for (const [feature, file] of Object.entries(PROBES[platform]) as [
           keyof typeof kept,
           string,
@@ -180,6 +207,11 @@ export const compileFeatureVariants = async ({
               `${name}: the generated project ${kept[feature] ? 'has no' : 'still has'} ${file}, so it isn't the project an app with ${JSON.stringify(kept)} gets.`,
             );
           }
+        }
+        if (existsSync(path.join(projectDir, STORE_REVIEW_PROBES[platform]))) {
+          failures.push(
+            `${name}: the generated project still has ${STORE_REVIEW_PROBES[platform]}, though the variant builds without storeReview.`,
+          );
         }
         check(
           artifacts.length > 0,

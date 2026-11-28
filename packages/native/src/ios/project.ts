@@ -1,4 +1,4 @@
-import { copyFileSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { removeMarkedLines, removeTemplateFiles } from '../features.ts';
@@ -34,8 +34,13 @@ const ORIENTATIONS: Record<Orientation, readonly string[]> = {
  * between the template's `angular-lynx:info` markers, the shortcuts
  * become App/AppShortcuts.swift, the app link domains become
  * Config/App.entitlements, and the icon and the splash go in the asset
- * catalog.
+ * catalog. The barcode scanner's module stays only in an app with the
+ * `camera` permission, and the store review module only in an app with
+ * `storeReview`.
  */
+/** LynxBarcodeScanner's module, which needs the `camera` permission. */
+export const IOS_BARCODE_SCANNER_SOURCE = 'App/BarcodeScannerModule.swift';
+
 export const iosGenerator: PlatformGenerator = {
   configure: (dir, app, projectRoot, development = false) => {
     writeFileSync(path.join(dir, 'Config/App.xcconfig'), xcconfig(app));
@@ -57,6 +62,16 @@ export const iosGenerator: PlatformGenerator = {
         path.join(dir, 'App/AppShortcuts.swift'),
         appShortcutsSwift(app),
       );
+    }
+
+    // App Store Connect flags an app whose code uses the camera without
+    // NSCameraUsageDescription (ITMS-90683), which only the `camera`
+    // permission writes. So an app that doesn't ask for the camera leaves
+    // the scanner's module out, and on Android its module and the Play
+    // services library behind it (see androidGenerator). LynxViewController
+    // registers the module by name only when it's compiled in.
+    if (!app.permissions.camera) {
+      rmSync(path.join(dir, IOS_BARCODE_SCANNER_SOURCE), { force: true });
     }
 
     // In Config/, beside the xcconfig that points the target at it, rather
@@ -97,6 +112,12 @@ export const iosGenerator: PlatformGenerator = {
     if (!app.filePicker) {
       removeTemplateFiles(dir, IOS_FILE_PICKER_SOURCES);
     }
+    // An app that doesn't ask for ratings in the app (angular.json's
+    // `storeReview`) ships no StoreKit review code it never calls.
+    // LynxViewController registers the module by name too.
+    if (!app.storeReview) {
+      removeTemplateFiles(dir, [IOS_STORE_REVIEW_SOURCE]);
+    }
     if (features.webgl) return;
     if (features.canvas) {
       // A 2D canvas keeps the module and the canvas's view, without the
@@ -122,6 +143,9 @@ export const iosGenerator: PlatformGenerator = {
   },
   bundleDir: (dir) => path.join(dir, 'LynxBundle'),
 };
+
+/** The module behind `LynxStoreReview`, which only `storeReview` keeps. */
+export const IOS_STORE_REVIEW_SOURCE = 'App/StoreReviewModule.swift';
 
 /**
  * The shell's biometrics module, `AngularLynxBiometrics` (LynxBiometrics, and

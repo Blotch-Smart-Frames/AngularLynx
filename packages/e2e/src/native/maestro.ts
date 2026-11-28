@@ -372,6 +372,14 @@ export const FLOWS: readonly Flow[] = [
     only: { host: 'shell' },
   },
   {
+    file: 'store-review.yaml',
+    description: "asks for the store's rating prompt, which iOS shows",
+    // Only the app's own builds have the store review module, and only
+    // with angular.json's storeReview, which the harness sets. Lynx
+    // Explorer has none, and request() resolves without a prompt.
+    only: { host: 'shell' },
+  },
+  {
     file: 'linking.yaml',
     description:
       'says which apps it can open, and on Android opens a link in a browser tab',
@@ -443,6 +451,16 @@ export const FLOWS: readonly Flow[] = [
     // rejects with unavailable.
     only: { host: 'shell' },
     deviceFault: anyDeviceFault(slowPhotosPickerLaunch, stalledMetalCompiler),
+  },
+  {
+    file: 'scanner.yaml',
+    description:
+      "opens LynxBarcodeScanner, which the Simulator's shell says it has no camera for",
+    // Only the app's own iOS build: Lynx Explorer has no scanner module, and
+    // Android's scanner is Play services', which CI's emulator may open or
+    // download (see scanner.yaml).
+    only: { platform: 'ios', host: 'shell' },
+    deviceFault: stalledMetalCompiler,
   },
 ];
 

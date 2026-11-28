@@ -77,11 +77,27 @@ final class LynxViewController: UIViewController, LynxViewLifecycle {
     if let filePicker = NSClassFromString("AngularLynxFilePickerModule") as? LynxModule.Type {
       config.register(filePicker)
     }
+    // The camera's code scanner behind LynxBarcodeScanner
+    // (BarcodeScannerModule), by name: the generator leaves its source out
+    // of an app whose angular.json doesn't set permissions.camera, since App
+    // Store Connect flags an app whose code uses the camera without a camera
+    // usage description.
+    if let barcodeScanner = NSClassFromString("AngularLynxBarcodeScannerModule")
+      as? LynxModule.Type
+    {
+      config.register(barcodeScanner)
+    }
     // <canvas>'s WebGL (AngularLynxWebGL.h), which the runtime calls from
     // the main thread. It's Objective-C, which Swift reaches without a
     // bridging header by name.
     if let webGL = NSClassFromString("AngularLynxWebGLModule") as? LynxModule.Type {
       config.register(webGL)
+    }
+    // StoreKit's rating prompt behind LynxStoreReview (StoreReviewModule), by
+    // name too: the generator leaves its source out of an app whose
+    // angular.json doesn't set storeReview.
+    if let storeReview = NSClassFromString("AngularLynxStoreReviewModule") as? LynxModule.Type {
+      config.register(storeReview)
     }
     // Bundled files for the main thread's fetch and Image (AssetsModule).
     config.register(AssetsModule.self)

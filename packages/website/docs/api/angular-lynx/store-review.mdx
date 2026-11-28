@@ -1,0 +1,94 @@
+# LynxStoreReview
+
+Asks the person to rate your app without leaving it, with the App Store's or Google Play's own rating prompt. `import { LynxStoreReview } from '@blotch/angular-lynx';`
+
+**Both stores require their own prompt** for this: Apple's guideline 5.6.1 forbids a custom one. Opening the store's page with [`LynxLinking`](/api/angular-lynx/linking) takes the person out of the app, and gets far fewer ratings.
+
+## Turn it on
+
+Set `storeReview` in your build options:
+
+```json title="angular.json"
+"options": {
+  "storeReview": true
+}
+```
+
+Without it, the native code behind the prompt is left out of both apps, and Google Play's review library out of the Android one. `request()` then resolves without showing anything.
+
+## Usage
+
+```typescript
+import { Component, inject } from '@angular/core';
+import { LYNX_ELEMENTS, LynxStoreReview } from '@blotch/angular-lynx';
+import { Orders } from './orders';
+
+@Component({
+  selector: 'app-order-placed',
+  imports: [LYNX_ELEMENTS],
+  template: `<text>Your order is on its way</text>`,
+})
+export class OrderPlaced {
+  readonly #orders = inject(Orders);
+  readonly #storeReview = inject(LynxStoreReview);
+
+  constructor() {
+    // A success moment: the person just got what they came for.
+    if (this.#orders.placedCount() >= 3) {
+      void this.#storeReview.request();
+    }
+  }
+}
+```
+
+`Orders` stands for the app's own service.
+
+**Ask after a moment of success**, such as a finished order or a level won. Don't ask from a button, or behind a "Do you like the app?" question: Apple and Google both forbid it, and the store may show nothing, which would leave the button doing nothing.
+
+## API
+
+### `LynxStoreReview`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxStoreReview {
+  request(): Promise<void>;
+}
+```
+
+### `request()`
+
+Asks the store for its rating prompt. It resolves once the request is made, whether or not a prompt showed, and never rejects.
+
+**The store decides whether the prompt shows**, and doesn't tell the app. So call it whenever the moment is right, and leave the limit to the store.
+
+| Platform                                       | Prompt                                                                                                                                                                                                  |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| iOS                                            | StoreKit's `requestReview(in:)`: at most 3 times in 365 days in an App Store build, never in TestFlight, and every time in a development build or the Simulator, where it can't submit                  |
+| Android                                        | Google Play's In-App Review API: within a quota Play doesn't publish, only for an account that installed the app from Google Play, and never without the Play Store. It resolves once the prompt closes |
+| [Web preview](/guide/glossary#web-preview)     | Nothing                                                                                                                                                                                                 |
+| Unit tests with the testing library            | Nothing. [`reviewRequests()`](/api/testing-library#reviewrequests) counts the requests                                                                                                                  |
+| [Lynx Explorer](/guide/glossary#lynx-explorer) | Nothing                                                                                                                                                                                                 |
+
+To see Android's prompt before release, install the app from Google Play as a tester: from an internal test track, or a link from internal app sharing. A build that was never installed from Play shows nothing.
+
+Android installs one build over another only when their signing certificates are compatible: the same one, or, from Android 9, a newer one the installed app's key was rotated to.
+
+- **A local build** from `--run` or Android Studio can't update the Play install unless it's signed with a key compatible with Play's. Play generates that key unless you gave it your own, so usually upload each test build to internal app sharing instead.
+- **Internal app sharing** signs with its own test certificate. Uninstall a test-track build before installing from it, which deletes the app's data.
+
+## Testing
+
+[`reviewRequests()`](/api/testing-library#reviewrequests) returns how many times the app asked in this test:
+
+```typescript
+import { render, reviewRequests } from '@blotch/angular-lynx-testing-library';
+
+await render(OrderPlaced);
+expect(reviewRequests()).toBe(1);
+```
+
+## Related
+
+- [Native apps](/guide/native-apps): the `storeReview` option and the other build options
+- [`LynxLinking`](/api/angular-lynx/linking): open the store's page instead

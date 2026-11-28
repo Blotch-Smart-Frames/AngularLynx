@@ -17,6 +17,7 @@ describe('resolveAppOptions', () => {
       permissions: {},
       filePicker: false,
       fileSharing: false,
+      storeReview: false,
       deepLinkSchemes: [],
       appLinkDomains: [],
       canOpenURLSchemes: ['http', 'https', 'mailto', 'tel', 'sms'],
@@ -484,6 +485,22 @@ describe('resolveAppOptions', () => {
     expect(() =>
       resolveAppOptions({ [name]: value } as never, defaults),
     ).toThrow(new RegExp(`${name} .* is not valid`));
+  });
+
+  it('keeps the store review module only when storeReview is true', () => {
+    const storeReview = (value: unknown) =>
+      resolveAppOptions({ storeReview: value } as never, defaults).storeReview;
+    expect(storeReview(undefined)).toBe(false);
+    expect(storeReview(false)).toBe(false);
+    expect(storeReview(true)).toBe(true);
+  });
+
+  // The generators keep the module for anything truthy, so "false" would
+  // ship it.
+  it.each(['false', 'true', 1])('rejects storeReview %j', (value) => {
+    expect(() =>
+      resolveAppOptions({ storeReview: value } as never, defaults),
+    ).toThrow(/storeReview .* is not valid/);
   });
 
   it('accepts the two .ipa export methods and rejects any other', () => {

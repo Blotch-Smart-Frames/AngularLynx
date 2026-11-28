@@ -53,6 +53,17 @@ export type {
   PickedFile,
   SaveFile,
 } from './lib/file-picker';
+export {
+  BARCODE_FORMATS,
+  BarcodeScannerError,
+  LynxBarcodeScanner,
+} from './lib/barcode-scanner';
+export type {
+  BarcodeFormat,
+  BarcodeScan,
+  BarcodeScannerErrorCode,
+  BarcodeScanOptions,
+} from './lib/barcode-scanner';
 export { ImagePickerError, LynxImagePicker } from './lib/image-picker';
 export type {
   ImagePickerErrorCode,
@@ -254,6 +265,7 @@ export { LynxSessionStorage } from './lib/session-storage';
 export type { SessionStorageSubscription } from './lib/session-storage';
 export { LynxShare, ShareError } from './lib/share';
 export type { ShareData, ShareErrorCode, ShareFile } from './lib/share';
+export { LynxStoreReview } from './lib/store-review';
 export { LynxBackButton } from './lib/back-button';
 export { BiometricsError, LynxBiometrics } from './lib/biometrics';
 export type {

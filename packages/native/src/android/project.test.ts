@@ -17,7 +17,9 @@ import { resolveAppOptions } from '../options.ts';
 import {
   ANDROID_BIOMETRICS_SOURCES,
   ANDROID_FILE_PICKER_SOURCES,
+  ANDROID_BARCODE_SCANNER_SOURCE,
   ANDROID_CANVAS_SOURCES,
+  ANDROID_STORE_REVIEW_SOURCE,
   ANDROID_WEBGL_SOURCES,
   androidGenerator,
   biometricsStringsXml,
@@ -390,6 +392,73 @@ describe('androidGenerator', () => {
     );
   });
 
+  it("keeps the barcode scanner's module and library only with the camera permission", () => {
+    const module = path.join(dir, ANDROID_BARCODE_SCANNER_SOURCE);
+    const buildFile = path.join(dir, 'app/build.gradle.kts');
+    // In the template, so a renamed file can't stay in every app unnoticed.
+    expect(existsSync(module)).toBe(true);
+    androidGenerator.configure(dir, app({ permissions: { camera: 'x' } }), dir);
+    expect(existsSync(module)).toBe(true);
+    expect(readFileSync(buildFile, 'utf8')).toContain(
+      'play-services-code-scanner',
+    );
+
+    androidGenerator.configure(dir, app(), dir);
+    expect(existsSync(module)).toBe(false);
+    const gradle = readFileSync(buildFile, 'utf8');
+    expect(gradle).not.toContain('play-services-code-scanner');
+    expect(gradle).not.toContain('angular-lynx:barcode-scanner');
+    // Configuring the same copy again leaves it as it is.
+    androidGenerator.configure(dir, app(), dir);
+    expect(readFileSync(buildFile, 'utf8')).toBe(gradle);
+    // MainActivity looks the module up by name, so it builds without it.
+    const activity = readFileSync(
+      path.join(dir, 'app/src/main/java/dev/angularlynx/shell/MainActivity.kt'),
+      'utf8',
+    );
+    expect(activity).toContain('"dev.angularlynx.shell.BarcodeScannerModule"');
+    expect(activity).not.toContain('BarcodeScannerModule::class');
+  });
+
+  it("keeps the store review module, its registration and Play's review library only in an app with storeReview", () => {
+    const module = path.join(dir, ANDROID_STORE_REVIEW_SOURCE);
+    const activity = path.join(
+      dir,
+      'app/src/main/java/dev/angularlynx/shell/MainActivity.kt',
+    );
+    const gradle = path.join(dir, 'app/build.gradle.kts');
+    /**
+     * Generates from a fresh copy of the template, as prepareProject does.
+     */
+    const generate = (options: object) => {
+      rmSync(dir, { recursive: true, force: true });
+      cpSync(path.join(TEMPLATES_DIR, 'android'), dir, { recursive: true });
+      const resolved = app(options);
+      androidGenerator.configure(dir, resolved, dir);
+      androidGenerator.leaveOut(dir, { canvas: true, webgl: true }, resolved);
+    };
+
+    generate({ storeReview: true });
+    expect(existsSync(module)).toBe(true);
+    expect(readFileSync(activity, 'utf8')).toContain(
+      'registerModule(StoreReviewModule.NAME',
+    );
+    expect(readFileSync(gradle, 'utf8')).toContain(
+      'com.google.android.play:review:',
+    );
+
+    generate({});
+    expect(existsSync(module)).toBe(false);
+    const kept = readFileSync(activity, 'utf8');
+    expect(kept).not.toContain('StoreReviewModule::class');
+    expect(kept).not.toContain('angular-lynx:store-review');
+    expect(readFileSync(gradle, 'utf8')).not.toContain(
+      'com.google.android.play',
+    );
+    // The canvas's marked lines are another feature's, kept with the canvas.
+    expect(kept).toContain('// angular-lynx:canvas');
+  });
+
   it("writes the shortcuts' resources, which the launcher activity points Android to", () => {
     const xml = path.join(dir, 'app/src/main/res/xml/shortcuts.xml');
     const strings = path.join(dir, 'app/src/main/res/values/shortcuts.xml');
@@ -496,12 +565,12 @@ describe('androidGenerator.leaveOut', () => {
 
   const shell = (main = 'main') =>
     path.join(dir, `app/src/${main}/java/dev/angularlynx/shell`);
-  // So MainActivity changes only where the canvas code goes.
   // The optional modules an app turns on keep their MainActivity lines, so
   // those don't change with the canvas's.
   const withEveryModule = app({
     permissions: { biometrics: 'Unlock' },
     filePicker: true,
+    storeReview: true,
   });
   const mainActivity = () =>
     readFileSync(path.join(shell(), 'MainActivity.kt'), 'utf8');

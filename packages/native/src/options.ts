@@ -54,6 +54,14 @@ export type NativeAppOptions = {
    * Downloads.
    */
   readonly fileSharing?: boolean;
+  /**
+   * Whether the app asks for a rating in the app with the runtime's
+   * `LynxStoreReview`: StoreKit's review prompt on iOS, and Google Play's
+   * In-App Review API on Android. Off by default, which leaves the native
+   * module out of both apps, and Play's review library out of the Android
+   * one.
+   */
+  readonly storeReview?: boolean;
   /** Custom URL schemes that open the app, e.g. `["myapp"]`. */
   readonly deepLinkSchemes?: readonly string[];
   /**
@@ -314,6 +322,7 @@ export type ResolvedApp = {
   readonly permissions: Partial<Record<Permission, string>>;
   readonly filePicker: boolean;
   readonly fileSharing: boolean;
+  readonly storeReview: boolean;
   readonly deepLinkSchemes: readonly string[];
   /** {@link NativeAppOptions.appLinkDomains} in lowercase, each once. */
   readonly appLinkDomains: readonly string[];
@@ -480,6 +489,15 @@ export const resolveAppOptions = (
     "to list the app's Documents folder in the iOS Files app",
   );
 
+  // Checked here because the generators keep the module for any truthy
+  // value, so a string such as "false" would quietly ship it.
+  const storeReview = options.storeReview ?? false;
+  if (typeof storeReview !== 'boolean') {
+    throw new NativeConfigError(
+      `storeReview ${JSON.stringify(storeReview)} is not valid. Use true to ask for ratings in the app with LynxStoreReview, or false.`,
+    );
+  }
+
   const deepLinkSchemes = options.deepLinkSchemes ?? [];
   for (const scheme of deepLinkSchemes) {
     if (!SCHEME.test(scheme)) {
@@ -583,6 +601,7 @@ export const resolveAppOptions = (
     permissions,
     filePicker,
     fileSharing,
+    storeReview,
     deepLinkSchemes,
     appLinkDomains,
     canOpenURLSchemes,

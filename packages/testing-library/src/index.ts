@@ -20,10 +20,20 @@ export {
   setPickedFiles,
 } from './file-picker.js';
 export type { FakePickedFile, SavedFile } from './file-picker.js';
+export {
+  cancelBarcodeScan,
+  failBarcodeScan,
+  queueBarcodeScan,
+} from './barcode-scanner.js';
+export type {
+  BarcodeScanFailure,
+  QueuedBarcodeScan,
+} from './barcode-scanner.js';
 export { fireEvent, eventMap } from './fire-event.js';
 export { openedURLs, openLink } from './linking.js';
 export type { OpenedURL } from './linking.js';
 export { runShortcut } from './shortcuts.js';
+export { reviewRequests } from './store-review.js';
 export { screen, within, getQueriesForElement, queries } from './queries.js';
 export type {
   BoundAccessibilityLabelQueries,

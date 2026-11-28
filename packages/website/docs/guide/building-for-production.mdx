@@ -81,6 +81,32 @@ Lazy routes (`loadComponent()`) and `@defer` blocks work as written. Their code 
 
 So lazy loading doesn't make the bundle smaller. It still delays creating the views until they're needed. See [Routing](/guide/routing) and [`@defer`](/guide/defer).
 
+### Make the script smaller with `eagerImports`
+
+A lazy route makes the main thread's script bigger than the same code with no `import()`. The bundler can't merge a module that an `import()` loads into the module that imports it. So every module it shares with the rest of your app stays a module of its own, with the glue code that joins them: Angular's packages, rxjs, AngularLynx, and your own shared files.
+
+The `eagerImports` build option compiles your `import()`s on the main thread as static imports, so that code can be merged:
+
+```json title="angular.json"
+"architect": {
+  "build": {
+    "builder": "@blotch/angular-lynx-build:application",
+    "options": {
+      "eagerImports": true
+    }
+  }
+}
+```
+
+In a benchmark app with five lazy screens, the main thread's script went from 625 kB to 601 kB (−3.8%). The engine reads the whole script as it loads, so a smaller one should take less memory too, though that saving hasn't been measured on a phone.
+
+It's off by default because it changes when your code runs:
+
+- **Each module an `import()` loads runs when the app starts,** as a static import does, not when its route is first shown. Code at its top level runs at launch, even for a route nobody opens, and the time it takes is added to the launch.
+- **An import cycle through your routes file can break.** If a lazily loaded module imports the routes file that loads it, the `import()` kept them apart. As static imports, one of them runs first. While it runs, reading an export of the other that's declared with `const`, `let` or `class` throws a used-before-defined `ReferenceError`, because the other hasn't run yet. An exported function declaration is hoisted, so the function itself is there to call, but its body throws the same way if it reads such an export too early. That's a read at its top level, or in a class's static field or static block, which run when the class is defined. A read in a function or a method is fine when it's called later, such as when the route is shown.
+
+`@defer` blocks' imports stay lazy, and so do other packages' and an `import()` whose path isn't a string. With `experimental_isLazyBundle`, which puts each lazy route in a bundle of its own, the option does nothing.
+
 ## Budgets
 
 **Budgets** fail the build when it grows past a size you set. They work as in a web app, with the same units and messages: over the warning size the build prints a warning, and over the error size it fails.

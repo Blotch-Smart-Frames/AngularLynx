@@ -1,4 +1,10 @@
-import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -20,6 +26,12 @@ import { escapeXml, replaceMarker } from '../xml.ts';
 
 const MANIFEST = 'app/src/main/AndroidManifest.xml';
 const RESOURCES = 'app/src/main/res';
+const APP_BUILD_FILE = 'app/build.gradle.kts';
+const BARCODE_SCANNER_MARKER = '// angular-lynx:barcode-scanner';
+
+/** LynxBarcodeScanner's module, which needs the `camera` permission. */
+export const ANDROID_BARCODE_SCANNER_SOURCE =
+  'app/src/main/java/dev/angularlynx/shell/BarcodeScannerModule.kt';
 
 const SCREEN_ORIENTATIONS: Record<Orientation, string> = {
   portrait: 'portrait',
@@ -33,7 +45,10 @@ const SCREEN_ORIENTATIONS: Record<Orientation, string> = {
  * deep links and the apps canOpenURL can see go between the manifest's
  * `angular-lynx:*` markers, the icon options become the launcher icon's
  * resources, the shortcuts become the static shortcuts' resources, and the
- * splash becomes the splash theme's color and image.
+ * splash becomes the splash theme's color and image. The barcode scanner's
+ * module and the library behind it stay only in an app with the `camera`
+ * permission. The store review module stays only in an app with
+ * `storeReview`.
  */
 export const androidGenerator: PlatformGenerator = {
   configure: (dir, app, projectRoot) => {
@@ -60,6 +75,19 @@ export const androidGenerator: PlatformGenerator = {
         path.join(dir, RESOURCES, 'values/shortcuts.xml'),
         shortcutStringsXml(app),
       );
+    }
+
+    // As on iOS (see iosGenerator), an app that doesn't ask for the camera
+    // ships no scanner: neither the module nor Google's code scanner, which
+    // brings Play services' libraries. MainActivity registers the module
+    // only when its class is there.
+    if (!app.permissions.camera) {
+      rmSync(path.join(dir, ANDROID_BARCODE_SCANNER_SOURCE), { force: true });
+      const buildFile = path.join(dir, APP_BUILD_FILE);
+      // Configuring the same copy twice finds the lines already gone.
+      if (readFileSync(buildFile, 'utf8').includes(BARCODE_SCANNER_MARKER)) {
+        removeMarkedLines(buildFile, 'barcode-scanner');
+      }
     }
 
     writeAndroidIcon(dir, app, projectRoot);
@@ -104,6 +132,16 @@ export const androidGenerator: PlatformGenerator = {
         'file-picker',
       );
     }
+    // As on iOS, an app that doesn't ask for ratings in the app leaves the
+    // module out, with the lines that register it and Google Play's review
+    // library (`// angular-lynx:store-review`), so its APK carries none of
+    // Play's review code.
+    if (!app.storeReview) {
+      removeTemplateFiles(dir, [ANDROID_STORE_REVIEW_SOURCE]);
+      for (const file of ANDROID_STORE_REVIEW_MARKED) {
+        removeMarkedLines(path.join(dir, file), 'store-review');
+      }
+    }
     leaveOutCanvas(dir, features);
   },
   bundleDir: (dir) => path.join(dir, 'app/src/main/assets'),
@@ -133,6 +171,18 @@ const leaveOutCanvas = (dir: string, features: NativeFeatures): void => {
 };
 
 const SHELL_SOURCES = 'app/src/main/java/dev/angularlynx/shell';
+
+/** The module behind `LynxStoreReview`, which only `storeReview` keeps. */
+export const ANDROID_STORE_REVIEW_SOURCE = `${SHELL_SOURCES}/StoreReviewModule.kt`;
+
+/**
+ * The files with lines for the store review module: MainActivity registers
+ * it, and app/build.gradle.kts adds Google Play's review library.
+ */
+const ANDROID_STORE_REVIEW_MARKED = [
+  `${SHELL_SOURCES}/MainActivity.kt`,
+  'app/build.gradle.kts',
+];
 
 /**
  * The shell's biometrics module, `AngularLynxBiometrics` (LynxBiometrics, and

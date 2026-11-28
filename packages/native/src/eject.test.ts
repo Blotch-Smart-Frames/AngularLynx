@@ -100,4 +100,19 @@ describe('renderEjectedProject', () => {
       ).toBe(true);
     }
   });
+
+  // angular.json no longer applies to an ejected project, so one ejected
+  // without storeReview has no module to turn on later: it's added by hand,
+  // from the template.
+  it('has the store review module only when the app sets storeReview', () => {
+    for (const [platform, module] of [
+      ['ios', 'App/StoreReviewModule.swift'],
+      ['android', `${ANDROID_SHELL_SOURCES}/StoreReviewModule.kt`],
+    ] as const) {
+      expect(render(platform).has(module)).toBe(false);
+      expect(
+        render(platform, undefined, { storeReview: true }).has(module),
+      ).toBe(true);
+    }
+  });
 });

@@ -76,7 +76,7 @@ Read [animations.md](references/animations.md)
 
 ## List Virtualization
 
-`<list>` and `<list-item>` for virtualized lists. Requires `item-key` attribute. `@for` builds every item up front; `*lynxListFor` builds an item only when the list asks for it and reuses the views of items scrolled away (keys from `trackBy`, layout from `itemAttributes`, and what a reused view keeps). Use `list-type="flow"` for waterfall/masonry layouts. Scrolling from code (`scrollToPosition` takes `position`), and a chat's list: loading older items above while keeping the person's place, and opening at the end.
+`<list>` and `<list-item>` for virtualized lists. Requires `item-key` attribute. `@for` builds every item up front; `*lynxListFor` builds an item only when the list asks for it and reuses the views of items scrolled away (keys from `trackBy`, layout from `itemAttributes`, what a reused view keeps, and what makes a row cheap to check). Use `list-type="flow"` for waterfall/masonry layouts. Scrolling from code (`scrollToPosition` takes `position`), and a chat's list: loading older items above while keeping the person's place, and opening at the end.
 
 Read [list-virtualization.md](references/list-virtualization.md)
 

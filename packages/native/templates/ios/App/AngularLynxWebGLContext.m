@@ -16,6 +16,8 @@
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 
 NSData *AngularLynxBytesFromWords(NSArray *words);
+NSDictionary *AngularLynxEncodeImage(NSData *pixels, size_t width, size_t height,
+                                     CGBitmapInfo alphaInfo, NSString *type, double quality);
 
 // WebGL's names for the default framebuffer's buffers, which GLES gives to
 // window surfaces only. The default framebuffer here is an ordinary one.
@@ -110,39 +112,6 @@ static NSArray *wordsFromBytes(const void *bytes, NSUInteger length) {
   }
   [words addObject:@(length)];
   return words;
-}
-
-/// RGBA pixels, rows top to bottom, as a PNG or JPEG file in base64:
-/// `{ base64, type }`, or `{ error }`. Shared with the 2D context.
-NSDictionary *AngularLynxEncodeImage(NSData *pixels, size_t width, size_t height,
-                                     CGBitmapInfo alphaInfo, NSString *type, double quality) {
-  size_t stride = width * 4;
-  BOOL jpeg = [type isEqualToString:@"image/jpeg"];
-  CGDataProviderRef provider = CGDataProviderCreateWithCFData((__bridge CFDataRef)pixels);
-  CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
-  CGImageRef image =
-      CGImageCreate(width, height, 8, 32, stride, colorSpace,
-                    alphaInfo | kCGBitmapByteOrder32Big, provider, NULL, false,
-                    kCGRenderingIntentDefault);
-  CGColorSpaceRelease(colorSpace);
-  CGDataProviderRelease(provider);
-  if (!image) return @{@"error" : @"Could not make an image of the canvas's pixels"};
-  NSMutableData *file = [NSMutableData data];
-  NSString *fileType = jpeg ? @"public.jpeg" : @"public.png";
-  CGImageDestinationRef destination = CGImageDestinationCreateWithData(
-      (__bridge CFMutableDataRef)file, (__bridge CFStringRef)fileType, 1, NULL);
-  BOOL written = NO;
-  if (destination) {
-    NSDictionary *properties =
-        jpeg ? @{(__bridge NSString *)kCGImageDestinationLossyCompressionQuality : @(quality)}
-             : @{};
-    CGImageDestinationAddImage(destination, image, (__bridge CFDictionaryRef)properties);
-    written = CGImageDestinationFinalize(destination);
-    CFRelease(destination);
-  }
-  CGImageRelease(image);
-  if (!written) return @{@"error" : @"Could not encode the canvas's pixels"};
-  return @{@"base64" : [file base64EncodedStringWithOptions:0], @"type" : type};
 }
 
 /// ANGLE's display on Metal, made once and shared by every context. Nothing

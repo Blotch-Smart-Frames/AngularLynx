@@ -853,16 +853,20 @@ export const hasQuotesRules = (): boolean => {
 };
 
 /**
- * Whether adding or removing these tokens on an element can change the
- * `quotes` of a `<q>` it is or is in: a `quotes` rule requires one of them,
- * or, with `changed` undefined (the tokens aren't known), there's any
- * `quotes` rule.
+ * Whether adding or removing tokens on an element can change the `quotes`
+ * of a `<q>` it is or is in: a `quotes` rule requires one of the tokens
+ * `changed` gives, or, with `changed` undefined (the tokens aren't known),
+ * there's any `quotes` rule. `changed` is called only if a rule requires a
+ * token: working the tokens out costs a class change more than the rest of
+ * its checks.
  */
-export const quotesRulesRead = (changed?: Iterable<string>): boolean => {
+export const quotesRulesRead = (changed?: () => Iterable<string>): boolean => {
   const index = readIndex();
   if (!index) return false;
   if (changed === undefined) return hasQuotesRules();
-  for (const token of changed) {
+  if (index.quotesTokens.size === 0) return false;
+  const tokens = changed();
+  for (const token of tokens) {
     if (index.quotesTokens.has(token)) return true;
   }
   // Every rule requires the same of the element and its ancestors as it

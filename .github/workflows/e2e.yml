@@ -359,8 +359,9 @@ jobs:
           node packages/e2e/src/run.ts "${args[@]}"
       # The app without node_modules: angular.json (for the app id), dist/
       # with the bundle Explorer loads, and the APK. Not the AAB, which is for
-      # Google Play.
-      - uses: actions/upload-artifact@v7
+      # Google Play. The ios job waits for this step by its name.
+      - name: Upload the app
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-app-${{ needs.setup.outputs.registry }}
           path: |
@@ -482,6 +483,14 @@ jobs:
       # the wait ended 43 seconds before build-app had uploaded the app. A
       # failed jobs query would have ended the step instead, since bash -e
       # exits on a failed assignment. The step's timeout still bounds the wait.
+      #
+      # The API lists the artifact a moment before it can be downloaded, while
+      # build-app's upload step is still finishing it: on a PR's run of
+      # 2026-11-27 (#862), download-artifact found no artifact of that name
+      # in the second the listing showed it, and the upload step ended. So the
+      # wait also needs that step done. On a re-run that didn't re-run
+      # build-app, the jobs API answers with build-app's latest attempt,
+      # whose upload is done.
       - name: Wait for build-app's app
         timeout-minutes: 25
         env:
@@ -489,17 +498,24 @@ jobs:
           ARTIFACT: e2e-app-${{ needs.setup.outputs.registry }}
         run: |
           runs="repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          build_app='.jobs[] | select(.name == "build-app" or (.name | endswith(" / build-app")))'
           while :; do
             if count=$(gh api "$runs/artifacts?name=$ARTIFACT" --jq .total_count); then
               if [ "${count:-0}" != 0 ]; then
-                break
+                if uploaded=$(gh api --paginate "$runs/jobs" --jq "$build_app
+                  | .steps[] | select(.name == \"Upload the app\") | .conclusion"); then
+                  if [ "$uploaded" = success ]; then
+                    break
+                  fi
+                else
+                  echo "Couldn't list the run's jobs, so asking again."
+                fi
               fi
             else
               echo "Couldn't list the run's artifacts, so asking again."
             fi
-            if conclusion=$(gh api --paginate "$runs/jobs" --jq '.jobs[]
-              | select(.name == "build-app" or (.name | endswith(" / build-app")))
-              | select(.status == "completed") | .conclusion'); then
+            if conclusion=$(gh api --paginate "$runs/jobs" --jq "$build_app
+              | select(.status == \"completed\") | .conclusion"); then
               if [ -n "$conclusion" ] && [ "$conclusion" != success ]; then
                 echo "::error::build-app ended with $conclusion, so there's no app to test."
                 exit 1
@@ -523,6 +539,7 @@ jobs:
       # The version the app installed, from the tarball the other jobs
       # tested, or from npm when this run tests the public registry.
       - name: Unpack the native builder
+        id: unpack
         env:
           REGISTRY: ${{ needs.setup.outputs.registry }}
         run: |
@@ -556,6 +573,20 @@ jobs:
           node packages/e2e/src/native/run-native.ts --platform ios
           --app "$RUNNER_TEMP/app" --native "$RUNNER_TEMP/native/package"
           $EXPLORER --artifacts-dir "$RUNNER_TEMP/e2e-artifacts"
+      # The flows test the shell with everything in it, since the app has a
+      # fixture for every feature. Most apps get a shell with the canvas left
+      # out, or with WebGL and ANGLE left out for a 2D-only canvas, which
+      # only unit tests read otherwise: this compiles both, without running
+      # them (compile-features.ts, issue #853). After the flows and apart
+      # from them, so a broken variant doesn't stop the flows from running,
+      # and both fail the job. About a minute once the simulator has booted.
+      - name: 'Layer 6: the iOS shell with code left out'
+        if: ${{ !cancelled() && steps.unpack.outcome == 'success' }}
+        timeout-minutes: 15
+        run: >-
+          node packages/e2e/src/native/compile-features.ts --platform ios
+          --app "$RUNNER_TEMP/app" --native "$RUNNER_TEMP/native/package"
+          --artifacts-dir "$RUNNER_TEMP/e2e-artifacts/features"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -628,10 +659,78 @@ jobs:
           name: e2e-artifacts-android
           path: ${{ runner.temp }}/e2e-artifacts
 
+  # The Android shell with code left out: the ios job's last step, for
+  # Android (compile-features.ts, issue #853). A job of its own rather than a
+  # step of build-app, which the native jobs wait for, or of android, which
+  # has no Gradle and doesn't fail the run. It builds from build-app's app
+  # with the native builder build-app installed it with, and doesn't run what
+  # it builds. About 4 minutes, most of it restoring Gradle's cache.
+  android-features:
+    needs: [setup, build-app]
+    if: always() && needs.build-app.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          package-manager-cache: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: e2e-app-${{ needs.setup.outputs.registry }}
+          path: ${{ runner.temp }}/app
+      - uses: actions/download-artifact@v8
+        if: needs.setup.outputs.registry == 'local'
+        with:
+          name: e2e-tarballs
+          path: ${{ runner.temp }}/tarballs
+      # Installed rather than unpacked as in the ios job: an Android build
+      # loads the builder's one dependency, pngjs, for the app's icons. The
+      # version the app installed, from the tarball the other jobs tested, or
+      # from npm when this run tests the public registry.
+      - name: Install the native builder
+        env:
+          REGISTRY: ${{ needs.setup.outputs.registry }}
+        run: |
+          version=$(node -p "require(process.argv[1]).packages['node_modules/@blotch/angular-lynx-native'].version" \
+            "$RUNNER_TEMP/app/package-lock.json")
+          if [ "$REGISTRY" = local ]; then
+            package="$RUNNER_TEMP/tarballs/blotch-angular-lynx-native-$version.tgz"
+          else
+            package="@blotch/angular-lynx-native@$version"
+          fi
+          npm install --prefix "$RUNNER_TEMP/native" --no-audit --no-fund "$package"
+      # Restore only: build-app saves this cache, and two jobs saving the
+      # same key race.
+      - name: Restore Gradle
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('packages/native/templates/android/**/*.kts', 'packages/native/templates/android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+      - name: 'Layer 6: the Android shell with code left out'
+        timeout-minutes: 15
+        env:
+          GRADLE_OPTS: -Dorg.gradle.daemon=false
+        run: >-
+          node packages/e2e/src/native/compile-features.ts --platform android
+          --app "$RUNNER_TEMP/app"
+          --native "$RUNNER_TEMP/native/node_modules/@blotch/angular-lynx-native"
+          --artifacts-dir "$RUNNER_TEMP/e2e-artifacts"
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: e2e-artifacts-android-features
+          path: ${{ runner.temp }}/e2e-artifacts
+
   # A failing nightly run opens (or comments on) one issue, so upstream drift
   # doesn't go unnoticed.
   report-nightly:
-    needs: [package-contract, fresh-app, build-app, ios, android]
+    needs:
+      [package-contract, fresh-app, build-app, ios, android, android-features]
     if: always() && github.event_name == 'schedule' && contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
     timeout-minutes: 5

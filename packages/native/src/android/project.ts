@@ -2,6 +2,7 @@ import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import { removeMarkedLines, removeTemplateFiles } from '../features.ts';
 import type { PlatformGenerator } from '../generate.ts';
 import {
   type Orientation,
@@ -60,8 +61,66 @@ export const androidGenerator: PlatformGenerator = {
     writeAndroidIcon(dir, app, projectRoot);
     writeAndroidSplash(dir, app, projectRoot);
   },
+  leaveOut: (dir, features) => {
+    if (features.webgl) return;
+    if (features.canvas) {
+      // A 2D canvas keeps the module, without the WebGL2 context and the
+      // module's lines that make one (`// angular-lynx:webgl`).
+      removeTemplateFiles(
+        dir,
+        ANDROID_WEBGL_SOURCES.map((file) => path.join(SHELL_SOURCES, file)),
+      );
+      removeMarkedLines(
+        path.join(dir, SHELL_SOURCES, 'WebGLModule.kt'),
+        'webgl',
+      );
+      return;
+    }
+    removeTemplateFiles(
+      dir,
+      ANDROID_CANVAS_SOURCES.map((file) => path.join(SHELL_SOURCES, file)),
+    );
+    // The lines that register them (`// angular-lynx:canvas`).
+    removeMarkedLines(
+      path.join(dir, SHELL_SOURCES, 'MainActivity.kt'),
+      'canvas',
+    );
+  },
   bundleDir: (dir) => path.join(dir, 'app/src/main/assets'),
 };
+
+const SHELL_SOURCES = 'app/src/main/java/dev/angularlynx/shell';
+
+/**
+ * The shell's `<canvas>`, its `AngularLynxWebGL` module and its contexts, and
+ * `<video>`'s readable frames, which only MainActivity's marked lines reach.
+ * R8 can't drop them while those lines register them, so they go with the
+ * lines.
+ */
+export const ANDROID_CANVAS_SOURCES = [
+  'BitmapPresenter.kt',
+  'BitmapRendererContext.kt',
+  'Canvas2DContext.kt',
+  'Canvas2DOps.kt',
+  'CanvasFilter.kt',
+  'CanvasUI.kt',
+  'VideoFrameTarget.kt',
+  'VideoUI.kt',
+  'WebGLContext.kt',
+  'WebGLModule.kt',
+  'WebGLOps.kt',
+] as const;
+
+/**
+ * The WebGL2 context, which an app that draws only in 2D leaves out, and
+ * `WebGLModule.kt`'s lines that make one (issue #847). `VideoFrameTarget.kt`
+ * reads a video's frames with an EGL context of its own, for the 2D
+ * context's `drawImage()` too, so it stays.
+ */
+export const ANDROID_WEBGL_SOURCES = [
+  'WebGLContext.kt',
+  'WebGLOps.kt',
+] as const;
 
 /**
  * Escapes a value for a Java properties file. `Properties.load` reads the

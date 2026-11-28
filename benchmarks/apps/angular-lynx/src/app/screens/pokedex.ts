@@ -6,6 +6,7 @@ import { type ListEmptyState, PokemonList } from '../components/pokemon-list';
 import { TabScreenFrame } from '../components/tab-screen-frame';
 import { API, PAGE_SIZE } from '../data/config';
 import { type Pokemon, type PokemonListResponse, mapPokemonSummary } from '../data/pokemon';
+import { PokemonDetails } from '../data/pokemon-details';
 import { retryTwice } from '../data/retry';
 
 /**
@@ -24,6 +25,7 @@ import { retryTwice } from '../data/retry';
         [data]="pokemon()"
         [emptyState]="emptyState()"
         [fetchingNextPage]="fetchingNextPage()"
+        [watchLayout]="!drawn()"
         (endReached)="loadNextPage()"
         (laidOut)="laidOut()"
       />
@@ -39,10 +41,13 @@ import { retryTwice } from '../data/retry';
 })
 export class Pokedex {
   readonly #http = inject(HttpClient);
+  readonly #details = inject(PokemonDetails);
 
   readonly #pages = signal<readonly (readonly Pokemon[])[]>([]);
   readonly #status = signal<'loading' | 'error' | 'success'>('loading');
   protected readonly fetchingNextPage = signal(false);
+  /** Reported fully drawn: the list's layouts no longer matter. */
+  protected readonly drawn = signal(false);
   /** The list endpoint has no more once a page comes back short. */
   readonly #hasNextPage = computed(() => {
     const pages = this.#pages();
@@ -73,7 +78,9 @@ export class Pokedex {
    * waits for the next flush. The runtime reports once per process.
    */
   protected laidOut(): void {
-    if (this.#pages().length > 0) reportFullyDrawn();
+    if (this.#pages().length === 0) return;
+    reportFullyDrawn();
+    this.drawn.set(true);
   }
 
   #fetchPage(page: number): void {
@@ -84,7 +91,16 @@ export class Pokedex {
       .pipe(retryTwice())
       .subscribe({
         next: (response) => {
-          this.#pages.update((pages) => [...pages, response.results.map(mapPokemonSummary)]);
+          const rows = response.results.map(mapPokemonSummary);
+          // Every row's detail, as soon as its page arrives, as the other
+          // apps fetch them: the original's FlatList renders rows well ahead
+          // of the screen (its window covers the whole page), and ReactLynx
+          // renders every row's component when the page arrives. Lynx's list
+          // builds a row only as it nears the screen, so without this each
+          // row would fetch its types while the list scrolls, its response
+          // arriving a few frames later as a change of its own (#856).
+          for (const row of rows) this.#details.get(row.id);
+          this.#pages.update((pages) => [...pages, rows]);
           this.#status.set('success');
           this.fetchingNextPage.set(false);
         },

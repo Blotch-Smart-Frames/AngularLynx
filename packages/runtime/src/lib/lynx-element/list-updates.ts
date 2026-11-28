@@ -189,6 +189,13 @@ const flushPendingListUpdates = (): void => {
 };
 
 /**
+ * @internal Whether a list has an update-list-info waiting for the next
+ * flush, which `LynxRendererFactory2.end()` makes then even when the cycle
+ * wrote nothing else (see needsTreeFlush).
+ */
+export const hasPendingListUpdates = (): boolean => pendingListUpdates.size > 0;
+
+/**
  * @internal Tells native about `list`'s items with the next flush:
  * LynxRendererFactory2.end()'s, a settle flush's, or the microtask queued
  * here if neither comes first. One microtask for all the lists that change

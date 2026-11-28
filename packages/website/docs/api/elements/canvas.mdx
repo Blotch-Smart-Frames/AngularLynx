@@ -126,8 +126,27 @@ Like an HTML canvas:
 - `getContext('2d')` and `getContext('webgl2')` return the same context every time. A canvas has the kind of context it was first asked for: after `getContext('2d')`, `getContext('webgl2')` is `null`, and the other way round. `'webgl'` (WebGL 1) is `null`: three.js needs WebGL2 anyway.
 - The build includes the WebGL2 context only when a module of your app or its libraries names `'webgl2'`, as three.js and `getContext('webgl2')` do, so an app that never draws in 3D doesn't load its code (about 37 kB of the main-thread script). So on iOS and Android, a context name built at runtime gets `null` and a console warning, unless another module named `'webgl2'`: write the name out, or call `ɵenableWebGL2()` from `@blotch/angular-lynx` before `getContext()`. The web preview's canvas is the browser's, which has its own context.
 - The 2D context is the same: the build includes it only when a module names `'2d'` in quotes, as `getContext('2d')` and chart and image libraries do, or one of its classes (`Path2D`, `CanvasRenderingContext2D`, `CanvasGradient`, `CanvasPattern`, `TextMetrics`), which are globals only then. An app that never draws in 2D doesn't load its code (about 40 kB of the main-thread script). A context name built at runtime gets `null` and a console warning on iOS and Android, unless another module named `'2d'`: write the name out, or call `ɵenableCanvas2D()` from `@blotch/angular-lynx` before `getContext()`.
+- An app built with `ng build --platform ios|android` gets the native canvas code only if it can draw. See [The canvas in the native app](#the-canvas-in-the-native-app).
 - Pointer events (`pointerdown`, `pointermove`, `pointerup` and the rest) work, from the finger's touches. They work on every element, not only a canvas: see [Element events](/api/angular-lynx/element-events).
 - `clientWidth`, `clientHeight` and `getBoundingClientRect()` answer from the element's last layout, and `ResizeObserver` reports its size as it changes.
+
+## The canvas in the native app
+
+`ng build --platform ios|android` builds the native code behind `<canvas>` into the app only when a module of your app or its libraries can draw. A module can draw when it names one of these:
+
+- `'webgl2'`, or the 2D context, as above
+- `'canvas'` or `'bitmaprenderer'` in quotes, as a template's `<canvas>` and `document.createElement('canvas')` do
+- `OffscreenCanvas`, `HTMLCanvasElement`, `Image`, `ImageBitmap`, `createImageBitmap` or `ImageBitmapRenderingContext`
+
+An app that never draws leaves out the canvas, its WebGL and 2D contexts, and `<video>`'s readable frames. That's about 176 kB of the iOS app. It also leaves out ANGLE, which iOS draws WebGL with: about 6 MB.
+
+An app that draws only in 2D, such as a chart or a signature pad, keeps the canvas and leaves out the WebGL context and ANGLE. The 2D context draws with Core Graphics on iOS and `android.graphics.Canvas` on Android, and needs neither. The WebGL context comes only when a module names `'webgl2'` (anywhere, even in a comment), `WebGL2RenderingContext` or `ɵenableWebGL2`.
+
+Without that code, a `<canvas>` shows nothing and `getContext()` returns `null`. If your app builds every canvas name at runtime, call `ɵenableCanvas2D()` or `ɵenableWebGL2()` from `@blotch/angular-lynx`. Either one brings the native code too, and `ɵenableWebGL2()` brings the WebGL context and ANGLE as well.
+
+The development app from `ng serve --platform` always has the native code, since you can add a canvas while it runs.
+
+An ejected project (`ng generate @blotch/angular-lynx:eject`) keeps all of it too, since it's yours to change. So does an app built with Rsbuild's persistent cache (`performance.buildCache`), whose cached modules the build doesn't read again.
 
 ## angular-three
 
@@ -290,8 +309,8 @@ The iOS Simulator and the Android emulator both draw on the Mac's GPU, so a scen
 
 - The 2D context's `filter` takes the CSS filter functions: `blur()`, `drop-shadow()`, `grayscale()` and the other color functions. A `url()` filter is kept but not applied, as Lynx has no SVG filters.
 - A filter works on the pixels of a layer the canvas's size, on the main thread. A shadow cast from far off the canvas adds a second layer.
-- A blur or shadow also goes through a smaller layer when it's at least 4 of that layer's pixels wide, at a scale set by the filter's whole reach. On its own, that's a deviation past about 85 px. That layer takes in the blur's whole reach, so a shape far off the canvas still blurs onto it, as on the web.
-- A `drop-shadow()` moved more than 256 px leaves out a shape farther off than that, unless its blur is wide enough for the smaller layer. Its offset counts toward the reach that sets that layer's scale, so a far one can keep even a wide blur at the 256 px cap.
+- A blur or shadow also goes through a smaller layer when it's at least 4 of that layer's pixels wide, at a scale set by the filter's reach. On its own, that's a deviation past about 85 px. That layer takes in the blur's whole reach, so a shape far off the canvas still blurs onto it, as on the web.
+- When a filter reaches past 256 px, each `drop-shadow()` moved by an offset casts from a layer of its own, the canvas moved back by its offset. A shape however far off the canvas casts its shadow onto it, as on the web, and the offset doesn't lower the smaller layer's scale. Each one doubles the work of the filter steps before it, so only a filter's last three do: an earlier one is cut off at 256 px, as before.
 - Each shape drawn with a filter costs about as much as a canvas-sized image. Draw what shares a filter into a canvas of its own, and filter that once with `drawImage()`, rather than filtering many small shapes. Make that canvas big enough to hold the shapes, including any drawn off the canvas for their blur to reach it.
 - On Android, a 2D shadow (`shadowColor` with an offset or `shadowBlur`) is cast from a layer the canvas's size, as on iOS, so it follows the shape's alpha and a `shadowBlur` of 0 is sharp. Each shadowed draw costs about as much as a filtered one: for many shadowed shapes, draw them into a canvas of their own and shadow one `drawImage()` of it.
 - `wordSpacing`, `fontKerning`, `fontStretch`, `fontVariantCaps` and `textRendering` are kept but don't change the text. Text drawn with a gradient, a pattern or `strokeText()` is drawn from the glyphs' outlines, so color emoji show only with a plain `fillStyle`.

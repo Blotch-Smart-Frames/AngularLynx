@@ -1,7 +1,7 @@
 {
   "angular-lynx": {
     "label": "AngularLynx",
-    "versions": "AngularLynx master (22.2.26 + #438, #439 on 17 November; 22.3.1 at a5854d36 on 27 November), Angular 22.2.6 then 22.3.0, Lynx 4.1.0",
+    "versions": "AngularLynx master (22.2.26 + #438, #439 on 17 November; 22.3.1 at a5854d36 on 27 and 28 November), Angular 22.2.6 then 22.3.0, Lynx 4.1.0",
     "notes": "The port, built with ng build --platform ios"
   },
   "react-lynx": {

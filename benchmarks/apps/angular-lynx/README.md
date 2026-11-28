@@ -34,7 +34,10 @@ first page has loaded and the list has laid out its rows (the list's
 when the native list asks for them, during the layout after the flush that
 gave it the page). `reportFullyDrawn()` waits for the next flush and has the
 shell emit an `os_signpost` event named `Fully Drawn` in the Points of
-Interest category, once per process.
+Interest category, once per process. The list listens for `layoutcomplete`
+only until then (`watchLayout`): it fires after every layout of the list,
+every few rows while it scrolls, and a template listener would have Angular
+check the list each time.
 
 ## Build-time settings
 
@@ -93,6 +96,16 @@ jq '.packages |= with_entries(select(.key | test("(^|/)node_modules/@angular/") 
 node scripts/use-local-packages.mjs
 ```
 
+## Script size check
+
+CI builds this app for Lynx on every PR (`.github/workflows/script-sizes.yml`)
+and fails when its main-thread script, background script or
+`main.lynx.bundle` grows more than 10 KB or 2% (whichever is larger) past
+`.github/script-sizes.json`. A PR that means to grow them updates that file:
+copy the `script-sizes.json` the run uploads, or run
+`node .github/scripts/script-sizes.mts --update` after building this app and
+`examples/hello-world` with `DEBUG=rspeedy npx ng build --environment lynx`.
+
 ## Commands
 
 The fixture server first, from the repository root: `node benchmarks/fixtures/server.mjs`.
@@ -114,6 +127,21 @@ BENCH_SCREEN='mount?kind=image&count=5000' npx ng build --platform ios
 
 `ng build --platform ios --run` installs and opens it on a simulator itself
 (`--device "<simulator name>"` picks one).
+
+**Release build for Android** (an emulator, or a phone over USB):
+
+```sh
+npx ng build --platform android
+# dist/android/launchperfal.apk, signed with the debug key
+adb install -r dist/android/launchperfal.apk
+adb reverse tcp:8787 tcp:8787   # the device's localhost:8787 is the Mac's
+adb shell am start -n com.angularlynx.bench.angularlynx/dev.angularlynx.shell.MainActivity
+```
+
+The shell lets plain HTTP reach only `localhost`, so keep the default
+`FIXTURE_ORIGIN` and forward the port: a LAN address is refused as
+cleartext. `BENCH_SCREEN` works as for iOS. `../../README.md` ("On an
+Android emulator") runs it against the ReactLynx app.
 
 **Release build for a phone** (team `F64LTK85F6`, development signing):
 
@@ -199,8 +227,13 @@ doesn't. Where AngularLynx can't do the same thing, it does the nearest:
 - **Data.** `HttpClient` and RxJS's `retry` for axios and React Query:
   `PokemonDetails` keeps each Pokémon's detail by id (fresh for 5 minutes,
   refetched by the next row to ask after that, two retries with React Query's
-  1 s and 2 s delays), and the Pokédex keeps its pages while its tab lives,
-  which `<lynx-tab-outlet>` makes the app's life. No 10 s timeout, which axios
+  1 s and 2 s delays). The Pokédex asks it for every row's detail when a page
+  arrives, as the other apps start them: FlatList's window (21 screens)
+  covers the whole page, and ReactLynx renders every row's component then.
+  `*lynxListFor` builds a row only as it nears the screen, so the rows would
+  otherwise fetch their types as the list scrolls (until #856 they did, and
+  the scroll runs before then measured that). The Pokédex keeps its pages
+  while its tab lives, which `<lynx-tab-outlet>` makes the app's life. No 10 s timeout, which axios
   had and HttpClient lacks; the fixture server answers at once.
 - **Favourites** are read from `LynxLocalStorage` (`UserDefaults` in the iOS
   shell) when first needed and merged over the state, as zustand's persist

@@ -289,7 +289,9 @@ export class CanvasRoute {
    * without; a shadow with a blur wider than the layers' 256 px cap still
    * reaches a shape the canvas's 256 px round keeps (issue #795), and a
    * shadow, a blur() and a drop-shadow() that wide reach a shape farther
-   * off still (issue #814); a faded square's shadow takes globalAlpha and, with no blur,
+   * off still (issue #814); a drop-shadow() moved farther than the cap
+   * casts from a shape that far off, and leaves a wide blur beside it whole
+   * (issue #824); a faded square's shadow takes globalAlpha and, with no blur,
    * has sharp edges (issue #796); a green image, and a square filled with a
    * green gradient and with a green pattern, each cast a red shadow, and so
    * does a green image far off the canvas (issue #759); and blur() softens a
@@ -394,7 +396,12 @@ export class CanvasRoute {
     // shadow, and 38 and 21 for the blur and the drop shadow. The shadow is
     // cast through grayscale(1), as Chromium caps the blur of a shadow
     // without a filter (every shadowBlur from 300 to 1000 draws the same, and
-    // this one not at all); the shells cast both alike.
+    // this one not at all); the shells cast both alike. A drop-shadow()
+    // moved farther than the cap casts from a layer of its own (issue #824),
+    // so a blur(300px) beside one moved 20000 px reads as it does alone, and
+    // a shadow moved 2000 px with a 300 px blur as one that isn't moved:
+    // the offset counted toward the reach left the blur at the canvas's
+    // resolution, cut away at the cap, and the shape it's cast from too.
     const widerReads = [
       (() => {
         const wider = make(100, 100);
@@ -410,12 +417,50 @@ export class CanvasRoute {
         wider.fillRect(-2000, -2000, 1700, 4000);
         return [pixel(wider, 0, 50), pixel(wider, 99, 50)];
       }),
+      ...[
+        ['blur(300px) drop-shadow(20000px 0 0 red)', -2000],
+        ['drop-shadow(2000px 0 300px red)', -4000],
+      ].map(([filter, left]) => {
+        const wider = make(100, 100);
+        wider.filter = filter as string;
+        wider.fillRect(left as number, -2000, 1700, 4000);
+        return [pixel(wider, 0, 50), pixel(wider, 99, 50)];
+      }),
     ];
     const widerExpected = [
       [255, 0, 0, 64, 49],
       [0, 0, 0, 38, 21],
       [255, 0, 0, 39, 21],
+      [0, 0, 0, 38, 21],
+      [255, 0, 0, 39, 21],
     ];
+
+    // A drop-shadow() moved farther than the layers' 256 px cap casts from
+    // a shape that far off the canvas (issue #824): a 4 px square 1000 px to
+    // its left casts its red shadow onto the canvas's left half, and nothing
+    // right of it. A second shadow, moved 1000 px down, casts what the first
+    // drew 1000 px above the canvas, in blue: the square 1000 px up and
+    // left, and its red shadow, which comes down onto the top left corner.
+    // The capped layers didn't reach either square, and the canvas stayed
+    // see-through.
+    const farShadowReads = [
+      'drop-shadow(1000px 0 0 red)',
+      'drop-shadow(1000px 0 0 red) drop-shadow(0 1000px 0 blue)',
+    ].map((filter, index) => {
+      const moved = make(8, 8);
+      moved.filter = filter;
+      moved.fillRect(-1000, index === 0 ? 0 : -1000, 4, index === 0 ? 8 : 4);
+      return [pixel(moved, 1, index === 0 ? 4 : 1), pixel(moved, 5, 5)];
+    });
+    // Moved by half a pixel more, the shadow keeps the half: its first and
+    // last columns read half red, as in Chromium, rather than its edges
+    // rounding to whole pixels.
+    const halfShadowReads = (() => {
+      const moved = make(8, 8);
+      moved.filter = 'drop-shadow(1000.5px 0 0 red)';
+      moved.fillRect(-1000, 0, 4, 8);
+      return [pixel(moved, 0, 4), pixel(moved, 4, 4)];
+    })();
 
     // A shape faded with globalAlpha casts a shadow faded as much, and a
     // shadow with no blur has sharp edges (issue #796): both of the 2 px
@@ -513,6 +558,14 @@ export class CanvasRoute {
           close(across, [r, g, b, acrossAlpha], 12)
         );
       }) &&
+      near(farShadowReads[0][0], [255, 0, 0, 255]) &&
+      near(farShadowReads[1][0], [0, 0, 255, 255]) &&
+      farShadowReads.every(([, beside]) => beside[3] === 0) &&
+      halfShadowReads.every((read) =>
+        read.every(
+          (value, channel) => Math.abs(value - [255, 0, 0, 128][channel]) <= 4,
+        ),
+      ) &&
       fadedShadowReads.every((read) => near(read, [255, 0, 0, 128])) &&
       ownColorReads.every(
         ([shape, cast]) =>
@@ -535,6 +588,8 @@ export class CanvasRoute {
           ...cornerReads,
           wideBlurRead,
           ...widerReads.flat(),
+          ...farShadowReads.flat(),
+          ...halfShadowReads,
           ...fadedShadowReads,
           ...ownColorReads.flat(),
           ...farImageReads,

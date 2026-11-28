@@ -34,6 +34,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LynxDocument } from '../lynx-document';
 import { setPageElementRef } from '../lynx-document/page-ref';
 import {
+  processPendingAttributeRemovals,
   processPendingRemovals,
   processPendingTextNormalization,
 } from '../lynx-element';
@@ -468,6 +469,84 @@ describe('inline text whitespace normalization', () => {
     // display is already correct in the same paint (no second flush needed).
     expect(renderedText('wrap')).toBe('One two three');
     expect(flushCount).toBeGreaterThan(before);
+  });
+
+  it('writes a run alone in its text once, already trimmed, when its value changes', () => {
+    const fixture = TestBed.createComponent(InterpHost);
+    fixture.componentInstance.label.set(' hi ');
+    fixture.detectChanges();
+    const writes: unknown[] = [];
+    const set = (globalThis as any).__SetAttribute;
+    vi.stubGlobal(
+      '__SetAttribute',
+      (n: FakeEl, name: string, value: unknown) => {
+        if (n.tag === 'raw-text' && name === 'text') writes.push(value);
+        set(n, name, value);
+      },
+    );
+
+    fixture.componentInstance.label.set(' goodbye ');
+    fixture.detectChanges();
+
+    // Not the untrimmed text and then the pass's trimmed one (issue #878).
+    expect(writes).toEqual(['goodbye']);
+    expect(renderedText('interp')).toBe('goodbye');
+  });
+
+  describe('a run that was alone in its text when its value was set', () => {
+    /**
+     * A <text> on the page with one empty run in it. A run set while it's
+     * the text's only child is trimmed as a whole context (see LynxElement's
+     * #setRawText); whatever joins it or leaves it later in the cycle queues
+     * the pass, which starts again from its raw value.
+     */
+    const build = () => {
+      const doc = new LynxDocument();
+      doc.createRootElement();
+      const textRoot = doc.createElement('text') as any;
+      textRoot.setAttribute('class', 'solo');
+      const run = doc.createText('') as any;
+      textRoot.appendChild(run);
+      doc.page.appendChild(textRoot);
+      processPendingTextNormalization();
+      return { doc, textRoot, run };
+    };
+
+    it('gives back its trailing space when a run is put after it in the same cycle', () => {
+      const { doc, textRoot, run } = build();
+
+      run.setAttribute('text', ' a ');
+      expect(renderedText('solo')).toBe('a');
+      textRoot.appendChild(doc.createText(' b'));
+      processPendingTextNormalization();
+
+      expect(renderedText('solo')).toBe('a b');
+    });
+
+    it('is trimmed by the pass when it sits in a nested text', () => {
+      const { doc, textRoot } = build();
+      const inner = doc.createElement('text') as any;
+      const run = doc.createText('') as any;
+      inner.appendChild(run);
+      textRoot.appendChild(inner);
+      processPendingTextNormalization();
+
+      run.setAttribute('text', ' c ');
+      processPendingTextNormalization();
+
+      expect(renderedText('solo')).toBe('c');
+    });
+
+    it('is taken off native when its text is removed', () => {
+      const { run } = build();
+      run.setAttribute('text', ' a ');
+
+      run.removeAttribute('text');
+      processPendingTextNormalization();
+      processPendingAttributeRemovals();
+
+      expect((run.element as FakeEl).attrs.get('text')).toBeNull();
+    });
   });
 
   it('preserves a non-breaking space at the edge (escape hatch)', () => {

@@ -179,6 +179,8 @@ export class LynxDocument implements LynxDocumentBase {
     scheduleSettleFlush();
     const text = __CreateRawText(value);
     const lynxElement = new LynxElement(text);
+    // Its native element is in no tree yet (see LynxElement's #unplaced).
+    lynxElement.markUnplaced();
     lynxElement.tagName = 'raw-text';
     // Seed the recreation cache: the text is baked into the native ref at
     // creation and never flows through a cached setter, so without this a
@@ -191,6 +193,7 @@ export class LynxDocument implements LynxDocumentBase {
     scheduleSettleFlush();
     const element = createCommentElement(this.#pageId);
     const el = new LynxElement(element);
+    el.markUnplaced();
     // tagName 'comment' is the SOLE marker LynxListElement.getUIChildren() uses
     // to skip these @for/@if insertion anchors. It deliberately does not go in a
     // WeakSet of element refs — hashing a native ref crashes the Lepus engine

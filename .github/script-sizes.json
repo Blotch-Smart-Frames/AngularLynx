@@ -1,0 +1,42 @@
+{
+  "budget": {
+    "bytes": 10000,
+    "percent": 2
+  },
+  "apps": {
+    "benchmark app": {
+      "dir": "benchmarks/apps/angular-lynx",
+      "sizes": {
+        "main-thread": {
+          "raw": 651008,
+          "gzip": 198977
+        },
+        "background": {
+          "raw": 50389,
+          "gzip": 16982
+        },
+        "bundle": {
+          "raw": 824305,
+          "gzip": 361734
+        }
+      }
+    },
+    "hello-world": {
+      "dir": "examples/hello-world",
+      "sizes": {
+        "main-thread": {
+          "raw": 308798,
+          "gzip": 98413
+        },
+        "background": {
+          "raw": 50807,
+          "gzip": 17189
+        },
+        "bundle": {
+          "raw": 408093,
+          "gzip": 184573
+        }
+      }
+    }
+  }
+}

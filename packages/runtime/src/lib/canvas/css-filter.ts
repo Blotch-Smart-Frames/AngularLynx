@@ -24,17 +24,17 @@ import { type RGBA, parseColor } from './css-color';
  * - `FILTER_STEP.dropShadow`, dx, dy, σ, red, green, blue (0 to 255),
  *   alpha (0 to 1): the alpha of what's drawn so far, blurred, in the
  *   color, moved by dx and dy, under it.
+ *
+ * Only the steps cross: how far they reach past what's drawn, and so how
+ * big a layer they need, the shells work out from the steps themselves (their
+ * MAX_REACH and planFor). A total the runtime added up couldn't tell them
+ * that: a far drop shadow casts from a layer of its own (issue #824), so its
+ * offset doesn't count toward the others' reach, and a wide blur goes
+ * through a smaller layer (issue #814).
  */
 export type CanvasFilter = {
   /** The steps, in order, as they cross the bridge (above). */
   readonly steps: readonly number[];
-  /**
-   * How far, in the canvas's pixels, the steps can move what's drawn: a
-   * blur's or a shadow's reach. The shells draw into a layer this much
-   * bigger than the canvas on every side, so a shape just off the canvas
-   * still blurs or casts its shadow onto it.
-   */
-  readonly padding: number;
 };
 
 export const FILTER_STEP = {
@@ -44,22 +44,7 @@ export const FILTER_STEP = {
 } as const;
 
 /** `filter = 'none'`, which is also what `url()` amounts to (see below). */
-export const NO_FILTER: CanvasFilter = { steps: [], padding: 0 };
-
-/**
- * The most the layer grows by on a side. A blur's reach is three of its
- * deviations, so a big blur (`blur(500px)`) would make a layer many times
- * the canvas's size. The shells work out the steps' whole reach from the
- * steps themselves, and past this a blur goes through a smaller layer that
- * takes all of it in (issue #814), so what's farther off the canvas still
- * blurs onto it. That's for a blur at least 4 of that layer's pixels wide,
- * and the layer's scale is this over the whole reach, offsets included:
- * alone, a blur needs a deviation past about 85 px. A drop shadow's offset
- * isn't a blur: one past this leaves out what's farther off unless its own
- * blur is wide enough at that scale, and a far one can lower the scale
- * enough to keep a blur beside it out of the smaller layer (issue #824).
- */
-const MAX_PADDING = 256;
+export const NO_FILTER: CanvasFilter = { steps: [] };
 
 /**
  * What `em` and `rem` are of: a canvas's font size, which is the page's
@@ -306,12 +291,7 @@ const MATRICES: Record<string, (amount: number) => Matrix> = {
 /** The functions whose amount over 100% is clamped to 1, as the spec has it. */
 const CLAMPED = new Set(['grayscale', 'invert', 'opacity', 'sepia']);
 
-/**
- * A blur's reach: three deviations take in all but a sliver of it.
- */
-const reachOf = (sigma: number): number => Math.ceil(sigma * 3);
-
-type Step = { readonly steps: number[]; readonly padding: number };
+type Step = readonly number[];
 
 /**
  * One filter function's steps, or null if its arguments are malformed.
@@ -321,29 +301,23 @@ const stepOf = (name: string, args: string[]): Step | null => {
     if (args.length > 1) return null;
     const sigma = args.length ? lengthOf(args[0]) : 0;
     if (sigma === null || sigma < 0) return null;
-    return { steps: [FILTER_STEP.blur, sigma], padding: reachOf(sigma) };
+    return [FILTER_STEP.blur, sigma];
   }
   if (name === 'hue-rotate') {
     if (args.length > 1) return null;
     const angle = args.length ? angleOf(args[0]) : 0;
     if (angle === null) return null;
-    return {
-      steps: [FILTER_STEP.matrix, ...hueRotateMatrix(angle)],
-      padding: 0,
-    };
+    return [FILTER_STEP.matrix, ...hueRotateMatrix(angle)];
   }
   if (name === 'drop-shadow') return dropShadowOf(args);
   const matrix = own(MATRICES, name);
   if (!matrix || args.length > 1) return null;
   const amount = args.length ? amountOf(args[0]) : 1;
   if (amount === null || amount < 0) return null;
-  return {
-    steps: [
-      FILTER_STEP.matrix,
-      ...matrix(CLAMPED.has(name) ? Math.min(amount, 1) : amount),
-    ],
-    padding: 0,
-  };
+  return [
+    FILTER_STEP.matrix,
+    ...matrix(CLAMPED.has(name) ? Math.min(amount, 1) : amount),
+  ];
 };
 
 /**
@@ -371,10 +345,7 @@ const dropShadowOf = (args: string[]): Step | null => {
   const [dx, dy, sigma = 0] = lengths;
   if (sigma < 0) return null;
   const [r, g, b, a] = color ?? [0, 0, 0, 1];
-  return {
-    steps: [FILTER_STEP.dropShadow, dx, dy, sigma, r, g, b, a],
-    padding: reachOf(sigma) + Math.ceil(Math.max(Math.abs(dx), Math.abs(dy))),
-  };
+  return [FILTER_STEP.dropShadow, dx, dy, sigma, r, g, b, a];
 };
 
 /**
@@ -390,7 +361,6 @@ export const parseFilter = (value: unknown): CanvasFilter | null => {
   const text = String(value).trim().toLowerCase();
   if (text === 'none') return NO_FILTER;
   const steps: number[] = [];
-  let padding = 0;
   let references = false;
   let index = 0;
   while (index < text.length) {
@@ -415,11 +385,10 @@ export const parseFilter = (value: unknown): CanvasFilter | null => {
     }
     const step = stepOf(functionName, tokensOf(inside));
     if (!step) return null;
-    steps.push(...step.steps);
-    padding += step.padding;
+    steps.push(...step);
   }
   // An empty string isn't a filter.
   if (steps.length === 0 && !references) return null;
   if (references) return NO_FILTER;
-  return { steps, padding: Math.min(padding, MAX_PADDING) };
+  return { steps };
 };

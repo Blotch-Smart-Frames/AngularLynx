@@ -1,0 +1,330 @@
+name: Simulator benchmarks
+
+# On demand, on a Mac runner: builds the benchmark's AngularLynx app
+# (benchmarks/apps/angular-lynx, on this commit's packages) and its ReactLynx
+# app for the iOS Simulator, launches the two in turn (benchmarks/harness/
+# ios_launch.py and ios_mount.py, --simulator), and tracks AngularLynx /
+# ReactLynx: the Pokédex's fully drawn time and memory, and the cost of each
+# view, text and image on the mount screens. benchmarks/harness/track.py
+# writes the job summary, keeps the history (an artifact each run on master
+# hands to the next) and, when a ratio has been more than 10% off its
+# baseline on each of the last three days it ran, the issue this opens. See
+# benchmarks/README.md, "Tracking AngularLynx against ReactLynx".
+#
+# Before #851, nothing ran the benchmark on master: a change that made
+# AngularLynx slower was noticed only when someone happened to compare. A
+# Simulator gives neither a phone's numbers nor steady ones (the host moves
+# them by 5-30%), which is why this tracks ratios, which the host's share
+# mostly cancels out of, and why it isn't a per-PR gate.
+#
+# It isn't scheduled, and doesn't run on pull requests, because GitHub's
+# free macOS runner (xcode-27: 3 cores, a load average of 84-303 once the
+# Simulator boots) can't run it: Instruments recorded one launch in four
+# and then hung before recording (#854). It runs on a Mac registered as a
+# self-hosted runner for the run (the README says how), which a pull
+# request from a fork must never reach.
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: "The runner's label: self-hosted for a Mac you've registered, or xcode-27 for GitHub's, which can't record (#854)"
+        default: self-hosted
+      runs:
+        description: Pokédex launches per app
+        default: '20'
+      mount-runs:
+        description: Launches per app of each mount screen
+        default: '10'
+      max-load:
+        description: "ios_launch.py's --max-load: a load average, off, or empty for half the cores"
+        default: ''
+
+# One run at a time on a runner: two would share its Simulator.
+concurrency:
+  group: simulator-benchmarks-${{ inputs.runner }}
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    # A Mac with Xcode 27, the shell's toolchain, as the E2E tests' iOS job
+    # (e2e.yml says why).
+    runs-on: ${{ inputs.runner }}
+    # About 15 minutes of builds while the Simulator boots, 15 of Pokédex
+    # launches and 10 for each of the six mount screens.
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      # The history, from the last run on master.
+      actions: read
+      # The issue for a sustained change.
+      issues: write
+    env:
+      # A run on master keeps the history and opens issues; a run on
+      # another branch only measures.
+      TRACK: ${{ github.ref == 'refs/heads/master' }}
+      LAUNCH_RUNS: ${{ inputs.runs || '20' }}
+      MOUNT_RUNS: ${{ inputs.mount-runs || '10' }}
+      # Empty is the harness's default, half the cores, which a Mac doing
+      # other work waits for. On GitHub's runner (3 cores) the 1-minute load
+      # average stayed between 84 and 303 after the Simulator booted (#854),
+      # so that needs off: the apps' order and the ratio cancel the host's
+      # share instead, and each row still records the load.
+      MAX_LOAD: ${{ inputs.max-load }}
+      # A launch that the load keeps from being measured for 15 minutes ends
+      # the step with the load and the limit, rather than wait until the
+      # job's timeout with nothing measured.
+      MAX_WAIT: 900
+      RESULTS: ${{ github.workspace }}/benchmarks/results/ios-simulator
+      NG_BUILD_MAX_WORKERS: 2
+    steps:
+      - uses: actions/checkout@v7
+      # A minute's check before an hour's run.
+      - name: Test the report
+        run: python3 -m unittest discover -s benchmarks/harness -p '*_test.py'
+      # Booting is the slowest step, and starves GitHub's runner for minutes
+      # (e2e.yml's ios job), so it starts first and boots while the steps
+      # below install and build. "Wait for the Simulator" picks it up.
+      - name: Start the Simulator
+        run: |
+          python3 benchmarks/harness/track.py boot > "$RUNNER_TEMP/simulator-udid" 2> "$RUNNER_TEMP/simulator-boot.log" &
+          echo $! > "$RUNNER_TEMP/simulator-boot.pid"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+          # The benchmark apps have lockfiles of their own, outside the
+          # workspaces.
+          cache-dependency-path: |
+            package-lock.json
+            benchmarks/apps/angular-lynx/package-lock.json
+            benchmarks/apps/react-lynx/package-lock.json
+      - run: npm ci
+      # Every published package: use-local-packages.mjs packs them all and
+      # refuses one that isn't built, and the ReactLynx app builds its shell
+      # with packages/native.
+      - run: npx turbo run build --filter=./packages/* --filter=!@blotch/angular-lynx-website --concurrency=3
+      # The benchmark measures this commit's packages, packed as `npm
+      # publish` packs them (the app's README, "Local packages").
+      - name: Install the apps
+        run: |
+          (cd benchmarks/apps/angular-lynx && node scripts/use-local-packages.mjs)
+          (cd benchmarks/apps/react-lynx && npm ci)
+      # The prebuilt Lynx XCFrameworks both shells link, which the native
+      # builder downloads on first use. frameworks.ts pins them.
+      - name: Cache Lynx iOS frameworks
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/angular-lynx/lynx-ios
+          key: lynx-ios-frameworks-${{ hashFiles('packages/native/src/ios/frameworks.ts') }}
+      # Both apps on the bundle IDs ios_mount.py installs them as, so the
+      # mount screens' builds replace these rather than sit beside them.
+      - name: Build the Pokédex apps
+        run: |
+          ours=$(sh benchmarks/harness/build_ios_app.sh --simulator angular-lynx com.angularlynx.bench.angularlynx)
+          rival=$(sh benchmarks/harness/build_ios_app.sh --simulator react-lynx com.angularlynx.bench.rival)
+          echo "OURS_APP=$ours" >> "$GITHUB_ENV"
+          echo "RIVAL_APP=$rival" >> "$GITHUB_ENV"
+      - name: Wait for the Simulator
+        id: simulator
+        timeout-minutes: 20
+        run: |
+          pid=$(cat "$RUNNER_TEMP/simulator-boot.pid")
+          while kill -0 "$pid" 2>/dev/null; do sleep 5; done
+          cat "$RUNNER_TEMP/simulator-boot.log"
+          udid=$(cat "$RUNNER_TEMP/simulator-udid")
+          if [ -z "$udid" ]; then
+            echo "::error::The Simulator didn't boot."
+            exit 1
+          fi
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+      - name: Start the fixture server
+        run: |
+          node benchmarks/fixtures/server.mjs > "$RUNNER_TEMP/fixtures.log" 2>&1 &
+          curl --silent --fail --retry 10 --retry-connrefused --retry-delay 1 \
+            'http://localhost:8787/api/v2/pokemon?limit=1' > /dev/null
+      - name: Install the Pokédex apps
+        env:
+          UDID: ${{ steps.simulator.outputs.udid }}
+        run: |
+          xcrun simctl install "$UDID" "$OURS_APP"
+          xcrun simctl install "$UDID" "$RIVAL_APP"
+      # A runner's cores and load aren't a laptop's (see MAX_LOAD), so
+      # they're printed here for the run's log.
+      - name: The host
+        run: |
+          echo "cores: $(sysctl -n hw.ncpu), memory: $(( $(sysctl -n hw.memsize) / 1073741824 )) GB"
+          uptime
+          xcodebuild -version
+      # xctrace launches each app under Instruments, which attaches to the
+      # process it starts: that takes developer tools access and the task
+      # port right, which on a Mac ask for an admin's password, a dialog
+      # nobody answers on a runner. Without them, xctrace on GitHub's runner
+      # printed "Launching process" and nothing more until the step's
+      # timeout (#854). This grants both there (a Mac of your own has them
+      # once you've recorded with Instruments, and its sudo would ask for
+      # the password), then launches the app once on its own
+      # (with a screenshot in the artifacts) and once under xctrace, each
+      # under a time limit, so a runner that can't record says so here
+      # rather than an hour in.
+      - name: Let Instruments run
+        # simctl can stall too, before the xctrace check's own alarm.
+        timeout-minutes: 10
+        env:
+          UDID: ${{ steps.simulator.outputs.udid }}
+        run: |
+          if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
+            sudo DevToolsSecurity -enable
+            sudo dseditgroup -o edit -a "$(id -un)" -t user _developer
+            sudo security authorizationdb write system.privilege.taskport allow
+          fi
+          mkdir -p "$RUNNER_TEMP/instruments"
+          xcrun simctl launch "$UDID" com.angularlynx.bench.angularlynx
+          sleep 10
+          xcrun simctl io "$UDID" screenshot "$RUNNER_TEMP/instruments/launched.png"
+          xcrun simctl terminate "$UDID" com.angularlynx.bench.angularlynx
+          # Each instrument the harness records with, on its own beside
+          # Points of Interest: on GitHub's runner, Points of Interest alone
+          # recorded and the three together never started (#854).
+          check() {
+            name=$1
+            shift
+            if perl -e 'alarm 90; exec @ARGV' xcrun xctrace record --instrument 'Points of Interest' "$@" \
+              --device "$UDID" --time-limit 3s --output "$RUNNER_TEMP/instruments/$name.trace" \
+              --no-prompt --launch -- com.angularlynx.bench.angularlynx > "$RUNNER_TEMP/instruments/$name.log" 2>&1; then
+              echo "$name: records"
+            else
+              echo "$name: doesn't record"
+              cat "$RUNNER_TEMP/instruments/$name.log"
+              xcrun simctl terminate "$UDID" com.angularlynx.bench.angularlynx || true
+              return 1
+            fi
+          }
+          check points
+          if ! check dyld --instrument 'dyld Activity'; then
+            echo "::error::xctrace can't record dyld Activity here, which fully drawn is timed from."
+            exit 1
+          fi
+          # The thermal state is only a column in the CSVs, so without it
+          # the launches record the set checked above. With it, they record
+          # all three, which is checked too: two that each record beside
+          # Points of Interest might still not record together.
+          if ! check thermal --instrument 'Thermal State' \
+            || ! check all --instrument 'dyld Activity' --instrument 'Thermal State'; then
+            echo "::warning::xctrace can't record Thermal State with the others here, so the launches leave it out."
+            echo "NO_THERMAL=--no-thermal" >> "$GITHUB_ENV"
+          fi
+      - name: Launch the Pokédex
+        timeout-minutes: 45
+        env:
+          UDID: ${{ steps.simulator.outputs.udid }}
+        run: >-
+          python3 -u benchmarks/harness/ios_launch.py --simulator --device "$UDID"
+          --runs "$LAUNCH_RUNS" ${MAX_LOAD:+--max-load "$MAX_LOAD"} --max-wait "$MAX_WAIT" ${NO_THERMAL:+"$NO_THERMAL"}
+          --app angular-lynx=com.angularlynx.bench.angularlynx
+          --app react-lynx=com.angularlynx.bench.rival
+          --out "$RESULTS/launch-$(date -u +%F)-react-lynx.csv"
+      - name: Launch the mount screens
+        timeout-minutes: 100
+        env:
+          UDID: ${{ steps.simulator.outputs.udid }}
+        run: >-
+          python3 -u benchmarks/harness/ios_mount.py --simulator --device "$UDID"
+          --rival react-lynx --runs "$MOUNT_RUNS"
+          ${MAX_LOAD:+--max-load "$MAX_LOAD"} --max-wait "$MAX_WAIT"
+          ${NO_THERMAL:+"$NO_THERMAL"}
+      # The history, from the newest run on master that uploaded one. That's
+      # after its report, so a run that failed later (uploading the CSVs,
+      # or the issue) still hands its day on, and one that failed before has
+      # none and is passed over. The artifacts API lists the newest first,
+      # whatever became of their runs, and every history is kept as long
+      # (90 days), so if the newest has expired, they all have: then, as on
+      # the first run, this one starts a new history. A history that's there
+      # but doesn't download fails the step instead: starting again would
+      # throw away every day's baseline.
+      - name: Download the history
+        if: env.TRACK == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/history"
+          # An assignment, so a failed request fails the step (bash -e)
+          # rather than start a new history.
+          run=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=simulator-benchmark-history&per_page=100" \
+            --jq '[.artifacts[] | select(.workflow_run.head_branch == "master")][0] | select(.expired == false) | .workflow_run.id')
+          if [ -z "$run" ]; then
+            echo "::warning::No run on master has a history (none yet, or expired after 90 days), so this run starts one."
+            exit 0
+          fi
+          for attempt in 1 2 3; do
+            if gh run download "$run" --repo "$GITHUB_REPOSITORY" \
+              --name simulator-benchmark-history --dir "$RUNNER_TEMP/history"; then
+              echo "The history of run $run: $(wc -l < "$RUNNER_TEMP/history/history.jsonl") days"
+              exit 0
+            fi
+            echo "Downloading run $run's history failed ($attempt of 3)."
+            sleep 30
+          done
+          echo "::error::Run $run's history is there but didn't download."
+          exit 1
+      # Fails when an app drew nothing for a measure (after writing the
+      # summary), so a run that broke an app reports a failure rather than
+      # a history with a gap in it.
+      - name: Report
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          HISTORY: ${{ env.TRACK == 'true' && format('{0}/history/history.jsonl', runner.temp) || '' }}
+        run: >-
+          python3 benchmarks/harness/track.py report
+          --launch "$(ls "$RESULTS"/launch-*-react-lynx.csv | tail -n 1)" --mount-dir "$RESULTS"
+          ${HISTORY:+--history "$HISTORY"}
+          --commit "$GITHUB_SHA" --run-url "$RUN_URL"
+          --summary "$GITHUB_STEP_SUMMARY" --alert "$RUNNER_TEMP/alert.md"
+      - uses: actions/upload-artifact@v7
+        if: env.TRACK == 'true'
+        with:
+          name: simulator-benchmark-history
+          path: ${{ runner.temp }}/history/history.jsonl
+          if-no-files-found: error
+          retention-days: 90
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: simulator-benchmarks
+          path: |
+            ${{ env.RESULTS }}
+            ${{ runner.temp }}/simulator-boot.log
+            ${{ runner.temp }}/instruments/launched.png
+            ${{ runner.temp }}/fixtures.log
+          retention-days: 30
+      # One open issue at a time: a run that finds the change again
+      # comments on it, as the nightly E2E run's failures do.
+      - name: Open an issue for a sustained change
+        if: env.TRACK == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          alert="$RUNNER_TEMP/alert.md"
+          [ -f "$alert" ] || exit 0
+          title="Simulator benchmark: AngularLynx has changed against ReactLynx"
+          gh label create benchmark-alert --color FBCA04 --description "Simulator benchmark alerts" 2>/dev/null || true
+          existing=$(gh issue list --label benchmark-alert --state open --search "in:title \"$title\"" --json number --jq '.[0].number')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file "$alert"
+          else
+            gh issue create --title "$title" --label benchmark-alert --body-file "$alert"
+          fi
+      # A Mac of your own keeps its Simulator, which would go on using its
+      # memory and cores after the run. A step that failed before "Wait for
+      # the Simulator" leaves the boot running and no UDID, so this stops
+      # the boot and shuts down the Simulator by its name, which leaves the
+      # Mac's other Simulators alone.
+      - name: Shut the Simulator down
+        if: always()
+        run: |
+          pid=$(cat "$RUNNER_TEMP/simulator-boot.pid" 2>/dev/null || true)
+          [ -z "$pid" ] || kill "$pid" 2>/dev/null || true
+          python3 benchmarks/harness/track.py shutdown

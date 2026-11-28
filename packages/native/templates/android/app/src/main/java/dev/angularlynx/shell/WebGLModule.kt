@@ -11,11 +11,13 @@ import com.lynx.react.bridge.JavaOnlyMap
 import com.lynx.react.bridge.ReadableArray
 import com.lynx.react.bridge.ReadableMap
 import com.lynx.react.bridge.ReadableType
-import java.io.ByteArrayOutputStream
 import java.lang.ref.WeakReference
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+// angular-lynx:webgl
+import java.io.ByteArrayOutputStream
 import kotlin.math.roundToInt
+// /angular-lynx:webgl
 
 /**
  * `<canvas>` with WebGL2 for the AngularLynx runtime: the `AngularLynxWebGL`
@@ -32,13 +34,20 @@ import kotlin.math.roundToInt
  * thread's JavaScript runs, which the shell runs off the UI thread.
  */
 class WebGLModule(context: Context, param: Any?) : LynxModule(context, param) {
+    // The WebGL2 context's lines, between the `angular-lynx:webgl` markers,
+    // go with WebGLContext.kt and WebGLOps.kt from an app that draws on a
+    // canvas only in 2D (@blotch/angular-lynx-native's features.ts): the
+    // runtime then has no WebGL2 context to call them (issue #847).
+    // angular-lynx:webgl
     private val contexts = HashMap<Int, WebGLContext>()
+    // /angular-lynx:webgl
     private val contexts2D = HashMap<Int, Canvas2DContext>()
     private val bitmapRenderers = HashMap<Int, BitmapRendererContext>()
 
     /** The 2D contexts' gradients and patterns, which any of them can paint with. */
     private val canvas2DObjects = HashMap<Int, Any>()
 
+    // angular-lynx:webgl
     @LynxMethod
     fun create(contextId: Int, canvasId: String, attributes: ReadableMap?): JavaOnlyMap {
         contexts.remove(contextId)?.destroy()
@@ -65,6 +74,7 @@ class WebGLModule(context: Context, param: Any?) : LynxModule(context, param) {
         context.destroy()
         return true
     }
+    // /angular-lynx:webgl
 
     /**
      * The size of the frame a `<video>` shows (VideoUI), by its `video-id`:
@@ -286,6 +296,7 @@ class WebGLModule(context: Context, param: Any?) : LynxModule(context, param) {
         return DecodedImage(pixels, width, height, premultiply)
     }
 
+    // angular-lynx:webgl
     /**
      * The drawing buffer as an image file, for canvas.toBlob() and
      * toDataURL(): `{ base64, type }`, or `{ error }`. [options] holds the
@@ -325,8 +336,6 @@ class WebGLModule(context: Context, param: Any?) : LynxModule(context, param) {
             encodeFailed("The canvas is too large to encode")
         }
     }
-
-    private fun encodeFailed(message: String) = JavaOnlyMap.from(mapOf("error" to message))
 
     /**
      * Encodes RGBA pixels, rows bottom to top, as a PNG or JPEG file.
@@ -374,6 +383,9 @@ class WebGLModule(context: Context, param: Any?) : LynxModule(context, param) {
             bitmap.recycle()
         }
     }
+    // /angular-lynx:webgl
+
+    private fun encodeFailed(message: String) = JavaOnlyMap.from(mapOf("error" to message))
 
     /** A 2D context for the canvas (see Canvas2DContext): `{ ok }`, or `{ ok: false, error }`. */
     @LynxMethod
@@ -509,8 +521,10 @@ class WebGLModule(context: Context, param: Any?) : LynxModule(context, param) {
     }
 
     override fun destroy() {
+        // angular-lynx:webgl
         for (context in contexts.values) context.destroy()
         contexts.clear()
+        // /angular-lynx:webgl
         for (context in contexts2D.values) context.destroy()
         contexts2D.clear()
         for (context in bitmapRenderers.values) context.destroy()
@@ -576,8 +590,10 @@ class WebGLModule(context: Context, param: Any?) : LynxModule(context, param) {
 
 internal val NUMBER_TYPES = setOf(ReadableType.Int, ReadableType.Long, ReadableType.Number)
 
+// angular-lynx:webgl
 /** The drawing buffer's pixels: RGBA, rows bottom to top, and whether the canvas has alpha. */
 class DrawingBufferPixels(val rgba: ByteBuffer, val width: Int, val height: Int, val alpha: Boolean)
+// /angular-lynx:webgl
 
 /** Pixels the module decoded, which texture uploads read by id: RGBA, rows top to bottom. */
 class DecodedImage(val pixels: ByteBuffer, val width: Int, val height: Int, val premultiplied: Boolean) {
@@ -687,53 +703,6 @@ internal object CanvasRegistry {
 
     @Synchronized
     fun context(canvasId: String): CanvasContext? = contexts[canvasId]?.get()
-}
-
-/**
- * The bytes the runtime sends as 32-bit words, with the byte count last (see
- * toWords in webgl-bridge.ts). Android runs little-endian, so the words land
- * in memory as the bytes were.
- */
-internal fun bytesFromWords(words: ReadableArray): ByteBuffer {
-    val count = words.size()
-    if (count == 0) return ByteBuffer.allocateDirect(0)
-    val byteLength = words.getDouble(count - 1).toLong().toInt()
-    val buffer = ByteBuffer.allocateDirect((count - 1) * 4).order(ByteOrder.LITTLE_ENDIAN)
-    for (i in 0 until count - 1) buffer.putInt(words.getDouble(i).toLong().toInt())
-    buffer.rewind()
-    buffer.limit(minOf(byteLength, (count - 1) * 4))
-    return buffer
-}
-
-/** Bytes as words for the trip back, the byte count last. */
-internal fun wordsFromBytes(bytes: ByteBuffer, length: Int): JavaOnlyArray {
-    val words = JavaOnlyArray()
-    val source = bytes.duplicate().order(ByteOrder.LITTLE_ENDIAN)
-    source.rewind()
-    val wordCount = (length + 3) / 4
-    for (i in 0 until wordCount) {
-        var word = 0L
-        for (b in 0 until 4) {
-            val index = i * 4 + b
-            if (index < length) word = word or ((source.get(index).toLong() and 0xff) shl (8 * b))
-        }
-        words.pushDouble(word.toDouble())
-    }
-    words.pushInt(length)
-    return words
-}
-
-internal fun flipRows(pixels: ByteBuffer, stride: Int, height: Int) {
-    val top = ByteArray(stride)
-    val bottom = ByteArray(stride)
-    for (row in 0 until height / 2) {
-        val other = height - 1 - row
-        pixels.position(row * stride); pixels.get(top)
-        pixels.position(other * stride); pixels.get(bottom)
-        pixels.position(row * stride); pixels.put(bottom)
-        pixels.position(other * stride); pixels.put(top)
-    }
-    pixels.rewind()
 }
 
 /**

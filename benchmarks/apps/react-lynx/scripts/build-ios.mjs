@@ -25,6 +25,13 @@
 // one Info.plist key, and hands the folder to buildNativeApp as an ejected
 // project, which copies dist/ in and runs xcodebuild exactly as for an
 // AngularLynx app.
+//
+// The builder leaves the shell's optional native code an app doesn't use out
+// of a project it generates (what the AngularLynx build plugin's
+// .angular-lynx-native.json says), but builds an ejected project as it is.
+// So the project is rendered with `features` saying what the bundle uses, and
+// the ReactLynx shell is built from the same code as the AngularLynx
+// benchmark app's (issue #858).
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -62,6 +69,13 @@ const OUTPUT_DIR = path.join(BUILD_DIR, 'ios', app.appId);
 // The original's reason (apps/react-native/app.json).
 const LOCAL_NETWORK_REASON = 'Loads the benchmark data from the fixture server on your Mac.';
 
+// The shell's optional native code the bundle uses. Neither app draws on a
+// canvas, so the shell leaves out the canvas, WebGL and video frame code and
+// ANGLE's frameworks, as the AngularLynx app's does (its build plugin writes
+// `canvas: false`, issue #837). build-android.mjs writes the same into the
+// features file the builder reads for a generated project.
+const FEATURES = { canvas: false, webgl: false };
+
 if (!flags.has('--skip-bundle')) {
   execFileSync('npx', ['rspeedy', 'build'], { cwd: APP_DIR, stdio: 'inherit' });
 }
@@ -95,7 +109,8 @@ for (const artifact of artifacts) console.log(`Built ${artifact}`);
 
 /**
  * Writes the generated project into build/native/ios, with the eject marker
- * and NSLocalNetworkUsageDescription. Only files whose contents changed are
+ * and NSLocalNetworkUsageDescription, and without the native code FEATURES
+ * leaves out. Only files whose contents changed are
  * written, so Xcode's incremental build state survives a rebuild; files the
  * template no longer has are removed.
  */
@@ -107,6 +122,7 @@ function renderProject() {
     packageVersion: app.version,
     app,
     generatorVersion: PACKAGE_VERSION,
+    features: FEATURES,
   });
   const plistPath = 'App/Info.plist';
   const plist = files.get(plistPath).toString('utf8');

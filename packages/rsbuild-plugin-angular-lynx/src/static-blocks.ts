@@ -35,15 +35,18 @@ const BLOCK_PARENTS: ReadonlySet<string> = new Set([
 
 /**
  * Attributes LynxElement.setAttribute does more with than `__SetAttribute`:
- * `hidden` and `alt` become other attributes, `id` is `__SetID`, and
- * `accessibility-traits` adds the runtime's own traits. A static element with
- * one stays an element of Angular's.
+ * `hidden` and `alt` become other attributes, `id` is `__SetID`,
+ * `accessibility-traits` adds the runtime's own traits, and
+ * `enable-new-animator` makes the runtime end the element's animation when
+ * Angular destroys it, which iOS's platform animator would otherwise keep
+ * running. A static element with one stays an element of Angular's.
  */
 const SPECIAL_ATTRIBUTES: ReadonlySet<string> = new Set([
   'hidden',
   'alt',
   'id',
   'accessibility-traits',
+  'enable-new-animator',
 ]);
 
 /**

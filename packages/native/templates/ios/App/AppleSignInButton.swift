@@ -80,6 +80,10 @@ final class AppleSignInButton: LynxUI<UIView> {
     cornerRadius = radius
     if let radius {
       button?.cornerRadius = radius
+    } else if button != nil {
+      // UIKit has no way back to the button's own radius once one is set,
+      // so a removed `corner-radius` makes a new button.
+      stale = true
     }
   }
 

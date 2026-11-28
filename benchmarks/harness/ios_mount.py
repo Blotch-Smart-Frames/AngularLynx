@@ -95,7 +95,10 @@ def split_session(combined, outs, labels):
     (angular-lynx:5000), into the per-screen CSVs ios_launch.py would have
     written: outs maps a count to its CSV, labels a label to its (app,
     count). The app column goes back to the app's name, as the report and
-    summarize.py read it, and the bundle ID still tells the builds apart. A
+    summarize.py read it, and the bundle ID still tells the builds apart.
+    android_mount.py splits android_launch.py's sessions with it too, whose
+    package column tells them apart instead: it reads the columns from the
+    session's own header. A
     previous_app that's the same build becomes its app's name, so
     summarize.py still counts that launch as following its own app; any
     other build, the same app's other screen included, stays a label,
@@ -112,12 +115,12 @@ def split_session(combined, outs, labels):
     for count, out in outs.items():
         new_file = not os.path.exists(out) or os.path.getsize(out) == 0
         if not new_file:
-            # As ios_launch.py checks before appending: a CSV with other
-            # columns would get each value under the wrong heading.
+            # As the launch harnesses check before appending: a CSV with
+            # other columns would get each value under the wrong heading.
             with open(out, newline="") as existing:
                 header = next(csv.reader(existing), [])
             if header != fields:
-                raise SystemExit(f"{out} has other columns than ios_launch.py writes: move it out of the way")
+                raise SystemExit(f"{out} has other columns than this session's: move it out of the way")
         with open(out, "a", newline="") as file:
             writer = csv.DictWriter(file, fieldnames=fields)
             if new_file:

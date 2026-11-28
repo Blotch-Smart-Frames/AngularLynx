@@ -6,6 +6,59 @@ doesn't chart these, since an emulator's numbers aren't a phone's (see
 "On an Android emulator" in `../../README.md`). Within a session they
 compare.
 
+## 2026-11-28, one session per kind, 1,500 and 15,000 elements
+
+The six mount screens again, later the same day, on the same emulator and
+Mac, run the way the Simulator's are (#904): 1,500 and 15,000 elements
+rather than 5,000, and each kind's four builds (both apps, both sizes)
+installed side by side on application IDs of their own and launched in
+turn in one session. The CSVs are in
+[`2026-11-28-one-session`](2026-11-28-one-session).
+
+- **Apps:** as below, in the shell generated from `packages/native` at
+  29de655e, AngularLynx on that commit's packages.
+- **Runs:** 10 per build, the four builds of a kind in `android_launch.py`'s
+  rotating order, each after one unmeasured launch. The Mac's 1-minute load
+  average stayed at or below 7.2 (`--max-load` 9, no runs dropped), with a
+  median of 4.4.
+
+Each cost per element is (fastest 15,000-element mount − fastest
+1,500-element mount) / 13,500, as `android_mount.py` prints it, with a 95%
+bootstrap interval over the runs. The previous session's, from 1,500 and
+5,000 elements in a session each, are beside them:
+
+|                         | 1,500 and 15,000, one session | 1,500 and 5,000, a session each |
+| ----------------------- | ----------------------------- | ------------------------------- |
+| AngularLynx per `view`  | 50.9 µs (±2%)                 | 52.5 µs (±3%)                   |
+| ReactLynx per `view`    | 20.4 µs (±3%)                 | 25.2 µs (±22%)                  |
+| AngularLynx per `text`  | 91.4 µs (±1%)                 | 82.2 µs (±2%)                   |
+| ReactLynx per `text`    | 49.4 µs (±1%)                 | 46.9 µs (±13%)                  |
+| AngularLynx per `image` | 61.9 µs (±1%)                 | 62.2 µs (±4%)                   |
+| ReactLynx per `image`   | 26.1 µs (±3%)                 | 28.5 µs (±13%)                  |
+
+What they show:
+
+- **Every cost is now within ±3%**, ReactLynx's as well as AngularLynx's,
+  so the ratio's own uncertainty is well under the 10% `track.py` treats as
+  a change on the Simulator.
+- **AngularLynx takes 2.5× ReactLynx's time per view, 1.9× per text and
+  2.4× per image.** AngularLynx's text costs more over 15,000 elements than
+  over 5,000 (91.4 against 82.2 µs, both within ±2%): a cost per element
+  is the average over the elements between the two screens, so it's only
+  compared within one pair of sizes.
+- **ReactLynx's spread was its threads waiting for the emulator's cores,
+  not its fully drawn call.** A Perfetto trace of six launches of each
+  app's 1,500-text screen (scheduling only) shows ReactLynx's main thread
+  (`Lynx_TASM1`) and background thread (`Lynx_JS`, which renders the screen
+  again to hydrate it) both running through the mount, 79–100 and 61–77 ms
+  each, with the emulator's four cores 2.5–2.8 busy on average, against
+  1.5–1.9 for AngularLynx's one thread. Its main thread waited for a core
+  for 11–38 ms of each mount (AngularLynx's for 9–18), and the slowest
+  mount (153 ms against 105–116) waited longest. In both apps the main
+  thread ran until the fully drawn call, so `runOnMainThread`'s round trip
+  adds no idle time before it. The same tens of milliseconds are a small
+  share of 13,500 more elements.
+
 ## 2026-11-28, timed from `MountStart`
 
 The six mount screens again, later the same day, on the same emulator and

@@ -3216,6 +3216,11 @@ export class LynxElement implements BaseLynxElement {
     // Inserts and moves ask for no flush themselves (see nativeWriteEpoch).
     nativeWriteEpoch++;
     if (newChild.isRootPageElement) return;
+    // Before itself, an element stays where it is, as in a browser (the DOM
+    // takes its next sibling as the reference). The insert would take it out
+    // of this element first (see #prepareInsert), and Lynx then can't find
+    // the reference among the children and inserts nothing.
+    if (newChild === refChild) return;
     if (this.#holdsFlow()) {
       this.#flowInsert(newChild, refChild);
     } else {

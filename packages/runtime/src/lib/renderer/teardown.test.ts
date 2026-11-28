@@ -242,8 +242,10 @@ const installNativeFakes = (): void => {
   g.__InsertElementBefore = (parent: FakeEl, child: FakeEl, ref: FakeEl) => {
     // As Lynx 4.1 does, the reference node's index is found before a child
     // that still has a parent is taken out of it, so one moved forward within
-    // its parent lands one place past `ref`.
+    // its parent lands one place past `ref`, and a reference that isn't a
+    // child inserts nothing ("can not find the ref node").
     const i = parent.children.indexOf(ref);
+    if (ref && i < 0) return child;
     if (child.parent) reinserted.push(child);
     detach(child);
     parent.children.splice(i < 0 ? parent.children.length : i, 0, child);
@@ -1392,6 +1394,27 @@ describe('renderer teardown', () => {
         for (const item of items) expect(item).toBe(before.get(idOf(item)));
         expect(findRenderedByClass('label')).toHaveLength(3);
       }
+      expect(reinserted).toEqual([]);
+    });
+
+    it('leaves an element inserted before itself where it is', () => {
+      const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
+      const page = document.createRootElement();
+      const row = document.createElement('view');
+      const [a, b, c] = ['a', 'b', 'c'].map((name) => {
+        const child = document.createElement('view');
+        child.setAttribute('class', name);
+        row.appendChild(child);
+        return child;
+      });
+      page.appendChild(row);
+
+      row.insertBefore(b!, b!);
+
+      expect((row.element as unknown as FakeEl).children).toEqual(
+        [a, b, c].map((child) => (child as LynxElement).element),
+      );
+      expect(b!.nextSibling()).toBe(c);
       expect(reinserted).toEqual([]);
     });
 

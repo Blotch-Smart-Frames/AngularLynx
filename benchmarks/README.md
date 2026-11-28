@@ -260,7 +260,7 @@ since the script puts both back when it ends.
 set -e
 cleanup() {
   [ -z "${fixtures:-}" ] || kill "$fixtures" 2>/dev/null || true
-  python3 benchmarks/harness/track.py shutdown
+  python3 benchmarks/harness/track.py shutdown || echo "Shutting the Simulator down failed" >&2
   git checkout benchmarks/apps/angular-lynx/package.json benchmarks/apps/angular-lynx/package-lock.json
 }
 trap cleanup EXIT

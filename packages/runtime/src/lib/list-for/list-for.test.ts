@@ -425,9 +425,10 @@ class CardsHost {
   /**
    * What a row's check does besides showing its row: writes to the header,
    * outside its item, moves the header into the item, animates an element
-   * of its own, or has a main-thread script animate one.
+   * of its own, has a main-thread script animate one, or writes inside its
+   * item and throws.
    */
-  does: 'write' | 'move' | 'animate' | 'script' | null = null;
+  does: 'write' | 'move' | 'animate' | 'script' | 'throw' | null = null;
   mark(header: LynxElement, slot: LynxElement, row: Row): string {
     if (this.does === 'write') {
       header.setAttribute('accessibility-label', String(row.id));
@@ -437,13 +438,19 @@ class CardsHost {
       slot.animate([{ opacity: 0 }, { opacity: 1 }], 100).pause();
     } else if (this.does === 'script') {
       new MainThreadElement(slot.element).animate([{ opacity: 1 }], 100);
+    } else if (this.does === 'throw') {
+      slot.setAttribute('accessibility-label', String(row.id));
+      throw new Error('broken row');
     }
     return '';
   }
 }
 
 /**
- * Renders CardsHost with `rows`, keyed by id.
+ * Renders CardsHost with `rows`, keyed by id, and shows its first item and
+ * lets it go, with a tick after: the list's first item gives the list its
+ * text inheritance class (its rows draw loose text), a write outside the
+ * item that the specs' own binds don't make.
  */
 const renderCards = async (rows: Row[]) => {
   const fixture = TestBed.createComponent(CardsHost);
@@ -453,6 +460,8 @@ const renderCards = async (rows: Row[]) => {
     trackBy: (_: number, row: Row) => row.id,
   });
   await update(fixture);
+  hide(show(0)!);
+  fixture.componentRef.injector.get(ApplicationRef).tick();
   return fixture;
 };
 
@@ -659,7 +668,7 @@ describe('*lynxListFor', () => {
     const fixture = await renderCards(rowsOf(3));
     const appRef = fixture.componentRef.injector.get(ApplicationRef);
     fixture.componentInstance.does = 'write';
-    show(0);
+    show(1);
     flushes.length = 0;
 
     // The item's flush doesn't commit the header's attribute.
@@ -669,7 +678,7 @@ describe('*lynxListFor', () => {
       created
         .find((el) => el.classes.has('header'))!
         .attrs.get('accessibility-label'),
-    ).toBe('1');
+    ).toBe('2');
 
     flushes.length = 0;
     appRef.tick();
@@ -679,7 +688,7 @@ describe('*lynxListFor', () => {
   it('flushes the whole tree with the cycle after an item that moved an element in from outside it', async () => {
     const fixture = await renderCards(rowsOf(3));
     fixture.componentInstance.does = 'move';
-    const sign = show(0)!;
+    const sign = show(1)!;
     flushes.length = 0;
 
     // The header left the page's tree, which the item's flush doesn't
@@ -694,7 +703,7 @@ describe('*lynxListFor', () => {
   it('flushes nothing with the cycle after an item that animated an element of its own', async () => {
     const fixture = await renderCards(rowsOf(3));
     fixture.componentInstance.does = 'animate';
-    show(0);
+    show(1);
     flushes.length = 0;
 
     fixture.componentRef.injector.get(ApplicationRef).tick();
@@ -705,11 +714,32 @@ describe('*lynxListFor', () => {
   it('flushes the whole tree with the cycle after an item whose check ran a main-thread script’s animation', async () => {
     const fixture = await renderCards(rowsOf(3));
     fixture.componentInstance.does = 'script';
-    show(0);
+    show(1);
     flushes.length = 0;
 
     // The runtime can't tell which element a script animated.
     fixture.componentRef.injector.get(ApplicationRef).tick();
+
+    expect(flushes).toEqual([{ element: undefined, options: undefined }]);
+  });
+
+  it('flushes the whole tree after a bind that follows one that threw', async () => {
+    const fixture = await renderCards(rowsOf(4));
+    const appRef = fixture.componentRef.injector.get(ApplicationRef);
+    hide(show(0)!);
+    // Row 1 goes: its view leaves change detection, in the pool.
+    setInputs(directives.at(-1)!, { rows: rowsOf(3, 2) });
+    await update(fixture);
+    appRef.tick();
+    // The next row takes that view, writes inside it, then throws: no flush
+    // of the item follows.
+    fixture.componentInstance.does = 'throw';
+    expect(() => show(0)).toThrow('broken row');
+    fixture.componentInstance.does = null;
+    show(1);
+    flushes.length = 0;
+
+    appRef.tick();
 
     expect(flushes).toEqual([{ element: undefined, options: undefined }]);
   });

@@ -2223,6 +2223,8 @@ The standard `localStorage` / `sessionStorage` globals **do not exist**, and Lyn
 
 For data kept after that, `LynxLocalStorage` and `LynxSecureStorage` (issue #178) call native modules that the shells `ng build --platform` makes register: `UserDefaults` and the Keychain on iOS, `SharedPreferences` (the secure one encrypted by an Android Keystore key) on Android. Lynx Explorer has neither, so the services keep values in memory there. Lynx for Web runs the main thread in an iframe that web-core sandboxes with `allow-same-origin` (`createIFrameRealm.js`), so the page's `localStorage` is reachable from Angular there, and the services use it.
 
+Lynx has no WebAuthn either (`navigator.credentials`), the web's way to confirm the person with a face or a finger, so `LynxBiometrics` (issue #918) calls the shells' `AngularLynxBiometrics` module: `LAContext` on iOS and AndroidX's `BiometricPrompt` on Android. The module is only in apps with `permissions.biometrics` in angular.json, which writes iOS's `NSFaceIDUsageDescription`; without that key Face ID fails rather than asking. `LynxSecureStorage`'s `requireBiometrics` keeps a value behind them in the same module (a `.biometryCurrentSet` Keychain item, a Keystore key that needs a biometric for each use), which a new face or finger makes unreadable for good. The web preview and Lynx Explorer report no sensor.
+
 ---
 
 ## There's no `<input type="file">`: a photo comes from a native picker, and reaches the main thread as base64

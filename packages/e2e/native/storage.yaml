@@ -20,6 +20,29 @@ appId: ${APP_ID}
     visible: 'Stored: kept/kept'
     timeout: 15000
 - takeScreenshot: storage
+# The shells' biometrics module answered (issue #918). The second open above
+# read the guarded store for a missing key, which mustn't prompt. On iOS the
+# simulator has Face ID or Touch ID with nobody enrolled, which only the
+# module reports, so asking fails as notEnrolled. The Android emulator's
+# sensor depends on its image, so there the line only has to settle.
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - extendedWaitUntil:
+          visible: 'Biometrics: (faceID|touchID) not enrolled'
+          timeout: 10000
+      - tapOn: 'Biometrics: .*'
+      - extendedWaitUntil:
+          visible: 'Biometrics: notEnrolled'
+          timeout: 10000
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - extendedWaitUntil:
+          visible: 'Biometrics: \w+ (not )?enrolled'
+          timeout: 10000
 # Empties both, for the next run too: iOS keeps Keychain items after the app
 # is deleted.
 - tapOn: Clear storage

@@ -57,6 +57,15 @@ export const PERMISSION_MAP: Record<
     ios: ['NSLocalNetworkUsageDescription'],
     android: [],
   },
+  // Face ID, Touch ID or a fingerprint, for LynxBiometrics and the values
+  // LynxSecureStorage keeps behind them. iOS shows the reason the first time
+  // the app uses Face ID (Touch ID needs none), and ends nothing without it:
+  // Face ID just fails. Android's USE_BIOMETRIC is granted at install. The
+  // shells' biometrics module is only in apps that ask for this.
+  biometrics: {
+    ios: ['NSFaceIDUsageDescription'],
+    android: ['android.permission.USE_BIOMETRIC'],
+  },
   // iOS asks for notification permission at runtime without a usage string.
   notifications: {
     ios: [],

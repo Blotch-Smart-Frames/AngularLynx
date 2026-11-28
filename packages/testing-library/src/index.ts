@@ -4,6 +4,16 @@ export type { ComponentRef } from '@angular/core';
 export { setAppState } from './app-state.js';
 export type { AppState } from './app-state.js';
 export { pressBackButton } from './back-button.js';
+export {
+  biometricPrompts,
+  queueBiometricResult,
+  setBiometrics,
+} from './biometrics.js';
+export type {
+  BiometricPrompt,
+  BiometricResult,
+  FakeBiometrics,
+} from './biometrics.js';
 export { fireEvent, eventMap } from './fire-event.js';
 export { openedURLs, openLink } from './linking.js';
 export type { OpenedURL } from './linking.js';

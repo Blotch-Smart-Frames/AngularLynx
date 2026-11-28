@@ -1,6 +1,7 @@
 import '@angular/compiler';
 import { Injector } from '@angular/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { BiometricsError } from '../biometrics/biometrics';
 import { LynxLocalStorage, LynxSecureStorage } from './storage';
 
 type Result = { value?: string; error?: string };
@@ -271,5 +272,208 @@ describe('LynxSecureStorage', () => {
     await expect(storage.getItem('firebase:authUser')).resolves.toBe(
       '{"uid":"u"}',
     );
+  });
+
+  describe('behind biometrics', () => {
+    /**
+     * The secure storage module and the biometrics module side by side, as an
+     * app with `permissions.biometrics` has them. `answer` is what the next
+     * biometric read calls back with instead of the value, such as a
+     * canceled prompt.
+     */
+    const stubBoth = () => {
+      const plain = new Map<string, string>();
+      const guarded = new Map<string, string>();
+      let answer: Record<string, unknown> | undefined;
+      const done = (callback: (result: unknown) => void, result: unknown) =>
+        callback(result);
+      const secure = {
+        getItem: vi.fn((key: string, callback: Done) =>
+          done(callback, plain.has(key) ? { value: plain.get(key) } : {}),
+        ),
+        setItem: vi.fn((key: string, value: string, callback: Done) => {
+          plain.set(key, value);
+          done(callback, {});
+        }),
+        removeItem: vi.fn((key: string, callback: Done) => {
+          plain.delete(key);
+          done(callback, {});
+        }),
+        clear: vi.fn((callback: Done) => {
+          plain.clear();
+          done(callback, {});
+        }),
+      };
+      const biometrics = {
+        getItem: vi.fn(
+          (key: string, _reason: string, callback: (r: unknown) => void) => {
+            if (answer) return done(callback, answer);
+            done(callback, guarded.has(key) ? { value: guarded.get(key) } : {});
+          },
+        ),
+        setItem: vi.fn(
+          (key: string, value: string, callback: (r: unknown) => void) => {
+            if (answer) return done(callback, answer);
+            guarded.set(key, value);
+            done(callback, {});
+          },
+        ),
+        removeItem: vi.fn((key: string, callback: (r: unknown) => void) => {
+          guarded.delete(key);
+          done(callback, {});
+        }),
+        clear: vi.fn((callback: (r: unknown) => void) => {
+          guarded.clear();
+          done(callback, {});
+        }),
+      };
+      vi.stubGlobal('NativeModules', {
+        AngularLynxSecureStorage: secure,
+        AngularLynxBiometrics: biometrics,
+      });
+      return {
+        plain,
+        guarded,
+        secure,
+        biometrics,
+        answer: (result: Record<string, unknown>) => {
+          answer = result;
+        },
+      };
+    };
+
+    it('keeps the value in the biometrics module, and reads it back through its prompt', async () => {
+      const { plain, guarded, biometrics } = stubBoth();
+      const storage = create(LynxSecureStorage);
+
+      await storage.setItem('refreshToken', 'r1', { requireBiometrics: true });
+
+      expect(guarded.get('refreshToken')).toBe('"r1"');
+      expect(plain.has('refreshToken')).toBe(false);
+      await expect(
+        storage.getItem('refreshToken', { reason: 'Sign in' }),
+      ).resolves.toBe('r1');
+      expect(biometrics.getItem).toHaveBeenCalledWith(
+        'refreshToken',
+        'Sign in',
+        expect.any(Function),
+      );
+    });
+
+    it('asks with the default reason when it’s given none', async () => {
+      const { biometrics } = stubBoth();
+      await create(LynxSecureStorage).getItem('missing');
+      expect(biometrics.getItem).toHaveBeenCalledWith(
+        'missing',
+        '',
+        expect.any(Function),
+      );
+    });
+
+    it('replaces a plain value with a guarded one, and a guarded one with a plain one', async () => {
+      const { plain, guarded } = stubBoth();
+      const storage = create(LynxSecureStorage);
+
+      await storage.setItem('token', 'plain');
+      await storage.setItem('token', 'guarded', { requireBiometrics: true });
+      expect(plain.has('token')).toBe(false);
+      expect(guarded.get('token')).toBe('"guarded"');
+
+      await storage.setItem('token', 'plain again');
+      expect(guarded.has('token')).toBe(false);
+      await expect(storage.getItem('token')).resolves.toBe('plain again');
+    });
+
+    it('reads a plain value without the biometrics module', async () => {
+      const { biometrics } = stubBoth();
+      const storage = create(LynxSecureStorage);
+      await storage.setItem('theme', 'dark');
+      await expect(storage.getItem('theme')).resolves.toBe('dark');
+      expect(biometrics.getItem).not.toHaveBeenCalled();
+    });
+
+    it('removes and clears both kinds', async () => {
+      const { plain, guarded } = stubBoth();
+      const storage = create(LynxSecureStorage);
+      await storage.setItem('a', 1);
+      await storage.setItem('b', 2, { requireBiometrics: true });
+      await storage.removeItem('b');
+      expect(guarded.size).toBe(0);
+      await storage.setItem('b', 2, { requireBiometrics: true });
+      await storage.clear();
+      expect(plain.size).toBe(0);
+      expect(guarded.size).toBe(0);
+    });
+
+    it('rejects with the prompt’s error, such as a canceled one', async () => {
+      const { answer } = stubBoth();
+      const storage = create(LynxSecureStorage);
+      answer({ error: 'canceled' });
+      const error = await storage.getItem('token').catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(BiometricsError);
+      expect((error as BiometricsError).code).toBe('canceled');
+    });
+
+    it('rejects when the module can’t store it, and keeps the plain value', async () => {
+      const { answer, plain } = stubBoth();
+      const storage = create(LynxSecureStorage);
+      await storage.setItem('token', 'old');
+      answer({ error: 'unavailable', message: 'No passcode.' });
+      await expect(
+        storage.setItem('token', 'new', { requireBiometrics: true }),
+      ).rejects.toThrow(
+        expect.objectContaining({
+          code: 'unavailable',
+          message: 'No passcode.',
+        }),
+      );
+      expect(plain.get('token')).toBe('"old"');
+    });
+
+    it('rejects a value JSON can’t hold before calling the module', async () => {
+      const { biometrics } = stubBoth();
+      await expect(
+        create(LynxSecureStorage).setItem('f', () => 1, {
+          requireBiometrics: true,
+        }),
+      ).rejects.toThrow(TypeError);
+      expect(biometrics.setItem).not.toHaveBeenCalled();
+    });
+
+    it('rejects with unavailable without the biometrics module, and stops asking it', async () => {
+      const { module } = stubModule('AngularLynxSecureStorage');
+      const storage = create(LynxSecureStorage);
+
+      await expect(
+        storage.setItem('token', 'x', { requireBiometrics: true }),
+      ).rejects.toThrow(
+        expect.objectContaining({
+          name: 'BiometricsError',
+          code: 'unavailable',
+        }),
+      );
+      await expect(
+        storage.setItem('token', 'x', { requireBiometrics: true }),
+      ).rejects.toThrow(expect.objectContaining({ code: 'unavailable' }));
+      await storage.setItem('token', 'plain');
+      await expect(storage.getItem('missing')).resolves.toBeNull();
+      expect(module.setItem).toHaveBeenCalledTimes(1);
+    });
+
+    it('treats a biometrics module that throws as none', async () => {
+      stubBoth();
+      const storage = create(LynxSecureStorage);
+      vi.stubGlobal('NativeModules', {
+        AngularLynxSecureStorage: {
+          getItem: (_key: string, callback: Done) => callback({}),
+        },
+        AngularLynxBiometrics: {
+          getItem: () => {
+            throw new Error('boom');
+          },
+        },
+      });
+      await expect(storage.getItem('x')).resolves.toBeNull();
+    });
   });
 });

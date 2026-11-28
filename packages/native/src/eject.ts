@@ -86,7 +86,7 @@ export const renderEjectedProject = ({
     cpSync(path.join(TEMPLATES_DIR, platform), dir, { recursive: true });
     const generator = platform === 'ios' ? iosGenerator : androidGenerator;
     generator.configure(dir, resolved, projectRoot);
-    generator.leaveOut(dir, features);
+    generator.leaveOut(dir, features, resolved);
     writeFileSync(path.join(dir, '.gitignore'), GITIGNORE[platform]);
     writeFileSync(
       path.join(dir, EJECT_MARKER),

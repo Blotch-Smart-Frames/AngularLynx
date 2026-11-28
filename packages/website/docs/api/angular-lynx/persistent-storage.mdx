@@ -1,6 +1,6 @@
 # LynxLocalStorage and LynxSecureStorage
 
-Key-value stores that keep their values after the app closes: `LynxLocalStorage` in place of `localStorage`, and `LynxSecureStorage` for tokens and other secrets. `import { LynxLocalStorage, LynxSecureStorage } from '@blotch/angular-lynx';`
+Key-value stores that keep their values after the app closes: `LynxLocalStorage` in place of `localStorage`, and `LynxSecureStorage` for tokens and other secrets. `import { LynxLocalStorage, LynxSecureStorage, type SecureStorageGetOptions, type SecureStorageSetOptions } from '@blotch/angular-lynx';`
 
 [Keep data after the app closes](/guide/persistent-storage) shows them in use.
 
@@ -37,6 +37,7 @@ Has the same methods as `LynxLocalStorage`, and keeps values encrypted: in the K
 - **On the phone only.** Values are readable once the phone has been unlocked after it starts. iOS restores them from a backup only to the same phone, and Android leaves them out of its backups.
 - **iOS keeps them when the app is deleted,** so a reinstalled app finds them again.
 - **On the web,** they're in the page's `localStorage`, where each key starts with `angular-lynx-secure:`. Browsers have no store for secrets, so they aren't encrypted there.
+- **Behind biometrics,** with `requireBiometrics`: see [below](#secure-storage-behind-biometrics).
 
 Only the apps `--platform` builds, with `ng build` or `ng serve`, have the native modules behind these, `AngularLynxLocalStorage` and `AngularLynxSecureStorage`. Elsewhere, such as Lynx Explorer and unit tests, both services keep values in memory, so they last until the app closes.
 
@@ -44,17 +45,28 @@ Only the apps `--platform` builds, with `ng build` or `ng serve`, have the nativ
 
 ```typescript
 getItem<T = unknown>(key: string): Promise<T | null>;
+// LynxSecureStorage
+getItem<T = unknown>(
+  key: string,
+  options?: SecureStorageGetOptions,
+): Promise<T | null>;
 ```
 
-Resolves with the value stored under `key`, or `null` if there's none. A value that isn't JSON, such as a string your host app stored itself, comes back as that string.
+Resolves with the value stored under `key`, or `null` if there's none. A value that isn't JSON, such as a string your host app stored itself, comes back as that string. A secure value kept behind biometrics shows the prompt first, with `options.reason`.
 
 ### `setItem()`
 
 ```typescript
 setItem<T = unknown>(key: string, value: T): Promise<void>;
+// LynxSecureStorage
+setItem<T = unknown>(
+  key: string,
+  value: T,
+  options?: SecureStorageSetOptions,
+): Promise<void>;
 ```
 
-Stores `value` under `key` as JSON, and resolves once it's stored. Rejects with a `TypeError` for a value JSON has no text for, such as `undefined` or a function, and with the platform's error if it can't store it.
+Stores `value` under `key` as JSON, in place of what was there, and resolves once it's stored. Rejects with a `TypeError` for a value JSON has no text for, such as `undefined` or a function, and with the platform's error if it can't store it.
 
 ### `removeItem()`
 
@@ -72,8 +84,41 @@ clear(): Promise<void>;
 
 Removes every value in this store. The other store keeps its values, and on the web, so do the page's own `localStorage` keys.
 
+## Secure storage behind biometrics
+
+```typescript
+const storage = inject(LynxSecureStorage);
+
+await storage.setItem('refreshToken', token, { requireBiometrics: true });
+// Later: shows Face ID, Touch ID or the fingerprint prompt first.
+const token = await storage.getItem<string>('refreshToken', {
+  reason: 'Sign in to your account',
+});
+```
+
+With **`requireBiometrics`**, the platform hands the value over only after the person confirms who they are. Storing it doesn't prompt; each read does.
+
+- **iOS:** a Keychain item with `.biometryCurrentSet` access, readable only while the phone has a passcode, and never leaving the phone.
+- **Android:** sealed by a Keystore key that needs a strong biometric for each use. It's left out of backups.
+- **A new face or finger locks them all for good.** Someone who learns the passcode can't add their own fingerprint and read them. `getItem()` then resolves `null`, so sign the person in again.
+- **It needs `permissions.biometrics`** in angular.json (see [`LynxBiometrics`](/api/angular-lynx/biometrics#setup)), a sensor and a passcode. Without them `setItem()` rejects with a [`BiometricsError`](/api/angular-lynx/biometrics#biometricserror) (`unavailable`), as it does in the web preview and Lynx Explorer.
+- **A read the person cancels** rejects with a `BiometricsError` (`canceled`, `lockout`, …).
+
+```typescript
+type SecureStorageSetOptions = { readonly requireBiometrics?: boolean };
+type SecureStorageGetOptions = { readonly reason?: string };
+```
+
+| Option              | Description                                                                                             |
+| ------------------- | ------------------------------------------------------------------------------------------------------- |
+| `requireBiometrics` | Keeps the value behind Face ID, Touch ID or a fingerprint. A later plain `setItem()` replaces it        |
+| `reason`            | What the prompt says for a value behind biometrics. Defaults to angular.json's `permissions.biometrics` |
+
+`removeItem()` and `clear()` remove values behind biometrics too, without a prompt.
+
 ## Related
 
+- [`LynxBiometrics`](/api/angular-lynx/biometrics), to ask for Face ID, Touch ID or a fingerprint yourself
 - [Keep data after the app closes](/guide/persistent-storage)
 - [`LynxSessionStorage`](/api/angular-lynx/session-storage), for values shared between pages while the app runs
 - [Storage in the JavaScript environment](/guide/concepts/javascript-environment#storage)

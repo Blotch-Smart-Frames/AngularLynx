@@ -83,7 +83,15 @@ export const iosGenerator: PlatformGenerator = {
 
     writeIosSplash(dir, app, projectRoot);
   },
-  leaveOut: (dir, features) => {
+  leaveOut: (dir, features, app) => {
+    // Face ID, Touch ID and the Keychain items behind them are only for an
+    // app that says why it uses them: without NSFaceIDUsageDescription Face
+    // ID fails, and App Review asks about LocalAuthentication code an app
+    // gives no reason for. LynxViewController registers the module by name,
+    // so the shell builds without it.
+    if (!app.permissions.biometrics) {
+      removeTemplateFiles(dir, IOS_BIOMETRICS_SOURCES);
+    }
     if (features.webgl) return;
     if (features.canvas) {
       // A 2D canvas keeps the module and the canvas's view, without the
@@ -109,6 +117,13 @@ export const iosGenerator: PlatformGenerator = {
   },
   bundleDir: (dir) => path.join(dir, 'LynxBundle'),
 };
+
+/**
+ * The shell's biometrics module, `AngularLynxBiometrics` (LynxBiometrics, and
+ * the values LynxSecureStorage keeps behind Face ID or Touch ID), which only
+ * an app with `permissions.biometrics` keeps.
+ */
+export const IOS_BIOMETRICS_SOURCES = ['App/BiometricsModule.swift'] as const;
 
 /**
  * The shell's `<canvas>`, its `AngularLynxWebGL` module and its contexts, and

@@ -244,6 +244,13 @@ export type { SessionStorageSubscription } from './lib/session-storage';
 export { LynxShare, ShareError } from './lib/share';
 export type { ShareData, ShareErrorCode, ShareFile } from './lib/share';
 export { LynxBackButton } from './lib/back-button';
+export { BiometricsError, LynxBiometrics } from './lib/biometrics';
+export type {
+  BiometricsAuthenticateOptions,
+  BiometricsAvailability,
+  BiometricsErrorCode,
+  BiometryType,
+} from './lib/biometrics';
 export type { LynxBackHandler } from './lib/back-button';
 export { LynxShortcuts } from './lib/shortcuts';
 export type { LynxShortcut, LynxShortcutHandler } from './lib/shortcuts';
@@ -257,6 +264,10 @@ export type {
   SplashScreenOptions,
 } from './lib/splash-screen';
 export { LynxLocalStorage, LynxSecureStorage } from './lib/storage';
+export type {
+  SecureStorageGetOptions,
+  SecureStorageSetOptions,
+} from './lib/storage';
 export { LynxSystemInfo } from './lib/system-info';
 export type { PlatformType } from './lib/system-info';
 export { LynxTextMeasure } from './lib/text-measure';

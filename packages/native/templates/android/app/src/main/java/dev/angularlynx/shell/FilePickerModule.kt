@@ -219,10 +219,15 @@ class FilePickerModule(context: Context, param: Any?) : LynxModule(context, para
 
     private fun write(uri: Uri, bytes: ByteArray): JavaOnlyMap =
         try {
-            // "wt" truncates a document the person chose to replace.
-            mContext.contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes) }
-                ?: return failed("The file couldn't be written.")
-            JavaOnlyMap.from(mapOf("saved" to true))
+            // "wt" truncates a document the person chose to replace. A
+            // provider that can't open it gives no stream.
+            val stream = mContext.contentResolver.openOutputStream(uri, "wt")
+            if (stream == null) {
+                failed("The file couldn't be written.")
+            } else {
+                stream.use { it.write(bytes) }
+                JavaOnlyMap.from(mapOf("saved" to true))
+            }
         } catch (error: IOException) {
             failed(error.message ?: "The file couldn't be written.")
         } catch (error: SecurityException) {

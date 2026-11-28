@@ -4,7 +4,7 @@ Finds Bluetooth LE devices nearby and talks to them as a GATT client: what an ap
 
 ## Setup
 
-Add `bluetooth` to the [permissions](/guide/native-apps#permissions) in angular.json, with the reason iOS shows when it asks:
+Add `bluetooth` to the [permissions](/guide/native-apps#set-the-app-identity) in angular.json, with the reason iOS shows when it asks:
 
 ```json title="angular.json"
 "permissions": {
@@ -252,5 +252,5 @@ expect(await screen.findByText('online')).toBeInTheDocument();
 
 ## Related
 
-- [Permissions](/guide/native-apps#permissions), where `bluetooth` is declared
+- [Permissions](/guide/native-apps#set-the-app-identity), where `bluetooth` is declared
 - [`LynxNativeModule`](/api/angular-lynx/native-module), for the host app's own native code

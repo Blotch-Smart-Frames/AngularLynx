@@ -113,6 +113,7 @@ export {
   LYNX_ELEMENTS,
   LYNX_FORM_ACCESSORS,
   LynxAccessibilityTraits,
+  LynxAppleSignInButton,
   LynxBlock,
   LynxBlurView,
   LynxCoverView,

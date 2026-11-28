@@ -41,6 +41,7 @@ export const LYNX_ELEMENT_TAGS: ReadonlySet<string> = new Set([
   'video',
   'cover-view',
   'canvas',
+  'apple-sign-in-button',
   'comment',
 ]);
 

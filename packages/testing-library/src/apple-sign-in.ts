@@ -135,6 +135,39 @@ export const installAppleSignInModule = (
   };
 };
 
+/**
+ * Has the environment's main thread answer for the iOS shell's module as an
+ * app with `signInWithApple` does: `lynx.module('AngularLynxAppleSignIn')`'s
+ * `button` says the native `<apple-sign-in-button>` is there, so the runtime
+ * makes that element rather than drawing the button itself. It follows
+ * {@link setAppleSignInAvailable}, as the sheet does: a spec that takes the
+ * sheet away gets the drawn button, as Android and the web do. Other
+ * modules answer as they did.
+ *
+ * It runs each time the environment injects the main thread's globals,
+ * which give it a new `lynx`.
+ */
+export const answerAppleSignInButtonOnMainThread = (threadGlobals: {
+  lynx?: { module?: (name: string) => unknown };
+}): void => {
+  const { lynx } = threadGlobals;
+  if (!lynx) return;
+  const otherModule = lynx.module;
+  lynx.module = (name: string) => {
+    if (name !== MODULE) return otherModule?.(name);
+    return {
+      invoke: (method: string) => {
+        if (method !== 'button') return undefined;
+        const module = (globalThis as any).lynxTestingEnv?.backgroundThread
+          .globalThis.NativeModules?.[MODULE] as
+          | FakeAppleSignInModule
+          | undefined;
+        return module && !module.unavailable ? { available: true } : undefined;
+      },
+    };
+  };
+};
+
 const backgroundGlobals = (name: string): BackgroundGlobals => {
   // Read through the environment rather than kept here: under `ng test`, the
   // setup file and the specs can load different copies of this module.
@@ -200,7 +233,9 @@ export const setAppleSignInError = (
  * Takes the native sheet away for the rest of this test, or puts it back, so
  * a spec can check what the app offers where there's none (Android, the
  * web): `isAvailable()` is false, and `signIn()` and `getCredentialState()`
- * reject with `unsupported`. The sign-ins {@link appleSignInRequests} lists
+ * reject with `unsupported`. An `<apple-sign-in-button>` made while it's
+ * away is the one the runtime draws, a view with the logo and the title as
+ * text, rather than iOS's. The sign-ins {@link appleSignInRequests} lists
  * and the users' states stay as they were.
  */
 export const setAppleSignInAvailable = (available: boolean): void => {

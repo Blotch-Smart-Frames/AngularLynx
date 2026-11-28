@@ -18,7 +18,7 @@ import {
   appShortcutsSwift,
   entitlementsPlist,
   infoPlistEntries,
-  IOS_APPLE_SIGN_IN_SOURCE,
+  IOS_APPLE_SIGN_IN_SOURCES,
   IOS_BIOMETRICS_SOURCES,
   IOS_ENTITLEMENTS,
   iosEntitlements,
@@ -519,7 +519,7 @@ describe('iosGenerator', () => {
     ).toContain('NSClassFromString("AngularLynxCalendarModule")');
   });
 
-  it('keeps the Sign in with Apple module only in an app with signInWithApple', () => {
+  it('keeps the Sign in with Apple module and button only in an app with signInWithApple', () => {
     /**
      * Generates from a fresh copy of the template, as prepareProject does.
      */
@@ -530,7 +530,12 @@ describe('iosGenerator', () => {
       iosGenerator.configure(dir, resolved, dir);
       iosGenerator.leaveOut(dir, { canvas: true, webgl: true }, resolved);
       return {
-        module: existsSync(path.join(dir, IOS_APPLE_SIGN_IN_SOURCE)),
+        module: IOS_APPLE_SIGN_IN_SOURCES.every((file) =>
+          existsSync(path.join(dir, file)),
+        ),
+        gone: IOS_APPLE_SIGN_IN_SOURCES.every(
+          (file) => !existsSync(path.join(dir, file)),
+        ),
         entitlements: existsSync(path.join(dir, 'Config/App.entitlements')),
       };
     };
@@ -538,19 +543,27 @@ describe('iosGenerator', () => {
     // the entitlement, and a Personal Team can't sign it.
     expect(generate({ signInWithApple: true })).toEqual({
       module: true,
+      gone: false,
       entitlements: true,
     });
-    expect(generate({})).toEqual({ module: false, entitlements: false });
-    // LynxViewController registers it by the name the module gives itself.
-    expect(
-      readFileSync(
-        path.join(TEMPLATES_DIR, 'ios', IOS_APPLE_SIGN_IN_SOURCE),
-        'utf8',
-      ),
-    ).toContain('@objc(AngularLynxAppleSignInModule)');
+    expect(generate({})).toEqual({
+      module: false,
+      gone: true,
+      entitlements: false,
+    });
+    // LynxViewController registers the module, and XElementRegistry the
+    // button, by the names they give themselves.
+    const [moduleSource, buttonSource] = IOS_APPLE_SIGN_IN_SOURCES.map((file) =>
+      readFileSync(path.join(TEMPLATES_DIR, 'ios', file), 'utf8'),
+    );
+    expect(moduleSource).toContain('@objc(AngularLynxAppleSignInModule)');
+    expect(buttonSource).toContain('@objc(AngularLynxAppleSignInButton)');
     expect(
       readFileSync(path.join(dir, 'App/LynxViewController.swift'), 'utf8'),
     ).toContain('NSClassFromString("AngularLynxAppleSignInModule")');
+    expect(
+      readFileSync(path.join(dir, 'App/XElementRegistry.swift'), 'utf8'),
+    ).toContain('NSClassFromString("AngularLynxAppleSignInButton")');
   });
 
   it('writes the entitlements beside the xcconfig, only with app link domains', () => {

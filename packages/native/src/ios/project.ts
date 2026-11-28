@@ -128,7 +128,7 @@ export const iosGenerator: PlatformGenerator = {
     // IOS_ENTITLEMENTS): an app that doesn't offer it has neither, and
     // LynxViewController registers the module by name.
     if (!app.signInWithApple) {
-      removeTemplateFiles(dir, [IOS_APPLE_SIGN_IN_SOURCE]);
+      removeTemplateFiles(dir, IOS_APPLE_SIGN_IN_SOURCES);
     }
     if (features.webgl) return;
     if (features.canvas) {
@@ -162,8 +162,14 @@ export const IOS_STORE_REVIEW_SOURCE = 'App/StoreReviewModule.swift';
 /** The module behind `LynxCalendar`, which only `calendar` keeps. */
 export const IOS_CALENDAR_SOURCE = 'App/CalendarModule.swift';
 
-/** The module behind `LynxAppleSignIn`, which only `signInWithApple` keeps. */
-export const IOS_APPLE_SIGN_IN_SOURCE = 'App/AppleSignInModule.swift';
+/**
+ * The module behind `LynxAppleSignIn` and the `<apple-sign-in-button>`
+ * element, which only `signInWithApple` keeps.
+ */
+export const IOS_APPLE_SIGN_IN_SOURCES = [
+  'App/AppleSignInModule.swift',
+  'App/AppleSignInButton.swift',
+] as const;
 
 /**
  * The shell's biometrics module, `AngularLynxBiometrics` (LynxBiometrics, and

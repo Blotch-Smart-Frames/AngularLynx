@@ -10,6 +10,7 @@ import { devStats } from '../devtools/stats';
 // here would form an import cycle. These two files import only element-creators
 // and types, so this path is cycle-free.
 import { createNativeRefByTag } from '../lynx-document/create-native-ref';
+import { updateAppleSignInButton } from '../lynx-document/element-creators/create-apple-sign-in-button-element';
 import { isAndroid } from '../lynx-document/android-blur-capture';
 import {
   androidBlurMaterialStyle,
@@ -2207,6 +2208,11 @@ export class LynxElement implements BaseLynxElement {
       }
       if (this.tagName === 'blur-view' && BLUR_MATERIAL_ATTRIBUTES.has(name)) {
         this.updateBlurMaterial();
+      }
+      // Where the runtime draws the button, it draws what the attribute
+      // asks (see create-apple-sign-in-button-element.ts).
+      if (this.tagName === 'apple-sign-in-button') {
+        updateAppleSignInButton(this.element, this.#attrs);
       }
     }
   }
@@ -5531,6 +5537,10 @@ export class LynxElement implements BaseLynxElement {
         // with them (see #endPlatformAnimations).
         if (name === 'enable-new-animator') this.#notePlatformAnimator(value);
       }
+    }
+    // A drawn Apple button's new parts, drawn as its attributes ask.
+    if (this.tagName === 'apple-sign-in-button') {
+      updateAppleSignInButton(fresh, this.#attrs);
     }
     // A field's text, which the destroyed UI took with it.
     if (this.#fieldText !== null) this.#sendFieldText(fresh);

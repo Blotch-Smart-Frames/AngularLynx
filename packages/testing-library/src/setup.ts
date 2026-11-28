@@ -31,7 +31,10 @@ import { installCalendarModule } from './calendar.js';
 import { installLinkingModule } from './linking.js';
 import { installShortcutsModule } from './shortcuts.js';
 import { installStoreReviewModule } from './store-review.js';
-import { installAppleSignInModule } from './apple-sign-in.js';
+import {
+  answerAppleSignInButtonOnMainThread,
+  installAppleSignInModule,
+} from './apple-sign-in.js';
 
 // ─── CSS fetch intercept ─────────────────────────────────────────────────────
 
@@ -113,6 +116,9 @@ const frameOnInstalledTimers = (threadGlobals: any): void => {
 (globalThis as any).onInjectMainThreadGlobals = (threadGlobals: any) => {
   returnOnWarnings(threadGlobals);
   frameOnInstalledTimers(threadGlobals);
+  // <apple-sign-in-button> is iOS's while the fake Sign in with Apple module
+  // is there (see apple-sign-in.ts).
+  answerAppleSignInButtonOnMainThread(threadGlobals);
 };
 (globalThis as any).onInjectBackgroundThreadGlobals = (threadGlobals: any) => {
   returnOnWarnings(threadGlobals);

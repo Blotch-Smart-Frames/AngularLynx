@@ -40,6 +40,7 @@ export const DECLARATION_ONLY_TAGS: ReadonlySet<string> = new Set([
   'webview',
   'cover-view',
   'title-bar-view',
+  'apple-sign-in-button',
 ]);
 
 /** What this reads of a directive's definition. */

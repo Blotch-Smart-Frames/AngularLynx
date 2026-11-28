@@ -660,6 +660,40 @@ describe('LynxDocument', () => {
       },
     );
 
+    // Lynx has none: it's iOS's own button where the shell registers it, and
+    // drawn by the runtime elsewhere (create-apple-sign-in-button-element.ts).
+    describe('apple-sign-in-button', () => {
+      afterEach(() => vi.unstubAllGlobals());
+
+      it('is iOS’s button where the shell’s Sign in with Apple module says so', () => {
+        vi.stubGlobal('lynx', {
+          module: () => ({ invoke: () => ({ available: true }) }),
+        });
+        const button = doc.createElement('apple-sign-in-button');
+        expect(button.tagName).toBe('apple-sign-in-button');
+        expect(asMock(globalThis.__CreateElement)).toHaveBeenCalledWith(
+          'apple-sign-in-button',
+          expect.any(Number),
+        );
+      });
+
+      it('is drawn, and redrawn as its attributes change, elsewhere', () => {
+        vi.stubGlobal('lynx', {});
+        const button = doc.createElement('apple-sign-in-button');
+        expect(asMock(globalThis.__CreateElement)).not.toHaveBeenCalledWith(
+          'apple-sign-in-button',
+          expect.any(Number),
+        );
+        asMock(globalThis.__SetAttribute).mockClear();
+        button.setAttribute('type', 'signUp');
+        expect(asMock(globalThis.__SetAttribute)).toHaveBeenCalledWith(
+          expect.anything(),
+          'text',
+          'Sign up with Apple',
+        );
+      });
+    });
+
     it('gives a new blur-view its material on Android', () => {
       vi.stubGlobal('SystemInfo', { platform: 'Android' });
       const el = doc.createElement('blur-view');

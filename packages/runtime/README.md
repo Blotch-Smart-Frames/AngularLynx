@@ -29,6 +29,7 @@ Then work as in any Angular app: `ng serve`, `ng build`, `ng test`, and `ng gene
 - Content projection, portals, `@defer`, and lazy-loaded routes
 - `IntersectionObserver` on Lynx elements, from Lynx's exposure events, for code written for the browser
 - `<canvas>` with a 2D context, drawn by the phone's own 2D graphics, for charts, signatures and images, and with WebGL2 for 3D: three.js and angular-three, with pointer events, `ResizeObserver` and image loading, in apps built with `ng build --platform ios|android` and the web preview
+- `<apple-sign-in-button>`, the button that starts Sign in with Apple: iOS's own in apps built with `signInWithApple`, and drawn to Apple's guidelines elsewhere
 - Tailwind CSS 4, with the build rewriting its CSS for Lynx (or Tailwind CSS 3 with `@lynx-js/tailwind-preset`)
 
 ## Documentation

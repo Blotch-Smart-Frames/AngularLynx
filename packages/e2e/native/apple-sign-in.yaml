@@ -1,5 +1,8 @@
 # Layer 6, the app's own builds only: LynxAppleSignIn opens Sign in with
-# Apple's sheet (issue #932). The harness sets angular.json's
+# Apple's sheet (issue #932), from a tap on iOS's own Sign in with Apple
+# button, the <apple-sign-in-button> element (issue #977), which iOS labels
+# by its title. The runtime draws its own only where the shell has none, so
+# the label belongs to ASAuthorizationAppleIDButton here. The harness sets angular.json's
 # signInWithApple, so the iOS shell has the module and signs with its
 # entitlement. Nobody signs in to an Apple Account on the Simulator, so iOS
 # answers the request with its "Sign in to your Apple Account" alert, which
@@ -20,7 +23,7 @@ appId: ${APP_ID}
       - extendedWaitUntil:
           visible: 'Apple: native'
           timeout: 15000
-      - tapOn: 'Apple: native'
+      - tapOn: 'Continue with Apple'
       # The alert is iOS's own, outside the app: while it's up Maestro reads
       # neither it nor the app. So the flow gives the alert 3 seconds (a
       # wait for text that never shows), and taps Close where the alert puts

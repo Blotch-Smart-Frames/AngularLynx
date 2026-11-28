@@ -19,23 +19,24 @@ At runtime, Angular makes no directive for an element whose directive only decla
 
 ## Available Elements
 
-| Element         | Purpose                                      | Key Attributes                                                                           |
-| --------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `<view>`        | Container (like `<div>`)                     | —                                                                                        |
-| `<text>`        | Text display (required for all text)         | `text-maxline`                                                                           |
-| `<image>`       | Image display                                | `src`, `mode` (`aspectFit`/`aspectFill`/`scaleToFill`/`center`)                          |
-| `<scroll-view>` | Scrollable container                         | `scroll-orientation` (`vertical`/`horizontal`)                                           |
-| `<list>`        | Virtualized list                             | `list-type` (`single`/`flow`), `span-count`, `scroll-orientation`                        |
-| `<list-item>`   | List item (must be direct child of `<list>`) | `item-key` (required, unique)                                                            |
-| `<input>`       | Text input field                             | `type` (`text`/`number`/`password`/`tel`/`email`/`digit`), `placeholder`, `confirm-type` |
-| `<textarea>`    | Multi-line text input                        | `placeholder`                                                                            |
-| `<overlay>`     | Modal overlay (outside document flow)        | `visible` (boolean attribute)                                                            |
-| `<blur-view>`   | Blurs what's behind it; Liquid Glass on iOS  | `blur-effect`, `blur-radius`, `blur-material`, `glass-style`, `glass-tint-color`         |
-| `<frame>`       | Embedded Lynx page                           | `src` (URL to `.lynx.bundle`)                                                            |
-| `<svg>`         | Inline SVG rendering                         | `content` (SVG string)                                                                   |
-| `<canvas>`      | 2D and WebGL2 drawing surface                | `width`, `height` (drawing buffer, in pixels)                                            |
-| `<block>`       | Grouping container                           | —                                                                                        |
-| `<raw-text>`    | Unprocessed text                             | —                                                                                        |
+| Element                  | Purpose                                      | Key Attributes                                                                                          |
+| ------------------------ | -------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `<view>`                 | Container (like `<div>`)                     | —                                                                                                       |
+| `<text>`                 | Text display (required for all text)         | `text-maxline`                                                                                          |
+| `<image>`                | Image display                                | `src`, `mode` (`aspectFit`/`aspectFill`/`scaleToFill`/`center`)                                         |
+| `<scroll-view>`          | Scrollable container                         | `scroll-orientation` (`vertical`/`horizontal`)                                                          |
+| `<list>`                 | Virtualized list                             | `list-type` (`single`/`flow`), `span-count`, `scroll-orientation`                                       |
+| `<list-item>`            | List item (must be direct child of `<list>`) | `item-key` (required, unique)                                                                           |
+| `<input>`                | Text input field                             | `type` (`text`/`number`/`password`/`tel`/`email`/`digit`), `placeholder`, `confirm-type`                |
+| `<textarea>`             | Multi-line text input                        | `placeholder`                                                                                           |
+| `<overlay>`              | Modal overlay (outside document flow)        | `visible` (boolean attribute)                                                                           |
+| `<blur-view>`            | Blurs what's behind it; Liquid Glass on iOS  | `blur-effect`, `blur-radius`, `blur-material`, `glass-style`, `glass-tint-color`                        |
+| `<frame>`                | Embedded Lynx page                           | `src` (URL to `.lynx.bundle`)                                                                           |
+| `<svg>`                  | Inline SVG rendering                         | `content` (SVG string)                                                                                  |
+| `<canvas>`               | 2D and WebGL2 drawing surface                | `width`, `height` (drawing buffer, in pixels)                                                           |
+| `<apple-sign-in-button>` | The Sign in with Apple button                | `type` (`signIn`/`continue`/`signUp`), `button-style` (`black`/`white`/`whiteOutline`), `corner-radius` |
+| `<block>`                | Grouping container                           | —                                                                                                       |
+| `<raw-text>`             | Unprocessed text                             | —                                                                                                       |
 
 ## Element Rules
 
@@ -143,6 +144,24 @@ For hundreds of items or more, put `*lynxListFor="let item of items(); trackBy: 
 ```
 
 In the apps `ng build --platform` makes, an overlay covers the whole screen, under the status bar and the home indicator or navigation bar: pad its content with `env(safe-area-inset-*)` (see the Safe Area section of [styling-and-css.md](styling-and-css.md)).
+
+### The Sign in with Apple button
+
+`<apple-sign-in-button>` is the button that starts `LynxAppleSignIn.signIn()`, drawn as Apple's guidelines (and App Review) ask, so don't draw one by hand:
+
+```html
+<apple-sign-in-button
+  type="continue"
+  button-style="black"
+  class="h-12 w-full"
+  (bindtap)="signInWithApple()"
+/>
+```
+
+- **In the iOS app built with `"signInWithApple": true`** it's iOS's own `ASAuthorizationAppleIDButton`, whose title follows the phone's language. **Everywhere else** (Android, the web preview, Lynx Explorer, an iOS app without the option) the runtime draws the same logo, title (in English), colors and corners in a `<view>`.
+- **Give it a size:** it has none of its own (Apple asks for at least 140 × 30; 44 tall is usual). It takes no children. `corner-radius` is in points (6 by default).
+- **Pick `button-style` for the background:** `white` or `whiteOutline` on a dark one, `black` on a light one; switch it with `LynxTheme.appearance()` when the app follows dark mode.
+- **In specs** the testing library's fake module makes it iOS's element (`document.querySelector('apple-sign-in-button')`, no text inside); after `setAppleSignInAvailable(false)` it's the drawn one, which `getByText('Sign in with Apple')` finds.
 
 ### Blur and Liquid Glass
 

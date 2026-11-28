@@ -1,7 +1,7 @@
 // An element inserted before anchors that end its parent's children is
 // appended natively, and the anchors go back to the end before anything
 // reads the order and at the end of the cycle (see LynxElement's
-// #appendsBeforeAnchors). Lynx searches the parent's children from the first
+// #appendsBeforeTail). Lynx searches the parent's children from the first
 // for an insert's reference element, so `@for` building N rows before its
 // anchor searched about N² children (issue #444).
 //
@@ -215,6 +215,157 @@ describe('inserts before the anchors that end a parent (issue #444)', () => {
       'case-anchor',
       'footer',
     ]);
+  });
+
+  describe('with elements after the anchors (issue #908)', () => {
+    it('appends the rows after the first, and puts the anchors and a new footer back at the end once', () => {
+      const footer = element('view', 'footer');
+      parent.appendChild(footer);
+      calls = [];
+
+      rows(3);
+
+      // The first goes in before the anchor, as an `@if`'s one element does.
+      expect(calls).toEqual(['insert row1', 'append row2', 'append row3']);
+      endCycle();
+
+      expect(native(parent)).toEqual([
+        'row1',
+        'row2',
+        'row3',
+        'for-anchor',
+        'case-anchor',
+        'footer',
+      ]);
+      expect(calls.slice(3)).toEqual([
+        'remove for-anchor',
+        'append for-anchor',
+        'remove case-anchor',
+        'append case-anchor',
+        'remove footer',
+        'append footer',
+      ]);
+    });
+
+    it('inserts every row before an anchor that a flushed footer follows', () => {
+      const footer = element('view', 'footer');
+      parent.appendChild(footer);
+      // The cycle that made it ends, and its flush draws the footer.
+      endCycle();
+      setInsideChangeDetection(true);
+      calls = [];
+
+      rows(3);
+      endCycle();
+
+      expect(calls).toEqual(['insert row1', 'insert row2', 'insert row3']);
+      expect(native(parent)).toEqual([
+        'row1',
+        'row2',
+        'row3',
+        'for-anchor',
+        'case-anchor',
+        'footer',
+      ]);
+    });
+
+    it('inserts every row before an anchor that more than four elements follow', () => {
+      for (let i = 1; i <= 5; i++) {
+        parent.appendChild(element('view', `after${i}`));
+      }
+      calls = [];
+
+      rows(3);
+
+      expect(calls).toEqual(['insert row1', 'insert row2', 'insert row3']);
+    });
+
+    it('appends the rows before an anchor that four elements follow', () => {
+      for (let i = 1; i <= 4; i++) {
+        parent.appendChild(element('view', `after${i}`));
+      }
+      calls = [];
+
+      rows(3);
+      endCycle();
+
+      expect(calls.slice(0, 3)).toEqual([
+        'insert row1',
+        'append row2',
+        'append row3',
+      ]);
+      expect(native(parent)).toEqual([
+        'row1',
+        'row2',
+        'row3',
+        'for-anchor',
+        'case-anchor',
+        'after1',
+        'after2',
+        'after3',
+        'after4',
+      ]);
+    });
+
+    it('inserts every row before an anchor that an element made elsewhere follows', () => {
+      // A wrapper of a native element LynxDocument didn't make, such as a
+      // query's hit: nothing says it hasn't been flushed.
+      const found = new LynxElement(
+        makeEl('view', 'found') as unknown as ElementRef,
+      );
+      found.tagName = 'view';
+      parent.appendChild(found);
+      calls = [];
+
+      rows(2);
+
+      expect(calls).toEqual(['insert row1', 'insert row2']);
+    });
+
+    it("answers nextSibling() in Angular's order", () => {
+      const footer = element('view', 'footer');
+      parent.appendChild(footer);
+      const [, , row3] = rows(3);
+
+      expect(row3!.nextSibling()).toBe(forAnchor);
+      expect(caseAnchor.nextSibling()).toBe(footer);
+      expect(footer.nextSibling()).toBeNull();
+    });
+
+    it('puts the footer back before a child of it moves into a row', () => {
+      const footer = element('view', 'footer');
+      const button = element('view', 'button');
+      footer.appendChild(button);
+      parent.appendChild(footer);
+      const [, row2] = rows(2);
+      calls = [];
+
+      // The row comes before the footer in the tree the flush walks, so
+      // native would lose the move (see LynxElement's
+      // #removeIfMoveWouldBeLost): the button is removed and rebuilt, as it
+      // is with the footer in its place. Read with the footer still before
+      // the rows, the move would have been kept.
+      row2!.appendChild(button);
+      endCycle();
+
+      expect(calls).toEqual([
+        'remove for-anchor',
+        'append for-anchor',
+        'remove case-anchor',
+        'append case-anchor',
+        'remove footer',
+        'append footer',
+        'remove button',
+        'append view',
+      ]);
+      expect(native(parent)).toEqual([
+        'row1',
+        'row2',
+        'for-anchor',
+        'case-anchor',
+        'footer',
+      ]);
+    });
   });
 
   it('inserts before an element, which is no anchor', () => {

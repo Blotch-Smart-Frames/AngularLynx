@@ -5,6 +5,7 @@ import {
   markFirstRenderComplete,
   markRenderingPage,
 } from './lynx-render-lifecycle';
+import { noteFlush } from './lynx-element/flushes';
 
 // Side-effect imports install the runtime's global environment before bootstrap.
 // Order mirrors the original monolithic runtime.ts: crash diagnostics first, then
@@ -168,7 +169,10 @@ const bootstrapOnMainThread = async (
   // snapshot tree already exists and web-core shows the view via its [ssr] CSS
   // attribute (mirrors end()'s hydration guard).
   if (__WEB__ && !wasHydrating) {
-    setTimeout(() => __FlushElementTree(), 0);
+    setTimeout(() => {
+      noteFlush();
+      __FlushElementTree();
+    }, 0);
   }
 
   return appRef;

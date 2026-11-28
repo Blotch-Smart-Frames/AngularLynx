@@ -1,4 +1,5 @@
 import { LynxListElement, settleAfterListItems } from '../../lynx-element';
+import { noteFlush } from '../../lynx-element/flushes';
 import type { ListSlot } from '../../lynx-element/lynx-list-element';
 import type { ElementRef, ListElementRef } from '../../types/lynx';
 
@@ -134,6 +135,7 @@ export const createListElement = (pageId: number): LynxListElement => {
     const item = itemElement(listRef, slot);
     if (!item) return undefined;
     const { sign } = item;
+    noteFlush();
     __FlushElementTree(item.element, {
       triggerLayout: true,
       operationID: opId,
@@ -198,6 +200,7 @@ export const createListElement = (pageId: number): LynxListElement => {
       elementIDs.push(elementID);
       if (asyncFlush) {
         // Native engine owns the async schedule — safe, no re-entrancy.
+        noteFlush();
         __FlushElementTree(item.element, {
           asyncFlush: true,
           ...reuseNotification(listRef, slot, item, enableReuseNotification),
@@ -205,6 +208,7 @@ export const createListElement = (pageId: number): LynxListElement => {
       }
     }
     if (!asyncFlush) {
+      noteFlush();
       __FlushElementTree(listRef, {
         triggerLayout: true,
         operationIDs: opIds,

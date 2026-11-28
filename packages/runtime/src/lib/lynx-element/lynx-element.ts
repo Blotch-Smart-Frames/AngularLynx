@@ -35,6 +35,7 @@ import {
 import type { ElementRef } from '../types/lynx';
 import type { ListItemAttributes } from './lynx-list-element';
 import { toLynxDisplay, withLynxDisplay } from './display';
+import { flushCount, noteFlush } from './flushes';
 import { flushTreeWithListUpdates } from './list-updates';
 import { withFlatCalc } from './nested-calc';
 import {
@@ -588,6 +589,17 @@ const wouldFormCycle = (
 const SUBTREE_SEARCH_LIMIT = 16;
 
 /**
+ * How many elements other than anchors may follow the anchor an `@for` puts
+ * its rows before, for the rows to be appended (see LynxElement's
+ * #appendsBeforeTail): a footer, a "load more" button, an empty state. Each
+ * costs a removal, which searches the parent's children as an insert does,
+ * and an append at the end of the cycle, so an `@for` putting a few rows
+ * before its anchor, with a screen's worth of elements after it, would pay
+ * a move for each of them to save a few searches.
+ */
+const MAX_TAIL_ELEMENTS = 4;
+
+/**
  * Whether the element with unique id `id` is `first`, one of its following
  * siblings, or inside one of them: so, with `first` a candidate's first
  * child, inside the candidate. Undefined once it has looked at
@@ -1082,6 +1094,15 @@ export class LynxElement implements BaseLynxElement {
    */
   #jsParent: LynxElement | null | undefined = null;
   /**
+   * flushCount() when LynxDocument made this element's native element (see
+   * markUnplaced), or -1 for a wrapper of one made elsewhere (a hydrated
+   * element, a query's hit). While the count hasn't moved since, the native
+   * element has never been flushed, so nothing of it is on the screen, and
+   * moving it costs no more than the insert it will get anyway (see
+   * #appendsBeforeTail).
+   */
+  #madeAt = -1;
+  /**
    * An anonymous `<text>`: one the runtime made to draw loose text, and the
    * inline tags beside it, which Angular never sees (see #regroup).
    */
@@ -1254,17 +1275,26 @@ export class LynxElement implements BaseLynxElement {
   static #regrouping = false;
 
   /**
-   * The parents whose last children are anchors that native has out of
-   * place, each with those anchors in order (see #appendsBeforeAnchors).
-   * Native has every other child of the parent in #children's order, and the
-   * anchors still among them, only before the children appended since. Put
-   * back at the end of the cycle (see #settleDisplacedAnchors), and before
-   * anything reads the parent's native order or changes its children
-   * otherwise (see #settleAnchors). A map rather than a field: it holds a
-   * parent or two at a time, and every element would carry the field. Keyed
-   * by the wrapper, never a native ref (see #pendingRemovals).
+   * The parents whose last children native has out of place, each with
+   * those children in order (see #appendsBeforeTail): anchors, and the few
+   * elements not yet flushed among them. Native has every other child of the
+   * parent in #children's order, and the tail still among them, only before
+   * the children appended since. Put back at the end of the cycle (see
+   * #settleDisplacedTails), and before anything reads the parent's native
+   * order or changes its children otherwise (see #settleTail). A map rather
+   * than a field: it holds a parent or two at a time, and every element
+   * would carry the field. Keyed by the wrapper, never a native ref (see
+   * #pendingRemovals).
    */
-  static #displacedAnchors = new Map<LynxElement, LynxElement[]>();
+  static #displacedTails = new Map<LynxElement, LynxElement[]>();
+
+  /**
+   * The parents that have had an element put in before an anchor that
+   * elements follow this cycle, each with that anchor (see
+   * #appendsBeforeTail). A second element going in before the same anchor
+   * is appended. Emptied at the end of the cycle, with #displacedTails.
+   */
+  static #tailInserts = new Map<LynxElement, LynxElement>();
 
   /**
    * The attributes removed (set to null) since the last flush, which haven't
@@ -3261,11 +3291,11 @@ export class LynxElement implements BaseLynxElement {
       // is beats freezing the app.
       if (this.#wouldFormCycle(newChild)) return;
       const moving = isWebMove(newChild);
-      if (this.#appendsBeforeAnchors(refChild)) {
+      if (this.#appendsBeforeTail(refChild)) {
         if (from) __RemoveElement(from, newChild.element);
         __AppendElement(this.element, newChild.element);
       } else {
-        this.#settleAnchors();
+        this.#settleTail();
         if (insertHidesBlurView(this, newChild)) {
           this.#appendBefore(newChild, refChild, from);
         } else {
@@ -3287,12 +3317,15 @@ export class LynxElement implements BaseLynxElement {
 
   /**
    * Whether an element going in before `refChild` can be appended to the
-   * native element instead, because `refChild` and every child after it are
-   * anchors (`@for`'s, `@if`'s, a `@switch` case's). The anchors then stay
-   * where they are natively until the end of the cycle, before the elements
-   * appended since, and go back to the end in one move each (see
-   * #settleDisplacedAnchors). Anchors are hidden views with nothing in them,
-   * so where they are between two flushes draws nothing different.
+   * native element instead, because `refChild` is an anchor (`@for`'s,
+   * `@if`'s, a `@switch` case's) and every child from it to the end is an
+   * anchor or one of a few elements not flushed yet (see
+   * MAX_TAIL_ELEMENTS). That tail then stays where it is natively until the
+   * end of the cycle, before the elements appended since, and goes back to
+   * the end in one move each (see #settleDisplacedTails), in the same flush.
+   * Anchors are hidden views with nothing in them, and an element never
+   * flushed has nothing on the screen, so where they are between two
+   * flushes draws nothing different.
    *
    * Lynx finds the place of a reference element by searching the parent's
    * children from the first, twice (`InsertNodeBeforeInternal`'s `IndexOf`
@@ -3300,94 +3333,128 @@ export class LynxElement implements BaseLynxElement {
    * searches nothing. Angular puts each new `@for` row before the block's
    * anchor, after the rows already there, so building N rows searched about
    * N² children: on the iOS Simulator, a screen of 15,000 views took
-   * 412 ms to build, and 361 ms appended (#444). React Lynx appends a row
-   * that has nothing after it (`SnapshotInstance.insertBefore`).
+   * 412 ms to build, and 361 ms appended (#444); with a footer after the
+   * `@for`, 459 ms and 384 ms (#908). React Lynx appends a row that
+   * has nothing after it (`SnapshotInstance.insertBefore`), and builds a
+   * new list's children in order, its footer after its rows.
    *
-   * Only during change detection, whose end() puts the anchors back before
+   * An element in the tail that has been flushed keeps the insert: moving
+   * it would move its view on the screen too, which costs the UI thread a
+   * removal and an insert, and takes the focus from a field in it, every
+   * cycle that adds a row. Rows added in a later cycle then still search the
+   * children; a container built in one cycle, as a screen's first render
+   * is, doesn't.
+   *
+   * Only during change detection, whose end() puts the tail back before
    * any flush. Not on Lynx for Web, where an insert finds its place in the
    * DOM, nor in a `<text>` (whose anchors are raw texts, see #anchorFor) or
    * an anonymous one or a `<q>`, which keep their own order of children.
    */
-  #appendsBeforeAnchors(refChild: LynxElement): boolean {
+  #appendsBeforeTail(refChild: LynxElement): boolean {
     if (__WEB__ || refChild.tagName !== 'comment') return false;
     if (!isInsideChangeDetection()) return false;
-    const displaced = LynxElement.#displacedAnchors.get(this);
-    // The anchors are out of place already: an element before the first of
-    // them goes after the elements appended before it.
+    const displaced = LynxElement.#displacedTails.get(this);
+    // The tail is out of place already: an element before the first of it
+    // goes after the elements appended before it.
     if (displaced) return displaced[0] === refChild;
     if (this.#anonymous || isTextish(this) || this.#quoteMarks) return false;
     // A hydrated parent's children from the snapshot aren't in #children
     // (hydration inserts nothing), nor then is `refChild`.
     const children = this.#children ?? NO_CHILDREN;
-    // From the end, as far as the anchors there go: a parent with more
-    // children after `refChild` is searched no further than they are.
+    // From the end, as far as the tail goes: a parent with more children
+    // after `refChild` is searched no further than they are.
+    let elements = 0;
     for (let i = children.length - 1; i >= 0; i--) {
       const child = children[i]!;
       if (child === refChild) {
-        // Natively too, these anchors have to be the last children, in
-        // order. A hydrated parent's snapshot children aren't in #children,
-        // and may be among them or after them: moving the anchors to the end
-        // would put them after those, and the rows before them. Read once a
-        // cycle per parent: the rows after the first find it displaced.
-        const anchors = children.slice(i);
+        // An `@if` puts one element in before its anchor, and moving the
+        // elements after it would cost more than the one search it saves:
+        // the first element before the anchor in a cycle is inserted, as
+        // anything else is, and an `@for`'s second row is appended.
+        if (elements > 0 && LynxElement.#tailInserts.get(this) !== refChild) {
+          LynxElement.#tailInserts.set(this, refChild);
+          return false;
+        }
+        // Natively too, the tail has to be the last children, in order. A
+        // hydrated parent's snapshot children aren't in #children, and may
+        // be among them or after them: moving the tail to the end would put
+        // it after those, and the rows before them. Read once a cycle per
+        // parent: the rows after the first find it displaced.
+        const tail = children.slice(i);
         let at: ElementRef | null = refChild.element;
-        for (let k = 1; k < anchors.length; k++) {
+        for (let k = 1; k < tail.length; k++) {
           at = __NextElement(at);
-          if (!at || __GetElementUniqueID(at) !== anchors[k]!.uniqueId) {
+          if (!at || __GetElementUniqueID(at) !== tail[k]!.uniqueId) {
             return false;
           }
         }
         if (__NextElement(at)) return false;
-        LynxElement.#displacedAnchors.set(this, anchors);
+        LynxElement.#displacedTails.set(this, tail);
         return true;
       }
-      if (child.tagName !== 'comment') return false;
+      if (
+        child.tagName !== 'comment' &&
+        (++elements > MAX_TAIL_ELEMENTS || !child.#unflushed())
+      ) {
+        return false;
+      }
     }
     return false;
   }
 
   /**
-   * Puts the anchors native has out of place in this element back at the
-   * end of its children, in order (see #appendsBeforeAnchors), so native has
-   * the children in #children's order again. Each is taken out before it goes
+   * Puts the tail native has out of place in this element back at the end
+   * of its children, in order (see #appendsBeforeTail), so native has the
+   * children in #children's order again. Each is taken out before it goes
    * back in, as any move is (see #prepareInsert), in the same flush, so it
    * keeps its painting node. Called before anything else changes this
    * element's children or reads their native order, and for every parent at
-   * the end of the cycle (see #settleDisplacedAnchors).
+   * the end of the cycle (see #settleDisplacedTails).
    */
-  #settleAnchors(): void {
-    const displaced = LynxElement.#displacedAnchors;
+  #settleTail(): void {
+    const displaced = LynxElement.#displacedTails;
     if (displaced.size === 0) return;
-    const anchors = displaced.get(this);
-    if (!anchors) return;
+    const tail = displaced.get(this);
+    if (!tail) return;
     displaced.delete(this);
-    for (const anchor of anchors) {
-      // Defensive: whatever takes an anchor out of this element puts the
-      // others back first (see #prepareInsert and #doRemove).
+    for (const child of tail) {
+      // Defensive: whatever takes a child of the tail out of this element
+      // puts the others back first (see #prepareInsert and #doRemove).
       /* v8 ignore next */
-      if (anchor.#jsParent !== this) continue;
-      __RemoveElement(this.element, anchor.element);
-      __AppendElement(this.element, anchor.element);
+      if (child.#jsParent !== this) continue;
+      __RemoveElement(this.element, child.element);
+      __AppendElement(this.element, child.element);
     }
   }
 
   /**
-   * #settleAnchors for `parent`, if there is one.
+   * flushesBefore, once every tail out of place is back: it reads the order
+   * of the two parents' common ancestor's children natively, and the flush
+   * walks them as they are then (see #settleDisplacedTails), with the tail
+   * at the end, which may hold one of the two.
    */
-  static #settleAnchorsIn(parent: LynxElement | null | undefined): void {
-    if (parent) parent.#settleAnchors();
+  static #flushesBefore(first: ElementRef, second: ElementRef): boolean {
+    LynxElement.#settleDisplacedTails();
+    return flushesBefore(first, second);
   }
 
   /**
-   * #settleAnchors for every parent with anchors out of place: at the end of
+   * #settleTail for `parent`, if there is one.
+   */
+  static #settleTailIn(parent: LynxElement | null | undefined): void {
+    if (parent) parent.#settleTail();
+  }
+
+  /**
+   * #settleTail for every parent with a tail out of place: at the end of
    * the cycle, before its flush, from commitPendingClasses, which every path
    * to a flush runs first.
    */
-  static #settleDisplacedAnchors(): void {
-    const displaced = LynxElement.#displacedAnchors;
+  static #settleDisplacedTails(): void {
+    const displaced = LynxElement.#displacedTails;
     if (displaced.size === 0) return;
     // Each takes itself out of the map, which a Map's iteration allows.
-    for (const parent of displaced.keys()) parent.#settleAnchors();
+    for (const parent of displaced.keys()) parent.#settleTail();
   }
 
   /**
@@ -3467,7 +3534,7 @@ export class LynxElement implements BaseLynxElement {
    */
   #prepareInsert(newParent: LynxElement): ElementRef | null {
     // A move out of a parent, or within it, changes the parent's children.
-    LynxElement.#settleAnchorsIn(this.#jsParent);
+    LynxElement.#settleTailIn(this.#jsParent);
     this.#cancelPendingRemoval();
     this.#keepIfDestroyed();
     const from = this.#removeIfMoveWouldBeLost(newParent);
@@ -3485,8 +3552,8 @@ export class LynxElement implements BaseLynxElement {
    * it in.
    */
   #appendPrepared(newChild: LynxElement, from: ElementRef | null): void {
-    // It goes after the anchors native has out of place.
-    this.#settleAnchors();
+    // It goes after the tail native has out of place.
+    this.#settleTail();
     // Guard against a cycle-forming attach (see wouldFormCycle) — the same hang
     // insertBefore protects against.
     if (this.#wouldFormCycle(newChild)) return;
@@ -4047,6 +4114,15 @@ export class LynxElement implements BaseLynxElement {
    */
   markUnplaced(): void {
     this.#jsParent = undefined;
+    this.#madeAt = flushCount();
+  }
+
+  /**
+   * Whether this element's native element was made since the last flush
+   * (see #madeAt), so it has nothing on the screen yet.
+   */
+  #unflushed(): boolean {
+    return this.#madeAt === flushCount();
   }
 
   /**
@@ -4199,8 +4275,11 @@ export class LynxElement implements BaseLynxElement {
    */
   static commitPendingClasses(): void {
     // Not classes, but due on the same paths: before every flush (see
-    // #appendsBeforeAnchors).
-    LynxElement.#settleDisplacedAnchors();
+    // #appendsBeforeTail). The elements made so far count as flushed from
+    // here (see noteFlush): the flush after it, if any, may be native's.
+    LynxElement.#settleDisplacedTails();
+    LynxElement.#tailInserts.clear();
+    noteFlush();
     if (LynxElement.#pendingClasses.size === 0) return;
     const elements = [...LynxElement.#pendingClasses];
     LynxElement.#pendingClasses.clear();
@@ -4646,7 +4725,7 @@ export class LynxElement implements BaseLynxElement {
     if (
       __GetElementUniqueID(oldParent) !==
         __GetElementUniqueID(newParent.element) &&
-      flushesBefore(newParent.element, oldParent)
+      LynxElement.#flushesBefore(newParent.element, oldParent)
     ) {
       this.#doRemove();
       return null;
@@ -4661,8 +4740,8 @@ export class LynxElement implements BaseLynxElement {
    * in Lynx's PAPI.
    */
   #doRemove(): void {
-    // Its parent's anchors go back first: this may be one of them.
-    LynxElement.#settleAnchorsIn(this.#jsParent);
+    // Its parent's tail goes back first: this may be in it.
+    LynxElement.#settleTailIn(this.#jsParent);
     // The native parent, not parentNode()'s wrapper: the parent may have been
     // released already (an ancestor's removal earlier in this commit released
     // the subtree), and looking it up would register a new wrapper for it.
@@ -4802,7 +4881,7 @@ export class LynxElement implements BaseLynxElement {
   #leaveJsParent(): void {
     const jsParent = this.#jsParent;
     if (!jsParent) return;
-    jsParent.#settleAnchors();
+    jsParent.#settleTail();
     const i = jsParent.#children!.indexOf(this);
     // Defensive, as in #doRemove: #children follows the native tree.
     /* v8 ignore next */
@@ -4925,8 +5004,8 @@ export class LynxElement implements BaseLynxElement {
     this.#paintingDead = false;
     if (this.isRootPageElement || this.tagName === 'list') return;
     // Its children go into the new element below in #children's order,
-    // the anchors native had out of place included.
-    LynxElement.#displacedAnchors.delete(this);
+    // the tail native had out of place included.
+    LynxElement.#displacedTails.delete(this);
 
     // Swapping the native ref changes this wrapper's unique id — move its
     // registry entry from the stale (destroyed) ref's id to the fresh one so
@@ -5064,10 +5143,10 @@ export class LynxElement implements BaseLynxElement {
   nextSibling(): LynxElement | null {
     // If in a virtual tree, use virtual sibling tracking
     if (this._virtualParent) return this._virtualNext;
-    // Native's order, which has anchors out of place until the end of the
-    // cycle (see #appendsBeforeAnchors). All of them, not just #jsParent's:
+    // Native's order, which has a tail out of place until the end of the
+    // cycle (see #appendsBeforeTail). All of them, not just #jsParent's:
     // a hydrated element has none, and its native parent may be one.
-    LynxElement.#settleDisplacedAnchors();
+    LynxElement.#settleDisplacedTails();
     const nextSibling = __NextElement(this.element);
     if (nextSibling) {
       // Return the canonical wrapper (see #canonicalFor / parentNode). Angular

@@ -7859,13 +7859,22 @@ Angular puts each new `@for` row before the block's anchor, after the rows alrea
 | 1,500 images  | 44 (46) ms               | 44 (45) ms         |                           |
 | 15,000 images | 496 (518) ms             | 447 (466) ms       | 33.5 → 29.9 µs            |
 
+The same screen with a `<text>` after the `@for` in its container (a footer), in another session (2026-11-28, 8 launches each, the Mac busier):
+
+| Screen       | Inserting each row, fastest (median) | Appending the rows | Cost per element, fastest |
+| ------------ | ------------------------------------ | ------------------ | ------------------------- |
+| 1,500 views  | 47 (50) ms                           | 45 (49) ms         |                           |
+| 15,000 views | 459 (466) ms                         | 384 (400) ms       | 30.5 → 25.2 µs            |
+
 The cost per element is the 15,000-element screen's time less the 1,500's, over the 13,500 elements more. The search grows with the square of the rows: about 50 ms of the 15,000-element screens, and so about half a millisecond of the 1,500-element ones, within their noise.
 
 React Lynx appends a new node that has no node after it, and the children of new elements (`SnapshotInstance.insertBefore` and `ensureElements` in `packages/react/runtime/src/snapshot/snapshot/snapshot.ts`), so a list it builds never paid this.
 
 ### The fix
 
-`LynxElement` appends an element going in before an anchor that only anchors follow (`#appendsBeforeAnchors`), during change detection, and leaves the anchors where they were until the end of the cycle. Native then has them before the elements appended since, which draws nothing different between two flushes, as they're hidden views with nothing in them. `commitPendingClasses()`, which every path to a flush runs first, puts them back at the end in one move each (`#settleDisplacedAnchors`), as does anything that changes the parent's children otherwise or reads their native order (`nextSibling()`). An `@for` with elements after it in its parent, such as a footer, still inserts each row before the anchor, as does any insert on Lynx for Web, in a `<text>`, or outside change detection.
+`LynxElement` appends an element going in before an anchor when what follows the anchor in the parent (the tail) is anchors and at most four elements that haven't been flushed yet (`#appendsBeforeTail`), during change detection, and leaves the tail where it was until the end of the cycle. Native then has it before the elements appended since, which draws nothing different between two flushes: anchors are hidden views with nothing in them, and an element never flushed has nothing on the screen. `commitPendingClasses()`, which every path to a flush runs first, puts the tail back at the end in one move each (`#settleDisplacedTails`), in the same flush, as does anything that changes the parent's children otherwise or reads their native order (`nextSibling()`, and the tree order a move between two parents reads). An element counts as not flushed while no flush, and no end of a change detection cycle, has come since its native element was made (`flushes.ts`).
+
+With elements in the tail, the first element before the anchor in a cycle is inserted, and the ones after it are appended: an `@if` puts in one element, and moving the elements after it would cost more than the one search. More than four elements in the tail (each move searches the children too), or one that has been flushed, keeps the insert for every row. Moving a flushed element would move its view on the screen, which costs the UI thread a removal and an insert each cycle that adds a row, and takes the focus from a field in it. So rows added later to a container whose footer is on the screen still insert, as does any insert on Lynx for Web, in a `<text>`, or outside change detection.
 
 ---
 

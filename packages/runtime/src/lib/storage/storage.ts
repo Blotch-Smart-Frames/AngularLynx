@@ -384,7 +384,7 @@ export class LynxSecureStorage extends PersistentStorage {
     return this.#change(async () => {
       if (!options.requireBiometrics) {
         await super.setItem(key, value);
-        await this.#biometrics('removeItem', [key]);
+        await this.#removeGuarded(key);
         return;
       }
       const result = await this.#biometrics('setItem', [key, raw]);
@@ -400,15 +400,28 @@ export class LynxSecureStorage extends PersistentStorage {
   override removeItem(key: string): Promise<void> {
     return this.#change(async () => {
       await super.removeItem(key);
-      await this.#biometrics('removeItem', [key]);
+      await this.#removeGuarded(key);
     });
   }
 
   override clear(): Promise<void> {
     return this.#change(async () => {
       await super.clear();
-      await this.#biometrics('clear', []);
+      const failure = biometricsFailure(await this.#biometrics('clear', []));
+      if (failure) throw failure;
     });
+  }
+
+  /**
+   * Removes the value kept behind biometrics under `key`, and rejects when
+   * the platform couldn't, as on iOS when the Keychain refuses: a later read
+   * would find it again.
+   */
+  async #removeGuarded(key: string): Promise<void> {
+    const failure = biometricsFailure(
+      await this.#biometrics('removeItem', [key]),
+    );
+    if (failure) throw failure;
   }
 
   /** Runs `change` once the changes before it have settled. */

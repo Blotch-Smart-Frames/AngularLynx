@@ -285,6 +285,7 @@ describe('LynxSecureStorage', () => {
       const plain = new Map<string, string>();
       const guarded = new Map<string, string>();
       let answer: Record<string, unknown> | undefined;
+      let refuseRemoval: Record<string, unknown> | undefined;
       // Each answers on a later turn, as the native modules do, so calls
       // that overlap interleave.
       const done = (callback: (result: unknown) => void, result: unknown) =>
@@ -321,10 +322,12 @@ describe('LynxSecureStorage', () => {
           },
         ),
         removeItem: vi.fn((key: string, callback: (r: unknown) => void) => {
+          if (refuseRemoval) return done(callback, refuseRemoval);
           guarded.delete(key);
           done(callback, {});
         }),
         clear: vi.fn((callback: (r: unknown) => void) => {
+          if (refuseRemoval) return done(callback, refuseRemoval);
           guarded.clear();
           done(callback, {});
         }),
@@ -340,6 +343,9 @@ describe('LynxSecureStorage', () => {
         biometrics,
         answer: (result: Record<string, unknown>) => {
           answer = result;
+        },
+        refuseRemoval: (result: Record<string, unknown>) => {
+          refuseRemoval = result;
         },
       };
     };
@@ -436,6 +442,26 @@ describe('LynxSecureStorage', () => {
       await storage.clear();
       expect(plain.size).toBe(0);
       expect(guarded.size).toBe(0);
+    });
+
+    it('rejects when the platform couldn’t remove a guarded value', async () => {
+      const { refuseRemoval } = stubBoth();
+      const storage = create(LynxSecureStorage);
+      await storage.setItem('token', 'g', { requireBiometrics: true });
+      refuseRemoval({ error: 'failed', message: 'Keychain error -25300' });
+
+      for (const change of [
+        () => storage.removeItem('token'),
+        () => storage.clear(),
+        () => storage.setItem('token', 'plain'),
+      ]) {
+        await expect(change()).rejects.toThrow(
+          expect.objectContaining({
+            code: 'failed',
+            message: 'Keychain error -25300',
+          }),
+        );
+      }
     });
 
     it('rejects with the prompt’s error, such as a canceled one', async () => {

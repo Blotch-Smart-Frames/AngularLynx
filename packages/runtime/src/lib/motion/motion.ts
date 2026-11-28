@@ -61,7 +61,9 @@ export type LynxRotationRate = {
  * `alpha` counts from wherever the phone faced when the sensors started, not
  * from north, as a non-absolute `DeviceOrientationEvent`'s does: neither
  * shell uses the compass for it, so it doesn't swing near a magnet. Read
- * north from {@link LynxMotion.watchHeading}.
+ * north from {@link LynxMotion.watchHeading}. The web preview is the
+ * exception in a browser that sends only absolute orientation: there,
+ * `alpha` counts from north.
  */
 export type LynxOrientation = {
   readonly alpha: number;

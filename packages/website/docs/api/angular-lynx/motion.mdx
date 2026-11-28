@@ -126,7 +126,7 @@ type LynxOrientation = {
 
 Which way the phone faces, in degrees, as `DeviceOrientationEvent` gives it: `beta` tilts it forward and back (-180 to 180), `gamma` left and right (-90 to 90), and `alpha` turns it around z (0 to 360). A phone lying flat reads 0 for `beta` and `gamma`.
 
-`alpha` counts from wherever the phone faced when the sensor started, not from north, as a `DeviceOrientationEvent` whose `absolute` is false does. Neither platform uses the compass for it, so it doesn't swing near a magnet. Read north from `watchHeading()`.
+`alpha` counts from wherever the phone faced when the sensor started, not from north, as a `DeviceOrientationEvent` whose `absolute` is false does. Neither platform uses the compass for it, so it doesn't swing near a magnet. Read north from `watchHeading()`. In the web preview, a browser that sends only absolute orientation gives an `alpha` that counts from north.
 
 ### `watchHeading()`
 

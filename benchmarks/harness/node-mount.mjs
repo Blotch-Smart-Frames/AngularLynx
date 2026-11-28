@@ -350,13 +350,20 @@ const summarize = (profile, file, owners, top) => {
       name: `${functionName || '(anonymous)'}:${lineNumber + 1}`,
     };
   };
-  const harness = fileURLToPath(import.meta.url);
+  const harness = path.basename(fileURLToPath(import.meta.url));
+  const script = path.basename(file);
+  /**
+   * Whether a sample is in a fake element function, or the wrapper that
+   * counts its calls: walking up from where it was taken, a frame of this
+   * file comes before any of the script's. Frames of this file further up,
+   * such as the one that calls renderPage(), are the script's callers, and
+   * leave its samples counted.
+   */
   const insideFake = (id) => {
     for (let at = id; at !== undefined; at = parents.get(at)) {
       const { url } = nodes.get(at).callFrame;
-      if (url && (url === harness || url.endsWith(path.basename(harness)))) {
-        return true;
-      }
+      if (url.endsWith(script)) return false;
+      if (url.endsWith(harness)) return true;
     }
     return false;
   };

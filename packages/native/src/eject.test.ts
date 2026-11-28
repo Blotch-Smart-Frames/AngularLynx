@@ -128,6 +128,27 @@ describe('renderEjectedProject', () => {
     }
   });
 
+  it('has the share target module, and on iOS the Share Extension, only when the app sets shareTarget', () => {
+    const shareTarget = { mimeTypes: ['image/*'] };
+    for (const [platform, module] of [
+      ['ios', 'App/ShareTargetModule.swift'],
+      ['android', `${ANDROID_SHELL_SOURCES}/ShareTargetModule.kt`],
+    ] as const) {
+      expect(render(platform).has(module)).toBe(false);
+      expect(render(platform, undefined, { shareTarget }).has(module)).toBe(
+        true,
+      );
+    }
+    expect(render('ios').has('ShareExtension/ShareViewController.swift')).toBe(
+      false,
+    );
+    const sharing = render('ios', undefined, { shareTarget });
+    expect(sharing.has('ShareExtension/ShareViewController.swift')).toBe(true);
+    expect(sharing.get('App.xcodeproj/project.pbxproj')?.toString()).toContain(
+      'ShareExtension.appex',
+    );
+  });
+
   // Sign in with Apple is iOS's alone: the Android shell has no module.
   it('has the Sign in with Apple module and its entitlement only when the app sets signInWithApple', () => {
     const ejected = render('ios');

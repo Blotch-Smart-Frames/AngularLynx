@@ -164,6 +164,30 @@ await waitForUpdate();
 expect(screen.getByText('Refreshed')).toBeInTheDocument();
 ```
 
+### `receiveShare()`
+
+```typescript
+function receiveShare(share: FakeShare): Promise<void>;
+
+type FakeShare = {
+  readonly text?: string;
+  readonly url?: string;
+  readonly title?: string;
+  readonly files?: readonly { readonly blob: Blob; readonly name: string }[];
+};
+```
+
+Shares to the app, as the person does by picking it in another app's share sheet, so a spec can check what the app does with what [`LynxShareTarget.onShare()`](/api/angular-lynx/share-target#lynxsharetargetonshare) hands it. A spec doesn't read angular.json, so any text, link or file arrives, whatever `shareTarget.mimeTypes` lists. Each file's type is its Blob's. The share reaches the app through the background thread: await `receiveShare()`, then `waitForUpdate()`. Sent before the app registers a handler, it waits, as the share that starts an app does. Each test starts with none waiting.
+
+```typescript
+await render(Inbox);
+
+await receiveShare({ url: 'https://example.com/post/42', title: 'A post' });
+await waitForUpdate();
+
+expect(screen.getByText('A post')).toBeInTheDocument();
+```
+
 ### `setPickedFiles()`
 
 ```typescript

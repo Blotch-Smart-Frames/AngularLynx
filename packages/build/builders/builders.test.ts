@@ -1361,6 +1361,7 @@ describe('unit-test builder', () => {
       'storeReview',
       'calendar',
       'signInWithApple',
+      'shareTarget',
       'deepLinkSchemes',
       'appLinkDomains',
       'canOpenURLSchemes',

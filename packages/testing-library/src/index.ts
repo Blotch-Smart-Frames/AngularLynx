@@ -33,6 +33,8 @@ export { fireEvent, eventMap } from './fire-event.js';
 export { openedURLs, openLink } from './linking.js';
 export type { OpenedURL } from './linking.js';
 export { runShortcut } from './shortcuts.js';
+export { receiveShare } from './share-target.js';
+export type { FakeShare } from './share-target.js';
 export { reviewRequests } from './store-review.js';
 export {
   answerCalendarSheet,

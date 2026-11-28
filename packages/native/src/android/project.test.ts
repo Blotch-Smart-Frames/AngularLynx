@@ -21,6 +21,7 @@ import {
   ANDROID_CANVAS_SOURCES,
   ANDROID_STORE_REVIEW_SOURCE,
   ANDROID_CALENDAR_SOURCE,
+  ANDROID_SHARE_TARGET_SOURCE,
   ANDROID_WEBGL_SOURCES,
   androidGenerator,
   biometricsStringsXml,
@@ -30,6 +31,8 @@ import {
   properties,
   queriesEntries,
   propertyValue,
+  shareTargetEntries,
+  shareTargetStringsXml,
   shortcutStringsXml,
   shortcutsXml,
   stringResource,
@@ -488,6 +491,46 @@ describe('androidGenerator', () => {
     expect(kept).toContain('// angular-lynx:canvas');
   });
 
+  it('puts the app in share sheets, with its module and types, only in an app with shareTarget', () => {
+    const module = path.join(dir, ANDROID_SHARE_TARGET_SOURCE);
+    const strings = path.join(dir, 'app/src/main/res/values/share_target.xml');
+    const manifest = path.join(dir, 'app/src/main/AndroidManifest.xml');
+    const activity = path.join(
+      dir,
+      'app/src/main/java/dev/angularlynx/shell/MainActivity.kt',
+    );
+    const generate = (options: object) => {
+      rmSync(dir, { recursive: true, force: true });
+      cpSync(path.join(TEMPLATES_DIR, 'android'), dir, { recursive: true });
+      const resolved = app(options);
+      androidGenerator.configure(dir, resolved, dir);
+      androidGenerator.leaveOut(dir, { canvas: true, webgl: true }, resolved);
+    };
+
+    generate({ shareTarget: { mimeTypes: ['image/*', 'text/uri-list'] } });
+    expect(existsSync(module)).toBe(true);
+    expect(readFileSync(strings, 'utf8')).toBe(
+      shareTargetStringsXml(['image/*', 'text/uri-list']),
+    );
+    expect(readFileSync(manifest, 'utf8')).toContain(
+      'android.intent.action.SEND_MULTIPLE',
+    );
+    const withShares = readFileSync(activity, 'utf8');
+    expect(withShares).toContain('registerModule(ShareTargetModule.NAME');
+    expect(withShares).toContain('ShareTargetModule.receive(this, intent)');
+
+    generate({});
+    expect(existsSync(module)).toBe(false);
+    expect(existsSync(strings)).toBe(false);
+    expect(readFileSync(manifest, 'utf8')).not.toContain(
+      'android.intent.action.SEND',
+    );
+    const kept = readFileSync(activity, 'utf8');
+    expect(kept).not.toContain('ShareTargetModule');
+    expect(kept).not.toContain('angular-lynx:share-target');
+    expect(kept).toContain('// angular-lynx:canvas');
+  });
+
   it("writes the shortcuts' resources, which the launcher activity points Android to", () => {
     const xml = path.join(dir, 'app/src/main/res/xml/shortcuts.xml');
     const strings = path.join(dir, 'app/src/main/res/values/shortcuts.xml');
@@ -601,6 +644,7 @@ describe('androidGenerator.leaveOut', () => {
     filePicker: true,
     storeReview: true,
     calendar: true,
+    shareTarget: { mimeTypes: ['text/plain'] },
   });
   const mainActivity = () =>
     readFileSync(path.join(shell(), 'MainActivity.kt'), 'utf8');
@@ -738,5 +782,47 @@ describe('androidGenerator.leaveOut', () => {
         }
       }
     });
+  });
+});
+
+describe('shareTargetEntries', () => {
+  it('writes nothing for an app that is not a share target', () => {
+    expect(shareTargetEntries(app())).toBe('');
+  });
+
+  it('takes each type for one thing and for several, and links as the text Android shares them as', () => {
+    expect(
+      shareTargetEntries(
+        app({
+          shareTarget: {
+            mimeTypes: ['text/uri-list', 'image/*', 'text/plain'],
+          },
+        }),
+      ),
+    ).toBe(
+      ['SEND', 'SEND_MULTIPLE']
+        .flatMap((action) => [
+          '<intent-filter>',
+          `    <action android:name="android.intent.action.${action}" />`,
+          '    <category android:name="android.intent.category.DEFAULT" />',
+          '    <data android:mimeType="text/plain" />',
+          '    <data android:mimeType="image/*" />',
+          '</intent-filter>',
+        ])
+        .join('\n'),
+    );
+  });
+});
+
+describe('shareTargetStringsXml', () => {
+  it('lists the types for ShareTargetModule, escaped', () => {
+    expect(shareTargetStringsXml(['image/*', 'application/x&y'])).toContain(
+      [
+        '    <string-array name="angular_lynx_share_mime_types" translatable="false">',
+        '        <item>image/*</item>',
+        '        <item>application/x&amp;y</item>',
+        '    </string-array>',
+      ].join('\n'),
+    );
   });
 });

@@ -65,6 +65,11 @@
             </intent-filter>
             <!-- angular-lynx:deep-links -->
             <!--
+              angular.json's shareTarget: the app in other apps' share
+              sheets, for its MIME types (ShareTargetModule.kt).
+            -->
+            <!-- angular-lynx:share-target -->
+            <!--
               angular.json's shortcuts, in the menu a long press on the
               app's icon opens. Android reads them from the launcher
               activity.

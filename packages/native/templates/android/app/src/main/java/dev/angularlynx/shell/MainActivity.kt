@@ -269,6 +269,14 @@ class MainActivity : FragmentActivity(), ShellModule.Host, WebAuthModule.Host {
             intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY == 0
         ) {
             ShortcutsModule.run(intent)
+            // angular-lynx:share-target
+            // A share that started the app, from another app's share sheet,
+            // waits for the runtime's LynxShareTarget to take it. The event
+            // comes once its files are read, which is after onCreate.
+            ShareTargetModule.receive(this, intent) {
+                lynxView.sendGlobalEvent(ShareTargetModule.EVENT, JavaOnlyArray())
+            }
+            // /angular-lynx:share-target
         }
         // A link that started the app, which the router starts at. Unlike a
         // shortcut it's read again when Android recreates the activity: the
@@ -370,6 +378,13 @@ class MainActivity : FragmentActivity(), ShellModule.Host, WebAuthModule.Host {
             // The shortcuts the person runs from the app icon's menu, which
             // LynxShortcuts takes (ShortcutsModule.kt).
             registerModule(ShortcutsModule.NAME, ShortcutsModule::class.java, null)
+            // angular-lynx:share-target
+            // What other apps share to this one, which LynxShareTarget takes
+            // (ShareTargetModule.kt). An app whose angular.json has no
+            // shareTarget is built without the module, its intent filters and
+            // these lines.
+            registerModule(ShareTargetModule.NAME, ShareTargetModule::class.java, null)
+            // /angular-lynx:share-target
             // <canvas>'s WebGL (WebGLModule.kt), which the runtime calls from
             // the main thread, where Angular runs: main-thread modules let
             // it get its answers synchronously, with lynx.module(name). Lynx
@@ -536,6 +551,15 @@ class MainActivity : FragmentActivity(), ShellModule.Host, WebAuthModule.Host {
             lynxView.sendGlobalEvent(ShortcutsModule.EVENT, JavaOnlyArray())
             return
         }
+        // angular-lynx:share-target
+        // A share from another app's share sheet while the app is open.
+        if (ShareTargetModule.receive(this, intent) {
+                lynxView.sendGlobalEvent(ShareTargetModule.EVENT, JavaOnlyArray())
+            }
+        ) {
+            return
+        }
+        // /angular-lynx:share-target
         if (intent.action != Intent.ACTION_VIEW) return
         val url = intent.data ?: return
         // The sign-in page's redirect to the callback scheme: the deep link

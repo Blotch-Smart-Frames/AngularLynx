@@ -309,6 +309,25 @@
       "default": false,
       "description": "Whether the app offers Sign in with Apple's native sheet with LynxAppleSignIn (ASAuthorizationAppleIDProvider). iOS only: on Android, sign in with Apple's web flow through LynxWebAuthSession. true adds the com.apple.developer.applesignin entitlement, which a free Personal Team can't sign; false leaves it and the native module out of the app."
     },
+    "shareTarget": {
+      "description": "Puts the app in other apps' share sheets for the MIME types listed, so LynxShareTarget receives what the person shares to it: an ACTION_SEND intent filter on Android, and a Share Extension on iOS that hands the share to the app through an App Group (group.<appId>), which a free Personal Team can't sign. Leave it out, or set false, to leave the native module, the extension and the entitlement out of both apps.",
+      "oneOf": [
+        { "type": "boolean", "enum": [false] },
+        {
+          "type": "object",
+          "properties": {
+            "mimeTypes": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1,
+              "description": "The types the app receives: text/plain for text, text/uri-list for links, image/* for photos, or any other MIME type, such as application/pdf."
+            }
+          },
+          "required": ["mimeTypes"],
+          "additionalProperties": false
+        }
+      ]
+    },
     "deepLinkSchemes": {
       "type": "array",
       "items": {

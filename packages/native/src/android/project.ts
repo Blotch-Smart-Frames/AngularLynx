@@ -62,6 +62,7 @@ export const androidGenerator: PlatformGenerator = {
     manifest = replaceMarker(manifest, 'permissions', permissionEntries(app));
     manifest = replaceMarker(manifest, 'deep-links', deepLinkEntries(app));
     manifest = replaceMarker(manifest, 'queries', queriesEntries(app));
+    manifest = replaceMarker(manifest, 'share-target', shareTargetEntries(app));
     writeFileSync(manifestPath, manifest);
 
     // The template's shortcuts.xml is an empty list, which an app without
@@ -92,6 +93,14 @@ export const androidGenerator: PlatformGenerator = {
 
     writeAndroidIcon(dir, app, projectRoot);
     writeAndroidSplash(dir, app, projectRoot);
+
+    // The types ShareTargetModule checks each shared file against.
+    if (app.shareTarget) {
+      writeFileSync(
+        path.join(dir, SHARE_TARGET_STRINGS),
+        shareTargetStringsXml(app.shareTarget.mimeTypes),
+      );
+    }
 
     // The prompt's subtitle when the app gives none, as iOS shows
     // NSFaceIDUsageDescription. leaveOut deletes the file without it.
@@ -150,6 +159,20 @@ export const androidGenerator: PlatformGenerator = {
       removeMarkedLines(
         path.join(dir, SHELL_SOURCES, 'MainActivity.kt'),
         'calendar',
+      );
+    }
+    // An app that isn't a share target (angular.json's `shareTarget`) has
+    // no intent filters for it (configure writes none), and leaves out the
+    // module, its types and MainActivity's lines that hand it the intents
+    // (`// angular-lynx:share-target`).
+    if (!app.shareTarget) {
+      removeTemplateFiles(dir, [
+        ANDROID_SHARE_TARGET_SOURCE,
+        SHARE_TARGET_STRINGS,
+      ]);
+      removeMarkedLines(
+        path.join(dir, SHELL_SOURCES, 'MainActivity.kt'),
+        'share-target',
       );
     }
     leaveOutCanvas(dir, features);
@@ -353,6 +376,57 @@ export const deepLinkEntries = (app: ResolvedApp): string =>
           ),
           '</intent-filter>',
         ]),
+  ].join('\n');
+
+/** The module behind `LynxShareTarget`, which only `shareTarget` keeps. */
+export const ANDROID_SHARE_TARGET_SOURCE = `${SHELL_SOURCES}/ShareTargetModule.kt`;
+
+/** `shareTarget.mimeTypes`, which ShareTargetModule reads. */
+const SHARE_TARGET_STRINGS = 'app/src/main/res/values/share_target.xml';
+
+/**
+ * The intent filters that put the app in other apps' share sheets for
+ * `shareTarget.mimeTypes`: one for a share of one thing (`ACTION_SEND`) and
+ * one for several (`ACTION_SEND_MULTIPLE`), each with every type.
+ *
+ * Android shares a link as text: Chrome sends a page's URL as `text/plain`,
+ * and nothing sends `text/uri-list`. So `text/uri-list` also takes
+ * `text/plain`, and ShareTargetModule hands the app only the shares whose
+ * text is one link when `text/plain` itself isn't listed.
+ */
+export const shareTargetEntries = (app: ResolvedApp): string => {
+  if (!app.shareTarget) return '';
+  const types = [
+    ...new Set(
+      app.shareTarget.mimeTypes.flatMap((type) =>
+        type === 'text/uri-list' ? ['text/plain'] : [type],
+      ),
+    ),
+  ];
+  return ['SEND', 'SEND_MULTIPLE']
+    .flatMap((action) => [
+      '<intent-filter>',
+      `    <action android:name="android.intent.action.${action}" />`,
+      '    <category android:name="android.intent.category.DEFAULT" />',
+      ...types.map(
+        (type) => `    <data android:mimeType="${escapeXml(type)}" />`,
+      ),
+      '</intent-filter>',
+    ])
+    .join('\n');
+};
+
+/** res/values/share_target.xml: the types the app takes, for ShareTargetModule. */
+export const shareTargetStringsXml = (mimeTypes: readonly string[]): string =>
+  [
+    '<?xml version="1.0" encoding="utf-8"?>',
+    '<!-- Written by @blotch/angular-lynx-native from shareTarget in angular.json. -->',
+    '<resources>',
+    '    <string-array name="angular_lynx_share_mime_types" translatable="false">',
+    ...mimeTypes.map((type) => `        <item>${escapeXml(type)}</item>`),
+    '    </string-array>',
+    '</resources>',
+    '',
   ].join('\n');
 
 /** What an intent filter for links a browser can follow opens on. */

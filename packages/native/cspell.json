@@ -7,6 +7,7 @@
     "anydpi",
     "apksigner",
     "apos",
+    "appex",
     "appcompat",
     "APPICON",
     "appiconset",
@@ -198,6 +199,11 @@
       "pattern": "/\\bGL(?:ES\\d*|[a-z]\\w*)/g"
     },
     {
+      "// pbxproj-escapes": "Xcode project lines written as strings, whose tab escapes run into the key after them (\\t\\tisa).",
+      "name": "pbxproj-escapes",
+      "pattern": "/(?:\\\\t)+(?=[a-z])/g"
+    },
+    {
       "name": "webgl-ops",
       "pattern": "/\\b(?:ALWebGLOp|WebGLOps\\.|const val )\\w*/g"
     }
@@ -207,6 +213,7 @@
     "gl-constants",
     "gl-types",
     "webgl-ops",
+    "pbxproj-escapes",
     "HexValues"
   ]
 }

@@ -135,3 +135,11 @@ An Android app file that installs directly on a phone or [emulator](#emulator).
 ### `.aab`
 
 An Android App Bundle, the file you upload to Google Play. Google Play turns it into an `.apk` for each user's phone.
+
+### Share Extension
+
+A small part of an iOS app that iOS runs when the person picks the app in another app's share sheet. It runs apart from the app, so it can't run your Angular code. [`LynxShareTarget`](/api/angular-lynx/share-target) adds one with angular.json's `shareTarget`.
+
+### App Group
+
+A folder an iOS app shares with its extensions, such as a [Share Extension](#share-extension). It needs the App Groups capability, which only a paid Apple Developer team can [sign](#signing).

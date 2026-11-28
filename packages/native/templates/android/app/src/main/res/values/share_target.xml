@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  angular.json's shareTarget.mimeTypes, which ShareTargetModule checks each
+  shared file against. The generator writes them here, and leaves this file
+  out of an app without shareTarget, with the module.
+-->
+<resources>
+    <string-array name="angular_lynx_share_mime_types" translatable="false">
+        <item>text/plain</item>
+    </string-array>
+</resources>

@@ -343,6 +343,10 @@ export default defineConfig({
             },
             { text: 'LynxShare', link: '/api/angular-lynx/share' },
             {
+              text: 'LynxShareTarget',
+              link: '/api/angular-lynx/share-target',
+            },
+            {
               text: 'LynxStoreReview',
               link: '/api/angular-lynx/store-review',
             },

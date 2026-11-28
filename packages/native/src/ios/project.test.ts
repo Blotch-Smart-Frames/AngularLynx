@@ -27,10 +27,18 @@ import {
   IOS_CANVAS_SOURCES,
   IOS_STORE_REVIEW_SOURCE,
   IOS_CALENDAR_SOURCE,
+  IOS_SHARE_EXTENSION_DIR,
+  IOS_SHARE_TARGET_SOURCE,
   IOS_WEBGL_SOURCES,
   iosGenerator,
   LOCAL_NETWORK_REASON,
   mergeEntitlements,
+  shareActivationRule,
+  shareExtensionEntitlementsPlist,
+  shareExtensionPlistEntries,
+  shareGroup,
+  shareScheme,
+  withShareExtension,
   withoutFrameworks,
   xcconfig,
 } from './project.ts';
@@ -86,6 +94,7 @@ describe('entitlements', () => {
     for (const options of [
       { appLinkDomains: ['example.com'] },
       { signInWithApple: true },
+      { shareTarget: { mimeTypes: ['text/plain'] } },
     ]) {
       expect(xcconfig(app(options))).toContain(
         'CODE_SIGN_ENTITLEMENTS = Config/App.entitlements\n',
@@ -95,6 +104,19 @@ describe('entitlements', () => {
 
   it('adds none for the options left at their defaults', () => {
     expect(iosEntitlements(app())).toEqual({});
+  });
+
+  it('adds the App Group the Share Extension leaves shares in with shareTarget', () => {
+    expect(
+      iosEntitlements(
+        app({
+          appId: 'com.example.notes',
+          shareTarget: { mimeTypes: ['image/*'] },
+        }),
+      ),
+    ).toEqual({
+      'com.apple.security.application-groups': ['group.com.example.notes'],
+    });
   });
 
   it("adds Sign in with Apple's entitlement with signInWithApple", () => {
@@ -139,6 +161,7 @@ describe('entitlements', () => {
     ).toEqual([
       ['appLinkDomains', 'Associated Domains'],
       ['signInWithApple', 'Sign In with Apple'],
+      ['shareTarget', 'App Groups'],
     ]);
   });
 
@@ -929,5 +952,218 @@ describe('withoutFrameworks', () => {
     expect(() => withoutFrameworks('a\nb', ['libEGL'])).toThrow(
       'The project has no libEGL.xcframework to leave out.',
     );
+  });
+});
+
+describe('the Share Extension', () => {
+  const sharing = (mimeTypes: string[] = ['text/plain']) =>
+    app({ appId: 'com.example.Notes', shareTarget: { mimeTypes } });
+
+  it("names the App Group and the scheme after the app's bundle ID", () => {
+    expect(shareGroup(sharing())).toBe('group.com.example.Notes');
+    expect(shareScheme(sharing())).toBe('angularlynx-share.com.example.notes');
+  });
+
+  it.each([
+    [['text/plain'], { NSExtensionActivationSupportsText: true }],
+    [
+      ['text/uri-list'],
+      {
+        NSExtensionActivationSupportsWebPageWithMaxCount: 1,
+        NSExtensionActivationSupportsWebURLWithMaxCount: 1,
+      },
+    ],
+    [['image/*'], { NSExtensionActivationSupportsImageWithMaxCount: 10 }],
+    [
+      ['image/png'],
+      {
+        NSExtensionActivationSupportsImageWithMaxCount: 10,
+      },
+    ],
+    [['video/mp4'], { NSExtensionActivationSupportsMovieWithMaxCount: 10 }],
+    [
+      ['application/pdf'],
+      { NSExtensionActivationSupportsFileWithMaxCount: 10 },
+    ],
+    [
+      ['text/*'],
+      {
+        NSExtensionActivationSupportsFileWithMaxCount: 10,
+        NSExtensionActivationSupportsText: true,
+        NSExtensionActivationSupportsWebPageWithMaxCount: 1,
+        NSExtensionActivationSupportsWebURLWithMaxCount: 1,
+      },
+    ],
+    [
+      ['*/*'],
+      {
+        NSExtensionActivationSupportsFileWithMaxCount: 10,
+        NSExtensionActivationSupportsImageWithMaxCount: 10,
+        NSExtensionActivationSupportsMovieWithMaxCount: 10,
+        NSExtensionActivationSupportsText: true,
+        NSExtensionActivationSupportsWebPageWithMaxCount: 1,
+        NSExtensionActivationSupportsWebURLWithMaxCount: 1,
+      },
+    ],
+  ])('shows the app in share sheets for %j with %j', (mimeTypes, rule) => {
+    expect(shareActivationRule(mimeTypes)).toEqual(rule);
+  });
+
+  it("writes the extension's Info.plist entries", () => {
+    const entries = shareExtensionPlistEntries(
+      sharing(['image/*', 'text/plain']),
+    );
+    expect(entries).toContain(
+      [
+        '<key>AngularLynxShareGroup</key>',
+        '<string>group.com.example.Notes</string>',
+        '<key>AngularLynxShareScheme</key>',
+        '<string>angularlynx-share.com.example.notes</string>',
+        '<key>AngularLynxShareMimeTypes</key>',
+        '<array>',
+        '\t<string>image/*</string>',
+        '\t<string>text/plain</string>',
+        '</array>',
+      ].join('\n'),
+    );
+    expect(entries).toContain(
+      [
+        '\t\t\t<key>NSExtensionActivationSupportsImageWithMaxCount</key>',
+        '\t\t\t<integer>10</integer>',
+        '\t\t\t<key>NSExtensionActivationSupportsText</key>',
+        '\t\t\t<true/>',
+      ].join('\n'),
+    );
+    expect(entries).toContain('<string>com.apple.share-services</string>');
+    expect(entries).toContain(
+      '<string>$(PRODUCT_MODULE_NAME).ShareViewController</string>',
+    );
+  });
+
+  it("gives the extension the app's App Group alone", () => {
+    const plist = shareExtensionEntitlementsPlist(sharing());
+    expect(plist).toContain(
+      [
+        '\t<key>com.apple.security.application-groups</key>',
+        '\t<array>',
+        '\t\t<string>group.com.example.Notes</string>',
+        '\t</array>',
+      ].join('\n'),
+    );
+    expect(plist.match(/<key>/g)).toHaveLength(1);
+  });
+
+  it('tells the app its App Group and its share scheme, beside the deep link schemes', () => {
+    const entries = infoPlistEntries(
+      app({
+        appId: 'com.example.Notes',
+        deepLinkSchemes: ['notes'],
+        shareTarget: { mimeTypes: ['text/plain'] },
+      }),
+    );
+    expect(entries).toContain(
+      '<key>AngularLynxShareGroup</key>\n<string>group.com.example.Notes</string>',
+    );
+    expect(entries).toContain(
+      [
+        '\t\t\t<string>notes</string>',
+        '\t\t\t<string>angularlynx-share.com.example.notes</string>',
+      ].join('\n'),
+    );
+    expect(infoPlistEntries(app())).not.toContain('AngularLynxShare');
+    expect(infoPlistEntries(app())).not.toContain('CFBundleURLTypes');
+  });
+
+  it('adds a target that builds the extension and embeds it in the app', () => {
+    const template = readFileSync(
+      path.join(TEMPLATES_DIR, 'ios/App.xcodeproj/project.pbxproj'),
+      'utf8',
+    );
+    const project = withShareExtension(template, sharing());
+    expect(project).toContain(
+      'productType = "com.apple.product-type.app-extension";',
+    );
+    expect(project).toContain(
+      'PRODUCT_BUNDLE_IDENTIFIER = "com.example.Notes.ShareExtension";',
+    );
+    expect(project).toContain(
+      'CODE_SIGN_ENTITLEMENTS = Config/ShareExtension.entitlements;',
+    );
+    expect(project).toContain('dstSubfolderSpec = 13;');
+    expect(project).toContain('/* Begin PBXTargetDependency section */');
+    expect(project).toContain('/* Begin PBXContainerItemProxy section */');
+    // Two targets in the project, and each of the extension's objects is
+    // defined once.
+    const targets = /targets = \(\n([^)]*)\);/.exec(project)![1]!;
+    expect(targets.trim().split('\n')).toHaveLength(2);
+    for (const id of [...project.matchAll(/^\t\t([0-9A-F]{24}) .*= \{/gm)].map(
+      ([, id]) => id,
+    )) {
+      expect(
+        project.match(new RegExp(`^\\t\\t${id} .*= \\{`, 'gm')),
+      ).toHaveLength(1);
+    }
+    // Balanced, so Xcode can read it.
+    expect(project.split('{').length).toBe(project.split('}').length);
+    expect(project.split('(').length).toBe(project.split(')').length);
+  });
+
+  it('refuses a template it no longer fits, rather than writing half a target', () => {
+    expect(() =>
+      withShareExtension('// !$*UTF8*$!\n{\n}\n', sharing()),
+    ).toThrow(/no PBXBuildFile section/);
+  });
+
+  it('is in the app only with shareTarget', () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'angular-lynx-ios-'));
+    try {
+      const generate = (options: object, webgl = true) => {
+        rmSync(dir, { recursive: true, force: true });
+        cpSync(path.join(TEMPLATES_DIR, 'ios'), dir, { recursive: true });
+        const resolved = app(options);
+        iosGenerator.configure(dir, resolved, dir);
+        iosGenerator.leaveOut(dir, { canvas: webgl, webgl }, resolved);
+      };
+      const project = () =>
+        readFileSync(path.join(dir, 'App.xcodeproj/project.pbxproj'), 'utf8');
+
+      generate({ shareTarget: { mimeTypes: ['image/*'] } });
+      expect(existsSync(path.join(dir, IOS_SHARE_TARGET_SOURCE))).toBe(true);
+      expect(project()).toContain('ShareExtension.appex');
+      expect(
+        readFileSync(
+          path.join(dir, IOS_SHARE_EXTENSION_DIR, 'Info.plist'),
+          'utf8',
+        ),
+      ).toContain('NSExtensionActivationSupportsImageWithMaxCount');
+      expect(
+        existsSync(path.join(dir, 'Config/ShareExtension.entitlements')),
+      ).toBe(true);
+      expect(
+        readFileSync(path.join(dir, 'Config/App.entitlements'), 'utf8'),
+      ).toContain('com.apple.security.application-groups');
+      // ANGLE's frameworks leave with WebGL, whatever else the project has.
+      generate({ shareTarget: { mimeTypes: ['image/*'] } }, false);
+      expect(project()).toContain('ShareExtension.appex');
+      expect(project()).not.toContain('libEGL');
+
+      generate({});
+      expect(existsSync(path.join(dir, IOS_SHARE_TARGET_SOURCE))).toBe(false);
+      expect(existsSync(path.join(dir, IOS_SHARE_EXTENSION_DIR))).toBe(false);
+      expect(project()).not.toContain('ShareExtension');
+      expect(existsSync(path.join(dir, 'Config/App.entitlements'))).toBe(false);
+      // LynxViewController registers the module by the name it gives itself.
+      expect(
+        readFileSync(
+          path.join(TEMPLATES_DIR, 'ios', IOS_SHARE_TARGET_SOURCE),
+          'utf8',
+        ),
+      ).toContain('@objc(AngularLynxShareTargetModule)');
+      expect(
+        readFileSync(path.join(dir, 'App/LynxViewController.swift'), 'utf8'),
+      ).toContain('NSClassFromString("AngularLynxShareTargetModule")');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

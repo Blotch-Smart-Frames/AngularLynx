@@ -36,8 +36,9 @@ const ORIENTATIONS: Record<Orientation, readonly string[]> = {
  * (IOS_ENTITLEMENTS) become Config/App.entitlements, and the icon and the splash go in the asset
  * catalog. The barcode scanner's module stays only in an app with the
  * `camera` permission, the store review module only in an app with
- * `storeReview`, the calendar module only in one with `calendar`, and the
- * Sign in with Apple module only in one with `signInWithApple`.
+ * `storeReview`, the calendar module only in one with `calendar`, the
+ * Sign in with Apple module only in one with `signInWithApple`, and the
+ * Share Extension, its target and its module only in one with `shareTarget`.
  */
 /** LynxBarcodeScanner's module, which needs the `camera` permission. */
 export const IOS_BARCODE_SCANNER_SOURCE = 'App/BarcodeScannerModule.swift';
@@ -81,6 +82,34 @@ export const iosGenerator: PlatformGenerator = {
     // with no entitlements, as the template does.
     if (hasEntitlements(app)) {
       writeFileSync(path.join(dir, ENTITLEMENTS), entitlementsPlist(app));
+    }
+
+    // The Share Extension, with its own target, Info.plist and entitlements.
+    // The app's half (App Groups, the share scheme and ShareTargetModule) is
+    // in the entitlements and Info.plist written above.
+    if (app.shareTarget) {
+      const projectFile = path.join(dir, PROJECT_FILE);
+      writeFileSync(
+        projectFile,
+        withShareExtension(readFileSync(projectFile, 'utf8'), app),
+      );
+      const extensionPlist = path.join(
+        dir,
+        IOS_SHARE_EXTENSION_DIR,
+        'Info.plist',
+      );
+      writeFileSync(
+        extensionPlist,
+        replaceMarker(
+          readFileSync(extensionPlist, 'utf8'),
+          'share-extension',
+          shareExtensionPlistEntries(app),
+        ),
+      );
+      writeFileSync(
+        path.join(dir, SHARE_EXTENSION_ENTITLEMENTS),
+        shareExtensionEntitlementsPlist(app),
+      );
     }
 
     if (app.icon) {
@@ -129,6 +158,13 @@ export const iosGenerator: PlatformGenerator = {
     // LynxViewController registers the module by name.
     if (!app.signInWithApple) {
       removeTemplateFiles(dir, [IOS_APPLE_SIGN_IN_SOURCE]);
+    }
+    // An app that isn't a share target has no extension, no App Group and
+    // no module reading one; the project has no target for the extension
+    // either (configure adds it only with shareTarget).
+    if (!app.shareTarget) {
+      removeTemplateFiles(dir, [IOS_SHARE_TARGET_SOURCE]);
+      rmSync(path.join(dir, IOS_SHARE_EXTENSION_DIR), { recursive: true });
     }
     if (features.webgl) return;
     if (features.canvas) {
@@ -302,6 +338,17 @@ export const IOS_ENTITLEMENTS: readonly {
         ? { 'com.apple.developer.applesignin': ['Default'] }
         : {},
   },
+  {
+    // The container the Share Extension leaves each share in for the app
+    // (ShareTargetModule). The extension has the same group in its own
+    // entitlements (shareExtensionEntitlementsPlist).
+    option: 'shareTarget',
+    capability: 'App Groups',
+    entitlements: (app): Entitlements =>
+      app.shareTarget
+        ? { 'com.apple.security.application-groups': [shareGroup(app)] }
+        : {},
+  },
 ];
 
 /**
@@ -388,7 +435,7 @@ export const xcconfig = (app: ResolvedApp): string =>
  * ({@link IOS_ENTITLEMENTS}), merged.
  *
  * Signing most of them needs a team in the paid Apple Developer Program: a
- * free Personal Team can't sign Associated Domains or Sign in with Apple
+ * free Personal Team can't sign Associated Domains, Sign in with Apple or App Groups
  * (explainSigningFailure in build.ts names the option). The simulator app
  * needs no team.
  */
@@ -526,7 +573,22 @@ export const infoPlistEntries = (
   // for any other. UIApplication.open needs none of them.
   array('LSApplicationQueriesSchemes', app.canOpenURLSchemes);
 
-  if (app.deepLinkSchemes.length > 0) {
+  // The Share Extension opens the app with a scheme of its own, which
+  // SceneDelegate tells from a deep link, and leaves the share in the App
+  // Group ShareTargetModule reads.
+  const schemes = [
+    ...app.deepLinkSchemes,
+    ...(app.shareTarget ? [shareScheme(app)] : []),
+  ];
+  if (app.shareTarget) {
+    lines.push(
+      '<key>AngularLynxShareGroup</key>',
+      `<string>${escapeXml(shareGroup(app))}</string>`,
+      '<key>AngularLynxShareScheme</key>',
+      `<string>${escapeXml(shareScheme(app))}</string>`,
+    );
+  }
+  if (schemes.length > 0) {
     lines.push(
       '<key>CFBundleURLTypes</key>',
       '<array>',
@@ -535,9 +597,7 @@ export const infoPlistEntries = (
       `\t\t<string>${escapeXml(app.id)}</string>`,
       '\t\t<key>CFBundleURLSchemes</key>',
       '\t\t<array>',
-      ...app.deepLinkSchemes.map(
-        (scheme) => `\t\t\t<string>${escapeXml(scheme)}</string>`,
-      ),
+      ...schemes.map((scheme) => `\t\t\t<string>${escapeXml(scheme)}</string>`),
       '\t\t</array>',
       '\t</dict>',
       '</array>',
@@ -634,4 +694,422 @@ export const appShortcutsSwift = (app: ResolvedApp): string => {
     '}',
     '',
   ].join('\n');
+};
+
+// ─── shareTarget: the Share Extension ────────────────────────────────────────
+
+/** LynxShareTarget's module in the app, which only `shareTarget` keeps. */
+export const IOS_SHARE_TARGET_SOURCE = 'App/ShareTargetModule.swift';
+
+/**
+ * The Share Extension's folder: the extension's code and its Info.plist,
+ * which only `shareTarget` keeps, with the target the generator adds to the
+ * project for it ({@link withShareExtension}).
+ */
+export const IOS_SHARE_EXTENSION_DIR = 'ShareExtension';
+
+/** The extension's entitlements, beside the app's (see ENTITLEMENTS). */
+const SHARE_EXTENSION_ENTITLEMENTS = 'Config/ShareExtension.entitlements';
+
+/**
+ * The App Group the app and its Share Extension share, where the extension
+ * leaves each share for the app: `group.` and the app's bundle ID, as Xcode
+ * names a new group.
+ */
+export const shareGroup = (app: ResolvedApp): string => `group.${app.id}`;
+
+/**
+ * The URL scheme the Share Extension opens the app with once it has left a
+ * share: one of the app's own, from its bundle ID, so no other app answers
+ * to it. SceneDelegate takes it for the share, never for a deep link.
+ */
+export const shareScheme = (app: ResolvedApp): string =>
+  `angularlynx-share.${app.id.toLowerCase().replace(/[^a-z0-9.-]/g, '-')}`;
+
+/**
+ * The activation rule's keys for `mimeTypes`: which kinds of things in a
+ * share sheet show the app. Apple's rule can't name a MIME type, only kinds,
+ * so a type that isn't text, a link, an image or a video allows files, and
+ * the extension then checks each file's own type against the list.
+ */
+export const shareActivationRule = (
+  mimeTypes: readonly string[],
+): Record<string, boolean | number> => {
+  const takes = (kind: string) =>
+    mimeTypes.some(
+      (type) =>
+        type === '*/*' || type === `${kind}/*` || type.startsWith(`${kind}/`),
+    );
+  const rule: Record<string, boolean | number> = {};
+  // The most of each kind one share hands over, as Apple's own extensions
+  // allow: enough for a selection of photos.
+  const most = 10;
+  if (
+    mimeTypes.some(
+      (type) => type === '*/*' || type === 'text/*' || type === 'text/plain',
+    )
+  ) {
+    rule['NSExtensionActivationSupportsText'] = true;
+  }
+  if (
+    mimeTypes.some(
+      (type) => type === '*/*' || type === 'text/*' || type === 'text/uri-list',
+    )
+  ) {
+    rule['NSExtensionActivationSupportsWebURLWithMaxCount'] = 1;
+    rule['NSExtensionActivationSupportsWebPageWithMaxCount'] = 1;
+  }
+  if (takes('image')) {
+    rule['NSExtensionActivationSupportsImageWithMaxCount'] = most;
+  }
+  if (takes('video')) {
+    rule['NSExtensionActivationSupportsMovieWithMaxCount'] = most;
+  }
+  if (
+    mimeTypes.some(
+      (type) =>
+        !type.startsWith('image/') &&
+        !type.startsWith('video/') &&
+        type !== 'text/plain' &&
+        type !== 'text/uri-list',
+    )
+  ) {
+    rule['NSExtensionActivationSupportsFileWithMaxCount'] = most;
+  }
+  return Object.fromEntries(
+    Object.keys(rule)
+      .sort()
+      .map((key) => [key, rule[key]!]),
+  );
+};
+
+/**
+ * The Share Extension's Info.plist entries, between its template's
+ * `angular-lynx:share-extension` markers: the extension point, the
+ * activation rule for `mimeTypes`, and what the extension reads (the types,
+ * the App Group and the app's share scheme).
+ */
+export const shareExtensionPlistEntries = (app: ResolvedApp): string => {
+  const { mimeTypes } = app.shareTarget!;
+  return [
+    '<key>AngularLynxShareGroup</key>',
+    `<string>${escapeXml(shareGroup(app))}</string>`,
+    '<key>AngularLynxShareScheme</key>',
+    `<string>${escapeXml(shareScheme(app))}</string>`,
+    '<key>AngularLynxShareMimeTypes</key>',
+    '<array>',
+    ...mimeTypes.map((type) => `\t<string>${escapeXml(type)}</string>`),
+    '</array>',
+    '<key>NSExtension</key>',
+    '<dict>',
+    '\t<key>NSExtensionAttributes</key>',
+    '\t<dict>',
+    '\t\t<key>NSExtensionActivationRule</key>',
+    '\t\t<dict>',
+    ...Object.entries(shareActivationRule(mimeTypes)).flatMap(
+      ([key, value]) => [
+        `\t\t\t<key>${key}</key>`,
+        typeof value === 'boolean'
+          ? '\t\t\t<true/>'
+          : `\t\t\t<integer>${value}</integer>`,
+      ],
+    ),
+    '\t\t</dict>',
+    '\t</dict>',
+    '\t<key>NSExtensionPointIdentifier</key>',
+    '\t<string>com.apple.share-services</string>',
+    '\t<key>NSExtensionPrincipalClass</key>',
+    '\t<string>$(PRODUCT_MODULE_NAME).ShareViewController</string>',
+    '</dict>',
+  ].join('\n');
+};
+
+/**
+ * Config/ShareExtension.entitlements: the App Group alone, which is all the
+ * extension needs to leave a share where the app reads it.
+ */
+export const shareExtensionEntitlementsPlist = (app: ResolvedApp): string =>
+  [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
+    '<!-- Written by @blotch/angular-lynx-native from shareTarget in angular.json. -->',
+    '<plist version="1.0">',
+    '<dict>',
+    '\t<key>com.apple.security.application-groups</key>',
+    '\t<array>',
+    `\t\t<string>${escapeXml(shareGroup(app))}</string>`,
+    '\t</array>',
+    '</dict>',
+    '</plist>',
+    '',
+  ].join('\n');
+
+/**
+ * The IDs of what {@link withShareExtension} adds to the project. Any 24 hex
+ * digits do, as long as they're not the template's: fixed ones keep the
+ * project the same from one build to the next, which Xcode's incremental
+ * build state relies on.
+ */
+const SHARE_IDS = {
+  target: '9D15F9546F164C486D749216',
+  product: '57C1796F1E1D5E76E66D6B1C',
+  embedFile: '7F7C1C4CBB392ABDC1101D98',
+  embedPhase: '7AAA86580D6ADC71A7F9AEF7',
+  exceptions: '5CCA31789B464279D620DE7A',
+  group: 'B63CC0C639B6A1AFBB041D9A',
+  frameworks: '37E44BB912BEB62673EF446D',
+  resources: '845DC63496E277892316007B',
+  sources: 'CF43D7AA4D8685F579119344',
+  proxy: '9C2EA95DB61269E81E8FEF29',
+  dependency: 'BF032A8D37EBD074ECB8FB5F',
+  debug: 'B32A48D083991B263D7C3F38',
+  release: '200485B5D20BCAA13A707402',
+  configurations: '9BE5D382CCC82CC4917AEC6A',
+} as const;
+
+/** The template's own objects that the extension's are tied to. */
+const TEMPLATE_IDS = {
+  project: '0C772889932C3A1BA02CADB1',
+  appTarget: 'FAC36A2364C8DD5EE47C8F83',
+  xcconfig: '33520879069FA35A78AACE2A',
+} as const;
+
+/**
+ * The project with the Share Extension's target added: built from the
+ * synchronized ShareExtension/ folder, embedded in the app (Embed Foundation
+ * Extensions), and built before it. The target reads App.xcconfig, as the
+ * app's does, for the version, the team and the display name, and has
+ * settings of its own for its bundle ID (the app's, then `.ShareExtension`,
+ * as Apple requires), its Info.plist and its entitlements. It links none of
+ * Lynx's frameworks: it can't run Lynx.
+ *
+ * Xcode's project format has no includes, so the target's objects are
+ * written into the sections they belong to, and each list that names them
+ * (the project's targets, the app's build phases and dependencies, the
+ * groups) gets a line after a line of the template's it must find once.
+ */
+export const withShareExtension = (
+  project: string,
+  app: ResolvedApp,
+): string => {
+  const ids = SHARE_IDS;
+  const lines = project.split('\n');
+  /**
+   * Inserts `added` after the one line that is `after`, trimmed.
+   */
+  const insertAfter = (after: string, added: readonly string[]) => {
+    const found = lines.flatMap((line, index) =>
+      line.trim() === after ? [index] : [],
+    );
+    if (found.length !== 1) {
+      throw new Error(
+        `The project template has ${found.length} lines "${after}", where the Share Extension's target needs one.`,
+      );
+    }
+    const indent = /^\s*/.exec(lines[found[0]!]!)![0];
+    lines.splice(found[0]! + 1, 0, ...added.map((line) => `${indent}${line}`));
+  };
+  /**
+   * Inserts a section of its own after the section `after` ends.
+   */
+  const section = (after: string, name: string, objects: readonly string[]) => {
+    const end = lines.findIndex(
+      (line) => line === `/* End ${after} section */`,
+    );
+    if (end === -1) {
+      throw new Error(`The project template has no ${after} section.`);
+    }
+    lines.splice(
+      end + 1,
+      0,
+      '',
+      `/* Begin ${name} section */`,
+      ...objects,
+      `/* End ${name} section */`,
+    );
+  };
+  /**
+   * Adds objects at the end of a section the template has.
+   */
+  const intoSection = (name: string, objects: readonly string[]) => {
+    const end = lines.findIndex(
+      (line) => line.trim() === `/* End ${name} section */`,
+    );
+    if (end === -1) {
+      throw new Error(`The project template has no ${name} section.`);
+    }
+    lines.splice(end, 0, ...objects);
+  };
+  const settings = (configuration: 'Debug' | 'Release') => [
+    `\t\t${ids[configuration === 'Debug' ? 'debug' : 'release']} /* ${configuration} */ = {`,
+    '\t\t\tisa = XCBuildConfiguration;',
+    `\t\t\tbaseConfigurationReference = ${TEMPLATE_IDS.xcconfig} /* Config/App.xcconfig */;`,
+    '\t\t\tbuildSettings = {',
+    '\t\t\t\tAPPLICATION_EXTENSION_API_ONLY = YES;',
+    `\t\t\t\tCODE_SIGN_ENTITLEMENTS = ${SHARE_EXTENSION_ENTITLEMENTS};`,
+    '\t\t\t\tCODE_SIGN_STYLE = Automatic;',
+    '\t\t\t\tGENERATE_INFOPLIST_FILE = NO;',
+    `\t\t\t\tINFOPLIST_FILE = ${IOS_SHARE_EXTENSION_DIR}/Info.plist;`,
+    '\t\t\t\tLD_RUNPATH_SEARCH_PATHS = (',
+    '\t\t\t\t\t"$(inherited)",',
+    '\t\t\t\t\t"@executable_path/Frameworks",',
+    '\t\t\t\t\t"@executable_path/../../Frameworks",',
+    '\t\t\t\t);',
+    `\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = "${app.id}.ShareExtension";`,
+    '\t\t\t\tPRODUCT_NAME = ShareExtension;',
+    '\t\t\t\tSKIP_INSTALL = YES;',
+    '\t\t\t\tTARGETED_DEVICE_FAMILY = 1;',
+    '\t\t\t};',
+    `\t\t\tname = ${configuration};`,
+    '\t\t};',
+  ];
+
+  intoSection('PBXBuildFile', [
+    `\t\t${ids.embedFile} /* ShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = ${ids.product} /* ShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };`,
+  ]);
+  section('PBXBuildFile', 'PBXContainerItemProxy', [
+    `\t\t${ids.proxy} /* PBXContainerItemProxy */ = {`,
+    '\t\t\tisa = PBXContainerItemProxy;',
+    `\t\t\tcontainerPortal = ${TEMPLATE_IDS.project} /* Project object */;`,
+    '\t\t\tproxyType = 1;',
+    `\t\t\tremoteGlobalIDString = ${ids.target};`,
+    '\t\t\tremoteInfo = ShareExtension;',
+    '\t\t};',
+  ]);
+  intoSection('PBXCopyFilesBuildPhase', [
+    `\t\t${ids.embedPhase} /* Embed Foundation Extensions */ = {`,
+    '\t\t\tisa = PBXCopyFilesBuildPhase;',
+    '\t\t\tbuildActionMask = 2147483647;',
+    '\t\t\tdstPath = "";',
+    '\t\t\tdstSubfolderSpec = 13;',
+    '\t\t\tfiles = (',
+    `\t\t\t\t${ids.embedFile} /* ShareExtension.appex in Embed Foundation Extensions */,`,
+    '\t\t\t);',
+    '\t\t\tname = "Embed Foundation Extensions";',
+    '\t\t\trunOnlyForDeploymentPostprocessing = 0;',
+    '\t\t};',
+  ]);
+  intoSection('PBXFileReference', [
+    `\t\t${ids.product} /* ShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };`,
+  ]);
+  intoSection('PBXFileSystemSynchronizedBuildFileExceptionSet', [
+    `\t\t${ids.exceptions} /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {`,
+    '\t\t\tisa = PBXFileSystemSynchronizedBuildFileExceptionSet;',
+    '\t\t\tmembershipExceptions = (',
+    '\t\t\t\tInfo.plist,',
+    '\t\t\t);',
+    `\t\t\ttarget = ${ids.target} /* ShareExtension */;`,
+    '\t\t};',
+  ]);
+  intoSection('PBXFileSystemSynchronizedRootGroup', [
+    `\t\t${ids.group} /* ShareExtension */ = {`,
+    '\t\t\tisa = PBXFileSystemSynchronizedRootGroup;',
+    '\t\t\texceptions = (',
+    `\t\t\t\t${ids.exceptions} /* PBXFileSystemSynchronizedBuildFileExceptionSet */,`,
+    '\t\t\t);',
+    `\t\t\tpath = ${IOS_SHARE_EXTENSION_DIR};`,
+    '\t\t\tsourceTree = "<group>";',
+    '\t\t};',
+  ]);
+  const phase = (id: string, isa: string, name: string) => [
+    `\t\t${id} /* ${name} */ = {`,
+    `\t\t\tisa = ${isa};`,
+    '\t\t\tbuildActionMask = 2147483647;',
+    '\t\t\tfiles = (',
+    '\t\t\t);',
+    '\t\t\trunOnlyForDeploymentPostprocessing = 0;',
+    '\t\t};',
+  ];
+  intoSection(
+    'PBXFrameworksBuildPhase',
+    phase(ids.frameworks, 'PBXFrameworksBuildPhase', 'Frameworks'),
+  );
+  intoSection('PBXNativeTarget', [
+    `\t\t${ids.target} /* ShareExtension */ = {`,
+    '\t\t\tisa = PBXNativeTarget;',
+    `\t\t\tbuildConfigurationList = ${ids.configurations} /* Build configuration list for PBXNativeTarget "ShareExtension" */;`,
+    '\t\t\tbuildPhases = (',
+    `\t\t\t\t${ids.sources} /* Sources */,`,
+    `\t\t\t\t${ids.frameworks} /* Frameworks */,`,
+    `\t\t\t\t${ids.resources} /* Resources */,`,
+    '\t\t\t);',
+    '\t\t\tbuildRules = (',
+    '\t\t\t);',
+    '\t\t\tdependencies = (',
+    '\t\t\t);',
+    '\t\t\tfileSystemSynchronizedGroups = (',
+    `\t\t\t\t${ids.group} /* ShareExtension */,`,
+    '\t\t\t);',
+    '\t\t\tname = ShareExtension;',
+    '\t\t\tproductName = ShareExtension;',
+    `\t\t\tproductReference = ${ids.product} /* ShareExtension.appex */;`,
+    '\t\t\tproductType = "com.apple.product-type.app-extension";',
+    '\t\t};',
+  ]);
+  intoSection(
+    'PBXResourcesBuildPhase',
+    phase(ids.resources, 'PBXResourcesBuildPhase', 'Resources'),
+  );
+  intoSection(
+    'PBXSourcesBuildPhase',
+    phase(ids.sources, 'PBXSourcesBuildPhase', 'Sources'),
+  );
+  section('PBXSourcesBuildPhase', 'PBXTargetDependency', [
+    `\t\t${ids.dependency} /* PBXTargetDependency */ = {`,
+    '\t\t\tisa = PBXTargetDependency;',
+    `\t\t\ttarget = ${ids.target} /* ShareExtension */;`,
+    `\t\t\ttargetProxy = ${ids.proxy} /* PBXContainerItemProxy */;`,
+    '\t\t};',
+  ]);
+  intoSection('XCBuildConfiguration', [
+    ...settings('Debug'),
+    ...settings('Release'),
+  ]);
+  intoSection('XCConfigurationList', [
+    `\t\t${ids.configurations} /* Build configuration list for PBXNativeTarget "ShareExtension" */ = {`,
+    '\t\t\tisa = XCConfigurationList;',
+    '\t\t\tbuildConfigurations = (',
+    `\t\t\t\t${ids.debug} /* Debug */,`,
+    `\t\t\t\t${ids.release} /* Release */,`,
+    '\t\t\t);',
+    '\t\t\tdefaultConfigurationIsVisible = 0;',
+    '\t\t\tdefaultConfigurationName = Release;',
+    '\t\t};',
+  ]);
+
+  // The lists that name the new objects.
+  insertAfter('D84EC48E5D673EC745AF0F7D /* LynxBundle */,', [
+    `${ids.group} /* ShareExtension */,`,
+  ]);
+  insertAfter('15B4BAB9D017652EC88BA5A1 /* App.app */,', [
+    `${ids.product} /* ShareExtension.appex */,`,
+  ]);
+  // The app embeds the extension after its frameworks, and builds it first.
+  insertAfter('60782C70CAE3611E1ABED20A /* Embed Frameworks */,', [
+    `${ids.embedPhase} /* Embed Foundation Extensions */,`,
+  ]);
+  const appTarget = lines.findIndex((line) =>
+    line.trim().startsWith(`${TEMPLATE_IDS.appTarget} /* App */ = {`),
+  );
+  const dependencies = lines.findIndex(
+    (line, index) => index > appTarget && line.trim() === 'dependencies = (',
+  );
+  if (appTarget === -1 || dependencies === -1) {
+    throw new Error("The project template's App target has no dependencies.");
+  }
+  const indent = /^\s*/.exec(lines[dependencies]!)![0];
+  lines.splice(
+    dependencies + 1,
+    0,
+    `${indent}\t${ids.dependency} /* PBXTargetDependency */,`,
+  );
+  insertAfter(`${TEMPLATE_IDS.appTarget} /* App */,`, [
+    `${ids.target} /* ShareExtension */,`,
+  ]);
+  insertAfter('TargetAttributes = {', [
+    `\t${ids.target} = {`,
+    '\t\tCreatedOnToolsVersion = 27.0;',
+    '\t};',
+  ]);
+  return lines.join('\n');
 };

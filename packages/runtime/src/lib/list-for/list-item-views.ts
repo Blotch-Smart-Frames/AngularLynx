@@ -3,7 +3,7 @@ import type {
   TemplateRef,
   ViewContainerRef,
 } from '@angular/core';
-import type { LynxElement } from '../lynx-element';
+import { type LynxElement, setBoundListItem } from '../lynx-element';
 import {
   attributesDiffer,
   type ListItemRun,
@@ -38,6 +38,14 @@ type ItemView<T> = {
   pooled: boolean;
   /** Out of change detection, while no item claims it (see #unclaim). */
   detached: boolean;
+  /**
+   * Taken from the pool for an item native hasn't asked for yet (see
+   * bindAhead): `checked` while it shows that item as it was checked,
+   * `stale` once its item, index or items changed since. Null otherwise.
+   * Native last saw its element show another item either way, so the bind
+   * that hands it over counts as a reuse.
+   */
+  ahead: 'checked' | 'stale' | null;
 };
 
 const EMPTY_RUN: ListItemRun = { keys: [], types: [], attributes: [] };
@@ -80,14 +88,17 @@ let nextRunId = 1;
  * them with it. A view whose item still exists stays attached to change
  * detection, in the pool too, and is kept up to date with its item (its
  * index moves as items go in above it), so it costs a check with its parent:
- * the pool holds a handful. Detaching it instead (`ChangeDetectorRef.detach()`)
- * would mean `reattach()` when native asks for an item, and every attach
- * schedules an application tick, whose `__FlushElementTree()` would follow
- * every item native asks for while the list scrolls. Only a view whose item is
- * gone is detached: checking it on an item the app no longer has could
- * throw (`rows()[i]` past the end). Reusing it reattaches it, which a removal
- * or a move pays for once, and so does a new view's insert, while the list
- * fills the screen.
+ * the pool holds a handful. A bind takes the view out of change detection
+ * only while it checks it (see bind), and its `reattach()` schedules an
+ * application tick, as every attach does; that tick flushes nothing when the
+ * bind wrote only inside its item (see settleAfterListItems in
+ * lynx-element.ts). Only a view whose item is gone stays detached: checking
+ * it on an item the app no longer has could throw (`rows()[i]` past the end).
+ * Reusing it reattaches it, as every bind does.
+ *
+ * While the list scrolls, the next item native asks for is bound ahead,
+ * once native's layout pass has returned, with a view from the pool (see
+ * bindAhead): its componentAtIndex then only appends and flushes it.
  */
 export class ListItemViews<T> implements LynxListItemSource {
   readonly id = nextRunId++;
@@ -195,8 +206,10 @@ export class ListItemViews<T> implements LynxListItemSource {
       view = undefined;
     }
     if (view) {
-      // Native let go of it and wants the same item back: it's as it was.
+      // Native let go of it and wants the same item back: it's as it was,
+      // or bound ahead for the item (see bindAhead).
       this.#pools.get(view.type)?.delete(view.sign);
+      reused = view.ahead !== null;
     } else {
       view = this.#takeFromPool(type);
       if (view) {
@@ -208,16 +221,69 @@ export class ListItemViews<T> implements LynxListItemSource {
       this.#byKey.set(key, view);
     }
     view.pooled = false;
+    // What the check writes inside the item reaches native with the item's
+    // flush, which commits nothing else (see settleAfterListItems).
+    setBoundListItem(view.root);
     this.#show(view, index, this.#committedItems);
-    // Checked now, while componentAtIndex waits: its flush right after is
-    // what native shows. Then back in change detection if it was out, which
-    // asks nothing of its ancestors now that it's checked.
-    view.ref.detectChanges();
-    if (view.detached) {
-      view.detached = false;
-      view.ref.reattach();
-    }
+    // Bound ahead and nothing changed since: it's checked already, and
+    // componentAtIndex only appends and flushes it. What its check wrote
+    // went to native with a flush of the whole tree after it, or waits in
+    // the element for the item's flush now.
+    const ready = view.ahead === 'checked';
+    view.ahead = null;
+    // Checked now otherwise, while componentAtIndex waits: its flush right
+    // after is what native shows.
+    if (!ready) this.#check(view);
     return { element: view.root.element, reused };
+  }
+
+  /**
+   * Binds the item at `index` of the last commit before native asks for it,
+   * while the engine thread has nothing else to do (see
+   * LynxListElement.noteItemShown), so the componentAtIndex that asks for it
+   * finds its view checked: a view native let go of goes to the item and is
+   * checked now, and componentAtIndex only appends and flushes it. Only
+   * from the pool, never a new view: building one would cost memory for an
+   * item native may never ask for, while a wrong guess with a pooled view
+   * costs the check alone, since the view stays in the pool, claimed by the
+   * item, for native to ask for or another item to take (the newest there,
+   * taken last). Not for an item with a view of its own, nor one with
+   * `recyclable: false`, which keeps the view it gets out of the pool (see
+   * enqueue): a wrong guess would take the view from every other item.
+   *
+   * Returns whether it bound a view. A check that throws leaves the view
+   * out of the pool and out of change detection, as bind() leaves a view
+   * whose check threw: Angular stores a binding's new value before it sets
+   * an input, so an input setter that threw has that value cached in the
+   * view, and a later check of any item with the same value (the item
+   * itself, or the same object under another key) wouldn't set it, nor
+   * throw. The bind native asks for checks the item in another view, and
+   * throws there, where it would have.
+   */
+  bindAhead(index: number): boolean {
+    // The list commits this run with its own items, as for bind(). Once the
+    // run is destroyed, its pools are empty and nothing binds.
+    const key = this.#committedRun.keys[index]!;
+    if (this.#byKey.has(key)) return false;
+    if (this.#committedRun.attributes[index]?.recyclable === false) {
+      return false;
+    }
+    const view = this.#takeFromPool(this.#committedRun.types[index]!);
+    if (!view) return false;
+    view.key = key;
+    this.#byKey.set(key, view);
+    this.#pool(view);
+    this.#show(view, index, this.#committedItems);
+    view.ahead = 'stale';
+    try {
+      this.#check(view);
+    } catch {
+      this.#unclaim(key, view);
+      this.#pools.get(view.type)!.delete(view.sign);
+      return false;
+    }
+    view.ahead = 'checked';
+    return true;
   }
 
   enqueue(sign: number): boolean {
@@ -257,11 +323,42 @@ export class ListItemViews<T> implements LynxListItemSource {
   }
 
   /**
-   * Sets what `view` shows: item `index` of `items`.
+   * Checks `view` out of change detection. What the check marks for check
+   * inside the view, such as a child component whose signal input it sets,
+   * would otherwise mark every view above it, up to the root (Angular's
+   * markAncestorsForTraversal), and the tick that follows would walk down to
+   * the view from the root to find it checked already. Detached, the marks
+   * stop at the view. Then back in change detection, which asks nothing of
+   * its ancestors now that it's checked, but schedules a tick, as any attach
+   * does (see the class comment). A check that throws leaves the view as it
+   * was.
+   */
+  #check(view: ItemView<T>): void {
+    view.ref.detach();
+    try {
+      view.ref.detectChanges();
+      view.detached = false;
+    } finally {
+      if (!view.detached) view.ref.reattach();
+    }
+  }
+
+  /**
+   * Sets what `view` shows: item `index` of `items`. A view bound ahead that
+   * this changes needs checking again (see bindAhead).
    */
   #show(view: ItemView<T>, index: number, items: readonly T[]): void {
     const context = view.ref.context;
-    context.$implicit = items[index]!;
+    const item = items[index]!;
+    if (
+      view.ahead === 'checked' &&
+      (context.$implicit !== item ||
+        context.lynxListForOf !== items ||
+        context.index !== index)
+    ) {
+      view.ahead = 'stale';
+    }
+    context.$implicit = item;
     context.lynxListForOf = items;
     context.index = index;
     context.count = items.length;
@@ -276,6 +373,7 @@ export class ListItemViews<T> implements LynxListItemSource {
   #unclaim(key: string, view: ItemView<T>): void {
     this.#byKey.delete(key);
     view.key = null;
+    view.ahead = null;
     view.detached = true;
     view.ref.detach();
     // One native let go of, which its item kept out of the pool.
@@ -306,6 +404,7 @@ export class ListItemViews<T> implements LynxListItemSource {
     // Its last item, if it still has one, has no view now: native asks for
     // it again, and it gets one then.
     if (view.key !== null) this.#byKey.delete(view.key);
+    view.ahead = null;
     return view;
   }
 
@@ -338,6 +437,7 @@ export class ListItemViews<T> implements LynxListItemSource {
       key: null,
       pooled: false,
       detached: false,
+      ahead: null,
     };
     this.#bySign.set(view.sign, view);
     return view;

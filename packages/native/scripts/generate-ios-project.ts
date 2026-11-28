@@ -1,4 +1,13 @@
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 
@@ -82,15 +91,116 @@ const TEMPLATE_PROJECT_DIR = path.join(
 );
 
 /**
- * Replaces an .xcodeproj folder with freshly rendered files.
+ * Where the template's changed files are written before they're renamed into
+ * place: outside templates/, so the generator's template hash and cpSync
+ * never come across a half-written file, and on the same file system, so the
+ * rename is atomic. Git-ignored.
  */
-const writeIosProject = (dir: string, files: IosProjectFiles) => {
-  rmSync(dir, { recursive: true, force: true });
+const TEMPLATE_STAGING_DIR = path.join(
+  import.meta.dirname,
+  '../.ios-project-staging',
+);
+
+/**
+ * Brings an .xcodeproj folder in line with freshly rendered files, without
+ * ever removing it first.
+ *
+ * The template project is rendered again whenever Vite resolves the package's
+ * config, and that happens while other processes copy it: CI's turbo run
+ * builds this package (`vite build`, for packages/build's tests) beside its
+ * own tests, whose generator and eject tests cpSync the template. Deleting
+ * the folder and writing it back left a moment with no project, and a copy
+ * caught there failed with ENOENT (#963). So a file whose contents already
+ * match is left alone, a changed one is written in `stagingDir` and renamed
+ * over the old (a reader sees one or the other, never a half-written file),
+ * and only files the render no longer has are removed.
+ */
+export const writeIosProject = (
+  projectDir: string,
+  files: IosProjectFiles,
+  stagingDir = path.dirname(projectDir),
+) => {
+  // Resolved, because the ancestor walk below stops at `dir` exactly: a
+  // trailing slash or a relative path would never match path.join's output,
+  // and the walk would reach / and loop there forever.
+  const dir = path.resolve(projectDir);
+  const rendered = new Set(
+    Object.keys(files).map((file) => path.join(dir, file)),
+  );
+  // The folders that hold a rendered file. Pruning never removes one, even
+  // when this pass emptied it: another render may be about to write there.
+  const ancestors = new Set<string>();
+  for (const file of rendered) {
+    for (let folder = path.dirname(file); folder !== dir;) {
+      ancestors.add(folder);
+      folder = path.dirname(folder);
+    }
+  }
+  removeStale(dir, rendered, ancestors);
+
+  mkdirSync(stagingDir, { recursive: true });
   for (const [file, contents] of Object.entries(files)) {
-    mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
-    writeFileSync(path.join(dir, file), contents);
+    const target = path.join(dir, file);
+    if (existsSync(target) && readFileSync(target, 'utf8') === contents) {
+      continue;
+    }
+    mkdirSync(path.dirname(target), { recursive: true });
+    // The pid keeps two processes rendering at once off each other's
+    // temporary file.
+    const temporary = path.join(
+      stagingDir,
+      `${path.basename(target)}.${process.pid}.tmp`,
+    );
+    writeFileSync(temporary, contents);
+    renameSync(temporary, target);
   }
 };
+
+/**
+ * Removes what's under `folder` that isn't a rendered file (such as the
+ * xcuserdata Xcode adds when the template is opened), and every empty folder
+ * that holds no rendered file. Another render may be pruning the same
+ * folders at once, so one that's already gone counts as done, and one that
+ * isn't empty is kept.
+ */
+const removeStale = (
+  folder: string,
+  rendered: ReadonlySet<string>,
+  ancestors: ReadonlySet<string>,
+) => {
+  let entries;
+  try {
+    entries = readdirSync(folder, { withFileTypes: true });
+  } catch (error) {
+    if (errorCode(error) === 'ENOENT') return;
+    throw error;
+  }
+  for (const entry of entries) {
+    const entryPath = path.join(folder, entry.name);
+    if (entry.isDirectory()) {
+      removeStale(entryPath, rendered, ancestors);
+      if (!ancestors.has(entryPath)) removeIfEmpty(entryPath);
+    } else if (!rendered.has(entryPath)) {
+      rmSync(entryPath, { force: true });
+    }
+  }
+};
+
+/**
+ * rmdir, which fails on a folder that isn't empty: that one stays.
+ */
+const removeIfEmpty = (folder: string) => {
+  try {
+    rmdirSync(folder);
+  } catch (error) {
+    const code = errorCode(error);
+    if (code !== 'ENOENT' && code !== 'ENOTEMPTY' && code !== 'EEXIST') {
+      throw error;
+    }
+  }
+};
+
+const errorCode = (error: unknown) => (error as NodeJS.ErrnoException).code;
 
 /**
  * Renders templates/ios/App.xcodeproj. It runs in configResolved, the one
@@ -104,7 +214,11 @@ const writeIosProject = (dir: string, files: IosProjectFiles) => {
 export const iosTemplateProject = (): Plugin => ({
   name: 'ios-template-project',
   configResolved() {
-    writeIosProject(TEMPLATE_PROJECT_DIR, renderIosProject(APP_PROJECT));
+    writeIosProject(
+      TEMPLATE_PROJECT_DIR,
+      renderIosProject(APP_PROJECT),
+      TEMPLATE_STAGING_DIR,
+    );
   },
 });
 

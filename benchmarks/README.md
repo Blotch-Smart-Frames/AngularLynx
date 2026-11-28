@@ -10,19 +10,20 @@ numbers.
 This folder is outside the npm workspaces on purpose: Expo and the other
 frameworks never touch the monorepo's build.
 
-| Folder | What's in it |
-| --- | --- |
-| [`SPEC.md`](SPEC.md) | What every app does, screen by screen |
-| `apps/react-native` | [Software Mansion's `launchperf-poke-rn`](https://github.com/software-mansion-labs/launchperf-poke-rn) (MIT), with only the API's base URL changed, and the scene life cycle iOS 27 requires: Expo 54, React Native 0.81 |
-| `apps/react-native-0.88` | The same app on Expo SDK 58 / React Native 0.88, the base Angular Native uses |
-| `apps/angular-lynx` | The port to AngularLynx, on this repository's packages |
-| `apps/react-lynx` | The port to ReactLynx, in the same native shell as the AngularLynx app, on iOS and Android |
-| `apps/angular-native` | The port to Angular Native (Expo SDK 58) |
-| `apps/nativescript-angular` | The port to NativeScript Angular (NativeScript 9) |
-| `apps/ionic-angular` | The port to Ionic Angular on Capacitor 8 |
-| `fixtures/` | Recorded PokeAPI responses and sprites, and the server that hands them to the apps |
-| `harness/` | The scripts that launch the apps under Instruments and read the traces, the UI test that scrolls them (`ios-scroll/`), and the ones that launch them on Android with adb (`android_*`) |
-| `results/` | Every run, as CSV |
+| Folder                      | What's in it                                                                                                                                                                                                                                                               |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`SPEC.md`](SPEC.md)        | What every app does, screen by screen                                                                                                                                                                                                                                      |
+| `apps/react-native`         | [Software Mansion's `launchperf-poke-rn`](https://github.com/software-mansion-labs/launchperf-poke-rn) (MIT), with only the API's base URL changed, and the scene life cycle iOS 27 requires: Expo 54, React Native 0.81                                                   |
+| `apps/react-native-0.88`    | The same app on Expo SDK 58 / React Native 0.88, the base Angular Native uses                                                                                                                                                                                              |
+| `apps/angular-lynx`         | The port to AngularLynx, on this repository's packages                                                                                                                                                                                                                     |
+| `apps/react-lynx`           | The port to ReactLynx, in the same native shell as the AngularLynx app, on iOS and Android                                                                                                                                                                                 |
+| `apps/angular-native`       | The port to Angular Native (Expo SDK 58)                                                                                                                                                                                                                                   |
+| `apps/nativescript-angular` | The port to NativeScript Angular (NativeScript 9)                                                                                                                                                                                                                          |
+| `apps/ionic-angular`        | The port to Ionic Angular on Capacitor 8                                                                                                                                                                                                                                   |
+| `apps/flutter`              | The port to Flutter, made with `flutter create`. It draws its own Material and Cupertino widgets rather than UIKit's (its README says which)                                                                                                                               |
+| `fixtures/`                 | Recorded PokeAPI responses and sprites, and the server that hands them to the apps                                                                                                                                                                                         |
+| `harness/`                  | The scripts that launch the apps under Instruments and read the traces, the UI test that scrolls them (`ios-scroll/`), the ones that launch them on Android with adb (`android_*`), and `node-mount.mjs`, which times the AngularLynx app's main-thread JavaScript in Node |
+| `results/`                  | Every run, as CSV                                                                                                                                                                                                                                                          |
 
 ## The app
 
@@ -141,19 +142,52 @@ python3 harness/ios_mount.py --simulator --device <UDID> --rival react-lynx --ru
 
 On the Simulator, Instruments' App Launch template records no launch phases
 and Activity Monitor fails, so a Simulator run records fully drawn (the light
-recording, from dyld's launch of the process) and the app's memory, which
+recording, from dyld's launch of the process), how long a mount screen took
+from its own `MountStart` mark to fully drawn (`mount_ms`), and the app's
+memory, which
 `footprint` reads from its process on the Mac 6 s into the recording
 (`--memory-after`), a few seconds after it's drawn. There's no first frame,
 peak memory, battery or charging, and the thermal state is the Mac's.
+
+Flutter builds Release for phones only, so its Simulator build is Debug (the
+Dart compiled as it runs): a Simulator run checks that the Flutter app works
+and reports its marks, but its times aren't Flutter's, and don't compare with
+the other apps' even within a session.
 
 Its numbers aren't a phone's. Every launch takes about 1.45 s longer, and
 memory doesn't rank the apps as a phone does, so they're never charted:
 `results/ios-simulator` isn't read by the website. Within a session they
 compare, as long as the Mac stays quiet. Two builds of one app launched in
-turn came within ±4% of each other (95% intervals), and each app's cost per
-element, (5,000-element screen − 1,500-element screen) / 3,500, separates the
-frameworks clearly. The Simulator runs on the Mac's cores, so a busy Mac
-slows it by 5–30%: the harness waits until the Mac's load average is under
+turn came within ±4% of each other (95% intervals).
+
+Each launch there is mostly the Simulator's own, 1.6–2 s, and the host
+holds a few launches in ten up by as much as a second, so the cost per
+element is worked out differently from a phone's (#882):
+
+- **15,000 elements, not 5,000.** `ios_mount.py --simulator` builds each
+  kind at 1,500 and 15,000: on the Simulator, 3,500 more views add less than
+  its launches move from one to the next.
+- **One session per kind.** Both apps' builds of both screens are installed
+  side by side (`com.angularlynx.bench.angularlynx.m15000` and so on) and
+  launched in turn, so the host's drift falls on both screens alike, and the
+  rows are split into the usual per-screen CSVs.
+- **The mount alone** (#892). Each mount screen marks `MountStart` as its
+  component starts (`SPEC.md`, "Marks"), and `track.py` times the screen
+  from it to fully drawn, leaving out the Simulator's launch before it.
+  Timed from the whole launch, even with the two above, ReactLynx's view was
+  9.0 µs within ±18%.
+- **The fastest mount.** `track.py` takes each screen's fastest mount
+  rather than its median, since the host only ever adds time: (fastest
+  15,000-element mount − fastest 1,500-element mount) / 13,500.
+
+In one session per kind of 10 runs per build, the fastest mounts gave a
+view 27.9 µs in AngularLynx and 8.5 µs in ReactLynx, a text 76.5 and
+45.9 µs, and an image 32.3 and 10.4 µs, each within ±3% (95% intervals).
+The fastest launches of the same sessions gave intervals of up to ±26%
+(ReactLynx's view).
+
+The Simulator runs on the Mac's cores, so a busy Mac slows it by 5–30%: the
+harness waits until the Mac's load average is under
 `--max-load` (half its cores by default) before each launch, and drops and
 repeats a run whose load went over it. With more than two apps, the order
 rotates as well as reversing, so each app follows each of the others in turn.
@@ -181,7 +215,8 @@ python3 harness/android_launch.py --device emulator-5554 --runs 20 \
   --app react-lynx=com.angularlynx.bench.reactlynx \
   --out results/android-emulator/launch-<date>-react-lynx.csv
 
-# The screens of many elements (the rival goes on com.angularlynx.bench.rival)
+# The screens of many elements, each build on an ID of its own
+# (com.angularlynx.bench.angularlynx.m1500 and so on)
 python3 harness/android_mount.py --device emulator-5554 --rival react-lynx --runs 10
 
 python3 harness/summarize.py results/android-emulator/launch-*.csv
@@ -200,11 +235,64 @@ install isn't in any run. Android reports a `reportFullyDrawn()` made
 before the first frame at the first frame's time, so the two are equal when
 an app had its screen complete before it let its splash screen go.
 
+A mount screen is also timed from its own `MountStart` mark to its fully
+drawn call (`mount_ms`), which leaves out the emulator's launch before it, as
+on the Simulator (#892). The shell logs both with the device's monotonic
+clock (`SPEC.md`, "Marks"). `android_mount.py` runs the mount screens as
+`ios_mount.py --simulator` does (#904):
+
+- **15,000 elements, not 5,000.** ReactLynx's 3,500 elements between the
+  1,500 and 5,000 screens took only 88–164 ms on the emulator, so a few
+  milliseconds of its scheduling were several percent of a cost.
+  `--phone` keeps 5,000, as the iPhone does.
+- **One session per kind.** Both apps' builds of both screens are installed
+  side by side (`com.angularlynx.bench.angularlynx.m15000` and so on) and
+  launched in turn, so the host's drift falls on both screens alike, and the
+  rows are split into the usual per-screen CSVs. The Pokédex's builds stay
+  installed.
+
+It prints each cost per element from each screen's fastest `mount_ms` at the
+end: (fastest 15,000-element mount − fastest 1,500-element mount) / 13,500.
+In one session per kind of 10 runs per build, every cost came within ±3%
+(95% intervals), where ReactLynx's had spread over ±13–22% from 1,500 and
+5,000 elements in a session each (`results/android-emulator/README.md`).
+
 The emulator runs on the Mac's cores, so as on the Simulator the harness
 waits for the Mac's load average to be under `--max-load` before each
 launch, records it with every run, and repeats a run whose load went over.
 Its numbers aren't a phone's, so `results/android-emulator` isn't charted
 either; within a session they compare.
+
+## The main thread's JavaScript, in Node
+
+A device's mount time is AngularLynx's JavaScript and Lynx's native work
+together, and a Simulator's launches drift by more than most changes to the
+runtime save. [`harness/node-mount.mjs`](harness/node-mount.mjs) times the
+JavaScript alone: it runs the app's built main-thread script in Node against
+cheap fakes of Lynx's `__*` element functions, and times a mount screen from
+its `MountStart` mark to its `reportFullyDrawn()` in the main thread's CPU
+time. With `--profile` it says how much of that is Angular's and how much the
+runtime's, and which of the runtime's functions take it (#909).
+
+```sh
+cd apps/angular-lynx
+DEBUG=rspeedy BENCH_NO_MINIFY=1 BENCH_SCREEN='mount?kind=view&count=15000' npx ng build --environment lynx
+node --jitless ../../harness/node-mount.mjs --runs 10 --profile
+
+# A change against the build before it: the runs alternate between the two
+cp dist/.lynx/main/main-thread.js /tmp/before.js
+# ...change the runtime, run use-local-packages.mjs --build, build the app again...
+node --jitless ../../harness/node-mount.mjs --runs 20 \
+  --script /tmp/before.js --script dist/.lynx/main/main-thread.js
+```
+
+`--jitless` turns V8's compilers off, which is as near as Node gets to
+PrimJS, the interpreter the main thread runs on: with them on, the runtime's
+small functions inline away. Its milliseconds aren't a phone's, so compare
+them only with each other on one machine: two runs of one build agree within
+about 1%. `BENCH_NO_MINIFY` keeps the functions' names for the profile, and
+`DEBUG=rspeedy` keeps `dist/.lynx/main/main-thread.js`, which a production
+build deletes once it's in the bundle.
 
 ## Tracking AngularLynx against ReactLynx
 
@@ -215,7 +303,8 @@ ReactLynx app, launches the Pokédex 20 times each and each of the six mount
 screens 10 times each, and [`harness/track.py`](harness/track.py) reads the
 CSVs. It tracks four things as AngularLynx / ReactLynx: the Pokédex's fully
 drawn time and its memory, and the cost of a view, a text and an image,
-(5,000-element screen − 1,500-element screen) / 3,500. The host moves the
+from each screen's fastest mount (from its `MountStart` mark to fully
+drawn), (15,000-element screen − 1,500-element screen) / 13,500 (above). The host moves the
 times by 5–30% from one run to the next, but it moves both apps of a session
 alike, so the ratio keeps most of a change in AngularLynx and little of the
 host's.

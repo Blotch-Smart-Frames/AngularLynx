@@ -1,0 +1,20 @@
+# Layer 6, the app's own iOS build only: LynxBarcodeScanner (issue #917). The
+# harness gives the app the camera permission (addCameraPermission in
+# src/scaffold.ts), which keeps the scanner's module in the shell. The
+# Simulator has no camera, so VisionKit's DataScannerViewController isn't
+# supported there and the module answers "unavailable" with its own message:
+# the runtime's message for a host without the module would mean the shell
+# didn't register it by name (LynxViewController.swift). Android's scanner
+# runs in Google Play services, which may open its camera screen or download
+# itself on CI's emulator, so the Android build is only compiled.
+appId: ${APP_ID}
+---
+- runFlow: open-app.yaml
+- tapOn: Open storage
+- tapOn: Open canvas
+- tapOn: Open photo
+- tapOn: Scan code
+- extendedWaitUntil:
+    visible: 'Scan: unavailable, This device has no barcode scanner.*'
+    timeout: 15000
+- takeScreenshot: scanner

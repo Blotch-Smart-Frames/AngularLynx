@@ -4,7 +4,7 @@ import {
   listenForScrollsFromTheStart,
   LynxElement,
   type LynxListElement,
-  scheduleSettleFlush,
+  scheduleSettleFlushForNewElement,
 } from '../lynx-element';
 import { ANDROID_BLUR_CAPTURE_TARGET, isAndroid } from './android-blur-capture';
 import { followColorScheme } from './page-color-scheme';
@@ -16,8 +16,8 @@ import {
 } from './page-ref';
 
 import { createNativeRefByTag } from './create-native-ref';
-import { LynxCanvasElement } from '../canvas/canvas-element';
 import { LynxVideoElement } from '../canvas/video-element';
+import { canvasElementFor } from './canvas-element-factory';
 import { hostElementOf } from './host-elements';
 import { INLINE_FLOW_TAGS, WEB_TEXT_TAGS } from './web-tags';
 import {
@@ -88,6 +88,8 @@ export class LynxDocument implements LynxDocumentBase {
     // Prevent Angular from reparenting or removing the root page element
     // during normal component lifecycle (appendChild/remove calls).
     this.page.isRootPageElement = true;
+    // What's in it is held by it, so the registry can hold it as it is.
+    LynxElement.usePage(this.page);
     if (isAndroid()) {
       // What every blur-view blurs on Android (see create-blur-view-element).
       __SetID(pageElement, ANDROID_BLUR_CAPTURE_TARGET);
@@ -121,7 +123,7 @@ export class LynxDocument implements LynxDocumentBase {
     // Ensure content created outside a CD cycle (e.g. a lazy route component
     // built by RouterOutlet during navigation) still gets flushed — see
     // scheduleSettleFlush(). A no-op during normal in-cycle rendering.
-    scheduleSettleFlush();
+    scheduleSettleFlushForNewElement();
     // 'list' returns a LynxListElement (a virtual-tree wrapper, not a raw ref)
     // and 'page' returns the singleton root — both are special and are never
     // recreated, so they are handled here rather than via the shared raw-ref
@@ -138,14 +140,14 @@ export class LynxDocument implements LynxDocumentBase {
       return result.element;
     }
     const element = createNativeRefByTag(tag, this.#pageId, value);
-    // A canvas has HTMLCanvasElement's API: width, height and getContext().
+    // A canvas has HTMLCanvasElement's API: width, height and getContext(),
+    // in the apps the build gives the canvas (see canvas-element-factory.ts).
     // A video can be read as an image, as HTMLVideoElement can.
     const el =
-      tag === 'canvas'
-        ? new LynxCanvasElement(element)
-        : tag === 'video'
-          ? new LynxVideoElement(element)
-          : new LynxElement(element);
+      (tag === 'canvas' ? canvasElementFor(element) : null) ??
+      (tag === 'video'
+        ? new LynxVideoElement(element)
+        : new LynxElement(element));
     // Its native element is new, with no classes: they can wait for the end
     // of the cycle (see LynxElement's #nativeClasses).
     el.markNew();
@@ -176,7 +178,7 @@ export class LynxDocument implements LynxDocumentBase {
     return el;
   }
   createText(value: string): LynxElement {
-    scheduleSettleFlush();
+    scheduleSettleFlushForNewElement();
     const text = __CreateRawText(value);
     const lynxElement = new LynxElement(text);
     // Its native element is in no tree yet (see LynxElement's #unplaced).
@@ -190,7 +192,7 @@ export class LynxDocument implements LynxDocumentBase {
     return lynxElement;
   }
   createComment(): LynxElement {
-    scheduleSettleFlush();
+    scheduleSettleFlushForNewElement();
     const element = createCommentElement(this.#pageId);
     const el = new LynxElement(element);
     el.markUnplaced();

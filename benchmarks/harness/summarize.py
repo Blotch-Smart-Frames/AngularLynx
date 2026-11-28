@@ -29,7 +29,9 @@ import csv
 import sys
 from collections import defaultdict
 
-METRICS = ["first_frame_ms", "fully_drawn_ms", "memory_mb", "peak_memory_mb"]
+# mount_ms is a mount screen's alone (ios_launch.py, android_launch.py), so a
+# table without any, the Pokédex's, leaves its column out.
+METRICS = ["first_frame_ms", "fully_drawn_ms", "mount_ms", "memory_mb", "peak_memory_mb"]
 
 
 def percentile(values, p):
@@ -144,6 +146,7 @@ def main(paths):
     ):
         if not order:
             continue
+        metrics = [m for m in metrics if m != "mount_ms" or any(samples[app][m] for app in order)]
         if both:
             print(f"\n{title}\n")
         table(order, samples, metrics, failed, runs)

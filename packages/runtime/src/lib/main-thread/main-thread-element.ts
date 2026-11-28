@@ -8,6 +8,7 @@ import { writePendingClasses } from '../lynx-element/class-writes';
 import { withSafeAreaInsets } from '../lynx-element/safe-area-insets';
 import { writeScriptStyles } from '../lynx-element/script-styles';
 import { noteScriptFieldText } from '../lynx-element/script-field-text';
+import { noteFlush } from '../lynx-element/flushes';
 
 /**
  * Batched flush — coalesces multiple style/attribute mutations into a single
@@ -25,6 +26,7 @@ const scheduleFlush = (): void => {
   // current event handler are applied, but before the next frame renders.
   Promise.resolve().then(() => {
     willFlush = false;
+    noteFlush();
     __FlushElementTree();
   });
 };

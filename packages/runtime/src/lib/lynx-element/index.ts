@@ -10,6 +10,8 @@ export {
   processPendingRemovals,
   processPendingTextNormalization,
   scheduleSettleFlush,
+  scheduleSettleFlushForNewElement,
+  setBoundListItem,
   settleAfterListItems,
 } from './lynx-element';
 export {

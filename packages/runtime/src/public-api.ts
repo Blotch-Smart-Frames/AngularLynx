@@ -42,6 +42,17 @@ export { LynxFont } from './lib/font';
 export { LynxHaptics } from './lib/haptics';
 export type { HapticImpactStyle, HapticNotificationType } from './lib/haptics';
 export { reportFullyDrawn } from './lib/fully-drawn';
+export {
+  BARCODE_FORMATS,
+  BarcodeScannerError,
+  LynxBarcodeScanner,
+} from './lib/barcode-scanner';
+export type {
+  BarcodeFormat,
+  BarcodeScan,
+  BarcodeScannerErrorCode,
+  BarcodeScanOptions,
+} from './lib/barcode-scanner';
 export { ImagePickerError, LynxImagePicker } from './lib/image-picker';
 export type {
   ImagePickerErrorCode,
@@ -134,6 +145,11 @@ export type { LynxImageBitmapRenderingContext } from './lib/canvas/bitmap-render
 export type { LynxCanvasRenderingContext2D } from './lib/canvas/canvas-2d-context';
 export type { LynxCanvasElement } from './lib/canvas/canvas-element';
 export type { LynxWebGL2RenderingContext } from './lib/canvas/webgl2-context';
+// Called by the build plugin in each main-thread module that can make a
+// canvas (a template's <canvas>, document.createElement('canvas'),
+// OffscreenCanvas, Image and the like), so apps that never make one leave the
+// canvas out of their bundle.
+export { ɵenableCanvas } from './lib/canvas/enable-canvas';
 // Called by the build plugin in each module that asks for a WebGL2 context,
 // so apps that never draw leave the context out of their bundle.
 export { ɵenableWebGL2 } from './lib/canvas/enable-webgl2';
@@ -239,6 +255,13 @@ export type { SessionStorageSubscription } from './lib/session-storage';
 export { LynxShare, ShareError } from './lib/share';
 export type { ShareData, ShareErrorCode, ShareFile } from './lib/share';
 export { LynxBackButton } from './lib/back-button';
+export { BiometricsError, LynxBiometrics } from './lib/biometrics';
+export type {
+  BiometricsAuthenticateOptions,
+  BiometricsAvailability,
+  BiometricsErrorCode,
+  BiometryType,
+} from './lib/biometrics';
 export type { LynxBackHandler } from './lib/back-button';
 export { LynxShortcuts } from './lib/shortcuts';
 export type { LynxShortcut, LynxShortcutHandler } from './lib/shortcuts';
@@ -252,6 +275,10 @@ export type {
   SplashScreenOptions,
 } from './lib/splash-screen';
 export { LynxLocalStorage, LynxSecureStorage } from './lib/storage';
+export type {
+  SecureStorageGetOptions,
+  SecureStorageSetOptions,
+} from './lib/storage';
 export { LynxSystemInfo } from './lib/system-info';
 export type { PlatformType } from './lib/system-info';
 export { LynxTextMeasure } from './lib/text-measure';

@@ -44,10 +44,11 @@ check the list each time.
 Read from the environment by `ng build` (`lynx.config.mts` defines them as
 constants in the bundle):
 
-| Variable         | Default                 |                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| ---------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `FIXTURE_ORIGIN` | `http://localhost:8787` | The fixture server (`node ../../fixtures/server.mjs`). The simulator reaches the Mac at localhost; a phone needs the Mac's LAN address, e.g. `http://192.168.1.231:8787`                                                                                                                                                                                                                                                          |
-| `BENCH_SCREEN`   | empty                   | A benchmark screen to open on at launch instead of the tabs, e.g. `mount?kind=view&count=1500` (`kind` is `view`, `text` or `image`; `count` 1500 or 5000). The tabs and the list are never built and fetch nothing. The mount screen calls `reportFullyDrawn()` once it has rendered all `count` elements. Instruments launches an app without a URL, so the harness builds a variant per screen rather than opening a deep link |
+| Variable          | Default                 |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ----------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `FIXTURE_ORIGIN`  | `http://localhost:8787` | The fixture server (`node ../../fixtures/server.mjs`). The simulator reaches the Mac at localhost; a phone needs the Mac's LAN address, e.g. `http://192.168.1.231:8787`                                                                                                                                                                                                                                                                                                                                                   |
+| `BENCH_SCREEN`    | empty                   | A benchmark screen to open on at launch instead of the tabs, e.g. `mount?kind=view&count=1500` (`kind` is `view`, `text` or `image`; `count` any number: the SPEC uses 1500 and 5000; on the Simulator, `harness/ios_mount.py` runs 1500 and 15000). The tabs and the list are never built and fetch nothing. The mount screen calls `reportFullyDrawn()` once it has rendered all `count` elements. Instruments launches an app without a URL, so the harness builds a variant per screen rather than opening a deep link |
+| `BENCH_NO_MINIFY` | empty                   | Set, the scripts aren't minified, so a CPU profile of the main thread names their functions (`../../harness/node-mount.mjs --profile`, which times this app's main-thread JavaScript in Node; see `../../README.md`)                                                                                                                                                                                                                                                                                                       |
 
 The app ID is `appId` in `angular.json` (`com.angularlynx.bench.angularlynx`);
 `ng build` takes it from the command line too: `--app-id com.example.other`.
@@ -244,9 +245,12 @@ doesn't. Where AngularLynx can't do the same thing, it does the nearest:
   otherwise follow the phone into dark mode.
 - **Press feedback.** Rows dim to 0.2 while touched (TouchableOpacity's
   default), from touch events, since Lynx has no `:active`. No fade back.
-- **The mount screen** is opened by a build-time variant (`BENCH_SCREEN`) and
-  reports `Fully Drawn` once its elements are flushed; the original's
-  `MountStart`/`MountEnd` signposts are left out, as SPEC.md now says. The
+- **The mount screen** is opened by a build-time variant (`BENCH_SCREEN`). It
+  marks `MountStart` from its constructor, before its template makes
+  anything, with the shell's `markEvent('MountStart')` called from the main
+  thread (`lynx.module('AngularLynxShell')`, as the runtime's
+  `reportFullyDrawn()` calls the shell), and reports `Fully Drawn` once its
+  elements are flushed, which stands for the original's `MountEnd`. The
   `launchperfal://` scheme is registered (`deepLinkSchemes`), but the iOS
   shell doesn't hand an opened URL to the app, so a deep link only opens it.
 - **Splash and icon** are the original's (`splash`: the same image 200pt wide

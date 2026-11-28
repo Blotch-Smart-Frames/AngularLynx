@@ -24,6 +24,7 @@ import {
 } from '../lynx-document/web-tags';
 import { globalEvents, type LynxGlobalDocument } from '../global-events';
 import {
+  bindListItem,
   isBindingListItem,
   isFirstRenderPending,
   isInsideChangeDetection,
@@ -34,6 +35,7 @@ import {
 import type { ElementRef } from '../types/lynx';
 import type { ListItemAttributes } from './lynx-list-element';
 import { toLynxDisplay, withLynxDisplay } from './display';
+import { flushCount, noteFlush } from './flushes';
 import { flushTreeWithListUpdates } from './list-updates';
 import { withFlatCalc } from './nested-calc';
 import {
@@ -385,6 +387,46 @@ const withStyleKeys = (
 const NO_CHILDREN: readonly LynxElement[] = Object.freeze([]);
 
 /**
+ * The scope-class lists elements hold (see LynxElement's #scopeClasses), each
+ * one made once and shared: what a list becomes with a name added, by list
+ * (NO_SCOPE_CLASSES for none). Every element of a component with styles has
+ * the same one, `[_ngcontent-…]`, and an array of its own was an object of
+ * PrimJS's heap for each of them. Weak, so a list nothing holds any more goes
+ * with what it led to; the lists there can be are few, as their names are
+ * the scopes and the runtime's own classes.
+ */
+const scopeListsAfter = new WeakMap<
+  readonly string[],
+  Map<string, readonly string[]>
+>();
+const NO_SCOPE_CLASSES: readonly string[] = Object.freeze([]);
+
+/**
+ * The shared list `list` becomes with `name` after its names.
+ */
+const withScopeClass = (
+  list: readonly string[] | null,
+  name: string,
+): readonly string[] => {
+  const from = list ?? NO_SCOPE_CLASSES;
+  let after = scopeListsAfter.get(from);
+  if (!after) scopeListsAfter.set(from, (after = new Map()));
+  let next = after.get(name);
+  if (!next) after.set(name, (next = Object.freeze([...from, name])));
+  return next;
+};
+
+/**
+ * The list `list` becomes without the name at `index`, which is there. A
+ * removal is rare (a runtime class turned off), so the list it makes isn't
+ * shared, but what it becomes with a name added again is.
+ */
+const withoutScopeClass = (
+  list: readonly string[],
+  index: number,
+): readonly string[] => Object.freeze(list.filter((_, i) => i !== index));
+
+/**
  * Starts the public fields LynxElement declares with a constant on its
  * prototype (see LynxElement's tagName). Run by the first element's
  * constructor, as the hooks are, rather than in a static block, which would
@@ -587,6 +629,85 @@ const wouldFormCycle = (
 const SUBTREE_SEARCH_LIMIT = 16;
 
 /**
+ * How many elements other than anchors may follow the anchor an `@for` puts
+ * its rows before, for the rows to be appended (see LynxElement's
+ * #appendsBeforeTail): a footer, a "load more" button, an empty state. Each
+ * costs a removal, which searches the parent's children as an insert does,
+ * and an append at the end of the cycle, so an `@for` putting a few rows
+ * before its anchor, with a screen's worth of elements after it, would pay
+ * a move for each of them to save a few searches.
+ */
+const MAX_TAIL_ELEMENTS = 4;
+
+/**
+ * How many elements a cycle puts in before the same anchor, with a flushed
+ * element after it, before the rest are appended (see LynxElement's
+ * #appendsBeforeTail). Appending them moves the flushed element's view at
+ * the end of the cycle, which the UI thread takes out and puts back: a cycle
+ * adding a row or a few, as a chat's new message or an `@if` does, keeps
+ * the view where it is and pays their few searches instead. A page of rows
+ * arriving at once saves far more than the move costs: on the iOS
+ * Simulator, 5,000 rows under a footer on the screen took 237 ms to build
+ * inserted and 123 ms appended past the first 32, and 1,000 took 25 and
+ * 22 ms (#913).
+ */
+const MIN_INSERTS_BEFORE_FLUSHED_TAIL = 32;
+
+/**
+ * The elements whose views can move between two parents' positions without
+ * anything on the screen changing: a removal and an insert of a UIView or
+ * an Android View keep its layout, its drawing and its children. Every
+ * other element may hold state the move loses: an `<input>` or a
+ * `<textarea>` its focus and keyboard (a UITextField removed from its
+ * window resigns first responder, and Android's removeView clears a focused
+ * child's focus), a `<video>` its surface, a `<webview>` or a native
+ * module's view whatever it keeps (see LynxElement's #appendsBeforeTail).
+ */
+const MOVABLE_TAGS: ReadonlySet<string> = new Set([
+  'view',
+  'text',
+  'raw-text',
+  'image',
+  'inline-text',
+  'inline-image',
+  'inline-truncation',
+]);
+
+/**
+ * How many elements {@link movableSubtree} looks at before it gives up: a
+ * footer, a "load more" button or an empty state is a few elements.
+ */
+const MOVABLE_SEARCH_LIMIT = 64;
+
+/**
+ * Whether every native element in `elements` and their subtrees is one of
+ * {@link MOVABLE_TAGS}, from the native tree, which holds the anonymous
+ * `<text>`s and a hydrated snapshot's elements the wrappers don't. False
+ * as soon as it finds more than {@link MOVABLE_SEARCH_LIMIT} elements, so a
+ * footer of many children isn't read in full first.
+ */
+const movableSubtree = (elements: readonly ElementRef[]): boolean => {
+  const pending: ElementRef[] = [...elements];
+  let seen = 0;
+  while (pending.length > 0) {
+    const element = pending.pop()!;
+    seen++;
+    if (!MOVABLE_TAGS.has(__GetTag(element))) return false;
+    for (
+      let child = __FirstElement(element);
+      child;
+      child = __NextElement(child)
+    ) {
+      // Counted as it's found (the elements looked at and those still to
+      // look at), not as it's looked at.
+      if (seen + pending.length >= MOVABLE_SEARCH_LIMIT) return false;
+      pending.push(child);
+    }
+  }
+  return true;
+};
+
+/**
  * Whether the element with unique id `id` is `first`, one of its following
  * siblings, or inside one of them: so, with `first` a candidate's first
  * child, inside the candidate. Undefined once it has looked at
@@ -764,8 +885,17 @@ const isTextish = (el: LynxElement): boolean =>
  * leading and trailing space go, as #normalizeTextRoot trims a context's
  * edges (collapseWhitespace left at most one at each).
  */
-const trimTextEdges = (text: string): string =>
-  text.replace(/^ /, '').replace(/ $/, '');
+const trimTextEdges = (text: string): string => {
+  // Sliced by hand rather than with two replace()s: each replace() with a
+  // regular expression makes arrays in PrimJS whether or not it matches, and
+  // every `<text>{{ value }}</text>` is trimmed here.
+  const start = text.charCodeAt(0) === SPACE ? 1 : 0;
+  const end =
+    text.length > start && text.charCodeAt(text.length - 1) === SPACE
+      ? text.length - 1
+      : text.length;
+  return start === 0 && end === text.length ? text : text.slice(start, end);
+};
 
 /**
  * Whether the first LynxElement has made layout reads ask for a flush, and
@@ -939,9 +1069,11 @@ export class LynxElement implements BaseLynxElement {
    * ViewEncapsulation.Emulated's scope classes (see EmulatedLynxRenderer).
    * Angular writes static and bound classes as one whole class string through
    * setAttribute('class'), which would drop them, so they're added back each
-   * time.
+   * time. With the runtime's own classes that go with them (setRuntimeClass,
+   * the text inheritance classes). Shared between elements, so never changed
+   * in place: withScopeClass and withoutScopeClass give the next list.
    */
-  #scopeClasses: string[] | null = null;
+  #scopeClasses: readonly string[] | null = null;
   /** Whole-string inline style set via setInlineStyles (style="..."). */
   #inlineStyleWhole: string | null = null;
   /** Per-key inline styles set via setStyle ([style.x] bindings). */
@@ -1081,6 +1213,15 @@ export class LynxElement implements BaseLynxElement {
    */
   #jsParent: LynxElement | null | undefined = null;
   /**
+   * flushCount() when LynxDocument made this element's native element (see
+   * markUnplaced), or -1 for a wrapper of one made elsewhere (a hydrated
+   * element, a query's hit). While the count hasn't moved since, the native
+   * element has never been flushed, so nothing of it is on the screen, and
+   * moving it costs no more than the insert it will get anyway (see
+   * #appendsBeforeTail).
+   */
+  #madeAt = -1;
+  /**
    * An anonymous `<text>`: one the runtime made to draw loose text, and the
    * inline tags beside it, which Angular never sees (see #regroup).
    */
@@ -1191,9 +1332,9 @@ export class LynxElement implements BaseLynxElement {
    * occupying space until some later cycle happened to flush. That was the
    * "hidden element leaves a gap" bug.) A re-insert (appendChild/insertBefore)
    * cancels the queued removal: the element is still natively attached, so
-   * __InsertElementBefore/__AppendElement auto-reparents it with its whole
-   * subtree intact — matching how React Lynx and the Lynx fiber core
-   * (InsertNodeBeforeInternal) handle moves.
+   * the insert takes it out of its old parent (`__RemoveElement`, see
+   * #prepareInsert) and puts it in the new one in the same flush, with its
+   * whole subtree intact — the move React Lynx makes.
    *
    * Keyed by the LynxElement wrapper, not the native ElementRef: Angular hands
    * the SAME wrapper instance (the one stored in its LView) to both removeChild
@@ -1253,6 +1394,34 @@ export class LynxElement implements BaseLynxElement {
   static #regrouping = false;
 
   /**
+   * The parents whose last children native has out of place, each with
+   * those children in order (see #appendsBeforeTail): anchors, and the few
+   * elements among them. Native has every other child of the
+   * parent in #children's order, and the tail still among them, only before
+   * the children appended since. Put back at the end of the cycle (see
+   * #settleDisplacedTails), and before anything reads the parent's native
+   * order or changes its children otherwise (see #settleTail). A map rather
+   * than a field: it holds a parent or two at a time, and every element
+   * would carry the field. Keyed by the wrapper, never a native ref (see
+   * #pendingRemovals).
+   */
+  static #displacedTails = new Map<LynxElement, LynxElement[]>();
+
+  /**
+   * The parents that have had an element put in before an anchor that
+   * elements follow this cycle, each with that anchor and how many have gone
+   * in before it (see #appendsBeforeTail). The second element going in
+   * before the same anchor is appended, or with a flushed element after it,
+   * the one after {@link MIN_INSERTS_BEFORE_FLUSHED_TAIL}. `refused` once
+   * the tail has an element whose view can't move, so the rows after it
+   * don't look again. Emptied at the end of the cycle, with #displacedTails.
+   */
+  static #tailInserts = new Map<
+    LynxElement,
+    { anchor: LynxElement; inserts: number; refused: boolean }
+  >();
+
+  /**
    * The attributes removed (set to null) since the last flush, which haven't
    * reached Lynx yet. Lynx queues a removal apart from the values set in the
    * same flush and applies it after them (`Element::SetAttribute` puts an
@@ -1288,9 +1457,8 @@ export class LynxElement implements BaseLynxElement {
    * An entry goes when its native ref does: when recreation swaps the ref, and
    * when Angular destroys the element's view (see markDestroyed / #release).
    *
-   * Each wrapper is held weakly, as a browser holds a node's JavaScript
-   * wrapper. The registry finds wrappers; it mustn't be what keeps one alive.
-   * A wrapper in the tree is held by its parent's `#children`, up to the page,
+   * The registry finds wrappers; it mustn't be what keeps one alive. A
+   * wrapper in the page is held by its parent's `#children`, up to the page,
    * which the document holds; one out of the tree that can come back is held
    * by the view Angular keeps it in; one with listeners is held by the
    * handlers on its native element. One that nothing else holds can never be
@@ -1303,8 +1471,34 @@ export class LynxElement implements BaseLynxElement {
    * whole screen, its elements and their native UIs (#279), and a scene
    * component's host holds the canvas store, and so the `<canvas>` and its
    * native view (#280).
+   *
+   * So an element out of the page is held through a WeakRef, as a browser
+   * holds a node's JavaScript wrapper, and one in the page is held as it is:
+   * the page holds it already, so the registry keeps nothing alive that
+   * wouldn't be. A WeakRef for each element, and the sweeps reading them,
+   * were about 5% of the main thread's JavaScript in mounting a screen
+   * (issue #912), and nearly every element is in the page. An element is
+   * sorted into one or the other once its cycle has put it where it goes
+   * (see #settleRegistry), and every way out of the page holds it, and
+   * everything under it, weakly again (see #holdWeakly): its removal, a move
+   * to a parent out of the page, a list letting it go, and a new page (see
+   * usePage). A strong entry's element is in the page once its cycle has
+   * ended, which #inPage relies on.
    */
-  static #byNativeId = new Map<number, WeakRef<LynxElement>>();
+  static #byNativeId = new Map<number, LynxElement | WeakRef<LynxElement>>();
+
+  /**
+   * The elements made, given a new native element, or moved since the
+   * registry was last settled (see #settleRegistry), in that order. Held
+   * strongly until then, which is the end of the cycle at most.
+   */
+  static #unsettled: LynxElement[] = [];
+
+  /**
+   * The app's page (see usePage): what an element must be under to be held
+   * strongly.
+   */
+  static #page: LynxElement | null = null;
 
   /**
    * Elements a list took whose native element a removal marked dead this
@@ -1313,15 +1507,125 @@ export class LynxElement implements BaseLynxElement {
   static #deadListItems = new Set<LynxElement>();
 
   /**
-   * How many entries #byNativeId may hold before #register sweeps out the
-   * ones whose wrapper was collected (see #sweepCollected).
+   * How many entries #byNativeId may hold before #settleRegistry sweeps out
+   * the ones whose wrapper was collected (see #sweepCollected).
    */
   static #sweepAt = MIN_SWEEP_AT;
 
-  static #register(id: number, element: LynxElement): void {
+  /**
+   * Registers this element as the canonical wrapper of its native element
+   * (see #byNativeId): strongly, as it's found before its cycle ends, until
+   * #settleRegistry sees where the cycle put it.
+   */
+  #register(): void {
+    LynxElement.#byNativeId.set(this.#uniqueId, this);
+    LynxElement.#unsettled.push(this);
+  }
+
+  /**
+   * Holds weakly each element made, given a new native element or moved
+   * since the last time (see #unsettled) that isn't in the page, with what's
+   * under it, and strongly each one in it (see #byNativeId). Runs at the end
+   * of the cycle, once its inserts, moves and removals are in (see
+   * commitPendingRemovals), so a screen built out of the page and put in it
+   * whole is in it by then.
+   *
+   * An element made this cycle is held strongly until here, before it's
+   * known to be in the page, so #inPage could take one for an ancestor in
+   * the page that isn't. Each comes later in the list than what it holds,
+   * or settles after it, which a cycle's own parents do: Angular makes a
+   * parent before what goes in it, and #regroup makes an anonymous text
+   * when its members are made already. One that isn't in the page then
+   * holds weakly what's under it, which #inPage took for in it.
+   */
+  static #settleRegistry(): void {
+    const elements = LynxElement.#unsettled;
+    if (elements.length === 0) return;
+    LynxElement.#unsettled = [];
     const registry = LynxElement.#byNativeId;
-    registry.set(id, new WeakRef(element));
+    for (const el of elements) {
+      const id = el.#uniqueId;
+      const entry = registry.get(id);
+      if (entry === el) {
+        if (!el.#inPage()) el.#holdWeakly();
+      } else if (
+        // Held weakly while it was out of the page, and back in it. An
+        // entry that isn't this element's was released (see #release), has
+        // a new id since, or has an id a newer element has now (native
+        // reuses an id once its element is gone).
+        entry !== undefined &&
+        !(entry instanceof LynxElement) &&
+        entry.deref() === el &&
+        el.#inPage()
+      ) {
+        registry.set(id, el);
+      }
+    }
     if (registry.size > LynxElement.#sweepAt) LynxElement.#sweepCollected();
+  }
+
+  /**
+   * Whether this element is in the app's page, through the parents the
+   * registry follows: a list item's list (see adoptVirtualChild) and
+   * everything else's JS parent. An ancestor held strongly is in the page
+   * (see #byNativeId and #settleRegistry), so the walk mostly ends at the
+   * parent.
+   */
+  #inPage(): boolean {
+    const page = LynxElement.#page;
+    if (!page) return false;
+    if (this === page) return true;
+    // A `*lynxListFor` item hangs off its list, which doesn't hold it: its
+    // run's views do (see LynxListItemViews). #holdWeakly can't reach it
+    // from the list, so it and what's in it stay weak.
+    if (this._ownedByListSource) return false;
+    const registry = LynxElement.#byNativeId;
+    for (
+      let at = this._virtualParent ?? this.#jsParent;
+      at;
+      at = at._virtualParent ?? at.#jsParent
+    ) {
+      if (at === page) return true;
+      if (at._ownedByListSource) return false;
+      if (registry.get(at.#uniqueId) === at) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Holds this element and everything under it weakly (see #byNativeId):
+   * they left the page, or may have. Reaches what the registry's parents
+   * do (see #inPage): the children, a list's items and a `<q>`'s marks.
+   */
+  #holdWeakly(): void {
+    const registry = LynxElement.#byNativeId;
+    const id = this.#uniqueId;
+    if (registry.get(id) === this) registry.set(id, new WeakRef(this));
+    // Under an element held weakly there can be ones held strongly (made
+    // after it was put in the page), so every one is looked at.
+    for (const child of this.#children ?? NO_CHILDREN) child.#holdWeakly();
+    for (const item of this.virtualChildren()) item.#holdWeakly();
+    if (this.#quoteMarks) {
+      for (const mark of this.#quoteMarks) mark.#holdWeakly();
+    }
+  }
+
+  /**
+   * @internal `page` is the app's page (LynxDocument.createRootElement, once
+   * for each document): the elements under it are held strongly from now on
+   * (see #byNativeId). A new page is a new app (a re-bootstrap takes the
+   * page over, see takeOverPage), and the old one's elements, which no one
+   * may destroy, are held weakly again, or its whole tree would stay.
+   */
+  static usePage(page: LynxElement): void {
+    const previous = LynxElement.#page;
+    LynxElement.#page = page;
+    if (!previous) return;
+    LynxElement.#settleRegistry();
+    const registry = LynxElement.#byNativeId;
+    for (const [id, entry] of registry) {
+      if (entry instanceof LynxElement) registry.set(id, new WeakRef(entry));
+    }
   }
 
   /**
@@ -1339,14 +1643,32 @@ export class LynxElement implements BaseLynxElement {
    */
   static #sweepCollected(): void {
     const registry = LynxElement.#byNativeId;
-    for (const [id, ref] of registry) {
-      if (!ref.deref()) registry.delete(id);
-    }
+    // forEach rather than `for (const [id, entry] of registry)`: that makes
+    // an [id, entry] array for each entry, and an iterator to take it apart,
+    // two objects for every element on the screen each time the registry
+    // doubles, which a mount leaves in PrimJS's heap (see "A mount's garbage
+    // stays in PrimJS's heap" in investigations/lynx-vs-web-differences.md).
+    // Deleting the entry forEach is at is allowed, as in a `for…of`.
+    registry.forEach((entry, id) => {
+      // An element held as it is is in the page (see #byNativeId).
+      if (!(entry instanceof LynxElement) && !entry.deref()) {
+        registry.delete(id);
+      }
+    });
     LynxElement.#sweepAt = Math.max(MIN_SWEEP_AT, registry.size * 2);
   }
 
+  /**
+   * The wrapper an entry of #byNativeId holds, if it's still there.
+   */
+  static #held(
+    entry: LynxElement | WeakRef<LynxElement> | undefined,
+  ): LynxElement | undefined {
+    return entry instanceof LynxElement ? entry : entry?.deref();
+  }
+
   static #registered(id: number): LynxElement | undefined {
-    return LynxElement.#byNativeId.get(id)?.deref();
+    return LynxElement.#held(LynxElement.#byNativeId.get(id));
   }
 
   /**
@@ -1378,8 +1700,17 @@ export class LynxElement implements BaseLynxElement {
    * canonical wrapper.
    */
   static #canonicalFor(ref: ElementRef): LynxElement {
-    const existing = LynxElement.#registered(__GetElementUniqueID(ref));
-    return existing ?? new LynxElement(ref);
+    const id = __GetElementUniqueID(ref);
+    const existing = LynxElement.#registered(id);
+    if (existing) return existing;
+    const made = new LynxElement(ref);
+    // In no JS parent, so out of the page to the registry (see #inPage):
+    // held weakly at once, and not until the end of a cycle, which a query
+    // outside one may wait a long time for (see #byNativeId). The
+    // constructor queued it last.
+    LynxElement.#unsettled.pop();
+    LynxElement.#byNativeId.set(id, new WeakRef(made));
+    return made;
   }
 
   /**
@@ -1440,7 +1771,7 @@ export class LynxElement implements BaseLynxElement {
     // Register as the canonical wrapper for this native ref. #canonicalFor()
     // checks the map before constructing, so this never overwrites an existing
     // canonical wrapper with a throwaway.
-    LynxElement.#register(this.#uniqueId, this);
+    this.#register();
   }
 
   /**
@@ -1451,7 +1782,7 @@ export class LynxElement implements BaseLynxElement {
   #setNativeRef(ref: ElementRef): void {
     this.#nativeRef = ref;
     this.#uniqueId = __GetElementUniqueID(ref);
-    LynxElement.#register(this.#uniqueId, this);
+    this.#register();
   }
 
   /**
@@ -1462,11 +1793,10 @@ export class LynxElement implements BaseLynxElement {
    */
   deregisterNative(): void {
     const id = this.#uniqueId;
+    const registry = LynxElement.#byNativeId;
     // Only clear if WE are the registered wrapper — a later element that reused
     // this id (native id reuse) must keep its entry.
-    if (LynxElement.#registered(id) === this) {
-      LynxElement.#byNativeId.delete(id);
-    }
+    if (LynxElement.#held(registry.get(id)) === this) registry.delete(id);
   }
 
   /**
@@ -1493,7 +1823,7 @@ export class LynxElement implements BaseLynxElement {
     LynxElement.#pendingReleases.add(this);
     // A view destroyed outside change detection (a detached route view the
     // reuse strategy drops) has no end() to commit it.
-    scheduleSettleFlush();
+    this.#settle();
   }
 
   /**
@@ -1582,7 +1912,7 @@ export class LynxElement implements BaseLynxElement {
     if (!__WEB__) __SetAttribute(element, 'default-value', value);
     __InvokeUIMethod(element, 'setValue', { value }, () => {});
     // Both reach native with the element's next flush (see invoke()).
-    scheduleSettleFlush();
+    this.#settle();
   }
 
   /**
@@ -1623,8 +1953,8 @@ export class LynxElement implements BaseLynxElement {
   }
   setAttribute(name: string, value: any): void {
     // A class, id, data-* or `hidden` asks for no flush itself (see
-    // nativeWriteEpoch).
-    nativeWriteEpoch++;
+    // nativeWriteEpoch). Noted where it is once, for every path below.
+    this.#wrote();
     // A raw-text's text (renderer.setValue), the commonest write there is:
     // none of the names below is `text`, so it skips their checks.
     if (name === 'text' && this.tagName === 'raw-text') {
@@ -1665,11 +1995,8 @@ export class LynxElement implements BaseLynxElement {
       // the literal class 'foo bar baz' rather than three separate classes,
       // so no CSS rule would ever match. __SetClasses correctly parses the
       // space-separated list. This matches how React Lynx handles className.
-      const names = new Set(
-        String(value ?? '')
-          .split(/\s+/)
-          .filter(Boolean),
-      );
+      const written = String(value ?? '');
+      const scopes = this.#scopeClasses;
       // What it had, to tell which classes changed (see #rulesChanged):
       // unknown while native has classes the string doesn't. Kept as the
       // string, and split only if #rulesChanged asks which changed, as it
@@ -1680,13 +2007,40 @@ export class LynxElement implements BaseLynxElement {
       // runtime name are too; an odd one an app gave setRuntimeClass leaves
       // the set to the next addClass.
       let plain = true;
-      if (this.#scopeClasses) {
-        for (const scope of this.#scopeClasses) {
-          names.add(scope);
-          if (!isPlainClassName(scope)) plain = false;
+      let classes: string;
+      // The names, each once, made only if they're needed: by the split
+      // below, or by #rulesChanged, if it asks which changed.
+      let names: Set<string> | null = null;
+      if (isPlainClassName(written)) {
+        // One name, as a static `class="box"` is: the same string the split
+        // below makes, the scope classes after it, each there once already,
+        // without the regular expression, the Set and the three arrays. Each
+        // element Angular makes has its static class written here, and
+        // skipping them took about 5% off the JavaScript of a screen of
+        // 15,000 views under `node --jitless` (issue #909,
+        // benchmarks/harness/node-mount.mjs).
+        classes = written;
+        if (scopes) {
+          // Indexed: a `for…of` makes an iterator for each call, an object
+          // of PrimJS's heap for every element Angular gives a class.
+          for (let i = 0; i < scopes.length; i++) {
+            const scope = scopes[i];
+            if (scope === written) continue;
+            classes += ` ${scope}`;
+            if (!isPlainClassName(scope)) plain = false;
+          }
         }
+      } else {
+        names = new Set(splitClasses(written));
+        if (scopes) {
+          for (let i = 0; i < scopes.length; i++) {
+            const scope = scopes[i];
+            names.add(scope);
+            if (!isPlainClassName(scope)) plain = false;
+          }
+        }
+        classes = [...names].join(' ');
       }
-      const classes = [...names].join(' ');
       if (
         !__WEB__ &&
         plain &&
@@ -1707,11 +2061,17 @@ export class LynxElement implements BaseLynxElement {
       }
       this.#classes = classes;
       this.#classesListed = plain;
-      this.#rulesChanged(
-        before === undefined
-          ? undefined
-          : () => changedTokens(splitClasses(before), names),
-      );
+      if (!this.#rulesUnread()) {
+        this.#rulesChanged(
+          before === undefined
+            ? undefined
+            : () =>
+                changedTokens(
+                  splitClasses(before),
+                  names ?? new Set([written, ...(scopes ?? [])]),
+                ),
+        );
+      }
     } else if (name === 'style') {
       this.setInlineStyles(value);
     } else if (name === 'id') {
@@ -1771,13 +2131,14 @@ export class LynxElement implements BaseLynxElement {
         // At the flush, unless it's set again first: see #removedAttributes.
         (this.#removedAttributes ??= new Set()).add(name);
         LynxElement.#pendingAttributeRemovals.add(this);
-        scheduleSettleFlush();
+        requestSettleFlush();
       } else {
         this.#removedAttributes?.delete(name);
         __SetAttribute(this.element, name, value);
         // Set outside change detection (from a timer, a promise, a gesture),
         // it reaches native only with a flush (see scheduleSettleFlush).
-        scheduleSettleFlush();
+        // setAttribute() noted where the write was.
+        requestSettleFlush();
       }
       // Mirror for recreation. removeAttribute() funnels here with value=null,
       // so drop the key then rather than replaying a cleared attribute.
@@ -1827,7 +2188,8 @@ export class LynxElement implements BaseLynxElement {
     }
     // Set outside change detection (from a timer, a promise, a gesture), it
     // reaches native only with a flush (see scheduleSettleFlush).
-    scheduleSettleFlush();
+    // setAttribute(), its only caller, noted where the write was.
+    requestSettleFlush();
     const text = value == null ? undefined : String(value);
     const blankChanged = isBlankText(this.#rawText) !== isBlankText(text);
     this.#text = shown == null ? undefined : String(shown);
@@ -1889,8 +2251,8 @@ export class LynxElement implements BaseLynxElement {
    * on rotation, and once at launch on iOS.
    */
   static refreshSafeAreaInsets(): void {
-    for (const ref of LynxElement.#byNativeId.values()) {
-      const element = ref.deref();
+    for (const entry of LynxElement.#byNativeId.values()) {
+      const element = LynxElement.#held(entry);
       if (element && element.#readsSafeArea) element.#rewriteInlineStyle();
     }
   }
@@ -1999,7 +2361,7 @@ export class LynxElement implements BaseLynxElement {
     if (key === 'quotes') this.#inlineQuotesChanged();
     // A style set outside change detection, as a transition's last frame is
     // from a timer, reaches native only with a flush (see scheduleSettleFlush).
-    scheduleSettleFlush();
+    this.#settle();
   }
   removeStyle(key: string): void {
     if (isCustomProperty(key)) {
@@ -2046,7 +2408,7 @@ export class LynxElement implements BaseLynxElement {
     if (LAYOUT_STYLES.has(key)) this.#layoutChanged();
     if (SHIFT_STYLES.has(key)) this.#shiftStylesChanged();
     if (key === 'quotes') this.#inlineQuotesChanged();
-    scheduleSettleFlush();
+    this.#settle();
   }
   /**
    * Sets the inline styles a main-thread script set on this element (see
@@ -2110,7 +2472,7 @@ export class LynxElement implements BaseLynxElement {
     ) {
       this.#inlineQuotesChanged();
     }
-    scheduleSettleFlush();
+    this.#settle();
   }
 
   /**
@@ -2138,6 +2500,43 @@ export class LynxElement implements BaseLynxElement {
    */
   #shiftStylesChanged(): void {
     if (this.#webText) this.#inheritAgain();
+  }
+
+  /**
+   * Whether nothing the runtime works out from the app's rules (see
+   * #rulesChanged) reads this element's classes or id yet: an element
+   * LynxDocument has just made, in no parent and with nothing in it, that
+   * isn't an HTML text tag, a `<q>`, a list or a static block's root. Every element gets
+   * its scope class and its static class at this point, before Angular
+   * inserts it: skipping #rulesChanged for them took a few percent off the
+   * JavaScript of a screen of 15,000 views under `node --jitless` (issue
+   * #909). Each check below stands for what #rulesChanged would do:
+   *
+   * - #inheritAgain and #ancestorsChanged: an HTML text tag's styles, its
+   *   own (#webText) and those of the tags inside it, of which there are
+   *   none (#children, #passesTextStyles, the list's virtual children).
+   * - #passedSizeChanged: a size a tag inside read (#passedSizeSeen).
+   * - #layoutChanged: loose text it holds (#hasFlow).
+   * - #refreshQuotes: the marks of a `<q>` it is (#quoteMarks) or holds,
+   *   found among its native children, which a new element has none of
+   *   unless a static block put them there (#staticBlock).
+   *
+   * Once it's put in a parent, as it is when it's drawn, each change goes
+   * through #rulesChanged again, and what it inherits is worked out as it
+   * goes in (see #adoptChild).
+   */
+  #rulesUnread(): boolean {
+    return (
+      this.#unplaced() &&
+      this.#children === null &&
+      !this.#webText &&
+      !this.#passesTextStyles &&
+      this.#passedSizeSeen === undefined &&
+      !this.#hasFlow &&
+      this.#quoteMarks === null &&
+      this.#staticBlock === null &&
+      this.tagName !== 'list'
+    );
   }
 
   /**
@@ -2446,11 +2845,11 @@ export class LynxElement implements BaseLynxElement {
     this.#smallerClass = name;
     if (current) {
       const index = this.#scopeClasses!.indexOf(current);
-      this.#scopeClasses!.splice(index, 1);
+      this.#scopeClasses = withoutScopeClass(this.#scopeClasses!, index);
       this.#removeClassName(current);
     }
     if (name) {
-      (this.#scopeClasses ??= []).push(name);
+      this.#scopeClasses = withScopeClass(this.#scopeClasses, name);
       this.#addClassName(name);
     }
   }
@@ -3177,7 +3576,7 @@ export class LynxElement implements BaseLynxElement {
     // Custom properties, `hidden` and the runtime's own styles (materials,
     // insets, inheritance) ask for no flush themselves (see
     // nativeWriteEpoch).
-    nativeWriteEpoch++;
+    this.#wrote();
     const whole = this.#inlineStyleFor(this.#inlineStyleWhole);
     if (whole && VARIABLE_DECLARATION.test(whole)) this.#setsVariables = true;
     // An element that sets variables gets its [style.x] styles in the same
@@ -3214,8 +3613,13 @@ export class LynxElement implements BaseLynxElement {
 
   insertBefore(newChild: LynxElement, refChild: LynxElement | null): void {
     // Inserts and moves ask for no flush themselves (see nativeWriteEpoch).
-    nativeWriteEpoch++;
+    this.#wroteChild(newChild);
     if (newChild.isRootPageElement) return;
+    // Before itself, an element stays where it is, as in a browser (the DOM
+    // takes its next sibling as the reference). The insert would take it out
+    // of this element first (see #prepareInsert), and Lynx then can't find
+    // the reference among the children and inserts nothing.
+    if (newChild === refChild) return;
     if (this.#holdsFlow()) {
       this.#flowInsert(newChild, refChild);
     } else {
@@ -3229,22 +3633,10 @@ export class LynxElement implements BaseLynxElement {
    * of loose text, which #regroup itself uses.
    */
   #attach(newChild: LynxElement, refChild: LynxElement | null): void {
-    // A queued removal immediately followed by a re-insert is an Angular MOVE —
-    // cancel the removal so the element keeps its children. It is still natively
-    // attached to its old parent, so __InsertElementBefore auto-reparents the
-    // whole subtree (see #pendingRemovals).
-    newChild.#cancelPendingRemoval();
-    newChild.#keepIfDestroyed();
-    newChild.#removeIfMoveWouldBeLost(this);
-    // If the child was genuinely removed in a PREVIOUS cycle its native painting
-    // node is gone — rebuild a fresh native element + subtree before re-attaching
-    // (see #recreateSubtree). A same-tick move was canceled just above and is
-    // never painting-dead, so the fast move path pays only a boolean check.
-    newChild.#recreateIfDead();
-    newChild.#anchorFor(this);
+    const from = newChild.#prepareInsert(this);
     if (refChild == null) {
       // The checks above are #append's own, done once (see #appendPrepared).
-      this.#appendPrepared(newChild);
+      this.#appendPrepared(newChild, from);
     } else {
       // Never insert an element into its own subtree — Lynx would build a cyclic
       // native tree and hang the layout pass (see wouldFormCycle). Skipping is
@@ -3252,10 +3644,21 @@ export class LynxElement implements BaseLynxElement {
       // is beats freezing the app.
       if (this.#wouldFormCycle(newChild)) return;
       const moving = isWebMove(newChild);
-      if (insertHidesBlurView(this, newChild)) {
-        this.#appendBefore(newChild, refChild);
+      if (this.#appendsBeforeTail(newChild, refChild)) {
+        if (from) __RemoveElement(from, newChild.element);
+        __AppendElement(this.element, newChild.element);
       } else {
-        __InsertElementBefore(this.element, newChild.element, refChild.element);
+        this.#settleTail();
+        if (insertHidesBlurView(this, newChild)) {
+          this.#appendBefore(newChild, refChild, from);
+        } else {
+          if (from) __RemoveElement(from, newChild.element);
+          __InsertElementBefore(
+            this.element,
+            newChild.element,
+            refChild.element,
+          );
+        }
       }
       if (moving) newChild.#restartWebLayoutChanges();
       this.#adoptChild(newChild, refChild);
@@ -3266,13 +3669,192 @@ export class LynxElement implements BaseLynxElement {
   }
 
   /**
+   * Whether `newChild`, going in before `refChild`, can be appended to the
+   * native element instead, because `refChild` is an anchor (`@for`'s,
+   * `@if`'s, a `@switch` case's) and every child from it to the end is an
+   * anchor or one of a few elements (see MAX_TAIL_ELEMENTS), not flushed
+   * yet or, for a cycle putting many rows in, views that can move (below).
+   * That tail then stays where it is natively until the
+   * end of the cycle, before the elements appended since, and goes back to
+   * the end in one move each (see #settleDisplacedTails), in the same flush.
+   * Anchors are hidden views with nothing in them, and an element never
+   * flushed has nothing on the screen, so where they are between two
+   * flushes draws nothing different.
+   *
+   * Lynx finds the place of a reference element by searching the parent's
+   * children from the first, twice (`InsertNodeBeforeInternal`'s `IndexOf`
+   * and `InsertLogicalChildBefore`, `fiber_element.cc`), while an append
+   * searches nothing. Angular puts each new `@for` row before the block's
+   * anchor, after the rows already there, so building N rows searched about
+   * N² children: on the iOS Simulator, a screen of 15,000 views took
+   * 412 ms to build, and 361 ms appended (#444); with a footer after the
+   * `@for`, 459 ms and 384 ms (#908). React Lynx appends a row that
+   * has nothing after it (`SnapshotInstance.insertBefore`), and builds a
+   * new list's children in order, its footer after its rows.
+   *
+   * A tail with a flushed element in it, such as a footer already on the
+   * screen under rows that load later, is moved only for a cycle that puts
+   * many elements in before the anchor (see
+   * MIN_INSERTS_BEFORE_FLUSHED_TAIL), and only when the tail holds nothing
+   * but views, texts and images (see MOVABLE_TAGS). Moving a flushed element
+   * moves its view too: Lynx's painting context takes it out of its parent
+   * and puts it back (`LynxUIOwner`'s `detachNode` and `insertNode` on iOS,
+   * `remove` and `insert` on Android, which ignore `is_move`). That costs
+   * the UI thread a removal and an insert, and would take the focus from a
+   * field in the tail. The elements before the count are inserted, so a
+   * cycle adding a row or a few to a list on the screen moves nothing that's
+   * drawn.
+   *
+   * Only during change detection, whose end() puts the tail back before
+   * any flush. Not on Lynx for Web, where an insert finds its place in the
+   * DOM, nor in a `<text>` (whose anchors are raw texts, see #anchorFor) or
+   * an anonymous one or a `<q>`, which keep their own order of children.
+   */
+  #appendsBeforeTail(newChild: LynxElement, refChild: LynxElement): boolean {
+    if (__WEB__ || refChild.tagName !== 'comment') return false;
+    if (!isInsideChangeDetection()) return false;
+    const displaced = LynxElement.#displacedTails.get(this);
+    // The tail is out of place already: an element before the first of it
+    // goes after the elements appended before it.
+    if (displaced) return displaced[0] === refChild;
+    if (this.#anonymous || isTextish(this) || this.#quoteMarks) return false;
+    // A hydrated parent's children from the snapshot aren't in #children
+    // (hydration inserts nothing), nor then is `refChild`.
+    const children = this.#children ?? NO_CHILDREN;
+    // From the end, as far as the tail goes: a parent with more children
+    // after `refChild` is searched no further than they are.
+    let elements = 0;
+    let flushed = false;
+    for (let i = children.length - 1; i >= 0; i--) {
+      const child = children[i]!;
+      // A child of the tail moving before it (a footer, or an anchor, put
+      // before the first anchor) would stay in the tail, which goes back
+      // after the anchors: it's inserted.
+      if (child === newChild) return false;
+      if (child === refChild) {
+        if (elements > 0) {
+          // An `@if` puts one element in before its anchor, and moving the
+          // elements after it would cost more than the one search it saves:
+          // the first element before the anchor in a cycle is inserted, as
+          // anything else is, and an `@for`'s second row is appended. With
+          // a flushed element in the tail, the first
+          // MIN_INSERTS_BEFORE_FLUSHED_TAIL are inserted.
+          let inserts = LynxElement.#tailInserts.get(this);
+          if (inserts?.anchor !== refChild) {
+            inserts = { anchor: refChild, inserts: 0, refused: false };
+            LynxElement.#tailInserts.set(this, inserts);
+          }
+          if (inserts.refused) return false;
+          if (++inserts.inserts === 1) return false;
+          if (flushed) {
+            if (inserts.inserts <= MIN_INSERTS_BEFORE_FLUSHED_TAIL) {
+              return false;
+            }
+            const views: ElementRef[] = [];
+            for (let k = i + 1; k < children.length; k++) {
+              const element = children[k]!;
+              if (element.tagName !== 'comment') views.push(element.element);
+            }
+            if (!movableSubtree(views)) {
+              inserts.refused = true;
+              return false;
+            }
+          }
+        }
+        // Natively too, the tail has to be the last children, in order. A
+        // hydrated parent's snapshot children aren't in #children, and may
+        // be among them or after them: moving the tail to the end would put
+        // it after those, and the rows before them. Read once a cycle per
+        // parent: the rows after the first find it displaced.
+        const tail = children.slice(i);
+        let at: ElementRef | null = refChild.element;
+        for (let k = 1; k < tail.length; k++) {
+          at = __NextElement(at);
+          if (!at || __GetElementUniqueID(at) !== tail[k]!.uniqueId) {
+            return false;
+          }
+        }
+        if (__NextElement(at)) return false;
+        LynxElement.#displacedTails.set(this, tail);
+        return true;
+      }
+      if (child.tagName !== 'comment') {
+        if (++elements > MAX_TAIL_ELEMENTS) return false;
+        if (!child.#unflushed()) flushed = true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Puts the tail native has out of place in this element back at the end
+   * of its children, in order (see #appendsBeforeTail), so native has the
+   * children in #children's order again. Each is taken out before it goes
+   * back in, as any move is (see #prepareInsert), in the same flush, so it
+   * keeps its painting node. Called before anything else changes this
+   * element's children or reads their native order, and for every parent at
+   * the end of the cycle (see #settleDisplacedTails).
+   */
+  #settleTail(): void {
+    const displaced = LynxElement.#displacedTails;
+    if (displaced.size === 0) return;
+    const tail = displaced.get(this);
+    if (!tail) return;
+    displaced.delete(this);
+    for (const child of tail) {
+      // Defensive: whatever takes a child of the tail out of this element
+      // puts the others back first (see #prepareInsert and #doRemove).
+      /* v8 ignore next */
+      if (child.#jsParent !== this) continue;
+      __RemoveElement(this.element, child.element);
+      __AppendElement(this.element, child.element);
+    }
+  }
+
+  /**
+   * flushesBefore, once every tail out of place is back: it reads the order
+   * of the two parents' common ancestor's children natively, and the flush
+   * walks them as they are then (see #settleDisplacedTails), with the tail
+   * at the end, which may hold one of the two.
+   */
+  static #flushesBefore(first: ElementRef, second: ElementRef): boolean {
+    LynxElement.#settleDisplacedTails();
+    return flushesBefore(first, second);
+  }
+
+  /**
+   * #settleTail for `parent`, if there is one.
+   */
+  static #settleTailIn(parent: LynxElement | null | undefined): void {
+    if (parent) parent.#settleTail();
+  }
+
+  /**
+   * #settleTail for every parent with a tail out of place: at the end of
+   * the cycle, before its flush, from commitPendingClasses, which every path
+   * to a flush runs first.
+   */
+  static #settleDisplacedTails(): void {
+    const displaced = LynxElement.#displacedTails;
+    if (displaced.size === 0) return;
+    // Each takes itself out of the map, which a Map's iteration allows.
+    for (const parent of displaced.keys()) parent.#settleTail();
+  }
+
+  /**
    * Puts `newChild` before `refChild` by appending it, then moving `refChild`
    * and every native sibling after it to the end behind it, in order: the
    * same order as `__InsertElementBefore`, reached only by appends (see
    * insertHidesBlurView). The moves are in the same flush as the insert, so
-   * the siblings keep their painting nodes, as any Angular move does.
+   * the siblings keep their painting nodes, as any Angular move does. Each
+   * sibling is taken out before it goes back in, as a moved child is (see
+   * #prepareInsert): it's still in this element.
    */
-  #appendBefore(newChild: LynxElement, refChild: LynxElement): void {
+  #appendBefore(
+    newChild: LynxElement,
+    refChild: LynxElement,
+    from: ElementRef | null,
+  ): void {
     const childId = __GetElementUniqueID(newChild.element);
     const following: ElementRef[] = [];
     for (
@@ -3282,14 +3864,16 @@ export class LynxElement implements BaseLynxElement {
     ) {
       if (__GetElementUniqueID(sibling) !== childId) following.push(sibling);
     }
+    if (from) __RemoveElement(from, newChild.element);
     __AppendElement(this.element, newChild.element);
     for (const sibling of following) {
+      __RemoveElement(this.element, sibling);
       __AppendElement(this.element, sibling);
     }
   }
 
   appendChild(newChild: LynxElement): void {
-    nativeWriteEpoch++;
+    this.#wroteChild(newChild);
     if (newChild.isRootPageElement) return;
     if (this.#holdsFlow()) {
       this.#flowInsert(newChild, null);
@@ -3299,27 +3883,66 @@ export class LynxElement implements BaseLynxElement {
   }
 
   #append(newChild: LynxElement): void {
-    // See insertBefore: cancel a pending removal so a move keeps its subtree,
-    // then rebuild the child if its painting node was destroyed in a prior cycle.
-    newChild.#cancelPendingRemoval();
-    newChild.#keepIfDestroyed();
-    newChild.#removeIfMoveWouldBeLost(this);
-    newChild.#recreateIfDead();
-    newChild.#anchorFor(this);
-    this.#appendPrepared(newChild);
+    this.#appendPrepared(newChild, newChild.#prepareInsert(this));
   }
 
   /**
-   * #append once its checks on `newChild` have run, which #attach runs
-   * itself. Running them twice did nothing more the second time, but read
-   * the child's native parent again, and for a move to another parent walked
-   * both ancestries again (see #removeIfMoveWouldBeLost).
+   * Readies this element to go into `newParent`, before the insert, and
+   * returns the native parent it has to be taken out of first, if any.
+   *
+   * - A queued removal followed by a re-insert in the same cycle is an
+   *   Angular MOVE: cancel the removal so the element keeps its children
+   *   (see #pendingRemovals), and a release Angular asked for, as whoever
+   *   puts it back still uses it.
+   * - Remove it for good where native Lynx would lose the move (see
+   *   #removeIfMoveWouldBeLost), and rebuild it if its painting node is gone,
+   *   from that or a removal in an earlier cycle (see #recreateSubtree). A
+   *   move canceled above is never painting-dead, so the move path pays only
+   *   a boolean check.
+   * - Give an anchor the native element it needs in `newParent` (see
+   *   #anchorFor).
+   *
+   * A moved element is still in its old native parent, and the insert would
+   * move it there with its whole subtree. But Lynx takes an insert of an
+   * element that has a parent as a mistake: `InsertNodeBeforeInternal`
+   * (`fiber_element.cc`, Lynx 4.1) logs `FiberElement re-insert node` as an
+   * error and three elements' details, each an `NSLog` on iOS, before it
+   * removes the element itself. It also finds the reference node's index
+   * before that removal, so a move forward within one parent went one place
+   * past the reference node in the element tree, which `__NextElement` and
+   * `__GetChildren` read. The caller removes it with `__RemoveElement` just
+   * before the insert, as React Lynx does (`snapshot.ts`): the same
+   * `RemoveNode` the auto-reparent calls, in the same flush, so the move
+   * keeps its painting node (is_move). A new element, or one rebuilt here,
+   * has no parent, and pays no native call more for it.
    */
-  #appendPrepared(newChild: LynxElement): void {
+  #prepareInsert(newParent: LynxElement): ElementRef | null {
+    // A move out of a parent, or within it, changes the parent's children.
+    LynxElement.#settleTailIn(this.#jsParent);
+    this.#cancelPendingRemoval();
+    this.#keepIfDestroyed();
+    const from = this.#removeIfMoveWouldBeLost(newParent);
+    this.#recreateIfDead();
+    // A swapped anchor's new native element is in no parent yet.
+    return this.#anchorFor(newParent) ? null : from;
+  }
+
+  /**
+   * #append once its checks on `newChild` have run (see #prepareInsert),
+   * which #attach runs itself. Running them twice did nothing more the
+   * second time, but read the child's native parent again, and for a move to
+   * another parent walked both ancestries again (see
+   * #removeIfMoveWouldBeLost). `from` is the native parent the checks found
+   * it in.
+   */
+  #appendPrepared(newChild: LynxElement, from: ElementRef | null): void {
+    // It goes after the tail native has out of place.
+    this.#settleTail();
     // Guard against a cycle-forming attach (see wouldFormCycle) — the same hang
     // insertBefore protects against.
     if (this.#wouldFormCycle(newChild)) return;
     const moving = isWebMove(newChild);
+    if (from) __RemoveElement(from, newChild.element);
     // A <q>'s children go before its closing mark (see markQuote).
     const close = this.#quoteMarks?.[1];
     if (close) {
@@ -3341,8 +3964,8 @@ export class LynxElement implements BaseLynxElement {
 
   /**
    * Records `newChild` in this element's ordered `#children`, first unlinking it
-   * from its previous JS parent (mirroring the native auto-reparent that
-   * __AppendElement/__InsertElementBefore perform). Keeping `#children` in
+   * from its previous JS parent (mirroring the native removal that
+   * #prepareInsert has the insert make first). Keeping `#children` in
    * lock-step with the native child order is what lets #recreateSubtree() rebuild
    * a remounted subtree in the correct order. `refChild` positions the insert;
    * when omitted the child is appended.
@@ -3361,6 +3984,8 @@ export class LynxElement implements BaseLynxElement {
         const holder = prev.#anonymous ? prev.#jsParent : prev;
         if (holder && holder.#hasFlow) LynxElement.#pendingFlow.add(holder);
       }
+      // A move, maybe out of the page: settled again (see #settleRegistry).
+      LynxElement.#unsettled.push(newChild);
     }
     newChild.#jsParent = this;
     const children = (this.#children ??= []);
@@ -3417,14 +4042,24 @@ export class LynxElement implements BaseLynxElement {
       // setRuntimeClass does. Unlike there, its rules change nothing the
       // runtime reads, so there's nothing to regroup or inherit again, and
       // it goes with the insert's own flush.
-      (this.#scopeClasses ??= []).push(INHERITANCE_CLASS);
+      this.#scopeClasses = withScopeClass(
+        this.#scopeClasses,
+        INHERITANCE_CLASS,
+      );
       this.#addClassName(INHERITANCE_CLASS);
       // A Lynx <text> takes the copies of the rules naming `text` too, which
       // an HTML text tag mustn't (see LYNX_TEXT_INHERITANCE_CLASS).
       if (this.tagName === 'text' && !this.#webText) {
-        this.#scopeClasses.push(LYNX_TEXT_INHERITANCE_CLASS);
+        this.#scopeClasses = withScopeClass(
+          this.#scopeClasses,
+          LYNX_TEXT_INHERITANCE_CLASS,
+        );
         this.#addClassName(LYNX_TEXT_INHERITANCE_CLASS);
       }
+      // A write to this element, which may be an ancestor of the inserting
+      // one outside a list item being bound: the list, when a row's first
+      // HTML text tag goes in (see #noteBindingWrite).
+      this.#wrote();
       // Its inline text styles, set before the text went in as Angular sets
       // a static style, get their copies now (see #inlineTextCopies). One
       // removed this cycle gets them when it's rebuilt (see
@@ -3452,6 +4087,9 @@ export class LynxElement implements BaseLynxElement {
     // `*lynxListFor` item's run builds and rebinds its own (see
     // attachItemSource). One still waiting for its removal from another
     // parent keeps it: see #rebuildDeadListItems.
+    // From another list, maybe out of the page, with no removal that would
+    // say so: settled again (see #settleRegistry).
+    LynxElement.#unsettled.push(child);
     if (!child._ownedByListSource) {
       child.#keepIfDestroyed();
       child.#recreateIfDead();
@@ -3502,12 +4140,13 @@ export class LynxElement implements BaseLynxElement {
    * gap and an empty line, wherever Angular put it: `<text>Hi @if (x)
    * {…}</text>`, or a line #regroup made around one. In a `<text>`, an anchor
    * is an empty raw-text, which draws nothing anywhere. It has no attributes,
-   * children or handlers, so the swap is the native element alone.
+   * children or handlers, so the swap is the native element alone. Returns
+   * whether it swapped: the new native element is in no parent yet.
    */
-  #anchorFor(parent: LynxElement): void {
-    if (this.tagName !== 'comment') return;
+  #anchorFor(parent: LynxElement): boolean {
+    if (this.tagName !== 'comment') return false;
     const inText = parent.tagName === 'text';
-    if (inText === this.#anchorInText) return;
+    if (inText === this.#anchorInText) return false;
     const old = this.element;
     const oldParent = __GetParent(old);
     if (oldParent) __RemoveElement(oldParent, old);
@@ -3518,6 +4157,7 @@ export class LynxElement implements BaseLynxElement {
         : createNativeRefByTag('comment', getPageId()),
     );
     this.#anchorInText = inText;
+    return true;
   }
 
   /**
@@ -3725,8 +4365,8 @@ export class LynxElement implements BaseLynxElement {
 
   addClass(name: string): void {
     this.#addClassName(name);
-    this.#rulesChanged([name]);
-    scheduleSettleFlush();
+    if (!this.#rulesUnread()) this.#rulesChanged([name]);
+    this.#settle();
   }
 
   /**
@@ -3776,7 +4416,7 @@ export class LynxElement implements BaseLynxElement {
 
   addScopeClass(name: string): void {
     if (this.#scopeClasses?.includes(name)) return;
-    (this.#scopeClasses ??= []).push(name);
+    this.#scopeClasses = withScopeClass(this.#scopeClasses, name);
     this.addClass(name);
   }
 
@@ -3792,11 +4432,11 @@ export class LynxElement implements BaseLynxElement {
     const index = this.#scopeClasses?.indexOf(name) ?? -1;
     if (on === (index !== -1)) return false;
     if (on) {
-      (this.#scopeClasses ??= []).push(name);
+      this.#scopeClasses = withScopeClass(this.#scopeClasses, name);
       this.addClass(name);
     } else {
       // Found above, so there are scope classes.
-      this.#scopeClasses!.splice(index, 1);
+      this.#scopeClasses = withoutScopeClass(this.#scopeClasses!, index);
       this.removeClass(name);
     }
     return true;
@@ -3812,7 +4452,7 @@ export class LynxElement implements BaseLynxElement {
   removeClass(name: string): void {
     this.#removeClassName(name);
     this.#rulesChanged([name]);
-    scheduleSettleFlush();
+    this.#settle();
   }
 
   /**
@@ -3869,6 +4509,15 @@ export class LynxElement implements BaseLynxElement {
    */
   markUnplaced(): void {
     this.#jsParent = undefined;
+    this.#madeAt = flushCount();
+  }
+
+  /**
+   * Whether this element's native element was made since the last flush
+   * (see #madeAt), so it has nothing on the screen yet.
+   */
+  #unflushed(): boolean {
+    return this.#madeAt === flushCount();
   }
 
   /**
@@ -3882,6 +4531,67 @@ export class LynxElement implements BaseLynxElement {
    */
   #unplaced(): boolean {
     return this.#jsParent === undefined;
+  }
+
+  /**
+   * Counts a write to this element that leaves its flush to whoever made it
+   * (see nativeWriteEpoch), noting where it was while a list item is being
+   * bound (see #noteBindingWrite).
+   */
+  #wrote(): void {
+    nativeWriteEpoch++;
+    if (isBindingListItem()) LynxElement.#noteBindingWrite(this);
+  }
+
+  /**
+   * #wrote() for an insert of `child` here: a write to this element, and to
+   * the parent it's moved from, if it's moved from another (see
+   * #noteBindingWrite).
+   */
+  #wroteChild(child: LynxElement): void {
+    nativeWriteEpoch++;
+    if (!isBindingListItem()) return;
+    LynxElement.#noteBindingWrite(this);
+    const from = child.#jsParent;
+    if (from !== undefined && from !== this) {
+      LynxElement.#noteBindingWrite(child);
+    }
+  }
+
+  /**
+   * scheduleSettleFlush() for a write to this element, noting where it was
+   * while a list item is being bound (see #noteBindingWrite).
+   */
+  #settle(): void {
+    if (isBindingListItem()) LynxElement.#noteBindingWrite(this);
+    requestSettleFlush();
+  }
+
+  /**
+   * Notes a write to `written` made while a `*lynxListFor` item is being
+   * bound: one outside the item is work the item's own flush doesn't commit,
+   * which the cycle after it flushes (see itemsLeftWork). The walk up stops
+   * at the item, a few parents up for a row's elements, and at an element in
+   * no tree (see #unplaced), such as the view the run is building: it reaches
+   * native with the insert that places it, a write to its new parent. An
+   * element whose place the runtime doesn't know (a parent of null: a
+   * hydrated one, one a removal took out of the tree) counts as outside.
+   * Writes outside items are rare, and once one is noted the rest of the
+   * binding skips the walk.
+   */
+  static #noteBindingWrite(written: LynxElement): void {
+    if (itemsLeftWork) return;
+    let element = written;
+    while (element !== boundListItem) {
+      const parent = element._virtualParent ?? element.#jsParent;
+      // The page has no parent, and is in the tree: it's its root.
+      if (parent === null || element.isRootPageElement) {
+        itemsLeftWork = true;
+        return;
+      }
+      if (parent === undefined) return;
+      element = parent;
+    }
   }
 
   /**
@@ -3915,7 +4625,10 @@ export class LynxElement implements BaseLynxElement {
     // A `<text>` row holds its raw-text: a raw-text or an anchor that nothing
     // was put in has no children, wherever its native element came from, so
     // the subtree is the child and these.
-    for (const node of children) {
+    // Indexed, as this runs for every insert: a `for…of` would make an
+    // iterator each time, an object of PrimJS's heap for each row.
+    for (let i = 0; i < children.length; i++) {
+      const node = children[i];
       const leaf = node.tagName === 'raw-text' || node.tagName === 'comment';
       if (!leaf || node.#children?.length) {
         return wouldFormCycle(this.element, child.element, true);
@@ -3959,6 +4672,12 @@ export class LynxElement implements BaseLynxElement {
    * call for each change, in the same order.
    */
   static commitPendingClasses(): void {
+    // Not classes, but due on the same paths: before every flush (see
+    // #appendsBeforeTail). The elements made so far count as flushed from
+    // here (see noteFlush): the flush after it, if any, may be native's.
+    LynxElement.#settleDisplacedTails();
+    LynxElement.#tailInserts.clear();
+    noteFlush();
     if (LynxElement.#pendingClasses.size === 0) return;
     const elements = [...LynxElement.#pendingClasses];
     LynxElement.#pendingClasses.clear();
@@ -3981,7 +4700,7 @@ export class LynxElement implements BaseLynxElement {
     // A removal waits for the next flush, and asks for none itself, so that
     // a re-insert in the meantime is a move (see #pendingRemovals and
     // nativeWriteEpoch).
-    nativeWriteEpoch++;
+    this.#wrote();
     if (this.isRootPageElement) return;
     // Count the removal request on the synchronous path. `__PROFILE__` is a
     // build-time `define` — read it here rather than from the deferred drain (in
@@ -3995,6 +4714,9 @@ export class LynxElement implements BaseLynxElement {
       if (typeof vp.removeVirtualChild === 'function') {
         vp.removeVirtualChild(this);
       }
+      // Out of the list, and so of the page, unless it goes back in this
+      // cycle: settled again (see #settleRegistry).
+      LynxElement.#unsettled.push(this);
       return;
     }
     LynxElement.#pendingRemovals.add(this);
@@ -4051,6 +4773,8 @@ export class LynxElement implements BaseLynxElement {
     }
     LynxElement.#commitPendingReleases();
     LynxElement.#rebuildDeadListItems();
+    // The cycle has put what it made where it goes (see #settleRegistry).
+    LynxElement.#settleRegistry();
     scheduleCollection();
   }
 
@@ -4198,6 +4922,22 @@ export class LynxElement implements BaseLynxElement {
    * a double space (this was a real bug: `['A ', ' ', ' B']` rendered "A  B").
    */
   static #normalizeTextRoot(root: LynxElement): void {
+    // A <text> whose one child is a raw-text, as `<text>{{ i }}</text>` is:
+    // the context is that leaf, and the pass below comes to trimTextEdges.
+    // Done without its two arrays and loops, which were objects of PrimJS's
+    // heap for every text of a list.
+    const only = root.#children?.length === 1 ? root.#children[0] : null;
+    if (
+      only &&
+      only.tagName === 'raw-text' &&
+      root.tagName === 'text' &&
+      !root.#quoteMarks
+    ) {
+      // #rawText is seeded on every raw-text, as below.
+      /* v8 ignore next */
+      only.#setDisplayedText(trimTextEdges(only.#rawText ?? ''));
+      return;
+    }
     // A raw-text is itself a leaf. Its parent is not always a <text> (a raw-text
     // painted outside a <text> is unsupported by Lynx and never renders, but
     // this keeps the pass's own contract — "a single-leaf context reduces to
@@ -4264,7 +5004,11 @@ export class LynxElement implements BaseLynxElement {
     // A <q>'s marks are text of the line, as a browser's generated content
     // is: the space after `<q>` sits after the opening mark, not at an edge.
     if (el.#quoteMarks) out.push(el.#quoteMarks[0]);
-    for (const child of el.#children ?? NO_CHILDREN) {
+    // Indexed: a `for…of` makes an iterator for each call (see
+    // #normalizeTextRoot).
+    const children = el.#children ?? NO_CHILDREN;
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i];
       if (child.tagName === 'raw-text') {
         out.push(child);
       } else if (child.tagName === 'text') {
@@ -4383,22 +5127,33 @@ export class LynxElement implements BaseLynxElement {
    * goes into the new one. Moves the flush does handle in order (the old
    * parent first, or the same parent, as for an `@for` reorder) stay native
    * moves. Lynx for Web moves DOM nodes and doesn't have the problem.
+   *
+   * Returns the native parent a move that stays a native move takes it out
+   * of (see #prepareInsert), and null for an element in no parent, one
+   * removed here, and on Lynx for Web, where an insert moves a DOM node and
+   * logs nothing. A list's item is left to its list, which puts it in the
+   * native list itself (see create-list-element.ts).
    */
-  #removeIfMoveWouldBeLost(newParent: LynxElement): void {
-    if (__WEB__ || this.#paintingDead || this._virtualParent) return;
+  #removeIfMoveWouldBeLost(newParent: LynxElement): ElementRef | null {
+    if (__WEB__ || this.#paintingDead || this._virtualParent) return null;
     // A new element, being put in its first parent: nothing to move from.
-    // Nor is there for one moving within its parent (an `@for` reorder),
-    // which this wrapper knows without asking native (see #jsParent).
-    if (this.#unplaced() || this.#jsParent === newParent) return;
-    const oldParent = __GetParent(this.element);
+    if (this.#unplaced()) return null;
+    // The parent this wrapper was put in holds it natively (see #jsParent),
+    // so its native parent is had without asking native, and one moving
+    // within it (an `@for` reorder) stays a native move.
+    const jsParent = this.#jsParent;
+    if (jsParent === newParent) return newParent.element;
+    const oldParent = jsParent ? jsParent.element : __GetParent(this.element);
+    if (!oldParent) return null;
     if (
-      !oldParent ||
-      __GetElementUniqueID(oldParent) ===
-        __GetElementUniqueID(newParent.element)
+      __GetElementUniqueID(oldParent) !==
+        __GetElementUniqueID(newParent.element) &&
+      LynxElement.#flushesBefore(newParent.element, oldParent)
     ) {
-      return;
+      this.#doRemove();
+      return null;
     }
-    if (flushesBefore(newParent.element, oldParent)) this.#doRemove();
+    return oldParent;
   }
 
   /**
@@ -4408,6 +5163,8 @@ export class LynxElement implements BaseLynxElement {
    * in Lynx's PAPI.
    */
   #doRemove(): void {
+    // Its parent's tail goes back first: this may be in it.
+    LynxElement.#settleTailIn(this.#jsParent);
     // The native parent, not parentNode()'s wrapper: the parent may have been
     // released already (an ancestor's removal earlier in this commit released
     // the subtree), and looking it up would register a new wrapper for it.
@@ -4488,6 +5245,9 @@ export class LynxElement implements BaseLynxElement {
     if (jsParent) this.#leftParent(jsParent);
     // Angular destroyed it (see markDestroyed): nothing will put it back.
     if (this.#destroyed) this.#release();
+    // Out of the page, where whoever keeps it holds it (a view Angular
+    // detached), or nothing does: the registry mustn't (see #byNativeId).
+    else this.#holdWeakly();
   }
 
   /**
@@ -4547,12 +5307,15 @@ export class LynxElement implements BaseLynxElement {
   #leaveJsParent(): void {
     const jsParent = this.#jsParent;
     if (!jsParent) return;
+    jsParent.#settleTail();
     const i = jsParent.#children!.indexOf(this);
     // Defensive, as in #doRemove: #children follows the native tree.
     /* v8 ignore next */
     if (i >= 0) jsParent.#children!.splice(i, 1);
     this.#jsParent = null;
     this.#leftParent(jsParent);
+    // In the page now only if its list is (see #settleRegistry).
+    LynxElement.#unsettled.push(this);
   }
 
   /**
@@ -4644,7 +5407,9 @@ export class LynxElement implements BaseLynxElement {
     // would sit unflushed until some unrelated later CD. scheduleSettleFlush is
     // self-guarding (a no-op inside a CD cycle — the @if-toggle path — and during
     // first render) and coalesced, so nested remounts still cost one flush.
-    scheduleSettleFlush();
+    // The rebuilt subtree is in no tree: the insert that places it is noted
+    // (see #noteBindingWrite).
+    requestSettleFlush();
   }
 
   /**
@@ -4666,6 +5431,9 @@ export class LynxElement implements BaseLynxElement {
     if (!this.#paintingDead) return;
     this.#paintingDead = false;
     if (this.isRootPageElement || this.tagName === 'list') return;
+    // Its children go into the new element below in #children's order,
+    // the tail native had out of place included.
+    LynxElement.#displacedTails.delete(this);
 
     // Swapping the native ref changes this wrapper's unique id — move its
     // registry entry from the stale (destroyed) ref's id to the fresh one so
@@ -4803,6 +5571,10 @@ export class LynxElement implements BaseLynxElement {
   nextSibling(): LynxElement | null {
     // If in a virtual tree, use virtual sibling tracking
     if (this._virtualParent) return this._virtualNext;
+    // Native's order, which has a tail out of place until the end of the
+    // cycle (see #appendsBeforeTail). All of them, not just #jsParent's:
+    // a hydrated element has none, and its native parent may be one.
+    LynxElement.#settleDisplacedTails();
     const nextSibling = __NextElement(this.element);
     if (nextSibling) {
       // Return the canonical wrapper (see #canonicalFor / parentNode). Angular
@@ -4896,7 +5668,7 @@ export class LynxElement implements BaseLynxElement {
       return made;
     };
     if (call()) {
-      scheduleSettleFlush();
+      this.#settle();
     } else {
       afterNextFlush(call);
     }
@@ -4927,7 +5699,15 @@ export class LynxElement implements BaseLynxElement {
   ): LynxAnimation {
     const normalizedOptions =
       typeof options === 'number' ? { duration: options } : (options ?? {});
-    const anim = new LynxAnimation(this.element, keyframes, normalizedOptions);
+    // Each operation notes its write here, on this element (see
+    // countNativeWrite).
+    animatingElement = true;
+    let anim: LynxAnimation;
+    try {
+      anim = new LynxAnimation(this.element, keyframes, normalizedOptions);
+    } finally {
+      animatingElement = false;
+    }
     // Track the animation so remove() can cancel it before the element
     // returns to the native pool. Without this, the pool slot retains
     // stale animation state (e.g. opacity stuck at the FROM keyframe).
@@ -4936,12 +5716,17 @@ export class LynxElement implements BaseLynxElement {
     // with the next flush, like a style: one started or canceled from a
     // timer, outside change detection, needs a flush of its own (see
     // scheduleSettleFlush).
-    scheduleSettleFlush();
+    this.#settle();
     for (const method of ['cancel', 'pause', 'play'] as const) {
       const run = anim[method].bind(anim);
       anim[method] = () => {
-        run();
-        scheduleSettleFlush();
+        animatingElement = true;
+        try {
+          run();
+        } finally {
+          animatingElement = false;
+        }
+        this.#settle();
       };
     }
     return anim;
@@ -5275,7 +6060,7 @@ export class LynxElement implements BaseLynxElement {
     // ResizeObserver observing from an afterNextRender() callback, as
     // Angular advises for browser APIs, listens for uiappear or
     // layoutchange and would hear nothing until something else changed.
-    scheduleSettleFlush();
+    this.#settle();
     this.#sendHandlersWithNextFlush();
     if (current) {
       removeNativeHandler(this.element, current.eventType, entry.eventName);
@@ -5567,14 +6352,16 @@ const awaitingFlush: Array<() => void> = [];
  * After a list's componentAtIndex has built or rebound `*lynxListFor` items
  * and flushed them (see bindListItem).
  *
- * The item's own flush commits the item and nothing else, so the next native
- * event flushes once (see settleSkippedForListItem). The binding may have
- * left work elsewhere: a write that leaves its flush to its caller (a class,
- * a custom property, see nativeWriteEpoch), or one the item's own change
- * detection made outside the item (an app's write to a header, a UI method
- * on another element), whose settle flush was skipped inside the cycle
- * without a note. Every event used to flush, and that work reached the screen
- * with the next one, the next scroll frame on iOS.
+ * The item's own flush commits the item and nothing else. When the bindings
+ * wrote only inside their items, with nothing waiting from before them, that
+ * flush committed everything written since the last flush of the whole tree,
+ * which then counts as flushed: the cycle Angular runs after most binds (see
+ * ListItemViews.bind) has nothing to flush. Otherwise a binding left work
+ * elsewhere (see itemsLeftWork): a write outside its item (an app's write to a
+ * header, a directive's to another element, an overlay it opens), or writes
+ * from before it. The next cycle flushes the whole tree for it, and so does
+ * the next native event (see settleSkippedForListItem), as every event did
+ * when each one flushed: on iOS that's the next frame of any scroll.
  *
  * And it flushes again on a task of its own if a call is waiting for a
  * flush, such as a UI method on an element the item just made (see
@@ -5583,9 +6370,85 @@ const awaitingFlush: Array<() => void> = [];
  * pass has returned: a microtask would still run inside it.
  */
 export const settleAfterListItems = (): void => {
-  settleSkippedForListItem = true;
+  if (itemsLeftWork) {
+    settleSkippedForListItem = true;
+  } else {
+    flushedEpoch = nativeWriteEpoch;
+  }
   if (awaitingFlush.length === 0) return;
   setTimeout(scheduleSettleFlush, 0);
+};
+
+/**
+ * The `<list-item>` of the `*lynxListFor` view that componentAtIndex is
+ * binding, once its run has picked the view (see setBoundListItem), or null
+ * while there's none. A write to an element inside it reaches native with
+ * componentAtIndex's flush of the item.
+ */
+let boundListItem: LynxElement | null = null;
+
+/**
+ * Whether a list item's binding left work its own flush doesn't commit, since
+ * the last flush of the whole tree: a write outside its item, one the runtime
+ * can't place (a page's color scheme, a main-thread script's animation), or
+ * writes waiting from before the binding. Then the cycle after the binding
+ * flushes the whole tree, as every cycle after one did (see
+ * settleAfterListItems). It stays set until that flush (see markTreeFlushed),
+ * so a list item a binding's flush builds (an item of a list inside the item)
+ * doesn't count the first binding's work as flushed by its own.
+ */
+let itemsLeftWork = false;
+
+/**
+ * nativeWriteEpoch as the last list item binding left it: what it wrote is
+ * either in its item, for the item's flush right after, or noted in
+ * itemsLeftWork. So a binding that starts with nothing else written since,
+ * the next item of a batch (componentAtIndexes), or an item a binding's flush
+ * builds, isn't taken to start with work waiting from before it. A binding
+ * that throws doesn't set it, and notes that work is left (see
+ * bindListItemElement).
+ */
+let boundEpoch = 0;
+
+/**
+ * @internal Builds or rebinds a `*lynxListFor` item for a list's
+ * componentAtIndex (see LynxListElement.bindItem and bindListItem), noting
+ * whether it left work its item's flush doesn't commit (see itemsLeftWork):
+ * writes waiting from before it, and the writes it makes outside the item
+ * (see LynxElement's #noteBindingWrite).
+ */
+export const bindListItemElement = <R>(bind: () => R): R => {
+  if (nativeWriteEpoch !== flushedEpoch && nativeWriteEpoch !== boundEpoch) {
+    itemsLeftWork = true;
+  }
+  // Each binding names its own item: one built inside another's (see
+  // bindListItem) gives the outer one its item back after it.
+  const outer = boundListItem;
+  boundListItem = null;
+  try {
+    const result = bindListItem(bind);
+    boundEpoch = nativeWriteEpoch;
+    return result;
+  } catch (error) {
+    // componentAtIndex makes no flush after a binding that throws, nor
+    // componentAtIndexes for the items its batch bound before it: what they
+    // wrote waits for the next flush of the whole tree.
+    itemsLeftWork = true;
+    throw error;
+  } finally {
+    boundListItem = outer;
+  }
+};
+
+/**
+ * @internal Names the `<list-item>` of the view a `*lynxListFor` run is
+ * binding, before its check (see ListItemViews.bind): the writes the check
+ * makes inside it reach native with the item's flush. What the run built
+ * before this, the view's elements, was in no tree, and counts as inside too
+ * (see LynxElement's #noteBindingWrite).
+ */
+export const setBoundListItem = (root: LynxElement): void => {
+  boundListItem = root;
 };
 
 /**
@@ -5662,6 +6525,7 @@ export const markTreeFlushed = (): void => {
   flushedEpoch = nativeWriteEpoch;
   // Whatever a list item left for a later flush goes with this one too.
   settleSkippedForListItem = false;
+  itemsLeftWork = false;
 };
 
 /**
@@ -5675,12 +6539,10 @@ export const markTreeFlushed = (): void => {
  * patch pass on the engine thread and queues an operation for the UI thread
  * (see #dispatch).
  *
- * What a list's componentAtIndex wrote while it built its items still
- * counts: the items' own flushes commit the items only, and a bind can write
- * outside its item (a directive of the row's reaching another element, an
- * overlay it opens), so the next cycle flushes the whole tree, as it did
- * before. Telling the item's writes from the others would take a walk up
- * from each element written to, on every bind.
+ * What a list's componentAtIndex wrote while it built its items counts as
+ * flushed by the items' own flushes, unless a binding wrote outside its item
+ * (a directive of the row's reaching another element, an overlay it opens):
+ * then the next cycle flushes the whole tree (see settleAfterListItems).
  */
 export const needsTreeFlush = (): boolean =>
   nativeWriteEpoch !== flushedEpoch || awaitingFlush.length > 0;
@@ -5707,7 +6569,16 @@ const hasUnflushedWrites = (): boolean =>
  */
 const countNativeWrite = (): void => {
   nativeWriteEpoch++;
+  // A main-thread script's is on no element the runtime knows: outside any
+  // list item it's binding. LynxElement.animate()'s notes its own.
+  if (isBindingListItem() && !animatingElement) itemsLeftWork = true;
 };
+
+/**
+ * True while LynxElement.animate() runs an animation operation, which
+ * notes its write on its element itself (see countNativeWrite).
+ */
+let animatingElement = false;
 
 /**
  * Flushes, a microtask after a dispatch with nothing to flush, if something
@@ -5758,6 +6629,26 @@ const checkDispatchWrites = (): void => {
  * gate) keeps the steady-state overhead negligible.
  */
 export const scheduleSettleFlush = (): void => {
+  // A write to no element the caller names, such as the page's color scheme
+  // or a gesture's: outside any list item being bound (see itemsLeftWork).
+  if (isBindingListItem()) itemsLeftWork = true;
+  requestSettleFlush();
+};
+
+/**
+ * @internal scheduleSettleFlush() for an element LynxDocument is about to
+ * make, which is in no tree: it reaches native with the insert that places
+ * it, a write to its new parent (see LynxElement's #noteBindingWrite).
+ */
+export const scheduleSettleFlushForNewElement = (): void => {
+  requestSettleFlush();
+};
+
+/**
+ * scheduleSettleFlush() without telling where the write was: LynxElement's
+ * writes note it themselves (see #settle).
+ */
+const requestSettleFlush = (): void => {
   // Every write that schedules its own flush is counted as one, with the
   // ones that leave it to their caller: inside a change detection cycle,
   // end() flushes only when something was written (see needsTreeFlush).
@@ -5781,10 +6672,9 @@ export const scheduleSettleFlush = (): void => {
     }
     return;
   }
-  if (isBindingListItem()) {
-    settleSkippedForListItem = true;
-    return;
-  }
+  // The item's flush commits what the binding wrote inside it, and
+  // settleAfterListItems() sees to the rest (see itemsLeftWork).
+  if (isBindingListItem()) return;
   settleFlushScheduled = true;
   queueMicrotask(() => {
     settleFlushScheduled = false;

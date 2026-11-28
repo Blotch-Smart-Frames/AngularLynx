@@ -2,6 +2,7 @@ import {
   isFirstRenderPending,
   runAfterFirstRender,
 } from '../lynx-render-lifecycle';
+import { noteFlush } from './flushes';
 
 /**
  * @internal A `<list>` whose items changed since it last told native about
@@ -85,7 +86,10 @@ const rethrow = (sending: Readonly<Sending>): void => {
  * if one did.
  */
 const layOutLists = (sending: Readonly<Sending>): void => {
-  if (sending.sent) __FlushElementTree(undefined, { triggerLayout: true });
+  if (sending.sent) {
+    noteFlush();
+    __FlushElementTree(undefined, { triggerLayout: true });
+  }
   rethrow(sending);
 };
 
@@ -169,6 +173,7 @@ export const processPendingListUpdates = (): boolean => {
  */
 export const flushTreeWithListUpdates = (): void => {
   const sending = sendPendingListUpdates();
+  noteFlush();
   if (sending.sent) {
     __FlushElementTree(undefined, { triggerLayout: true });
   } else {

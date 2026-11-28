@@ -119,8 +119,8 @@ jobs:
         with:
           path: ~/.cache/angular-lynx/lynx-ios
           key: lynx-ios-frameworks-${{ hashFiles('packages/native/src/ios/frameworks.ts') }}
-      # Both apps on the bundle IDs ios_mount.py installs them as, so the
-      # mount screens' builds replace these rather than sit beside them.
+      # The mount screens' builds go beside these, each under a bundle ID of
+      # its own (ios_mount.py, which launches a kind's four builds in turn).
       - name: Build the Pokédex apps
         run: |
           ours=$(sh benchmarks/harness/build_ios_app.sh --simulator angular-lynx com.angularlynx.bench.angularlynx)

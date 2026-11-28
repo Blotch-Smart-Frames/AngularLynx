@@ -11,6 +11,7 @@ import {
   ApplicationRef,
   ChangeDetectorRef,
   Component,
+  computed,
   CUSTOM_ELEMENTS_SCHEMA,
   Directive,
   type Injector,
@@ -39,6 +40,7 @@ import {
   LynxListElement,
 } from '../lynx-element/lynx-list-element';
 import { LynxDocument } from '../lynx-document';
+import { MainThreadElement } from '../main-thread/main-thread-element';
 import { setPageElementRef } from '../lynx-document/page-ref';
 import { markFirstRenderComplete } from '../lynx-render-lifecycle';
 import { LynxRendererFactory2 } from '../renderer/lynx-renderer-factory2';
@@ -374,6 +376,114 @@ class RowsHost {
   readonly suffix = signal('');
 }
 
+/**
+ * A row's component whose input sets a signal its template reads, as a
+ * signal input does: the row's check sets it, which marks the component for
+ * check and, from there, the views above it (Angular's
+ * markAncestorsForTraversal). JIT compiles no input() (see setInputSignal),
+ * so a setter stands in for one. Its `@if` drops a view when a row without a
+ * kind takes the view of a row with one.
+ */
+@Component({
+  selector: 'row-card',
+  inputs: ['row'],
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  encapsulation: ViewEncapsulation.None,
+  template: `
+    <text class="name">{{ name() }}</text>
+    @if (kind(); as kind) {
+      <text class="meta">{{ kind }}</text>
+    }
+  `,
+})
+class RowCard {
+  readonly #row = signal<Row | undefined>(undefined);
+  set row(row: Row) {
+    if (row.kind === 'broken') throw new Error('broken input');
+    this.#row.set(row);
+  }
+  readonly name = computed(() => this.#row()?.name);
+  readonly kind = computed(() => this.#row()?.kind);
+}
+
+@Component({
+  selector: 'cards-host',
+  imports: [LynxListFor, RowCard],
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  encapsulation: ViewEncapsulation.None,
+  template: `
+    <view #header class="header"></view>
+    <list>
+      <list-item *lynxListFor="let row of rows">
+        <row-card [row]="row" />
+        <view #slot>{{ mark(header, slot, row) }}</view>
+      </list-item>
+    </list>
+  `,
+})
+class CardsHost {
+  readonly rows = [];
+  /**
+   * What a row's check does besides showing its row: writes to the header,
+   * outside its item, moves the header into the item, animates an element
+   * of its own, has a main-thread script animate one, or writes inside its
+   * item and throws.
+   */
+  does: 'write' | 'move' | 'animate' | 'script' | 'throw' | null = null;
+  /** The id of a row whose check throws before it writes anything. */
+  breaksBeforeWriting: number | null = null;
+  mark(header: LynxElement, slot: LynxElement, row: Row): string {
+    if (this.does === 'write') {
+      header.setAttribute('accessibility-label', String(row.id));
+    } else if (this.does === 'move') {
+      slot.appendChild(header);
+    } else if (this.does === 'animate') {
+      slot.animate([{ opacity: 0 }, { opacity: 1 }], 100).pause();
+    } else if (this.does === 'script') {
+      new MainThreadElement(slot.element).animate([{ opacity: 1 }], 100);
+    } else if (this.does === 'throw') {
+      slot.setAttribute('accessibility-label', String(row.id));
+      throw new Error('broken row');
+    }
+    if (row.id === this.breaksBeforeWriting) throw new Error('broken row');
+    return '';
+  }
+}
+
+/**
+ * Renders CardsHost with `rows`, keyed by id, and shows its first item and
+ * lets it go, with a tick after: the list's first item gives the list its
+ * text inheritance class (its rows draw loose text), a write outside the
+ * item that the specs' own binds don't make.
+ */
+const renderCards = async (rows: Row[]) => {
+  const fixture = TestBed.createComponent(CardsHost);
+  fixture.detectChanges();
+  setInputs(directives.at(-1)!, {
+    rows,
+    trackBy: (_: number, row: Row) => row.id,
+  });
+  await update(fixture);
+  hide(show(0)!);
+  fixture.componentRef.injector.get(ApplicationRef).tick();
+  return fixture;
+};
+
+/**
+ * Whether Angular's next tick walks down from the root view to find a view
+ * to check: the root carries HasChildViewsToRefresh (LViewFlags, 1 << 12),
+ * which markAncestorsForTraversal sets on each view above one marked for
+ * check. Read from the LView, as nothing public tells.
+ */
+const tickWalksFromRoot = (fixture: {
+  componentRef: { hostView: unknown };
+}): boolean => {
+  const FLAGS = 2;
+  const HAS_CHILD_VIEWS_TO_REFRESH = 1 << 12;
+  const lView = (fixture.componentRef.hostView as { _lView: number[] })._lView;
+  return (lView[FLAGS]! & HAS_CHILD_VIEWS_TO_REFRESH) !== 0;
+};
+
 type Fixture = {
   componentRef: { injector: Injector };
   detectChanges(): void;
@@ -505,21 +615,229 @@ describe('*lynxListFor', () => {
     expect(metaIn(show(2)!)).toMatch(/^2\/3\s+last even$/);
   });
 
-  it('flushes the whole tree with the cycle after an item, then not for a cycle that changes nothing', async () => {
+  it('flushes nothing with the cycle after an item that wrote only inside it', async () => {
     const { fixture } = await render();
     show(4);
     flushes.length = 0;
-    const appRef = fixture.componentRef.injector.get(ApplicationRef);
 
-    // Angular runs a cycle like this after most binds: one for the views a
-    // rebound item's `@if` detached, which refreshes no view. The item's own
-    // flush committed the item only, and a bind can write outside it.
+    // Angular runs a cycle like this after every bind: one for the view's
+    // attach, which refreshes no view. The item's own flush committed all
+    // the bind wrote.
+    fixture.componentRef.injector.get(ApplicationRef).tick();
+
+    expect(flushes).toEqual([]);
+  });
+
+  it('checks a row without marking the views above it for the next tick', async () => {
+    const fixture = await renderCards(rowsOf(3));
+    const appRef = fixture.componentRef.injector.get(ApplicationRef);
+    hide(show(0)!);
+    appRef.tick();
+    expect(tickWalksFromRoot(fixture)).toBe(false);
+
+    // The view goes to another row: its card's input marks the card for
+    // check, inside the view the bind checks.
+    const sign = show(1)!;
+
+    expect(nameIn(sign)).toBe('Row 2');
+    expect(tickWalksFromRoot(fixture)).toBe(false);
+    flushes.length = 0;
+    appRef.tick();
+    expect(flushes).toEqual([]);
+  });
+
+  it('flushes nothing after a rebound row whose @if dropped a view', async () => {
+    const fixture = await renderCards([
+      { id: 1, name: 'Row 1', kind: 'fire' },
+      { id: 2, name: 'Row 2' },
+    ]);
+    const appRef = fixture.componentRef.injector.get(ApplicationRef);
+    const sign = show(0)!;
+    expect(metaIn(sign)).toBe('fire');
+    hide(sign);
+    appRef.tick();
+
+    expect(show(1)).toBe(sign);
+    flushes.length = 0;
+    appRef.tick();
+
+    expect(nameIn(sign)).toBe('Row 2');
+    expect(byId(sign).children.some((el) => el.classes.has('meta'))).toBe(
+      false,
+    );
+    expect(flushes).toEqual([]);
+  });
+
+  it('flushes the whole tree with the cycle after an item that wrote outside it, then not for one that changes nothing', async () => {
+    const fixture = await renderCards(rowsOf(3));
+    const appRef = fixture.componentRef.injector.get(ApplicationRef);
+    fixture.componentInstance.does = 'write';
+    show(1);
+    flushes.length = 0;
+
+    // The item's flush doesn't commit the header's attribute.
     appRef.tick();
     expect(flushes).toEqual([{ element: undefined, options: undefined }]);
+    expect(
+      created
+        .find((el) => el.classes.has('header'))!
+        .attrs.get('accessibility-label'),
+    ).toBe('2');
 
     flushes.length = 0;
     appRef.tick();
     expect(flushes).toEqual([]);
+  });
+
+  it('flushes the whole tree with the cycle after an item that moved an element in from outside it', async () => {
+    const fixture = await renderCards(rowsOf(3));
+    fixture.componentInstance.does = 'move';
+    const sign = show(1)!;
+    flushes.length = 0;
+
+    // The header left the page's tree, which the item's flush doesn't
+    // commit.
+    fixture.componentRef.injector.get(ApplicationRef).tick();
+
+    const header = created.find((el) => el.classes.has('header'))!;
+    expect(header.parent?.parent).toBe(byId(sign));
+    expect(flushes).toEqual([{ element: undefined, options: undefined }]);
+  });
+
+  it('flushes nothing with the cycle after an item that animated an element of its own', async () => {
+    const fixture = await renderCards(rowsOf(3));
+    fixture.componentInstance.does = 'animate';
+    show(1);
+    flushes.length = 0;
+
+    fixture.componentRef.injector.get(ApplicationRef).tick();
+
+    expect(flushes).toEqual([]);
+  });
+
+  it('flushes the whole tree with the cycle after an item whose check ran a main-thread script’s animation', async () => {
+    const fixture = await renderCards(rowsOf(3));
+    fixture.componentInstance.does = 'script';
+    show(1);
+    flushes.length = 0;
+
+    // The runtime can't tell which element a script animated.
+    fixture.componentRef.injector.get(ApplicationRef).tick();
+
+    expect(flushes).toEqual([{ element: undefined, options: undefined }]);
+  });
+
+  it('flushes the whole tree after a bind that follows one that threw', async () => {
+    const fixture = await renderCards(rowsOf(4));
+    const appRef = fixture.componentRef.injector.get(ApplicationRef);
+    hide(show(0)!);
+    // Row 1 goes: its view leaves change detection, in the pool.
+    setInputs(directives.at(-1)!, { rows: rowsOf(3, 2) });
+    await update(fixture);
+    appRef.tick();
+    // The next row takes that view, writes inside it, then throws: no flush
+    // of the item follows.
+    fixture.componentInstance.does = 'throw';
+    expect(() => show(0)).toThrow('broken row');
+    fixture.componentInstance.does = null;
+    show(1);
+    flushes.length = 0;
+
+    appRef.tick();
+
+    expect(flushes).toEqual([{ element: undefined, options: undefined }]);
+  });
+
+  it('flushes the whole tree after a batch that a row stopped by throwing before it wrote', async () => {
+    const fixture = await renderCards(rowsOf(6));
+    const appRef = fixture.componentRef.injector.get(ApplicationRef);
+    const views = [show(1)!, show(2)!];
+    views.forEach(hide);
+    // Rows 1 to 3 go: both views leave change detection, in the pool, so
+    // the one whose check throws isn't checked again with the next tick.
+    setInputs(directives.at(-1)!, { rows: rowsOf(3, 4) });
+    await update(fixture);
+    appRef.tick();
+    fixture.componentInstance.breaksBeforeWriting = 5;
+
+    // Row 4 takes a view and writes, then row 5 takes the other and throws:
+    // the batch's one flush never comes.
+    expect(() =>
+      theList().componentAtIndexes(
+        theList(),
+        theList().id,
+        [0, 1],
+        [operationId++, operationId++],
+        false,
+        false,
+      ),
+    ).toThrow('broken row');
+    fixture.componentInstance.breaksBeforeWriting = null;
+    show(2);
+    flushes.length = 0;
+
+    appRef.tick();
+
+    expect(flushes).toEqual([{ element: undefined, options: undefined }]);
+  });
+
+  it('flushes the whole tree after the first item with an HTML text tag, which gives the list its inheritance class', async () => {
+    @Component({
+      selector: 'span-host',
+      imports: [LynxListFor],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      encapsulation: ViewEncapsulation.None,
+      template: `
+        <list>
+          <list-item *lynxListFor="let row of rows">
+            <span class="name">{{ row.name }}</span>
+          </list-item>
+        </list>
+      `,
+    })
+    class SpanHost {
+      readonly rows = [];
+    }
+    const fixture = TestBed.createComponent(SpanHost);
+    fixture.detectChanges();
+    setInputs(directives.at(-1)!, { rows: rowsOf(3) });
+    await update(fixture);
+    const appRef = fixture.componentRef.injector.get(ApplicationRef);
+    show(0);
+    flushes.length = 0;
+
+    // The list, outside the item, got the class with the item's insert.
+    appRef.tick();
+    expect(theList().classes.has('_nginherit')).toBe(true);
+    expect(flushes).toEqual([{ element: undefined, options: undefined }]);
+
+    // The list has it now: the next item writes only inside itself.
+    show(1);
+    flushes.length = 0;
+    appRef.tick();
+    expect(flushes).toEqual([]);
+  });
+
+  it('leaves a reused view out of change detection when its check throws', async () => {
+    const { fixture, set } = await render();
+    const sign = show(0)!;
+    hide(sign);
+    // Row 1 goes: its view leaves change detection, in the pool.
+    await set({ rows: rowsOf(99, 2) });
+    const broken = {
+      id: 0,
+      get name(): string {
+        throw new Error('broken row');
+      },
+    };
+    await set({ rows: [broken, ...rowsOf(99, 2)] });
+
+    expect(() => show(0)).toThrow('broken row');
+
+    // Not checked with the next cycle, which would throw again.
+    fixture.componentInstance.suffix.set('?');
+    await update(fixture);
+    expect(nameIn(show(1)!)).toBe('Row 2?');
   });
 
   it('still flushes after an item what was waiting from before it', async () => {
@@ -550,6 +868,220 @@ describe('*lynxListFor', () => {
     expect(metaIn(reused)).toMatch(/^5\/100\s+odd$/);
     expect(show(6)).toBe(signs[1]);
     expect(built()).toBe(5);
+  });
+
+  describe('binding ahead', () => {
+    /**
+     * Lets the timer componentAtIndex sets run: the engine thread's idle
+     * moment after native's layout pass.
+     */
+    const idle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    /**
+     * Counts the rows' checks from here on: each reads the host's suffix.
+     */
+    const countChecks = (fixture: { componentInstance: RowsHost }) => {
+      const checks = vi.fn(() => '');
+      (fixture.componentInstance as unknown as { suffix: unknown }).suffix =
+        checks;
+      return checks;
+    };
+
+    it('binds the next item with a view native let go of, so componentAtIndex finds it checked', async () => {
+      const { fixture } = await render();
+      const signs = [0, 1, 2].map((i) => show(i)!);
+      hide(signs[0]!);
+      hide(signs[1]!);
+      expect(show(3)).toBe(signs[0]);
+      flushes.length = 0;
+
+      await idle();
+
+      // Item 4, after the last one native asked for, in the other view
+      // native let go of. Its check flushes the whole tree, outside native's
+      // layout pass.
+      expect(nameIn(signs[1]!)).toBe('Row 5');
+      expect(metaIn(signs[1]!)).toMatch(/^4\/100\s+even$/);
+      expect(flushes.some((flush) => flush.element === undefined)).toBe(true);
+      const checks = countChecks(fixture);
+      flushes.length = 0;
+
+      expect(show(4, true)).toBe(signs[1]);
+
+      // Only appended (it's in the list already) and flushed, as a view
+      // that showed another item when native last saw it.
+      expect(checks).not.toHaveBeenCalled();
+      expect(built()).toBe(3);
+      expect(flushes).toEqual([
+        {
+          element: byId(signs[1]!),
+          options: {
+            triggerLayout: true,
+            operationID: operationId - 1,
+            elementID: signs[1],
+            listID: theList().id,
+            listReuseNotification: { listElement: theList(), itemKey: '5' },
+          },
+        },
+      ]);
+      expect(appendedAgain).toEqual([]);
+    });
+
+    it('guesses the item before when native goes up the list', async () => {
+      await render();
+      const signs = [10, 11, 12].map((i) => show(i)!);
+      hide(signs[2]!);
+      hide(signs[1]!);
+      expect(show(9)).toBe(signs[2]);
+
+      await idle();
+
+      expect(nameIn(signs[1]!)).toBe('Row 9');
+      expect(show(8)).toBe(signs[1]);
+    });
+
+    it('binds nothing ahead without a free view, and builds none', async () => {
+      await render();
+      show(0);
+      show(1);
+
+      await idle();
+
+      expect(built()).toBe(2);
+      expect(nameIn(show(2)!)).toBe('Row 3');
+      expect(built()).toBe(3);
+    });
+
+    it('binds nothing ahead for an item that has a view', async () => {
+      await render();
+      const later = show(5)!;
+      const free = show(3)!;
+      show(4);
+      hide(free);
+
+      await idle();
+
+      // Item 5 is on screen: the view native let go of stays item 3's.
+      expect(nameIn(free)).toBe('Row 4');
+      expect(nameIn(later)).toBe('Row 6');
+      expect(show(3)).toBe(free);
+    });
+
+    it('binds nothing ahead for a recyclable: false item', async () => {
+      await render({
+        attributes: (row) => ({ recyclable: row.id !== 3 }),
+      });
+      const signs = [0, 1].map((i) => show(i)!);
+      hide(signs[0]!);
+
+      await idle();
+
+      expect(nameIn(signs[0]!)).toBe('Row 1');
+    });
+
+    it('checks a view bound ahead again when its index changed before native asked for it', async () => {
+      const { fixture, set } = await render();
+      const signs = [0, 1].map((i) => show(i)!);
+      hide(signs[0]!);
+      await idle();
+      expect(nameIn(signs[0]!)).toBe('Row 3');
+
+      // A row goes in above it: the view's item is at index 3 now.
+      await set({ rows: [{ id: 0, name: 'Row 0' }, ...rowsOf(100)] });
+      const checks = countChecks(fixture);
+
+      expect(show(3)).toBe(signs[0]);
+      expect(checks).toHaveBeenCalled();
+      expect(nameIn(signs[0]!)).toBe('Row 3');
+      expect(metaIn(signs[0]!)).toMatch(/^3\/101\s+odd$/);
+    });
+
+    it('leaves a view bound for an item native never asks for in the pool, for the next one', async () => {
+      await render();
+      const signs = [0, 1].map((i) => show(i)!);
+      hide(signs[0]!);
+      await idle();
+      expect(nameIn(signs[0]!)).toBe('Row 3');
+
+      // Native goes elsewhere: the view goes to the item it asks for.
+      expect(show(50)).toBe(signs[0]);
+      expect(nameIn(signs[0]!)).toBe('Row 51');
+      expect(built()).toBe(2);
+      // Item 2 has no view now, and gets one when native asks.
+      expect(nameIn(show(2)!)).toBe('Row 3');
+    });
+
+    it('leaves a row whose check throws for componentAtIndex to throw', async () => {
+      const { set } = await render();
+      const broken = {
+        id: 3,
+        get name(): string {
+          throw new Error('broken row');
+        },
+      };
+      await set({ rows: [...rowsOf(2), broken, ...rowsOf(97, 4)] });
+      const signs = [0, 1].map((i) => show(i)!);
+      hide(signs[0]!);
+
+      // Nothing thrown from the timer.
+      await idle();
+
+      expect(() => show(2)).toThrow('broken row');
+    });
+
+    it('throws again for a row whose input threw when it was bound ahead', async () => {
+      const rows = rowsOf(5);
+      rows[2] = { ...rows[2]!, kind: 'broken' };
+      await renderCards(rows);
+      await idle();
+      const sign = show(1)!;
+      hide(sign);
+
+      // Item 2's check throws, after Angular stored the input's value.
+      await idle();
+
+      // Its bind checks it in another view, whose input isn't set already,
+      // and throws where it would have without binding ahead.
+      expect(() => show(2)).toThrow('broken input');
+      // The view isn't reused: its input holds the value that threw.
+      expect(show(3)).not.toBe(sign);
+    });
+
+    it('throws for the same row under another key after it threw when it was bound ahead', async () => {
+      const rows = rowsOf(5);
+      const broken = { ...rows[2]!, kind: 'broken' };
+      // The same object twice: the second gets a key of its own.
+      rows[2] = broken;
+      rows[3] = broken;
+      await renderCards(rows);
+      await idle();
+      hide(show(1)!);
+      await idle();
+
+      expect(() => show(3)).toThrow('broken input');
+    });
+
+    it('binds nothing once the list is gone', async () => {
+      await render();
+      const signs = [0, 1].map((i) => show(i)!);
+      hide(signs[0]!);
+      LynxElement.byUniqueId(theList().id)!.remove();
+
+      await idle();
+
+      expect(nameIn(signs[0]!)).toBe('Row 1');
+    });
+
+    it('binds nothing once the run is gone', async () => {
+      const { fixture } = await render();
+      const signs = [0, 1].map((i) => show(i)!);
+      hide(signs[0]!);
+      fixture.destroy();
+
+      await idle();
+
+      expect(nameIn(signs[0]!)).toBe('Row 1');
+    });
   });
 
   it('appends an item element to the native list once, however often native asks for it', async () => {
@@ -1137,7 +1669,8 @@ describe('*lynxListFor', () => {
       show(1);
       await vi.runAllTimersAsync();
 
-      // Only the item's own flush: no tick, and no settle flush after it.
+      // Only the item's own flush: the tick its reattach schedules has
+      // nothing to flush, and no settle flush comes after it.
       expect(flushes).toHaveLength(1);
       expect(flushes[0]!.options.operationID).toBeDefined();
     } finally {

@@ -18,6 +18,7 @@ import {
   buildFromBundle,
   loadNativePackage,
   type Platform,
+  readAngularJson,
 } from './native-package.ts';
 
 /**
@@ -25,13 +26,30 @@ import {
  * E2E app, with a fixture for every feature, never gets: no canvas at all
  * (issue #837), the build most apps get, and a canvas that draws only in 2D
  * (#847), what a chart or a signature pad gets.
+ *
+ * The first is also built without `permissions.biometrics` and
+ * `permissions.camera`, as most apps are, which leaves the biometrics module
+ * (#918) and the barcode scanner's (#917) out. The E2E app asks for both, so
+ * its own build has the modules.
  */
 export const VARIANTS: readonly {
   readonly name: string;
   readonly features: NativeFeatures;
+  readonly biometrics: boolean;
+  readonly camera: boolean;
 }[] = [
-  { name: 'no-canvas', features: { canvas: false, webgl: false } },
-  { name: 'canvas-2d', features: { canvas: true, webgl: false } },
+  {
+    name: 'no-canvas',
+    features: { canvas: false, webgl: false },
+    biometrics: false,
+    camera: false,
+  },
+  {
+    name: 'canvas-2d',
+    features: { canvas: true, webgl: false },
+    biometrics: true,
+    camera: true,
+  },
 ];
 
 /**
@@ -40,14 +58,21 @@ export const VARIANTS: readonly {
  * with those features gets, rather than everything compiled again (a features
  * file the builder stopped reading, for instance, gives an app everything).
  */
-const PROBES: Record<Platform, { canvas: string; webgl: string }> = {
+const PROBES: Record<
+  Platform,
+  { canvas: string; webgl: string; biometrics: string; camera: string }
+> = {
   ios: {
     canvas: 'App/AngularLynxCanvas2DContext.m',
     webgl: 'App/AngularLynxWebGLContext.m',
+    biometrics: 'App/BiometricsModule.swift',
+    camera: 'App/BarcodeScannerModule.swift',
   },
   android: {
     canvas: 'app/src/main/java/dev/angularlynx/shell/Canvas2DContext.kt',
     webgl: 'app/src/main/java/dev/angularlynx/shell/WebGLContext.kt',
+    biometrics: 'app/src/main/java/dev/angularlynx/shell/BiometricsModule.kt',
+    camera: 'app/src/main/java/dev/angularlynx/shell/BarcodeScannerModule.kt',
   },
 };
 
@@ -88,7 +113,10 @@ export const compileFeatureVariants = async ({
   );
   const failures: string[] = [];
   try {
-    for (const { name, features } of VARIANTS) {
+    const appPermissions =
+      (Object.values(readAngularJson(appDir).projects)[0]!.architect.build
+        .options['permissions'] as Record<string, string> | undefined) ?? {};
+    for (const { name, features, biometrics, camera } of VARIANTS) {
       step(`The ${platform} project with ${name}`);
       const variantDir = path.join(root, name);
       const bundleDir = path.join(variantDir, 'dist');
@@ -125,15 +153,28 @@ export const compileFeatureVariants = async ({
           workDir: path.join(variantDir, 'work'),
           outputDir: path.join(variantDir, 'out'),
           log,
+          // The app's permissions without the ones the variant leaves out.
+          overrides:
+            biometrics && camera
+              ? {}
+              : {
+                  permissions: Object.fromEntries(
+                    Object.entries(appPermissions).filter(
+                      ([permission]) =>
+                        (biometrics || permission !== 'biometrics') &&
+                        (camera || permission !== 'camera'),
+                    ),
+                  ),
+                },
         });
-        const probes = PROBES[platform];
-        for (const [feature, file] of Object.entries(probes) as [
-          keyof NativeFeatures,
+        const kept = { ...features, biometrics, camera };
+        for (const [feature, file] of Object.entries(PROBES[platform]) as [
+          keyof typeof kept,
           string,
         ][]) {
-          if (existsSync(path.join(projectDir, file)) !== features[feature]) {
+          if (existsSync(path.join(projectDir, file)) !== kept[feature]) {
             failures.push(
-              `${name}: the generated project ${features[feature] ? 'has no' : 'still has'} ${file}, so it isn't the project an app with ${JSON.stringify(features)} gets.`,
+              `${name}: the generated project ${kept[feature] ? 'has no' : 'still has'} ${file}, so it isn't the project an app with ${JSON.stringify(kept)} gets.`,
             );
           }
         }

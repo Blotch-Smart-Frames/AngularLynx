@@ -104,20 +104,23 @@ The build pipeline transpiles your code to the appropriate target for each bundl
 
 These do not exist in Lynx and are shimmed by the runtime:
 
-| Global                                     | Shim                                                                                                             |
-| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| `window`                                   | `globalThis`                                                                                                     |
-| `document`                                 | Every element's `ownerDocument` and `DOCUMENT`: listenable, with `defaultView` and `body`; queries return `null` |
-| `addEventListener` / `removeEventListener` | The window's listeners on the main thread (touches, `resize`); no-ops on the background thread                   |
-| `innerWidth` / `innerHeight`               | The LynxView's size                                                                                              |
-| `Event` / `CustomEvent`                    | Minimal classes, for `dispatchEvent()`                                                                           |
-| `AbortController`                          | Minimal polyfill                                                                                                 |
-| `queueMicrotask`                           | `Promise.resolve().then(fn)` on the main thread, `lynx.queueMicrotask` on the background thread                  |
-| `atob` / `btoa`                            | Both threads; bad input throws an `InvalidCharacterError`                                                        |
-| `DOMException`                             | Both threads, with `name`, `message` and the legacy `code`                                                       |
-| `URL` constructor                          | Not available (manual string parsing in `LynxPlatformLocation`)                                                  |
-| `localStorage`                             | `LynxLocalStorage`, or `LynxSecureStorage` for secrets                                                           |
-| `navigator.clipboard`                      | `LynxClipboard`                                                                                                  |
-| `navigator.vibrate()`                      | `LynxHaptics`                                                                                                    |
-| `window.open` / `location.href = url`      | `LynxLinking.openURL()`, or `openInApp()` for a browser sheet                                                    |
-| `navigator.share()`                        | `LynxShare.share()`, with files as `{ blob, name }`                                                              |
+| Global                                       | Shim                                                                                                                                                                                                         |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `window`                                     | `globalThis`                                                                                                                                                                                                 |
+| `document`                                   | Every element's `ownerDocument` and `DOCUMENT`: listenable, with `defaultView` and `body`; queries return `null`                                                                                             |
+| `addEventListener` / `removeEventListener`   | The window's listeners on the main thread (touches, `resize`); no-ops on the background thread                                                                                                               |
+| `innerWidth` / `innerHeight`                 | The LynxView's size                                                                                                                                                                                          |
+| `Event` / `CustomEvent`                      | Minimal classes, for `dispatchEvent()`                                                                                                                                                                       |
+| `AbortController`                            | Minimal polyfill                                                                                                                                                                                             |
+| `queueMicrotask`                             | `Promise.resolve().then(fn)` on the main thread, `lynx.queueMicrotask` on the background thread                                                                                                              |
+| `performance.now()` / `timeOrigin`           | Main thread only, in fractions of a millisecond from the engine's microsecond clock (not monotonic: a change to the device's time moves it); the background thread has none, so time with `Date.now()` there |
+| `atob` / `btoa`                              | Both threads; bad input throws an `InvalidCharacterError`                                                                                                                                                    |
+| `DOMException`                               | Both threads, with `name`, `message` and the legacy `code`                                                                                                                                                   |
+| `URL` constructor                            | Not available (manual string parsing in `LynxPlatformLocation`)                                                                                                                                              |
+| `localStorage`                               | `LynxLocalStorage`, or `LynxSecureStorage` for secrets                                                                                                                                                       |
+| `navigator.clipboard`                        | `LynxClipboard`                                                                                                                                                                                              |
+| `navigator.vibrate()`                        | `LynxHaptics`                                                                                                                                                                                                |
+| `navigator.credentials` (WebAuthn, passkeys) | None. For a local check that the person is there, not a credential a server verifies, `LynxBiometrics`                                                                                                       |
+| `window.open` / `location.href = url`        | `LynxLinking.openURL()`, or `openInApp()` for a browser sheet                                                                                                                                                |
+| `navigator.share()`                          | `LynxShare.share()`, with files as `{ blob, name }`                                                                                                                                                          |
+| `BarcodeDetector`                            | `LynxBarcodeScanner.scan()`, with `permissions.camera`                                                                                                                                                       |

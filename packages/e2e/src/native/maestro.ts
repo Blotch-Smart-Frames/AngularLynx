@@ -51,10 +51,21 @@ export type Flow = {
    * For a flow the device itself can hold up: reads the app's log after the
    * flow failed, and says what in it shows the device was at fault, or
    * returns undefined. The flow then runs once more in a new session (see
-   * {@link runFlows}), and fails the run only if it fails again.
+   * {@link runFlows}), and fails the run only if it fails again. The log is
+   * the session's, so it can hold other flows' lines; `ran` is when this
+   * flow ran, for a check that has to tell them apart.
    */
-  readonly deviceFault?: (appLog: string) => string | undefined;
+  readonly deviceFault?: DeviceFaultCheck;
 };
+
+/** When a flow ran, in milliseconds since the epoch. */
+export type FlowWindow = { readonly start: number; readonly end: number };
+
+/** Reads the app's log for a device fault (see {@link Flow.deviceFault}). */
+export type DeviceFaultCheck = (
+  appLog: string,
+  ran?: FlowWindow,
+) => string | undefined;
 
 /**
  * A WebKit process that took this long to start was held up by the
@@ -171,6 +182,129 @@ export const slowPhotosPickerLaunch = (appLog: string): string | undefined => {
   return undefined;
 };
 
+/**
+ * A Metal compiler the simulator hadn't started this long after the app
+ * asked for it was held up by the simulator rather than the app. It starts
+ * in about a second on GitHub's macOS runners (1.1 to 1.4s on the passing
+ * runs of 2026-11-27 and 2026-11-28), and the flows that reach it wait 15
+ * seconds for what it holds up, so the limit sits under that.
+ */
+const STALLED_METAL_COMPILER_SECONDS = 10;
+
+/**
+ * What Metal logs in the app as it starts compiling a shader, with the app's
+ * process ID ("1234  0    myapp: (Metal) Metal Compiling Shader"), and what
+ * the simulator's MTLCompilerService logs as it begins a compile for it
+ * ("Compilation BEGIN (ParentProcessName=myapp_1234)"). The app's log has
+ * the second because the iOS host's log stream takes in MTLCompilerService's
+ * lines that name the app (see runIosHost in ios.ts).
+ */
+const METAL_COMPILE_REQUEST_LINE = /: \(Metal\) Metal Compiling Shader$/;
+const METAL_COMPILE_BEGIN_LINE =
+  /Compilation BEGIN \(ParentProcessName=[^)]*_(\d+)\)/;
+
+/**
+ * The ID of the process that logged a `log stream` line: the column after
+ * the activity ID ("0x5a3b24a            75118  0    myapp: ...").
+ */
+const LOG_LINE_PROCESS = /^\S+ \S+\s+\S+\s+\S+\s+\S+\s+(\d+)\s/;
+
+/**
+ * Says so when an app process in `appLog` asked the simulator's Metal
+ * compiler for shaders while the flow ran (`ran`), and the compiler hadn't
+ * begun compiling for it {@link STALLED_METAL_COMPILER_SECONDS} later, or by
+ * that process's last line; otherwise undefined. Only a request in the flow's
+ * own time counts, and without that time nothing does: eight flows take this
+ * check, and the log holds the whole session, so another flow's stall would
+ * otherwise give a flow that failed for its own reasons a second run.
+ *
+ * The first WebGL context an app makes after the simulator boots has ANGLE
+ * build its Metal shaders from source, through MTLCompilerService, which the
+ * simulator starts for the app. On GitHub's macOS runners it sometimes never
+ * started it (issue #890: on 2026-11-27 and 2026-11-28 the first flow to open
+ * the canvas page, linking.yaml, connected and waited 18 seconds with nothing
+ * started). ANGLE waits for it on Lynx's engine thread, where Angular runs, so
+ * the canvas page shows none of its results and the app answers no tap:
+ * linking.yaml's "Open linking" did nothing. The next flow, in a new app
+ * process, got its compiler in about a second, and later ones find the
+ * shaders cached and compile nothing.
+ *
+ * Only a process's first compile counts: once the compiler has started for
+ * it, a later compile is no stall, however long after the first it comes. A
+ * process that's stuck keeps logging while it waits (XCTest answers Maestro's
+ * queries in it, about 100 lines a second on the failing runs), so its own
+ * last line is how long it waited. That's its own rather than the log's last
+ * line, since a later flow's launchApp may stop a process just after it asked,
+ * and the session's log runs on through the flows after it.
+ */
+export const stalledMetalCompiler = (
+  appLog: string,
+  ran?: FlowWindow,
+): string | undefined => {
+  if (ran === undefined) {
+    return undefined;
+  }
+  // Each app process's first request that hasn't begun, and its last line.
+  const waiting = new Map<string, number>();
+  const started = new Set<string>();
+  const lastLine = new Map<string, number>();
+  for (const line of appLog.split('\n')) {
+    const time = logLineTime(line);
+    if (time === undefined) {
+      continue;
+    }
+    const begun = METAL_COMPILE_BEGIN_LINE.exec(line)?.[1];
+    if (begun !== undefined) {
+      const asked = waiting.get(begun);
+      if (asked !== undefined) {
+        const seconds = (time - asked) / 1000;
+        if (seconds >= STALLED_METAL_COMPILER_SECONDS) {
+          return `the simulator took ${Math.round(seconds)}s to start compiling the app's Metal shaders`;
+        }
+        waiting.delete(begun);
+      }
+      started.add(begun);
+      continue;
+    }
+    const process = LOG_LINE_PROCESS.exec(line)?.[1];
+    if (process === undefined) {
+      continue;
+    }
+    lastLine.set(process, time);
+    if (
+      METAL_COMPILE_REQUEST_LINE.test(line) &&
+      time >= ran.start &&
+      time <= ran.end &&
+      !started.has(process) &&
+      !waiting.has(process)
+    ) {
+      waiting.set(process, time);
+    }
+  }
+  for (const [process, asked] of waiting) {
+    const seconds = ((lastLine.get(process) ?? asked) - asked) / 1000;
+    if (seconds >= STALLED_METAL_COMPILER_SECONDS) {
+      return `the simulator hadn't started compiling the app's Metal shaders ${Math.round(seconds)}s after the app asked for it`;
+    }
+  }
+  return undefined;
+};
+
+/**
+ * A {@link Flow.deviceFault} that finds whichever of `checks` comes first.
+ */
+const anyDeviceFault =
+  (...checks: DeviceFaultCheck[]): DeviceFaultCheck =>
+  (appLog, ran) => {
+    for (const check of checks) {
+      const fault = check(appLog, ran);
+      if (fault) {
+        return fault;
+      }
+    }
+    return undefined;
+  };
+
 // No flow is a known failure on any platform. Android used to fail both flows
 // because Maestro couldn't see flattened Lynx elements, which the fixtures now
 // avoid (fixtures/counter.ts), and the iOS lazy route failed because Angular's
@@ -236,6 +370,9 @@ export const FLOWS: readonly Flow[] = [
     // Only the app's own builds have the linking module. In Lynx Explorer,
     // openInApp() rejects and canOpenURL() says no.
     only: { host: 'shell' },
+    // It reaches the linking page through the canvas page, whose WebGL
+    // context it's often the first flow to make (see stalledMetalCompiler).
+    deviceFault: stalledMetalCompiler,
   },
   {
     file: 'app-state.yaml',
@@ -243,6 +380,8 @@ export const FLOWS: readonly Flow[] = [
     // Only the app's own builds send the app's state. Lynx Explorer sends
     // none, so the app stays active there.
     only: { host: 'shell' },
+    // Through the canvas page, as linking.yaml.
+    deviceFault: stalledMetalCompiler,
   },
   {
     file: 'canvas.yaml',
@@ -251,6 +390,7 @@ export const FLOWS: readonly Flow[] = [
     // Only the app's own builds have <canvas> and its WebGL module. Lynx
     // Explorer has neither, and its canvas is an empty view.
     only: { host: 'shell' },
+    deviceFault: stalledMetalCompiler,
   },
   {
     file: 'video-toggle.yaml',
@@ -259,6 +399,7 @@ export const FLOWS: readonly Flow[] = [
     // Only the app's own builds have <video> drawn on a canvas, and the
     // photo page that links to it (see webview.yaml).
     only: { host: 'shell' },
+    deviceFault: stalledMetalCompiler,
   },
   {
     file: 'webview.yaml',
@@ -268,7 +409,7 @@ export const FLOWS: readonly Flow[] = [
     // navigation bar sits above the app, the canvas page's links are below
     // the bottom of CI's 320x640 Android emulator.
     only: { host: 'shell' },
-    deviceFault: slowWebKitLaunch,
+    deviceFault: anyDeviceFault(slowWebKitLaunch, stalledMetalCompiler),
   },
   {
     file: 'overlays.yaml',
@@ -277,6 +418,7 @@ export const FLOWS: readonly Flow[] = [
     // Only the app's own builds, where the page linking to it is reached
     // (see webview.yaml).
     only: { host: 'shell' },
+    deviceFault: stalledMetalCompiler,
   },
   {
     file: 'portal.yaml',
@@ -284,6 +426,7 @@ export const FLOWS: readonly Flow[] = [
       'opens a LynxPortal and takes it off the screen with destroy()',
     // On the overlays page, so only the app's own builds (see overlays.yaml).
     only: { host: 'shell' },
+    deviceFault: stalledMetalCompiler,
   },
   {
     file: 'photo.yaml',
@@ -291,7 +434,17 @@ export const FLOWS: readonly Flow[] = [
     // Only the app's own builds have the picker module. Lynx Explorer
     // rejects with unavailable.
     only: { host: 'shell' },
-    deviceFault: slowPhotosPickerLaunch,
+    deviceFault: anyDeviceFault(slowPhotosPickerLaunch, stalledMetalCompiler),
+  },
+  {
+    file: 'scanner.yaml',
+    description:
+      "opens LynxBarcodeScanner, which the Simulator's shell says it has no camera for",
+    // Only the app's own iOS build: Lynx Explorer has no scanner module, and
+    // Android's scanner is Play services', which CI's emulator may open or
+    // download (see scanner.yaml).
+    only: { platform: 'ios', host: 'shell' },
+    deviceFault: stalledMetalCompiler,
   },
 ];
 
@@ -623,6 +776,45 @@ const latestMaestroLog = (outputDir: string): string | undefined => {
 };
 
 /**
+ * When `flow` ran in Maestro's latest session in `outputDir`, from its first
+ * command's start to its last one's end, or undefined. Maestro writes each
+ * flow's commands, with when each started and how long it took, to
+ * `<outputDir>/<session>/<flow>/commands.json`, a session folder named by its
+ * start time.
+ */
+const flowWindow = (outputDir: string, flow: Flow): FlowWindow | undefined => {
+  if (!existsSync(outputDir)) {
+    return undefined;
+  }
+  const name = path.basename(flow.file, '.yaml');
+  const session = readdirSync(outputDir)
+    .filter((entry) => existsSync(path.join(outputDir, entry, name)))
+    .sort()
+    .at(-1);
+  const file = session && path.join(outputDir, session, name, 'commands.json');
+  if (!file || !existsSync(file)) {
+    return undefined;
+  }
+  try {
+    const commands = JSON.parse(readFileSync(file, 'utf8')) as {
+      metadata?: { timestamp?: number; duration?: number };
+    }[];
+    const times = commands.flatMap(({ metadata }) =>
+      metadata?.timestamp === undefined
+        ? []
+        : [metadata.timestamp, metadata.timestamp + (metadata.duration ?? 0)],
+    );
+    return times.length > 0
+      ? { start: Math.min(...times), end: Math.max(...times) }
+      : undefined;
+  } catch {
+    // A file Maestro was still writing when it stopped: no window, so a
+    // check that needs one finds no fault.
+    return undefined;
+  }
+};
+
+/**
  * Saves what a maintainer needs to see why Maestro hung, since the CI log
  * only shows that a flow never finished: a screenshot of the device, and the
  * end of Maestro's output and log, where the last command started is the one
@@ -720,7 +912,10 @@ export const runFlows = async (
       if (outcome.status === 'failed' && retries < DEVICE_FAULT_RETRIES) {
         const fault = deviceLost
           ? 'Maestro lost the device in that session'
-          : flow.deviceFault?.(options.appLog?.().slice(appLogStart) ?? '');
+          : flow.deviceFault?.(
+              options.appLog?.().slice(appLogStart) ?? '',
+              flowWindow(options.outputDir, flow),
+            );
         if (fault) {
           deviceFaultRetries.set(flow, retries + 1);
           deviceFaultFailures.set(flow, outcome);

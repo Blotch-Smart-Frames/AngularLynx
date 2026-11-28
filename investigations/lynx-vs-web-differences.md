@@ -266,11 +266,11 @@ Angular implements a move as **detach-then-reinsert in the same change-detection
 
 This broke `examples/transitions`. Deleting a non-last item reorders every following item (each a `move()`), so their content vanished. Deleting the last item triggers no moves, so it stayed intact — the tell-tale signature.
 
-For a same-tick move this is completely safe: the element is removed and re-inserted in **one** flush (`is_move=true`), so both its fiber node and its native painting node survive. `RemoveNodeInternal` ([`lynx/core/renderer/dom/fiber/fiber_element.cc`](https://github.com/lynx-family/lynx/blob/develop/core/renderer/dom/fiber/fiber_element.cc)) only unlinks the node and clears its parent pointer; `InsertNodeBeforeInternal` auto-reparents it on re-insert, the same move React Lynx makes with `__RemoveElement` then `__InsertElementBefore` on the same element (`snapshot.ts`), though Lynx logs the auto-reparent as an error, with three NSLogs (see the entry on properties set on a native element ref). (A removal that is **not** re-inserted in the same flush is different — its painting node dies and re-inserting the stale ref renders empty; see the recreate-on-remount entry below.)
+For a same-tick move this is completely safe: the element is removed and re-inserted in **one** flush (`is_move=true`), so both its fiber node and its native painting node survive. `RemoveNodeInternal` ([`lynx/core/renderer/dom/fiber/fiber_element.cc`](https://github.com/lynx-family/lynx/blob/develop/core/renderer/dom/fiber/fiber_element.cc)) only unlinks the node and clears its parent pointer, and the insert puts it in its new place. `InsertNodeBeforeInternal` would also take a node that still has its parent out of it, but logs that as an error, with three NSLogs (see the entry on properties set on a native element ref), so the renderer calls `__RemoveElement` itself before the insert, as React Lynx does (`snapshot.ts`): the same `RemoveNode`, in the same flush. (A removal that is **not** re-inserted in the same flush is different — its painting node dies and re-inserting the stale ref renders empty; see the recreate-on-remount entry below.)
 
 ### The fix
 
-`remove()` defers its native teardown by one microtask (`#pendingRemovals` in `packages/runtime/src/lib/lynx-element/lynx-element.ts`). A re-insert in the same tick — `appendChild`/`insertBefore` — cancels the queued removal, so a move relocates the element with its subtree intact. Only a genuine destroy (never re-inserted) reaches `#doRemove()`. Covered by the reorder test in `packages/runtime/src/lib/renderer/teardown.test.ts`.
+`remove()` defers its native teardown by one microtask (`#pendingRemovals` in `packages/runtime/src/lib/lynx-element/lynx-element.ts`). A re-insert in the same tick — `appendChild`/`insertBefore` — cancels the queued removal, so a move relocates the element with its subtree intact: `#prepareInsert` finds the native parent it's still in, and the insert calls `__RemoveElement` on it first (issue #876). Only a genuine destroy (never re-inserted) reaches `#doRemove()`. Covered by the reorder tests in `packages/runtime/src/lib/renderer/teardown.test.ts`.
 
 ---
 
@@ -426,7 +426,7 @@ The `<list>` path already guarded this exact case (`LynxListElement.#scheduleUpd
 - `LynxDocument`'s element creators — for content _created_ out of cycle (first navigation to a lazy route, a dynamic `createComponent()`).
 - `LynxElement.#recreateIfDead()` — recreate-on-remount builds fresh refs via `createNativeRefByTag` directly (bypassing `LynxDocument.createElement`), and a route re-attach runs out of cycle, so the rebuilt subtree needs its own flush.
 - `LynxElement`'s style, class and attribute setters, and `animate()` with its animation's `cancel()`, `pause()` and `play()`. A transition's last frame, set from a `setTimeout` (Lynx tells a script nothing when an animation ends), stayed unflushed on iOS and Android until something else ran change detection: `<lynx-stack-outlet>`'s covered page stayed at its animated offset and in the accessibility tree, with its glass Back button over the page above. The web preview hid it, because web-core applies a style to the DOM at once. Found in November 2026 while building the stack outlet, on the iOS 27 Simulator.
-- `LynxElement`'s event dispatch, when anything was written since the last flush of the whole tree, or a list item left work behind. Some writes leave the flush to their caller: a class, id, `data-*` or `hidden` set with `setAttribute()`, a custom property, an insert, a move, a removal, and an animation started, paused, played or canceled (a main-thread script's `MainThreadElement.animate()` schedules no flush). They're counted (`nativeWriteEpoch`), and the count is noted when `end()` or a settle flush flushes the whole tree after its commit passes (`markTreeFlushed`). So a write made inside a listener, or earlier outside change detection and outside any listener (from a timer, a promise, an observer or a gesture callback), reaches the screen with the next native event, as when every event flushed: on iOS, the next frame of any scroll, through the scroll-views' placeholder listener. A list item that componentAtIndex built or rebound has the same effect (`settleAfterListItems`): its flush covers the item only, and its change detection may have written elsewhere. The dispatch checks again in a microtask for an async listener's writes after an `await`. An event with nothing pending doesn't flush, such as a scroll listener's whose signals already hold their values, or a template listener's that only sets signals (its change detection flushes): an empty `__FlushElementTree()` still costs Lynx a patch pass on the engine thread and an operation on the UI thread. Raw `__*` element functions called on `el.element` aren't counted, so code that calls them outside change detection needs to flush itself, as a main-thread script does.
+- `LynxElement`'s event dispatch, when anything was written since the last flush of the whole tree, or a list item left work behind. Some writes leave the flush to their caller: a class, id, `data-*` or `hidden` set with `setAttribute()`, a custom property, an insert, a move, a removal, and an animation started, paused, played or canceled (a main-thread script's `MainThreadElement.animate()` schedules no flush). They're counted (`nativeWriteEpoch`), and the count is noted when `end()` or a settle flush flushes the whole tree after its commit passes (`markTreeFlushed`). So a write made inside a listener, or earlier outside change detection and outside any listener (from a timer, a promise, an observer or a gesture callback), reaches the screen with the next native event, as when every event flushed: on iOS, the next frame of any scroll, through the scroll-views' placeholder listener. A list item that componentAtIndex built or rebound has the same effect when its binding wrote outside the item, or found writes waiting from before it (`settleAfterListItems`): the item's flush covers the item only. A binding that wrote only inside its item leaves nothing for the next event. The dispatch checks again in a microtask for an async listener's writes after an `await`. An event with nothing pending doesn't flush, such as a scroll listener's whose signals already hold their values, or a template listener's that only sets signals (its change detection flushes): an empty `__FlushElementTree()` still costs Lynx a patch pass on the engine thread and an operation on the UI thread. Raw `__*` element functions called on `el.element` aren't counted, so code that calls them outside change detection needs to flush itself, as a main-thread script does.
 
 `LynxRendererFactory2.begin()`/`end()` maintain the in-cycle flag (`setInsideChangeDetection`, `packages/runtime/src/lib/lynx-render-lifecycle.ts`), so in-cycle rendering stays a no-op — its `end()` already flushes. It uses `queueMicrotask`, never `setTimeout` (a macrotask flush crashes the native engine), stands down if a real CD cycle starts first, and is skipped while the first render is pending (native flushes after `renderPage`). Covered by `packages/runtime/src/lib/lynx-element/settle-flush.test.ts`.
 
@@ -590,7 +590,7 @@ When Angular destroys a view, its DOM nodes become garbage once nothing referenc
 
 ### What Lynx does
 
-The runtime keeps a registry from native id to `LynxElement` (see the section above), and until #279 a registered wrapper kept its native element, and so its UI, alive (the registry holds wrappers weakly now; see the end of this section). Angular calls `destroyNode` only for a destroyed view's **top-level** nodes: `destroyLView` walks them with `applyView`, which never descends into an element's children, and the views nested in it (child components' views, `@if`/`@for` blocks) are cleaned up by `destroyViewTree` without the renderer. So `destroyNode` deregistering just its node left every element under it registered, and each registered child's `#jsParent` kept the deregistered parent too.
+The runtime keeps a registry from native id to `LynxElement` (see the section above), and until #279 a registered wrapper kept its native element, and so its UI, alive (the registry holds wrappers out of the page weakly now; see the end of this section). Angular calls `destroyNode` only for a destroyed view's **top-level** nodes: `destroyLView` walks them with `applyView`, which never descends into an element's children, and the views nested in it (child components' views, `@if`/`@for` blocks) are cleaned up by `destroyViewTree` without the renderer. So `destroyNode` deregistering just its node left every element under it registered, and each registered child's `#jsParent` kept the deregistered parent too.
 
 ### The fix
 
@@ -611,7 +611,9 @@ The release reaches only the elements in the destroyed subtree, and a renderer t
 - **An `*args`** (`NgtArgs`, and so every `ngt-primitive`) hangs its directive's injector on its anchor comment. The injector leads to the view, so the whole screen stayed: its component, every element and every native UI (#279).
 - **A scene component's host** holds angular-three's canvas store, which holds the WebGL renderer and so the `<canvas>`. Without an `*args`, the screen's component and its other elements went, but every `<canvas>` stayed, with its native UI, view and Metal layer on iOS (#280).
 
-So the registry holds each wrapper weakly (a `WeakRef`, as a browser holds a node's JavaScript wrapper), and sweeps out the entries of collected wrappers whenever it has doubled in size since the last sweep (`LynxElement.#sweepCollected`). It used a `FinalizationRegistry` to delete each one as its wrapper was collected, until issue #708: that kept a record for every element as long as the element lived, to delete the few entries nobody released, as an element Angular destroys leaves the registry at once. It finds wrappers; it doesn't keep them. A wrapper in the tree is still held by its parent's `#children`, up to the page, which the document holds; one Angular keeps out of the tree (a detached route view) is held by its view; and one with listeners is held by the handlers on its native element. One that nothing else holds can't be found or used again. The main thread has `WeakRef` and `FinalizationRegistry` (see "The main thread lacks newer built-ins").
+So the registry holds each wrapper out of the page weakly (a `WeakRef`, as a browser holds a node's JavaScript wrapper), and sweeps out the entries of collected wrappers whenever it has doubled in size since the last sweep (`LynxElement.#sweepCollected`). It used a `FinalizationRegistry` to delete each one as its wrapper was collected, until issue #708: that kept a record for every element as long as the element lived, to delete the few entries nobody released, as an element Angular destroys leaves the registry at once. It finds wrappers; it doesn't keep them. A wrapper in the tree is still held by its parent's `#children`, up to the page, which the document holds; one Angular keeps out of the tree (a detached route view) is held by its view; and one with listeners is held by the handlers on its native element. One that nothing else holds can't be found or used again. The main thread has `WeakRef` and `FinalizationRegistry` (see "The main thread lacks newer built-ins").
+
+A wrapper in the page is held as it is, since the page holds it already (issue #912): a `WeakRef` for every element, and the sweeps reading them, were about 5% of the main thread's JavaScript in mounting a screen of 15,000 views or texts (`benchmarks/harness/node-mount.mjs`). An element is held strongly from when it's made until the end of its cycle (`LynxElement.#settleRegistry`), which holds weakly what isn't in the page then, with everything under it; a wrapper a query makes for a native element that had none is held weakly at once, since a query outside change detection may wait long for a cycle to end. Everything that takes an element out of the page holds it and what's under it weakly again: a removal that isn't a destroy, a move to a parent out of the page, a list letting an item go, and a new page (a re-bootstrap). A `*lynxListFor` item is held weakly in the page too, as its list doesn't hold it (its run's views do). `teardown.test.ts` ("its registry of wrappers") checks each of these.
 
 Measured on the iOS Simulator (Lynx 4.1) with `heap <pid>` and a `WeakRef` on each screen's component and canvas, in a router app (`ng build --platform ios`) whose Home screen has an `ngt-canvas`, after 18 Home ↔ Other round trips, on Other:
 
@@ -713,7 +715,7 @@ Measured with a copy of `examples/ui-dock` that switches tabs every 1.2 s (Home,
 
 Android's PSS swings by tens of megabytes between rounds with the screens PrimJS hasn't collected yet, before and after. The full collections didn't add pauses: the longest wait between two frames in a round (the probe counts them with `requestAnimationFrame`, and sampling the memory stalls it too) went over 100 ms in 3% of rounds with them against 13% without on iOS, 8% against 32% on Android, and the longest was 0.4 s against 2.5 s on iOS and 3 s on Android, where PrimJS's own full collections, on a heap that had grown, ran instead.
 
-It isn't the amount of garbage: a mode that makes about 16 MB of plain objects a round and keeps none levels off at once (iOS's "Untagged" at 56 to 69 MB for 100 rounds, Android's native heap flat). Nor the `WeakRef` the runtime keeps for each element (`#byNativeId`): holding them strongly instead grew as fast. Nor what the app keeps: the screens were collected throughout, and the registry stayed at about 190 elements. PrimJS 4.1.1's settings flag, which would turn concurrent collection off, is a stub in the open-source build.
+It isn't the amount of garbage: a mode that makes about 16 MB of plain objects a round and keeps none levels off at once (iOS's "Untagged" at 56 to 69 MB for 100 rounds, Android's native heap flat). Nor the `WeakRef` the runtime kept then for each element (`#byNativeId`): holding them strongly instead grew as fast. Nor what the app keeps: the screens were collected throughout, and the registry stayed at about 190 elements. PrimJS 4.1.1's settings flag, which would turn concurrent collection off, is a stub in the open-source build.
 
 ### The fix
 
@@ -756,6 +758,40 @@ Issue #708 took the rest of what each element kept for nothing off it:
 - The registry has no `FinalizationRegistry` (see "Elements another renderer keeps out of the tree").
 
 Under V8 (the testing library, 4,000 rows, after a full collection), a `@for` row of one `<view class="box">` kept 2,590 bytes instead of 2,963, and one of `<text>{{ i }}</text>` 3,429 instead of 4,100; V8 doesn't show PrimJS's cost per property, so the prototype fields aren't in those numbers. On the iOS 27 Simulator the mount screen of 5,000 views, with a full collection before the footprint was read, took a median of 46 MB of "Untagged" over 9 launches, against 48 MB over 8 for master, but launches of the same build ranged over 10 MB, more than the difference.
+
+---
+
+## A mount's garbage stays in PrimJS's heap, so an object made and dropped for each element costs the screen (issue #586)
+
+### What you'd expect (web)
+
+An object a function makes and drops at once (a `for…of`'s iterator, a `Map` entry's `[key, value]` pair, a regular expression's match) is collected in the young generation before it costs anything, and a screen's memory is what it keeps.
+
+### What Lynx does
+
+PrimJS, which runs the main thread, has no young generation. What a screen's first render makes and drops stays in its heap: the iOS footprint's "Untagged" memory grew with it. And PrimJS makes such objects where V8 avoids them: each `for…of` makes an iterator object (one per loop, not per step: PrimJS's built-in iterators skip the `{ value, done }` result, as QuickJS's do), each step over a `Map`'s entries makes an `[key, value]` array, a destructuring `const [a, b] = pair` makes another iterator, and `String.prototype.replace()` with a regular expression makes arrays whether or not it matches. A full collection doesn't give all of it back.
+
+Measured on the iOS 27 Simulator with the benchmark's mount screens, footprint 12 s after launch (5 launches of each build, alternating, and 3 of ReactLynx's; each build's "Untagged" was the same within 0.1 MB in every launch):
+
+| 5,000 `<text>{{ i }}</text>`                                                             | Footprint (median) | "Untagged" |
+| ---------------------------------------------------------------------------------------- | ------------------ | ---------- |
+| Before #586's change                                                                     | 329.3 MB           | 51.0 MB    |
+| The same, with two full collections after it's drawn (`AngularLynxShell.collectGarbage`) | 319.3 MB           | 41.9 MB    |
+| After                                                                                    | 315.5 MB           | 37.7 MB    |
+| ReactLynx, the same screen                                                               | 334.7 MB           | 37.8 MB    |
+
+So each text took 7.2 KB of PrimJS heap from 1,500 to 5,000, and takes 4.0 KB, against ReactLynx's 5.8 KB. A screen of `<view>`s didn't move ("Untagged" 26.6 MB at 5,000 either way, and 1.8 KB per view against ReactLynx's 3.0 KB): a view's elements cost native memory ("Malloc Small", 8.9 KB per view against ReactLynx's 7.3 KB), not PrimJS's.
+
+### The fix
+
+Keep a function that runs for each element from making objects it drops. Issue #586's change, in `lynx-element.ts`:
+
+- The registry's sweep goes through `Map.prototype.forEach`, not `for (const [id, entry] of …)`.
+- The loops that run for every element (`setAttribute('class')`'s scope classes, `#wouldFormCycle`, `#collectRawTextLeaves`) are indexed.
+- A `<text>` whose one child is a raw-text, as `<text>{{ i }}</text>` is, is trimmed without the text pass's arrays, and `trimTextEdges` slices instead of calling `replace()` twice.
+- Elements share their scope-class list (`withScopeClass`) instead of each keeping an array of its own: every element of a component with styles has the same `[_ngcontent-…]`.
+
+Under `node --jitless` (`benchmarks/harness/node-mount.mjs`, V8's sampling heap profiler, collected objects included), a mount allocates 1,791 bytes per `<view>` row instead of 2,353, and 3,281 per `<text>` row instead of 5,100. The text screen's JavaScript takes 5% less time.
 
 ---
 
@@ -2187,6 +2223,8 @@ The standard `localStorage` / `sessionStorage` globals **do not exist**, and Lyn
 
 For data kept after that, `LynxLocalStorage` and `LynxSecureStorage` (issue #178) call native modules that the shells `ng build --platform` makes register: `UserDefaults` and the Keychain on iOS, `SharedPreferences` (the secure one encrypted by an Android Keystore key) on Android. Lynx Explorer has neither, so the services keep values in memory there. Lynx for Web runs the main thread in an iframe that web-core sandboxes with `allow-same-origin` (`createIFrameRealm.js`), so the page's `localStorage` is reachable from Angular there, and the services use it.
 
+Lynx has no WebAuthn either (`navigator.credentials`), so no passkeys. For a local check that the person holding the phone is its owner, which signs no server challenge, `LynxBiometrics` (issue #918) calls the shells' `AngularLynxBiometrics` module: `LAContext` on iOS and AndroidX's `BiometricPrompt` on Android. The module is only in apps with `permissions.biometrics` in angular.json, which writes iOS's `NSFaceIDUsageDescription`; without that key Face ID fails rather than asking. `LynxSecureStorage`'s `requireBiometrics` keeps a value behind them in the same module (a `.biometryCurrentSet` Keychain item, a Keystore key that needs a biometric for each use), which a new face or finger makes unreadable for good. The web preview and Lynx Explorer report no sensor.
+
 ---
 
 ## There's no `<input type="file">`: a photo comes from a native picker, and reaches the main thread as base64
@@ -2820,7 +2858,7 @@ There is no equivalent to `role`, `tabindex`, `aria-expanded`, or most other ARI
 
 ### What Lynx does
 
-`performance.now()` is **not available** in native Lynx: there's no `performance` global on the main thread or the background thread (checked in Lynx Explorer 4.1 on iOS). The web preview has one on both, since it runs in the browser. For simple timing, `Date.now()` is available everywhere, in whole milliseconds; `LynxDevTools`' `lastCdDurationMs` falls back to it.
+`performance.now()` is **not available** in native Lynx: there's no `performance` global on the main thread or the background thread (checked in Lynx Explorer 4.1 on iOS). The web preview has one on both, since it runs in the browser. On the main thread, the runtime adds a `performance` with `now()` and `timeOrigin` (`canvas/dom-globals.ts`), for three.js and for timing work. Its clock is `__date_clock()`, an undocumented global of PrimJS, the engine that runs the main thread on iOS and Android: microseconds since the epoch, from the system's wall clock (`js_global_funcs` in PrimJS's `quickjs.cc`). So `performance.now()` reads in fractions of a millisecond, as on the web (issue #896; the E2E canvas page checks it in the shells on both platforms). Unlike the web's, it isn't monotonic: a change to the device's clock moves it, as it moves `Date.now()`. Before #896 it was built on `Date.now()`, and stepped in whole milliseconds. The background thread has no `performance`: there, `Date.now()` is available, in whole milliseconds; `LynxDevTools`' `lastCdDurationMs` falls back to it.
 
 For profiling and performance tracing, use `lynx.performance` (wrapped by `LynxPerformance`), which exists on both threads:
 
@@ -3445,7 +3483,7 @@ Open-source Lynx has no canvas on iOS or Android (lynx-family/lynx has no WebGL;
 
 ### What to do
 
-Use `<canvas>` with `getContext('webgl2')` in an app built with `ng build --platform ios|android`, or in the web preview. three.js and angular-three need the DOM globals the runtime adds on the main thread (`canvas/dom-globals.ts`): `performance.now()`, `crypto.randomUUID()` (from `Math.random()`, so not for secrets), `self`, `ProgressEvent`, an `HTMLElement` class a template's elements are instances of (angular-three takes its pointer listeners off the element its events connect to only if it's an `HTMLElement`, so without one they stayed on every canvas's host after the canvas had gone), an `HTMLCanvasElement` class a `<canvas>` and `document.createElement('canvas')` are instances of, `Image`, `ImageBitmap`, `createImageBitmap()`, `Blob`, object URLs, `devicePixelRatio`, `getComputedStyle()` and `ResizeObserver`.
+Use `<canvas>` with `getContext('webgl2')` in an app built with `ng build --platform ios|android`, or in the web preview. three.js and angular-three need the DOM globals the runtime adds on the main thread (`canvas/dom-globals.ts`): `performance.now()`, `crypto.randomUUID()` (from `Math.random()`, so not for secrets), `self`, `ProgressEvent`, an `HTMLElement` class a template's elements are instances of (angular-three takes its pointer listeners off the element its events connect to only if it's an `HTMLElement`, so without one they stayed on every canvas's host after the canvas had gone), an `HTMLCanvasElement` class a `<canvas>` and `document.createElement('canvas')` are instances of, `Image`, `ImageBitmap`, `createImageBitmap()`, `Blob`, object URLs, `devicePixelRatio`, `getComputedStyle()` and `ResizeObserver`. The ones that make a canvas or an image (`OffscreenCanvas`, `ImageData`, `Image`, `ImageBitmap`, `createImageBitmap()`, `document.createElement('canvas')` and `('img')`), and the `<canvas>` element's own code, are in the main-thread script only where a module names `'canvas'` in quotes or one of those classes (`ɵenableCanvas()`, issue #707): PrimJS loads a script's whole bytecode, so every app paid for them in memory.
 
 ---
 
@@ -4997,7 +5035,7 @@ A DOM node is an ordinary object: `node.__appended = true` sticks, and reads bac
 
 On the main thread, an element ref is a `LepusRef` of type `RefCounted`. Setting a property on one does nothing: `LepusRefSetPropertyCallBack` (`core/runtime/lepusng/quick_context.cc` in [`lynx-family/lynx`](https://github.com/lynx-family/lynx)) sets properties on Lepus tables and arrays only, and `LepusRefGetPropertyCallBack` reads every property of a `RefCounted` ref as `undefined`. Nothing throws. Lynx for Web's refs, and the fakes in unit tests, are plain objects that keep the property, so code that relies on one works everywhere but on a device.
 
-`__AppendElement` or `__InsertElementBefore` with a child that still has a parent does move it, but `InsertNodeBeforeInternal` (`core/renderer/dom/fiber/fiber_element.cc`) takes it as a mistake first: it logs `FiberElement re-insert node, try to do remove node from old parent first` as an error and calls `LogNodeInfo()` on the new parent, the child and the old parent, each an `NSLog` on iOS, before it removes the child. In Lynx's source on GitHub it also finds the reference node's index before it removes the child, so a move forward within one parent can land one place further than `__RemoveElement` then the insert would put it. React Lynx calls `__RemoveElement` itself first (`shouldRemove` in `snapshot.ts`), and doesn't append a recycled list item again.
+`__AppendElement` or `__InsertElementBefore` with a child that still has a parent does move it, but `InsertNodeBeforeInternal` (`core/renderer/dom/fiber/fiber_element.cc`) takes it as a mistake first: it logs `FiberElement re-insert node, try to do remove node from old parent first` as an error and calls `LogNodeInfo()` on the new parent, the child and the old parent, each an `NSLog` on iOS, before it removes the child. It also finds the reference node's index before it removes the child (in 4.1.0, the shells' version, as on `develop`), so a child moved forward within its parent lands one place past the reference node in the element tree, which `__NextElement` and `__GetChildren` read. Layout and painting take the reference node itself, so they put it in the right place. React Lynx calls `__RemoveElement` itself first (`shouldRemove` in `snapshot.ts`), and doesn't append a recycled list item again.
 
 The two met in `componentAtIndex` (#870): the list kept "already appended to the native list" as `__appended` on each item's ref. On a device it never stuck, so every item native asked for was appended to the list again, a reused `*lynxListFor` row included. Each logged the error and three NSLogs, and left the list marked changed, so the item's own flush went up to the list (`FlushActionsAsRoot maybe from a wrong parent`, another log). In the benchmark Pokédex on the iOS Simulator, each run of the scroll test (a warm-up swipe and four measured) logged 37 re-inserts, and Lynx's logging was 8–11 ms of the 56–84 ms the engine thread spent in `componentAtIndex` in a Time Profiler trace. With the fix, one re-insert is left (a view moved once at launch), the logging is 0–1 ms of 48–56 ms (ReactLynx's is 1–2 ms), and the app retires about 4% fewer instructions per swipe.
 
@@ -7164,7 +7202,7 @@ iOS's scroll-view (`LynxUIScroller`) and list (`LynxUIListScroll`) make their `L
 
 `LynxDocument.createElement` gives each scroll-view and list a `bindscroll` listener that does nothing, on iOS only (`listenForScrollsFromTheStart`), so the UI is made with a `scroll` handler. Listeners added later share it. An `IntersectionObserver` with options adds its listener once it has measured its element, after the scroll-view's UI has been made.
 
-The cost is a scroll event to the main thread for each `scrollViewDidScroll:` of every scroll-view on iOS. While the do-nothing listener is the only one, `LynxElement` drops the event as it arrives, before anything else. It used to run the element's whole dispatch and then a settle flush: a `__FlushElementTree()` with nothing to commit still runs Lynx's patch-finish pass on the engine thread and queues a layout-finished operation for the UI thread (`PaintingContextDarwin::FinishLayoutOperation`), on every frame of every scroll. It still flushes when something is waiting for a flush: a write made since the last flush of the whole tree that leaves the flush to its caller (a class or a custom property set from a timer, say), or a list item's build or rebind (see `hasUnflushedWrites` in `lynx-element.ts`). The next scroll event brings it, as it did before; the scroll events after it, with nothing pending, don't flush.
+The cost is a scroll event to the main thread for each `scrollViewDidScroll:` of every scroll-view on iOS. While the do-nothing listener is the only one, `LynxElement` drops the event as it arrives, before anything else. It used to run the element's whole dispatch and then a settle flush: a `__FlushElementTree()` with nothing to commit still runs Lynx's patch-finish pass on the engine thread and queues a layout-finished operation for the UI thread (`PaintingContextDarwin::FinishLayoutOperation`), on every frame of every scroll. It still flushes when something is waiting for a flush: a write made since the last flush of the whole tree that leaves the flush to its caller (a class or a custom property set from a timer, say), or a list item's build or rebind that wrote outside the item (see `hasUnflushedWrites` in `lynx-element.ts`). The next scroll event brings it, as it did before; the scroll events after it, with nothing pending, don't flush.
 
 Until #261, that listener also kept every screen with a scroll-view alive after it was left: Angular never removes it, the release of a destroyed view passed `undefined` to take it off, and native Lynx keeps a worklet handler that `undefined` would remove (see "`__AddEvent(element, type, name, undefined)` doesn't remove a main-thread handler on native Lynx").
 
@@ -7836,7 +7874,56 @@ Angular inserts every `@for` row before its anchor. A routed screen was exactly 
 
 ### The fix
 
-`scheduleSettleFlush()` (`lynx-element.ts`) runs the tick Angular has scheduled instead of flushing first (`runComingTick()` in `lynx-render-lifecycle.ts`, set by `LynxRendererFactory2`), and while the first render is pending it runs it from a microtask, inside `renderPage()`. The rows then go into a container that hasn't been flushed. Rows added to a screen already on view, such as a list loaded later, still take the walk: give a long list a `<list>`.
+`scheduleSettleFlush()` (`lynx-element.ts`) runs the tick Angular has scheduled instead of flushing first (`runComingTick()` in `lynx-render-lifecycle.ts`, set by `LynxRendererFactory2`), and while the first render is pending it runs it from a microtask, inside `renderPage()`. The rows then go into a container that hasn't been flushed. Rows added to a screen already on view, such as a list loaded later, still took the walk, until the rows were appended (see the next section): give a long list a `<list>`.
+
+---
+
+## Inserting before a sibling searches the parent's children from the first, twice, flushed or not
+
+### What you'd expect (web)
+
+`parent.insertBefore(node, anchor)` costs what `appendChild` costs, however many children `parent` has.
+
+### What Lynx does
+
+`__InsertElementBefore` looks for the reference element among the parent's children before it inserts: `InsertNodeBeforeInternal` (`core/renderer/dom/fiber/fiber_element.cc`) calls `IndexOf(ref)`, which walks `scoped_children_` from the first, and then `InsertLogicalChildBefore` walks `logical_children_` from the first again. `__AppendElement` searches nothing. So N elements inserted one by one before a last child take about N² steps, at the call itself, whether or not the parent has been flushed (the previous section's walk is at the flush, and only once it has been). `__RemoveElement` searches the same way (`RemoveNodeInternal`), for the child it takes out.
+
+Angular puts each new `@for` row before the block's anchor, after the rows already there, so building a screen of N rows was N² steps. Measured on the iOS 27 Simulator (iPhone 18 Pro, 2026-11-28), the benchmark's mount screen (`benchmarks/apps/angular-lynx`, a `@for` of 10×10 views), from its `MountStart` mark to Fully Drawn, 8 launches each, the four builds of a kind launched in turn:
+
+| Screen        | master, fastest (median) | Appending the rows | Cost per element, fastest |
+| ------------- | ------------------------ | ------------------ | ------------------------- |
+| 1,500 views   | 37 (38) ms               | 38 (40) ms         |                           |
+| 15,000 views  | 412 (436) ms             | 361 (374) ms       | 27.8 → 23.9 µs            |
+| 1,500 images  | 44 (46) ms               | 44 (45) ms         |                           |
+| 15,000 images | 496 (518) ms             | 447 (466) ms       | 33.5 → 29.9 µs            |
+
+The same screen with a `<text>` after the `@for` in its container (a footer), in another session (2026-11-28, 8 launches each, the Mac busier):
+
+| Screen       | Inserting each row, fastest (median) | Appending the rows | Cost per element, fastest |
+| ------------ | ------------------------------------ | ------------------ | ------------------------- |
+| 1,500 views  | 47 (50) ms                           | 45 (49) ms         |                           |
+| 15,000 views | 459 (466) ms                         | 384 (400) ms       | 30.5 → 25.2 µs            |
+
+The cost per element is the 15,000-element screen's time less the 1,500's, over the 13,500 elements more. The search grows with the square of the rows: about 50 ms of the 15,000-element screens, and so about half a millisecond of the 1,500-element ones, within their noise.
+
+React Lynx appends a new node that has no node after it, and the children of new elements (`SnapshotInstance.insertBefore` and `ensureElements` in `packages/react/runtime/src/snapshot/snapshot/snapshot.ts`), so a list it builds never paid this.
+
+### The fix
+
+`LynxElement` appends an element going in before an anchor when what follows the anchor in the parent (the tail) is anchors and at most four elements that haven't been flushed yet (`#appendsBeforeTail`), during change detection, and leaves the tail where it was until the end of the cycle. Native then has it before the elements appended since, which draws nothing different between two flushes: anchors are hidden views with nothing in them, and an element never flushed has nothing on the screen. `commitPendingClasses()`, which every path to a flush runs first, puts the tail back at the end in one move each (`#settleDisplacedTails`), in the same flush, as does anything that changes the parent's children otherwise or reads their native order (`nextSibling()`, and the tree order a move between two parents reads). An element counts as not flushed while no flush, and no end of a change detection cycle, has come since its native element was made (`flushes.ts`).
+
+With elements in the tail, the first element before the anchor in a cycle is inserted, and the ones after it are appended: an `@if` puts in one element, and moving the elements after it would cost more than the one search. More than four elements in the tail (each move searches the children too) keeps the insert for every row, as does any insert on Lynx for Web, in a `<text>`, or outside change detection.
+
+A tail with a flushed element in it, such as a footer on the screen under rows that load later, is moved only for a cycle that puts more than 32 elements in before the anchor (`MIN_INSERTS_BEFORE_FLUSHED_TAIL`): the first 32 are inserted and the rest appended. Moving a flushed element moves its view: the painting context's `RemovePaintingNode` takes an `is_move` flag (`core/renderer/ui_wrapper/painting/painting_context.cc`), but only to keep the node out of its list of removed ones. iOS's `LynxUIOwner detachNode:` takes the view out of its superview, and Android's `LynxUIOwner.remove` calls `removeChild`, before the insert puts it back. That costs the UI thread a removal and an insert, and a `UITextField` taken out of its window resigns first responder (Android's `removeView` clears a focused child's focus too), so the tail moves only when it and its native subtree hold nothing but `view`, `text`, `raw-text`, `image` and the inline text elements (`MOVABLE_TAGS`), 64 elements at most. On Android, exposure (`bindappear`) isn't reset by the move: `LynxUIOwner` takes a view out of the exposure map only when it destroys it (iOS isn't checked). A cycle adding a row or a few still inserts each, and moves nothing that's drawn.
+
+Measured on the iOS 27 Simulator (iPhone 18 Pro, 2026-11-28), a scroll-view's container of 10×10 px views with a `<text>` footer, drawn empty first, then a cycle adding the rows, from a `MountStart` mark just before it to Fully Drawn, 8 launches each, the builds launched in turn:
+
+| Rows added under the footer | Inserting each row, fastest (median) | Appending the rows past the first 32, fastest (median) |
+| --------------------------- | ------------------------------------ | ------------------------------------------------------ |
+| 1,000                       | 25.1 (37.6) ms                       | 22.3 (32.6) ms                                         |
+| 5,000                       | 236.9 (246.8) ms                     | 122.6 (135.5) ms                                       |
+
+An earlier session that appended every row after the first, without the 32-row threshold, measured 31.0 (41.4) → 26.4 (37.1) ms and 233.1 (246.6) → 114.6 (128.4) ms: the 31 more inserts cost nothing the launches' noise shows.
 
 ---
 

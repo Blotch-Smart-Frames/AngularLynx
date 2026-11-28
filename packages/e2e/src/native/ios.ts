@@ -192,7 +192,11 @@ export const runOnIosSimulator = async ({
     await ensureLibraryPhoto(udid, logFile);
   }
 
-  // The app's own log, for JavaScript errors and for debugging failures.
+  // The app's own log, for JavaScript errors and for debugging failures,
+  // with the simulator's Metal compiler's lines about the app: whether it
+  // began the app's compiles is how stalledMetalCompiler (maestro.ts) tells a
+  // compiler the simulator never started from the app's own fault. Each of
+  // those lines names the app as "ParentProcessName=<process>_<pid>".
   const explorerLog = path.join(artifactsDir, `ios-${host.kind}.log`);
   writeFileSync(explorerLog, '');
   const streamLog = () =>
@@ -207,7 +211,7 @@ export const runOnIosSimulator = async ({
         '--level',
         'debug',
         '--predicate',
-        `process == "${processName}"`,
+        `process == "${processName}" OR (process == "MTLCompilerService" AND composedMessage CONTAINS "ParentProcessName=${processName}_")`,
       ],
       { cwd: process.cwd(), logFile: explorerLog, echo: false },
     );

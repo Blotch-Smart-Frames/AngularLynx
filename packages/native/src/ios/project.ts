@@ -1,4 +1,4 @@
-import { copyFileSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { removeMarkedLines, removeTemplateFiles } from '../features.ts';
@@ -34,8 +34,12 @@ const ORIENTATIONS: Record<Orientation, readonly string[]> = {
  * between the template's `angular-lynx:info` markers, the shortcuts
  * become App/AppShortcuts.swift, the app link domains become
  * Config/App.entitlements, and the icon and the splash go in the asset
- * catalog.
+ * catalog. The barcode scanner's module stays only in an app with the
+ * `camera` permission.
  */
+/** LynxBarcodeScanner's module, which needs the `camera` permission. */
+export const IOS_BARCODE_SCANNER_SOURCE = 'App/BarcodeScannerModule.swift';
+
 export const iosGenerator: PlatformGenerator = {
   configure: (dir, app, projectRoot, development = false) => {
     writeFileSync(path.join(dir, 'Config/App.xcconfig'), xcconfig(app));
@@ -57,6 +61,16 @@ export const iosGenerator: PlatformGenerator = {
         path.join(dir, 'App/AppShortcuts.swift'),
         appShortcutsSwift(app),
       );
+    }
+
+    // App Store Connect flags an app whose code uses the camera without
+    // NSCameraUsageDescription (ITMS-90683), which only the `camera`
+    // permission writes. So an app that doesn't ask for the camera leaves
+    // the scanner's module out, and on Android its module and the Play
+    // services library behind it (see androidGenerator). LynxViewController
+    // registers the module by name only when it's compiled in.
+    if (!app.permissions.camera) {
+      rmSync(path.join(dir, IOS_BARCODE_SCANNER_SOURCE), { force: true });
     }
 
     // In Config/, beside the xcconfig that points the target at it, rather
@@ -83,7 +97,15 @@ export const iosGenerator: PlatformGenerator = {
 
     writeIosSplash(dir, app, projectRoot);
   },
-  leaveOut: (dir, features) => {
+  leaveOut: (dir, features, app) => {
+    // Face ID, Touch ID and the Keychain items behind them are only for an
+    // app that says why it uses them: without NSFaceIDUsageDescription Face
+    // ID fails, and App Review asks about LocalAuthentication code an app
+    // gives no reason for. LynxViewController registers the module by name,
+    // so the shell builds without it.
+    if (!app.permissions.biometrics) {
+      removeTemplateFiles(dir, IOS_BIOMETRICS_SOURCES);
+    }
     if (features.webgl) return;
     if (features.canvas) {
       // A 2D canvas keeps the module and the canvas's view, without the
@@ -109,6 +131,13 @@ export const iosGenerator: PlatformGenerator = {
   },
   bundleDir: (dir) => path.join(dir, 'LynxBundle'),
 };
+
+/**
+ * The shell's biometrics module, `AngularLynxBiometrics` (LynxBiometrics, and
+ * the values LynxSecureStorage keeps behind Face ID or Touch ID), which only
+ * an app with `permissions.biometrics` keeps.
+ */
+export const IOS_BIOMETRICS_SOURCES = ['App/BiometricsModule.swift'] as const;
 
 /**
  * The shell's `<canvas>`, its `AngularLynxWebGL` module and its contexts, and

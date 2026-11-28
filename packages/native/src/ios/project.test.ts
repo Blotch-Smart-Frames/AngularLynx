@@ -18,6 +18,8 @@ import {
   appShortcutsSwift,
   entitlementsPlist,
   infoPlistEntries,
+  IOS_BIOMETRICS_SOURCES,
+  IOS_BARCODE_SCANNER_SOURCE,
   IOS_CANVAS_SOURCES,
   IOS_WEBGL_SOURCES,
   iosGenerator,
@@ -327,6 +329,28 @@ describe('iosGenerator', () => {
     expect(iosGenerator.bundleDir(dir)).toBe(path.join(dir, 'LynxBundle'));
   });
 
+  it("keeps the barcode scanner's module only with the camera permission", () => {
+    const module = path.join(dir, IOS_BARCODE_SCANNER_SOURCE);
+    // In the template, so a renamed file can't stay in every app unnoticed.
+    expect(existsSync(module)).toBe(true);
+    iosGenerator.configure(dir, app({ permissions: { camera: 'Scan' } }), dir);
+    expect(existsSync(module)).toBe(true);
+
+    // Without NSCameraUsageDescription, App Store Connect flags an app whose
+    // code uses the camera.
+    iosGenerator.configure(dir, app({ permissions: { photos: 'x' } }), dir);
+    expect(existsSync(module)).toBe(false);
+    // LynxViewController registers it by name, so it builds without it.
+    const controller = readFileSync(
+      path.join(dir, 'App/LynxViewController.swift'),
+      'utf8',
+    );
+    expect(controller).toContain(
+      'NSClassFromString("AngularLynxBarcodeScannerModule")',
+    );
+    expect(controller).not.toContain('BarcodeScannerModule.self');
+  });
+
   it('writes the entitlements beside the xcconfig, only with app link domains', () => {
     const entitlements = path.join(dir, 'Config/App.entitlements');
     iosGenerator.configure(dir, app(), dir);
@@ -475,6 +499,51 @@ describe('iosGenerator', () => {
   });
 });
 
+describe('iosGenerator and biometrics', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(path.join(os.tmpdir(), 'angular-lynx-ios-'));
+    cpSync(path.join(TEMPLATES_DIR, 'ios'), dir, { recursive: true });
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('keeps the module, and gives Face ID the reason', () => {
+    const withBiometrics = app({
+      permissions: { biometrics: 'Unlock your notes' },
+    });
+    iosGenerator.configure(dir, withBiometrics, dir);
+    iosGenerator.leaveOut(dir, { canvas: true, webgl: true }, withBiometrics);
+    for (const file of IOS_BIOMETRICS_SOURCES) {
+      expect(existsSync(path.join(dir, file))).toBe(true);
+    }
+    expect(readFileSync(path.join(dir, 'App/Info.plist'), 'utf8')).toMatch(
+      /<key>NSFaceIDUsageDescription<\/key>\s*<string>Unlock your notes<\/string>/,
+    );
+  });
+
+  it('takes the module out of an app without biometrics, which names it only by name', () => {
+    iosGenerator.configure(dir, app(), dir);
+    iosGenerator.leaveOut(dir, { canvas: true, webgl: true }, app());
+    for (const file of IOS_BIOMETRICS_SOURCES) {
+      expect(existsSync(path.join(dir, file))).toBe(false);
+    }
+    expect(
+      readFileSync(path.join(dir, 'App/Info.plist'), 'utf8'),
+    ).not.toContain('NSFaceIDUsageDescription');
+    const app_ = path.join(dir, 'App');
+    for (const file of readdirSync(app_).filter((f) => f.endsWith('.swift'))) {
+      // What a comment names isn't code.
+      const source = readFileSync(path.join(app_, file), 'utf8').replace(
+        /\/\/.*$/gm,
+        '',
+      );
+      expect(source, file).not.toMatch(
+        /\bBiometricsModule\b|import LocalAuthentication/,
+      );
+    }
+  });
+});
+
 describe('iosGenerator.leaveOut', () => {
   let dir: string;
   beforeEach(() => {
@@ -488,7 +557,7 @@ describe('iosGenerator.leaveOut', () => {
 
   it('keeps everything for an app that draws', () => {
     const before = project();
-    iosGenerator.leaveOut(dir, { canvas: true, webgl: true });
+    iosGenerator.leaveOut(dir, { canvas: true, webgl: true }, app());
     expect(project()).toBe(before);
     for (const file of IOS_CANVAS_SOURCES) {
       expect(existsSync(path.join(dir, file))).toBe(true);
@@ -497,7 +566,7 @@ describe('iosGenerator.leaveOut', () => {
 
   it('takes out the canvas sources and ANGLE for an app that never draws', () => {
     expect(project()).toContain('libEGL.xcframework');
-    iosGenerator.leaveOut(dir, { canvas: false, webgl: false });
+    iosGenerator.leaveOut(dir, { canvas: false, webgl: false }, app());
     for (const file of IOS_CANVAS_SOURCES) {
       expect(existsSync(path.join(dir, file))).toBe(false);
     }
@@ -509,12 +578,12 @@ describe('iosGenerator.leaveOut', () => {
   it('leaves no file that needs what it took out', () => {
     // Swift reaches the canvas classes only by name (NSClassFromString), so
     // no file left may import their headers, or the shell wouldn't build.
-    iosGenerator.leaveOut(dir, { canvas: false, webgl: false });
-    const app = path.join(dir, 'App');
-    for (const file of readdirSync(app).filter((f) =>
+    iosGenerator.leaveOut(dir, { canvas: false, webgl: false }, app());
+    const appDir = path.join(dir, 'App');
+    for (const file of readdirSync(appDir).filter((f) =>
       /\.(swift|m|h)$/.test(f),
     )) {
-      const source = readFileSync(path.join(app, file), 'utf8');
+      const source = readFileSync(path.join(appDir, file), 'utf8');
       expect(source, file).not.toMatch(/#import "AngularLynx/);
       expect(source, file).not.toMatch(
         /\bAngularLynx(WebGL|Canvas|Video)\w*\.(self|alloc)\b/,
@@ -528,7 +597,7 @@ describe('iosGenerator.leaveOut for an app that draws only in 2D', () => {
   beforeEach(() => {
     dir = mkdtempSync(path.join(os.tmpdir(), 'angular-lynx-ios-'));
     cpSync(path.join(TEMPLATES_DIR, 'ios'), dir, { recursive: true });
-    iosGenerator.leaveOut(dir, { canvas: true, webgl: false });
+    iosGenerator.leaveOut(dir, { canvas: true, webgl: false }, app());
   });
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 

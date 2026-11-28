@@ -15,9 +15,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TEMPLATES_DIR } from '../generate.ts';
 import { resolveAppOptions } from '../options.ts';
 import {
+  ANDROID_BIOMETRICS_SOURCES,
+  ANDROID_BARCODE_SCANNER_SOURCE,
   ANDROID_CANVAS_SOURCES,
   ANDROID_WEBGL_SOURCES,
   androidGenerator,
+  biometricsStringsXml,
   deepLinkEntries,
   findAndroidSdk,
   permissionEntries,
@@ -94,6 +97,85 @@ describe('permissionEntries', () => {
       ].join('\n'),
     );
     expect(permissionEntries(app())).toBe('');
+  });
+
+  it('declares USE_BIOMETRIC for biometrics', () => {
+    expect(
+      permissionEntries(app({ permissions: { biometrics: 'Unlock' } })),
+    ).toBe(
+      '<uses-permission android:name="android.permission.USE_BIOMETRIC" />',
+    );
+  });
+});
+
+describe('biometricsStringsXml', () => {
+  it('holds the reason as a string resource', () => {
+    expect(biometricsStringsXml("Unlock Dad's notes & more")).toContain(
+      '<string name="angular_lynx_biometrics_reason">Unlock Dad\\\'s notes &amp; more</string>',
+    );
+  });
+});
+
+describe('androidGenerator and biometrics', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(path.join(os.tmpdir(), 'angular-lynx-android-'));
+    cpSync(path.join(TEMPLATES_DIR, 'android'), dir, { recursive: true });
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  const shell = path.join('app/src/main/java/dev/angularlynx/shell');
+  const read = (file: string) => readFileSync(path.join(dir, file), 'utf8');
+  const strings = 'app/src/main/res/values/biometrics.xml';
+
+  it('keeps the module, AndroidX Biometric and its registration, with the reason', () => {
+    const withBiometrics = app({
+      permissions: { biometrics: 'Unlock your notes' },
+    });
+    androidGenerator.configure(dir, withBiometrics, dir);
+    androidGenerator.leaveOut(
+      dir,
+      { canvas: true, webgl: true },
+      withBiometrics,
+    );
+    for (const file of ANDROID_BIOMETRICS_SOURCES) {
+      expect(existsSync(path.join(dir, shell, file))).toBe(true);
+    }
+    expect(read(`${shell}/MainActivity.kt`)).toContain(
+      'registerModule(BiometricsModule.NAME',
+    );
+    expect(read('app/build.gradle.kts')).toContain('androidx.biometric');
+    expect(read(strings)).toContain('>Unlock your notes</string>');
+    expect(read('app/src/main/AndroidManifest.xml')).toContain(
+      'android.permission.USE_BIOMETRIC',
+    );
+  });
+
+  it('takes them all out of an app without biometrics', () => {
+    androidGenerator.configure(dir, app(), dir);
+    androidGenerator.leaveOut(dir, { canvas: true, webgl: true }, app());
+    for (const file of ANDROID_BIOMETRICS_SOURCES) {
+      expect(existsSync(path.join(dir, shell, file))).toBe(false);
+    }
+    expect(existsSync(path.join(dir, strings))).toBe(false);
+    const activity = read(`${shell}/MainActivity.kt`);
+    expect(activity).not.toContain('angular-lynx:biometrics');
+    expect(activity).not.toContain('registerModule(BiometricsModule');
+    // The modules around them stay.
+    expect(activity).toContain('registerModule(ShareModule.NAME');
+    expect(read('app/build.gradle.kts')).not.toMatch(
+      /androidx\.biometric|angular-lynx:biometrics/,
+    );
+    expect(read('app/build.gradle.kts')).toContain('androidx.exifinterface');
+    // Nothing left names what went.
+    for (const file of readdirSync(path.join(dir, shell))) {
+      const source = read(path.join(shell, file))
+        .replace(/\/\/.*$/gm, '')
+        .replace(/\/\*[\s\S]*?\*\//g, '');
+      expect(source, file).not.toMatch(
+        /\bBiometricsModule\b|androidx\.biometric|angular_lynx_biometrics_reason/,
+      );
+    }
   });
 });
 
@@ -264,6 +346,34 @@ describe('androidGenerator', () => {
     );
   });
 
+  it("keeps the barcode scanner's module and library only with the camera permission", () => {
+    const module = path.join(dir, ANDROID_BARCODE_SCANNER_SOURCE);
+    const buildFile = path.join(dir, 'app/build.gradle.kts');
+    // In the template, so a renamed file can't stay in every app unnoticed.
+    expect(existsSync(module)).toBe(true);
+    androidGenerator.configure(dir, app({ permissions: { camera: 'x' } }), dir);
+    expect(existsSync(module)).toBe(true);
+    expect(readFileSync(buildFile, 'utf8')).toContain(
+      'play-services-code-scanner',
+    );
+
+    androidGenerator.configure(dir, app(), dir);
+    expect(existsSync(module)).toBe(false);
+    const gradle = readFileSync(buildFile, 'utf8');
+    expect(gradle).not.toContain('play-services-code-scanner');
+    expect(gradle).not.toContain('angular-lynx:barcode-scanner');
+    // Configuring the same copy again leaves it as it is.
+    androidGenerator.configure(dir, app(), dir);
+    expect(readFileSync(buildFile, 'utf8')).toBe(gradle);
+    // MainActivity looks the module up by name, so it builds without it.
+    const activity = readFileSync(
+      path.join(dir, 'app/src/main/java/dev/angularlynx/shell/MainActivity.kt'),
+      'utf8',
+    );
+    expect(activity).toContain('"dev.angularlynx.shell.BarcodeScannerModule"');
+    expect(activity).not.toContain('BarcodeScannerModule::class');
+  });
+
   it("writes the shortcuts' resources, which the launcher activity points Android to", () => {
     const xml = path.join(dir, 'app/src/main/res/xml/shortcuts.xml');
     const strings = path.join(dir, 'app/src/main/res/values/shortcuts.xml');
@@ -370,12 +480,18 @@ describe('androidGenerator.leaveOut', () => {
 
   const shell = (main = 'main') =>
     path.join(dir, `app/src/${main}/java/dev/angularlynx/shell`);
+  // So MainActivity changes only where the canvas code goes.
+  const withBiometrics = app({ permissions: { biometrics: 'Unlock' } });
   const mainActivity = () =>
     readFileSync(path.join(shell(), 'MainActivity.kt'), 'utf8');
 
   it('keeps everything for an app that draws', () => {
     const before = mainActivity();
-    androidGenerator.leaveOut(dir, { canvas: true, webgl: true });
+    androidGenerator.leaveOut(
+      dir,
+      { canvas: true, webgl: true },
+      withBiometrics,
+    );
     expect(mainActivity()).toBe(before);
     for (const file of ANDROID_CANVAS_SOURCES) {
       expect(existsSync(path.join(shell(), file))).toBe(true);
@@ -383,7 +499,11 @@ describe('androidGenerator.leaveOut', () => {
   });
 
   it('takes out the canvas sources and the lines that register them', () => {
-    androidGenerator.leaveOut(dir, { canvas: false, webgl: false });
+    androidGenerator.leaveOut(
+      dir,
+      { canvas: false, webgl: false },
+      withBiometrics,
+    );
     for (const file of ANDROID_CANVAS_SOURCES) {
       expect(existsSync(path.join(shell(), file))).toBe(false);
     }
@@ -411,7 +531,11 @@ describe('androidGenerator.leaveOut', () => {
     }
     expect(declared).toContain('bitmapOf');
     expect(declared).toContain('CanvasRegistry');
-    androidGenerator.leaveOut(dir, { canvas: false, webgl: false });
+    androidGenerator.leaveOut(
+      dir,
+      { canvas: false, webgl: false },
+      withBiometrics,
+    );
     const names = new RegExp(`\\b(${[...declared].join('|')})\\b`);
     for (const main of ['main', 'debug', 'release']) {
       for (const file of readdirSync(shell(main))) {
@@ -430,7 +554,11 @@ describe('androidGenerator.leaveOut', () => {
 
     it('takes out the WebGL2 context, and keeps the rest of the canvas and its registration', () => {
       const before = mainActivity();
-      androidGenerator.leaveOut(dir, { canvas: true, webgl: false });
+      androidGenerator.leaveOut(
+        dir,
+        { canvas: true, webgl: false },
+        withBiometrics,
+      );
       for (const file of ANDROID_WEBGL_SOURCES) {
         expect(existsSync(path.join(shell(), file)), file).toBe(false);
       }
@@ -443,7 +571,11 @@ describe('androidGenerator.leaveOut', () => {
     });
 
     it("takes the module's WebGL2 methods out, and keeps its 2D and image methods", () => {
-      androidGenerator.leaveOut(dir, { canvas: true, webgl: false });
+      androidGenerator.leaveOut(
+        dir,
+        { canvas: true, webgl: false },
+        withBiometrics,
+      );
       const source = module();
       expect(source).not.toMatch(/^\s*\/\/ \/?angular-lynx:webgl$/m);
       expect(source).not.toMatch(
@@ -471,7 +603,11 @@ describe('androidGenerator.leaveOut', () => {
       // Declared in WebGLModule.kt for the WebGL2 context alone, and taken
       // out with its lines.
       declared.add('DrawingBufferPixels');
-      androidGenerator.leaveOut(dir, { canvas: true, webgl: false });
+      androidGenerator.leaveOut(
+        dir,
+        { canvas: true, webgl: false },
+        withBiometrics,
+      );
       const names = new RegExp(`\\b(${[...declared].join('|')})\\b`);
       for (const main of ['main', 'debug', 'release']) {
         for (const file of readdirSync(shell(main))) {

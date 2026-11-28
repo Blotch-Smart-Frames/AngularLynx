@@ -25,6 +25,8 @@ describe('applyResolve', () => {
     });
 
     expect(config.resolve.byDependency.esm.conditionNames).toEqual([
+      'es2015',
+      'es2020',
       'lynx',
       'import',
       'module',
@@ -52,12 +54,32 @@ describe('applyResolve', () => {
 
     expect(config.resolve.byDependency).toEqual({
       commonjs: { conditionNames: ['require'] },
-      esm: { fullySpecified: false, conditionNames: ['module', 'import'] },
+      esm: {
+        fullySpecified: false,
+        conditionNames: ['es2015', 'es2020', 'module', 'import'],
+      },
     });
   });
 
   it('works without any resolve config', () => {
     expect(resolveWith({}).resolve.byDependency.esm.conditionNames).toEqual([
+      'es2015',
+      'es2020',
+      'module',
+    ]);
+  });
+
+  // As Angular's application builder resolves: rxjs's `default` is its ES5
+  // build, and `es2015` the same code as ES2015 classes.
+  it('adds es2015 and es2020 once, keeping where the config has them', () => {
+    const config = resolveWith({
+      resolve: { conditionNames: ['import', 'es2020', 'module'] },
+    });
+
+    expect(config.resolve.byDependency.esm.conditionNames).toEqual([
+      'es2015',
+      'import',
+      'es2020',
       'module',
     ]);
   });

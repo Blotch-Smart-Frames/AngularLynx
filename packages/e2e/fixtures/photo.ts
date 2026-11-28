@@ -1,8 +1,10 @@
 import { Component, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
+  BarcodeScannerError,
   ImagePickerError,
   LYNX_ELEMENTS,
+  LynxBarcodeScanner,
   LynxImagePicker,
 } from '@blotch/angular-lynx';
 
@@ -42,7 +44,8 @@ const upload = (blob: Blob): Promise<{ reply: string; bytes: number }> =>
  * "Open web view", beside "Pick photo", opens webview.ts. On CI's 320x640
  * Android emulator, the canvas page's row of links is the last thing on the
  * screen, so there's no room for another there. "Open video", under the
- * status, opens video-toggle.ts: the row has no room for it either.
+ * status, opens video-toggle.ts: the row has no room for it either. "Scan
+ * code", beside it, opens LynxBarcodeScanner (see scan()).
  */
 @Component({
   selector: 'app-photo',
@@ -74,20 +77,59 @@ const upload = (blob: Blob): Promise<{ reply: string; bytes: number }> =>
     </view>
     <text flatten="false" style="margin-top: 8px;">Photo: {{ status() }}</text>
     <view
-      [flatten]="false"
-      [accessibility-element]="true"
-      accessibility-label="Open video"
-      accessibility-traits="button"
-      style="margin-top: 8px; padding: 12px; background-color: #e0e0e0; align-self: flex-start;"
-      routerLink="/video-toggle"
+      style="display: flex; flex-direction: row; margin-top: 8px; align-self: flex-start;"
     >
-      <text>Open video</text>
+      <view
+        [flatten]="false"
+        [accessibility-element]="true"
+        accessibility-label="Open video"
+        accessibility-traits="button"
+        style="padding: 12px; background-color: #e0e0e0;"
+        routerLink="/video-toggle"
+      >
+        <text>Open video</text>
+      </view>
+      <view
+        [flatten]="false"
+        [accessibility-element]="true"
+        accessibility-label="Scan code"
+        accessibility-traits="button"
+        style="margin-left: 8px; padding: 12px; background-color: #e0e0e0;"
+        (bindtap)="scan()"
+      >
+        <text>Scan code</text>
+      </view>
     </view>
+    <text flatten="false" style="margin-top: 8px;">Scan: {{ scanned() }}</text>
   `,
 })
 export class PhotoRoute {
   readonly #picker = inject(LynxImagePicker);
+  readonly #scanner = inject(LynxBarcodeScanner);
   readonly status = signal('none');
+  readonly scanned = signal('none');
+
+  /**
+   * Opens LynxBarcodeScanner (issue #917), which the app has because the
+   * harness gives it the camera permission (addCameraPermission in
+   * src/scaffold.ts). The iOS Simulator has no camera, so the shell's
+   * module answers that the device has no scanner: its message, rather than
+   * the runtime's for a host without the module, shows the shell registered
+   * it (native/scanner.yaml).
+   */
+  async scan(): Promise<void> {
+    this.scanned.set('…');
+    try {
+      const code = await this.#scanner.scan({ formats: ['qr'] });
+      this.scanned.set(`${code.format} ${code.value}`);
+    } catch (error) {
+      this.scanned.set(
+        error instanceof BarcodeScannerError
+          ? `${error.code}, ${error.message}`
+          : (error as Error).message,
+      );
+    }
+  }
 
   async pick(): Promise<void> {
     this.status.set('…');

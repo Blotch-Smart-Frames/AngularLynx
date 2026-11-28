@@ -1,0 +1,37 @@
+name: launchperf_flutter
+description: "The benchmark Pokédex (benchmarks/SPEC.md) on Flutter"
+# An app, never published to pub.dev.
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.14.0
+  # The SDK the app was made and measured with (README.md, "Versions").
+  flutter: 3.50.1
+
+# Exact versions, as every benchmark app pins its dependencies (SPEC.md,
+# "Build"); pubspec.lock holds the rest of the tree.
+dependencies:
+  flutter:
+    sdk: flutter
+  # Flutter's Material and Cupertino libraries, which `flutter create` now
+  # adds as packages rather than in the SDK.
+  material_ui: 1.11.1
+  cupertino_ui: 1.1.7
+  http: 1.6.0
+  shared_preferences: 2.5.6
+  flutter_svg: 2.5.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: 6.0.0
+  # Its in-memory store, for testing Favourites against storage.
+  shared_preferences_platform_interface: 2.4.2
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/icons/
+    - assets/images/

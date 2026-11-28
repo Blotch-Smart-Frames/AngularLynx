@@ -257,6 +257,22 @@ test('copies text to the clipboard and reads it back', async ({
   expect(errors, 'the app logged errors while running').toEqual([]);
 });
 
+// LynxBiometrics has no sensor in the web preview, which has no WebAuthn
+// path (issue #918; native/storage.yaml checks the app's own builds): the
+// storage page's "Biometrics" line says none, and asking rejects as
+// unavailable rather than hanging.
+test('reports no biometrics in the web preview', async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.goto('/');
+  await page.getByText('Open storage', { exact: true }).click();
+  await page
+    .getByText('Biometrics: none not enrolled', { exact: true })
+    .click();
+  await expect(page.getByText('Biometrics: unavailable')).toBeVisible();
+
+  expect(errors, 'the app logged errors while running').toEqual([]);
+});
+
 // <canvas> is the browser's in the web preview, with its own WebGL2 (issue
 // #211; native/canvas.yaml checks the app's own iOS and Android builds,
 // where the runtime's context draws through the shell). The canvas page
@@ -280,6 +296,9 @@ test('a canvas draws with WebGL2', async ({ page }) => {
   // like copy (issue #763), the browser's own here: the fixture's reads are
   // what a browser draws, which the shells match.
   await expect(page.getByText('2D: 0,128,0,255 filter ok')).toBeVisible();
+  // performance.now() in fractions of a millisecond (issue #896): the
+  // browser's own here.
+  await expect(page.getByText('Clock: sub-ms')).toBeVisible();
 
   expect(errors, 'the app logged errors while running').toEqual([]);
 });

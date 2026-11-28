@@ -76,7 +76,7 @@ Read [animations.md](references/animations.md)
 
 ## List Virtualization
 
-`<list>` and `<list-item>` for virtualized lists. Requires `item-key` attribute. `@for` builds every item up front; `*lynxListFor` builds an item only when the list asks for it and reuses the views of items scrolled away (keys from `trackBy`, layout from `itemAttributes`, and what a reused view keeps). Use `list-type="flow"` for waterfall/masonry layouts. Scrolling from code (`scrollToPosition` takes `position`), and a chat's list: loading older items above while keeping the person's place, and opening at the end.
+`<list>` and `<list-item>` for virtualized lists. Requires `item-key` attribute. `@for` builds every item up front; `*lynxListFor` builds an item only when the list asks for it and reuses the views of items scrolled away (keys from `trackBy`, layout from `itemAttributes`, what a reused view keeps, and what makes a row cheap to check). Use `list-type="flow"` for waterfall/masonry layouts. Scrolling from code (`scrollToPosition` takes `position`), and a chat's list: loading older items above while keeping the person's place, and opening at the end.
 
 Read [list-virtualization.md](references/list-virtualization.md)
 
@@ -94,7 +94,7 @@ Read [threading-model.md](references/threading-model.md)
 
 ## HTTP Requests
 
-`provideHttpClient()`, `HttpClient`, `httpResource` and `fetch()` work on the main thread: the runtime relays each request to the background thread's `fetch`. URLs must be absolute, except a file the app bundles in an `ng build --platform` app; no `FormData` bodies; `Blob` bodies go with their type. OAuth sign-in through a web page with `LynxWebAuthSession`; photos from the phone's picker as a `Blob` with `LynxImagePicker`; the share sheet (files, text, links, Save Image) with `LynxShare`. Links out of the app (browser, browser sheet, mail, other apps) with `LynxLinking`, which also hears the links that open the app (see routing).
+`provideHttpClient()`, `HttpClient`, `httpResource` and `fetch()` work on the main thread: the runtime relays each request to the background thread's `fetch`. URLs must be absolute, except a file the app bundles in an `ng build --platform` app; no `FormData` bodies; `Blob` bodies go with their type. OAuth sign-in through a web page with `LynxWebAuthSession`; photos from the phone's picker as a `Blob` with `LynxImagePicker`; the share sheet (files, text, links, Save Image) with `LynxShare`; a QR code or a barcode from the camera with `LynxBarcodeScanner`, opt-in with `permissions.camera`. Links out of the app (browser, browser sheet, mail, other apps) with `LynxLinking`, which also hears the links that open the app (see routing).
 
 Read [http-requests.md](references/http-requests.md)
 

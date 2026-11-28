@@ -308,6 +308,7 @@ export default defineConfig({
             { text: 'LynxAppState', link: '/api/angular-lynx/app-state' },
             { text: 'LynxClipboard', link: '/api/angular-lynx/clipboard' },
             { text: 'LynxHaptics', link: '/api/angular-lynx/haptics' },
+            { text: 'LynxBiometrics', link: '/api/angular-lynx/biometrics' },
             { text: 'Host Data', link: '/api/angular-lynx/host-data' },
             {
               text: 'LynxNativeModule',
@@ -331,6 +332,10 @@ export default defineConfig({
             {
               text: 'LynxImagePicker',
               link: '/api/angular-lynx/image-picker',
+            },
+            {
+              text: 'LynxBarcodeScanner',
+              link: '/api/angular-lynx/barcode-scanner',
             },
             { text: 'LynxShare', link: '/api/angular-lynx/share' },
           ],

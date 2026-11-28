@@ -1,0 +1,21 @@
+timestamp,device,os_build,app,package,run,previous_app,launch_state,first_frame_ms,fully_drawn_ms,mount_ms,memory_mb,rss_mb,thermal_state,battery_percent,charging,host_load
+2026-11-28T07:31:00+00:00,angular-lynx-e2e (emulator),14 (UE1A.230829.050),angular-lynx,com.angularlynx.bench.angularlynx,1,react-lynx,COLD,616,616,326.2,218.9,308.9,0,100,true,4.9
+2026-11-28T07:31:13+00:00,angular-lynx-e2e (emulator),14 (UE1A.230829.050),react-lynx,com.angularlynx.bench.rival,1,angular-lynx,COLD,436,436,172.3,203.7,293.3,0,100,true,4.5
+2026-11-28T07:31:27+00:00,angular-lynx-e2e (emulator),14 (UE1A.230829.050),react-lynx,com.angularlynx.bench.rival,2,react-lynx,COLD,475,475,191.3,185.4,276.0,0,100,true,4.2
+2026-11-28T07:31:40+00:00,angular-lynx-e2e (emulator),14 (UE1A.230829.050),angular-lynx,com.angularlynx.bench.angularlynx,2,react-lynx,COLD,632,632,345.7,181.6,272.3,0,100,true,3.7
+2026-11-28T07:31:53+00:00,angular-lynx-e2e (emulator),14 (UE1A.230829.050),angular-lynx,com.angularlynx.bench.angularlynx,3,angular-lynx,COLD,607,607,335.0,202.8,292.1,0,100,true,3.1
+2026-11-28T07:32:06+00:00,angular-lynx-e2e (emulator),14 (UE1A.230829.050),react-lynx,com.angularlynx.bench.rival,3,angular-lynx,COLD,389,429,197.0,181.9,272.5,0,100,true,3.9
+2026-11-28T07:32:19+00:00,angular-lynx-e2e (emulator),14 (UE1A.230829.050),react-lynx,com.angularlynx.bench.rival,4,react-lynx,COLD,421,487,277.6,197.5,286.9,0,100,true,4.7
+2026-11-28T07:32:32+00:00,angular-lynx-e2e (emulator),14 (UE1A.230829.050),angular-lynx,com.angularlynx.bench.angularlynx,4,react-lynx,COLD,652,652,359.5,178.8,269.2,0,100,true,4.6
+2026-11-28T07:32:45+00:00,angular-lynx-e2e (emulator),14 (UE1A.230829.050),angular-lynx,com.angularlynx.bench.angularlynx,5,angular-lynx,COLD,700,700,365.3,179.1,269.7,0,100,true,5.7
+2026-11-28T07:32:58+00:00,angular-lynx-e2e (emulator),14 (UE1A.230829.050),react-lynx,com.angularlynx.bench.rival,5,angular-lynx,COLD,380,432,234.1,177.7,268.4,0,100,true,5.7
+2026-11-28T07:33:12+00:00,angular-lynx-e2e (emulator),14 (UE1A.230829.050),react-lynx,com.angularlynx.bench.rival,6,react-lynx,COLD,438,495,291.5,181.2,271.8,0,100,true,5.2
+2026-11-28T07:33:25+00:00,angular-lynx-e2e (emulator),14 (UE1A.230829.050),angular-lynx,com.angularlynx.bench.angularlynx,6,react-lynx,COLD,611,611,324.2,181.5,271.9,0,100,true,4.9
+2026-11-28T07:35:28+00:00,angular-lynx-e2e (emulator),14 (UE1A.230829.050),angular-lynx,com.angularlynx.bench.angularlynx,7,angular-lynx,COLD,824,824,406.8,182.0,272.8,0,100,true,8.9
+2026-11-28T07:35:41+00:00,angular-lynx-e2e (emulator),14 (UE1A.230829.050),react-lynx,com.angularlynx.bench.rival,7,angular-lynx,COLD,720,1116,701.7,186.3,277.1,0,100,true,8.9
+2026-11-28T07:36:45+00:00,angular-lynx-e2e (emulator),14 (UE1A.230829.050),react-lynx,com.angularlynx.bench.rival,8,react-lynx,COLD,463,584,339.8,197.4,287.1,0,100,true,8.7
+2026-11-28T07:37:13+00:00,angular-lynx-e2e (emulator),14 (UE1A.230829.050),angular-lynx,com.angularlynx.bench.angularlynx,8,angular-lynx,COLD,656,656,340.9,211.8,301.8,0,100,true,8.7
+2026-11-28T07:37:26+00:00,angular-lynx-e2e (emulator),14 (UE1A.230829.050),angular-lynx,com.angularlynx.bench.angularlynx,9,angular-lynx,COLD,722,722,378.2,208.5,297.9,0,100,true,7.5
+2026-11-28T07:37:39+00:00,angular-lynx-e2e (emulator),14 (UE1A.230829.050),react-lynx,com.angularlynx.bench.rival,9,angular-lynx,COLD,403,404,195.5,218.6,308.7,0,100,true,6.9
+2026-11-28T07:37:52+00:00,angular-lynx-e2e (emulator),14 (UE1A.230829.050),react-lynx,com.angularlynx.bench.rival,10,react-lynx,COLD,400,451,231.8,180.0,270.6,0,100,true,6.5
+2026-11-28T07:38:05+00:00,angular-lynx-e2e (emulator),14 (UE1A.230829.050),angular-lynx,com.angularlynx.bench.angularlynx,10,react-lynx,COLD,764,764,402.8,184.8,275.1,0,100,true,5.7

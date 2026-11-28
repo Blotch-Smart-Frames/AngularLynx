@@ -34,6 +34,7 @@ import {
 } from '../lynx-render-lifecycle';
 import { stopMatchingDeclarationOnlyElements } from '../lynx-elements/declaration-only';
 import { EmulatedLynxRenderer } from './emulated-lynx-renderer';
+import { frameGate } from './frame-gate';
 import { LynxRenderer } from './renderer';
 import { LYNX_DOCUMENT } from './token';
 
@@ -42,9 +43,14 @@ export class LynxRendererFactory2 implements RendererFactory2 {
   lynxDocument: LynxDocumentBase = inject(LYNX_DOCUMENT);
   #defaultRenderer: LynxRenderer | null = null;
   #emulatedRenderers = new Map<string, EmulatedLynxRenderer>();
+  // Called after each flush end() makes: until the next frame, a tick
+  // Angular schedules waits for that frame (see frameGate, issue #868).
+  #flushed: () => void;
 
   constructor() {
-    setRunComingTick(comingTickRunner(inject(Injector)));
+    const injector = inject(Injector);
+    setRunComingTick(comingTickRunner(injector));
+    this.#flushed = frameGate(injector);
     // The language of an element no `lang` is on or above, whose
     // quotation marks a <q> draws (see quotes.ts): the app's locale, as an
     // Angular app localized for the web sets <html lang> to it. An app's
@@ -137,7 +143,9 @@ export class LynxRendererFactory2 implements RendererFactory2 {
    *      it's appended, an item isn't in the page's tree, so no root flush
    *      reaches it, before or after. React Lynx sends a commit's lists
    *      before its one flush the same way; each list used to flush on its
-   *      own after the cycle's, N + 1 flushes for N lists.
+   *      own after the cycle's, N + 1 flushes for N lists. Until the next
+   *      frame, a tick Angular schedules then waits for that frame, so a
+   *      burst of updates ticks and flushes once a frame (see frameGate).
    *   3. processPendingInvokes() — makes again the UI method calls native
    *      dropped this cycle because their element had no UI yet (see
    *      LynxElement.invoke), now that the flush has made it. After the
@@ -246,7 +254,14 @@ export class LynxRendererFactory2 implements RendererFactory2 {
           }
           /* v8 ignore stop */
           markTreeFlushed();
-          flushTreeWithListUpdates();
+          try {
+            flushTreeWithListUpdates();
+          } finally {
+            // Later ticks this frame wait for the next one, which runs them
+            // together (see frameGate). Even when a list threw: the tree
+            // was flushed.
+            this.#flushed();
+          }
         }
       } finally {
         // Then the UI method calls made on elements this cycle created, which

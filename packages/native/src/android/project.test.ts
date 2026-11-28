@@ -16,6 +16,7 @@ import { TEMPLATES_DIR } from '../generate.ts';
 import { resolveAppOptions } from '../options.ts';
 import {
   ANDROID_BIOMETRICS_SOURCES,
+  ANDROID_FILE_PICKER_SOURCES,
   ANDROID_BARCODE_SCANNER_SOURCE,
   ANDROID_CANVAS_SOURCES,
   ANDROID_STORE_REVIEW_SOURCE,
@@ -175,6 +176,50 @@ describe('androidGenerator and biometrics', () => {
         .replace(/\/\*[\s\S]*?\*\//g, '');
       expect(source, file).not.toMatch(
         /\bBiometricsModule\b|androidx\.biometric|angular_lynx_biometrics_reason/,
+      );
+    }
+  });
+});
+
+describe('androidGenerator and the file picker', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(path.join(os.tmpdir(), 'angular-lynx-android-'));
+    cpSync(path.join(TEMPLATES_DIR, 'android'), dir, { recursive: true });
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  const shell = path.join('app/src/main/java/dev/angularlynx/shell');
+  const read = (file: string) => readFileSync(path.join(dir, file), 'utf8');
+
+  it('keeps the module, its launcher and its registration in an app with filePicker', () => {
+    const withFiles = app({ filePicker: true });
+    androidGenerator.configure(dir, withFiles, dir);
+    androidGenerator.leaveOut(dir, { canvas: true, webgl: true }, withFiles);
+    for (const file of ANDROID_FILE_PICKER_SOURCES) {
+      expect(existsSync(path.join(dir, shell, file))).toBe(true);
+    }
+    const activity = read(`${shell}/MainActivity.kt`);
+    expect(activity).toContain('registerModule(FilePickerModule.NAME');
+    expect(activity).toContain('FilePickerModule.Host');
+  });
+
+  it('takes them all out of an app without filePicker', () => {
+    androidGenerator.configure(dir, app(), dir);
+    androidGenerator.leaveOut(dir, { canvas: true, webgl: true }, app());
+    for (const file of ANDROID_FILE_PICKER_SOURCES) {
+      expect(existsSync(path.join(dir, shell, file))).toBe(false);
+    }
+    const activity = read(`${shell}/MainActivity.kt`);
+    expect(activity).not.toContain('angular-lynx:file-picker');
+    // The Photo Picker's launcher, beside it, stays.
+    expect(activity).toContain('registerModule(ImagePickerModule.NAME');
+    for (const file of readdirSync(path.join(dir, shell))) {
+      const source = read(path.join(shell, file))
+        .replace(/\/\/.*$/gm, '')
+        .replace(/\/\*[\s\S]*?\*\//g, '');
+      expect(source, file).not.toMatch(
+        /\bFilePickerModule\b|filePickerHost|documentLauncher/,
       );
     }
   });
@@ -520,9 +565,11 @@ describe('androidGenerator.leaveOut', () => {
 
   const shell = (main = 'main') =>
     path.join(dir, `app/src/${main}/java/dev/angularlynx/shell`);
-  // So MainActivity changes only where the canvas code goes.
-  const withBiometrics = app({
+  // The optional modules an app turns on keep their MainActivity lines, so
+  // those don't change with the canvas's.
+  const withEveryModule = app({
     permissions: { biometrics: 'Unlock' },
+    filePicker: true,
     storeReview: true,
   });
   const mainActivity = () =>
@@ -533,7 +580,7 @@ describe('androidGenerator.leaveOut', () => {
     androidGenerator.leaveOut(
       dir,
       { canvas: true, webgl: true },
-      withBiometrics,
+      withEveryModule,
     );
     expect(mainActivity()).toBe(before);
     for (const file of ANDROID_CANVAS_SOURCES) {
@@ -545,7 +592,7 @@ describe('androidGenerator.leaveOut', () => {
     androidGenerator.leaveOut(
       dir,
       { canvas: false, webgl: false },
-      withBiometrics,
+      withEveryModule,
     );
     for (const file of ANDROID_CANVAS_SOURCES) {
       expect(existsSync(path.join(shell(), file))).toBe(false);
@@ -577,7 +624,7 @@ describe('androidGenerator.leaveOut', () => {
     androidGenerator.leaveOut(
       dir,
       { canvas: false, webgl: false },
-      withBiometrics,
+      withEveryModule,
     );
     const names = new RegExp(`\\b(${[...declared].join('|')})\\b`);
     for (const main of ['main', 'debug', 'release']) {
@@ -600,7 +647,7 @@ describe('androidGenerator.leaveOut', () => {
       androidGenerator.leaveOut(
         dir,
         { canvas: true, webgl: false },
-        withBiometrics,
+        withEveryModule,
       );
       for (const file of ANDROID_WEBGL_SOURCES) {
         expect(existsSync(path.join(shell(), file)), file).toBe(false);
@@ -617,7 +664,7 @@ describe('androidGenerator.leaveOut', () => {
       androidGenerator.leaveOut(
         dir,
         { canvas: true, webgl: false },
-        withBiometrics,
+        withEveryModule,
       );
       const source = module();
       expect(source).not.toMatch(/^\s*\/\/ \/?angular-lynx:webgl$/m);
@@ -649,7 +696,7 @@ describe('androidGenerator.leaveOut', () => {
       androidGenerator.leaveOut(
         dir,
         { canvas: true, webgl: false },
-        withBiometrics,
+        withEveryModule,
       );
       const names = new RegExp(`\\b(${[...declared].join('|')})\\b`);
       for (const main of ['main', 'debug', 'release']) {

@@ -5,6 +5,8 @@ import {
   LYNX_ELEMENTS,
   LynxBiometrics,
   LynxClipboard,
+  FilePickerError,
+  LynxFilePicker,
   LynxLocalStorage,
   LynxSecureStorage,
   LynxStoreReview,
@@ -111,6 +113,13 @@ const collectedFromArrays = async (): Promise<string> => {
  * a simulator nobody has enrolled is `notEnrolled`. Lynx Explorer has no
  * module: `none`, and `unavailable`.
  *
+ * "Files", beside "Rating", opens LynxFilePicker's document picker (issue
+ * #924), from the shells' module, which only an app with angular.json's
+ * `filePicker` has (the E2E app sets it). Closing it shows "canceled", and a
+ * file picked shows its name and size. Lynx Explorer has no module:
+ * `unavailable`. It shares that row because the Android emulator's screen
+ * ends at the Biometrics row, and Maestro can't tap what's below it.
+ *
  * "Rating", beside "Clipboard", asks for the store's rating prompt with
  * LynxStoreReview (issue #931), which the app has because the harness sets
  * angular.json's `storeReview`. It shows "asked" once request() resolves,
@@ -164,6 +173,9 @@ const collectedFromArrays = async (): Promise<string> => {
       <text flatten="false" style="margin-left: 16px;" (bindtap)="rate()"
         >Rating: {{ rating() }}</text
       >
+      <text flatten="false" style="margin-left: 16px;" (bindtap)="pickFile()"
+        >Files: {{ files() }}</text
+      >
     </view>
     <view style="display: flex; flex-direction: row; margin-top: 8px;">
       <text flatten="false" (bindtap)="authenticate()"
@@ -177,6 +189,8 @@ export class StorageRoute implements OnInit {
   readonly #secure = inject(LynxSecureStorage);
   readonly #clipboard = inject(LynxClipboard);
   readonly #biometrics = inject(LynxBiometrics);
+  readonly #files = inject(LynxFilePicker);
+  readonly files = signal('tap');
   readonly biometrics = signal('…');
   readonly #storeReview = inject(LynxStoreReview);
   readonly stored = signal('…');
@@ -234,6 +248,22 @@ export class StorageRoute implements OnInit {
       (error: unknown) =>
         this.biometrics.set(
           error instanceof BiometricsError ? error.code : String(error),
+        ),
+    );
+  }
+
+  pickFile(): void {
+    this.files.set('…');
+    this.#files.pick().then(
+      (picked) =>
+        this.files.set(
+          picked.length === 0
+            ? 'canceled'
+            : picked.map((file) => `${file.name} ${file.size}`).join(', '),
+        ),
+      (error: unknown) =>
+        this.files.set(
+          error instanceof FilePickerError ? error.code : String(error),
         ),
     );
   }

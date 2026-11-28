@@ -15,6 +15,12 @@ export type {
   FakeBiometrics,
 } from './biometrics.js';
 export {
+  savedFiles,
+  setFilePickerCanceled,
+  setPickedFiles,
+} from './file-picker.js';
+export type { FakePickedFile, SavedFile } from './file-picker.js';
+export {
   cancelBarcodeScan,
   failBarcodeScan,
   queueBarcodeScan,

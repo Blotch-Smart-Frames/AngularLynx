@@ -164,6 +164,63 @@ await waitForUpdate();
 expect(screen.getByText('Refreshed')).toBeInTheDocument();
 ```
 
+### `setPickedFiles()`
+
+```typescript
+function setPickedFiles(files: readonly FakePickedFile[]): void;
+
+type FakePickedFile = {
+  readonly name: string;
+  readonly type?: string; // application/octet-stream without it
+  readonly content: string | Uint8Array; // text is stored as UTF-8
+};
+```
+
+Has the person pick `files` each time the app opens [`LynxFilePicker`](/api/angular-lynx/file-picker)'s picker in this test. Until a spec calls it, they close the picker, and `pick()` resolves with `[]`. Files over 20 MiB together reject with `too-large`, as on a phone.
+
+```typescript
+setPickedFiles([
+  { name: 'receipt.pdf', type: 'application/pdf', content: pdfBytes },
+]);
+fireEvent.tap(screen.getByText('Attach receipt'));
+await waitForUpdate();
+
+expect(screen.getByText('Attached receipt.pdf')).toBeInTheDocument();
+```
+
+### `setFilePickerCanceled()`
+
+```typescript
+function setFilePickerCanceled(): void;
+```
+
+Has the person close `LynxFilePicker`'s picker and save screen for the rest of the test: `pick()` resolves with `[]`, and `save()` with `false`. `setPickedFiles()` undoes it.
+
+### `savedFiles()`
+
+```typescript
+function savedFiles(): readonly SavedFile[];
+
+type SavedFile = {
+  readonly name: string;
+  readonly type: string;
+  readonly bytes: Uint8Array;
+  readonly text: string; // the bytes read as UTF-8
+};
+```
+
+The files the app saved with `LynxFilePicker.save()` in this test, oldest first. Each test starts with none.
+
+```typescript
+fireEvent.tap(screen.getByText('Export CSV'));
+await waitForUpdate();
+
+expect(savedFiles()).toMatchObject([
+  { name: 'expenses.csv', type: 'text/csv' },
+]);
+expect(savedFiles()[0]!.text).toContain('Total,42');
+```
+
 ### `queueBarcodeScan()`
 
 ```typescript

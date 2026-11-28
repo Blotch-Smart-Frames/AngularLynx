@@ -72,6 +72,11 @@ final class LynxViewController: UIViewController, LynxViewLifecycle {
     if let biometrics = NSClassFromString("AngularLynxBiometricsModule") as? LynxModule.Type {
       config.register(biometrics)
     }
+    // The document picker behind LynxFilePicker (FilePickerModule), which
+    // only an app with angular.json's filePicker keeps: by name too.
+    if let filePicker = NSClassFromString("AngularLynxFilePickerModule") as? LynxModule.Type {
+      config.register(filePicker)
+    }
     // The camera's code scanner behind LynxBarcodeScanner
     // (BarcodeScannerModule), by name: the generator leaves its source out
     // of an app whose angular.json doesn't set permissions.camera, since App

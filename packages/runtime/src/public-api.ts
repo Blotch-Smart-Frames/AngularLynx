@@ -43,6 +43,17 @@ export { LynxHaptics } from './lib/haptics';
 export type { HapticImpactStyle, HapticNotificationType } from './lib/haptics';
 export { reportFullyDrawn } from './lib/fully-drawn';
 export {
+  FILE_PICKER_MAX_BYTES,
+  FilePickerError,
+  LynxFilePicker,
+} from './lib/file-picker';
+export type {
+  FilePickerErrorCode,
+  FilePickerOptions,
+  PickedFile,
+  SaveFile,
+} from './lib/file-picker';
+export {
   BARCODE_FORMATS,
   BarcodeScannerError,
   LynxBarcodeScanner,

@@ -87,6 +87,21 @@ describe('renderEjectedProject', () => {
   });
 
   // angular.json no longer applies to an ejected project, so one ejected
+  // without filePicker has no module to turn on later: it's added by hand,
+  // from the template.
+  it('has the file picker module only when the app sets filePicker', () => {
+    for (const [platform, module] of [
+      ['ios', 'App/FilePickerModule.swift'],
+      ['android', `${ANDROID_SHELL_SOURCES}/FilePickerModule.kt`],
+    ] as const) {
+      expect(render(platform).has(module)).toBe(false);
+      expect(
+        render(platform, undefined, { filePicker: true }).has(module),
+      ).toBe(true);
+    }
+  });
+
+  // angular.json no longer applies to an ejected project, so one ejected
   // without storeReview has no module to turn on later: it's added by hand,
   // from the template.
   it('has the store review module only when the app sets storeReview', () => {

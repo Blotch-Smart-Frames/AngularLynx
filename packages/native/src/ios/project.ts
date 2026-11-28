@@ -107,6 +107,11 @@ export const iosGenerator: PlatformGenerator = {
     if (!app.permissions.biometrics) {
       removeTemplateFiles(dir, IOS_BIOMETRICS_SOURCES);
     }
+    // The document picker is only for an app that turns it on with
+    // `filePicker`; LynxViewController registers it by name too.
+    if (!app.filePicker) {
+      removeTemplateFiles(dir, IOS_FILE_PICKER_SOURCES);
+    }
     // An app that doesn't ask for ratings in the app (angular.json's
     // `storeReview`) ships no StoreKit review code it never calls.
     // LynxViewController registers the module by name too.
@@ -148,6 +153,12 @@ export const IOS_STORE_REVIEW_SOURCE = 'App/StoreReviewModule.swift';
  * an app with `permissions.biometrics` keeps.
  */
 export const IOS_BIOMETRICS_SOURCES = ['App/BiometricsModule.swift'] as const;
+
+/**
+ * The shell's file picker module, `AngularLynxFilePicker` (LynxFilePicker),
+ * which only an app with `filePicker` keeps.
+ */
+export const IOS_FILE_PICKER_SOURCES = ['App/FilePickerModule.swift'] as const;
 
 /**
  * The shell's `<canvas>`, its `AngularLynxWebGL` module and its contexts, and
@@ -353,6 +364,18 @@ export const infoPlistEntries = (
     lines.push(
       '<key>NSLocalNetworkUsageDescription</key>',
       `<string>${escapeXml(LOCAL_NETWORK_REASON)}</string>`,
+    );
+  }
+
+  // The app's Documents folder in the Files app, under On My iPhone, where
+  // LynxFilePicker's save() can put a file and pick() find it again. iOS
+  // lists the folder only with both keys.
+  if (app.fileSharing) {
+    lines.push(
+      '<key>UIFileSharingEnabled</key>',
+      '<true/>',
+      '<key>LSSupportsOpeningDocumentsInPlace</key>',
+      '<true/>',
     );
   }
 

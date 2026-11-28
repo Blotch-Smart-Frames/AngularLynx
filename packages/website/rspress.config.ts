@@ -330,6 +330,10 @@ export default defineConfig({
               link: '/api/angular-lynx/fully-drawn',
             },
             {
+              text: 'LynxFilePicker',
+              link: '/api/angular-lynx/file-picker',
+            },
+            {
               text: 'LynxImagePicker',
               link: '/api/angular-lynx/image-picker',
             },

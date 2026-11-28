@@ -98,8 +98,9 @@ export type AppleCredentialState =
  * - `canceled`: the person closed the sheet.
  * - `unsupported`: the host has no native sheet: Android, the web preview,
  *   Lynx Explorer, an iOS app built without angular.json's
- *   `signInWithApple`, and tests without the testing library's fake. Use
- *   Apple's web flow through `LynxWebAuthSession` there.
+ *   `signInWithApple`, and tests without the testing library's fake. In
+ *   the Android app, use Apple's web flow through `LynxWebAuthSession`; the
+ *   web preview and Lynx Explorer have no web sign-in either.
  * - `failed`: Apple couldn't sign the person in, a sign-in was already
  *   open, or Apple returned no token.
  */
@@ -125,7 +126,7 @@ type SignInAnswer = Partial<AppleSignInResult> & {
 const unsupported = () =>
   new AppleSignInError(
     'unsupported',
-    'This host has no Sign in with Apple sheet. Only iOS apps built with angular.json\'s "signInWithApple": true have one; elsewhere, use Apple\'s web flow with LynxWebAuthSession.',
+    'This host has no Sign in with Apple sheet. Only iOS apps built with angular.json\'s "signInWithApple": true have one. In the Android app, use Apple\'s web flow with LynxWebAuthSession.',
   );
 
 /**
@@ -135,10 +136,10 @@ const unsupported = () =>
  * and an authorization code for the app's server to check with Apple, and,
  * on the first sign-in only, the email and name the person chose to share.
  *
- * The sheet is iOS's. On Android and the web, {@link signIn} rejects with
- * `unsupported`: sign in through Apple's web flow there, with
- * `LynxWebAuthSession` and a Services ID. {@link isAvailable} says which to
- * offer.
+ * The sheet is iOS's. Elsewhere {@link signIn} rejects with `unsupported`.
+ * In the Android app, sign in through Apple's web flow instead, with
+ * `LynxWebAuthSession` and a Services ID. The web preview and Lynx Explorer
+ * have no web sign-in either. {@link isAvailable} says which to offer.
  *
  * The native module and the `com.apple.developer.applesignin` entitlement
  * are in an iOS app only when angular.json's build options set

@@ -4,7 +4,7 @@ Signs the person in with Sign in with Apple's own sheet on iOS, and gives you th
 
 **App Review usually asks for it beside other social logins.** Under Apple's guideline 4.8, an app whose main login is Google, Facebook or another third-party service must also offer a login that limits what it collects to a name and email, lets the person hide their email, and doesn't track them for ads. Sign in with Apple meets that. The guideline has exceptions, such as an app that signs in only with its own accounts, or with a company's. The native sheet is the one people expect on iOS: Face ID, then done, with no web page.
 
-The sheet is iOS's alone. On Android and the web, sign in with Apple's web flow through [`LynxWebAuthSession`](/api/angular-lynx/web-auth-session) instead, and use [`isAvailable()`](#isavailable) to choose.
+The sheet is iOS's alone. In the Android app, sign in with Apple's web flow through [`LynxWebAuthSession`](/api/angular-lynx/web-auth-session) instead, and use [`isAvailable()`](#isavailable) to choose. The [web preview](/guide/glossary#web-preview) and [Lynx Explorer](/guide/glossary#lynx-explorer) have neither.
 
 ## Turn it on
 

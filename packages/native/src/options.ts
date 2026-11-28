@@ -507,13 +507,12 @@ export const resolveAppOptions = (
     );
   }
 
-  // Checked for the same reason as storeReview.
-  const calendar = options.calendar ?? false;
-  if (typeof calendar !== 'boolean') {
-    throw new NativeConfigError(
-      `calendar ${JSON.stringify(calendar)} is not valid. Use true to add events to the calendar with LynxCalendar, or false.`,
-    );
-  }
+  // Checked for the same reason as filePicker.
+  const calendar = resolveSwitch(
+    'calendar',
+    options.calendar,
+    'to add events to the calendar with LynxCalendar',
+  );
 
   const deepLinkSchemes = options.deepLinkSchemes ?? [];
   for (const scheme of deepLinkSchemes) {

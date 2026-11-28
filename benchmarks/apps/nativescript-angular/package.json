@@ -1,0 +1,36 @@
+{
+  "name": "launchperf-nativescript-angular",
+  "main": "src/main.ts",
+  "version": "1.0.0",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "ios": "ns run ios --release",
+    "build:ios": "ns build ios --release"
+  },
+  "dependencies": {
+    "@angular/animations": "22.3.0",
+    "@angular/common": "22.3.0",
+    "@angular/compiler": "22.3.0",
+    "@angular/core": "22.3.0",
+    "@angular/forms": "22.3.0",
+    "@angular/platform-browser": "22.3.0",
+    "@angular/platform-browser-dynamic": "22.3.0",
+    "@angular/router": "22.3.0",
+    "@nativescript/angular": "22.0.2",
+    "@nativescript/core": "9.1.4",
+    "@tanstack/angular-query-experimental": "5.107.2",
+    "rxjs": "7.8.2",
+    "zone.js": "0.16.3"
+  },
+  "devDependencies": {
+    "@angular-devkit/build-angular": "22.3.0",
+    "@angular/compiler-cli": "22.3.0",
+    "@nativescript/ios": "9.1.1",
+    "@nativescript/types": "9.0.0",
+    "@nativescript/webpack": "5.0.42",
+    "@ngtools/webpack": "22.3.0",
+    "nativescript": "9.1.2",
+    "typescript": "6.0.3"
+  }
+}

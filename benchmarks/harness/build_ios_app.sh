@@ -6,7 +6,8 @@
 #   sh build_ios_app.sh [--simulator] <app> <bundle id> [bench screen]
 #
 #   app          angular-lynx, react-lynx, react-native, react-native-0.88,
-#                angular-native or flutter (a folder in ../apps)
+#                angular-native, nativescript-angular, ionic-angular or flutter
+#                (a folder in ../apps)
 #   bundle id    what the phone knows it as
 #   bench screen e.g. 'mount?kind=view&count=1500': open on that screen
 #                instead of the tabs (BENCH_SCREEN in each app's README)
@@ -133,6 +134,43 @@ case "$app" in
         -configuration Release -sdk iphoneos -destination generic/platform=iOS -derivedDataPath build/ios-device \
         DEVELOPMENT_TEAM="$team" CODE_SIGN_STYLE=Automatic -allowProvisioningUpdates >"$log" 2>&1
       built=build/ios-device/Build/Products/Release-iphoneos/LaunchPerfAngularNative.app
+    fi
+    ;;
+  nativescript-angular)
+    # The NativeScript CLI edits the Xcode project with Ruby's xcodeproj gem;
+    # CocoaPods (Homebrew) carries one, so borrow it if Ruby has none.
+    if ! ruby -e 'require "xcodeproj"' 2>/dev/null; then
+      GEM_PATH="$(ls -d "$(brew --prefix)"/Cellar/cocoapods/*/libexec | tail -1)"
+      export GEM_PATH
+    fi
+    BENCH_SCREEN="$screen" FIXTURE_ORIGIN="$origin" BUNDLE_ID="$bundle_id" \
+      npx ns prepare ios --release >"$log" 2>&1
+    if [ -n "$simulator" ]; then
+      xcodebuild build -project platforms/ios/nativescriptangular.xcodeproj -scheme nativescriptangular \
+        -configuration Release -sdk iphonesimulator -destination "generic/platform=iOS Simulator" \
+        -derivedDataPath build/ios-simulator PRODUCT_BUNDLE_IDENTIFIER="$bundle_id" CODE_SIGNING_ALLOWED=NO >>"$log" 2>&1
+      built=build/ios-simulator/Build/Products/Release-iphonesimulator/nativescriptangular.app
+    else
+      xcodebuild build -project platforms/ios/nativescriptangular.xcodeproj -scheme nativescriptangular \
+        -configuration Release -sdk iphoneos -destination generic/platform=iOS -derivedDataPath build/ios-device \
+        DEVELOPMENT_TEAM="$team" CODE_SIGN_STYLE=Automatic PRODUCT_BUNDLE_IDENTIFIER="$bundle_id" \
+        -allowProvisioningUpdates >>"$log" 2>&1
+      built=build/ios-device/Build/Products/Release-iphoneos/nativescriptangular.app
+    fi
+    ;;
+  ionic-angular)
+    BENCH_SCREEN="$screen" FIXTURE_ORIGIN="$origin" node scripts/build.mjs >"$log" 2>&1
+    if [ -n "$simulator" ]; then
+      xcodebuild build -project ios/App/App.xcodeproj -scheme App -configuration Release \
+        -sdk iphonesimulator -destination "generic/platform=iOS Simulator" -derivedDataPath ios/DerivedData-simulator \
+        PRODUCT_BUNDLE_IDENTIFIER="$bundle_id" CODE_SIGNING_ALLOWED=NO >>"$log" 2>&1
+      built=ios/DerivedData-simulator/Build/Products/Release-iphonesimulator/App.app
+    else
+      xcodebuild build -project ios/App/App.xcodeproj -scheme App -configuration Release \
+        -sdk iphoneos -destination generic/platform=iOS -derivedDataPath ios/DerivedData-device \
+        DEVELOPMENT_TEAM="$team" CODE_SIGN_STYLE=Automatic PRODUCT_BUNDLE_IDENTIFIER="$bundle_id" \
+        -allowProvisioningUpdates >>"$log" 2>&1
+      built=ios/DerivedData-device/Build/Products/Release-iphoneos/App.app
     fi
     ;;
   flutter)

@@ -10,18 +10,20 @@ numbers.
 This folder is outside the npm workspaces on purpose: Expo and the other
 frameworks never touch the monorepo's build.
 
-| Folder                   | What's in it                                                                                                                                                                                                                                                               |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`SPEC.md`](SPEC.md)     | What every app does, screen by screen                                                                                                                                                                                                                                      |
-| `apps/react-native`      | [Software Mansion's `launchperf-poke-rn`](https://github.com/software-mansion-labs/launchperf-poke-rn) (MIT), with only the API's base URL changed, and the scene life cycle iOS 27 requires: Expo 54, React Native 0.81                                                   |
-| `apps/react-native-0.88` | The same app on Expo SDK 58 / React Native 0.88, the base Angular Native uses                                                                                                                                                                                              |
-| `apps/angular-lynx`      | The port to AngularLynx, on this repository's packages                                                                                                                                                                                                                     |
-| `apps/react-lynx`        | The port to ReactLynx, in the same native shell as the AngularLynx app, on iOS and Android                                                                                                                                                                                 |
-| `apps/angular-native`    | The port to Angular Native (Expo SDK 58)                                                                                                                                                                                                                                   |
-| `apps/flutter`           | The port to Flutter, made with `flutter create`. It draws its own Material and Cupertino widgets rather than UIKit's (its README says which)                                                                                                                               |
-| `fixtures/`              | Recorded PokeAPI responses and sprites, and the server that hands them to the apps                                                                                                                                                                                         |
-| `harness/`               | The scripts that launch the apps under Instruments and read the traces, the UI test that scrolls them (`ios-scroll/`), the ones that launch them on Android with adb (`android_*`), and `node-mount.mjs`, which times the AngularLynx app's main-thread JavaScript in Node |
-| `results/`               | Every run, as CSV                                                                                                                                                                                                                                                          |
+| Folder                      | What's in it                                                                                                                                                                                                                                                               |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`SPEC.md`](SPEC.md)        | What every app does, screen by screen                                                                                                                                                                                                                                      |
+| `apps/react-native`         | [Software Mansion's `launchperf-poke-rn`](https://github.com/software-mansion-labs/launchperf-poke-rn) (MIT), with only the API's base URL changed, and the scene life cycle iOS 27 requires: Expo 54, React Native 0.81                                                   |
+| `apps/react-native-0.88`    | The same app on Expo SDK 58 / React Native 0.88, the base Angular Native uses                                                                                                                                                                                              |
+| `apps/angular-lynx`         | The port to AngularLynx, on this repository's packages                                                                                                                                                                                                                     |
+| `apps/react-lynx`           | The port to ReactLynx, in the same native shell as the AngularLynx app, on iOS and Android                                                                                                                                                                                 |
+| `apps/angular-native`       | The port to Angular Native (Expo SDK 58)                                                                                                                                                                                                                                   |
+| `apps/nativescript-angular` | The port to NativeScript Angular (NativeScript 9)                                                                                                                                                                                                                          |
+| `apps/ionic-angular`        | The port to Ionic Angular on Capacitor 8                                                                                                                                                                                                                                   |
+| `apps/flutter`              | The port to Flutter, made with `flutter create`. It draws its own Material and Cupertino widgets rather than UIKit's (its README says which)                                                                                                                               |
+| `fixtures/`                 | Recorded PokeAPI responses and sprites, and the server that hands them to the apps                                                                                                                                                                                         |
+| `harness/`                  | The scripts that launch the apps under Instruments and read the traces, the UI test that scrolls them (`ios-scroll/`), the ones that launch them on Android with adb (`android_*`), and `node-mount.mjs`, which times the AngularLynx app's main-thread JavaScript in Node |
+| `results/`                  | Every run, as CSV                                                                                                                                                                                                                                                          |
 
 ## The app
 
@@ -68,7 +70,8 @@ node fixtures/server.mjs
 # 2. Build and install each app on the phone. build_ios_app.sh builds any of
 #    them for a phone with the Mac's LAN address as the fixture origin (the
 #    Expo apps need `expo prebuild` with the bundle ID first, see their
-#    READMEs)
+#    READMEs; NativeScript's CLI needs Ruby's xcodeproj gem, which the
+#    script borrows from Homebrew's CocoaPods)
 xcrun devicectl device install app --device <UDID> \
   "$(sh harness/build_ios_app.sh angular-lynx com.angularlynx.bench.angularlynx)"
 

@@ -62,6 +62,14 @@ export type NativeAppOptions = {
    * one.
    */
   readonly storeReview?: boolean;
+  /**
+   * Whether the app adds events to the person's calendar with the runtime's
+   * `LynxCalendar`, through the system's own event editor: EventKitUI's on
+   * iOS 17 and later, and the calendar app's on Android. Neither needs a
+   * calendar permission. Off by default, which leaves the native module out
+   * of both apps.
+   */
+  readonly calendar?: boolean;
   /** Custom URL schemes that open the app, e.g. `["myapp"]`. */
   readonly deepLinkSchemes?: readonly string[];
   /**
@@ -323,6 +331,7 @@ export type ResolvedApp = {
   readonly filePicker: boolean;
   readonly fileSharing: boolean;
   readonly storeReview: boolean;
+  readonly calendar: boolean;
   readonly deepLinkSchemes: readonly string[];
   /** {@link NativeAppOptions.appLinkDomains} in lowercase, each once. */
   readonly appLinkDomains: readonly string[];
@@ -498,6 +507,14 @@ export const resolveAppOptions = (
     );
   }
 
+  // Checked for the same reason as storeReview.
+  const calendar = options.calendar ?? false;
+  if (typeof calendar !== 'boolean') {
+    throw new NativeConfigError(
+      `calendar ${JSON.stringify(calendar)} is not valid. Use true to add events to the calendar with LynxCalendar, or false.`,
+    );
+  }
+
   const deepLinkSchemes = options.deepLinkSchemes ?? [];
   for (const scheme of deepLinkSchemes) {
     if (!SCHEME.test(scheme)) {
@@ -602,6 +619,7 @@ export const resolveAppOptions = (
     filePicker,
     fileSharing,
     storeReview,
+    calendar,
     deepLinkSchemes,
     appLinkDomains,
     canOpenURLSchemes,

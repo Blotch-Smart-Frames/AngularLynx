@@ -1359,6 +1359,7 @@ describe('unit-test builder', () => {
       'filePicker',
       'fileSharing',
       'storeReview',
+      'calendar',
       'deepLinkSchemes',
       'appLinkDomains',
       'canOpenURLSchemes',

@@ -172,6 +172,7 @@ export const scaffoldApp = async (
   addFilePicker(appDir);
   addCameraPermission(appDir);
   addStoreReview(appDir);
+  addCalendar(appDir);
   step('Layer 2: compile a prebuilt library');
   await addPrebuiltLibrary(appDir, pm, exec);
 
@@ -1492,6 +1493,31 @@ const addStoreReview = (appDir: string) => {
     "angular.json's build target has no options; the project `ng new` generates has changed shape. Update addStoreReview() in packages/e2e/src/scaffold.ts.",
   );
   options['storeReview'] = true;
+  writeFileSync(workspacePath, `${JSON.stringify(workspace, null, 2)}\n`);
+};
+
+/**
+ * Turns on angular.json's `calendar`, so the native builds keep the calendar
+ * module, which only a build shows still compiles. native/calendar.yaml opens
+ * the event editor. compile-features.ts builds the shells without it, as most
+ * apps get them.
+ */
+const addCalendar = (appDir: string) => {
+  step('Layer 2: add events to the calendar, for the native builds');
+  const workspacePath = path.join(appDir, 'angular.json');
+  const workspace = readJson<{
+    projects: Record<
+      string,
+      { architect?: Record<string, { options?: Record<string, unknown> }> }
+    >;
+  }>(workspacePath);
+  const options = Object.values(workspace.projects)[0]?.architect?.['build']
+    ?.options;
+  check(
+    options !== undefined,
+    "angular.json's build target has no options; the project `ng new` generates has changed shape. Update addCalendar() in packages/e2e/src/scaffold.ts.",
+  );
+  options['calendar'] = true;
   writeFileSync(workspacePath, `${JSON.stringify(workspace, null, 2)}\n`);
 };
 

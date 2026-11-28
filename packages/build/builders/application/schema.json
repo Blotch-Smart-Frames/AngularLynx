@@ -299,6 +299,11 @@
       "default": false,
       "description": "Whether the app asks for an App Store or Google Play rating in the app with LynxStoreReview: StoreKit's review prompt on iOS, Google Play's In-App Review API on Android. false leaves the native module out of both apps, and Play's review library out of the Android one."
     },
+    "calendar": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the app adds events to the person's calendar with LynxCalendar, through the system's event editor (EventKitUI's on iOS 17 and later, the calendar app's on Android), which needs no calendar permission. false leaves the native module out of both apps."
+    },
     "deepLinkSchemes": {
       "type": "array",
       "items": {

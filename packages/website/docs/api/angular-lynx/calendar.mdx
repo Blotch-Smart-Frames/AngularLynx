@@ -1,0 +1,152 @@
+# LynxCalendar
+
+Adds a booking, a ticket or an appointment to the person's calendar, through the phone's own event editor. `import { LynxCalendar } from '@blotch/angular-lynx';`
+
+**No calendar permission needed.** The editor opens filled in with your event. The person picks the calendar and saves it, and your app never sees their calendars.
+
+## Turn it on
+
+Set `calendar` in your build options:
+
+```json title="angular.json"
+"options": {
+  "calendar": true
+}
+```
+
+Without it, the native code behind the editor is left out of both apps, and `addEvent()` rejects with `unavailable`.
+
+## Usage
+
+```typescript
+import { Component, inject, input, signal } from '@angular/core';
+import {
+  CalendarError,
+  LYNX_ELEMENTS,
+  LynxCalendar,
+} from '@blotch/angular-lynx';
+import type { Booking } from './booking';
+
+@Component({
+  selector: 'app-booking-confirmed',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view (bindtap)="addToCalendar()"><text>Add to calendar</text></view>
+    @if (added()) {
+      <text>Added to your calendar</text>
+    }
+  `,
+})
+export class BookingConfirmed {
+  // Injected in a field: a method has no injection context.
+  readonly #calendar = inject(LynxCalendar);
+  readonly booking = input.required<Booking>();
+  readonly added = signal(false);
+
+  async addToCalendar() {
+    const booking = this.booking();
+    try {
+      const result = await this.#calendar.addEvent({
+        title: `Table for ${booking.guests}`,
+        start: booking.start,
+        end: booking.end,
+        location: booking.address,
+        notes: `Booking ${booking.reference}`,
+      });
+      this.added.set(result === 'saved');
+    } catch (error) {
+      if (error instanceof CalendarError && error.code === 'unavailable') {
+        // No editor on this phone: offer to email the booking instead.
+        return;
+      }
+      throw error;
+    }
+  }
+}
+```
+
+`Booking` stands for the app's own type.
+
+## API
+
+### `LynxCalendar`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxCalendar {
+  addEvent(event: CalendarEvent): Promise<CalendarSheetResult>;
+}
+```
+
+### `addEvent(event)`
+
+Opens the editor with `event`, and resolves with how it closed:
+
+| Result     | Meaning                                                      |
+| ---------- | ------------------------------------------------------------ |
+| `saved`    | The person added the event                                   |
+| `canceled` | The person closed the editor without adding it               |
+| `unknown`  | The platform doesn't say whether the event was added (below) |
+
+It throws a `TypeError` for an event without a title, with an invalid `Date`, or that ends before it starts. It rejects with a `CalendarError` when there's no editor to open.
+
+| Platform                                       | Editor                                                                                                                                                    |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| iOS 17 and later                               | The system's event editor (EventKitUI). Resolves `saved` or `canceled`                                                                                    |
+| iOS 15 and 16                                  | None: the editor there needs full calendar access. Rejects with `unavailable`                                                                             |
+| Android                                        | The calendar app's own editor. Resolves `unknown`, or `saved` from a calendar app that says so: Google Calendar answers the same whether or not you saved |
+| [Web preview](/guide/glossary#web-preview)     | Downloads the event as an `.ics` file, which the browser or the computer's calendar opens. Resolves `unknown`                                             |
+| Unit tests with the testing library            | A fake editor, which [`answerCalendarSheet()`](/api/testing-library#answercalendarsheet) closes                                                           |
+| [Lynx Explorer](/guide/glossary#lynx-explorer) | None. Rejects with `unavailable`                                                                                                                          |
+
+**Don't count on `saved` on Android.** Show what's next as if the event was added, and let the person add it again if they want.
+
+### `CalendarEvent`
+
+| Field      | Type      | Description                                                                                                                    |
+| ---------- | --------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `title`    | `string`  | What the event is called. Required                                                                                             |
+| `start`    | `Date`    | When it starts. Required                                                                                                       |
+| `end`      | `Date`    | When it ends, not before `start`. Required                                                                                     |
+| `location` | `string`  | Where it is: an address or a place's name                                                                                      |
+| `notes`    | `string`  | Anything else to keep with it, such as a booking reference                                                                     |
+| `allDay`   | `boolean` | Whole days rather than set times, such as a hotel stay: the days of `start` and `end`, both included, in the phone's time zone |
+
+### `CalendarError`
+
+`addEvent()` rejects with it. Its `code` is:
+
+| Code          | When                                                                                                                           |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `unavailable` | No editor to open: an app without `"calendar": true`, iOS before 17, an Android phone without a calendar app, or Lynx Explorer |
+| `failed`      | The editor couldn't open, or one was already open                                                                              |
+
+## Testing
+
+[`calendarEvents()`](/api/testing-library#calendarevents) lists the events the app opened the editor with, and [`answerCalendarSheet()`](/api/testing-library#answercalendarsheet) closes it:
+
+```typescript
+import {
+  answerCalendarSheet,
+  calendarEvents,
+  fireEvent,
+  render,
+  screen,
+  waitForUpdate,
+} from '@blotch/angular-lynx-testing-library';
+
+await render(BookingConfirmed, { inputs: { booking } });
+fireEvent.tap(screen.getByText('Add to calendar'));
+answerCalendarSheet('saved');
+await waitForUpdate();
+
+expect(calendarEvents()).toEqual([
+  expect.objectContaining({ title: 'Table for 2' }),
+]);
+expect(screen.getByText('Added to your calendar')).toBeInTheDocument();
+```
+
+## Related
+
+- [Native apps](/guide/native-apps): the `calendar` option and the other build options
+- [`LynxShare`](/api/angular-lynx/share): share a booking instead

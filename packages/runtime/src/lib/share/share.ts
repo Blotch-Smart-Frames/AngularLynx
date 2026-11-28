@@ -148,7 +148,7 @@ type BrowserAnchor = {
   remove(): void;
 };
 
-type BrowserWindow = {
+export type BrowserWindow = {
   readonly navigator: {
     share?(data: Record<string, unknown>): Promise<void>;
     canShare?(data: Record<string, unknown>): boolean;
@@ -178,8 +178,9 @@ type BrowserWindow = {
  * download, goes through the page that holds the `<lynx-view>`, where the
  * person tapped. Elsewhere it's left alone even where a window exists, such
  * as in unit tests under jsdom, which stand in for a native host.
+ * LynxCalendar downloads its `.ics` file through it too.
  */
-const pageWindow = (): BrowserWindow | undefined => {
+export const pageWindow = (): BrowserWindow | undefined => {
   if (
     typeof SystemInfo === 'undefined' ||
     // The global is typed by `@lynx-js/types`, whose PlatformType leaves out
@@ -208,9 +209,13 @@ const DOWNLOAD_URL_LIFETIME = 40_000;
 
 /**
  * Saves each file as a download, for a browser that can't share files, such
- * as Firefox on a computer: the next best thing to "Save Image".
+ * as Firefox on a computer: the next best thing to "Save Image". LynxCalendar
+ * saves its `.ics` file in the web preview with it too.
  */
-const download = (page: BrowserWindow, files: readonly unknown[]): void => {
+export const download = (
+  page: BrowserWindow,
+  files: readonly unknown[],
+): void => {
   for (const file of files) {
     const anchor = page.document.createElement('a');
     const url = page.URL.createObjectURL(file);

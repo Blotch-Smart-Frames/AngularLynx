@@ -115,4 +115,16 @@ describe('renderEjectedProject', () => {
       ).toBe(true);
     }
   });
+
+  it('has the calendar module only when the app sets calendar', () => {
+    for (const [platform, module] of [
+      ['ios', 'App/CalendarModule.swift'],
+      ['android', `${ANDROID_SHELL_SOURCES}/CalendarModule.kt`],
+    ] as const) {
+      expect(render(platform).has(module)).toBe(false);
+      expect(render(platform, undefined, { calendar: true }).has(module)).toBe(
+        true,
+      );
+    }
+  });
 });

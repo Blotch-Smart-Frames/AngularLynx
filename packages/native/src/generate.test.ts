@@ -156,6 +156,21 @@ describe('prepareProject', () => {
     }
   });
 
+  it('brings the calendar module back once the app sets calendar, and drops it once it stops', () => {
+    for (const [platform, module] of [
+      ['ios', 'App/CalendarModule.swift'],
+      ['android', 'app/src/main/java/dev/angularlynx/shell/CalendarModule.kt'],
+    ] as const) {
+      const file = path.join(workDir, platform, module);
+      expect(prepare(platform).regenerated).toBe(true);
+      expect(existsSync(file)).toBe(false);
+      expect(prepare(platform, { calendar: true }).regenerated).toBe(true);
+      expect(existsSync(file)).toBe(true);
+      expect(prepare(platform).regenerated).toBe(true);
+      expect(existsSync(file)).toBe(false);
+    }
+  });
+
   it('leaves out the canvas code for an app that never draws, and puts it back when it does', () => {
     const generate = (canvas: boolean) =>
       prepareProject({

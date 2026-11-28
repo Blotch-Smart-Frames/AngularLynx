@@ -1845,8 +1845,10 @@ export class LynxElement implements BaseLynxElement {
 
   /**
    * Whether this raw-text is all its outermost <text> holds, which makes it
-   * a whole inline context by itself (see setAttribute): the same root the
+   * a whole inline context by itself (see #setRawText): the same root the
    * pass finds (see commitPendingTextNormalization), with nothing else in it.
+   * A <q>'s marks are text of its line but aren't in #children (see
+   * #collectRawTextLeaves), so a run alone in a <q> is never the whole line.
    */
   #isSoleTextLeaf(): boolean {
     const parent = this.#jsParent;
@@ -1854,6 +1856,7 @@ export class LynxElement implements BaseLynxElement {
       !!parent &&
       parent.tagName === 'text' &&
       !parent.#paintingDead &&
+      !parent.#quoteMarks &&
       parent.#children?.length === 1 &&
       parent.#jsParent?.tagName !== 'text'
     );

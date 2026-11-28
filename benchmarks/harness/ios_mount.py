@@ -146,10 +146,17 @@ def check_outs(outs, fields):
 def split_or_keep(combined, outs, labels, keep):
     """split_session(), which, if it fails, first copies the session's CSV
     to keep and says so: the session's CSV is in a temporary folder, and its
-    rows are the session's only copy."""
+    rows are the session's only copy. If keep is taken, by an earlier
+    session that failed the same way, the copy goes to keep-2.csv (or -3,
+    and so on) rather than replacing it."""
     try:
         split_session(combined, outs, labels)
     except BaseException:
+        stem, extension = os.path.splitext(keep)
+        number = 1
+        while os.path.exists(keep):
+            number += 1
+            keep = f"{stem}-{number}{extension}"
         shutil.copyfile(combined, keep)
         print(f"The session's rows weren't split: they're kept in {keep}", file=sys.stderr, flush=True)
         raise

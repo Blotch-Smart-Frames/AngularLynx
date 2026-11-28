@@ -142,6 +142,20 @@ class SplitOrKeepTest(unittest.TestCase):
                 ios_mount.split_or_keep(combined, {1500: out}, LABELS, keep)
             self.assertEqual(read(keep)[0]["app"], "angular-lynx:1500")
 
+    def test_a_second_failure_keeps_the_first_ones_rows(self):
+        with tempfile.TemporaryDirectory() as folder:
+            out = os.path.join(folder, "mount-1500.csv")
+            with open(out, "w") as file:
+                file.write("timestamp,app,fully_drawn_ms\n")
+            keep = os.path.join(folder, "kept.csv")
+            for run in (1, 2):
+                combined = os.path.join(folder, f"session-{run}.csv")
+                write(combined, session([("angular-lynx:1500", run)]))
+                with self.assertRaises(SystemExit):
+                    ios_mount.split_or_keep(combined, {1500: out}, LABELS, keep)
+            self.assertEqual(read(keep)[0]["run"], "1")
+            self.assertEqual(read(os.path.join(folder, "kept-2.csv"))[0]["run"], "2")
+
     def test_keeps_nothing_when_it_splits(self):
         with tempfile.TemporaryDirectory() as folder:
             combined = os.path.join(folder, "session.csv")

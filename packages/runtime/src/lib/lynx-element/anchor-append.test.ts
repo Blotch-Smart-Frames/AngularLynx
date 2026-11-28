@@ -58,6 +58,7 @@ const installNativeFakes = (): void => {
   g['__GetParent'] = (n: FakeEl) => n.parent;
   g['__GetChildren'] = (n: FakeEl) => n.children.slice();
   g['__FirstElement'] = (n: FakeEl) => n.children[0] ?? null;
+  g['__LastElement'] = (n: FakeEl) => n.children.at(-1) ?? null;
   g['__NextElement'] = (n: FakeEl) =>
     n.parent?.children[n.parent.children.indexOf(n) + 1] ?? null;
   g['__CreateView'] = () => makeEl('view', 'view');
@@ -350,6 +351,40 @@ describe('inserts before the anchors that end a parent (issue #444)', () => {
       'row2',
       'snapshot-anchor',
     ]);
+  });
+
+  /**
+   * A parent the snapshot hydrated, holding `names` natively, none of them
+   * in its #children (hydration inserts nothing).
+   */
+  const hydratedParent = (...names: string[]): LynxElement[] => {
+    const hydrated = new LynxElement(
+      makeEl('view', 'hydrated') as unknown as ElementRef,
+    );
+    hydrated.tagName = 'view';
+    const children = names.map((name) => {
+      const child = new LynxElement(
+        makeEl('view', name) as unknown as ElementRef,
+      );
+      child.tagName = name.endsWith('anchor') ? 'comment' : 'view';
+      place(fake(hydrated), fake(child), fake(hydrated).children.length);
+      return child;
+    });
+    return [hydrated, ...children];
+  };
+
+  it("inserts before an anchor that a hydrated parent's snapshot children follow", () => {
+    const [hydrated, snapshotAnchor] = hydratedParent('snapshot-anchor');
+    const newAnchor = anchor('new-anchor');
+    hydrated!.insertBefore(newAnchor, snapshotAnchor!);
+    calls = [];
+
+    // newAnchor ends the parent's #children, but not its native children.
+    hydrated!.insertBefore(element('view', 'row'), newAnchor);
+    endCycle();
+
+    expect(calls).toEqual(['insert row']);
+    expect(native(hydrated!)).toEqual(['row', 'new-anchor', 'snapshot-anchor']);
   });
 
   it('inserts before the anchors in a <text>, which keeps its order', () => {

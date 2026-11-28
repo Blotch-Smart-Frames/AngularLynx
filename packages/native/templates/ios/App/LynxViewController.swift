@@ -105,6 +105,12 @@ final class LynxViewController: UIViewController, LynxViewLifecycle {
     if let calendar = NSClassFromString("AngularLynxCalendarModule") as? LynxModule.Type {
       config.register(calendar)
     }
+    // Sign in with Apple's sheet behind LynxAppleSignIn (AppleSignInModule),
+    // by name too: the generator leaves its source out of an app whose
+    // angular.json doesn't set signInWithApple, with the entitlement it needs.
+    if let appleSignIn = NSClassFromString("AngularLynxAppleSignInModule") as? LynxModule.Type {
+      config.register(appleSignIn)
+    }
     // Bundled files for the main thread's fetch and Image (AssetsModule).
     config.register(AssetsModule.self)
     // The full collections the runtime asks for after screens go

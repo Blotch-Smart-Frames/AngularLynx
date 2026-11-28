@@ -70,6 +70,15 @@ export type NativeAppOptions = {
    * of both apps.
    */
   readonly calendar?: boolean;
+  /**
+   * Whether the app offers Sign in with Apple's native sheet with the
+   * runtime's `LynxAppleSignIn` (`ASAuthorizationAppleIDProvider`). iOS only:
+   * Android has no native sheet, and signs in with Apple's web flow through
+   * `LynxWebAuthSession`. Off by default, which leaves the native module and
+   * the `com.apple.developer.applesignin` entitlement out of the app: a free
+   * Personal Team can't sign that entitlement.
+   */
+  readonly signInWithApple?: boolean;
   /** Custom URL schemes that open the app, e.g. `["myapp"]`. */
   readonly deepLinkSchemes?: readonly string[];
   /**
@@ -332,6 +341,7 @@ export type ResolvedApp = {
   readonly fileSharing: boolean;
   readonly storeReview: boolean;
   readonly calendar: boolean;
+  readonly signInWithApple: boolean;
   readonly deepLinkSchemes: readonly string[];
   /** {@link NativeAppOptions.appLinkDomains} in lowercase, each once. */
   readonly appLinkDomains: readonly string[];
@@ -514,6 +524,14 @@ export const resolveAppOptions = (
     'to add events to the calendar with LynxCalendar',
   );
 
+  // An entitlement too, so a string such as "false" would also make a
+  // Personal Team's signing fail.
+  const signInWithApple = resolveSwitch(
+    'signInWithApple',
+    options.signInWithApple,
+    "to offer Sign in with Apple's native sheet with LynxAppleSignIn",
+  );
+
   const deepLinkSchemes = options.deepLinkSchemes ?? [];
   for (const scheme of deepLinkSchemes) {
     if (!SCHEME.test(scheme)) {
@@ -619,6 +637,7 @@ export const resolveAppOptions = (
     fileSharing,
     storeReview,
     calendar,
+    signInWithApple,
     deepLinkSchemes,
     appLinkDomains,
     canOpenURLSchemes,

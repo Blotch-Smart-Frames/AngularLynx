@@ -32,11 +32,12 @@ const ORIENTATIONS: Record<Orientation, readonly string[]> = {
  * Writes the app options into the iOS template: build settings go in
  * Config/App.xcconfig (which App.xcodeproj reads), Info.plist entries go
  * between the template's `angular-lynx:info` markers, the shortcuts
- * become App/AppShortcuts.swift, the app link domains become
- * Config/App.entitlements, and the icon and the splash go in the asset
+ * become App/AppShortcuts.swift, the options that need a capability
+ * (IOS_ENTITLEMENTS) become Config/App.entitlements, and the icon and the splash go in the asset
  * catalog. The barcode scanner's module stays only in an app with the
  * `camera` permission, the store review module only in an app with
- * `storeReview`, and the calendar module only in one with `calendar`.
+ * `storeReview`, the calendar module only in one with `calendar`, and the
+ * Sign in with Apple module only in one with `signInWithApple`.
  */
 /** LynxBarcodeScanner's module, which needs the `camera` permission. */
 export const IOS_BARCODE_SCANNER_SOURCE = 'App/BarcodeScannerModule.swift';
@@ -76,9 +77,9 @@ export const iosGenerator: PlatformGenerator = {
 
     // In Config/, beside the xcconfig that points the target at it, rather
     // than in App/: Xcode would copy a file in that synchronized folder into
-    // the app as a resource. An app without app links signs with no
-    // entitlements, as the template does.
-    if (app.appLinkDomains.length > 0) {
+    // the app as a resource. An app whose options need no capability signs
+    // with no entitlements, as the template does.
+    if (hasEntitlements(app)) {
       writeFileSync(path.join(dir, ENTITLEMENTS), entitlementsPlist(app));
     }
 
@@ -123,6 +124,12 @@ export const iosGenerator: PlatformGenerator = {
     if (!app.calendar) {
       removeTemplateFiles(dir, [IOS_CALENDAR_SOURCE]);
     }
+    // Sign in with Apple's sheet goes with its entitlement (see
+    // IOS_ENTITLEMENTS): an app that doesn't offer it has neither, and
+    // LynxViewController registers the module by name.
+    if (!app.signInWithApple) {
+      removeTemplateFiles(dir, [IOS_APPLE_SIGN_IN_SOURCE]);
+    }
     if (features.webgl) return;
     if (features.canvas) {
       // A 2D canvas keeps the module and the canvas's view, without the
@@ -154,6 +161,9 @@ export const IOS_STORE_REVIEW_SOURCE = 'App/StoreReviewModule.swift';
 
 /** The module behind `LynxCalendar`, which only `calendar` keeps. */
 export const IOS_CALENDAR_SOURCE = 'App/CalendarModule.swift';
+
+/** The module behind `LynxAppleSignIn`, which only `signInWithApple` keeps. */
+export const IOS_APPLE_SIGN_IN_SOURCE = 'App/AppleSignInModule.swift';
 
 /**
  * The shell's biometrics module, `AngularLynxBiometrics` (LynxBiometrics, and
@@ -236,6 +246,118 @@ export const withoutFrameworks = (
 const ENTITLEMENTS = 'Config/App.entitlements';
 
 /**
+ * An entitlement's value, in the shapes Apple's entitlements take: a flag
+ * (`com.apple.developer.siri`), a string (`aps-environment`), or a list
+ * of strings (`com.apple.developer.associated-domains`).
+ */
+export type EntitlementValue = boolean | string | readonly string[];
+
+/** The entitlements one option adds, by key. */
+export type Entitlements = Readonly<Record<string, EntitlementValue>>;
+
+/**
+ * Each option that needs an iOS capability, and the entitlements it adds to
+ * Config/App.entitlements. A feature that needs one (NFC, Wi-Fi, in-app
+ * purchases, push...) adds its entry here, rather than writing the file: the generator
+ * writes the file, and points the target at it, only when an entry adds
+ * something, and {@link mergeEntitlements} joins two options' lists under
+ * the same key, as Associated Domains holds both `applinks:` and
+ * `webcredentials:` domains.
+ */
+export const IOS_ENTITLEMENTS: readonly {
+  /** The angular.json option, named in the file's header and in errors. */
+  readonly option: string;
+  /**
+   * The capability's name as Xcode's signing errors give it, such as
+   * "Personal development teams ... do not support the Associated Domains
+   * capability", so the build can say which option to change.
+   */
+  readonly capability: string;
+  readonly entitlements: (app: ResolvedApp) => Entitlements;
+}[] = [
+  {
+    // Universal Links: iOS opens the app for an https link to one of the
+    // domains, once the domain's apple-app-site-association names the app
+    // (see appLinkFiles). iOS fetches that file through Apple's CDN when the
+    // app is installed.
+    option: 'appLinkDomains',
+    capability: 'Associated Domains',
+    entitlements: (app): Entitlements =>
+      app.appLinkDomains.length === 0
+        ? {}
+        : {
+            'com.apple.developer.associated-domains': app.appLinkDomains.map(
+              (domain) => `applinks:${domain}`,
+            ),
+          },
+  },
+  {
+    // ASAuthorizationAppleIDProvider's sheet fails without it
+    // (ASAuthorizationError 1000). "Default" is the only value Apple
+    // defines: the app is its own primary App ID for the sign-in.
+    option: 'signInWithApple',
+    capability: 'Sign In with Apple',
+    entitlements: (app): Entitlements =>
+      app.signInWithApple
+        ? { 'com.apple.developer.applesignin': ['Default'] }
+        : {},
+  },
+];
+
+/**
+ * Joins the entitlements several options add into one dictionary, its keys
+ * sorted, as Xcode writes them. Two lists under one key become one, each
+ * value once, in the order the options name them. Two different flags or
+ * strings under one key can't both be signed, so they throw, naming the
+ * options.
+ */
+export const mergeEntitlements = (
+  contributions: readonly {
+    readonly option: string;
+    readonly entitlements: Entitlements;
+  }[],
+): Entitlements => {
+  const merged = new Map<string, { value: EntitlementValue; from: string }>();
+  for (const { option, entitlements } of contributions) {
+    for (const [key, value] of Object.entries(entitlements)) {
+      const seen = merged.get(key);
+      if (!seen) {
+        merged.set(key, {
+          value: Array.isArray(value) ? [...new Set(value)] : value,
+          from: option,
+        });
+      } else if (Array.isArray(seen.value) && Array.isArray(value)) {
+        seen.value = [...new Set([...seen.value, ...value])];
+        seen.from = `${seen.from}, ${option}`;
+      } else if (seen.value !== value) {
+        throw new Error(
+          `${seen.from} and ${option} set the ${key} entitlement to different values (${JSON.stringify(seen.value)}, ${JSON.stringify(value)}).`,
+        );
+      }
+    }
+  }
+  return Object.fromEntries(
+    [...merged.keys()].sort().map((key) => [key, merged.get(key)!.value]),
+  );
+};
+
+/**
+ * The options that add entitlements to `app`, in IOS_ENTITLEMENTS' order.
+ */
+const entitlementContributions = (app: ResolvedApp) =>
+  IOS_ENTITLEMENTS.map(({ option, entitlements }) => ({
+    option,
+    entitlements: entitlements(app),
+  })).filter(({ entitlements }) => Object.keys(entitlements).length > 0);
+
+/** The app's entitlements, from every option that adds some. */
+export const iosEntitlements = (app: ResolvedApp): Entitlements =>
+  mergeEntitlements(entitlementContributions(app));
+
+const hasEntitlements = (app: ResolvedApp): boolean =>
+  entitlementContributions(app).length > 0;
+
+/**
  * xcconfig values can't be quoted; `$` and `//` would start a variable or a comment.
  */
 const xcconfigValue = (value: string) =>
@@ -252,41 +374,54 @@ export const xcconfig = (app: ResolvedApp): string =>
     `MARKETING_VERSION = ${app.version}`,
     `CURRENT_PROJECT_VERSION = ${app.buildNumber}`,
     `DEVELOPMENT_TEAM = ${app.ios.teamId ?? ''}`,
-    // Only with app links: the only entitlement the generator writes.
-    ...(app.appLinkDomains.length > 0
+    // Only when an option needs a capability (IOS_ENTITLEMENTS): an
+    // entitlement nobody asked for could keep a free Personal Team from
+    // signing the app.
+    ...(hasEntitlements(app)
       ? [`CODE_SIGN_ENTITLEMENTS = ${ENTITLEMENTS}`]
       : []),
     '',
   ].join('\n');
 
 /**
- * Config/App.entitlements: the Associated Domains entitlement, which has iOS
- * open the app for an https link to one of the domains (a Universal Link),
- * once the domain's apple-app-site-association names the app (see
- * appLinkFiles). iOS fetches that file through Apple's CDN when the app is
- * installed.
+ * Config/App.entitlements: the capabilities the app's options ask for
+ * ({@link IOS_ENTITLEMENTS}), merged.
  *
- * Signing it needs a team in the paid Apple Developer Program: a free
- * Personal Team can't sign Associated Domains. The simulator app needs no
- * team.
+ * Signing most of them needs a team in the paid Apple Developer Program: a
+ * free Personal Team can't sign Associated Domains or Sign in with Apple
+ * (explainSigningFailure in build.ts names the option). The simulator app
+ * needs no team.
  */
-export const entitlementsPlist = (app: ResolvedApp): string =>
-  [
+export const entitlementsPlist = (app: ResolvedApp): string => {
+  const options = entitlementContributions(app).map(({ option }) => option);
+  const value = (entitlement: EntitlementValue): string[] => {
+    if (typeof entitlement === 'boolean') {
+      return [entitlement ? '\t<true/>' : '\t<false/>'];
+    }
+    if (typeof entitlement === 'string') {
+      return [`\t<string>${escapeXml(entitlement)}</string>`];
+    }
+    return [
+      '\t<array>',
+      ...entitlement.map((item) => `\t\t<string>${escapeXml(item)}</string>`),
+      '\t</array>',
+    ];
+  };
+  return [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
-    '<!-- Written by @blotch/angular-lynx-native from appLinkDomains in angular.json. -->',
+    `<!-- Written by @blotch/angular-lynx-native from ${options.join(', ')} in angular.json. -->`,
     '<plist version="1.0">',
     '<dict>',
-    '\t<key>com.apple.developer.associated-domains</key>',
-    '\t<array>',
-    ...app.appLinkDomains.map(
-      (domain) => `\t\t<string>applinks:${escapeXml(domain)}</string>`,
-    ),
-    '\t</array>',
+    ...Object.entries(iosEntitlements(app)).flatMap(([key, entitlement]) => [
+      `\t<key>${escapeXml(key)}</key>`,
+      ...value(entitlement),
+    ]),
     '</dict>',
     '</plist>',
     '',
   ].join('\n');
+};
 
 /** What iOS shows the first time someone taps Save Image, without `savePhotos`. */
 export const DEFAULT_SAVE_PHOTOS_REASON =

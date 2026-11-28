@@ -142,6 +142,29 @@ describe('tapNfcTag', () => {
     ]);
   });
 
+  it('writes only the first of two tags tapped before the write, and keeps the second for the next session', async () => {
+    await render(NfcHolder);
+    const nfc = TestNfc.get();
+    tapNfcTag({ id: 'first' });
+    tapNfcTag({ id: 'second' });
+    await expect(
+      nfc.write([{ type: 'text', value: 'a' }]),
+    ).resolves.toMatchObject({ id: 'first' });
+    expect(nfcWrites()).toHaveLength(1);
+    await expect(nfc.read()).resolves.toMatchObject({ id: 'second' });
+  });
+
+  it('keeps a tag tapped after the read has its tag for the next session', async () => {
+    await render(NfcHolder);
+    const nfc = TestNfc.get();
+    const read = nfc.read();
+    await settle();
+    tapNfcTag({ id: 'first' });
+    tapNfcTag({ id: 'second' });
+    await expect(read).resolves.toMatchObject({ id: 'first' });
+    await expect(nfc.read()).resolves.toMatchObject({ id: 'second' });
+  });
+
   it("refuses to write to a locked tag, or one the records don't fit", async () => {
     await render(MembershipCard);
     await tap('Write card');

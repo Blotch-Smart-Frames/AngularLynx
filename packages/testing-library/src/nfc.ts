@@ -63,6 +63,11 @@ type FakeNfcModule = {
   /** Whether the phone reads tags, which {@link setNfcState} sets. */
   phone: Exclude<NfcState, 'unknown'>;
   session: StartOptions | undefined;
+  /**
+   * Whether the open read or write (not a scan) has taken its one tag, as
+   * the shells claim it: later taps wait for the next session.
+   */
+  claimed: boolean;
   waiting: Done | undefined;
   readonly answers: Answer[];
   readonly pending: Pending[];
@@ -173,6 +178,11 @@ const end = (module: FakeNfcModule, answer: Answer): void => {
 
 const handle = (module: FakeNfcModule, pending: Pending): void => {
   if ('tap' in pending) {
+    if (module.claimed) {
+      module.pending.push(pending);
+      return;
+    }
+    if (!module.session?.multiple) module.claimed = true;
     deliver(module, answerTap(module, pending.tap));
   } else {
     end(module, pending.fail);
@@ -197,6 +207,7 @@ export const installNfcModule = (threadGlobals: {
   const module: FakeNfcModule = {
     phone: 'ready',
     session: undefined,
+    claimed: false,
     waiting: undefined,
     answers: [],
     pending: [],
@@ -212,12 +223,13 @@ export const installNfcModule = (threadGlobals: {
       }
       // LynxNfc opens one session at a time itself.
       this.session = options;
+      this.claimed = false;
       this.answers.length = 0;
       done({});
       // What the spec did before the app asked.
-      // One at a time: a failure ends the session, and what came after it
-      // waits for the next one.
-      while (this.session && this.pending.length > 0) {
+      // One at a time: a failure ends the session, a read or a write takes
+      // only one tag, and what came after waits for the next session.
+      while (this.session && !this.claimed && this.pending.length > 0) {
         handle(this, this.pending.shift()!);
       }
     },

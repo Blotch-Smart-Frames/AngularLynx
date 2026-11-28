@@ -166,7 +166,10 @@ export const androidGenerator: PlatformGenerator = {
     // module, its types and MainActivity's lines that hand it the intents
     // (`// angular-lynx:share-target`).
     if (!app.shareTarget) {
-      removeTemplateFiles(dir, [ANDROID_SHARE_TARGET_SOURCE, SHARE_TARGET_STRINGS]);
+      removeTemplateFiles(dir, [
+        ANDROID_SHARE_TARGET_SOURCE,
+        SHARE_TARGET_STRINGS,
+      ]);
       removeMarkedLines(
         path.join(dir, SHELL_SOURCES, 'MainActivity.kt'),
         'share-target',

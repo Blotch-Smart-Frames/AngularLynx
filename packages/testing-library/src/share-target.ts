@@ -75,7 +75,7 @@ export const installShareTargetModule = (threadGlobals: {
 };
 
 /**
- * Bytes as base64, as the shells send a file's. 
+ * Bytes as base64, as the shells send a file's.
  */
 const toBase64 = (bytes: Uint8Array): string => {
   let binary = '';

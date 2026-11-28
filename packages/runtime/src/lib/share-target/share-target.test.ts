@@ -53,12 +53,12 @@ const stubHost = (opts: { module?: object; emitter?: object | null } = {}) => {
 };
 
 /**
- * Lets the service's calls to the shell, and the microtasks after them, go. 
+ * Lets the service's calls to the shell, and the microtasks after them, go.
  */
 const settle = () => new Promise((resolve) => setTimeout(resolve));
 
 /**
- * The person shares to the app while it's open. 
+ * The person shares to the app while it's open.
  */
 const share = async (shared: NativeShare) => {
   waiting.push(shared);
@@ -124,7 +124,11 @@ describe('LynxShareTarget', () => {
     expect(shares).toHaveLength(1);
     const [first, second] = shares[0]!.files;
     expect(shares[0]!.text).toBe('Look');
-    expect(first).toMatchObject({ name: 'hello.txt', type: 'text/plain', size: 5 });
+    expect(first).toMatchObject({
+      name: 'hello.txt',
+      type: 'text/plain',
+      size: 5,
+    });
     expect(await first!.blob.text()).toBe('hello');
     expect(first!.blob.type).toBe('text/plain');
     // A file the shell knows no type for.

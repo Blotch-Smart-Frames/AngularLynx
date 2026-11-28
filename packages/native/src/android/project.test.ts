@@ -794,7 +794,9 @@ describe('shareTargetEntries', () => {
     expect(
       shareTargetEntries(
         app({
-          shareTarget: { mimeTypes: ['text/uri-list', 'image/*', 'text/plain'] },
+          shareTarget: {
+            mimeTypes: ['text/uri-list', 'image/*', 'text/plain'],
+          },
         }),
       ),
     ).toBe(

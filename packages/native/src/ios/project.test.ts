@@ -106,10 +106,13 @@ describe('entitlements', () => {
     expect(iosEntitlements(app())).toEqual({});
   });
 
-  it("adds the App Group the Share Extension leaves shares in with shareTarget", () => {
+  it('adds the App Group the Share Extension leaves shares in with shareTarget', () => {
     expect(
       iosEntitlements(
-        app({ appId: 'com.example.notes', shareTarget: { mimeTypes: ['image/*'] } }),
+        app({
+          appId: 'com.example.notes',
+          shareTarget: { mimeTypes: ['image/*'] },
+        }),
       ),
     ).toEqual({
       'com.apple.security.application-groups': ['group.com.example.notes'],
@@ -978,7 +981,10 @@ describe('the Share Extension', () => {
       },
     ],
     [['video/mp4'], { NSExtensionActivationSupportsMovieWithMaxCount: 10 }],
-    [['application/pdf'], { NSExtensionActivationSupportsFileWithMaxCount: 10 }],
+    [
+      ['application/pdf'],
+      { NSExtensionActivationSupportsFileWithMaxCount: 10 },
+    ],
     [
       ['text/*'],
       {
@@ -1004,7 +1010,9 @@ describe('the Share Extension', () => {
   });
 
   it("writes the extension's Info.plist entries", () => {
-    const entries = shareExtensionPlistEntries(sharing(['image/*', 'text/plain']));
+    const entries = shareExtensionPlistEntries(
+      sharing(['image/*', 'text/plain']),
+    );
     expect(entries).toContain(
       [
         '<key>AngularLynxShareGroup</key>',
@@ -1045,7 +1053,7 @@ describe('the Share Extension', () => {
     expect(plist.match(/<key>/g)).toHaveLength(1);
   });
 
-  it("tells the app its App Group and its share scheme, beside the deep link schemes", () => {
+  it('tells the app its App Group and its share scheme, beside the deep link schemes', () => {
     const entries = infoPlistEntries(
       app({
         appId: 'com.example.Notes',
@@ -1075,7 +1083,9 @@ describe('the Share Extension', () => {
     expect(project).toContain(
       'productType = "com.apple.product-type.app-extension";',
     );
-    expect(project).toContain('PRODUCT_BUNDLE_IDENTIFIER = "com.example.Notes.ShareExtension";');
+    expect(project).toContain(
+      'PRODUCT_BUNDLE_IDENTIFIER = "com.example.Notes.ShareExtension";',
+    );
     expect(project).toContain(
       'CODE_SIGN_ENTITLEMENTS = Config/ShareExtension.entitlements;',
     );
@@ -1121,7 +1131,10 @@ describe('the Share Extension', () => {
       expect(existsSync(path.join(dir, IOS_SHARE_TARGET_SOURCE))).toBe(true);
       expect(project()).toContain('ShareExtension.appex');
       expect(
-        readFileSync(path.join(dir, IOS_SHARE_EXTENSION_DIR, 'Info.plist'), 'utf8'),
+        readFileSync(
+          path.join(dir, IOS_SHARE_EXTENSION_DIR, 'Info.plist'),
+          'utf8',
+        ),
       ).toContain('NSExtensionActivationSupportsImageWithMaxCount');
       expect(
         existsSync(path.join(dir, 'Config/ShareExtension.entitlements')),
@@ -1141,7 +1154,10 @@ describe('the Share Extension', () => {
       expect(existsSync(path.join(dir, 'Config/App.entitlements'))).toBe(false);
       // LynxViewController registers the module by the name it gives itself.
       expect(
-        readFileSync(path.join(TEMPLATES_DIR, 'ios', IOS_SHARE_TARGET_SOURCE), 'utf8'),
+        readFileSync(
+          path.join(TEMPLATES_DIR, 'ios', IOS_SHARE_TARGET_SOURCE),
+          'utf8',
+        ),
       ).toContain('@objc(AngularLynxShareTargetModule)');
       expect(
         readFileSync(path.join(dir, 'App/LynxViewController.swift'), 'utf8'),

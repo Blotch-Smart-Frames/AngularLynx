@@ -209,7 +209,7 @@ export class LynxShareTarget {
   }
 
   /**
-   * Asks the shell for the shares that arrived since the last time. 
+   * Asks the shell for the shares that arrived since the last time.
    */
   async #take(): Promise<void> {
     let result: TakeResult | undefined;
@@ -252,7 +252,7 @@ export class LynxShareTarget {
   }
 
   /**
-   * One handler's error mustn't keep the share from the others. 
+   * One handler's error mustn't keep the share from the others.
    */
   #call(handler: ShareTargetHandler, share: ReceivedShare): void {
     try {

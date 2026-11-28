@@ -93,7 +93,11 @@ export const iosGenerator: PlatformGenerator = {
         projectFile,
         withShareExtension(readFileSync(projectFile, 'utf8'), app),
       );
-      const extensionPlist = path.join(dir, IOS_SHARE_EXTENSION_DIR, 'Info.plist');
+      const extensionPlist = path.join(
+        dir,
+        IOS_SHARE_EXTENSION_DIR,
+        'Info.plist',
+      );
       writeFileSync(
         extensionPlist,
         replaceMarker(
@@ -593,9 +597,7 @@ export const infoPlistEntries = (
       `\t\t<string>${escapeXml(app.id)}</string>`,
       '\t\t<key>CFBundleURLSchemes</key>',
       '\t\t<array>',
-      ...schemes.map(
-        (scheme) => `\t\t\t<string>${escapeXml(scheme)}</string>`,
-      ),
+      ...schemes.map((scheme) => `\t\t\t<string>${escapeXml(scheme)}</string>`),
       '\t\t</array>',
       '\t</dict>',
       '</array>',
@@ -735,16 +737,25 @@ export const shareActivationRule = (
 ): Record<string, boolean | number> => {
   const takes = (kind: string) =>
     mimeTypes.some(
-      (type) => type === '*/*' || type === `${kind}/*` || type.startsWith(`${kind}/`),
+      (type) =>
+        type === '*/*' || type === `${kind}/*` || type.startsWith(`${kind}/`),
     );
   const rule: Record<string, boolean | number> = {};
   // The most of each kind one share hands over, as Apple's own extensions
   // allow: enough for a selection of photos.
   const most = 10;
-  if (mimeTypes.some((type) => type === '*/*' || type === 'text/*' || type === 'text/plain')) {
+  if (
+    mimeTypes.some(
+      (type) => type === '*/*' || type === 'text/*' || type === 'text/plain',
+    )
+  ) {
     rule['NSExtensionActivationSupportsText'] = true;
   }
-  if (mimeTypes.some((type) => type === '*/*' || type === 'text/*' || type === 'text/uri-list')) {
+  if (
+    mimeTypes.some(
+      (type) => type === '*/*' || type === 'text/*' || type === 'text/uri-list',
+    )
+  ) {
     rule['NSExtensionActivationSupportsWebURLWithMaxCount'] = 1;
     rule['NSExtensionActivationSupportsWebPageWithMaxCount'] = 1;
   }
@@ -795,10 +806,14 @@ export const shareExtensionPlistEntries = (app: ResolvedApp): string => {
     '\t<dict>',
     '\t\t<key>NSExtensionActivationRule</key>',
     '\t\t<dict>',
-    ...Object.entries(shareActivationRule(mimeTypes)).flatMap(([key, value]) => [
-      `\t\t\t<key>${key}</key>`,
-      typeof value === 'boolean' ? '\t\t\t<true/>' : `\t\t\t<integer>${value}</integer>`,
-    ]),
+    ...Object.entries(shareActivationRule(mimeTypes)).flatMap(
+      ([key, value]) => [
+        `\t\t\t<key>${key}</key>`,
+        typeof value === 'boolean'
+          ? '\t\t\t<true/>'
+          : `\t\t\t<integer>${value}</integer>`,
+      ],
+    ),
     '\t\t</dict>',
     '\t</dict>',
     '\t<key>NSExtensionPointIdentifier</key>',
@@ -880,7 +895,7 @@ export const withShareExtension = (
   const ids = SHARE_IDS;
   const lines = project.split('\n');
   /**
-   * Inserts `added` after the one line that is `after`, trimmed. 
+   * Inserts `added` after the one line that is `after`, trimmed.
    */
   const insertAfter = (after: string, added: readonly string[]) => {
     const found = lines.flatMap((line, index) =>
@@ -895,10 +910,12 @@ export const withShareExtension = (
     lines.splice(found[0]! + 1, 0, ...added.map((line) => `${indent}${line}`));
   };
   /**
-   * Inserts a section of its own after the section `after` ends. 
+   * Inserts a section of its own after the section `after` ends.
    */
   const section = (after: string, name: string, objects: readonly string[]) => {
-    const end = lines.findIndex((line) => line === `/* End ${after} section */`);
+    const end = lines.findIndex(
+      (line) => line === `/* End ${after} section */`,
+    );
     if (end === -1) {
       throw new Error(`The project template has no ${after} section.`);
     }
@@ -912,10 +929,12 @@ export const withShareExtension = (
     );
   };
   /**
-   * Adds objects at the end of a section the template has. 
+   * Adds objects at the end of a section the template has.
    */
   const intoSection = (name: string, objects: readonly string[]) => {
-    const end = lines.findIndex((line) => line.trim() === `/* End ${name} section */`);
+    const end = lines.findIndex(
+      (line) => line.trim() === `/* End ${name} section */`,
+    );
     if (end === -1) {
       throw new Error(`The project template has no ${name} section.`);
     }
@@ -1001,7 +1020,10 @@ export const withShareExtension = (
     '\t\t\trunOnlyForDeploymentPostprocessing = 0;',
     '\t\t};',
   ];
-  intoSection('PBXFrameworksBuildPhase', phase(ids.frameworks, 'PBXFrameworksBuildPhase', 'Frameworks'));
+  intoSection(
+    'PBXFrameworksBuildPhase',
+    phase(ids.frameworks, 'PBXFrameworksBuildPhase', 'Frameworks'),
+  );
   intoSection('PBXNativeTarget', [
     `\t\t${ids.target} /* ShareExtension */ = {`,
     '\t\t\tisa = PBXNativeTarget;',
@@ -1024,8 +1046,14 @@ export const withShareExtension = (
     '\t\t\tproductType = "com.apple.product-type.app-extension";',
     '\t\t};',
   ]);
-  intoSection('PBXResourcesBuildPhase', phase(ids.resources, 'PBXResourcesBuildPhase', 'Resources'));
-  intoSection('PBXSourcesBuildPhase', phase(ids.sources, 'PBXSourcesBuildPhase', 'Sources'));
+  intoSection(
+    'PBXResourcesBuildPhase',
+    phase(ids.resources, 'PBXResourcesBuildPhase', 'Resources'),
+  );
+  intoSection(
+    'PBXSourcesBuildPhase',
+    phase(ids.sources, 'PBXSourcesBuildPhase', 'Sources'),
+  );
   section('PBXSourcesBuildPhase', 'PBXTargetDependency', [
     `\t\t${ids.dependency} /* PBXTargetDependency */ = {`,
     '\t\t\tisa = PBXTargetDependency;',
@@ -1033,7 +1061,10 @@ export const withShareExtension = (
     `\t\t\ttargetProxy = ${ids.proxy} /* PBXContainerItemProxy */;`,
     '\t\t};',
   ]);
-  intoSection('XCBuildConfiguration', [...settings('Debug'), ...settings('Release')]);
+  intoSection('XCBuildConfiguration', [
+    ...settings('Debug'),
+    ...settings('Release'),
+  ]);
   intoSection('XCConfigurationList', [
     `\t\t${ids.configurations} /* Build configuration list for PBXNativeTarget "ShareExtension" */ = {`,
     '\t\t\tisa = XCConfigurationList;',
@@ -1067,7 +1098,11 @@ export const withShareExtension = (
     throw new Error("The project template's App target has no dependencies.");
   }
   const indent = /^\s*/.exec(lines[dependencies]!)![0];
-  lines.splice(dependencies + 1, 0, `${indent}\t${ids.dependency} /* PBXTargetDependency */,`);
+  lines.splice(
+    dependencies + 1,
+    0,
+    `${indent}\t${ids.dependency} /* PBXTargetDependency */,`,
+  );
   insertAfter(`${TEMPLATE_IDS.appTarget} /* App */,`, [
     `${ids.target} /* ShareExtension */,`,
   ]);

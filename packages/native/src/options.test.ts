@@ -528,21 +528,30 @@ describe('resolveAppOptions', () => {
     expect(shareTarget(false)).toBeUndefined();
     expect(
       shareTarget({
-        mimeTypes: ['text/plain', 'Image/*', 'image/*', '*/*', 'application/vnd.ms-excel'],
+        mimeTypes: [
+          'text/plain',
+          'Image/*',
+          'image/*',
+          '*/*',
+          'application/vnd.ms-excel',
+        ],
       }),
     ).toEqual({
       mimeTypes: ['text/plain', 'image/*', '*/*', 'application/vnd.ms-excel'],
     });
   });
 
-  it.each([true, 'image/*', { mimeTypes: [] }, { mimeTypes: 'image/*' }, { mimeTypes: [3] }])(
-    'rejects shareTarget %j',
-    (value) => {
-      expect(() =>
-        resolveAppOptions({ shareTarget: value } as never, defaults),
-      ).toThrow(/shareTarget .* is not valid/);
-    },
-  );
+  it.each([
+    true,
+    'image/*',
+    { mimeTypes: [] },
+    { mimeTypes: 'image/*' },
+    { mimeTypes: [3] },
+  ])('rejects shareTarget %j', (value) => {
+    expect(() =>
+      resolveAppOptions({ shareTarget: value } as never, defaults),
+    ).toThrow(/shareTarget .* is not valid/);
+  });
 
   it.each(['image', '*/png', 'image/', 'text/plain; charset=utf-8', ''])(
     'rejects the MIME type %j',

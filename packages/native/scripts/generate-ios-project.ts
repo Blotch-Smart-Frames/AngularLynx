@@ -1,4 +1,13 @@
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 
@@ -82,14 +91,71 @@ const TEMPLATE_PROJECT_DIR = path.join(
 );
 
 /**
- * Replaces an .xcodeproj folder with freshly rendered files.
+ * Brings an .xcodeproj folder in line with freshly rendered files, without
+ * ever removing it first.
+ *
+ * The template project is rendered again whenever Vite resolves the package's
+ * config, and that happens while other processes copy it: CI's turbo run
+ * builds this package (`vite build`, for packages/build's tests) beside its
+ * own tests, whose generator and eject tests cpSync the template. Deleting
+ * the folder and writing it back left a moment with no project, and a copy
+ * caught there failed with ENOENT (#963). So a file whose contents already
+ * match is left alone, a changed one is written beside itself and renamed
+ * over the old (a reader sees one or the other, never a half-written file),
+ * and only files the render no longer has are removed.
  */
-const writeIosProject = (dir: string, files: IosProjectFiles) => {
-  rmSync(dir, { recursive: true, force: true });
-  for (const [file, contents] of Object.entries(files)) {
-    mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
-    writeFileSync(path.join(dir, file), contents);
+export const writeIosProject = (dir: string, files: IosProjectFiles) => {
+  const rendered = new Set(
+    Object.keys(files).map((file) => path.join(dir, file)),
+  );
+  if (existsSync(dir)) {
+    removeStale(dir, rendered);
   }
+  for (const [file, contents] of Object.entries(files)) {
+    const target = path.join(dir, file);
+    if (existsSync(target) && readFileSync(target, 'utf8') === contents) {
+      continue;
+    }
+    mkdirSync(path.dirname(target), { recursive: true });
+    // The pid keeps two processes rendering at once off each other's
+    // temporary file.
+    const temporary = `${target}.${process.pid}.tmp`;
+    writeFileSync(temporary, contents);
+    renameSync(temporary, target);
+  }
+};
+
+/** Matches the temporary file writeIosProject renames into place. */
+const TEMPORARY_FILE = /\.\d+\.tmp$/;
+
+/**
+ * Removes what's under `folder` that isn't one of the rendered files (such as
+ * the xcuserdata Xcode adds when the template is opened), and each folder
+ * that leaves empty. It keeps another render's temporary files, and a folder
+ * that was already empty, which may be one another render has just made and
+ * is about to write into. Returns whether it removed anything.
+ */
+const removeStale = (
+  folder: string,
+  rendered: ReadonlySet<string>,
+): boolean => {
+  let removed = false;
+  for (const entry of readdirSync(folder, { withFileTypes: true })) {
+    const entryPath = path.join(folder, entry.name);
+    if (entry.isDirectory()) {
+      if (
+        removeStale(entryPath, rendered) &&
+        readdirSync(entryPath).length === 0
+      ) {
+        rmdirSync(entryPath);
+        removed = true;
+      }
+    } else if (!rendered.has(entryPath) && !TEMPORARY_FILE.test(entry.name)) {
+      rmSync(entryPath, { force: true });
+      removed = true;
+    }
+  }
+  return removed;
 };
 
 /**

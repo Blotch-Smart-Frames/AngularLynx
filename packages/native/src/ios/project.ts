@@ -35,8 +35,8 @@ const ORIENTATIONS: Record<Orientation, readonly string[]> = {
  * become App/AppShortcuts.swift, the app link domains become
  * Config/App.entitlements, and the icon and the splash go in the asset
  * catalog. The barcode scanner's module stays only in an app with the
- * `camera` permission, and the store review module only in an app with
- * `storeReview`.
+ * `camera` permission, the store review module only in an app with
+ * `storeReview`, and the calendar module only in one with `calendar`.
  */
 /** LynxBarcodeScanner's module, which needs the `camera` permission. */
 export const IOS_BARCODE_SCANNER_SOURCE = 'App/BarcodeScannerModule.swift';
@@ -118,6 +118,11 @@ export const iosGenerator: PlatformGenerator = {
     if (!app.storeReview) {
       removeTemplateFiles(dir, [IOS_STORE_REVIEW_SOURCE]);
     }
+    // Nor does an app that doesn't add events to the calendar (`calendar`)
+    // ship EventKit code it never calls.
+    if (!app.calendar) {
+      removeTemplateFiles(dir, [IOS_CALENDAR_SOURCE]);
+    }
     if (features.webgl) return;
     if (features.canvas) {
       // A 2D canvas keeps the module and the canvas's view, without the
@@ -146,6 +151,9 @@ export const iosGenerator: PlatformGenerator = {
 
 /** The module behind `LynxStoreReview`, which only `storeReview` keeps. */
 export const IOS_STORE_REVIEW_SOURCE = 'App/StoreReviewModule.swift';
+
+/** The module behind `LynxCalendar`, which only `calendar` keeps. */
+export const IOS_CALENDAR_SOURCE = 'App/CalendarModule.swift';
 
 /**
  * The shell's biometrics module, `AngularLynxBiometrics` (LynxBiometrics, and

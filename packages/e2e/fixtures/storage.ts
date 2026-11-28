@@ -2,8 +2,10 @@ import { Component, inject, signal, type OnInit } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
   BiometricsError,
+  CalendarError,
   LYNX_ELEMENTS,
   LynxBiometrics,
+  LynxCalendar,
   LynxClipboard,
   FilePickerError,
   LynxFilePicker,
@@ -127,6 +129,12 @@ const collectedFromArrays = async (): Promise<string> => {
  * shows the prompt every time, as in any development build, so the flow sees
  * the shell's module answer. Google Play shows nothing to an app it didn't
  * install, so on Android it only resolves.
+ *
+ * "Calendar" opens the system's event editor with LynxCalendar (issue #926),
+ * which the app has because the harness sets angular.json's `calendar`. It
+ * shows how the editor closed (`saved`, `canceled` or `unknown`), or the
+ * CalendarError's code: `unavailable` before iOS 17, on an Android phone
+ * without a calendar app, and in Lynx Explorer.
  */
 @Component({
   selector: 'app-storage',
@@ -181,6 +189,9 @@ const collectedFromArrays = async (): Promise<string> => {
       <text flatten="false" (bindtap)="authenticate()"
         >Biometrics: {{ biometrics() }}</text
       >
+      <text flatten="false" style="margin-left: 16px;" (bindtap)="addEvent()"
+        >Calendar: {{ calendar() }}</text
+      >
     </view>
   `,
 })
@@ -197,6 +208,8 @@ export class StorageRoute implements OnInit {
   readonly arraySlots = signal('tap');
   readonly clipboard = signal('tap');
   readonly rating = signal('tap');
+  readonly #calendar = inject(LynxCalendar);
+  readonly calendar = signal('tap');
 
   ngOnInit(): void {
     void this.#biometrics
@@ -271,6 +284,25 @@ export class StorageRoute implements OnInit {
   rate(): void {
     this.rating.set('…');
     void this.#storeReview.request().then(() => this.rating.set('asked'));
+  }
+
+  addEvent(): void {
+    this.calendar.set('…');
+    const start = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    this.#calendar
+      .addEvent({
+        title: 'E2E booking',
+        start,
+        end: new Date(start.getTime() + 60 * 60 * 1000),
+        location: '1 Main St',
+      })
+      .then(
+        (result) => this.calendar.set(result),
+        (error: unknown) =>
+          this.calendar.set(
+            error instanceof CalendarError ? error.code : String(error),
+          ),
+      );
   }
 
   async #read(): Promise<string> {

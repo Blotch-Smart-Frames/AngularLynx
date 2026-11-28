@@ -20,6 +20,7 @@ import {
   ANDROID_BARCODE_SCANNER_SOURCE,
   ANDROID_CANVAS_SOURCES,
   ANDROID_STORE_REVIEW_SOURCE,
+  ANDROID_CALENDAR_SOURCE,
   ANDROID_WEBGL_SOURCES,
   androidGenerator,
   biometricsStringsXml,
@@ -459,6 +460,34 @@ describe('androidGenerator', () => {
     expect(kept).toContain('// angular-lynx:canvas');
   });
 
+  it('keeps the calendar module, its launcher and its registration only in an app with calendar', () => {
+    const module = path.join(dir, ANDROID_CALENDAR_SOURCE);
+    const activity = path.join(
+      dir,
+      'app/src/main/java/dev/angularlynx/shell/MainActivity.kt',
+    );
+    const generate = (options: object) => {
+      rmSync(dir, { recursive: true, force: true });
+      cpSync(path.join(TEMPLATES_DIR, 'android'), dir, { recursive: true });
+      const resolved = app(options);
+      androidGenerator.configure(dir, resolved, dir);
+      androidGenerator.leaveOut(dir, { canvas: true, webgl: true }, resolved);
+    };
+
+    generate({ calendar: true });
+    expect(existsSync(module)).toBe(true);
+    const withCalendar = readFileSync(activity, 'utf8');
+    expect(withCalendar).toContain('registerModule(CalendarModule.NAME');
+    expect(withCalendar).toContain('CalendarModule.Host');
+
+    generate({});
+    expect(existsSync(module)).toBe(false);
+    const kept = readFileSync(activity, 'utf8');
+    expect(kept).not.toContain('CalendarModule');
+    expect(kept).not.toContain('angular-lynx:calendar');
+    expect(kept).toContain('// angular-lynx:canvas');
+  });
+
   it("writes the shortcuts' resources, which the launcher activity points Android to", () => {
     const xml = path.join(dir, 'app/src/main/res/xml/shortcuts.xml');
     const strings = path.join(dir, 'app/src/main/res/values/shortcuts.xml');
@@ -571,6 +600,7 @@ describe('androidGenerator.leaveOut', () => {
     permissions: { biometrics: 'Unlock' },
     filePicker: true,
     storeReview: true,
+    calendar: true,
   });
   const mainActivity = () =>
     readFileSync(path.join(shell(), 'MainActivity.kt'), 'utf8');

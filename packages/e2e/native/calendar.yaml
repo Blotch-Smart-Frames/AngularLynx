@@ -1,0 +1,31 @@
+# Layer 6, the app's own iOS build only: LynxCalendar (issue #926). The
+# harness sets angular.json's `calendar` (addCalendar in src/scaffold.ts),
+# which keeps the calendar module in the shell. The storage page's "Calendar"
+# line opens EventKitUI's event editor, filled in with "E2E booking", which
+# the Simulator (iOS 17 and later) shows without a calendar permission. The
+# editor showing is what proves the shell registered the module by name
+# (LynxViewController.swift): without it, addEvent() rejects with
+# "unavailable" and nothing opens. Cancel closes it, and the line shows
+# "canceled", the delegate's answer. CI's Android emulator has no calendar
+# app with an account to open the editor in, so the Android build is only
+# compiled.
+appId: ${APP_ID}
+---
+- runFlow: open-app.yaml
+- tapOn: Open storage
+- tapOn: 'Calendar: tap'
+- extendedWaitUntil:
+    visible: E2E booking
+    timeout: 15000
+- takeScreenshot: calendar-editor
+- tapOn: Cancel
+# A filled-in editor asks before it throws the event away.
+- runFlow:
+    when:
+      visible: Discard Changes
+    commands:
+      - tapOn: Discard Changes
+- extendedWaitUntil:
+    visible: 'Calendar: canceled'
+    timeout: 15000
+- takeScreenshot: calendar

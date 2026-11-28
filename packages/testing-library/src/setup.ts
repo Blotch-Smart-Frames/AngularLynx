@@ -27,6 +27,7 @@ import { installShellModule } from './back-button.js';
 import { installBiometricsModule } from './biometrics.js';
 import { installFilePickerModule } from './file-picker.js';
 import { installBarcodeScannerModule } from './barcode-scanner.js';
+import { installCalendarModule } from './calendar.js';
 import { installLinkingModule } from './linking.js';
 import { installShortcutsModule } from './shortcuts.js';
 import { installStoreReviewModule } from './store-review.js';
@@ -125,6 +126,9 @@ const frameOnInstalledTimers = (threadGlobals: any): void => {
   // LynxStoreReview's requests, which reviewRequests() counts (see
   // store-review.ts).
   installStoreReviewModule(threadGlobals);
+  // LynxCalendar's events, which calendarEvents() lists and
+  // answerCalendarSheet() closes the editor for (see calendar.ts).
+  installCalendarModule(threadGlobals);
   // LynxBackButton enables the back handler pressBackButton() checks (see
   // back-button.ts).
   installShellModule(threadGlobals);

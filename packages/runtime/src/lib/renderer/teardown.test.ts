@@ -71,6 +71,7 @@ import { markFirstRenderComplete } from '../lynx-render-lifecycle';
 import type { FakeNativeGlobal } from '../testing/fake-native-global';
 import { LynxRendererFactory2 } from './lynx-renderer-factory2';
 import { LYNX_DOCUMENT } from './token';
+import { LynxHydrateDocument } from '../ssr/hydrate-document';
 
 // What LynxElement tells the full collections (see collect-garbage.ts), to
 // check that destroying a view counts what it releases and then asks.
@@ -2005,6 +2006,124 @@ describe('renderer teardown', () => {
       await flush();
 
       expect(writes).toEqual(['remove turn']);
+    });
+
+    // Issue #864: an element a server render's snapshot hydrates is the
+    // snapshot's own native element (see LynxHydrateDocument), already in its
+    // parent with the attributes the server wrote.
+    describe('hydrated from a server render', () => {
+      /**
+       * Renders `type` as the server would, and returns a copy of the native
+       * tree it built, with the elements Angular asked for in the order it
+       * asked: the page and the queue LynxHydrateDocument takes.
+       */
+      const serverRender = (
+        type: new () => unknown,
+      ): { page: FakeEl; queue: FakeEl[] } => {
+        const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
+        const made: FakeEl[] = [];
+        for (const name of [
+          'createElement',
+          'createText',
+          'createComment',
+        ] as const) {
+          const original = document[name].bind(document) as (
+            ...args: unknown[]
+          ) => BaseLynxElement;
+          vi.spyOn(document, name).mockImplementation(((...args: unknown[]) => {
+            const el = original(...args);
+            made.push(el.element as unknown as FakeEl);
+            return el;
+          }) as never);
+        }
+        TestBed.createComponent(type).detectChanges();
+        const copies = new Map<FakeEl, FakeEl>();
+        const copy = (n: FakeEl): FakeEl => {
+          const c = makeEl(n.tag, n.text);
+          c.attrs = new Map(n.attrs);
+          c.classes = new Set(n.classes);
+          c.styles = new Map(n.styles);
+          copies.set(n, c);
+          for (const child of n.children) {
+            const cc = copy(child);
+            cc.parent = c;
+            c.children.push(cc);
+          }
+          return c;
+        };
+        const page = copy(pageRoot);
+        return { page, queue: made.map((n) => copies.get(n)!) };
+      };
+
+      const hydrate = <T>(type: new () => T) => {
+        const { page, queue } = serverRender(type);
+        TestBed.resetTestingModule();
+        TestBed.configureTestingModule({
+          providers: [
+            provideZonelessChangeDetection(),
+            {
+              provide: LYNX_DOCUMENT,
+              useValue: new LynxHydrateDocument(page as never, queue as never),
+            },
+            LynxRendererFactory2,
+            { provide: RendererFactory2, useExisting: LynxRendererFactory2 },
+          ],
+        });
+        const fixture = TestBed.createComponent(type);
+        fixture.detectChanges();
+        // The server's copy went with its test module.
+        writes.length = 0;
+        return { fixture, page, queue };
+      };
+
+      it('ends them before the view leaves the tree', async () => {
+        const { fixture, queue } = hydrate(SpinnerHost);
+        // Hydrated, not built again.
+        expect(created.filter((n) => n.classes.has('turn'))).toHaveLength(2);
+        expect(queue.some((n) => n.classes.has('turn'))).toBe(true);
+
+        fixture.componentInstance.show.set(false);
+        fixture.detectChanges();
+        await flush();
+
+        expect(writes).toEqual(['turn animation: none', 'remove box']);
+      });
+
+      it('ends them in a child component, with the attribute bound', async () => {
+        @Component({
+          selector: 'turning-spinner',
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+          encapsulation: ViewEncapsulation.None,
+          template: `<view
+            class="turn"
+            [attr.enable-new-animator]="'false'"
+          ></view>`,
+        })
+        class TurningSpinner {}
+        @Component({
+          selector: 'nested-host',
+          imports: [TurningSpinner],
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+          encapsulation: ViewEncapsulation.None,
+          template: `
+            @if (show()) {
+              <view class="box"
+                ><view class="inner"><turning-spinner /></view
+              ></view>
+            }
+          `,
+        })
+        class NestedHost {
+          readonly show = signal(true);
+        }
+        const { fixture } = hydrate(NestedHost);
+
+        fixture.componentInstance.show.set(false);
+        fixture.detectChanges();
+        await flush();
+
+        expect(writes).toEqual(['turn animation: none', 'remove box']);
+      });
     });
 
     /**

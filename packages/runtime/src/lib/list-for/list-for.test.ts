@@ -104,9 +104,28 @@ const lists: FakeList[] = [];
 /** Every __FlushElementTree call: the element flushed, and the options. */
 const flushes: Array<{ element: FakeEl | undefined; options: any }> = [];
 let operationId = 1;
+/**
+ * Every element appended to a list it was in already, which Lynx logs as an
+ * error ("re-insert node") with three elements' details, through NSLog.
+ */
+const appendedAgain: FakeEl[] = [];
 
-const makeEl = (tag: string, text?: string): FakeEl => {
-  const el: FakeEl = {
+/**
+ * An element ref as Lynx's main thread hands it out: a property set on it
+ * that isn't one of its own is dropped, and reads as undefined, as Lynx's
+ * refs of native elements do (LepusRefSetPropertyCallBack sets properties
+ * on tables and arrays only).
+ */
+const asLynxRef = <T extends object>(el: T): T =>
+  new Proxy(el, {
+    set: (target, key, value) => {
+      if (key in target) Reflect.set(target, key, value);
+      return true;
+    },
+  });
+
+const makeEl = (tag: string, text?: string, own: object = {}): FakeEl => {
+  const el = asLynxRef<FakeEl>({
     id: nextId++,
     tag,
     parent: null,
@@ -114,7 +133,8 @@ const makeEl = (tag: string, text?: string): FakeEl => {
     text,
     attrs: new Map(),
     classes: new Set(),
-  };
+    ...own,
+  });
   created.push(el);
   return el;
 };
@@ -131,6 +151,7 @@ const installNativeFakes = (): void => {
   created.length = 0;
   lists.length = 0;
   flushes.length = 0;
+  appendedAgain.length = 0;
   pageRoot = makeEl('page');
   const g = globalThis as unknown as FakeNativeGlobal<FakeEl> &
     Record<string, unknown>;
@@ -145,6 +166,9 @@ const installNativeFakes = (): void => {
   g.__GetElementUniqueID = (n: FakeEl) => n.id;
   g.__GetTag = (n: FakeEl) => n.tag;
   g.__AppendElement = (parent: FakeEl, child: FakeEl) => {
+    if (parent.tag === 'list' && child.parent === parent) {
+      appendedAgain.push(child);
+    }
     detach(child);
     parent.children.push(child);
     child.parent = parent;
@@ -194,13 +218,15 @@ const installNativeFakes = (): void => {
     _info: unknown,
     componentAtIndexes: ComponentAtIndexes,
   ) => {
-    const list = Object.assign(makeEl('list'), {
+    // Its own properties at creation: a ref keeps no others (see
+    // asLynxRef).
+    const list = makeEl('list', undefined, {
       componentAtIndex,
       enqueueComponent,
       componentAtIndexes,
       keys: [] as string[],
       updates: [] as ListInfo[],
-    });
+    }) as FakeList;
     lists.push(list);
     return list;
   };
@@ -524,6 +550,54 @@ describe('*lynxListFor', () => {
     expect(metaIn(reused)).toMatch(/^5\/100\s+odd$/);
     expect(show(6)).toBe(signs[1]);
     expect(built()).toBe(5);
+  });
+
+  it('appends an item element to the native list once, however often native asks for it', async () => {
+    await render();
+    const signs = [0, 1, 2].map((i) => show(i)!);
+    hide(signs[0]!);
+    hide(signs[1]!);
+
+    // A view reused for another item, and one native wants back as it was.
+    expect(show(5)).toBe(signs[0]);
+    expect(show(1)).toBe(signs[1]);
+
+    // Lynx would log each of these as an error, with three elements'
+    // details through NSLog, and then flush the list rather than the item.
+    expect(appendedAgain).toEqual([]);
+    expect(theList().children.map((el) => el.id)).toEqual(signs);
+  });
+
+  it('appends a view to its first list again after the run went to another list and back', async () => {
+    const { fixture } = await render();
+    const first = LynxElement.byUniqueId(theList().id) as LynxListElement;
+    const second = fixture.componentRef.injector
+      .get(LYNX_DOCUMENT)
+      .createElement('list') as LynxListElement;
+    const ask = (list: FakeList, index: number) =>
+      list.componentAtIndex(list, list.id, index, operationId++);
+    // The run's place in its list: its view container's anchor.
+    const anchor = first
+      .virtualChildren()
+      .find((child) => child.tagName === 'comment')!;
+    const moveRun = async (to: LynxListElement) => {
+      anchor.remove();
+      to.appendChild(anchor);
+      await update(fixture);
+    };
+    const sign = ask(lists[0]!, 0)!;
+    hide(sign);
+
+    // The pooled view shows an item of the second list, which takes its
+    // element out of the first natively.
+    await moveRun(second);
+    expect(ask(lists[1]!, 0)).toBe(sign);
+    expect(byId(sign).parent).toBe(lists[1]);
+    lists[1]!.enqueueComponent(lists[1]!, lists[1]!.id, sign);
+
+    await moveRun(first);
+    expect(ask(lists[0]!, 0)).toBe(sign);
+    expect(byId(sign).parent).toBe(lists[0]);
   });
 
   it('tells native an element shows another item when it asked to hear it', async () => {

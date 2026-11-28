@@ -783,6 +783,22 @@ export class LynxElement implements BaseLynxElement {
   get element(): ElementRef {
     return this.#nativeRef;
   }
+  /**
+   * The unique id of #nativeRef, read once when the ref is set: a unique id
+   * never changes for the element it names, and asking native again is a
+   * call across to the engine each time.
+   */
+  #uniqueId: number;
+  /**
+   * @internal The native element's unique id (`__GetElementUniqueID`), for
+   * code that keeps something per element: Lynx's element refs can't hold a
+   * property of their own (a ref that isn't a table or an array drops what's
+   * set on it, and reads as undefined), and keying a Map or Set on a ref
+   * crashes the main thread (see create-list-element.ts), so it keys on this.
+   */
+  get uniqueId(): number {
+    return this.#uniqueId;
+  }
   tagName = '';
 
   // The public fields below start as a constant, and nearly every element
@@ -1406,10 +1422,22 @@ export class LynxElement implements BaseLynxElement {
       });
     }
     this.#nativeRef = element;
+    this.#uniqueId = __GetElementUniqueID(element);
     // Register as the canonical wrapper for this native ref. #canonicalFor()
     // checks the map before constructing, so this never overwrites an existing
     // canonical wrapper with a throwaway.
-    LynxElement.#register(__GetElementUniqueID(element), this);
+    LynxElement.#register(this.#uniqueId, this);
+  }
+
+  /**
+   * Swaps in a new native element (a rebuilt one, or an anchor's other
+   * kind) and registers this wrapper under its id, after deregisterNative
+   * dropped the old one.
+   */
+  #setNativeRef(ref: ElementRef): void {
+    this.#nativeRef = ref;
+    this.#uniqueId = __GetElementUniqueID(ref);
+    LynxElement.#register(this.#uniqueId, this);
   }
 
   /**
@@ -1419,7 +1447,7 @@ export class LynxElement implements BaseLynxElement {
    * registry doesn't retain wrappers for dead native refs.
    */
   deregisterNative(): void {
-    const id = __GetElementUniqueID(this.#nativeRef);
+    const id = this.#uniqueId;
     // Only clear if WE are the registered wrapper — a later element that reused
     // this id (native id reuse) must keep its entry.
     if (LynxElement.#registered(id) === this) {
@@ -2980,8 +3008,7 @@ export class LynxElement implements BaseLynxElement {
   #renewQuoteMark(): ElementRef {
     this.deregisterNative();
     // #setQuoteDepth gave it its text when its <q> was made.
-    this.#nativeRef = __CreateRawText(this.#text as string);
-    LynxElement.#register(__GetElementUniqueID(this.#nativeRef), this);
+    this.#setNativeRef(__CreateRawText(this.#text as string));
     return this.#nativeRef;
   }
 
@@ -3425,10 +3452,11 @@ export class LynxElement implements BaseLynxElement {
     const oldParent = __GetParent(old);
     if (oldParent) __RemoveElement(oldParent, old);
     this.deregisterNative();
-    this.#nativeRef = inText
-      ? __CreateRawText('')
-      : createNativeRefByTag('comment', getPageId());
-    LynxElement.#register(__GetElementUniqueID(this.#nativeRef), this);
+    this.#setNativeRef(
+      inText
+        ? __CreateRawText('')
+        : createNativeRefByTag('comment', getPageId()),
+    );
     this.#anchorInText = inText;
   }
 
@@ -4578,8 +4606,7 @@ export class LynxElement implements BaseLynxElement {
     const fresh = this.#anchorInText
       ? __CreateRawText('')
       : createNativeRefByTag(this.tagName, getPageId(), this.#text);
-    this.#nativeRef = fresh;
-    LynxElement.#register(__GetElementUniqueID(fresh), this);
+    this.#setNativeRef(fresh);
 
     if (this.tagName === 'raw-text') {
       // #text may be stale: normalization is SKIPPED for a subtree while it is

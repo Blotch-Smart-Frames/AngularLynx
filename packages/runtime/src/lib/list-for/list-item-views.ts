@@ -240,6 +240,10 @@ export class ListItemViews<T> implements LynxListItemSource {
     return true;
   }
 
+  elementIds(): Iterable<number> {
+    return this.#bySign.keys();
+  }
+
   /**
    * Forgets every view (the directive's ngOnDestroy). Its view container
    * destroys them; bind() gives nothing after this, for a componentAtIndex

@@ -82,6 +82,11 @@ export type LynxListItemSource = {
    * true if it was one of this run's, which can now reuse it.
    */
   enqueue(sign: number): boolean;
+  /**
+   * The unique ids of the item elements this run has built, for the list it
+   * leaves to forget (see detachItemSource).
+   */
+  elementIds(): Iterable<number>;
 };
 
 /**
@@ -108,13 +113,6 @@ export type ListSlot = {
   /** The layout attributes: a run's item's, or those set on an element. */
   readonly attributes: ListItemAttributes | undefined;
 };
-
-/**
- * An element child's slot id, kept on its native ref as `__appended` is
- * (see isAppendedToNativeList): a plain property, which Lepus reads as a
- * field rather than through a Map/Set.
- */
-type ListIdOnRef = { __angularLynxListId?: string };
 
 /** An insertAction entry: the position, then what native reads for the item. */
 type InsertAction = {
@@ -202,6 +200,15 @@ export class LynxListElement extends LynxElement {
    * of the anchor's wrapper, rather than a field on every comment.
    */
   #sources: Array<{ anchor: LynxElement; source: LynxListItemSource }> = [];
+  /**
+   * The unique ids of the elements componentAtIndex has appended to the
+   * native list (see isAppendedToNativeList). Numbers, which a Set holds
+   * safely inside componentAtIndex, where keying one on an element ref
+   * crashes (see create-list-element.ts). Lynx counts its unique ids up and
+   * never hands one out again, so an id can't stand for another element
+   * later.
+   */
+  readonly #appended = new Set<number>();
   #componentAtIndex: ((...args: any[]) => number | undefined) | null = null;
   #enqueueComponent: ((...args: any[]) => void) | null = null;
   #componentAtIndexes: ((...args: any[]) => void) | null = null;
@@ -330,9 +337,14 @@ export class LynxListElement extends LynxElement {
 
   /**
    * @internal Takes a run out of this list: its items go on the next update.
+   * Its elements no longer count as appended here: the run takes its views
+   * along (a `*lynxListFor` whose anchor moved to another list), and one
+   * that another list appends leaves this one natively, so if the run comes
+   * back, componentAtIndex has to append it here again.
    */
   detachItemSource(source: LynxListItemSource): void {
     this.#sources = this.#sources.filter((entry) => entry.source !== source);
+    for (const id of source.elementIds()) this.#appended.delete(id);
     this.#scheduleUpdate();
   }
 
@@ -397,7 +409,7 @@ export class LynxListElement extends LynxElement {
    * a parent it moved from (see LynxElement's #markPaintingDead).
    */
   override holdsInNativeList(child: LynxElement): boolean {
-    return this.isAppendedToNativeList(child.element);
+    return this.isAppendedToNativeList(child.uniqueId);
   }
 
   override virtualChildren(): LynxElement[] {
@@ -448,18 +460,25 @@ export class LynxListElement extends LynxElement {
   }
 
   /**
-   * Appended-state is tracked as a plain property directly on the ElementRef
-   * rather than a WeakSet, for the same reason as committedSlot(): these are
-   * called from componentAtIndex, where WeakSet/Map methods crash. A plain
-   * property get/set compiles to ordinary field access, not a call into
-   * QuickJS's Map/Set native implementation.
+   * Whether componentAtIndex has appended the element with this unique id
+   * to the native list, where it stays while native holds it, and after
+   * native lets go of it (enqueueComponent) for a `*lynxListFor` view to
+   * show another item in. Asked by unique id, never by element ref, for the
+   * same reason as committedSlot(): these are called from componentAtIndex.
+   *
+   * It used to be a property set on the ElementRef itself, which Lynx's refs
+   * drop: they read every property as undefined. So componentAtIndex
+   * appended every element native asked for again, a reused row included,
+   * to the list it was already in, and Lynx logged an error for each and
+   * three nodes' details through NSLog before moving it, then flushed the
+   * list rather than the item (#870).
    */
-  isAppendedToNativeList(child: ElementRef): boolean {
-    return (child as { __appended?: boolean }).__appended === true;
+  isAppendedToNativeList(uniqueId: number): boolean {
+    return this.#appended.has(uniqueId);
   }
 
-  markAppendedToNativeList(child: ElementRef): void {
-    (child as { __appended?: boolean }).__appended = true;
+  markAppendedToNativeList(uniqueId: number): void {
+    this.#appended.add(uniqueId);
   }
 
   /**
@@ -498,17 +517,14 @@ export class LynxListElement extends LynxElement {
         // strings captured on the previous update, so the diff never calls
         // a native accessor on an already-removed element.
         //
-        // The id is read once per element, when the list first sees it, and
-        // kept on the ref: asking native on every update cost a call per
-        // item, so one row added to a list of thousands made thousands. A
-        // unique id never changes for the element it names, and an element
-        // made again (LynxElement swaps its native ref) has a ref of its own,
-        // which the list asks about anew. Not in LynxElement's constructor:
-        // most elements never go in a list.
+        // The id is the one the wrapper read when it got its native element
+        // (LynxElement.uniqueId): asking native on every update cost a call
+        // per item, so one row added to a list of thousands made thousands.
+        // It used to be kept on the ref, which Lynx's refs drop (see
+        // isAppendedToNativeList), so on a device every update asked anyway.
         const ref = child.element;
         slots.push({
-          id: ((ref as ListIdOnRef).__angularLynxListId ??=
-            `#${__GetElementUniqueID(ref)}`),
+          id: `#${child.uniqueId}`,
           ref,
           source: null,
           index: -1,
@@ -731,7 +747,8 @@ export class LynxListElement extends LynxElement {
     for (const index of removeAction) {
       const removed = oldSlots[index]!;
       if (removed.ref && !keptOld[index - start]) {
-        (removed.ref as { __appended?: boolean }).__appended = false;
+        // An element's slot id is `#<unique id>` (see #collectSlots).
+        this.#appended.delete(Number(removed.id.slice(1)));
       }
     }
 

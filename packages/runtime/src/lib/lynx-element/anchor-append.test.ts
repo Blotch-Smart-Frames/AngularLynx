@@ -58,7 +58,6 @@ const installNativeFakes = (): void => {
   g['__GetParent'] = (n: FakeEl) => n.parent;
   g['__GetChildren'] = (n: FakeEl) => n.children.slice();
   g['__FirstElement'] = (n: FakeEl) => n.children[0] ?? null;
-  g['__LastElement'] = (n: FakeEl) => n.children.at(-1) ?? null;
   g['__NextElement'] = (n: FakeEl) =>
     n.parent?.children[n.parent.children.indexOf(n) + 1] ?? null;
   g['__CreateView'] = () => makeEl('view', 'view');
@@ -385,6 +384,27 @@ describe('inserts before the anchors that end a parent (issue #444)', () => {
 
     expect(calls).toEqual(['insert row']);
     expect(native(hydrated!)).toEqual(['row', 'new-anchor', 'snapshot-anchor']);
+  });
+
+  it("inserts before anchors that a hydrated parent's snapshot child is among", () => {
+    const [hydrated, snapshotRow] = hydratedParent('snapshot-row');
+    const firstAnchor = anchor('first-anchor');
+    hydrated!.insertBefore(firstAnchor, snapshotRow!);
+    hydrated!.appendChild(anchor('last-anchor'));
+    calls = [];
+
+    // The anchors end #children, and the last of them ends the native
+    // children, but the snapshot's child is between them natively.
+    hydrated!.insertBefore(element('view', 'row'), firstAnchor);
+    endCycle();
+
+    expect(calls).toEqual(['insert row']);
+    expect(native(hydrated!)).toEqual([
+      'row',
+      'first-anchor',
+      'snapshot-row',
+      'last-anchor',
+    ]);
   });
 
   it("answers nextSibling() of a hydrated parent's snapshot child in Angular's order", () => {

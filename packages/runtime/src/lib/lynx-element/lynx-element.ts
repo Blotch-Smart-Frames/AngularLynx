@@ -3324,15 +3324,21 @@ export class LynxElement implements BaseLynxElement {
     for (let i = children.length - 1; i >= 0; i--) {
       const child = children[i]!;
       if (child === refChild) {
-        // Native's last child has to be the last of #children too. A
-        // hydrated parent's snapshot children aren't in #children, and may
-        // follow them all natively: moving the anchors to the end would put
-        // them after those, and the rows before them.
-        const last = __LastElement(this.element);
-        if (!last || __GetElementUniqueID(last) !== children.at(-1)!.uniqueId) {
-          return false;
+        // Natively too, these anchors have to be the last children, in
+        // order. A hydrated parent's snapshot children aren't in #children,
+        // and may be among them or after them: moving the anchors to the end
+        // would put them after those, and the rows before them. Read once a
+        // cycle per parent: the rows after the first find it displaced.
+        const anchors = children.slice(i);
+        let at: ElementRef | null = refChild.element;
+        for (let k = 1; k < anchors.length; k++) {
+          at = __NextElement(at);
+          if (!at || __GetElementUniqueID(at) !== anchors[k]!.uniqueId) {
+            return false;
+          }
         }
-        LynxElement.#displacedAnchors.set(this, children.slice(i));
+        if (__NextElement(at)) return false;
+        LynxElement.#displacedAnchors.set(this, anchors);
         return true;
       }
       if (child.tagName !== 'comment') return false;

@@ -210,13 +210,6 @@ lynxTestingEnv.switchToMainThread();
   e.nextElementSibling ?? e.nextSibling;
 
 /**
- * Returns the last child, a raw text's node included, as Lynx's
- * `__LastElement` does (a raw-text is an element there). The runtime reads it
- * before it appends an `@for` row in place of an insert before its anchor.
- */
-(globalThis as any).__LastElement = (e: Element) => e.lastChild;
-
-/**
  * querySelector on a JSDOM element.
  */
 (globalThis as any).__QuerySelector = (e: Element, selector: string) =>

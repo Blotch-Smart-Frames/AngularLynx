@@ -4,7 +4,7 @@ import {
   listenForScrollsFromTheStart,
   LynxElement,
   type LynxListElement,
-  scheduleSettleFlush,
+  scheduleSettleFlushForNewElement,
 } from '../lynx-element';
 import { ANDROID_BLUR_CAPTURE_TARGET, isAndroid } from './android-blur-capture';
 import { followColorScheme } from './page-color-scheme';
@@ -121,7 +121,7 @@ export class LynxDocument implements LynxDocumentBase {
     // Ensure content created outside a CD cycle (e.g. a lazy route component
     // built by RouterOutlet during navigation) still gets flushed — see
     // scheduleSettleFlush(). A no-op during normal in-cycle rendering.
-    scheduleSettleFlush();
+    scheduleSettleFlushForNewElement();
     // 'list' returns a LynxListElement (a virtual-tree wrapper, not a raw ref)
     // and 'page' returns the singleton root — both are special and are never
     // recreated, so they are handled here rather than via the shared raw-ref
@@ -176,7 +176,7 @@ export class LynxDocument implements LynxDocumentBase {
     return el;
   }
   createText(value: string): LynxElement {
-    scheduleSettleFlush();
+    scheduleSettleFlushForNewElement();
     const text = __CreateRawText(value);
     const lynxElement = new LynxElement(text);
     // Its native element is in no tree yet (see LynxElement's #unplaced).
@@ -190,7 +190,7 @@ export class LynxDocument implements LynxDocumentBase {
     return lynxElement;
   }
   createComment(): LynxElement {
-    scheduleSettleFlush();
+    scheduleSettleFlushForNewElement();
     const element = createCommentElement(this.#pageId);
     const el = new LynxElement(element);
     el.markUnplaced();

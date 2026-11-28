@@ -45,6 +45,14 @@ export type NativeAppOptions = {
    * one.
    */
   readonly storeReview?: boolean;
+  /**
+   * Whether the app reads the phone's motion sensors and compass, and hears
+   * it shaken, with the runtime's `LynxMotion`: Core Motion and
+   * `CLLocationManager`'s heading on iOS, and `SensorManager` on Android.
+   * None of them needs a permission. Off by default, which leaves the native
+   * module out of both apps.
+   */
+  readonly motion?: boolean;
   /** Custom URL schemes that open the app, e.g. `["myapp"]`. */
   readonly deepLinkSchemes?: readonly string[];
   /**
@@ -304,6 +312,7 @@ export type ResolvedApp = {
   readonly textScaling: ResolvedTextScaling;
   readonly permissions: Partial<Record<Permission, string>>;
   readonly storeReview: boolean;
+  readonly motion: boolean;
   readonly deepLinkSchemes: readonly string[];
   /** {@link NativeAppOptions.appLinkDomains} in lowercase, each once. */
   readonly appLinkDomains: readonly string[];
@@ -465,6 +474,15 @@ export const resolveAppOptions = (
     );
   }
 
+  // As for storeReview: a string such as "false" would quietly ship the
+  // module.
+  const motion = options.motion ?? false;
+  if (typeof motion !== 'boolean') {
+    throw new NativeConfigError(
+      `motion ${JSON.stringify(motion)} is not valid. Use true to read the motion sensors and compass with LynxMotion, or false.`,
+    );
+  }
+
   const deepLinkSchemes = options.deepLinkSchemes ?? [];
   for (const scheme of deepLinkSchemes) {
     if (!SCHEME.test(scheme)) {
@@ -567,6 +585,7 @@ export const resolveAppOptions = (
     textScaling,
     permissions,
     storeReview,
+    motion,
     deepLinkSchemes,
     appLinkDomains,
     canOpenURLSchemes,

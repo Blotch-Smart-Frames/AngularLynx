@@ -29,6 +29,7 @@ import { installBarcodeScannerModule } from './barcode-scanner.js';
 import { installLinkingModule } from './linking.js';
 import { installShortcutsModule } from './shortcuts.js';
 import { installStoreReviewModule } from './store-review.js';
+import { installMotionModule } from './motion.js';
 
 // ─── CSS fetch intercept ─────────────────────────────────────────────────────
 
@@ -124,6 +125,9 @@ const frameOnInstalledTimers = (threadGlobals: any): void => {
   // LynxStoreReview's requests, which reviewRequests() counts (see
   // store-review.ts).
   installStoreReviewModule(threadGlobals);
+  // LynxMotion's sensors, which emitMotion(), setHeading() and
+  // shakeDevice() sample (see motion.ts).
+  installMotionModule(threadGlobals);
   // LynxBackButton enables the back handler pressBackButton() checks (see
   // back-button.ts).
   installShellModule(threadGlobals);

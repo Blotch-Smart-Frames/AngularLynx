@@ -305,6 +305,14 @@ class MainActivity : FragmentActivity(), ShellModule.Host, WebAuthModule.Host {
             // angular-lynx:store-review
             registerModule(StoreReviewModule.NAME, StoreReviewModule::class.java, this@MainActivity)
             // /angular-lynx:store-review
+            // The motion sensors, the compass and shakes behind LynxMotion
+            // (MotionModule.kt), which stop while this activity is paused. An
+            // app whose angular.json doesn't set motion is built without the
+            // module and these lines (@blotch/angular-lynx-native's
+            // android/project.ts).
+            // angular-lynx:motion
+            registerModule(MotionModule.NAME, MotionModule::class.java, this@MainActivity)
+            // /angular-lynx:motion
             // The shortcuts the person runs from the app icon's menu, which
             // LynxShortcuts takes (ShortcutsModule.kt).
             registerModule(ShortcutsModule.NAME, ShortcutsModule::class.java, null)

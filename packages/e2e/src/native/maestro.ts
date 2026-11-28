@@ -372,6 +372,14 @@ export const FLOWS: readonly Flow[] = [
     only: { host: 'shell' },
   },
   {
+    file: 'motion.yaml',
+    description: 'reads the motion sensors, which only the emulator has',
+    // Only the app's own builds have the motion module, and only with
+    // angular.json's motion, which the harness sets. Lynx Explorer has none,
+    // and reports no sensors.
+    only: { host: 'shell' },
+  },
+  {
     file: 'linking.yaml',
     description:
       'says which apps it can open, and on Android opens a link in a browser tab',

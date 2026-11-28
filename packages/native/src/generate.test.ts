@@ -156,6 +156,21 @@ describe('prepareProject', () => {
     }
   });
 
+  it('brings the motion module back once the app sets motion, and drops it once it stops', () => {
+    for (const [platform, module] of [
+      ['ios', 'App/MotionModule.swift'],
+      ['android', 'app/src/main/java/dev/angularlynx/shell/MotionModule.kt'],
+    ] as const) {
+      const file = path.join(workDir, platform, module);
+      expect(prepare(platform).regenerated).toBe(true);
+      expect(existsSync(file)).toBe(false);
+      expect(prepare(platform, { motion: true }).regenerated).toBe(true);
+      expect(existsSync(file)).toBe(true);
+      expect(prepare(platform).regenerated).toBe(true);
+      expect(existsSync(file)).toBe(false);
+    }
+  });
+
   it('leaves out the canvas code for an app that never draws, and puts it back when it does', () => {
     const generate = (canvas: boolean) =>
       prepareProject({

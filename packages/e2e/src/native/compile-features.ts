@@ -30,8 +30,8 @@ import {
  * The first is also built without `permissions.biometrics` and
  * `permissions.camera`, as most apps are, which leaves the biometrics module
  * (#918) and the barcode scanner's (#917) out. The E2E app asks for both, so
- * its own build has the modules. Both are built
- * without `storeReview`, which the E2E app sets and most apps don't (#931).
+ * its own build has the modules. Both are built without `storeReview`
+ * (#931) or `motion` (#920), which the E2E app sets and most apps don't.
  */
 export const VARIANTS: readonly {
   readonly name: string;
@@ -86,6 +86,15 @@ const PROBES: Record<
 const STORE_REVIEW_PROBES: Record<Platform, string> = {
   ios: 'App/StoreReviewModule.swift',
   android: 'app/src/main/java/dev/angularlynx/shell/StoreReviewModule.kt',
+};
+
+/**
+ * The motion module, which the variants build without, as for
+ * STORE_REVIEW_PROBES (issue #920).
+ */
+const MOTION_PROBES: Record<Platform, string> = {
+  ios: 'App/MotionModule.swift',
+  android: 'app/src/main/java/dev/angularlynx/shell/MotionModule.kt',
 };
 
 /**
@@ -165,10 +174,12 @@ export const compileFeatureVariants = async ({
           workDir: path.join(variantDir, 'work'),
           outputDir: path.join(variantDir, 'out'),
           log,
-          // Without storeReview, which the E2E app sets and most apps don't,
-          // and the app's permissions without the ones the variant leaves out.
+          // Without storeReview and motion, which the E2E app sets and most
+          // apps don't, and the app's permissions without the ones the
+          // variant leaves out.
           overrides: {
             storeReview: false,
+            motion: false,
             ...(biometrics && camera
               ? {}
               : {
@@ -196,6 +207,11 @@ export const compileFeatureVariants = async ({
         if (existsSync(path.join(projectDir, STORE_REVIEW_PROBES[platform]))) {
           failures.push(
             `${name}: the generated project still has ${STORE_REVIEW_PROBES[platform]}, though the variant builds without storeReview.`,
+          );
+        }
+        if (existsSync(path.join(projectDir, MOTION_PROBES[platform]))) {
+          failures.push(
+            `${name}: the generated project still has ${MOTION_PROBES[platform]}, though the variant builds without motion.`,
           );
         }
         check(

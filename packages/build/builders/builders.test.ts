@@ -1357,6 +1357,7 @@ describe('unit-test builder', () => {
       'splash',
       'permissions',
       'storeReview',
+      'motion',
       'deepLinkSchemes',
       'appLinkDomains',
       'canOpenURLSchemes',

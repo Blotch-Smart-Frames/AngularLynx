@@ -1,0 +1,28 @@
+# Layer 6, the app's own builds only: LynxMotion reads the phone's motion
+# sensors (issue #920). The harness sets angular.json's `motion`, so the
+# shells have the module. The storage page's "Motion" line asks which sensors
+# the phone has, then shows the size of the first acceleration sampled. The
+# Android emulator has the sensors, at rest, so the sample shows gravity,
+# about 9.8 m/s², which only the shell's module and its event bring. The iOS
+# Simulator has no motion sensors, so Core Motion reports none.
+appId: ${APP_ID}
+---
+- runFlow: open-app.yaml
+- tapOn: Open storage
+- tapOn: 'Motion: tap'
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - extendedWaitUntil:
+          # A regex: which fused sensors an emulator image has varies.
+          visible: 'Motion: [1-4] sensors, 9\.[6-9] m/s²'
+          timeout: 15000
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - extendedWaitUntil:
+          visible: 'Motion: 0 sensors'
+          timeout: 15000
+- takeScreenshot: motion

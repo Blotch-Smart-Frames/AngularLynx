@@ -16,6 +16,7 @@ describe('resolveAppOptions', () => {
       textScaling: { enabled: true },
       permissions: {},
       storeReview: false,
+      motion: false,
       deepLinkSchemes: [],
       appLinkDomains: [],
       canOpenURLSchemes: ['http', 'https', 'mailto', 'tel', 'sms'],
@@ -476,6 +477,22 @@ describe('resolveAppOptions', () => {
     expect(() =>
       resolveAppOptions({ storeReview: value } as never, defaults),
     ).toThrow(/storeReview .* is not valid/);
+  });
+
+  it('keeps the motion module only when motion is true', () => {
+    const motion = (value: unknown) =>
+      resolveAppOptions({ motion: value } as never, defaults).motion;
+    expect(motion(undefined)).toBe(false);
+    expect(motion(false)).toBe(false);
+    expect(motion(true)).toBe(true);
+  });
+
+  // The generators keep the module for anything truthy, so "false" would
+  // ship it.
+  it.each(['false', 'true', 1])('rejects motion %j', (value) => {
+    expect(() =>
+      resolveAppOptions({ motion: value } as never, defaults),
+    ).toThrow(/motion .* is not valid/);
   });
 
   it('accepts the two .ipa export methods and rejects any other', () => {

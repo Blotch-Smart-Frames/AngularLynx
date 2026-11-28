@@ -6,6 +6,7 @@ import {
   LynxBiometrics,
   LynxClipboard,
   LynxLocalStorage,
+  LynxMotion,
   LynxSecureStorage,
   LynxStoreReview,
 } from '@blotch/angular-lynx';
@@ -118,6 +119,14 @@ const collectedFromArrays = async (): Promise<string> => {
  * shows the prompt every time, as in any development build, so the flow sees
  * the shell's module answer. Google Play shows nothing to an app it didn't
  * install, so on Android it only resolves.
+ *
+ * "Motion", on the row below, reads the phone's motion sensors with
+ * LynxMotion (issue #920), which the app has because the harness sets
+ * angular.json's `motion`. A tap shows how many of the four sensors the
+ * phone has, then the size of the first acceleration it samples, gravity
+ * included, so 9.8 m/s² on a phone at rest. The Android emulator has every
+ * sensor, so the flow sees a sample come through the shell's module and its
+ * event; the iOS Simulator has none, and shows `0 sensors`.
  */
 @Component({
   selector: 'app-storage',
@@ -170,6 +179,11 @@ const collectedFromArrays = async (): Promise<string> => {
         >Biometrics: {{ biometrics() }}</text
       >
     </view>
+    <view style="display: flex; flex-direction: row; margin-top: 8px;">
+      <text flatten="false" (bindtap)="readMotion()"
+        >Motion: {{ motion() }}</text
+      >
+    </view>
   `,
 })
 export class StorageRoute implements OnInit {
@@ -177,8 +191,10 @@ export class StorageRoute implements OnInit {
   readonly #secure = inject(LynxSecureStorage);
   readonly #clipboard = inject(LynxClipboard);
   readonly #biometrics = inject(LynxBiometrics);
+  readonly #motion = inject(LynxMotion);
   readonly biometrics = signal('…');
   readonly #storeReview = inject(LynxStoreReview);
+  readonly motion = signal('tap');
   readonly stored = signal('…');
   readonly arraySlots = signal('tap');
   readonly clipboard = signal('tap');
@@ -241,6 +257,21 @@ export class StorageRoute implements OnInit {
   rate(): void {
     this.rating.set('…');
     void this.#storeReview.request().then(() => this.rating.set('asked'));
+  }
+
+  readMotion(): void {
+    this.motion.set('…');
+    void this.#motion.availability().then((available) => {
+      const sensors = Object.values(available).filter(Boolean).length;
+      this.motion.set(`${sensors} sensors`);
+      if (!available.acceleration) return;
+      const stop = this.#motion.watchAcceleration(({ x, y, z }) => {
+        stop();
+        this.motion.set(
+          `${sensors} sensors, ${Math.hypot(x, y, z).toFixed(1)} m/s²`,
+        );
+      });
+    });
   }
 
   async #read(): Promise<string> {

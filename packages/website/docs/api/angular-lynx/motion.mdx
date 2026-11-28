@@ -1,0 +1,184 @@
+# LynxMotion
+
+Reads the phone's motion sensors and compass, and hears it shaken: the accelerometer, the gyroscope, the orientation they make together, and the heading. Lynx has no `DeviceMotionEvent` or `DeviceOrientationEvent`. `import { LynxMotion } from '@blotch/angular-lynx';`
+
+Use it for shake to undo or to report a bug, cards that tilt with the phone, a level or a compass.
+
+## Turn it on
+
+Set `motion` in your build options:
+
+```json title="angular.json"
+"options": {
+  "motion": true
+}
+```
+
+None of the sensors needs a permission or a reason string. Without `motion`, the native code is left out of both apps: nothing is ever sampled, and [`availability()`](#availability) reports no sensors.
+
+## Usage
+
+```typescript
+import { Component, inject, signal } from '@angular/core';
+import { LYNX_ELEMENTS, LynxMotion } from '@blotch/angular-lynx';
+import { Drafts } from './drafts';
+
+@Component({
+  selector: 'app-level',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view
+      class="bubble"
+      [style.transform]="'translateX(' + tilt() * 4 + 'px)'"
+    ></view>
+    <text>{{ tilt().toFixed(0) }}°</text>
+  `,
+})
+export class Level {
+  readonly #motion = inject(LynxMotion);
+  readonly #drafts = inject(Drafts);
+  protected readonly tilt = signal(0);
+
+  constructor() {
+    // Called from the constructor, both stop when the component is destroyed.
+    this.#motion.watchOrientation({ interval: 50 }, ({ gamma }) =>
+      this.tilt.set(gamma),
+    );
+    this.#motion.onShake(() => this.#drafts.undo());
+  }
+}
+```
+
+`Drafts` stands for the app's own service.
+
+**Ask for no more samples than the screen needs.** Every sample is work for the thread Angular runs on, which also lays out the page and runs its animations. The default `interval` is 16 ms, about one a frame; a compass or a level is fine at 50 or 100.
+
+## API
+
+### `LynxMotion`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxMotion {
+  // Each watch also takes the handler alone: watchHeading(handler).
+  watchAcceleration(
+    options: LynxMotionOptions,
+    handler: (sample: LynxAcceleration) => void,
+  ): () => void;
+  watchRotation(
+    options: LynxMotionOptions,
+    handler: (sample: LynxRotationRate) => void,
+  ): () => void;
+  watchOrientation(
+    options: LynxMotionOptions,
+    handler: (sample: LynxOrientation) => void,
+  ): () => void;
+  watchHeading(
+    options: LynxMotionOptions,
+    handler: (sample: LynxHeading) => void,
+  ): () => void;
+  onShake(handler: () => void, options?: LynxShakeOptions): () => void;
+  availability(): Promise<LynxMotionAvailability>;
+}
+
+type LynxMotionOptions = { interval?: number; injector?: Injector };
+type LynxShakeOptions = { injector?: Injector };
+```
+
+Each `watch` method takes the options or leaves them out (`watchHeading(handler)`). It calls `handler` with a sample at most every `interval` milliseconds (16 unless it's given, and at least 5) until the function it returns is called. Called from an injection context, such as a constructor, it also stops when the component or service is destroyed; pass an `injector` to tie it to another one. A sensor runs only while something watches it, and stops while the app is in the background.
+
+| Platform                                       | Sensors                                                                                                                                                                                                 |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| iOS                                            | Core Motion's `CMMotionManager`, and `CLLocationManager`'s heading, which asks for no location permission. The Simulator has no motion sensors                                                          |
+| Android                                        | `SensorManager`: the accelerometer, the gyroscope, the game rotation vector for the orientation, and the rotation vector for the heading. The emulator's are in its extended controls (Virtual sensors) |
+| [Web preview](/guide/glossary#web-preview)     | The page's `devicemotion` and `deviceorientation` events. Safari on iOS sends them only after the page calls `DeviceMotionEvent.requestPermission()` from a tap; desktop browsers send none             |
+| Unit tests with the testing library            | What [`emitMotion()`](/api/testing-library#motion), [`setHeading()`](/api/testing-library#motion) and [`shakeDevice()`](/api/testing-library#motion) send                                               |
+| [Lynx Explorer](/guide/glossary#lynx-explorer) | None                                                                                                                                                                                                    |
+
+The axes are the phone's own, as on the web: x to the right of the screen, y up it, and z out of its face. They don't turn with the screen in landscape.
+
+### `watchAcceleration()`
+
+```typescript
+type LynxAcceleration = { x: number; y: number; z: number; timestamp: number };
+```
+
+The acceleration the phone measures in m/s², with gravity, as `DeviceMotionEvent.accelerationIncludingGravity` gives it. A phone lying face up reads about `{ x: 0, y: 0, z: 9.81 }` on both platforms; iOS measures in g the other way round, which the shell converts. `timestamp` is when it was measured, in milliseconds since the epoch, as `Date.now()` counts.
+
+### `watchRotation()`
+
+```typescript
+type LynxRotationRate = { x: number; y: number; z: number; timestamp: number };
+```
+
+How fast the phone turns around each axis, in radians a second, counterclockwise as seen from the axis's positive end. On iOS it's Core Motion's rotation rate, which corrects the gyroscope's drift. The web's `rotationRate` gives degrees a second, as `alpha`, `beta` and `gamma`: here `x` is `beta`, `y` is `gamma` and `z` is `alpha`, in radians.
+
+### `watchOrientation()`
+
+```typescript
+type LynxOrientation = {
+  alpha: number;
+  beta: number;
+  gamma: number;
+  timestamp: number;
+};
+```
+
+Which way the phone faces, in degrees, as `DeviceOrientationEvent` gives it: `beta` tilts it forward and back (-180 to 180), `gamma` left and right (-90 to 90), and `alpha` turns it around z (0 to 360). A phone lying flat reads 0 for `beta` and `gamma`.
+
+`alpha` counts from wherever the phone faced when the sensor started, not from north, as a `DeviceOrientationEvent` whose `absolute` is false does. Neither platform uses the compass for it, so it doesn't swing near a magnet. Read north from `watchHeading()`.
+
+### `watchHeading()`
+
+```typescript
+type LynxHeading = {
+  magneticHeading: number;
+  trueHeading: number | null;
+  accuracy: number | null;
+  timestamp: number;
+};
+```
+
+Where the top of the phone points, in degrees clockwise from magnetic north. `trueHeading` is from true north, which only iOS gives, and only while the app has location access; it's `null` otherwise. `accuracy` is how far off the heading may be, in degrees, or `null` when the platform doesn't say. A large one means the compass needs calibrating, by moving the phone in a figure eight.
+
+iOS reports a new heading each time it turns by a degree, so a phone held still sends none.
+
+### `onShake()`
+
+Calls `handler` each time the person shakes the phone, until the function it returns is called or the caller is destroyed. The shells hear shakes from the accelerometer themselves, so listening costs the thread Angular runs on nothing until one comes. A shake is a sharp, repeated movement for a quarter of a second or more (three quarters of the samples of half a second past 13 m/s²); walking or putting the phone down isn't one. A long shake is heard again every three quarters of a second.
+
+### `availability()`
+
+```typescript
+type LynxMotionAvailability = {
+  acceleration: boolean;
+  rotation: boolean;
+  orientation: boolean;
+  heading: boolean;
+};
+```
+
+Which sensors the phone has. It resolves with none in Lynx Explorer, in an app built without `motion`, and on the iOS Simulator. The web preview can't tell, and reports what the browser has events for. It never rejects.
+
+## Testing
+
+The testing library stands in for a phone with every sensor. [`emitMotion()`](/api/testing-library#motion) sends a sample, [`setHeading()`](/api/testing-library#motion) a compass heading and [`shakeDevice()`](/api/testing-library#motion) a shake, to the watches the app has:
+
+```typescript
+import {
+  emitMotion,
+  render,
+  screen,
+  waitForUpdate,
+} from '@blotch/angular-lynx-testing-library';
+
+await render(Level);
+emitMotion({ orientation: { alpha: 0, beta: 0, gamma: 12 } });
+await waitForUpdate();
+expect(screen.getByText('12°')).toBeInTheDocument();
+```
+
+## Related
+
+- [Native apps](/guide/native-apps): the `motion` option and the other build options
+- [`LynxHaptics`](/api/angular-lynx/haptics): tap the phone back

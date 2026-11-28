@@ -36,7 +36,7 @@ const ORIENTATIONS: Record<Orientation, readonly string[]> = {
  * Config/App.entitlements, and the icon and the splash go in the asset
  * catalog. The barcode scanner's module stays only in an app with the
  * `camera` permission, and the store review module only in an app with
- * `storeReview`.
+ * `storeReview`, and the motion module only in an app with `motion`.
  */
 /** LynxBarcodeScanner's module, which needs the `camera` permission. */
 export const IOS_BARCODE_SCANNER_SOURCE = 'App/BarcodeScannerModule.swift';
@@ -113,6 +113,12 @@ export const iosGenerator: PlatformGenerator = {
     if (!app.storeReview) {
       removeTemplateFiles(dir, [IOS_STORE_REVIEW_SOURCE]);
     }
+    // An app that doesn't read the motion sensors (angular.json's `motion`)
+    // ships no Core Motion or compass code it never calls. LynxViewController
+    // registers the module by name, so the shell builds without it.
+    if (!app.motion) {
+      removeTemplateFiles(dir, [IOS_MOTION_SOURCE]);
+    }
     if (features.webgl) return;
     if (features.canvas) {
       // A 2D canvas keeps the module and the canvas's view, without the
@@ -141,6 +147,9 @@ export const iosGenerator: PlatformGenerator = {
 
 /** The module behind `LynxStoreReview`, which only `storeReview` keeps. */
 export const IOS_STORE_REVIEW_SOURCE = 'App/StoreReviewModule.swift';
+
+/** The module behind `LynxMotion`, which only `motion` keeps. */
+export const IOS_MOTION_SOURCE = 'App/MotionModule.swift';
 
 /**
  * The shell's biometrics module, `AngularLynxBiometrics` (LynxBiometrics, and

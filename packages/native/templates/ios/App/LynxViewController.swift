@@ -82,6 +82,12 @@ final class LynxViewController: UIViewController, LynxViewLifecycle {
     {
       config.register(barcodeScanner)
     }
+    // The motion sensors, the compass and shakes behind LynxMotion
+    // (MotionModule), by name too: the generator leaves its source out of an
+    // app whose angular.json doesn't set motion.
+    if let motion = NSClassFromString("AngularLynxMotionModule") as? LynxModule.Type {
+      config.register(motion)
+    }
     // <canvas>'s WebGL (AngularLynxWebGL.h), which the runtime calls from
     // the main thread. It's Objective-C, which Swift reaches without a
     // bridging header by name.

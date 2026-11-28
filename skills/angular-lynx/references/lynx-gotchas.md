@@ -243,6 +243,26 @@ Confirm the person on the phone with `LynxBiometrics`, a local check, not WebAut
 
 Both stores require their own rating prompt (Apple's guideline 5.6.1 forbids a custom one), and opening the store page with `LynxLinking` leaves the app. Set `"storeReview": true` in the `build` target's options, inject it in a field (`readonly #storeReview = inject(LynxStoreReview);`, since a method has no injection context) and call `await this.#storeReview.request()` after a success moment (an order placed, a level won), never from a button or behind a "Do you like the app?" question, which both stores forbid. It uses StoreKit's `requestReview(in:)` on iOS and Google Play's In-App Review API on Android. The store decides whether to show anything (iOS: 3 times in 365 days in App Store builds, never in TestFlight, always in development builds and the Simulator; Play: within a quota, only once the account has installed the app from Google Play, such as from an internal test track or internal app sharing; a local build installs over it only when its signing certificate is compatible with Play's), and never says, so `request()` resolves with nothing either way and never rejects. Without `storeReview` the native module is left out of both apps and `request()` resolves without a prompt, as in Lynx Explorer and the web preview. In specs, `reviewRequests()` from the testing library returns how many times the app asked in this test.
 
+### No `DeviceMotionEvent` or `DeviceOrientationEvent`: use `LynxMotion`
+
+Read the accelerometer, the gyroscope, the orientation and the compass, and hear a shake, with `LynxMotion`, after setting `"motion": true` in the `build` target's options (no permission; without it the native module is left out, nothing is sampled and `availability()` reports no sensors). Call it from an injection context, such as a constructor, so each watch stops with the component, or keep the function it returns:
+
+```typescript
+readonly #motion = inject(LynxMotion);
+readonly tilt = signal(0);
+
+constructor() {
+  this.#motion.watchOrientation({ interval: 50 }, ({ gamma }) => this.tilt.set(gamma));
+  this.#motion.onShake(() => this.undo());
+}
+```
+
+- `watchAcceleration()` gives `{ x, y, z, timestamp }` in m/s² with gravity (face up: z ≈ 9.81, on iOS too), `watchRotation()` rad/s around each axis, `watchOrientation()` `DeviceOrientationEvent`'s `alpha`/`beta`/`gamma` in degrees (`alpha` from where the phone faced at the start, not north), and `watchHeading()` `{ magneticHeading, trueHeading, accuracy }` (`trueHeading` only on iOS with location access, otherwise `null`). Each takes `{ interval, injector }` first or the handler alone; `interval` defaults to 16 ms and is at least 5.
+- **Every sample is main-thread work.** Ask for the slowest interval the screen can use (50–100 ms for a level or a compass). The shells batch samples at most every 16 ms and hear shakes natively, so `onShake()` costs nothing until one comes.
+- `await motion.availability()` gives `{ acceleration, rotation, orientation, heading }`; the iOS Simulator has no sensors, the Android emulator does (extended controls → Virtual sensors). In the web preview it reads the page's `DeviceMotionEvent` and `DeviceOrientationEvent`, which Safari sends only after `DeviceMotionEvent.requestPermission()` from a tap.
+- In specs, `emitMotion({ acceleration, rotation, orientation })`, `setHeading(90)` and `shakeDevice()` from the testing library send samples to the watches the app has; each sample counts as a second after the last unless you pass `timestamp`.
+- Step counting (`CMPedometer`, `TYPE_STEP_COUNTER`) isn't there yet.
+
 ### Bundled images need `baseHref` on the web
 
 An imported image (`import logo from './logo.png'`, typed through `/// <reference types="@blotch/angular-lynx-build/client" />`) becomes `static/image/logo.<hash>.png` next to the bundle. On iOS and Android, Lynx resolves it against the bundle, wherever that is. Lynx for Web puts it on an `<img>` in the page, so the browser resolves it against the page that shows the `<lynx-view>`: a bundle at `/apps/shop/main.web.bundle` on a page at `/` asks for `/static/image/…` and gets nothing. Build with `ng build --base-href=/apps/shop/`, which makes the web bundle ask for `/apps/shop/static/image/…` (see [build-configuration.md](build-configuration.md)). `ng serve` needs nothing: its page and bundle share a root. Fonts never have the problem: the build inlines `@font-face` files as data URLs.

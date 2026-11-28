@@ -30,6 +30,7 @@ import {
   isBindingListItem,
   isFirstRenderPending,
   setInsideChangeDetection,
+  setOnTreeFlushed,
   setRunComingTick,
 } from '../lynx-render-lifecycle';
 import { stopMatchingDeclarationOnlyElements } from '../lynx-elements/declaration-only';
@@ -43,14 +44,13 @@ export class LynxRendererFactory2 implements RendererFactory2 {
   lynxDocument: LynxDocumentBase = inject(LYNX_DOCUMENT);
   #defaultRenderer: LynxRenderer | null = null;
   #emulatedRenderers = new Map<string, EmulatedLynxRenderer>();
-  // Called after each flush end() makes: until the next frame, a tick
-  // Angular schedules waits for that frame (see frameGate, issue #868).
-  #flushed: () => void;
 
   constructor() {
     const injector = inject(Injector);
     setRunComingTick(comingTickRunner(injector));
-    this.#flushed = frameGate(injector);
+    // After each flush of the whole tree (end()'s, a settle flush's), a tick
+    // Angular schedules waits for the next frame (see frameGate, #868).
+    setOnTreeFlushed(frameGate(injector));
     // The language of an element no `lang` is on or above, whose
     // quotation marks a <q> draws (see quotes.ts): the app's locale, as an
     // Angular app localized for the web sets <html lang> to it. An app's
@@ -254,14 +254,7 @@ export class LynxRendererFactory2 implements RendererFactory2 {
           }
           /* v8 ignore stop */
           markTreeFlushed();
-          try {
-            flushTreeWithListUpdates();
-          } finally {
-            // Later ticks this frame wait for the next one, which runs them
-            // together (see frameGate). Even when a list threw: the tree
-            // was flushed.
-            this.#flushed();
-          }
+          flushTreeWithListUpdates();
         }
       } finally {
         // Then the UI method calls made on elements this cycle created, which

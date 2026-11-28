@@ -102,6 +102,27 @@ describe("frame gate with Angular's scheduler", () => {
     expect(seen).toEqual([0]);
   });
 
+  it('runs a tick scheduled after a settle flush on the next frame too', async () => {
+    // While a list scrolls, the settle flush after the rows componentAtIndex
+    // binds is often the frame's first flush.
+    TestBed.inject(LynxRendererFactory2);
+    scheduleSettleFlush();
+    await Promise.resolve();
+    expect(globalThis.__FlushElementTree).toHaveBeenCalledTimes(1);
+    const seen: number[] = [];
+
+    TestBed.runInInjectionContext(() =>
+      effect(() => {
+        seen.push(0);
+      }),
+    );
+    vi.runAllTimers();
+    expect(seen).toEqual([]);
+
+    runFrame();
+    expect(seen).toEqual([0]);
+  });
+
   it("runs the frame's first tick on Angular's timer", () => {
     const factory = TestBed.inject(LynxRendererFactory2);
     flushCycle(factory);

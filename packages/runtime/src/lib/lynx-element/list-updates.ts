@@ -1,5 +1,6 @@
 import {
   isFirstRenderPending,
+  noteTreeFlushed,
   runAfterFirstRender,
 } from '../lynx-render-lifecycle';
 
@@ -85,7 +86,10 @@ const rethrow = (sending: Readonly<Sending>): void => {
  * if one did.
  */
 const layOutLists = (sending: Readonly<Sending>): void => {
-  if (sending.sent) __FlushElementTree(undefined, { triggerLayout: true });
+  if (sending.sent) {
+    __FlushElementTree(undefined, { triggerLayout: true });
+    noteTreeFlushed();
+  }
   rethrow(sending);
 };
 
@@ -174,6 +178,9 @@ export const flushTreeWithListUpdates = (): void => {
   } else {
     __FlushElementTree();
   }
+  // A tick scheduled from now until the next frame waits for it (see
+  // frameGate): this flush laid the tree out for this frame already.
+  noteTreeFlushed();
   rethrow(sending);
 };
 

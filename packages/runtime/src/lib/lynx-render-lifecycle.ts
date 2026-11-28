@@ -164,6 +164,27 @@ export const setRunComingTick = (run: () => boolean): void => {
  */
 export const runComingTick = (): boolean => comingTick();
 
+/**
+ * Called after each flush of the whole element tree (see noteTreeFlushed).
+ * LynxRendererFactory2 sets it to its frame gate, so a tick Angular
+ * schedules after any such flush, the settle flush's too, waits for the
+ * next frame (see frameGate, issue #868). Until it does (and outside an
+ * app), nothing is noted.
+ */
+let treeFlushed: () => void = () => {};
+
+export const setOnTreeFlushed = (onFlushed: () => void): void => {
+  treeFlushed = onFlushed;
+};
+
+/**
+ * Notes that the whole element tree was just flushed: by
+ * `LynxRendererFactory2.end()`, a settle flush, or the flush for lists
+ * changed outside a cycle. A list item's flush, which covers the item only,
+ * doesn't count.
+ */
+export const noteTreeFlushed = (): void => treeFlushed();
+
 // How many list items are being built or rebound right now, by a list's
 // componentAtIndex (see bindListItem). More than one when an item holds a
 // list of its own, whose items the item's flush asks for.

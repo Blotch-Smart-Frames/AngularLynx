@@ -47,8 +47,9 @@ export const canGateFrames = (
 
 /**
  * Makes the app tick at most once a frame after its first tick in that
- * frame, and returns what `LynxRendererFactory2.end()` calls after each
- * flush it makes (issue #868).
+ * frame, and returns what's called after each flush of the whole element
+ * tree (issue #868): `LynxRendererFactory2.end()`'s, a settle flush's, and
+ * the one for lists changed outside a cycle (see noteTreeFlushed).
  *
  * Angular's zoneless scheduler runs a tick from a timer or an animation
  * frame, whichever comes first. On Lynx's main thread the timer always wins,
@@ -58,7 +59,7 @@ export const canGateFrames = (
  * too, but draws once a frame however many of them changed the DOM. Lynx
  * lays out and queues the UI's operations at every flush.
  *
- * So once a cycle has flushed, until the next frame (Lynx's main-thread
+ * So once the tree has been flushed, until the next frame (Lynx's main-thread
  * `requestAnimationFrame` follows the screen's refresh), a tick Angular
  * schedules is moved from its timer onto that frame, where it runs once for
  * everything that changed meanwhile. The first tick of a frame still runs on
@@ -68,6 +69,11 @@ export const canGateFrames = (
  * frame often wins. end() still flushes every cycle that wrote something, so
  * the lists' updates and the UI methods waiting for a flush go with it as
  * before.
+ *
+ * Any flush of the whole tree opens the window, not only a cycle's: while a
+ * list scrolls, the settle flush after the rows componentAtIndex binds is
+ * often the frame's first, and a response's tick then made a second flush
+ * and layout in that frame.
  *
  * The ticks Angular schedules on a microtask, in the task a tick just ran in,
  * are left alone: they finish what that tick started before the task ends. A

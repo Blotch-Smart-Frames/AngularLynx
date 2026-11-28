@@ -62,7 +62,7 @@ function DefaultUpdate({ count }: { count: number }) {
             key={button.every}
             className="update-button"
             accessibility-element
-            accessibility-trait="button"
+            accessibility-traits="button"
             accessibility-label={button.label}
             bindtap={() => change(button.every)}
           >
@@ -134,7 +134,7 @@ function MainThreadUpdate({ count }: { count: number }) {
             key={button.every}
             className="update-button"
             accessibility-element
-            accessibility-trait="button"
+            accessibility-traits="button"
             accessibility-label={button.label}
             main-thread:bindtap={change(button.every)}
           >

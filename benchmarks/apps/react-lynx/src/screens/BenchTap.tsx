@@ -25,7 +25,7 @@ function DefaultTap() {
       <view
         className="tap-button"
         accessibility-element
-        accessibility-trait="button"
+        accessibility-traits="button"
         accessibility-label="Tap"
         bindtap={() => setTaps(n => n + 1)}
       >
@@ -72,7 +72,7 @@ function MainThreadTap() {
       <view
         className="tap-button"
         accessibility-element
-        accessibility-trait="button"
+        accessibility-traits="button"
         accessibility-label="Tap"
         main-thread:bindtap={onTap}
       >

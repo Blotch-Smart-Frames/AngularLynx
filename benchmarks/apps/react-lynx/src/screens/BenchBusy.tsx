@@ -57,7 +57,7 @@ function DefaultBusy() {
       <view
         className="busy-button"
         accessibility-element
-        accessibility-trait="button"
+        accessibility-traits="button"
         accessibility-label="Busy"
         bindtap={() => {
           work();
@@ -106,7 +106,7 @@ function MainThreadBusy() {
       <view
         className="busy-button"
         accessibility-element
-        accessibility-trait="button"
+        accessibility-traits="button"
         accessibility-label="Busy"
         main-thread:bindtap={onTap}
       >

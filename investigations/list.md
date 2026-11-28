@@ -33,6 +33,33 @@ The native flush of the item is most of componentAtIndex's cost either way; chec
 
 The example switches between the two and counts the rows built.
 
+## Where the scroll gap stands, and anchors that take no space (2026-11-28, #856)
+
+After binding ahead (#888), #856's gap with ReactLynx on the engine thread splits into two parts. Neither has a runtime change that the Simulator can measure. The setup: the benchmark Pokédex's Release builds on the iOS Simulator (iPhone 18 Pro, iOS 27, master `718690d9`), and the scroll test's 5 swipes (a warm-up and 4 measured). Each run had a 30 s Time Profiler trace, 3 runs per app, alternating:
+
+| Per 5-swipe trace                                                       | AngularLynx | ReactLynx  |
+| ----------------------------------------------------------------------- | ----------- | ---------- |
+| Instructions retired per swipe (XCTCPUMetric)                           | ~665M       | ~477M      |
+| Engine thread (`Lynx_TASM`)                                             | 127–147 ms  | 59–126 ms  |
+| … main-thread JavaScript                                                | ~32 ms      | ~10 ms     |
+| … the list pushing its rows' layout to the platform, every scroll frame | ~30 ms      | ~19 ms     |
+| … layout (`LayoutContext::Layout`)                                      | ~27 ms      | ~22 ms     |
+| UI thread                                                               | 390–627 ms  | 277–419 ms |
+
+- **JavaScript, about +22 ms.** ReactLynx runs React on the background thread (`Lynx_JS`, ~8 ms), so its main thread only makes and patches elements, in `componentAtIndex`. AngularLynx checks each row on the main thread: in the timer after a bind (binding ahead) and in `componentAtIndex`. Under `node --jitless`, with the #885 bench's row bound ahead (4,000 binds through a 10-row window), a bind took about 103 µs. A CPU profile put Angular's refresh at about 76% of it, and the row's `@for` of type dots at 26%. The runtime's own code was about 24%, spread thin: `end()` 10.6%, its removals' commit 7.8%, `setAttribute` 4.0%, inserts 3.8%, text 3.2%, `createElement` 3.1%. That's #946.
+- **Pushing the rows' layout to the platform, about +11 ms.** On every scroll frame, Lynx's list walks every element of each row on the screen (`ItemHolder::UpdateLayoutToPlatform` → `ElementContainer::UpdateLayout`). The walk itself is the cost: `UpdateLayout` and `CalculatePlatformLayout` took about 16 ms against ReactLynx's 8. An Angular row has about 4 more native elements than ReactLynx's: its two component hosts (`app-pokemon-item`, `app-favourite-button`) and the `@if` and `@for` anchors.
+- **The UI thread is within noise of ReactLynx's.** One AngularLynx trace's main thread spent 190 ms in `mach_msg`, the host stalling it. Without that trace, the totals overlap.
+
+**Anchors as wrapper elements.** An anchor is a `display: none` `<view>` (`create-comment-element.ts`). Lynx's wrapper element (`__CreateWrapperElement`, what `<block>` makes) is layout-only and has no layout box of its own, like `display: contents`. `WrapperElement` sets `is_layout_only_`, and `TreeResolver::AttachChildToTargetParentForWrapper` puts its children's layout nodes in its parent's. A build that made each anchor a wrapper drew the rows as master does, with the same gaps around the `@if`. It made no measurable difference, so the anchors stay views:
+
+|                                                   | master             | wrapper anchors    |
+| ------------------------------------------------- | ------------------ | ------------------ |
+| Instructions per swipe, 24 swipes each            | 656M (median 658M) | 652M (median 655M) |
+| `UpdateLayoutToPlatform`, two batches of 3 traces | 25 ms, 21 ms       | 18 ms, 34 ms       |
+| Engine thread per trace                           | 127–194 ms         | 112–202 ms         |
+
+Making a component's host a wrapper would take the hosts out the same way. It would also change what an app sees: the host's classes, its styles and `:host` CSS give a box that would no longer exist. The anchors' result says it would buy little.
+
 ## Binding the next row ahead, while the engine thread is idle (2026-11-28, #888)
 
 `componentAtIndex` runs inside the list's layout pass, and the list waits for it. Most of its JavaScript was the row's check (`ListItemViews.bind()` → `detectChanges()`, about 82 µs for the benchmark's row under `node --jitless`, see #885 below). While the list scrolls, the next item native asks for is predictable, and the view it will get is usually in the pool already: native let go of a row scrolled away a frame or two before. So the row can be bound before native asks for it.

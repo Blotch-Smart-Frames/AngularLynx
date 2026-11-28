@@ -52,7 +52,8 @@ export type EmittedMotion = {
   /**
    * When it was measured, in milliseconds since the epoch. A second after
    * the last sample unless it's given (or `Date.now()`, if that's later), so
-   * a sample is never too soon for a watch's `interval`.
+   * a watch whose `interval` is a second or less never skips it. A slower
+   * watch needs samples given timestamps at least its interval apart.
    */
   readonly timestamp?: number;
 };

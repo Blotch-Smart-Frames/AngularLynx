@@ -328,7 +328,7 @@ The testing library stands in for a phone with every sensor, for [`LynxMotion`](
 - **`setHeading()`** sends a compass heading to its `watchHeading()` watches: degrees from magnetic north, or an object with the true heading and accuracy too.
 - **`shakeDevice()`** runs its `onShake()` handlers.
 
-A sensor nothing watches isn't running, so nothing reaches the app, as on a phone. Each sample counts as a second after the last, so a watch's `interval` never skips it; pass `timestamp` to set it.
+A sensor nothing watches isn't running, so nothing reaches the app, as on a phone. Each sample counts as a second after the last (or now, if that's later), so a watch whose `interval` is a second or less never skips it. For a slower watch, pass each sample a `timestamp` at least its `interval` after the last.
 
 ```typescript
 await render(Level);

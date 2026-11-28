@@ -48,11 +48,15 @@ import argparse
 import csv
 import datetime
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+import ios_launch  # noqa: E402
+
 SCREENS = [(kind, count) for count in (1500, 5000) for kind in ("view", "text", "image")]
 SIMULATOR_SCREENS = [(kind, count) for count in (1500, 15000) for kind in ("view", "text", "image")]
 OURS = "com.angularlynx.bench.angularlynx"
@@ -95,7 +99,10 @@ def split_session(combined, outs, labels):
     (angular-lynx:5000), into the per-screen CSVs ios_launch.py would have
     written: outs maps a count to its CSV, labels a label to its (app,
     count). The app column goes back to the app's name, as the report and
-    summarize.py read it, and the bundle ID still tells the builds apart. A
+    summarize.py read it, and the bundle ID still tells the builds apart.
+    android_mount.py splits android_launch.py's sessions with it too, whose
+    package column tells them apart instead: it reads the columns from the
+    session's own header. A
     previous_app that's the same build becomes its app's name, so
     summarize.py still counts that launch as following its own app; any
     other build, the same app's other screen included, stays a label,
@@ -109,20 +116,50 @@ def split_session(combined, outs, labels):
         app, count = labels[row["app"]]
         previous = row.get("previous_app", "")
         by_count[count].append({**row, "app": app, "previous_app": app if previous == row["app"] else previous})
+    # As the launch harnesses check before appending: a CSV with other
+    # columns would get each value under the wrong heading. Before writing
+    # any, so a refusal leaves every CSV as it was.
+    check_outs(outs.values(), fields)
     for count, out in outs.items():
         new_file = not os.path.exists(out) or os.path.getsize(out) == 0
-        if not new_file:
-            # As ios_launch.py checks before appending: a CSV with other
-            # columns would get each value under the wrong heading.
-            with open(out, newline="") as existing:
-                header = next(csv.reader(existing), [])
-            if header != fields:
-                raise SystemExit(f"{out} has other columns than ios_launch.py writes: move it out of the way")
         with open(out, "a", newline="") as file:
             writer = csv.DictWriter(file, fieldnames=fields)
             if new_file:
                 writer.writeheader()
             writer.writerows(by_count[count])
+
+
+def check_outs(outs, fields):
+    """Refuses a per-screen CSV that already has other columns than fields,
+    as split_session() would. The mount harnesses call it before a session
+    too: a launch harness checks its own --out before its first launch, but
+    a session's goes to a new file, so a day's CSV from an older harness
+    would otherwise be found only once the session is over."""
+    for out in outs:
+        if os.path.exists(out) and os.path.getsize(out) > 0:
+            with open(out, newline="") as existing:
+                header = next(csv.reader(existing), [])
+            if header != list(fields):
+                raise SystemExit(f"{out} has other columns than this session's: move it out of the way")
+
+
+def split_or_keep(combined, outs, labels, keep):
+    """split_session(), which, if it fails, first copies the session's CSV
+    to keep and says so: the session's CSV is in a temporary folder, and its
+    rows are the session's only copy. If keep is taken, by an earlier
+    session that failed the same way, the copy goes to keep-2.csv (or -3,
+    and so on) rather than replacing it."""
+    try:
+        split_session(combined, outs, labels)
+    except BaseException:
+        stem, extension = os.path.splitext(keep)
+        number = 1
+        while os.path.exists(keep):
+            number += 1
+            keep = f"{stem}-{number}{extension}"
+        shutil.copyfile(combined, keep)
+        print(f"The session's rows weren't split: they're kept in {keep}", file=sys.stderr, flush=True)
+        raise
 
 
 def launch(args, apps, out, mode):
@@ -186,6 +223,10 @@ def main():
             build_and_install(args.device, args.rival, RIVAL, screen, args.simulator)
             launch(args, [("angular-lynx", OURS), (args.rival, RIVAL)], csv_for(kind, count), mode)
         return
+    # Every kind's CSVs before the first build: a session's goes to a new
+    # file, so ios_launch.py can't refuse one of the day's CSVs from an
+    # older harness, and split_session() would only find it after the runs.
+    check_outs([csv_for(kind, count) for kind, count in screens], ios_launch.FIELDS)
     # One session per kind, in the order the kinds first come in --screens.
     kinds = list(dict.fromkeys(kind for kind, _ in screens))
     for kind in kinds:
@@ -205,6 +246,7 @@ def main():
                 labels[label] = (name, count)
         folder = os.path.join(HERE, "..", "results", results)
         os.makedirs(folder, exist_ok=True)
+        outs = {count: csv_for(kind, count) for count in counts}
         with tempfile.TemporaryDirectory() as work:
             combined = os.path.join(work, f"mount-{date}-{kind}-{args.rival}.csv")
             try:
@@ -213,7 +255,9 @@ def main():
                 # What a session measured before it failed is still kept,
                 # as ios_launch.py's own rows are.
                 if os.path.exists(combined):
-                    split_session(combined, {count: csv_for(kind, count) for count in counts}, labels)
+                    # Not named mount-*, which track.py would read.
+                    keep = os.path.join(folder, f"session-{date}-{kind}-{args.rival}.csv")
+                    split_or_keep(combined, outs, labels, keep)
 
 
 if __name__ == "__main__":

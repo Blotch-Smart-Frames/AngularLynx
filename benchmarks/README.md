@@ -212,7 +212,8 @@ python3 harness/android_launch.py --device emulator-5554 --runs 20 \
   --app react-lynx=com.angularlynx.bench.reactlynx \
   --out results/android-emulator/launch-<date>-react-lynx.csv
 
-# The screens of many elements (the rival goes on com.angularlynx.bench.rival)
+# The screens of many elements, each build on an ID of its own
+# (com.angularlynx.bench.angularlynx.m1500 and so on)
 python3 harness/android_mount.py --device emulator-5554 --rival react-lynx --runs 10
 
 python3 harness/summarize.py results/android-emulator/launch-*.csv
@@ -234,9 +235,24 @@ an app had its screen complete before it let its splash screen go.
 A mount screen is also timed from its own `MountStart` mark to its fully
 drawn call (`mount_ms`), which leaves out the emulator's launch before it, as
 on the Simulator (#892). The shell logs both with the device's monotonic
-clock (`SPEC.md`, "Marks"), and `android_mount.py` prints each cost per
-element from each screen's fastest `mount_ms` at the end: (fastest
-5,000-element mount − fastest 1,500-element mount) / 3,500.
+clock (`SPEC.md`, "Marks"). `android_mount.py` runs the mount screens as
+`ios_mount.py --simulator` does (#904):
+
+- **15,000 elements, not 5,000.** ReactLynx's 3,500 elements between the
+  1,500 and 5,000 screens took only 88–164 ms on the emulator, so a few
+  milliseconds of its scheduling were several percent of a cost.
+  `--phone` keeps 5,000, as the iPhone does.
+- **One session per kind.** Both apps' builds of both screens are installed
+  side by side (`com.angularlynx.bench.angularlynx.m15000` and so on) and
+  launched in turn, so the host's drift falls on both screens alike, and the
+  rows are split into the usual per-screen CSVs. The Pokédex's builds stay
+  installed.
+
+It prints each cost per element from each screen's fastest `mount_ms` at the
+end: (fastest 15,000-element mount − fastest 1,500-element mount) / 13,500.
+In one session per kind of 10 runs per build, every cost came within ±3%
+(95% intervals), where ReactLynx's had spread over ±13–22% from 1,500 and
+5,000 elements in a session each (`results/android-emulator/README.md`).
 
 The emulator runs on the Mac's cores, so as on the Simulator the harness
 waits for the Mac's load average to be under `--max-load` before each

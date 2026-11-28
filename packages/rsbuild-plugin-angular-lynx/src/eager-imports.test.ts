@@ -37,7 +37,7 @@ describe('importEagerly', () => {
     expect(importEagerly(code, APP)).toBe(
       [
         `import * as __eagerImport0 from "./screens/a";export const routes = [`,
-        `  { path: 'a', loadComponent: () => Promise.resolve(__eagerImport0).then((m) => m.A) },`,
+        `  { path: 'a', loadComponent: () => (async () => __eagerImport0)().then((m) => m.A) },`,
         `];`,
       ].join('\n'),
     );
@@ -51,9 +51,9 @@ describe('importEagerly', () => {
     ].join('\n');
     expect(importEagerly(code, APP)).toBe(
       [
-        `import * as __eagerImport0 from "./a";import * as __eagerImport1 from "./b";const a = () => Promise.resolve(__eagerImport0);`,
-        `const b = () => Promise.resolve(__eagerImport1);`,
-        'const c = () => Promise.resolve(__eagerImport0);',
+        `import * as __eagerImport0 from "./a";import * as __eagerImport1 from "./b";const a = () => (async () => __eagerImport0)();`,
+        `const b = () => (async () => __eagerImport1)();`,
+        'const c = () => (async () => __eagerImport0)();',
       ].join('\n'),
     );
   });
@@ -76,14 +76,42 @@ describe('importEagerly', () => {
     // `__eagerImport` taken too, both of those prefixes are.
     const code = `const __eagerImport = 1; const _\\u005f_eagerImportX = 2; import('./a');`;
     expect(importEagerly(code, APP)).toBe(
-      `import * as ____eagerImport0 from "./a";const __eagerImport = 1; const _\\u005f_eagerImportX = 2; Promise.resolve(____eagerImport0);`,
+      `import * as ____eagerImport0 from "./a";const __eagerImport = 1; const _\\u005f_eagerImportX = 2; (async () => ____eagerImport0)();`,
+    );
+  });
+
+  it("makes the engine's own promise where a binding shadows Promise", async () => {
+    const code = `function load(Promise) { return import('./a'); }`;
+    const out = importEagerly(code, APP);
+    expect(out).toBe(
+      `import * as __eagerImport0 from "./a";function load(Promise) { return (async () => __eagerImport0)(); }`,
+    );
+    const namespace = Object.freeze({ a: 1 });
+    const load = new Function(
+      '__eagerImport0',
+      `${out.replace(/^import[^;]*;/, '')} return load;`,
+    )(namespace) as (shadow: unknown) => Promise<unknown>;
+    // A parameter named Promise with no `resolve` didn't stop import().
+    const result = load({});
+    expect(result).toBeInstanceOf(Promise);
+    await expect(result).resolves.toBe(namespace);
+  });
+
+  it('keeps the line breaks of a call that spans lines', () => {
+    const code = `const load = () => import(\n  './a'\r\n);\nfoo();\n`;
+    const out = importEagerly(code, APP);
+    expect(out).toBe(
+      `import * as __eagerImport0 from "./a";const load = () => (async () => __eagerImport0)()\n\r\n;\nfoo();\n`,
+    );
+    expect(out.split('\n').indexOf('foo();')).toBe(
+      code.split('\n').indexOf('foo();'),
     );
   });
 
   it('puts the imports after a hashbang, on the line after it', () => {
     const code = `#!/usr/bin/env node\nimport('./a');\n`;
     expect(importEagerly(code, APP)).toBe(
-      `#!/usr/bin/env node\nimport * as __eagerImport0 from "./a";Promise.resolve(__eagerImport0);\n`,
+      `#!/usr/bin/env node\nimport * as __eagerImport0 from "./a";(async () => __eagerImport0)();\n`,
     );
   });
 
@@ -147,7 +175,7 @@ describe('importEagerly', () => {
     it("compiles one whose comment doesn't say to ignore it", () => {
       const code = `const load = () => import(/* webpackChunkName: "a" */ './a');`;
       expect(importEagerly(code, APP)).toBe(
-        `import * as __eagerImport0 from "./a";const load = () => Promise.resolve(__eagerImport0);`,
+        `import * as __eagerImport0 from "./a";const load = () => (async () => __eagerImport0)();`,
       );
     });
 
@@ -174,8 +202,8 @@ describe('importEagerly', () => {
       expect(importEagerly(code, APP)).toBe(
         [
           `import * as __eagerImport0 from "./screen";import * as __eagerImport1 from "./third";const Card_Defer_1_DepsFn = () => [import('./heavy')];`,
-          `export const routes = [{ loadComponent: () => Promise.resolve(__eagerImport0) }];`,
-          `const notDeferFn = function named() { return Promise.resolve(__eagerImport1); };`,
+          `export const routes = [{ loadComponent: () => (async () => __eagerImport0)() }];`,
+          `const notDeferFn = function named() { return (async () => __eagerImport1)(); };`,
         ].join('\n'),
       );
     });

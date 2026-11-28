@@ -89,7 +89,7 @@ const IGNORED = /\bwebpackIgnore\s*:\s*true\b/;
  * loadComponent: () => import('./screens/tabs').then((m) => m.Tabs),
  * // becomes
  * import * as __eagerImport0 from './screens/tabs';
- * loadComponent: () => Promise.resolve(__eagerImport0).then((m) => m.Tabs),
+ * loadComponent: () => (async () => __eagerImport0)().then((m) => m.Tabs),
  * ```
  *
  * Without `experimental_isLazyBundle`, a lazy route is in the main thread's
@@ -179,14 +179,17 @@ export const importEagerly = (code: string, filename: string): string => {
       binding = `${prefix}${bindings.size}`;
       bindings.set(specifier, binding);
     }
-    // `Promise.resolve()`, reached through the global, as the import() it
-    // replaces resolved: a namespace object that exports `then` is a
-    // thenable to both. It's a call of its own each time, so a rejected
-    // `then` or an error the caller throws is still that call's.
+    // An async arrow function that returns the namespace: like import(), it
+    // makes the engine's own promise whatever `Promise` names where the call
+    // is (`function load(Promise) { return import('./a'); }`), and resolves
+    // it with the namespace, which is a thenable to both when the module
+    // exports `then`. The line breaks the call spanned (`import(\n  './a'\n)`)
+    // stay after it, so every line after it stays where it was.
+    const start = call.getStart();
     edits.push({
-      start: call.getStart(),
+      start,
       end: call.end,
-      text: `Promise.resolve(${binding})`,
+      text: `(async () => ${binding})()${code.slice(start, call.end).replace(/[^\r\n\u2028\u2029]+/g, '')}`,
     });
   }
   const imports = [...bindings]

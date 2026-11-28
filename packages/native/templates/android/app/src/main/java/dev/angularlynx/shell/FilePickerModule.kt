@@ -16,7 +16,9 @@ import com.lynx.react.bridge.JavaOnlyArray
 import com.lynx.react.bridge.JavaOnlyMap
 import com.lynx.react.bridge.ReadableMap
 import com.lynx.react.bridge.ReadableType
+import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.io.InputStream
 import java.util.concurrent.Executors
 
 /**
@@ -159,32 +161,28 @@ class FilePickerModule(context: Context, param: Any?) : LynxModule(context, para
     /**
      * The callback's answer for the picked documents: their bytes, names and
      * types, or too-large when they hold more than the runtime can carry,
-     * checked from their sizes before anything is read.
+     * checked from the sizes their providers give before anything is read,
+     * and again as each is read.
      */
     private fun read(uris: List<Uri>, maxBytes: Long): JavaOnlyMap {
         val resolver = mContext.contentResolver
         val documents = uris.map { uri -> Triple(uri, displayName(uri) ?: "file", size(uri)) }
-        if (documents.sumOf { it.third ?: 0L } > maxBytes) {
-            return JavaOnlyMap.from(mapOf("error" to "too-large", "message" to "The files picked are too large."))
-        }
+        if (documents.sumOf { it.third ?: 0L } > maxBytes) return tooLarge()
         val files = JavaOnlyArray()
-        var total = 0L
+        var remaining = maxBytes
         for ((uri, name, _) in documents) {
             val bytes = try {
-                resolver.openInputStream(uri)?.use { it.readBytes() }
+                resolver.openInputStream(uri)?.use { readAtMost(it, remaining) }
             } catch (_: IOException) {
                 null
             } catch (_: SecurityException) {
                 null
-            } catch (_: OutOfMemoryError) {
-                null
             } ?: return failed("$name couldn't be read.")
-            // A provider that doesn't say a document's size still can't hand
-            // over more than the runtime carries.
-            total += bytes.size
-            if (total > maxBytes) {
-                return JavaOnlyMap.from(mapOf("error" to "too-large", "message" to "The files picked are too large."))
-            }
+            // A provider needn't say a document's size, so the check above
+            // can pass one of any size: the read stops past what's left of
+            // the limit instead of holding the whole document first.
+            if (bytes.size > remaining) return tooLarge()
+            remaining -= bytes.size
             files.pushMap(
                 JavaOnlyMap.from(
                     mapOf(
@@ -197,6 +195,27 @@ class FilePickerModule(context: Context, param: Any?) : LynxModule(context, para
         }
         return JavaOnlyMap.from(mapOf("files" to files))
     }
+
+    /**
+     * The stream's bytes, up to [limit] and one more: a result longer than
+     * [limit] says the document is over it, without reading the rest.
+     */
+    private fun readAtMost(input: InputStream, limit: Long): ByteArray {
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(64 * 1024)
+        while (output.size() <= limit) {
+            // Written so a limit of Long.MAX_VALUE can't overflow.
+            val left = limit - output.size()
+            val wanted = if (left >= buffer.size) buffer.size else (left + 1).toInt()
+            val read = input.read(buffer, 0, wanted)
+            if (read < 0) break
+            output.write(buffer, 0, read)
+        }
+        return output.toByteArray()
+    }
+
+    private fun tooLarge() =
+        JavaOnlyMap.from(mapOf("error" to "too-large", "message" to "The files picked are too large."))
 
     private fun write(uri: Uri, bytes: ByteArray): JavaOnlyMap =
         try {

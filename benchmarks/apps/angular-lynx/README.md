@@ -34,7 +34,10 @@ first page has loaded and the list has laid out its rows (the list's
 when the native list asks for them, during the layout after the flush that
 gave it the page). `reportFullyDrawn()` waits for the next flush and has the
 shell emit an `os_signpost` event named `Fully Drawn` in the Points of
-Interest category, once per process.
+Interest category, once per process. The list listens for `layoutcomplete`
+only until then (`watchLayout`): it fires after every layout of the list,
+every few rows while it scrolls, and a template listener would have Angular
+check the list each time.
 
 ## Build-time settings
 
@@ -224,8 +227,13 @@ doesn't. Where AngularLynx can't do the same thing, it does the nearest:
 - **Data.** `HttpClient` and RxJS's `retry` for axios and React Query:
   `PokemonDetails` keeps each Pokémon's detail by id (fresh for 5 minutes,
   refetched by the next row to ask after that, two retries with React Query's
-  1 s and 2 s delays), and the Pokédex keeps its pages while its tab lives,
-  which `<lynx-tab-outlet>` makes the app's life. No 10 s timeout, which axios
+  1 s and 2 s delays). The Pokédex asks it for every row's detail when a page
+  arrives, as the other apps start them: FlatList's window (21 screens)
+  covers the whole page, and ReactLynx renders every row's component then.
+  `*lynxListFor` builds a row only as it nears the screen, so the rows would
+  otherwise fetch their types as the list scrolls (until #856 they did, and
+  the scroll runs before then measured that). The Pokédex keeps its pages
+  while its tab lives, which `<lynx-tab-outlet>` makes the app's life. No 10 s timeout, which axios
   had and HttpClient lacks; the fixture server answers at once.
 - **Favourites** are read from `LynxLocalStorage` (`UserDefaults` in the iOS
   shell) when first needed and merged over the state, as zustand's persist

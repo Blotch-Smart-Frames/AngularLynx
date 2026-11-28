@@ -8,6 +8,7 @@
 // element shows.
 import '@angular/compiler';
 import {
+  ApplicationRef,
   ChangeDetectorRef,
   Component,
   CUSTOM_ELEMENTS_SCHEMA,
@@ -32,7 +33,7 @@ import {
   it,
   vi,
 } from 'vitest';
-import { afterNextFlush } from '../lynx-element/lynx-element';
+import { afterNextFlush, LynxElement } from '../lynx-element/lynx-element';
 import {
   type ListSlot,
   LynxListElement,
@@ -476,6 +477,36 @@ describe('*lynxListFor', () => {
 
     expect(metaIn(show(0)!)).toMatch(/^0\/3 first\s+even$/);
     expect(metaIn(show(2)!)).toMatch(/^2\/3\s+last even$/);
+  });
+
+  it('flushes the whole tree with the cycle after an item, then not for a cycle that changes nothing', async () => {
+    const { fixture } = await render();
+    show(4);
+    flushes.length = 0;
+    const appRef = fixture.componentRef.injector.get(ApplicationRef);
+
+    // Angular runs a cycle like this after most binds: one for the views a
+    // rebound item's `@if` detached, which refreshes no view. The item's own
+    // flush committed the item only, and a bind can write outside it.
+    appRef.tick();
+    expect(flushes).toEqual([{ element: undefined, options: undefined }]);
+
+    flushes.length = 0;
+    appRef.tick();
+    expect(flushes).toEqual([]);
+  });
+
+  it('still flushes after an item what was waiting from before it', async () => {
+    const { fixture } = await render();
+    // A write outside the item, from before it was built, which leaves its
+    // flush to whoever made it.
+    new LynxElement(makeEl('view') as never).setAttribute('id', 'header');
+    show(4);
+    flushes.length = 0;
+
+    fixture.componentRef.injector.get(ApplicationRef).tick();
+
+    expect(flushes).toEqual([{ element: undefined, options: undefined }]);
   });
 
   it('reuses the view of an item native let go of for the next item it asks for', async () => {

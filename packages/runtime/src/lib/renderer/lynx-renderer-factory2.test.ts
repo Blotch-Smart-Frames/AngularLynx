@@ -10,7 +10,10 @@ import {
 } from '@angular/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LynxElement, LynxListElement } from '../lynx-element';
-import { afterNextFlush } from '../lynx-element/lynx-element';
+import {
+  afterNextFlush,
+  scheduleSettleFlush,
+} from '../lynx-element/lynx-element';
 import { InMemoryDocument } from '../testing/in-memory-document';
 import {
   markFirstRenderComplete,
@@ -215,15 +218,76 @@ describe('LynxRendererFactory2', () => {
       // Steady-state path: __FlushElementTree is called after the removal /
       // normalization drains.
       vi.stubGlobal('__FlushElementTree', vi.fn());
+      vi.stubGlobal('__SetAttribute', vi.fn());
+      vi.stubGlobal('__GetElementUniqueID', () => 1);
       // First-render latch is module-scoped in lynx-render-lifecycle; this
       // spec never bootstraps, so flip it manually to enter the steady-state
       // branch.
       markFirstRenderComplete();
 
       const factory = createFactory();
+      factory.begin?.();
+      new LynxElement({} as never).setAttribute('accessibility-label', 'Save');
       factory.end?.();
 
       expect(globalThis.__FlushElementTree).toHaveBeenCalledTimes(1);
+    });
+
+    it('makes no flush for a cycle that wrote nothing', () => {
+      // Angular ends cycles that change nothing as often as ones that do: a
+      // tick for a view detached from the DOM refreshes no view and still
+      // calls begin() and end(). An empty flush still costs Lynx a patch
+      // pass on the engine thread and an operation for the UI thread.
+      vi.stubGlobal('__FlushElementTree', vi.fn());
+      vi.stubGlobal('__SetAttribute', vi.fn());
+      vi.stubGlobal('__GetElementUniqueID', () => 1);
+      markFirstRenderComplete();
+      const factory = createFactory();
+      factory.begin?.();
+      new LynxElement({} as never).setAttribute('accessibility-label', 'Close');
+      factory.end?.();
+      vi.mocked(globalThis.__FlushElementTree).mockClear();
+
+      factory.begin?.();
+      factory.end?.();
+
+      expect(globalThis.__FlushElementTree).not.toHaveBeenCalled();
+    });
+
+    it('flushes for a write that schedules its own flush, made in the cycle', () => {
+      // A style, a class added, a handler or a new element asks for a settle
+      // flush, which a cycle leaves to its end().
+      vi.stubGlobal('__FlushElementTree', vi.fn());
+      markFirstRenderComplete();
+      const factory = createFactory();
+      factory.begin?.();
+      factory.end?.();
+      vi.mocked(globalThis.__FlushElementTree).mockClear();
+
+      factory.begin?.();
+      scheduleSettleFlush();
+      factory.end?.();
+
+      expect(globalThis.__FlushElementTree).toHaveBeenCalledTimes(1);
+    });
+
+    it('flushes for a call waiting for the next flush, with nothing written', async () => {
+      vi.stubGlobal('__FlushElementTree', vi.fn());
+      markFirstRenderComplete();
+      const factory = createFactory();
+      factory.begin?.();
+      factory.end?.();
+      // The settle flush afterNextFlush() schedules runs first otherwise.
+      await Promise.resolve();
+      vi.mocked(globalThis.__FlushElementTree).mockClear();
+      const waiting = vi.fn();
+
+      factory.begin?.();
+      afterNextFlush(waiting);
+      factory.end?.();
+
+      expect(globalThis.__FlushElementTree).toHaveBeenCalledTimes(1);
+      expect(waiting).toHaveBeenCalledTimes(1);
     });
 
     it("sends the cycle's attribute removals before the flush", () => {
@@ -240,8 +304,12 @@ describe('LynxRendererFactory2', () => {
           order.push('removals');
         });
       markFirstRenderComplete();
+      const factory = createFactory();
 
-      createFactory().end?.();
+      factory.begin?.();
+      // A removal set and kept for the end of the cycle is a write.
+      scheduleSettleFlush();
+      factory.end?.();
 
       expect(order).toEqual(['removals', 'flush']);
       commit.mockRestore();

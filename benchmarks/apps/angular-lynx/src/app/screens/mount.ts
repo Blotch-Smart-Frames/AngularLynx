@@ -10,7 +10,8 @@ type MainThreadModule = { invoke(method: string, ...args: unknown[]): unknown };
 
 /**
  * Marks `MountStart`: the shell emits an os_signpost event whose message is
- * `MountStart` (ShellModule.swift's `markEvent`), which the harness reads with
+ * `MountStart` (ShellModule.swift's `markEvent`; on Android, ShellModule.kt
+ * logs `Mark MountStart at <ns> ns`), which the harness reads with
  * the screen's `Fully Drawn` to time the screen apart from the launch before
  * it, as the React Native apps' `MountStart` does. Called from the main
  * thread, where Angular runs, straight to the shell's module (the runtime's
@@ -20,7 +21,9 @@ type MainThreadModule = { invoke(method: string, ...args: unknown[]): unknown };
  */
 const markMountStart = (): void => {
   try {
-    const lynxGlobal = (globalThis as { lynx?: { module?: (name: string) => unknown } }).lynx;
+    const lynxGlobal = (
+      globalThis as { lynx?: { module?: (name: string) => unknown } }
+    ).lynx;
     const module = lynxGlobal?.module?.('AngularLynxShell') as
       | Partial<MainThreadModule>
       | undefined;
@@ -101,7 +104,9 @@ const KINDS: readonly Kind[] = ['view', 'text', 'image'];
 export class Mount {
   /** The query's `kind` and `count` (withComponentInputBinding). */
   readonly kindParam = input<string | undefined>(undefined, { alias: 'kind' });
-  readonly countParam = input<string | undefined>(undefined, { alias: 'count' });
+  readonly countParam = input<string | undefined>(undefined, {
+    alias: 'count',
+  });
 
   protected readonly kind = computed<Kind>(() => {
     const kind = this.kindParam() as Kind;
@@ -113,7 +118,8 @@ export class Mount {
     return Array.from({ length: count > 0 ? count : 1500 }, (_, i) => i);
   });
 
-  protected readonly sprite = (i: number) => `${SPRITE_BASE}/${(i % 300) + 1}.png`;
+  protected readonly sprite = (i: number) =>
+    `${SPRITE_BASE}/${(i % 300) + 1}.png`;
 
   constructor() {
     // Before the template makes anything: the component is created as the

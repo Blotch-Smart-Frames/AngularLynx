@@ -8,7 +8,8 @@ let marked = false;
 /**
  * Marks `MountStart` as the mount screen starts rendering: the shell emits an
  * os_signpost event whose message is `MountStart` (ShellModule.swift's
- * `markEvent`), which the harness reads with the screen's `Fully Drawn` to
+ * `markEvent`; on Android, ShellModule.kt logs `Mark MountStart at <ns> ns`),
+ * which the harness reads with the screen's `Fully Drawn` to
  * time the screen apart from the launch before it, as the React Native apps'
  * `MountStart` does. Once per thread.
  *
@@ -27,7 +28,9 @@ export const markMountStart = (): void => {
   marked = true;
   try {
     if (__MAIN_THREAD__) {
-      const lynxGlobal = (globalThis as { lynx?: { module?: (name: string) => unknown } }).lynx;
+      const lynxGlobal = (
+        globalThis as { lynx?: { module?: (name: string) => unknown } }
+      ).lynx;
       const module = lynxGlobal?.module?.('AngularLynxShell') as
         | Partial<MainThreadModule>
         | undefined;

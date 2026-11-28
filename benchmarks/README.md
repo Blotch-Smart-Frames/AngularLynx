@@ -10,18 +10,18 @@ numbers.
 This folder is outside the npm workspaces on purpose: Expo and the other
 frameworks never touch the monorepo's build.
 
-| Folder | What's in it |
-| --- | --- |
-| [`SPEC.md`](SPEC.md) | What every app does, screen by screen |
-| `apps/react-native` | [Software Mansion's `launchperf-poke-rn`](https://github.com/software-mansion-labs/launchperf-poke-rn) (MIT), with only the API's base URL changed, and the scene life cycle iOS 27 requires: Expo 54, React Native 0.81 |
-| `apps/react-native-0.88` | The same app on Expo SDK 58 / React Native 0.88, the base Angular Native uses |
-| `apps/angular-lynx` | The port to AngularLynx, on this repository's packages |
-| `apps/react-lynx` | The port to ReactLynx, in the same native shell as the AngularLynx app, on iOS and Android |
-| `apps/angular-native` | The port to Angular Native (Expo SDK 58) |
-| `apps/flutter` | The port to Flutter, made with `flutter create`. It draws its own Material and Cupertino widgets rather than UIKit's (its README says which) |
-| `fixtures/` | Recorded PokeAPI responses and sprites, and the server that hands them to the apps |
-| `harness/` | The scripts that launch the apps under Instruments and read the traces, the UI test that scrolls them (`ios-scroll/`), and the ones that launch them on Android with adb (`android_*`) |
-| `results/` | Every run, as CSV |
+| Folder                   | What's in it                                                                                                                                                                                                             |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [`SPEC.md`](SPEC.md)     | What every app does, screen by screen                                                                                                                                                                                    |
+| `apps/react-native`      | [Software Mansion's `launchperf-poke-rn`](https://github.com/software-mansion-labs/launchperf-poke-rn) (MIT), with only the API's base URL changed, and the scene life cycle iOS 27 requires: Expo 54, React Native 0.81 |
+| `apps/react-native-0.88` | The same app on Expo SDK 58 / React Native 0.88, the base Angular Native uses                                                                                                                                            |
+| `apps/angular-lynx`      | The port to AngularLynx, on this repository's packages                                                                                                                                                                   |
+| `apps/react-lynx`        | The port to ReactLynx, in the same native shell as the AngularLynx app, on iOS and Android                                                                                                                               |
+| `apps/angular-native`    | The port to Angular Native (Expo SDK 58)                                                                                                                                                                                 |
+| `apps/flutter`           | The port to Flutter, made with `flutter create`. It draws its own Material and Cupertino widgets rather than UIKit's (its README says which)                                                                             |
+| `fixtures/`              | Recorded PokeAPI responses and sprites, and the server that hands them to the apps                                                                                                                                       |
+| `harness/`               | The scripts that launch the apps under Instruments and read the traces, the UI test that scrolls them (`ios-scroll/`), and the ones that launch them on Android with adb (`android_*`)                                   |
+| `results/`               | Every run, as CSV                                                                                                                                                                                                        |
 
 ## The app
 
@@ -230,6 +230,13 @@ average. Each app is launched once unmeasured first, so the work after an
 install isn't in any run. Android reports a `reportFullyDrawn()` made
 before the first frame at the first frame's time, so the two are equal when
 an app had its screen complete before it let its splash screen go.
+
+A mount screen is also timed from its own `MountStart` mark to its fully
+drawn call (`mount_ms`), which leaves out the emulator's launch before it, as
+on the Simulator (#892). The shell logs both with the device's monotonic
+clock (`SPEC.md`, "Marks"), and `android_mount.py` prints each cost per
+element from each screen's fastest `mount_ms` at the end: (fastest
+5,000-element mount − fastest 1,500-element mount) / 3,500.
 
 The emulator runs on the Mac's cores, so as on the Simulator the harness
 waits for the Mac's load average to be under `--max-load` before each

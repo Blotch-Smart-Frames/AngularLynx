@@ -98,6 +98,14 @@ elements, so the harness can time the screen apart from the launch before it
   (`NativeModules.AngularLynxShell.markEvent('MountStart')`). The harness
   takes the earliest.
 
+On Android, logcat shows neither an instant trace section nor when the app
+called `reportFullyDrawn()` (its `Fully drawn` line gives a time from the
+launch's start, or from the first frame for a call before it), so the Lynx
+shell also logs both marks under its module's name, with the device's
+monotonic clock at the call: `Mark MountStart at <ns> ns` and
+`Fully Drawn at <ns> ns`. `mount_ms` there is from the earliest `MountStart`
+to the first `Fully Drawn` of the same process, as on iOS.
+
 ## Benchmark screens
 
 Instruments launches an app with no URL, so a benchmark screen is chosen at

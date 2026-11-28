@@ -21,6 +21,16 @@ Android calls a cold launch, and what iOS calls a warm one). From each:
   start as TotalTime. Android reports a call made before the first frame at
   the first frame's time, so the two are equal when the app's screen was
   complete before its first frame: the screen can't be seen any sooner.
+- mount_ms: from the app's `MountStart` mark to its call to report the
+  screen fully drawn, on a mount screen: how long the screen took to build,
+  without the launch before it, as ios_launch.py's mount_ms. The shells log
+  both (ShellModule.kt's markEvent and reportFullyDrawn) with the
+  device's monotonic clock in the message, since the system's `Fully drawn`
+  line gives a time from the launch's start, on no clock a mark shares. It
+  ends at the call, as the iOS signpost does, not at the frame that shows
+  it. Only the launched app's own lines count, by the process ID
+  `dumpsys meminfo` gives with its memory. Empty for a screen without the
+  mark (the Pokédex), or an app whose shell is from before the log lines.
 - memory_mb / rss_mb: `dumpsys meminfo`'s TOTAL PSS and TOTAL RSS for the
   app's process, read --memory-after seconds after the launch (6 by
   default), a few seconds after it's drawn. PSS divides each shared page
@@ -66,6 +76,7 @@ FIELDS = [
     "launch_state",
     "first_frame_ms",
     "fully_drawn_ms",
+    "mount_ms",
     "memory_mb",
     "rss_mb",
     "thermal_state",
@@ -77,6 +88,11 @@ FIELDS = [
 # ActivityTaskManager's line once an activity reports itself fully drawn:
 # "Fully drawn com.example/dev.angularlynx.shell.MainActivity: +1s234ms".
 FULLY_DRAWN = re.compile(r"Fully drawn (\S+?)/\S+: \+(?:(\d+)s)?(\d+)ms")
+# The shell's own lines (ShellModule.kt), in logcat's brief format, with the
+# app's process ID: "I/AngularLynxShell( 1234): Mark MountStart at 5 ns", or
+# "...: Fully Drawn at 9 ns" for its reportFullyDrawn call.
+SHELL_MARK = re.compile(r"/AngularLynxShell\(\s*(\d+)\): (?:Mark (.+)|Fully Drawn) at (\d+) ns")
+MOUNT_START = "MountStart"
 
 
 def find_adb():
@@ -143,35 +159,68 @@ class Device:
         return match.group(1) if match else ""
 
     def memory(self, package):
-        """(PSS, RSS) of the package's process in KB, from dumpsys meminfo,
-        or None when it isn't running."""
+        """(PSS, RSS, pid) of the package's process, the sizes in KB, from
+        dumpsys meminfo ("** MEMINFO in pid 1234 [package] **"), or None when
+        it isn't running."""
         output = self.shell("dumpsys", "meminfo", package, check=False)
         pss = re.search(r"TOTAL PSS:\s+(\d+)", output)
         rss = re.search(r"TOTAL RSS:\s+(\d+)", output)
+        pid = re.search(r"MEMINFO in pid (\d+)", output)
         if not pss:
             return None
-        return int(pss.group(1)), int(rss.group(1)) if rss else None
+        return int(pss.group(1)), int(rss.group(1)) if rss else None, pid.group(1) if pid else None
+
+
+def mount_ms(marks, pid):
+    """The mount's duration, as a CSV cell, from the shell marks logcat had
+    during a launch ((pid, name, ns), name None for the fully drawn call) and
+    the launched app's process ID: from its earliest MountStart, which a
+    ReactLynx screen marks from each of its threads (the one that renders it
+    first starts the screen), to its first fully drawn call. Only the
+    launched process's count: another app in the same shell, or the one
+    stopped before, can log a whole mount of its own meanwhile. Empty
+    without the process ID or both marks, or when the screen was drawn
+    before it started (a mark from somewhere else)."""
+    if pid is None:
+        return ""
+    marks = [(name, ns) for p, name, ns in marks if p == pid]
+    end = next((ns for name, ns in marks if name is None), None)
+    if end is None:
+        return ""
+    starts = [ns for name, ns in marks if name == MOUNT_START]
+    if not starts or min(starts) > end:
+        return ""
+    return f"{(end - min(starts)) / 1e6:.1f}"
 
 
 class FullyDrawnWatcher:
-    """Follows logcat for the system's `Fully drawn` lines. One logcat for
-    the whole session rather than one per launch: starting adb's logcat
-    takes time the launch would share the emulator's cores with."""
+    """Follows logcat for the system's `Fully drawn` lines and the shell's
+    marks. One logcat for the whole session rather than one per launch:
+    starting adb's logcat takes time the launch would share the emulator's
+    cores with."""
 
     def __init__(self, device):
         device.run("logcat", "-c", check=False)
         self.process = subprocess.Popen(
-            [device.adb, "-s", device.serial, "logcat", "-v", "brief", "-e", "Fully drawn"],
+            # -e matches each line's message, so the shell's lines are told
+            # from the system's by their tag below.
+            [device.adb, "-s", device.serial, "logcat", "-v", "brief", "-e", "Fully [dD]rawn|Mark .+ at [0-9]+ ns"],
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             text=True,
         )
         self.condition = threading.Condition()
         self.seen = []
+        self.marks = []
         threading.Thread(target=self.follow, daemon=True).start()
 
     def follow(self):
         for line in self.process.stdout:
+            shell = SHELL_MARK.search(line)
+            if shell:
+                with self.condition:
+                    self.marks.append((shell.group(1), shell.group(2), int(shell.group(3))))
+                continue
             match = FULLY_DRAWN.search(line)
             if match:
                 ms = int(match.group(2) or 0) * 1000 + int(match.group(3))
@@ -182,20 +231,25 @@ class FullyDrawnWatcher:
     def mark(self):
         """Where the next launch's lines start."""
         with self.condition:
-            return len(self.seen)
+            return len(self.seen), len(self.marks)
 
     def wait(self, package, since, deadline):
         """The package's fully drawn time after `since`, waiting until the
         monotonic `deadline`, or None."""
         with self.condition:
             while True:
-                for name, ms in self.seen[since:]:
+                for name, ms in self.seen[since[0]:]:
                     if name == package:
                         return ms
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     return None
                 self.condition.wait(remaining)
+
+    def shell_marks(self, since):
+        """The shell's marks after `since`."""
+        with self.condition:
+            return list(self.marks[since[1]:])
 
     def close(self):
         self.process.terminate()
@@ -251,12 +305,17 @@ def launch(device, watcher, package, activity, seconds, memory_after, on_start):
     rest = started + seconds - time.monotonic()
     if rest > 0:
         time.sleep(rest)
+    # After the rest of the launch, by when the shell's lines have long
+    # arrived: the app logs them as it calls, before the system's line.
+    # The process ID from the memory reading, which dumpsys gives with it.
+    mount = mount_ms(watcher.shell_marks(since), memory[2] if memory else None)
     device.shell("am", "force-stop", package)
     kb = lambda value: f"{value / 1024:.1f}" if value else ""
     return {
         "launch_state": values.get("LaunchState", ""),
         "first_frame_ms": values.get("TotalTime", ""),
         "fully_drawn_ms": str(fully_drawn) if fully_drawn is not None else "",
+        "mount_ms": mount,
         "memory_mb": kb(memory[0]) if memory else "",
         "rss_mb": kb(memory[1]) if memory else "",
     }
@@ -381,6 +440,7 @@ def main():
                 print(
                     f"{app:>18} run {run:>2}: first frame {values.get('first_frame_ms') or '?':>5} ms, "
                     f"fully drawn {values.get('fully_drawn_ms') or '?':>5} ms, "
+                    f"mount {values.get('mount_ms') or '-':>7} ms, "
                     f"PSS {values.get('memory_mb') or '?'} MB, load {row['host_load']}",
                     flush=True,
                 )

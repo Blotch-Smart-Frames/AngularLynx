@@ -71,6 +71,15 @@ export type NativeAppOptions = {
    */
   readonly calendar?: boolean;
   /**
+   * Whether the app offers Sign in with Apple's native sheet with the
+   * runtime's `LynxAppleSignIn` (`ASAuthorizationAppleIDProvider`). iOS only:
+   * Android has no native sheet, and signs in with Apple's web flow through
+   * `LynxWebAuthSession`. Off by default, which leaves the native module and
+   * the `com.apple.developer.applesignin` entitlement out of the app: a free
+   * Personal Team can't sign that entitlement.
+   */
+  readonly signInWithApple?: boolean;
+  /**
    * Whether the app reads the phone's motion sensors and compass, and hears
    * it shaken, with the runtime's `LynxMotion`: Core Motion and
    * `CLLocationManager`'s heading on iOS, and `SensorManager` on Android.
@@ -340,6 +349,7 @@ export type ResolvedApp = {
   readonly fileSharing: boolean;
   readonly storeReview: boolean;
   readonly calendar: boolean;
+  readonly signInWithApple: boolean;
   readonly motion: boolean;
   readonly deepLinkSchemes: readonly string[];
   /** {@link NativeAppOptions.appLinkDomains} in lowercase, each once. */
@@ -527,6 +537,14 @@ export const resolveAppOptions = (
     'to add events to the calendar with LynxCalendar',
   );
 
+  // An entitlement too, so a string such as "false" would also make a
+  // Personal Team's signing fail.
+  const signInWithApple = resolveSwitch(
+    'signInWithApple',
+    rawOptions.signInWithApple,
+    "to offer Sign in with Apple's native sheet with LynxAppleSignIn",
+  );
+
   // As for calendar.
   const motion = resolveSwitch(
     'motion',
@@ -639,6 +657,7 @@ export const resolveAppOptions = (
     fileSharing,
     storeReview,
     calendar,
+    signInWithApple,
     motion,
     deepLinkSchemes,
     appLinkDomains,

@@ -304,6 +304,11 @@
       "default": false,
       "description": "Whether the app adds events to the person's calendar with LynxCalendar, through the system's event editor (EventKitUI's on iOS 17 and later, the calendar app's on Android), which needs no calendar permission. false leaves the native module out of both apps."
     },
+    "signInWithApple": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the app offers Sign in with Apple's native sheet with LynxAppleSignIn (ASAuthorizationAppleIDProvider). iOS only: on Android, sign in with Apple's web flow through LynxWebAuthSession. true adds the com.apple.developer.applesignin entitlement, which a free Personal Team can't sign; false leaves it and the native module out of the app."
+    },
     "motion": {
       "type": "boolean",
       "default": false,

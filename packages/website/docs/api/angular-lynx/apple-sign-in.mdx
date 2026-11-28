@@ -1,0 +1,223 @@
+# LynxAppleSignIn
+
+Signs the person in with Sign in with Apple's own sheet on iOS, and gives you the identity token and authorization code your server checks with Apple. `import { LynxAppleSignIn, AppleSignInError } from '@blotch/angular-lynx';`
+
+**App Review usually asks for it beside other social logins.** Under Apple's guideline 4.8, an app whose main login is Google, Facebook or another third-party service must also offer a login that limits what it collects to a name and email, lets the person hide their email, and doesn't track them for ads. Sign in with Apple meets that. The guideline has exceptions, such as an app that signs in only with its own accounts, or with a company's. The native sheet is the one people expect on iOS: Face ID, then done, with no web page.
+
+The sheet is iOS's alone. In the Android app, sign in with Apple's web flow through [`LynxWebAuthSession`](/api/angular-lynx/web-auth-session) instead, and use [`isAvailable()`](#isavailable) to choose. The [web preview](/guide/glossary#web-preview) and [Lynx Explorer](/guide/glossary#lynx-explorer) have neither.
+
+## Turn it on
+
+Set `signInWithApple` in your build options:
+
+```json title="angular.json"
+"options": {
+  "signInWithApple": true,
+  "ios": { "teamId": "ABCDE12345" }
+}
+```
+
+This adds the `com.apple.developer.applesignin` entitlement and the native code behind the sheet to the iOS app. Without it, both are left out, and `signIn()` rejects with `unsupported`.
+
+**Signing the entitlement needs a team in the paid Apple Developer Program.** A free Personal Team can't sign it, and the build says so. Xcode turns on Sign in with Apple for the App ID when it makes the provisioning profile. The Simulator app needs no team.
+
+## Usage
+
+```typescript
+import { Component, inject, signal } from '@angular/core';
+import {
+  AppleSignInError,
+  LYNX_ELEMENTS,
+  LynxAppleSignIn,
+} from '@blotch/angular-lynx';
+import { Auth } from './auth';
+
+@Component({
+  selector: 'app-sign-in',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    @if (appleAvailable()) {
+      <view (bindtap)="signInWithApple()">
+        <text>Sign in with Apple</text>
+      </view>
+    }
+  `,
+})
+export class SignIn {
+  readonly #appleSignIn = inject(LynxAppleSignIn);
+  readonly #auth = inject(Auth);
+  readonly appleAvailable = signal(false);
+
+  constructor() {
+    void this.#appleSignIn
+      .isAvailable()
+      .then((available) => this.appleAvailable.set(available));
+  }
+
+  async signInWithApple() {
+    try {
+      const result = await this.#appleSignIn.signIn({
+        scopes: ['email', 'fullName'],
+      });
+      // The server verifies the token, and keeps the email and name: Apple
+      // sends them on the first sign-in only.
+      await this.#auth.signInWithApple(result);
+    } catch (error) {
+      if (error instanceof AppleSignInError && error.code === 'canceled') {
+        return;
+      }
+      throw error;
+    }
+  }
+}
+```
+
+`Auth` stands for the app's own service, which sends the result to your server.
+
+**Draw the button as Apple's guidelines ask**: the Apple logo, "Sign in with Apple" or "Continue with Apple", in black, white or white with an outline, at least as prominent as the other logins. App Review checks it. See Apple's [Sign in with Apple guidelines](https://developer.apple.com/design/human-interface-guidelines/sign-in-with-apple).
+
+### Check the result on your server
+
+The app can't trust what it gets back by itself. Send `identityToken` and `authorizationCode` to your server, which:
+
+1. Verifies `identityToken`, a JWT, against Apple's public keys (`https://appleid.apple.com/auth/keys`): its `iss` is `https://appleid.apple.com`, its `aud` your app ID, and its `nonce` the hash of yours, if you sent one. The token's `sub` is the person's ID: key the account on it, never on a `user` the app sends alongside, which anyone can change.
+2. Exchanges `authorizationCode` at `https://appleid.apple.com/auth/token` for a refresh token. Keep it: revoking it is how the server deletes the person's Apple sign-in when they delete their account, which guideline 5.1.1(v) requires.
+
+Services such as Firebase Authentication and Supabase do the first: pass them the token, with the raw nonce if you sent one. The user they return has their own ID, which they link to the token's `sub`, so key the account on theirs. They don't keep Apple's refresh token, so plan the second yourself. Firebase, for one, revokes with `revokeToken(withAuthorizationCode:)`, which needs a fresh code from a new sign-in. Check your service's account deletion guide.
+
+### Use a nonce
+
+A nonce ties the identity token to one sign-in, so a token someone copies can't be replayed. Make a random string, pass its SHA-256 as `nonce`, and send the string itself to the server, which checks that the token's `nonce` claim is its hash. That's the form Firebase and Supabase take.
+
+### Check the sign-in at launch
+
+The person can stop using their Apple ID with your app in Settings. Apple asks apps to check at launch, and sign the person out when it's `revoked`. The check takes Apple's `user` from the sign-in, so keep it on the device even when your account uses another ID, such as a Firebase UID:
+
+```typescript
+const state = await appleSignIn.getCredentialState(appleUser);
+if (state === 'revoked' || state === 'notFound') {
+  await auth.signOut();
+}
+```
+
+## Platforms
+
+| Platform                                       | `signIn()`                                                                                                                                                                                 |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| iOS, with `signInWithApple`                    | Apple's sheet (`ASAuthorizationAppleIDProvider`), over the app. On a phone or Simulator signed in to no Apple Account, iOS offers Settings instead, and closing that rejects with `failed` |
+| iOS, without `signInWithApple`                 | Rejects with `unsupported`                                                                                                                                                                 |
+| Android                                        | Rejects with `unsupported`. Use Apple's web flow with [`LynxWebAuthSession`](/guide/web-sign-in) and a Services ID                                                                         |
+| [Web preview](/guide/glossary#web-preview)     | Rejects with `unsupported`                                                                                                                                                                 |
+| Unit tests with the testing library            | What [`setAppleSignInResult()`](/api/testing-library#setapplesigninresult) says, and `canceled` until a spec says                                                                          |
+| [Lynx Explorer](/guide/glossary#lynx-explorer) | Rejects with `unsupported`                                                                                                                                                                 |
+
+## API
+
+### `LynxAppleSignIn`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxAppleSignIn {
+  isAvailable(): Promise<boolean>;
+  signIn(options?: AppleSignInOptions): Promise<AppleSignInResult>;
+  getCredentialState(user: string): Promise<AppleCredentialState>;
+}
+```
+
+### `isAvailable()`
+
+Resolves `true` where `signIn()` opens the native sheet: an iOS app built with `signInWithApple`. `false` everywhere else. It never rejects.
+
+### `signIn()`
+
+Opens the sheet and resolves with the credential once the person signs in. Rejects with an [`AppleSignInError`](#applesigninerror).
+
+```typescript
+type AppleSignInOptions = {
+  /** What to ask the person to share. None by default. */
+  scopes?: readonly ('email' | 'fullName')[];
+  /** Put in the identity token's `nonce` claim as given. */
+  nonce?: string;
+  /** Returned as the result's `state`, unchanged. */
+  state?: string;
+};
+
+type AppleSignInResult = {
+  /** The person's ID for your team: the same on every sign-in and device. */
+  user: string;
+  /** A JWT signed by Apple, for your server to verify. */
+  identityToken: string;
+  /** A short-lived code your server exchanges for a refresh token. */
+  authorizationCode: string;
+  /** The first sign-in with the `email` scope only. Can be a private relay address. */
+  email?: string;
+  /** The first sign-in with the `fullName` scope only, with the parts the person shared. */
+  fullName?: AppleSignInFullName;
+  state?: string;
+  /** Whether Apple thinks a real person signed in. */
+  realUserStatus: 'likelyReal' | 'unknown' | 'unsupported';
+};
+
+type AppleSignInFullName = {
+  givenName?: string;
+  familyName?: string;
+  middleName?: string;
+  nickname?: string;
+  namePrefix?: string;
+  nameSuffix?: string;
+};
+```
+
+**Apple shares the email and name once**, on the person's first sign-in to your app. Later sign-ins return `user` and the tokens alone, so save them the first time. Key the account on this ID, not the email, which the person can hide behind a relay address, and change. Your server reads the ID from the verified token's `sub`, which equals `user`.
+
+### `getCredentialState()`
+
+Asks Apple whether `user`, from an earlier sign-in, is still signed in. Rejects with an `AppleSignInError`: `unsupported` where `signIn()` would.
+
+```typescript
+type AppleCredentialState =
+  | 'authorized' // Still signed in
+  | 'revoked' // The person stopped using their Apple ID with your app
+  | 'notFound' // No sign-in for it on this device
+  | 'transferred'; // The app moved to another developer team
+```
+
+### `AppleSignInError`
+
+```typescript
+class AppleSignInError extends Error {
+  readonly code: 'canceled' | 'unsupported' | 'failed';
+}
+```
+
+| `code`        | Why                                                                                                                                                                                                                                               |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `canceled`    | The person closed the sheet                                                                                                                                                                                                                       |
+| `unsupported` | The host has no native sheet: Android, the web preview, Lynx Explorer, or an iOS app built without `signInWithApple`                                                                                                                              |
+| `failed`      | Apple couldn't sign the person in, a sign-in was already open, or Apple returned no token. The message ends with Apple's error code: `1000` also comes from a phone signed in to no Apple Account, and from an app signed without the entitlement |
+
+## Testing
+
+The testing library has a fake of the native module. Until a spec says how the person signs in, they close the sheet, and `signIn()` rejects with `canceled`:
+
+```typescript
+import {
+  render,
+  setAppleSignInResult,
+  screen,
+  fireEvent,
+  waitForUpdate,
+} from '@blotch/angular-lynx-testing-library';
+
+setAppleSignInResult({ user: 'u1', email: 'ada@example.com' });
+await render(SignIn);
+fireEvent.tap(screen.getByText('Sign in with Apple'));
+await waitForUpdate();
+```
+
+See [`setAppleSignInResult()`](/api/testing-library#setapplesigninresult) for the rest: failing a sign-in, taking the sheet away as on Android, and a user's credential state.
+
+## Related
+
+- [Sign in with a web page](/guide/web-sign-in): Apple's web flow, for Android
+- [Native apps](/guide/native-apps): the `signInWithApple` option and the other build options

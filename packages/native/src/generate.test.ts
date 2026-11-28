@@ -171,6 +171,26 @@ describe('prepareProject', () => {
     }
   });
 
+  it('brings the Sign in with Apple module and its entitlement back once the app sets signInWithApple, and drops them once it stops', () => {
+    const module = path.join(workDir, 'ios', 'App/AppleSignInModule.swift');
+    const entitlements = path.join(workDir, 'ios', 'Config/App.entitlements');
+    expect(prepare('ios').regenerated).toBe(true);
+    expect([existsSync(module), existsSync(entitlements)]).toEqual([
+      false,
+      false,
+    ]);
+    expect(prepare('ios', { signInWithApple: true }).regenerated).toBe(true);
+    expect([existsSync(module), existsSync(entitlements)]).toEqual([
+      true,
+      true,
+    ]);
+    expect(prepare('ios').regenerated).toBe(true);
+    expect([existsSync(module), existsSync(entitlements)]).toEqual([
+      false,
+      false,
+    ]);
+  });
+
   it('brings the motion module back once the app sets motion, and drops it once it stops', () => {
     for (const [platform, module] of [
       ['ios', 'App/MotionModule.swift'],

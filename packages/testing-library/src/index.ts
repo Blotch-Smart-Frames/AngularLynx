@@ -46,6 +46,18 @@ export type {
   CalendarSheetEvent,
   CalendarSheetFailure,
 } from './calendar.js';
+export {
+  appleSignInRequests,
+  setAppleCredentialState,
+  setAppleSignInAvailable,
+  setAppleSignInError,
+  setAppleSignInResult,
+} from './apple-sign-in.js';
+export type {
+  AppleSignInRequest,
+  FakeAppleCredentialState,
+  FakeAppleSignInResult,
+} from './apple-sign-in.js';
 export { screen, within, getQueriesForElement, queries } from './queries.js';
 export type {
   BoundAccessibilityLabelQueries,

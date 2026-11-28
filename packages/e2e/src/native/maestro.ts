@@ -380,6 +380,15 @@ export const FLOWS: readonly Flow[] = [
     only: { host: 'shell' },
   },
   {
+    file: 'apple-sign-in.yaml',
+    description:
+      "opens Sign in with Apple's sheet, which iOS answers with its Apple Account alert",
+    // Only the app's own iOS build has the module, and only with
+    // angular.json's signInWithApple, which the harness sets. Lynx Explorer
+    // and Android have none.
+    only: { platform: 'ios', host: 'shell' },
+  },
+  {
     file: 'motion.yaml',
     description: 'reads the motion sensors, which only the emulator has',
     // Only the app's own builds have the motion module, and only with

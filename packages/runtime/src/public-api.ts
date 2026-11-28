@@ -282,6 +282,16 @@ export type {
   CalendarEvent,
   CalendarSheetResult,
 } from './lib/calendar';
+export { AppleSignInError, LynxAppleSignIn } from './lib/apple-sign-in';
+export type {
+  AppleCredentialState,
+  AppleRealUserStatus,
+  AppleSignInErrorCode,
+  AppleSignInFullName,
+  AppleSignInOptions,
+  AppleSignInResult,
+  AppleSignInScope,
+} from './lib/apple-sign-in';
 export { LynxBackButton } from './lib/back-button';
 export { BiometricsError, LynxBiometrics } from './lib/biometrics';
 export type {

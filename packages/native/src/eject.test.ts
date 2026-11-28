@@ -128,6 +128,18 @@ describe('renderEjectedProject', () => {
     }
   });
 
+  // Sign in with Apple is iOS's alone: the Android shell has no module.
+  it('has the Sign in with Apple module and its entitlement only when the app sets signInWithApple', () => {
+    const ejected = render('ios');
+    expect(ejected.has('App/AppleSignInModule.swift')).toBe(false);
+    expect(ejected.has('Config/App.entitlements')).toBe(false);
+    const signingIn = render('ios', undefined, { signInWithApple: true });
+    expect(signingIn.has('App/AppleSignInModule.swift')).toBe(true);
+    expect(signingIn.get('Config/App.entitlements')?.toString()).toContain(
+      '<key>com.apple.developer.applesignin</key>',
+    );
+  });
+
   // As with storeReview: an ejected project without motion has no module to
   // turn on later.
   it('has the motion module only when the app sets motion', () => {

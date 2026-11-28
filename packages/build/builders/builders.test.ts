@@ -1360,6 +1360,7 @@ describe('unit-test builder', () => {
       'fileSharing',
       'storeReview',
       'calendar',
+      'signInWithApple',
       'motion',
       'deepLinkSchemes',
       'appLinkDomains',

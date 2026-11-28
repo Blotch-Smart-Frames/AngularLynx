@@ -1,9 +1,11 @@
 import { Component, inject, signal, type OnInit } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
+  AppleSignInError,
   BiometricsError,
   CalendarError,
   LYNX_ELEMENTS,
+  LynxAppleSignIn,
   LynxBiometrics,
   LynxCalendar,
   LynxClipboard,
@@ -135,6 +137,18 @@ const collectedFromArrays = async (): Promise<string> => {
  * shows how the editor closed (`saved`, `canceled` or `unknown`), or the
  * CalendarError's code: `unavailable` before iOS 17, on an Android phone
  * without a calendar app, and in Lynx Explorer.
+ *
+ * "Apple", on the last row, shows whether LynxAppleSignIn has the native
+ * sheet once the page opens (issue #932): `native` in the iOS app, which has
+ * the module and its entitlement because the harness sets angular.json's
+ * `signInWithApple`, and `none` on Android and in Lynx Explorer. It's below
+ * the Android emulator's screen, where no other row has room for it: a
+ * wrapped row pushes Biometrics off the screen, and Android has no sheet to
+ * check. A tap opens
+ * the sheet and shows how it ended: the error's code, with "(held)" when the
+ * request stayed open for 2 seconds or more. On a Simulator signed in to no
+ * Apple Account that's `failed (held)` once iOS's alert closes, and
+ * `unsupported` without the module.
  */
 @Component({
   selector: 'app-storage',
@@ -193,6 +207,11 @@ const collectedFromArrays = async (): Promise<string> => {
         >Calendar: {{ calendar() }}</text
       >
     </view>
+    <view style="display: flex; flex-direction: row; margin-top: 8px;">
+      <text flatten="false" (bindtap)="signInWithApple()"
+        >Apple: {{ apple() }}</text
+      >
+    </view>
   `,
 })
 export class StorageRoute implements OnInit {
@@ -210,8 +229,13 @@ export class StorageRoute implements OnInit {
   readonly rating = signal('tap');
   readonly #calendar = inject(LynxCalendar);
   readonly calendar = signal('tap');
+  readonly #appleSignIn = inject(LynxAppleSignIn);
+  readonly apple = signal('…');
 
   ngOnInit(): void {
+    void this.#appleSignIn
+      .isAvailable()
+      .then((available) => this.apple.set(available ? 'native' : 'none'));
     void this.#biometrics
       .availability()
       .then(({ type, enrolled }) =>
@@ -278,6 +302,23 @@ export class StorageRoute implements OnInit {
         this.files.set(
           error instanceof FilePickerError ? error.code : String(error),
         ),
+    );
+  }
+
+  signInWithApple(): void {
+    this.apple.set('…');
+    const start = Date.now();
+    this.#appleSignIn.signIn({ scopes: ['email'] }).then(
+      () => this.apple.set('signed in'),
+      (error: unknown) => {
+        const code =
+          error instanceof AppleSignInError ? error.code : String(error);
+        // "held" when the request stayed open for a while, as it does
+        // behind iOS's alert until the flow closes it. One iOS refused at
+        // once, as it refuses an app without the entitlement, shows the
+        // code alone.
+        this.apple.set(Date.now() - start >= 2000 ? `${code} (held)` : code);
+      },
     );
   }
 

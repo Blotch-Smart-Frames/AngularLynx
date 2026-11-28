@@ -31,6 +31,7 @@ import { installCalendarModule } from './calendar.js';
 import { installLinkingModule } from './linking.js';
 import { installShortcutsModule } from './shortcuts.js';
 import { installStoreReviewModule } from './store-review.js';
+import { installAppleSignInModule } from './apple-sign-in.js';
 import { installMotionModule } from './motion.js';
 
 // ─── CSS fetch intercept ─────────────────────────────────────────────────────
@@ -130,6 +131,9 @@ const frameOnInstalledTimers = (threadGlobals: any): void => {
   // LynxCalendar's events, which calendarEvents() lists and
   // answerCalendarSheet() closes the editor for (see calendar.ts).
   installCalendarModule(threadGlobals);
+  // LynxAppleSignIn's sign-ins, which setAppleSignInResult() and the other
+  // setters in apple-sign-in.ts steer.
+  installAppleSignInModule(threadGlobals);
   // LynxMotion's sensors, which emitMotion(), setHeading() and
   // shakeDevice() sample (see motion.ts).
   installMotionModule(threadGlobals);

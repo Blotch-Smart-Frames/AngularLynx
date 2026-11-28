@@ -73,6 +73,7 @@ async signIn(): Promise<string | null> {
 - **Android** opens the app from the redirect like any link: add the scheme to `deepLinkSchemes` in the `build` target's options in `angular.json`. iOS needs nothing.
 - **`ephemeral: true`** signs in without the browser's cookies and keeps none (iOS only; Custom Tabs share Chrome's).
 - **Rejects with `WebAuthSessionError`**, whose `code` is `canceled` (closed, or declined on iOS), `unavailable` or `failed` (couldn't open the page, or a sign-in is already open).
+- **Apple on iOS** has a native sheet: `LynxAppleSignIn`, opt-in with `"signInWithApple": true` (see "Sign in with Apple" in [lynx-gotchas.md](lynx-gotchas.md)). Use this web flow for Apple on Android, where `LynxAppleSignIn.signIn()` rejects with `unsupported`.
 - **`unavailable` everywhere but `ng build --platform` apps:** Lynx Explorer, the web preview and tests have no native module for it. Your own native app (or an ejected project from before it) registers an `AngularLynxWebAuth` module itself: see the website's "Embed in a Native App" guide.
 
 ## Open links outside the app

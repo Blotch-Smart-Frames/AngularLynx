@@ -1,7 +1,9 @@
 import { clsx, type ClassValue } from 'clsx';
 import { createTailwindMerge } from 'tailwind-merge';
 
-import { createComponentConfig } from './cn-config';
+// With its extension: apps' bundlers resolve either, but Node's own ESM
+// loader, which `import('@blotch/dolan/utils/cn')` uses, needs it.
+import { createComponentConfig } from './cn-config.js';
 
 /**
  * Makes a `cn()` with a cache and class map of its own. Apps use `cn`; this

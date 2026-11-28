@@ -1,0 +1,113 @@
+# LynxBarcodeScanner
+
+Reads a QR code or a barcode with the camera, using the phone's own scanner. `import { LynxBarcodeScanner, BarcodeScannerError, BARCODE_FORMATS, type BarcodeFormat, type BarcodeScan, type BarcodeScanOptions, type BarcodeScannerErrorCode } from '@blotch/angular-lynx';`
+
+## Turn it on
+
+The scanner is opt-in. Set `permissions.camera` in the build target's options in angular.json, with the reason iOS shows when it asks for the camera:
+
+```jsonc
+"permissions": { "camera": "Scan your ticket" }
+```
+
+An app without it has no scanner code at all, on iOS or Android, and `scan()` rejects with `unavailable`. That's on purpose: App Store Connect flags an app whose code uses the camera without saying why, and on Android the scanner brings in Google Play services' libraries.
+
+## Usage
+
+```typescript
+const scanner = inject(LynxBarcodeScanner);
+
+try {
+  const code = await scanner.scan({ formats: ['qr'] });
+  // { format: 'qr', value: 'WIFI:S:Home;T:WPA;P:…;;' }
+  this.ticket.set(code.value);
+} catch (error) {
+  if (error instanceof BarcodeScannerError && error.code === 'canceled') return;
+  throw error;
+}
+```
+
+## API
+
+### `LynxBarcodeScanner`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxBarcodeScanner {}
+```
+
+Opens the platform's own scanner over the app, and closes it at the first code it reads, so the app doesn't draw a camera screen:
+
+- **iOS:** VisionKit's `DataScannerViewController`, in a sheet with a Cancel button. It needs iOS 16 and an A12 chip or later (iPhone XS and newer). iOS asks for the camera the first time, with `permissions.camera`'s reason.
+- **Android:** Google's code scanner, which runs in Google Play services. Play services shows the camera and hands back only the code, so the app needs no camera permission and Android doesn't ask. Play services downloads the scanner the first time any app asks for it; a scan before that finishes rejects with `unavailable`.
+
+Only the apps `--platform` builds, with `ng build` or `ng serve`, have it; elsewhere, such as Lynx Explorer, the web preview, the iOS Simulator (which has no camera) and unit tests, `scan()` rejects with `unavailable`. Specs answer scans with the testing library's [`queueBarcodeScan()`](/api/testing-library#queuebarcodescan).
+
+### `LynxBarcodeScanner.scan()`
+
+```typescript
+scan(options?: BarcodeScanOptions): Promise<BarcodeScan>;
+```
+
+Opens the scanner and resolves with the first code it reads. Rejects with a [`BarcodeScannerError`](#barcodescannererror). One scan can be open at a time: starting another while one is open rejects with `failed`.
+
+### `BarcodeScanOptions`
+
+```typescript
+type BarcodeScanOptions = {
+  readonly formats?: readonly BarcodeFormat[];
+};
+```
+
+| Option    | Description                                                                                                                                                                          |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `formats` | The kinds of code to read; the scanner ignores any other. Every format (`BARCODE_FORMATS`) when it's left out or empty. Name the ones you expect: fewer read faster and misread less |
+
+### `BarcodeScan`
+
+```typescript
+type BarcodeScan = {
+  readonly format: BarcodeFormat;
+  readonly value: string;
+};
+```
+
+`value` is what the code holds, as text: a URL, a ticket number, a Wi-Fi network's `WIFI:S:…;;`. Your app reads what it means.
+
+### `BarcodeFormat`
+
+```typescript
+type BarcodeFormat =
+  | 'qr'
+  | 'aztec'
+  | 'dataMatrix'
+  | 'pdf417'
+  | 'ean13'
+  | 'ean8'
+  | 'upcA'
+  | 'upcE'
+  | 'code39'
+  | 'code93'
+  | 'code128'
+  | 'itf'
+  | 'codabar';
+```
+
+The codes both platforms' scanners read. `itf` is ITF-14 and interleaved 2 of 5. iOS reads a UPC-A as an EAN-13 that starts with 0: with `upcA` in `formats`, such a code comes back as `upcA` with its 12 digits.
+
+### `BarcodeScannerError`
+
+```typescript
+class BarcodeScannerError extends Error {
+  readonly code: BarcodeScannerErrorCode;
+}
+
+type BarcodeScannerErrorCode = 'canceled' | 'unavailable' | 'denied' | 'failed';
+```
+
+| `code`        | When                                                                                                                                                  |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `canceled`    | The person closed the scanner                                                                                                                         |
+| `unavailable` | The host has no scanner: no `permissions.camera`, an iPhone before iOS 16 or the A12, a phone without Google Play services, or not a `--platform` app |
+| `denied`      | iOS only: the person said no to the camera, or a restriction such as Screen Time blocks it. Send them to Settings to change it                        |
+| `failed`      | The scanner couldn't start or stopped, or a scan was already open                                                                                     |

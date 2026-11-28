@@ -194,6 +194,10 @@ Write `xmlns="http://www.w3.org/2000/svg"` on the root of an `<svg content>` str
 
 Pick photos with `LynxImagePicker`, which opens the phone's picker and resolves with a `Blob`. Show it with `<image [src]>` and `URL.createObjectURL()`. See [http-requests.md](http-requests.md#pick-a-photo-to-upload).
 
+### No camera or `BarcodeDetector`
+
+Scan a QR code or a barcode with `LynxBarcodeScanner`: `await scanner.scan({ formats: ['qr'] })` opens the phone's own scanner and resolves `{ format, value }`. Turn it on with `permissions.camera` in angular.json; without it, and in Lynx Explorer, the web preview, the iOS Simulator and specs, it rejects with `unavailable`. See [http-requests.md](http-requests.md#scan-a-qr-code-or-barcode).
+
 ### No `<input type="date">`
 
 Lynx has no date field and no date picker. Don't build a calendar by hand: `npx @blotch/dolan add date-picker` adds `<ui-date-picker label="Ends on" clearable [(value)]="endsOn" />`, a field that opens a month calendar in a bottom sheet, and `npx @blotch/dolan add calendar` adds the calendar on its own (`<ui-calendar [(value)]="day" [min]="today" />`). The value is a `Date` at local midnight, or `null`. Both write their month names, weekdays and screen reader labels from `LOCALE_ID` with Angular's `formatDate()`, so a language needs `registerLocaleData()`, not the `intl` option.

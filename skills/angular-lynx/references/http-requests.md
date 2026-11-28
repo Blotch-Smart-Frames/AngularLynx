@@ -164,3 +164,28 @@ export(): void {
 - **Rejects with `ShareError`**, `code` `unavailable` (Lynx Explorer, specs, or a browser that can't share text or links) or `failed` (couldn't open, already open, browser refused).
 - **Specs:** provide a stand-in: `{ provide: LynxShare, useValue: { share: async (data) => true } }`.
 - **Your own native app** registers an `AngularLynxShare` module with `share(request, callback)`, where `request` is `{ files: [{ base64, name, type }], title?, text?, url? }`, calling back `{ shared }` or `{ error, message }`: see the website's "Embed in a Native App" guide.
+
+## Scan a QR code or barcode
+
+Lynx has no camera API and no `BarcodeDetector`. `LynxBarcodeScanner` opens the phone's own scanner over the app (VisionKit's `DataScannerViewController` on iOS, Google's code scanner from Play services on Android) and resolves with the first code it reads. It's opt-in: set `"permissions": { "camera": "Scan your ticket" }` in the build target's options in angular.json. Without it the app has no scanner code at all, and `scan()` rejects with `unavailable`.
+
+```typescript
+import { BarcodeScannerError, LynxBarcodeScanner } from '@blotch/angular-lynx';
+
+readonly #scanner = inject(LynxBarcodeScanner);
+
+async scanTicket(): Promise<void> {
+  try {
+    const { format, value } = await this.#scanner.scan({ formats: ['qr'] });
+    this.ticket.set(value); // format: 'qr', value: the code's text
+  } catch (error) {
+    if (error instanceof BarcodeScannerError && error.code === 'canceled') return;
+    throw error;
+  }
+}
+```
+
+- **`formats`**: any of `qr`, `aztec`, `dataMatrix`, `pdf417`, `ean13`, `ean8`, `upcA`, `upcE`, `code39`, `code93`, `code128`, `itf`, `codabar`. Every one (`BARCODE_FORMATS`) when left out or empty; name the ones you expect.
+- **Rejects with `BarcodeScannerError`**, `code` `canceled` (closed), `unavailable` (no `permissions.camera`, iOS before 16 or an iPhone before the XS, no Play services, the iOS Simulator, Lynx Explorer, the web preview), `denied` (iOS only: camera refused or restricted) or `failed` (couldn't start, or a scan already open).
+- **Android needs no camera permission** for it: the scanner runs in Play services and hands back only the code. Play services downloads it on first use, and a scan before that rejects with `unavailable`.
+- **Specs:** a scan stays open until the testing library's `queueBarcodeScan({ format, value })`, `cancelBarcodeScan()` or `failBarcodeScan(code)` answers it (each answers the open scan, or the next one); wait with `waitForUpdate()`.

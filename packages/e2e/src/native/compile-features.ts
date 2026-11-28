@@ -27,24 +27,28 @@ import {
  * (issue #837), the build most apps get, and a canvas that draws only in 2D
  * (#847), what a chart or a signature pad gets.
  *
- * The first is also built without `permissions.biometrics`, as most apps
- * are, which leaves the biometrics module out (#918). The E2E app asks for
- * biometrics, so its own build has the module.
+ * The first is also built without `permissions.biometrics` and
+ * `permissions.camera`, as most apps are, which leaves the biometrics module
+ * (#918) and the barcode scanner's (#917) out. The E2E app asks for both, so
+ * its own build has the modules.
  */
 export const VARIANTS: readonly {
   readonly name: string;
   readonly features: NativeFeatures;
   readonly biometrics: boolean;
+  readonly camera: boolean;
 }[] = [
   {
     name: 'no-canvas',
     features: { canvas: false, webgl: false },
     biometrics: false,
+    camera: false,
   },
   {
     name: 'canvas-2d',
     features: { canvas: true, webgl: false },
     biometrics: true,
+    camera: true,
   },
 ];
 
@@ -56,17 +60,19 @@ export const VARIANTS: readonly {
  */
 const PROBES: Record<
   Platform,
-  { canvas: string; webgl: string; biometrics: string }
+  { canvas: string; webgl: string; biometrics: string; camera: string }
 > = {
   ios: {
     canvas: 'App/AngularLynxCanvas2DContext.m',
     webgl: 'App/AngularLynxWebGLContext.m',
     biometrics: 'App/BiometricsModule.swift',
+    camera: 'App/BarcodeScannerModule.swift',
   },
   android: {
     canvas: 'app/src/main/java/dev/angularlynx/shell/Canvas2DContext.kt',
     webgl: 'app/src/main/java/dev/angularlynx/shell/WebGLContext.kt',
     biometrics: 'app/src/main/java/dev/angularlynx/shell/BiometricsModule.kt',
+    camera: 'app/src/main/java/dev/angularlynx/shell/BarcodeScannerModule.kt',
   },
 };
 
@@ -110,7 +116,7 @@ export const compileFeatureVariants = async ({
     const appPermissions =
       (Object.values(readAngularJson(appDir).projects)[0]!.architect.build
         .options['permissions'] as Record<string, string> | undefined) ?? {};
-    for (const { name, features, biometrics } of VARIANTS) {
+    for (const { name, features, biometrics, camera } of VARIANTS) {
       step(`The ${platform} project with ${name}`);
       const variantDir = path.join(root, name);
       const bundleDir = path.join(variantDir, 'dist');
@@ -147,17 +153,21 @@ export const compileFeatureVariants = async ({
           workDir: path.join(variantDir, 'work'),
           outputDir: path.join(variantDir, 'out'),
           log,
-          overrides: biometrics
-            ? {}
-            : {
-                permissions: Object.fromEntries(
-                  Object.entries(appPermissions).filter(
-                    ([permission]) => permission !== 'biometrics',
+          // The app's permissions without the ones the variant leaves out.
+          overrides:
+            biometrics && camera
+              ? {}
+              : {
+                  permissions: Object.fromEntries(
+                    Object.entries(appPermissions).filter(
+                      ([permission]) =>
+                        (biometrics || permission !== 'biometrics') &&
+                        (camera || permission !== 'camera'),
+                    ),
                   ),
-                ),
-              },
+                },
         });
-        const kept = { ...features, biometrics };
+        const kept = { ...features, biometrics, camera };
         for (const [feature, file] of Object.entries(PROBES[platform]) as [
           keyof typeof kept,
           string,

@@ -164,6 +164,38 @@ await waitForUpdate();
 expect(screen.getByText('Refreshed')).toBeInTheDocument();
 ```
 
+### `queueBarcodeScan()`
+
+```typescript
+function queueBarcodeScan(scan: {
+  readonly format: string;
+  readonly value: string;
+}): void;
+function cancelBarcodeScan(): void;
+function failBarcodeScan(
+  code: 'unavailable' | 'denied' | 'failed',
+  message?: string,
+): void;
+```
+
+Answers a [`LynxBarcodeScanner.scan()`](/api/angular-lynx/barcode-scanner), since a spec has no camera to point. A scan stays open until one of these answers it:
+
+- **`queueBarcodeScan()`** reads `scan`, as if the person pointed the camera at it: `scan()` resolves with it.
+- **`cancelBarcodeScan()`** closes the scanner, as the Cancel button does: `scan()` rejects with `canceled`.
+- **`failBarcodeScan()`** rejects with `code`, such as `denied` for a person who won't let the app use the camera.
+
+Each call answers the open scan, or, when none is open, the next one as soon as it's called, in order. The answer reaches the app through the background thread, as on a phone, so wait for it with `waitForUpdate()`. Each test starts with no scan open and nothing queued.
+
+```typescript
+await render(CheckIn);
+
+queueBarcodeScan({ format: 'qr', value: 'TICKET-42' });
+fireEvent.tap(screen.getByText('Scan ticket'));
+await waitForUpdate();
+
+expect(screen.getByText('Welcome, ticket 42')).toBeInTheDocument();
+```
+
 ### `pressBackButton()`
 
 ```typescript

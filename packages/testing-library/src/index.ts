@@ -14,6 +14,15 @@ export type {
   BiometricResult,
   FakeBiometrics,
 } from './biometrics.js';
+export {
+  cancelBarcodeScan,
+  failBarcodeScan,
+  queueBarcodeScan,
+} from './barcode-scanner.js';
+export type {
+  BarcodeScanFailure,
+  QueuedBarcodeScan,
+} from './barcode-scanner.js';
 export { fireEvent, eventMap } from './fire-event.js';
 export { openedURLs, openLink } from './linking.js';
 export type { OpenedURL } from './linking.js';

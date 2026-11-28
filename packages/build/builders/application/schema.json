@@ -247,7 +247,8 @@
       "additionalProperties": false,
       "properties": {
         "camera": {
-          "type": "string"
+          "type": "string",
+          "description": "Why the app uses the camera: iOS shows it the first time the app opens the camera. It also turns on LynxBarcodeScanner: without it, the app has no scanner code at all. Android's scanner runs in Google Play services and needs no permission, but Android still declares the camera."
         },
         "microphone": {
           "type": "string"

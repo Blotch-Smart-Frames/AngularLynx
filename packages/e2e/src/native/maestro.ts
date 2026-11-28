@@ -211,13 +211,12 @@ const LOG_LINE_PROCESS = /^\S+ \S+\s+\S+\s+\S+\s+\S+\s+(\d+)\s/;
 
 /**
  * Says so when an app process in `appLog` asked the simulator's Metal
- * compiler for shaders while the flow ran (`ran`, or any time without it),
- * and the compiler hadn't begun compiling for it
- * {@link STALLED_METAL_COMPILER_SECONDS} later, or by that process's last
- * line; otherwise undefined. Only a request in the flow's own time counts:
- * eight flows take this check, and the log holds the whole session, so
- * another flow's stall would otherwise give a flow that failed for its own
- * reasons a second run.
+ * compiler for shaders while the flow ran (`ran`), and the compiler hadn't
+ * begun compiling for it {@link STALLED_METAL_COMPILER_SECONDS} later, or by
+ * that process's last line; otherwise undefined. Only a request in the flow's
+ * own time counts, and without that time nothing does: eight flows take this
+ * check, and the log holds the whole session, so another flow's stall would
+ * otherwise give a flow that failed for its own reasons a second run.
  *
  * The first WebGL context an app makes after the simulator boots has ANGLE
  * build its Metal shaders from source, through MTLCompilerService, which the
@@ -242,6 +241,9 @@ export const stalledMetalCompiler = (
   appLog: string,
   ran?: FlowWindow,
 ): string | undefined => {
+  if (ran === undefined) {
+    return undefined;
+  }
   // Each app process's first request that hasn't begun, and its last line.
   const waiting = new Map<string, number>();
   const started = new Set<string>();
@@ -271,7 +273,8 @@ export const stalledMetalCompiler = (
     lastLine.set(process, time);
     if (
       METAL_COMPILE_REQUEST_LINE.test(line) &&
-      (ran === undefined || (time >= ran.start && time <= ran.end)) &&
+      time >= ran.start &&
+      time <= ran.end &&
       !started.has(process) &&
       !waiting.has(process)
     ) {
@@ -795,8 +798,8 @@ const flowWindow = (outputDir: string, flow: Flow): FlowWindow | undefined => {
       ? { start: Math.min(...times), end: Math.max(...times) }
       : undefined;
   } catch {
-    // A file Maestro was still writing when it stopped: no window, so the
-    // check reads the whole session's log, as it did without one.
+    // A file Maestro was still writing when it stopped: no window, so a
+    // check that needs one finds no fault.
     return undefined;
   }
 };

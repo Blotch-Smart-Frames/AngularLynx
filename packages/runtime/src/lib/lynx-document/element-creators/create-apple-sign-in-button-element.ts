@@ -67,11 +67,23 @@ type DrawnButton = {
 };
 
 /**
- * The drawn buttons, by the element the renderer holds. A native button
- * isn't here, so {@link updateAppleSignInButton} leaves it to iOS. A
- * WeakMap, so a released element takes its parts with it.
+ * A drawn button's parts, read from the native tree: the element holds the
+ * face, which holds the logo and then the title, which holds its raw text.
+ * Read rather than kept in a map, since native refs must not be map or set
+ * keys (hashing one crashes the Lepus engine, see LynxDocument.createComment),
+ * and an id-keyed map would outlive the element. `null` for iOS's button,
+ * which is its own tag and has no children.
  */
-const drawnButtons = new WeakMap<ElementRef, DrawnButton>();
+const drawnButtonOf = (element: ElementRef): DrawnButton | null => {
+  if (__GetTag(element) === 'apple-sign-in-button') return null;
+  const face = __FirstElement(element);
+  const logo = face && __FirstElement(face);
+  const title = logo && __NextElement(logo);
+  const titleText = title && __FirstElement(title);
+  return face && logo && title && titleText
+    ? { face, logo, title, titleText }
+    : null;
+};
 
 /**
  * Whether this host has the native button: the iOS shell registers it with
@@ -133,7 +145,6 @@ export const createAppleSignInButtonElement = (pageId: number): ElementRef => {
   // A screen reader reads the face as one button, as it does iOS's.
   __SetAttribute(face, 'accessibility-element', true);
   __SetAttribute(face, 'accessibility-traits', 'button');
-  drawnButtons.set(element, { face, logo, title, titleText });
   updateAppleSignInButton(element, null);
   return element;
 };
@@ -159,7 +170,7 @@ export const updateAppleSignInButton = (
   element: ElementRef,
   attributes: ReadonlyMap<string, unknown> | null,
 ): void => {
-  const drawn = drawnButtons.get(element);
+  const drawn = drawnButtonOf(element);
   if (!drawn) return;
   const type = pick<AppleSignInButtonType>(
     attributes?.get('type'),

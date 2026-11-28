@@ -8,6 +8,7 @@ import {
 /** A native element, which records what's set on it. */
 type FakeRef = {
   tag: string;
+  parent?: FakeRef;
   children: FakeRef[];
   attributes: Record<string, unknown>;
   style?: string;
@@ -54,7 +55,25 @@ beforeEach(() => {
   );
   vi.stubGlobal(
     '__AppendElement',
-    vi.fn((parent: FakeRef, child: FakeRef) => parent.children.push(child)),
+    vi.fn((parent: FakeRef, child: FakeRef) => {
+      child.parent = parent;
+      parent.children.push(child);
+    }),
+  );
+  vi.stubGlobal(
+    '__GetTag',
+    vi.fn((element: FakeRef) => element.tag),
+  );
+  vi.stubGlobal(
+    '__FirstElement',
+    vi.fn((element: FakeRef) => element.children[0] ?? null),
+  );
+  vi.stubGlobal(
+    '__NextElement',
+    vi.fn((element: FakeRef) => {
+      const siblings = element.parent?.children ?? [];
+      return siblings[siblings.indexOf(element) + 1] ?? null;
+    }),
   );
   vi.stubGlobal(
     '__SetAttribute',
@@ -213,6 +232,10 @@ describe('updateAppleSignInButton', () => {
 
   it('leaves an element it didn’t draw alone', () => {
     updateAppleSignInButton(ref('view') as unknown as ElementRef, null);
+    // A view with a face but not the rest of the parts.
+    const partial = ref('view');
+    partial.children.push(ref('view'));
+    updateAppleSignInButton(partial as unknown as ElementRef, null);
     expect(__SetInlineStyles).not.toHaveBeenCalled();
   });
 });

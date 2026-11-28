@@ -679,6 +679,8 @@ describe('LynxDocument', () => {
 
       it('is drawn, and redrawn as its attributes change, elsewhere', () => {
         vi.stubGlobal('lynx', {});
+        // This fake keeps no tree: every element has a child and a sibling.
+        vi.stubGlobal('__GetTag', () => 'view');
         const button = doc.createElement('apple-sign-in-button');
         expect(asMock(globalThis.__CreateElement)).not.toHaveBeenCalledWith(
           'apple-sign-in-button',

@@ -1,8 +1,8 @@
 # LynxNfc
 
-Reads and writes **NFC tags**: a membership card, a museum label, a smart-home tag or a device you're setting up. `import { LynxNfc } from '@blotch/angular-lynx';`
+Reads and writes **[NFC](/guide/glossary#nfc) tags**: a membership card, a museum label, a smart-home tag or a device you're setting up. `import { LynxNfc } from '@blotch/angular-lynx';`
 
-An NFC tag holds an **NDEF message**: a short list of records, such as a link or some text. `LynxNfc` reads those records and writes new ones.
+An NFC tag holds an **[NDEF](/guide/glossary#ndef) message**: a short list of records, such as a link or some text. `LynxNfc` reads those records and writes new ones.
 
 ## Turn it on
 
@@ -16,7 +16,7 @@ Set `permissions.nfc` in your build options, with the reason you read tags:
 
 That adds what each app needs:
 
-- **iOS:** `NFCReaderUsageDescription`, and the **NFC Tag Reading** entitlement.
+- **iOS:** `NFCReaderUsageDescription`, and the **NFC Tag Reading** [entitlement](/guide/glossary#entitlement).
 - **Android:** the `NFC` permission, granted at install. The NFC feature is declared not required, so Google Play still offers the app to phones without NFC.
 
 Without it, the native code is left out of both apps, and every call rejects with `unsupported`.
@@ -76,7 +76,7 @@ await this.nfc.write(
 );
 ```
 
-`write()` replaces what the next tag holds. It rejects with `readOnly` for a locked tag, and `tooLarge` when the records don't fit.
+`write()` replaces what the next tag holds. It rejects with `readOnly` for a locked tag, and `tooLarge` when the records don't fit. It rejects with a `TypeError`, before anything opens, for no records or a record a tag can't hold.
 
 ## Read several tags
 
@@ -96,7 +96,7 @@ async stopScanning() {
 }
 ```
 
-`scan()` calls back with each tag until you call `stop()`. A tag it can't read is skipped. On iOS the sheet stays up for the whole scan. A tag held near the phone may be read again.
+`scan()` calls back with each tag until you call `stop()`, or until the scan ends by itself: the person closes iOS's sheet (`canceled`), it times out (`timeout`), or the system fails (`failed`). Its `error` signal then holds the reason, and `scanning` turns `false`. A tag it can't read is skipped. On iOS the sheet stays up for the whole scan. A tag held near the phone may be read again.
 
 ## Methods
 
@@ -136,7 +136,7 @@ Only one call is open at a time: another rejects with `busy`. `state` is asked a
 
 ### `NfcError`
 
-Every call rejects with an `NfcError`, whose `code` is one of:
+Every call rejects with an `NfcError` (apart from `write()`'s `TypeError` for records it can't write), whose `code` is one of:
 
 | Code          | When                                                             |
 | ------------- | ---------------------------------------------------------------- |

@@ -6,7 +6,12 @@ import {
   untracked,
   type OnInit,
 } from '@angular/core';
-import { LYNX_ELEMENTS, LynxAppState, LynxLinking } from '@blotch/angular-lynx';
+import {
+  LYNX_ELEMENTS,
+  LynxAppState,
+  LynxLinking,
+  LynxTracking,
+} from '@blotch/angular-lynx';
 
 /** A scheme no app declares or handles, for canOpenURL's "no". */
 const UNDECLARED_URL = 'angularlynx-e2e-undeclared://x';
@@ -32,7 +37,15 @@ const UNDECLARED_URL = 'angularlynx-e2e-undeclared://x';
  * near the bottom of a small Android screen can start the system's app-switcher
  * gesture, which makes the app inactive for a moment without leaving it. It's
  * on this page because only the app's own builds open it: Lynx Explorer sends
- * no state, so it would stay at 0.
+ * no state, so it would stay at 0. *
+ * "Tracking" asks whether the app may track the person with LynxTracking
+ * (issue #935), which the app has because the harness asks for
+ * `permissions.tracking`, and shows the answer. On iOS it's App Tracking
+ * Transparency's prompt; Android has none, and answers from Google Play
+ * services: `authorized`, or `denied` once the person opted out. Lynx
+ * Explorer has no module: `unsupported`. It's on this page because the
+ * storage page fills the Android emulator's screen: a line more there pushed
+ * its Biometrics row off it.
  */
 @Component({
   selector: 'app-linking',
@@ -57,6 +70,9 @@ const UNDECLARED_URL = 'angularlynx-e2e-undeclared://x';
     <text flatten="false" style="margin-top: 8px;"
       >Returns: {{ returns() }}</text
     >
+    <text flatten="false" style="margin-top: 8px;" (bindtap)="requestTracking()"
+      >Tracking: {{ tracking() }}</text
+    >
   `,
 })
 export class LinkingRoute implements OnInit {
@@ -64,6 +80,8 @@ export class LinkingRoute implements OnInit {
   readonly canOpen = signal('…');
   readonly sheet = signal('none');
   readonly returns = signal(0);
+  readonly #tracking = inject(LynxTracking);
+  readonly tracking = signal('tap');
 
   constructor() {
     const appState = inject(LynxAppState);
@@ -87,6 +105,13 @@ export class LinkingRoute implements OnInit {
         this.canOpen.set(answers.map((can) => (can ? 'yes' : 'no')).join('/')),
       (error: Error) => this.canOpen.set(error.message),
     );
+  }
+
+  requestTracking(): void {
+    this.tracking.set('…');
+    void this.#tracking
+      .requestPermission()
+      .then((status) => this.tracking.set(status));
   }
 
   openSheet(): void {

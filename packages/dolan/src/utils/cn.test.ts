@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path';
 
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 
 import { cn, createCn } from './cn';
 
@@ -43,14 +43,6 @@ const componentClasses = (): string[] => {
   return [...classes].sort();
 };
 
-/**
- * A `cn()` of its own, and a spy on the full `twMerge()` it falls back to.
- */
-const freshCn = () => {
-  const fullMerge = vi.fn(twMerge);
-  return { cn: createCn(fullMerge), fullMerge };
-};
-
 const expectTwMerge = (
   merge: ReturnType<typeof createCn>,
   ...inputs: ClassValue[]
@@ -79,11 +71,11 @@ describe('cn', () => {
     expect(cn(['a', { b: true, c: false }])).toBe('a b');
   });
 
-  it("merges the components' classes as twMerge() does, without the full class map", () => {
-    // If this fails because the full map loaded, a component uses a class
-    // under a part COMPONENT_CLASS_ROOTS lacks: add the part to it, or every
-    // app that copies the component in pays for the full map (#709).
-    const { cn: merge, fullMerge } = freshCn();
+  it("merges the components' classes as twMerge() does", () => {
+    // If this fails, a component uses a class under a part
+    // COMPONENT_CLASS_ROOTS (cn-config-source.ts) lacks: add the part to it
+    // and run `npm run generate:cn-config -w @blotch/dolan`.
+    const merge = createCn();
     const classes = componentClasses();
     expect(classes.length).toBeGreaterThan(300);
     classes.forEach((className, index) => {
@@ -98,15 +90,14 @@ describe('cn', () => {
         classes[(index * 13 + 5) % classes.length],
       );
     });
-    expect(fullMerge).not.toHaveBeenCalled();
   });
 
-  it('finds the group the full map does for a class under a part the components use', () => {
+  it('finds the group twMerge() does for a class under a part the components use', () => {
     // Each pair starts with a part the components use (bg, text, border,
     // rounded, inset), but the second is from a group no component uses.
-    // The component map has every group under those parts, so neither class
-    // is taken for the other's group.
-    const { cn: merge, fullMerge } = freshCn();
+    // The config has every group under those parts, so neither class is
+    // taken for the other's group.
+    const merge = createCn();
     expect(merge('bg-card', 'bg-blend-multiply')).toBe(
       'bg-card bg-blend-multiply',
     );
@@ -120,17 +111,19 @@ describe('cn', () => {
       'rounded-lg rounded-ss-none',
     );
     expect(merge('inset-0', 'inset-ring-2')).toBe('inset-0 inset-ring-2');
-    expect(fullMerge).not.toHaveBeenCalled();
   });
 
   it('merges variants, negative values, postfixes and arbitrary properties as twMerge() does', () => {
-    const { cn: merge, fullMerge } = freshCn();
+    const merge = createCn();
     expectTwMerge(merge, 'hover:px-2 px-1', 'hover:px-4');
     expectTwMerge(merge, '-mt-2', 'mt-4');
     expectTwMerge(merge, '!px-2', 'px-4 !px-6');
     expectTwMerge(merge, 'bg-primary/50', 'bg-card');
     expectTwMerge(merge, 'text-sm/6', 'leading-none text-base');
+    // tailwind-merge merges an arbitrary property by its name, whatever
+    // config it has.
     expectTwMerge(merge, '[mask-type:luminance]', '[mask-type:alpha]');
+    expectTwMerge(merge, '[cursor:pointer]', '[cursor:default]');
     // Classes apps often pass to a component's `class` input.
     expectTwMerge(
       merge,
@@ -142,47 +135,38 @@ describe('cn', () => {
       'underline uppercase truncate',
       'no-underline normal-case line-clamp-2',
     );
-    expect(fullMerge).not.toHaveBeenCalled();
   });
 
-  it('switches to the full map for good on a class from a group the components lack', () => {
-    const { cn: merge, fullMerge } = freshCn();
-    expect(merge('px-2 py-1', 'px-4')).toBe('py-1 px-4');
-    expect(fullMerge).not.toHaveBeenCalled();
-
-    // `cursor` is no component's, so the component map has no group for it.
+  it('keeps a class of a group no component uses as it is', () => {
+    // `cursor` and `rotate` are no component's, so cn() knows no group for
+    // them: it keeps both, and they don't stop the classes around them
+    // merging.
+    const merge = createCn();
     expect(merge('px-2 cursor-pointer', 'px-4 cursor-default')).toBe(
-      'px-4 cursor-default',
+      'cursor-pointer px-4 cursor-default',
     );
-    expect(fullMerge).toHaveBeenCalledTimes(1);
-    expect(merge('table-auto', 'table-fixed')).toBe('table-fixed');
-    expect(merge('px-2', 'px-4')).toBe('px-4');
-    expect(fullMerge).toHaveBeenCalledTimes(3);
+    expect(merge('rotate-45', 'rotate-90')).toBe('rotate-45 rotate-90');
+    expect(twMerge('rotate-45 rotate-90')).toBe('rotate-90');
   });
 
-  it('keeps the component map for a part only kept groups have', () => {
+  it("knows a group that shares a first part with a component's", () => {
     // `static` and `sticky` are only `position`'s, which is kept for
-    // `absolute` and `relative`, so the map has all of them.
-    const { cn: merge, fullMerge } = freshCn();
-    expect(merge('absolute static', 'sticky')).toBe('sticky');
-    expect(fullMerge).not.toHaveBeenCalled();
-    // `block` is also `block-size`'s, which no component uses.
-    expect(merge('block', 'block-full')).toBe(twMerge('block block-full'));
-    expect(fullMerge).toHaveBeenCalledTimes(1);
+    // `absolute` and `relative`. `block` is also `block-size`'s, which no
+    // component uses, and `table` is `table-layout`'s as well as
+    // `display: table`'s: their groups are kept too.
+    const merge = createCn();
+    expectTwMerge(merge, 'absolute static', 'sticky');
+    expectTwMerge(merge, 'block', 'block-full');
+    expectTwMerge(merge, 'table-auto', 'table-fixed');
+    expectTwMerge(merge, 'table/50', 'block');
   });
 
-  it('switches to the full map on a foreign class with a postfix', () => {
-    // tailwind-merge looks up `table/50` whole, then `table` without its
-    // postfix, and `table` is `display: table`. Only the second is under a
-    // part some group has, so both have to be checked.
-    const { cn: merge, fullMerge } = freshCn();
-    expect(merge('table/50', 'block')).toBe(twMerge('table/50 block'));
-    expect(fullMerge).toHaveBeenCalledTimes(1);
-  });
-
-  it("is the same file as packages/ui's copy, which the components' own tests use", () => {
-    expect(readFileSync(join(uiLib, 'utils/cn.ts'), 'utf8')).toBe(
-      readFileSync(resolve(import.meta.dirname, 'cn.ts'), 'utf8'),
-    );
-  });
+  it.each(['cn.ts', 'cn-config.ts'])(
+    "%s is the same file as packages/ui's copy, which the components' own tests use",
+    (file) => {
+      expect(readFileSync(join(uiLib, 'utils', file), 'utf8')).toBe(
+        readFileSync(resolve(import.meta.dirname, file), 'utf8'),
+      );
+    },
+  );
 });

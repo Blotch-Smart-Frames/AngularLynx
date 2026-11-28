@@ -149,6 +149,7 @@ page {
 - **Pressed states:** `:active` rules (and Tailwind's `active:`) didn't apply in these builds when measured on Android. Set a signal on `(bindtouchstart)` and `(bindmousedown)` (the web preview sends no touches for a cursor), clear it on `(bindtouchend)`, `(bindtouchcancel)`, `(bindmouseup)` and `(bindmouseleave)`, and bind a class to it.
 - **A touch target wider than the element:** `hit-slop="8px"` takes touches around an element without changing its layout, so a 36px control can have a 48px target.
 - **The dolan UI theme** stores each color whole (`--primary`) and as channels (`--primary-rgb`). Its Tailwind plugin maps `bg-primary` to `var(--primary)` and `bg-primary/50` to `rgba(var(--primary-rgb), 0.5)`, so opacity modifiers work on every theme color. Keep each pair the same color when editing a theme; `npx @blotch/dolan doctor` reports a mismatch or a missing `-rgb` variable.
+- **`cn()` (`@blotch/dolan/utils/cn`) merges only the kinds of class the dolan components use.** A class passed to a component's `class` input replaces a conflicting default, as `twMerge()` would, and so do margins, sizes and text styles (`mr-2`, `size-4`, `italic`). Two classes of another kind both stay: `cn('rotate-45', 'rotate-90')` returns both. This keeps most of tailwind-merge's config out of the main-thread script. Where an app needs every kind merged, add `tailwind-merge` to its dependencies and call `twMerge()`.
 
 ## Dark Mode and Wallpaper Colors
 

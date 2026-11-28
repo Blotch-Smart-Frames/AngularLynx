@@ -223,7 +223,9 @@
     "FEATURE_COMPARISON.md",
     "BUILD_LYNX_EXPLORER_IOS.md",
     "LAZY_LOADING_PLAN.md",
-    "tsconfig.spec.tsbuildinfo"
+    "tsconfig.spec.tsbuildinfo",
+    "packages/dolan/src/utils/cn-config.ts",
+    "packages/ui/src/lib/utils/cn-config.ts"
   ],
   "words": [
     "accessibilityaction",

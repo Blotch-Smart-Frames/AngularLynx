@@ -224,11 +224,13 @@ export const quotedName = (name: string): RegExp =>
   );
 
 /**
- * For each name that counts only as a string, `2d` and `canvas`, the strings
- * that spell it (see mayName()).
+ * The strings that spell each name of GLOBALS (see mayName()): of a name that
+ * counts only as a string, `2d` and `canvas`, and of the others too, which a
+ * string can spell without holding the name, `globalThis['Im\age']` with an
+ * identity escape for `Image`.
  */
 const QUOTED_NAMES: ReadonlyMap<string, RegExp> = new Map(
-  [...STRING_NAMES].map((name) => [name, quotedName(name)]),
+  [...GLOBAL_NAMES, ...STRING_NAMES].map((name) => [name, quotedName(name)]),
 );
 
 /**
@@ -244,7 +246,7 @@ const QUOTED_TAGS: readonly RegExp[] = [...CREATE_ELEMENT_TAGS].map(
  * reads them, before it's parsed. A name that counts only as a string, `2d`
  * or `canvas`, is looked for in quotes: bare, it's in hashes, numbers, CSS
  * and prose of many modules that would be parsed for nothing. A tag counts
- * only with a call to `createElement`. A string can spell a name with
+ * only with a call to `createElement`. A string can spell any name with
  * escapes and line continuations, which QUOTED_NAMES (or ESCAPE) finds, so
  * those modules are parsed too.
  */

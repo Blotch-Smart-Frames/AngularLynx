@@ -333,6 +333,7 @@ export const t = \`2d\${1}\`;`;
       `export const b = (x) => createImageBitmap(x);`,
       `export const is = (x) => x instanceof ImageBitmapRenderingContext;`,
       `export const has = 'createImageBitmap' in self;`,
+      `export const i = new globalThis['Im\\age']();`,
       `export const show = (c) => c.getContext('bitmaprenderer');`,
     ]) {
       expect(
@@ -404,6 +405,12 @@ export const t = \`2d\${1}\`;`;
       `export const get = (u) => globalThis['\\u{66}etch'](u);`,
       `export const get = (u) => globalThis['\\x66etch'](u);`,
       `export const get = (u) => \\u0066etch(u);`,
+      // An identity escape, an octal escape and a line continuation, which
+      // the text holds neither the name nor a `\u` or `\x` escape of.
+      `export const get = (u) => globalThis['f\\etch'](u);`,
+      `export const get = (u) => globalThis['\\146etch'](u);`,
+      // cspell:disable-next-line
+      `export const get = (u) => globalThis['fe\\\ntch'](u);`,
     ]) {
       expect(enableOnDemand(code, '/app/src/get.ts')).toBe(
         calls('ɵenableFetch') + code,

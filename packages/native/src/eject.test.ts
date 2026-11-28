@@ -5,13 +5,18 @@ import { renderEjectedProject } from './eject.ts';
 import { type NativeFeatures } from './features.ts';
 import { EJECT_MARKER } from './generate.ts';
 import { IOS_CANVAS_SOURCES } from './ios/project.ts';
+import type { NativeAppOptions } from './options.ts';
 
-const render = (platform: 'ios' | 'android', features?: NativeFeatures) =>
+const render = (
+  platform: 'ios' | 'android',
+  features?: NativeFeatures,
+  options: Omit<NativeAppOptions, 'appId'> = {},
+) =>
   renderEjectedProject({
     platform,
     projectRoot: '/project',
     projectName: 'my-app',
-    app: { appId: 'com.example.ejected' },
+    app: { appId: 'com.example.ejected', ...options },
     generatorVersion: '1.2.3',
     ...(features && { features }),
   });
@@ -79,5 +84,20 @@ describe('renderEjectedProject', () => {
     expect(
       android.get(`${ANDROID_SHELL_SOURCES}/MainActivity.kt`)?.toString(),
     ).not.toContain('angular-lynx:canvas');
+  });
+
+  // angular.json no longer applies to an ejected project, so one ejected
+  // without storeReview has no module to turn on later: it's added by hand,
+  // from the template.
+  it('has the store review module only when the app sets storeReview', () => {
+    for (const [platform, module] of [
+      ['ios', 'App/StoreReviewModule.swift'],
+      ['android', `${ANDROID_SHELL_SOURCES}/StoreReviewModule.kt`],
+    ] as const) {
+      expect(render(platform).has(module)).toBe(false);
+      expect(
+        render(platform, undefined, { storeReview: true }).has(module),
+      ).toBe(true);
+    }
   });
 });

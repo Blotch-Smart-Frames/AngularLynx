@@ -27,6 +27,7 @@ export { fireEvent, eventMap } from './fire-event.js';
 export { openedURLs, openLink } from './linking.js';
 export type { OpenedURL } from './linking.js';
 export { runShortcut } from './shortcuts.js';
+export { reviewRequests } from './store-review.js';
 export { screen, within, getQueriesForElement, queries } from './queries.js';
 export type {
   BoundAccessibilityLabelQueries,

@@ -47,7 +47,8 @@ const SCREEN_ORIENTATIONS: Record<Orientation, string> = {
  * resources, the shortcuts become the static shortcuts' resources, and the
  * splash becomes the splash theme's color and image. The barcode scanner's
  * module and the library behind it stay only in an app with the `camera`
- * permission.
+ * permission. The store review module stays only in an app with
+ * `storeReview`.
  */
 export const androidGenerator: PlatformGenerator = {
   configure: (dir, app, projectRoot) => {
@@ -116,6 +117,16 @@ export const androidGenerator: PlatformGenerator = {
         removeMarkedLines(path.join(dir, file), 'biometrics');
       }
     }
+    // As on iOS, an app that doesn't ask for ratings in the app leaves the
+    // module out, with the lines that register it and Google Play's review
+    // library (`// angular-lynx:store-review`), so its APK carries none of
+    // Play's review code.
+    if (!app.storeReview) {
+      removeTemplateFiles(dir, [ANDROID_STORE_REVIEW_SOURCE]);
+      for (const file of ANDROID_STORE_REVIEW_MARKED) {
+        removeMarkedLines(path.join(dir, file), 'store-review');
+      }
+    }
     leaveOutCanvas(dir, features);
   },
   bundleDir: (dir) => path.join(dir, 'app/src/main/assets'),
@@ -145,6 +156,18 @@ const leaveOutCanvas = (dir: string, features: NativeFeatures): void => {
 };
 
 const SHELL_SOURCES = 'app/src/main/java/dev/angularlynx/shell';
+
+/** The module behind `LynxStoreReview`, which only `storeReview` keeps. */
+export const ANDROID_STORE_REVIEW_SOURCE = `${SHELL_SOURCES}/StoreReviewModule.kt`;
+
+/**
+ * The files with lines for the store review module: MainActivity registers
+ * it, and app/build.gradle.kts adds Google Play's review library.
+ */
+const ANDROID_STORE_REVIEW_MARKED = [
+  `${SHELL_SOURCES}/MainActivity.kt`,
+  'app/build.gradle.kts',
+];
 
 /**
  * The shell's biometrics module, `AngularLynxBiometrics` (LynxBiometrics, and

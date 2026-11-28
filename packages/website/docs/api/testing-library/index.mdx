@@ -196,6 +196,21 @@ await waitForUpdate();
 expect(screen.getByText('Welcome, ticket 42')).toBeInTheDocument();
 ```
 
+### `reviewRequests()`
+
+```typescript
+function reviewRequests(): number;
+```
+
+How many times the app asked for a rating with [`LynxStoreReview.request()`](/api/angular-lynx/store-review) in this test, so a spec can check it asks at the right moment, and only then. `request()` resolves without showing anything. Each test starts at 0.
+
+```typescript
+fireEvent.tap(screen.getByText('Place order'));
+await waitForUpdate();
+
+expect(reviewRequests()).toBe(1);
+```
+
 ### `pressBackButton()`
 
 ```typescript

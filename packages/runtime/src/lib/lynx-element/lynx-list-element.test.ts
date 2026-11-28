@@ -395,16 +395,27 @@ describe('LynxListElement', () => {
   // ─── isAppendedToNativeList / markAppendedToNativeList ───────────────────
 
   describe('isAppendedToNativeList / markAppendedToNativeList', () => {
-    it('returns false for an unmarked ref', () => {
+    it('returns false for an unmarked element', () => {
       const list = makeList();
-      expect(list.isAppendedToNativeList(makeRef())).toBe(false);
+      expect(list.isAppendedToNativeList(makeChild().uniqueId)).toBe(false);
     });
 
     it('returns true after marking', () => {
       const list = makeList();
-      const ref = makeRef();
-      list.markAppendedToNativeList(ref);
-      expect(list.isAppendedToNativeList(ref)).toBe(true);
+      const { uniqueId } = makeChild();
+      list.markAppendedToNativeList(uniqueId);
+      expect(list.isAppendedToNativeList(uniqueId)).toBe(true);
+    });
+
+    it('keeps the mark off the element ref, which on Lynx keeps no property', () => {
+      const list = makeList();
+      const child = makeChild();
+      Object.freeze(child.element);
+
+      list.markAppendedToNativeList(child.uniqueId);
+
+      expect(list.isAppendedToNativeList(child.uniqueId)).toBe(true);
+      expect(list.holdsInNativeList(child)).toBe(true);
     });
   });
 
@@ -642,9 +653,9 @@ describe('LynxListElement', () => {
 
     it('falls back to the element unique ID as item-key when attribute is absent', () => {
       const list = makeList();
-      list.appendChild(makeChild());
       globalThis.__GetAttributeByName = vi.fn(() => null);
       globalThis.__GetElementUniqueID = vi.fn(() => 123);
+      list.appendChild(makeChild());
 
       list._processUpdate();
 
@@ -690,13 +701,13 @@ describe('LynxListElement', () => {
       const list = makeList();
       const child = makeChild();
       list.appendChild(child);
-      list.markAppendedToNativeList(child.element);
+      list.markAppendedToNativeList(child.uniqueId);
       list._processUpdate(); // commit initial state
 
       list.removeVirtualChild(child);
       list._processUpdate();
 
-      expect(list.isAppendedToNativeList(child.element)).toBe(false);
+      expect(list.isAppendedToNativeList(child.uniqueId)).toBe(false);
     });
 
     it('is a no-op after the list is destroyed', () => {
@@ -756,7 +767,7 @@ describe('LynxListElement', () => {
       list.appendChild(b);
       list.appendChild(c);
       list._processUpdate();
-      list.markAppendedToNativeList(c.element);
+      list.markAppendedToNativeList(c.uniqueId);
       vi.mocked(globalThis.__SetAttribute).mockClear();
 
       // Angular moves a view by taking it out and putting it back.
@@ -775,7 +786,7 @@ describe('LynxListElement', () => {
       expect(info.removeAction).toEqual([2]);
       expect(info.insertAction.map((action) => action.position)).toEqual([0]);
       // Still appended: native asks for it again, by the same element.
-      expect(list.isAppendedToNativeList(c.element)).toBe(true);
+      expect(list.isAppendedToNativeList(c.uniqueId)).toBe(true);
     });
   });
 
@@ -939,7 +950,9 @@ describe('LynxListElement', () => {
         for (let e = 0; e < count; e++) edits[below(edits.length)]!();
         const before = committedSlots(list);
         for (const slot of before) {
-          if (slot.ref) list.markAppendedToNativeList(slot.ref);
+          if (slot.ref) {
+            list.markAppendedToNativeList(__GetElementUniqueID(slot.ref));
+          }
         }
         vi.mocked(globalThis.__SetAttribute).mockClear();
 
@@ -951,9 +964,9 @@ describe('LynxListElement', () => {
         expect(sentInfo()).toStrictEqual(expected ? [expected.info] : []);
         for (const slot of before) {
           if (!slot.ref) continue;
-          expect(list.isAppendedToNativeList(slot.ref)).toBe(
-            !expected?.noLongerAppended.includes(slot.ref),
-          );
+          expect(
+            list.isAppendedToNativeList(__GetElementUniqueID(slot.ref)),
+          ).toBe(!expected?.noLongerAppended.includes(slot.ref));
         }
 
         let start = 0;
@@ -991,13 +1004,13 @@ describe('LynxListElement', () => {
       vi.mocked(globalThis.__GetElementUniqueID).mockClear();
       vi.mocked(globalThis.__SetAttribute).mockClear();
 
-      // Its LynxElement asks once, as it's made, and the list once, as it
-      // first sees it: none for the 1,000 the list knows already.
+      // Its LynxElement asks once, as it's made, and the list takes the id
+      // from it: none for the 1,000 the list knows already, nor for this one.
       const child = makeChild();
       list.appendChild(child);
       list._processUpdate();
 
-      expect(globalThis.__GetElementUniqueID).toHaveBeenCalledTimes(2);
+      expect(globalThis.__GetElementUniqueID).toHaveBeenCalledTimes(1);
       expect(sentInfo()).toEqual([
         {
           insertAction: [
@@ -1024,6 +1037,9 @@ describe('LynxListElement', () => {
       // (#recreateSubtree), whose unique id is its own.
       const fresh = makeRef();
       Object.defineProperty(child, 'element', { get: () => fresh });
+      Object.defineProperty(child, 'uniqueId', {
+        get: () => __GetElementUniqueID(fresh),
+      });
       list._processUpdate();
 
       expect(sentInfo()).toEqual([

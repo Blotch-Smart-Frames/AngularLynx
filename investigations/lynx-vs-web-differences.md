@@ -266,7 +266,7 @@ Angular implements a move as **detach-then-reinsert in the same change-detection
 
 This broke `examples/transitions`. Deleting a non-last item reorders every following item (each a `move()`), so their content vanished. Deleting the last item triggers no moves, so it stayed intact — the tell-tale signature.
 
-For a same-tick move this is completely safe: the element is removed and re-inserted in **one** flush (`is_move=true`), so both its fiber node and its native painting node survive. `RemoveNodeInternal` ([`lynx/core/renderer/dom/fiber/fiber_element.cc`](https://github.com/lynx-family/lynx/blob/develop/core/renderer/dom/fiber/fiber_element.cc)) only unlinks the node and clears its parent pointer; `InsertNodeBeforeInternal` auto-reparents it on re-insert, exactly as React Lynx moves reused nodes via `__RemoveElement` then `__InsertElementBefore` on the same element (`snapshot.ts`). (A removal that is **not** re-inserted in the same flush is different — its painting node dies and re-inserting the stale ref renders empty; see the recreate-on-remount entry below.)
+For a same-tick move this is completely safe: the element is removed and re-inserted in **one** flush (`is_move=true`), so both its fiber node and its native painting node survive. `RemoveNodeInternal` ([`lynx/core/renderer/dom/fiber/fiber_element.cc`](https://github.com/lynx-family/lynx/blob/develop/core/renderer/dom/fiber/fiber_element.cc)) only unlinks the node and clears its parent pointer; `InsertNodeBeforeInternal` auto-reparents it on re-insert, the same move React Lynx makes with `__RemoveElement` then `__InsertElementBefore` on the same element (`snapshot.ts`), though Lynx logs the auto-reparent as an error, with three NSLogs (see the entry on properties set on a native element ref). (A removal that is **not** re-inserted in the same flush is different — its painting node dies and re-inserting the stale ref renders empty; see the recreate-on-remount entry below.)
 
 ### The fix
 
@@ -4939,7 +4939,7 @@ This bit **three** separate sites on the `<list>` path; all had to be fixed:
 
 Never key a `Map`/`Set`/`WeakSet` on a native element ref anywhere on the list path. Three techniques, in `lynx-list-element.ts` / `create-list-element.ts` / `lynx-document.ts`:
 
-- **Per-element flags** → store as a plain property on the `ElementRef`, not in a `WeakSet`:
+- **Per-element flags** → key them on the element's unique id (a number), or keep them on its `LynxElement` wrapper. Not in a `WeakSet` of refs, and not as a property on the `ElementRef`, which Lynx drops (see the next entry):
 
 ```ts
 // BAD — WeakSet.has() with an element key:
@@ -4948,10 +4948,17 @@ if (!this.#appended.has(child)) {
   this.#appended.add(child);
 }
 
-// GOOD — plain property tag (ordinary field access, not a Map/Set call):
+// BAD too — Lynx's refs keep no property: this reads undefined every time.
 if ((child as { __appended?: boolean }).__appended !== true) {
   __AppendElement(list, child);
   (child as { __appended?: boolean }).__appended = true;
+}
+
+// GOOD — a Set of numbers:
+const sign = __GetElementUniqueID(child);
+if (!this.#appended.has(sign)) {
+  __AppendElement(list, child);
+  this.#appended.add(sign);
 }
 ```
 
@@ -4977,6 +4984,26 @@ const newIds = newChildren.map((c) => __GetElementUniqueID(c));
 const newIdSet = new Set(newIds);
 if (!newIdSet.has(oldIds[i])) removeAction.push(i);
 ```
+
+---
+
+## A property set on a native element ref is dropped, and appending an element that has a parent logs an error through NSLog
+
+### What you'd expect (web)
+
+A DOM node is an ordinary object: `node.__appended = true` sticks, and reads back `true`. `parent.appendChild(node)` on a node that's already somewhere moves it, silently.
+
+### What Lynx does
+
+On the main thread, an element ref is a `LepusRef` of type `RefCounted`. Setting a property on one does nothing: `LepusRefSetPropertyCallBack` (`core/runtime/lepusng/quick_context.cc` in [`lynx-family/lynx`](https://github.com/lynx-family/lynx)) sets properties on Lepus tables and arrays only, and `LepusRefGetPropertyCallBack` reads every property of a `RefCounted` ref as `undefined`. Nothing throws. Lynx for Web's refs, and the fakes in unit tests, are plain objects that keep the property, so code that relies on one works everywhere but on a device.
+
+`__AppendElement` or `__InsertElementBefore` with a child that still has a parent does move it, but `InsertNodeBeforeInternal` (`core/renderer/dom/fiber/fiber_element.cc`) takes it as a mistake first: it logs `FiberElement re-insert node, try to do remove node from old parent first` as an error and calls `LogNodeInfo()` on the new parent, the child and the old parent, each an `NSLog` on iOS, before it removes the child. In Lynx's source on GitHub it also finds the reference node's index before it removes the child, so a move forward within one parent can land one place further than `__RemoveElement` then the insert would put it. React Lynx calls `__RemoveElement` itself first (`shouldRemove` in `snapshot.ts`), and doesn't append a recycled list item again.
+
+The two met in `componentAtIndex` (#870): the list kept "already appended to the native list" as `__appended` on each item's ref. On a device it never stuck, so every item native asked for was appended to the list again, a reused `*lynxListFor` row included. Each logged the error and three NSLogs, and left the list marked changed, so the item's own flush went up to the list (`FlushActionsAsRoot maybe from a wrong parent`, another log). In the benchmark Pokédex on the iOS Simulator, Lynx's logging was 7–15 ms of the 58–77 ms the engine thread spent in `componentAtIndex` over a profile's swipes; ReactLynx's was 1–2 ms.
+
+### The fix
+
+Keep per-element state off the ref: `LynxListElement` keeps the unique ids of the elements it appended in a `Set<number>`, and `LynxElement.uniqueId` caches each wrapper's id, which the list's diff also reads instead of a cached `__angularLynxListId` on the ref. `list-for.test.ts`'s fake native tree wraps each ref in a `Proxy` that drops unknown properties, as Lynx's refs do, and records any append of an item to the list it's already in.
 
 ---
 

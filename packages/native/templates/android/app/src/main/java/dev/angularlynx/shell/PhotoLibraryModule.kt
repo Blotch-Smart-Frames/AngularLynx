@@ -2,6 +2,7 @@ package dev.angularlynx.shell
 
 import android.content.ContentValues
 import android.content.Context
+import android.database.sqlite.SQLiteException
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -76,6 +77,16 @@ class PhotoLibraryModule(context: Context, param: Any?) : LynxModule(context, pa
                     failure("failed", "The file couldn't be saved to the photo library: ${error.message}")
                 } catch (error: SecurityException) {
                     failure("permission-denied", "The app isn't allowed to add to the photo library.")
+                } catch (error: SQLiteException) {
+                    // MediaStore's database couldn't take the entry, such as
+                    // SQLiteFullException on a full phone. The provider
+                    // rethrows it in the app, unchecked.
+                    failure("failed", "The file couldn't be saved to the photo library: ${error.message}")
+                } catch (error: RuntimeException) {
+                    // Anything else MediaStore throws: without an answer the
+                    // runtime's save() would never settle, and an exception
+                    // left on this thread would end the app.
+                    failure("failed", "The file couldn't be saved to the photo library: ${error.message}")
                 },
             )
         }
@@ -125,7 +136,12 @@ class PhotoLibraryModule(context: Context, param: Any?) : LynxModule(context, pa
                 null,
             )
         } catch (error: Exception) {
-            resolver.delete(uri, null, null)
+            // A failed cleanup mustn't hide why the write failed.
+            try {
+                resolver.delete(uri, null, null)
+            } catch (cleanup: RuntimeException) {
+                error.addSuppressed(cleanup)
+            }
             throw error
         }
         return uri

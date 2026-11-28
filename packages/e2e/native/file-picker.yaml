@@ -1,0 +1,36 @@
+# Layer 6, the app's own builds only: LynxFilePicker (issue #924). The
+# harness sets angular.json's `filePicker`, so the shells have the module.
+# The storage page's "Files" line calls pick(), which opens
+# UIDocumentPickerViewController on iOS and the system's document picker
+# (ACTION_OPEN_DOCUMENT) on Android. Closing it shows "canceled": that the
+# picker showed proves the shell registered the module and presented it,
+# since without the module pick() rejects with "unavailable" at once.
+appId: ${APP_ID}
+---
+- runFlow: open-app.yaml
+- tapOn: Open storage
+- tapOn: 'Files: tap'
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      # The document picker's own Cancel button, in its navigation bar.
+      - extendedWaitUntil:
+          visible: Cancel
+          timeout: 20000
+      - takeScreenshot: file-picker
+      - tapOn: Cancel
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      # DocumentsUI is another app: the storage page's line is gone while
+      # it's in front.
+      - extendedWaitUntil:
+          notVisible: 'Files: .*'
+          timeout: 20000
+      - takeScreenshot: file-picker
+      - back
+- extendedWaitUntil:
+    visible: 'Files: canceled'
+    timeout: 15000

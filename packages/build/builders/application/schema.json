@@ -278,6 +278,16 @@
         }
       }
     },
+    "filePicker": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the app lets the person pick documents and save files with LynxFilePicker: UIDocumentPickerViewController on iOS, the system's document picker and save screen on Android. Neither asks for a permission. false leaves the native module out of both apps."
+    },
+    "fileSharing": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the iOS Files app lists the app's Documents folder under On My iPhone (UIFileSharingEnabled and LSSupportsOpeningDocumentsInPlace), where LynxFilePicker can save a file and pick it again. iOS only."
+    },
     "deepLinkSchemes": {
       "type": "array",
       "items": {

@@ -81,6 +81,7 @@
 | Session storage service       |       ✅ (`LynxSessionStorageService`)       |      ❌ (raw API)       |    ❌    |
 | Persistent and secure storage | ✅ (`LynxLocalStorage`, `LynxSecureStorage`) |           ❌            |    ❌    |
 | Biometrics                    |            ✅ (`LynxBiometrics`)             |           ❌            |    ❌    |
+| Document picker and file save |            ✅ (`LynxFilePicker`)             |           ❌            |    ❌    |
 | System info service           |         ✅ (`LynxSystemInfoService`)         |      ❌ (raw API)       |    ❌    |
 
 ## Lazy Loading / Code Splitting

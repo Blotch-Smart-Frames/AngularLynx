@@ -136,6 +136,32 @@ async change(): Promise<void> {
 - **Specs:** provide a stand-in: `render(Cmp, { providers: [{ provide: LynxImagePicker, useValue: { pick: async () => picked } }] })`.
 - **Your own native app** registers an `AngularLynxImagePicker` module with `pick(options, callback)`, calling back `{ base64, name, type }`, `{ canceled: true }` or `{ error, message }`: see the website's "Embed in a Native App" guide.
 
+## Pick a document, or save a file
+
+`LynxFilePicker` is `<input type="file">` and a download for any file: a PDF to upload, a CSV to export. Turn it on with `"filePicker": true` in the `build` target's options; without it the native module is left out of both apps and both methods reject with `unavailable` (as in Lynx Explorer). Neither platform asks for a permission.
+
+```typescript
+import { FilePickerError, LynxFilePicker } from '@blotch/angular-lynx';
+
+readonly #files = inject(LynxFilePicker);
+
+async attach(): Promise<void> {
+  const [receipt] = await this.#files.pick({ types: ['application/pdf', 'image/*'] });
+  if (!receipt) return; // closed: pick() resolves []
+  await uploadBytes(storageRef, receipt.blob, { contentType: receipt.type });
+}
+
+async export(csv: string): Promise<void> {
+  const saved = await this.#files.save({ blob: new Blob([csv], { type: 'text/csv' }), name: 'report.csv' });
+}
+```
+
+- **`pick({ types, multiple })`** resolves with `{ blob, name, type, size }[]`. `types` is like `accept`: MIME types, `image/*` families or `.docx` extensions (anything else is a `TypeError`); any file without it. iOS uses `UIDocumentPickerViewController`, Android `ACTION_OPEN_DOCUMENT`.
+- **`save({ blob, name })`** lets the person choose where (iOS's export picker, Android's `ACTION_CREATE_DOCUMENT`) and resolves `true` once written, `false` when closed. The web preview downloads it and resolves `true`.
+- **20 MiB at most** per pick (all files together) or save (`FILE_PICKER_MAX_BYTES`): the bytes cross as base64, like a photo's. More rejects with `FilePickerError` `too-large`, before reading; other failures are `failed` (couldn't open, already open, couldn't read or write).
+- **`"fileSharing": true`** (iOS only) gives the app its own folder in Files, under On My iPhone, where the person can save a file and pick it again.
+- **Specs:** the testing library has a fake module. The person closes the picker until `setPickedFiles([{ name, type, content }])` (content a string or `Uint8Array`); `setFilePickerCanceled()` closes both screens; `savedFiles()` lists `{ name, type, bytes, text }` for each save.
+
 ## Share files and links
 
 Lynx has no `navigator.share()` and no `File`. `LynxShare.share()` takes what `navigator.share()` takes, with each file a `{ blob, name }` pair (a `PickedImage` from `LynxImagePicker` is one), and opens the phone's share sheet (`UIActivityViewController` on iOS, an `ACTION_SEND` chooser on Android). It resolves `true` once shared, `false` when the person closes the sheet:

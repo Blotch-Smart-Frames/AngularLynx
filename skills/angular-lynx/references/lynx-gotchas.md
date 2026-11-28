@@ -192,7 +192,7 @@ Write `xmlns="http://www.w3.org/2000/svg"` on the root of an `<svg content>` str
 
 ### No `<input type="file">`
 
-Pick photos with `LynxImagePicker`, which opens the phone's picker and resolves with a `Blob`. Show it with `<image [src]>` and `URL.createObjectURL()`. See [http-requests.md](http-requests.md#pick-a-photo-to-upload).
+Pick photos with `LynxImagePicker`, which opens the phone's picker and resolves with a `Blob`. Show it with `<image [src]>` and `URL.createObjectURL()`. See [http-requests.md](http-requests.md#pick-a-photo-to-upload). For any other file (a PDF, a CSV) use `LynxFilePicker`, which also saves a file where the person chooses, as a download does; it needs `"filePicker": true` in angular.json. See [http-requests.md](http-requests.md#pick-a-document-or-save-a-file).
 
 ### No `<input type="date">`
 

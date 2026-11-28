@@ -25,6 +25,7 @@ import '@testing-library/jest-dom/vitest';
 import { LynxTestingEnv } from '@lynx-js/testing-environment';
 import { installShellModule } from './back-button.js';
 import { installBiometricsModule } from './biometrics.js';
+import { installFilePickerModule } from './file-picker.js';
 import { installLinkingModule } from './linking.js';
 import { installShortcutsModule } from './shortcuts.js';
 
@@ -122,6 +123,9 @@ const frameOnInstalledTimers = (threadGlobals: any): void => {
   // LynxBiometrics' prompts and LynxSecureStorage's guarded values, which
   // setBiometrics() and queueBiometricResult() steer (see biometrics.ts).
   installBiometricsModule(threadGlobals);
+  // LynxFilePicker's picks and saves, which setPickedFiles(),
+  // setFilePickerCanceled() and savedFiles() steer (see file-picker.ts).
+  installFilePickerModule(threadGlobals);
 };
 
 // ─── Install LynxTestingEnv ──────────────────────────────────────────────────

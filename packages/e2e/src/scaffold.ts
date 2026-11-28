@@ -169,6 +169,7 @@ export const scaffoldApp = async (
   await addIntl(appDir, pm, exec);
   addShortcut(appDir);
   addBiometrics(appDir);
+  addFilePicker(appDir);
   step('Layer 2: compile a prebuilt library');
   await addPrebuiltLibrary(appDir, pm, exec);
 
@@ -1409,6 +1410,31 @@ const addBiometrics = (appDir: string) => {
     ...(options['permissions'] as Record<string, string> | undefined),
     biometrics: 'Checks that the E2E app reaches Face ID',
   };
+  writeFileSync(workspacePath, `${JSON.stringify(workspace, null, 2)}\n`);
+};
+
+/**
+ * Turns on angular.json's `filePicker`, so the native builds keep the
+ * shells' file picker module (#924), which only a build shows still
+ * compiles, and native/file-picker.yaml opens its picker. compile-features.ts
+ * builds the shells without it, as most apps get them.
+ */
+const addFilePicker = (appDir: string) => {
+  step('Layer 2: let the person pick files, for the native builds');
+  const workspacePath = path.join(appDir, 'angular.json');
+  const workspace = readJson<{
+    projects: Record<
+      string,
+      { architect?: Record<string, { options?: Record<string, unknown> }> }
+    >;
+  }>(workspacePath);
+  const options = Object.values(workspace.projects)[0]?.architect?.['build']
+    ?.options;
+  check(
+    options !== undefined,
+    "angular.json's build target has no options; the project `ng new` generates has changed shape. Update addFilePicker() in packages/e2e/src/scaffold.ts.",
+  );
+  options['filePicker'] = true;
   writeFileSync(workspacePath, `${JSON.stringify(workspace, null, 2)}\n`);
 };
 

@@ -364,6 +364,14 @@ export const FLOWS: readonly Flow[] = [
     only: { host: 'shell' },
   },
   {
+    file: 'file-picker.yaml',
+    description: "opens the platform's document picker and closes it",
+    // Only the app's own builds have the file picker module, and only with
+    // angular.json's filePicker, which the harness sets. In Lynx Explorer,
+    // pick() rejects with unavailable.
+    only: { host: 'shell' },
+  },
+  {
     file: 'linking.yaml',
     description:
       'says which apps it can open, and on Android opens a link in a browser tab',

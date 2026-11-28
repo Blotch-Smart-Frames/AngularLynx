@@ -15,6 +15,8 @@ describe('resolveAppOptions', () => {
       edgeToEdge: true,
       textScaling: { enabled: true },
       permissions: {},
+      filePicker: false,
+      fileSharing: false,
       deepLinkSchemes: [],
       appLinkDomains: [],
       canOpenURLSchemes: ['http', 'https', 'mailto', 'tel', 'sms'],
@@ -460,6 +462,29 @@ describe('resolveAppOptions', () => {
       ).toThrow(/textScaling\.max .* is not valid/);
     },
   );
+
+  it.each(['filePicker', 'fileSharing'] as const)(
+    'turns %s on only when it is true',
+    (name) => {
+      const resolve = (value: unknown) =>
+        resolveAppOptions({ [name]: value } as never, defaults)[name];
+      expect(resolve(undefined)).toBe(false);
+      expect(resolve(false)).toBe(false);
+      expect(resolve(true)).toBe(true);
+    },
+  );
+
+  // The generators keep the module, or the Info.plist keys, for anything
+  // truthy, so "false" would ship them.
+  it.each([
+    ['filePicker', 'false'],
+    ['filePicker', 1],
+    ['fileSharing', 'true'],
+  ])('rejects %s %j', (name, value) => {
+    expect(() =>
+      resolveAppOptions({ [name]: value } as never, defaults),
+    ).toThrow(new RegExp(`${name} .* is not valid`));
+  });
 
   it('accepts the two .ipa export methods and rejects any other', () => {
     expect(

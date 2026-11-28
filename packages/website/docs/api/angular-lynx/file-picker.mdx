@@ -1,0 +1,199 @@
+# LynxFilePicker
+
+Lets someone pick documents from their phone, such as a PDF, a spreadsheet or a CSV, and save a file your app made where they choose. `import { LynxFilePicker, FilePickerError, FILE_PICKER_MAX_BYTES, type FilePickerOptions, type FilePickerErrorCode, type PickedFile, type SaveFile } from '@blotch/angular-lynx';`
+
+Lynx has no `<input type="file">` and no downloads, and [`LynxImagePicker`](/api/angular-lynx/image-picker) only offers photos. Use this for an expense receipt, a CV or a contract to upload, or an invoice or report to export.
+
+## Turn it on
+
+Set `filePicker` in your build options:
+
+```json title="angular.json"
+"options": {
+  "filePicker": true
+}
+```
+
+Without it, the native code behind the picker is left out of both apps, and `pick()` and `save()` reject with `unavailable`. Neither platform asks the person for a permission: they choose each file or place, and the app reads or writes only that.
+
+To give your app its own folder in the iOS Files app, under On My iPhone, also set `"fileSharing": true`. The person can then save a file there and pick it again later. Android has no such folder: its picker already shows Downloads.
+
+## Usage
+
+```typescript
+import { Component, inject, signal } from '@angular/core';
+import {
+  FilePickerError,
+  LYNX_ELEMENTS,
+  LynxFilePicker,
+} from '@blotch/angular-lynx';
+import { Expenses } from './expenses';
+
+@Component({
+  selector: 'app-expense',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view (bindtap)="attach()"><text>Attach receipt</text></view>
+    <view (bindtap)="export()"><text>Export CSV</text></view>
+    <text>{{ status() }}</text>
+  `,
+})
+export class Expense {
+  readonly #files = inject(LynxFilePicker);
+  readonly #expenses = inject(Expenses);
+  readonly status = signal('');
+
+  async attach() {
+    try {
+      const [receipt] = await this.#files.pick({
+        types: ['application/pdf', 'image/*'],
+      });
+      if (!receipt) return; // The person closed the picker.
+      await this.#expenses.upload(receipt.blob, receipt.name);
+      this.status.set(`Attached ${receipt.name}`);
+    } catch (error) {
+      if (error instanceof FilePickerError && error.code === 'too-large') {
+        this.status.set('That file is over 20 MB');
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  async export() {
+    const csv = new Blob([this.#expenses.toCsv()], { type: 'text/csv' });
+    const saved = await this.#files.save({ blob: csv, name: 'expenses.csv' });
+    this.status.set(saved ? 'Exported' : '');
+  }
+}
+```
+
+`Expenses` stands for the app's own service.
+
+## API
+
+### `LynxFilePicker`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxFilePicker {
+  pick(options?: FilePickerOptions): Promise<readonly PickedFile[]>;
+  save(file: SaveFile): Promise<boolean>;
+}
+```
+
+| Platform                                       | Pick                                                                                   | Save                                                           |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| iOS                                            | `UIDocumentPickerViewController`: iCloud Drive, On My iPhone and other apps' providers | The same picker, exporting a copy where the person chooses     |
+| Android                                        | The system's document picker (`ACTION_OPEN_DOCUMENT`): Downloads, Drive and others     | Its save screen (`ACTION_CREATE_DOCUMENT`)                     |
+| [Web preview](/guide/glossary#web-preview)     | An `<input type="file">`                                                               | A download, which always resolves `true`                       |
+| Unit tests with the testing library            | What [`setPickedFiles()`](/api/testing-library#setpickedfiles) gives, or `[]`          | Recorded for [`savedFiles()`](/api/testing-library#savedfiles) |
+| [Lynx Explorer](/guide/glossary#lynx-explorer) | Rejects with `unavailable`                                                             | Rejects with `unavailable`                                     |
+
+### `LynxFilePicker.pick()`
+
+```typescript
+pick(options?: FilePickerOptions): Promise<readonly PickedFile[]>;
+```
+
+Opens the picker and resolves with the files picked, or with `[]` when the person closes it without choosing. Rejects with a [`FilePickerError`](#filepickererror), or with a `TypeError` for a type that isn't a MIME type or an extension. One picker can be open at a time: on iOS and Android, picking again while one is open rejects with `failed`; in the web preview, it resolves the open pick with `[]`.
+
+### `FilePickerOptions`
+
+```typescript
+type FilePickerOptions = {
+  readonly types?: readonly string[];
+  readonly multiple?: boolean;
+};
+```
+
+| Option     | Description                                                                                                                                                                                 |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `types`    | The kinds of file the person can pick, as an `<input type="file">`'s `accept` lists them: MIME types (`application/pdf`), a family (`image/*`) or extensions (`.docx`). Any file without it |
+| `multiple` | Whether the person can pick more than one file. `false` by default                                                                                                                          |
+
+### `PickedFile`
+
+```typescript
+type PickedFile = {
+  readonly blob: Blob;
+  readonly name: string;
+  readonly type: string;
+  readonly size: number;
+};
+```
+
+| Property | Description                                                                                          |
+| -------- | ---------------------------------------------------------------------------------------------------- |
+| `blob`   | The file's bytes, ready to upload with `HttpClient`, `fetch` or a library such as Firebase Storage   |
+| `name`   | Its name, such as `receipt.pdf`                                                                      |
+| `type`   | Its MIME type, the same as `blob.type`. `application/octet-stream` when the platform doesn't know it |
+| `size`   | Its size in bytes, the same as `blob.size`                                                           |
+
+### `LynxFilePicker.save()`
+
+```typescript
+save(file: SaveFile): Promise<boolean>;
+
+type SaveFile = {
+  readonly blob: Blob;
+  readonly name: string;
+};
+```
+
+Lets the person choose where to save the file, under `name`, which they can change. Resolves with `true` once it's written, or `false` when they close the screen without saving. The Blob's `type` tells the platform what kind of file it is. Rejects with a [`FilePickerError`](#filepickererror), or with a `TypeError` without a Blob and a name.
+
+### `FILE_PICKER_MAX_BYTES`
+
+The most bytes one pick, all its files together, or one save carries: 20 MiB. The bytes cross between the platform and your app as text, which phones with little memory can hold at this size. A larger file rejects with `too-large`, before it's read.
+
+### `FilePickerError`
+
+```typescript
+class FilePickerError extends Error {
+  readonly code: FilePickerErrorCode;
+}
+
+type FilePickerErrorCode = 'unavailable' | 'too-large' | 'failed';
+```
+
+| `code`        | When                                                                                                    |
+| ------------- | ------------------------------------------------------------------------------------------------------- |
+| `unavailable` | The app has no file picker: it was built without `"filePicker": true`, or it runs in Lynx Explorer      |
+| `too-large`   | The files picked, or the file to save, are over [`FILE_PICKER_MAX_BYTES`](#file_picker_max_bytes)       |
+| `failed`      | The picker couldn't open, another was open, or a file couldn't be read or written. `message` says which |
+
+## Testing
+
+The testing library stands in for the person. Until a spec calls [`setPickedFiles()`](/api/testing-library#setpickedfiles), they close the picker; [`savedFiles()`](/api/testing-library#savedfiles) lists what the app saved:
+
+```typescript
+import {
+  fireEvent,
+  render,
+  savedFiles,
+  screen,
+  setPickedFiles,
+  waitForUpdate,
+} from '@blotch/angular-lynx-testing-library';
+
+setPickedFiles([
+  { name: 'receipt.pdf', type: 'application/pdf', content: pdfBytes },
+]);
+await render(Expense);
+fireEvent.tap(screen.getByText('Attach receipt'));
+await waitForUpdate();
+expect(screen.getByText('Attached receipt.pdf')).toBeInTheDocument();
+
+fireEvent.tap(screen.getByText('Export CSV'));
+await waitForUpdate();
+expect(savedFiles()).toMatchObject([
+  { name: 'expenses.csv', type: 'text/csv' },
+]);
+```
+
+## Related
+
+- [Native apps](/guide/native-apps): the `filePicker` and `fileSharing` options and the other build options
+- [`LynxImagePicker`](/api/angular-lynx/image-picker): pick a photo, scaled down
+- [`LynxShare`](/api/angular-lynx/share): send a file to another app, or save a photo

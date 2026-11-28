@@ -14,6 +14,12 @@ export type {
   BiometricResult,
   FakeBiometrics,
 } from './biometrics.js';
+export {
+  savedFiles,
+  setFilePickerCanceled,
+  setPickedFiles,
+} from './file-picker.js';
+export type { FakePickedFile, SavedFile } from './file-picker.js';
 export { fireEvent, eventMap } from './fire-event.js';
 export { openedURLs, openLink } from './linking.js';
 export type { OpenedURL } from './linking.js';

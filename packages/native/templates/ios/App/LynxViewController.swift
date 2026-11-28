@@ -72,6 +72,11 @@ final class LynxViewController: UIViewController, LynxViewLifecycle {
     if let biometrics = NSClassFromString("AngularLynxBiometricsModule") as? LynxModule.Type {
       config.register(biometrics)
     }
+    // The document picker behind LynxFilePicker (FilePickerModule), which
+    // only an app with angular.json's filePicker keeps: by name too.
+    if let filePicker = NSClassFromString("AngularLynxFilePickerModule") as? LynxModule.Type {
+      config.register(filePicker)
+    }
     // <canvas>'s WebGL (AngularLynxWebGL.h), which the runtime calls from
     // the main thread. It's Objective-C, which Swift reaches without a
     // bridging header by name.

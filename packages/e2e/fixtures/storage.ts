@@ -5,6 +5,8 @@ import {
   LYNX_ELEMENTS,
   LynxBiometrics,
   LynxClipboard,
+  FilePickerError,
+  LynxFilePicker,
   LynxLocalStorage,
   LynxSecureStorage,
 } from '@blotch/angular-lynx';
@@ -109,6 +111,12 @@ const collectedFromArrays = async (): Promise<string> => {
  * (the E2E app asks for it). A tap asks for it and shows the answer, which on
  * a simulator nobody has enrolled is `notEnrolled`. Lynx Explorer has no
  * module: `none`, and `unavailable`.
+ *
+ * "Files", on the row below, opens LynxFilePicker's document picker (issue
+ * #924), from the shells' module, which only an app with angular.json's
+ * `filePicker` has (the E2E app sets it). Closing it shows "canceled", and a
+ * file picked shows its name and size. Lynx Explorer has no module:
+ * `unavailable`.
  */
 @Component({
   selector: 'app-storage',
@@ -158,6 +166,9 @@ const collectedFromArrays = async (): Promise<string> => {
         >Biometrics: {{ biometrics() }}</text
       >
     </view>
+    <view style="display: flex; flex-direction: row; margin-top: 8px;">
+      <text flatten="false" (bindtap)="pickFile()">Files: {{ files() }}</text>
+    </view>
   `,
 })
 export class StorageRoute implements OnInit {
@@ -165,6 +176,8 @@ export class StorageRoute implements OnInit {
   readonly #secure = inject(LynxSecureStorage);
   readonly #clipboard = inject(LynxClipboard);
   readonly #biometrics = inject(LynxBiometrics);
+  readonly #files = inject(LynxFilePicker);
+  readonly files = signal('tap');
   readonly biometrics = signal('…');
   readonly stored = signal('…');
   readonly arraySlots = signal('tap');
@@ -220,6 +233,22 @@ export class StorageRoute implements OnInit {
       (error: unknown) =>
         this.biometrics.set(
           error instanceof BiometricsError ? error.code : String(error),
+        ),
+    );
+  }
+
+  pickFile(): void {
+    this.files.set('…');
+    this.#files.pick().then(
+      (picked) =>
+        this.files.set(
+          picked.length === 0
+            ? 'canceled'
+            : picked.map((file) => `${file.name} ${file.size}`).join(', '),
+        ),
+      (error: unknown) =>
+        this.files.set(
+          error instanceof FilePickerError ? error.code : String(error),
         ),
     );
   }

@@ -1355,6 +1355,8 @@ describe('unit-test builder', () => {
       'icon',
       'splash',
       'permissions',
+      'filePicker',
+      'fileSharing',
       'deepLinkSchemes',
       'appLinkDomains',
       'canOpenURLSchemes',

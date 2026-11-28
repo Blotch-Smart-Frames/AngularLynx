@@ -89,6 +89,21 @@ export const androidGenerator: PlatformGenerator = {
         removeMarkedLines(path.join(dir, file), 'biometrics');
       }
     }
+    // The document picker is only for an app that turns it on with
+    // `filePicker`: the module, and MainActivity's lines that launch the
+    // pickers and register it.
+    if (!app.filePicker) {
+      removeTemplateFiles(
+        dir,
+        ANDROID_FILE_PICKER_SOURCES.map((file) =>
+          path.join(SHELL_SOURCES, file),
+        ),
+      );
+      removeMarkedLines(
+        path.join(dir, SHELL_SOURCES, 'MainActivity.kt'),
+        'file-picker',
+      );
+    }
     leaveOutCanvas(dir, features);
   },
   bundleDir: (dir) => path.join(dir, 'app/src/main/assets'),
@@ -125,6 +140,12 @@ const SHELL_SOURCES = 'app/src/main/java/dev/angularlynx/shell';
  * only an app with `permissions.biometrics` keeps.
  */
 export const ANDROID_BIOMETRICS_SOURCES = ['BiometricsModule.kt'] as const;
+
+/**
+ * The shell's file picker module, `AngularLynxFilePicker` (LynxFilePicker),
+ * which only an app with `filePicker` keeps.
+ */
+export const ANDROID_FILE_PICKER_SOURCES = ['FilePickerModule.kt'] as const;
 
 /** The prompt's default reason, from `permissions.biometrics`. */
 const BIOMETRICS_STRINGS = `${RESOURCES}/values/biometrics.xml`;

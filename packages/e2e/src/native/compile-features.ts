@@ -29,22 +29,27 @@ import {
  *
  * The first is also built without `permissions.biometrics`, as most apps
  * are, which leaves the biometrics module out (#918). The E2E app asks for
- * biometrics, so its own build has the module.
+ * biometrics, so its own build has the module. It's built without
+ * angular.json's `filePicker` too, which leaves the file picker module and
+ * MainActivity's launcher for it out (#924), while the E2E app sets it.
  */
 export const VARIANTS: readonly {
   readonly name: string;
   readonly features: NativeFeatures;
   readonly biometrics: boolean;
+  readonly filePicker: boolean;
 }[] = [
   {
     name: 'no-canvas',
     features: { canvas: false, webgl: false },
     biometrics: false,
+    filePicker: false,
   },
   {
     name: 'canvas-2d',
     features: { canvas: true, webgl: false },
     biometrics: true,
+    filePicker: true,
   },
 ];
 
@@ -56,17 +61,24 @@ export const VARIANTS: readonly {
  */
 const PROBES: Record<
   Platform,
-  { canvas: string; webgl: string; biometrics: string }
+  {
+    canvas: string;
+    webgl: string;
+    biometrics: string;
+    filePicker: string;
+  }
 > = {
   ios: {
     canvas: 'App/AngularLynxCanvas2DContext.m',
     webgl: 'App/AngularLynxWebGLContext.m',
     biometrics: 'App/BiometricsModule.swift',
+    filePicker: 'App/FilePickerModule.swift',
   },
   android: {
     canvas: 'app/src/main/java/dev/angularlynx/shell/Canvas2DContext.kt',
     webgl: 'app/src/main/java/dev/angularlynx/shell/WebGLContext.kt',
     biometrics: 'app/src/main/java/dev/angularlynx/shell/BiometricsModule.kt',
+    filePicker: 'app/src/main/java/dev/angularlynx/shell/FilePickerModule.kt',
   },
 };
 
@@ -110,7 +122,7 @@ export const compileFeatureVariants = async ({
     const appPermissions =
       (Object.values(readAngularJson(appDir).projects)[0]!.architect.build
         .options['permissions'] as Record<string, string> | undefined) ?? {};
-    for (const { name, features, biometrics } of VARIANTS) {
+    for (const { name, features, biometrics, filePicker } of VARIANTS) {
       step(`The ${platform} project with ${name}`);
       const variantDir = path.join(root, name);
       const bundleDir = path.join(variantDir, 'dist');
@@ -147,17 +159,18 @@ export const compileFeatureVariants = async ({
           workDir: path.join(variantDir, 'work'),
           outputDir: path.join(variantDir, 'out'),
           log,
-          overrides: biometrics
-            ? {}
-            : {
-                permissions: Object.fromEntries(
-                  Object.entries(appPermissions).filter(
-                    ([permission]) => permission !== 'biometrics',
-                  ),
+          overrides: {
+            ...(!biometrics && {
+              permissions: Object.fromEntries(
+                Object.entries(appPermissions).filter(
+                  ([permission]) => permission !== 'biometrics',
                 ),
-              },
+              ),
+            }),
+            ...(!filePicker && { filePicker: false }),
+          },
         });
-        const kept = { ...features, biometrics };
+        const kept = { ...features, biometrics, filePicker };
         for (const [feature, file] of Object.entries(PROBES[platform]) as [
           keyof typeof kept,
           string,

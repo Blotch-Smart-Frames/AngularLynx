@@ -286,8 +286,10 @@ describe('LynxSecureStorage', () => {
       const guarded = new Map<string, string>();
       let answer: Record<string, unknown> | undefined;
       let refuseRemoval: Record<string, unknown> | undefined;
-      // Each answers on a later turn, as the native modules do, so calls
-      // that overlap interleave.
+      /**
+       * Each answers on a later turn, as the native modules do, so calls
+       * that overlap interleave.
+       */
       const done = (callback: (result: unknown) => void, result: unknown) =>
         void setTimeout(() => callback(result));
       const secure = {

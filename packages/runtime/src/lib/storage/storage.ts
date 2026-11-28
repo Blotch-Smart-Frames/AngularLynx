@@ -426,7 +426,9 @@ export class LynxSecureStorage extends PersistentStorage {
     if (failure) throw failure;
   }
 
-  /** Runs `change` once the changes before it have settled. */
+  /**
+   * Runs `change` once the changes before it have settled.
+   */
   #change(change: () => Promise<void>): Promise<void> {
     const run = this.#changes.then(change, change);
     this.#changes = run.catch(() => undefined);

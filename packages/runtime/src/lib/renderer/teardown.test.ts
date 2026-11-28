@@ -41,6 +41,7 @@ import {
   CUSTOM_ELEMENTS_SCHEMA,
   Directive,
   ElementRef,
+  HostAttributeToken,
   inject,
   Injector,
   type OnDestroy,
@@ -141,6 +142,12 @@ const addEventCalls: {
   type: string;
   name: string;
 }[] = [];
+// Every element inserted while it still had a parent, which Lynx 4.1 logs as
+// an error ("FiberElement re-insert node") with three elements' details, each
+// an NSLog on iOS, before it moves it (InsertNodeBeforeInternal in
+// fiber_element.cc; issue #876).
+const reinserted: FakeEl[] = [];
+
 // Every fake element made, in or out of the tree: a list keeps its items out
 // of the native tree until the list asks for them, and a released subtree is
 // out of it too.
@@ -203,6 +210,7 @@ const installNativeFakes = (): void => {
   pageRoot = makeEl('page');
   pendingRemovedSinceFlush.clear();
   addEventCalls.length = 0;
+  reinserted.length = 0;
 
   const g = globalThis as unknown as FakeNativeGlobal<FakeEl>;
 
@@ -222,6 +230,7 @@ const installNativeFakes = (): void => {
   g.__GetTag = (n: FakeEl) => n.tag;
 
   g.__AppendElement = (parent: FakeEl, child: FakeEl) => {
+    if (child.parent) reinserted.push(child);
     detach(child);
     parent.children.push(child);
     child.parent = parent;
@@ -231,8 +240,14 @@ const installNativeFakes = (): void => {
     return child;
   };
   g.__InsertElementBefore = (parent: FakeEl, child: FakeEl, ref: FakeEl) => {
-    detach(child);
+    // As Lynx 4.1 does, the reference node's index is found before a child
+    // that still has a parent is taken out of it, so one moved forward within
+    // its parent lands one place past `ref`, and a reference that isn't a
+    // child inserts nothing ("can not find the ref node").
     const i = parent.children.indexOf(ref);
+    if (ref && i < 0) return child;
+    if (child.parent) reinserted.push(child);
+    detach(child);
     parent.children.splice(i < 0 ? parent.children.length : i, 0, child);
     child.parent = parent;
     pendingRemovedSinceFlush.delete(child);
@@ -1030,6 +1045,46 @@ class ListMoveHost {
 }
 
 /**
+ * Elements moved to another parent with remove-then-insert in one cycle, as
+ * CDK's DomPortal or a ViewContainerRef.move() between containers does it
+ * (issue #876). The directives hand the test each element, as viewChild
+ * doesn't resolve in this harness.
+ */
+const movable = new Map<string, BaseLynxElement>();
+
+@Directive({ selector: '[movable]', standalone: true })
+class Movable {
+  constructor() {
+    movable.set(
+      inject(new HostAttributeToken('movable')),
+      inject(ElementRef).nativeElement,
+    );
+  }
+}
+
+@Component({
+  selector: 'cross-parent-move-host',
+  standalone: true,
+  imports: [Movable],
+  encapsulation: ViewEncapsulation.None,
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: `
+    <view class="before" movable="before"
+      ><view class="before-anchor" movable="before-anchor"></view
+    ></view>
+    <view class="from" movable="from"
+      ><view class="moving" movable="moving"
+        ><text class="moving-text">Moving</text></view
+      ></view
+    >
+    <view class="after" movable="after"
+      ><view class="after-anchor" movable="after-anchor"></view
+    ></view>
+  `,
+})
+class CrossParentMoveHost {}
+
+/**
  * angular-three's shape (issues #279 and #280): a renderer wrapping this one
  * makes elements with it that it never inserts into the tree or destroys
  * through it, so neither Angular's destroyNode nor the release reaches them.
@@ -1308,6 +1363,129 @@ describe('renderer teardown', () => {
     for (const item of items) {
       expect(item).toBe(before.get(idOf(item)));
     }
+  });
+
+  describe('moving an element that is still in a parent (issue #876)', () => {
+    it('reorders @for items without inserting one that still has a parent', async () => {
+      const fixture = TestBed.createComponent(ReorderHost);
+      fixture.detectChanges();
+      await flush();
+      const idOf = (el: FakeEl): unknown => el.attrs.get('id');
+      const before = new Map(findByClass('item').map((el) => [idOf(el), el]));
+
+      // To the end, back to the front, forward by one and a rotation: a
+      // move forward within one parent is where Lynx's own removal put the
+      // item one place past its reference node.
+      for (const order of [
+        [2, 3, 1],
+        [1, 2, 3],
+        [2, 1, 3],
+        [3, 1, 2],
+      ]) {
+        fixture.componentInstance.items.set(
+          order.map((id) => ({ id, label: String(id) })),
+        );
+        fixture.detectChanges();
+        await flush();
+
+        const items = findByClass('item');
+        expect(items.map(idOf)).toEqual(order);
+        // Still moves: the same native elements, drawn with their labels.
+        for (const item of items) expect(item).toBe(before.get(idOf(item)));
+        expect(findRenderedByClass('label')).toHaveLength(3);
+      }
+      expect(reinserted).toEqual([]);
+    });
+
+    it('leaves an element inserted before itself where it is', () => {
+      const document = TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
+      const page = document.createRootElement();
+      const row = document.createElement('view');
+      const [a, b, c] = ['a', 'b', 'c'].map((name) => {
+        const child = document.createElement('view');
+        child.setAttribute('class', name);
+        row.appendChild(child);
+        return child;
+      });
+      page.appendChild(row);
+
+      row.insertBefore(b!, b!);
+
+      expect((row.element as unknown as FakeEl).children).toEqual(
+        [a, b, c].map((child) => (child as LynxElement).element),
+      );
+      expect(b!.nextSibling()).toBe(c);
+      expect(reinserted).toEqual([]);
+    });
+
+    /**
+     * Moves `moving` into `to`, before `ref`, in one renderer cycle.
+     */
+    const move = (
+      fixture: ReturnType<typeof TestBed.createComponent>,
+      to: string,
+      ref: string | null,
+    ): void => {
+      const factory = TestBed.inject(LynxRendererFactory2);
+      const renderer = fixture.componentRef.injector.get(Renderer2);
+      const moving = movable.get('moving')!;
+      factory.begin();
+      renderer.removeChild(renderer.parentNode(moving), moving);
+      if (ref) {
+        renderer.insertBefore(movable.get(to), moving, movable.get(ref));
+      } else {
+        renderer.appendChild(movable.get(to), moving);
+      }
+      factory.end();
+    };
+
+    it('takes an element moved to a later parent out of the old one first', async () => {
+      const fixture = TestBed.createComponent(CrossParentMoveHost);
+      fixture.detectChanges();
+      await flush();
+      const moving = (movable.get('moving') as LynxElement)
+        .element as unknown as FakeEl;
+
+      move(fixture, 'after', 'after-anchor');
+      await flush();
+
+      const [after] = findByClass('after');
+      const [anchor] = findByClass('after-anchor');
+      expect(after!.children).toEqual([moving, anchor]);
+      expect(findByClass('from')[0]!.children).toEqual([]);
+      // A native move: the same element, still drawn, with its text.
+      expect(findRenderedByClass('moving')).toEqual([moving]);
+      expect(findRenderedByClass('moving-text')).toHaveLength(1);
+      expect(reinserted).toEqual([]);
+
+      // Back to `from`, which comes first: a rebuild (see the next test).
+      move(fixture, 'from', null);
+      await flush();
+
+      expect(findByClass('from')[0]!.children).toEqual(
+        findRenderedByClass('moving'),
+      );
+      expect(findRenderedByClass('moving-text')).toHaveLength(1);
+      expect(reinserted).toEqual([]);
+    });
+
+    it('moves an element to an earlier parent without inserting it while it still has a parent', async () => {
+      const fixture = TestBed.createComponent(CrossParentMoveHost);
+      fixture.detectChanges();
+      await flush();
+
+      // Lynx 4.1 would lose this move (see #removeIfMoveWouldBeLost), so it's
+      // a removal and a rebuild, and neither inserts it with a parent.
+      move(fixture, 'before', 'before-anchor');
+      await flush();
+
+      const [before] = findByClass('before');
+      const [anchor] = findByClass('before-anchor');
+      const [moved] = findRenderedByClass('moving');
+      expect(before!.children).toEqual([moved, anchor]);
+      expect(findRenderedByClass('moving-text')).toHaveLength(1);
+      expect(reinserted).toEqual([]);
+    });
   });
 
   it("re-registers a projected element's event handler after remount", async () => {

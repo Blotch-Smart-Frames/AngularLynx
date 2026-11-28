@@ -113,11 +113,12 @@ const collectedFromArrays = async (): Promise<string> => {
  * a simulator nobody has enrolled is `notEnrolled`. Lynx Explorer has no
  * module: `none`, and `unavailable`.
  *
- * "Files", on the row below, opens LynxFilePicker's document picker (issue
+ * "Files", beside "Rating", opens LynxFilePicker's document picker (issue
  * #924), from the shells' module, which only an app with angular.json's
  * `filePicker` has (the E2E app sets it). Closing it shows "canceled", and a
  * file picked shows its name and size. Lynx Explorer has no module:
- * `unavailable`.
+ * `unavailable`. It shares that row because the Android emulator's screen
+ * ends at the Biometrics row, and Maestro can't tap what's below it.
  *
  * "Rating", beside "Clipboard", asks for the store's rating prompt with
  * LynxStoreReview (issue #931), which the app has because the harness sets
@@ -172,14 +173,14 @@ const collectedFromArrays = async (): Promise<string> => {
       <text flatten="false" style="margin-left: 16px;" (bindtap)="rate()"
         >Rating: {{ rating() }}</text
       >
+      <text flatten="false" style="margin-left: 16px;" (bindtap)="pickFile()"
+        >Files: {{ files() }}</text
+      >
     </view>
     <view style="display: flex; flex-direction: row; margin-top: 8px;">
       <text flatten="false" (bindtap)="authenticate()"
         >Biometrics: {{ biometrics() }}</text
       >
-    </view>
-    <view style="display: flex; flex-direction: row; margin-top: 8px;">
-      <text flatten="false" (bindtap)="pickFile()">Files: {{ files() }}</text>
     </view>
   `,
 })

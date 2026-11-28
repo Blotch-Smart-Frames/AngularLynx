@@ -1,5 +1,5 @@
-import { inject, Injectable } from '@angular/core';
-import { LynxNativeModule } from '../native-module/native-module';
+import { Injectable } from '@angular/core';
+import { callOnBackground } from '../background-call';
 
 /**
  * The native module of the apps `ng build --platform` makes
@@ -22,13 +22,6 @@ type WebAuthResult = {
   readonly url?: string;
   readonly error?: 'canceled' | 'failed';
   readonly message?: string;
-};
-
-type WebAuthModule = {
-  start(
-    request: WebAuthRequest,
-    done: (result: WebAuthResult) => void,
-  ): unknown;
 };
 
 /**
@@ -99,56 +92,45 @@ export type WebAuthSessionOptions = {
  */
 @Injectable({ providedIn: 'root' })
 export class LynxWebAuthSession {
-  readonly #modules = inject(LynxNativeModule);
-
   /**
    * Opens `url` in the sign-in sheet and resolves with the whole URL the page
    * redirects to on `callbackScheme`, query and fragment included. Rejects
    * with a {@link WebAuthSessionError}.
    */
-  start({
+  async start({
     url,
     callbackScheme,
     ephemeral = false,
   }: WebAuthSessionOptions): Promise<string> {
-    // On the main thread, where Angular runs, the module is a proxy whose
-    // calls go through the background thread: a host without it rejects the
-    // call rather than returning no module.
-    const module = this.#modules.getNativeModule(WEB_AUTH_MODULE) as
-      | WebAuthModule
-      | undefined;
-    return new Promise((resolve, reject) => {
-      const unavailable = (): void =>
-        reject(
-          new WebAuthSessionError(
-            'unavailable',
-            'This host has no web authentication session. Only the apps `ng build --platform` makes have one.',
-          ),
-        );
-      if (!module) {
-        unavailable();
-        return;
-      }
-      Promise.resolve()
-        .then(() =>
-          module.start({ url, callbackScheme, ephemeral }, (result) => {
-            if (result.url !== undefined) {
-              resolve(result.url);
-              return;
-            }
-            const code = result.error === 'canceled' ? 'canceled' : 'failed';
-            reject(
-              new WebAuthSessionError(
-                code,
-                result.message ??
-                  (code === 'canceled'
-                    ? 'The sign-in was canceled.'
-                    : 'The sign-in page could not be opened.'),
-              ),
-            );
-          }),
-        )
-        .catch(unavailable);
-    });
+    const request: WebAuthRequest = { url, callbackScheme, ephemeral };
+    let result: WebAuthResult | undefined;
+    try {
+      // The module calls back on the background thread, where NativeModules
+      // lives; callNativeModuleAsync keeps the callback there, so nothing
+      // stays registered on either thread once it answers, however many
+      // sign-ins the app makes. A callback passed through
+      // LynxNativeModule's relayed proxy would stay registered on the main
+      // thread for good, with the promise it settles (#959).
+      result = (await callOnBackground(
+        'callNativeModuleAsync',
+        WEB_AUTH_MODULE,
+        'start',
+        [request],
+      )) as WebAuthResult | undefined;
+    } catch {
+      throw new WebAuthSessionError(
+        'unavailable',
+        'This host has no web authentication session. Only the apps `ng build --platform` makes have one.',
+      );
+    }
+    if (result?.url !== undefined) return result.url;
+    const code = result?.error === 'canceled' ? 'canceled' : 'failed';
+    throw new WebAuthSessionError(
+      code,
+      result?.message ??
+        (code === 'canceled'
+          ? 'The sign-in was canceled.'
+          : 'The sign-in page could not be opened.'),
+    );
   }
 }

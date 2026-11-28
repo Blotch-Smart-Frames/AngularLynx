@@ -590,7 +590,7 @@ When Angular destroys a view, its DOM nodes become garbage once nothing referenc
 
 ### What Lynx does
 
-The runtime keeps a registry from native id to `LynxElement` (see the section above), and until #279 a registered wrapper kept its native element, and so its UI, alive (the registry holds wrappers weakly now; see the end of this section). Angular calls `destroyNode` only for a destroyed view's **top-level** nodes: `destroyLView` walks them with `applyView`, which never descends into an element's children, and the views nested in it (child components' views, `@if`/`@for` blocks) are cleaned up by `destroyViewTree` without the renderer. So `destroyNode` deregistering just its node left every element under it registered, and each registered child's `#jsParent` kept the deregistered parent too.
+The runtime keeps a registry from native id to `LynxElement` (see the section above), and until #279 a registered wrapper kept its native element, and so its UI, alive (the registry holds wrappers out of the page weakly now; see the end of this section). Angular calls `destroyNode` only for a destroyed view's **top-level** nodes: `destroyLView` walks them with `applyView`, which never descends into an element's children, and the views nested in it (child components' views, `@if`/`@for` blocks) are cleaned up by `destroyViewTree` without the renderer. So `destroyNode` deregistering just its node left every element under it registered, and each registered child's `#jsParent` kept the deregistered parent too.
 
 ### The fix
 
@@ -611,7 +611,9 @@ The release reaches only the elements in the destroyed subtree, and a renderer t
 - **An `*args`** (`NgtArgs`, and so every `ngt-primitive`) hangs its directive's injector on its anchor comment. The injector leads to the view, so the whole screen stayed: its component, every element and every native UI (#279).
 - **A scene component's host** holds angular-three's canvas store, which holds the WebGL renderer and so the `<canvas>`. Without an `*args`, the screen's component and its other elements went, but every `<canvas>` stayed, with its native UI, view and Metal layer on iOS (#280).
 
-So the registry holds each wrapper weakly (a `WeakRef`, as a browser holds a node's JavaScript wrapper), and sweeps out the entries of collected wrappers whenever it has doubled in size since the last sweep (`LynxElement.#sweepCollected`). It used a `FinalizationRegistry` to delete each one as its wrapper was collected, until issue #708: that kept a record for every element as long as the element lived, to delete the few entries nobody released, as an element Angular destroys leaves the registry at once. It finds wrappers; it doesn't keep them. A wrapper in the tree is still held by its parent's `#children`, up to the page, which the document holds; one Angular keeps out of the tree (a detached route view) is held by its view; and one with listeners is held by the handlers on its native element. One that nothing else holds can't be found or used again. The main thread has `WeakRef` and `FinalizationRegistry` (see "The main thread lacks newer built-ins").
+So the registry holds each wrapper out of the page weakly (a `WeakRef`, as a browser holds a node's JavaScript wrapper), and sweeps out the entries of collected wrappers whenever it has doubled in size since the last sweep (`LynxElement.#sweepCollected`). It used a `FinalizationRegistry` to delete each one as its wrapper was collected, until issue #708: that kept a record for every element as long as the element lived, to delete the few entries nobody released, as an element Angular destroys leaves the registry at once. It finds wrappers; it doesn't keep them. A wrapper in the tree is still held by its parent's `#children`, up to the page, which the document holds; one Angular keeps out of the tree (a detached route view) is held by its view; and one with listeners is held by the handlers on its native element. One that nothing else holds can't be found or used again. The main thread has `WeakRef` and `FinalizationRegistry` (see "The main thread lacks newer built-ins").
+
+A wrapper in the page is held as it is, since the page holds it already (issue #912): a `WeakRef` for every element, and the sweeps reading them, were about 5% of the main thread's JavaScript in mounting a screen of 15,000 views or texts (`benchmarks/harness/node-mount.mjs`). An element is held strongly from when it's made until the end of its cycle (`LynxElement.#settleRegistry`), which holds weakly what isn't in the page then, with everything under it; a wrapper a query makes for a native element that had none is held weakly at once, since a query outside change detection may wait long for a cycle to end. Everything that takes an element out of the page holds it and what's under it weakly again: a removal that isn't a destroy, a move to a parent out of the page, a list letting an item go, and a new page (a re-bootstrap). A `*lynxListFor` item is held weakly in the page too, as its list doesn't hold it (its run's views do). `teardown.test.ts` ("its registry of wrappers") checks each of these.
 
 Measured on the iOS Simulator (Lynx 4.1) with `heap <pid>` and a `WeakRef` on each screen's component and canvas, in a router app (`ng build --platform ios`) whose Home screen has an `ngt-canvas`, after 18 Home ↔ Other round trips, on Other:
 
@@ -713,7 +715,7 @@ Measured with a copy of `examples/ui-dock` that switches tabs every 1.2 s (Home,
 
 Android's PSS swings by tens of megabytes between rounds with the screens PrimJS hasn't collected yet, before and after. The full collections didn't add pauses: the longest wait between two frames in a round (the probe counts them with `requestAnimationFrame`, and sampling the memory stalls it too) went over 100 ms in 3% of rounds with them against 13% without on iOS, 8% against 32% on Android, and the longest was 0.4 s against 2.5 s on iOS and 3 s on Android, where PrimJS's own full collections, on a heap that had grown, ran instead.
 
-It isn't the amount of garbage: a mode that makes about 16 MB of plain objects a round and keeps none levels off at once (iOS's "Untagged" at 56 to 69 MB for 100 rounds, Android's native heap flat). Nor the `WeakRef` the runtime keeps for each element (`#byNativeId`): holding them strongly instead grew as fast. Nor what the app keeps: the screens were collected throughout, and the registry stayed at about 190 elements. PrimJS 4.1.1's settings flag, which would turn concurrent collection off, is a stub in the open-source build.
+It isn't the amount of garbage: a mode that makes about 16 MB of plain objects a round and keeps none levels off at once (iOS's "Untagged" at 56 to 69 MB for 100 rounds, Android's native heap flat). Nor the `WeakRef` the runtime kept then for each element (`#byNativeId`): holding them strongly instead grew as fast. Nor what the app keeps: the screens were collected throughout, and the registry stayed at about 190 elements. PrimJS 4.1.1's settings flag, which would turn concurrent collection off, is a stub in the open-source build.
 
 ### The fix
 
@@ -756,6 +758,40 @@ Issue #708 took the rest of what each element kept for nothing off it:
 - The registry has no `FinalizationRegistry` (see "Elements another renderer keeps out of the tree").
 
 Under V8 (the testing library, 4,000 rows, after a full collection), a `@for` row of one `<view class="box">` kept 2,590 bytes instead of 2,963, and one of `<text>{{ i }}</text>` 3,429 instead of 4,100; V8 doesn't show PrimJS's cost per property, so the prototype fields aren't in those numbers. On the iOS 27 Simulator the mount screen of 5,000 views, with a full collection before the footprint was read, took a median of 46 MB of "Untagged" over 9 launches, against 48 MB over 8 for master, but launches of the same build ranged over 10 MB, more than the difference.
+
+---
+
+## A mount's garbage stays in PrimJS's heap, so an object made and dropped for each element costs the screen (issue #586)
+
+### What you'd expect (web)
+
+An object a function makes and drops at once (a `for…of`'s iterator, a `Map` entry's `[key, value]` pair, a regular expression's match) is collected in the young generation before it costs anything, and a screen's memory is what it keeps.
+
+### What Lynx does
+
+PrimJS, which runs the main thread, has no young generation. What a screen's first render makes and drops stays in its heap: the iOS footprint's "Untagged" memory grew with it. And PrimJS makes such objects where V8 avoids them: each `for…of` makes an iterator object (one per loop, not per step: PrimJS's built-in iterators skip the `{ value, done }` result, as QuickJS's do), each step over a `Map`'s entries makes an `[key, value]` array, a destructuring `const [a, b] = pair` makes another iterator, and `String.prototype.replace()` with a regular expression makes arrays whether or not it matches. A full collection doesn't give all of it back.
+
+Measured on the iOS 27 Simulator with the benchmark's mount screens, footprint 12 s after launch (5 launches of each build, alternating, and 3 of ReactLynx's; each build's "Untagged" was the same within 0.1 MB in every launch):
+
+| 5,000 `<text>{{ i }}</text>`                                                             | Footprint (median) | "Untagged" |
+| ---------------------------------------------------------------------------------------- | ------------------ | ---------- |
+| Before #586's change                                                                     | 329.3 MB           | 51.0 MB    |
+| The same, with two full collections after it's drawn (`AngularLynxShell.collectGarbage`) | 319.3 MB           | 41.9 MB    |
+| After                                                                                    | 315.5 MB           | 37.7 MB    |
+| ReactLynx, the same screen                                                               | 334.7 MB           | 37.8 MB    |
+
+So each text took 7.2 KB of PrimJS heap from 1,500 to 5,000, and takes 4.0 KB, against ReactLynx's 5.8 KB. A screen of `<view>`s didn't move ("Untagged" 26.6 MB at 5,000 either way, and 1.8 KB per view against ReactLynx's 3.0 KB): a view's elements cost native memory ("Malloc Small", 8.9 KB per view against ReactLynx's 7.3 KB), not PrimJS's.
+
+### The fix
+
+Keep a function that runs for each element from making objects it drops. Issue #586's change, in `lynx-element.ts`:
+
+- The registry's sweep goes through `Map.prototype.forEach`, not `for (const [id, entry] of …)`.
+- The loops that run for every element (`setAttribute('class')`'s scope classes, `#wouldFormCycle`, `#collectRawTextLeaves`) are indexed.
+- A `<text>` whose one child is a raw-text, as `<text>{{ i }}</text>` is, is trimmed without the text pass's arrays, and `trimTextEdges` slices instead of calling `replace()` twice.
+- Elements share their scope-class list (`withScopeClass`) instead of each keeping an array of its own: every element of a component with styles has the same `[_ngcontent-…]`.
+
+Under `node --jitless` (`benchmarks/harness/node-mount.mjs`, V8's sampling heap profiler, collected objects included), a mount allocates 1,791 bytes per `<view>` row instead of 2,353, and 3,281 per `<text>` row instead of 5,100. The text screen's JavaScript takes 5% less time.
 
 ---
 
@@ -2186,6 +2222,8 @@ How Lynx's `fetch` differs from the web's is in "`fetch` is available but withou
 The standard `localStorage` / `sessionStorage` globals **do not exist**, and Lynx has nothing that outlives the app. Its own store, `lynx.setSessionStorageItem` / `getSessionStorageItem` / `subscribeSessionStorage` (`LynxSessionStorage`), is shared by every LynxView in the host app but empties when the app quits.
 
 For data kept after that, `LynxLocalStorage` and `LynxSecureStorage` (issue #178) call native modules that the shells `ng build --platform` makes register: `UserDefaults` and the Keychain on iOS, `SharedPreferences` (the secure one encrypted by an Android Keystore key) on Android. Lynx Explorer has neither, so the services keep values in memory there. Lynx for Web runs the main thread in an iframe that web-core sandboxes with `allow-same-origin` (`createIFrameRealm.js`), so the page's `localStorage` is reachable from Angular there, and the services use it.
+
+Lynx has no WebAuthn either (`navigator.credentials`), so no passkeys. For a local check that the person holding the phone is its owner, which signs no server challenge, `LynxBiometrics` (issue #918) calls the shells' `AngularLynxBiometrics` module: `LAContext` on iOS and AndroidX's `BiometricPrompt` on Android. The module is only in apps with `permissions.biometrics` in angular.json, which writes iOS's `NSFaceIDUsageDescription`; without that key Face ID fails rather than asking. `LynxSecureStorage`'s `requireBiometrics` keeps a value behind them in the same module (a `.biometryCurrentSet` Keychain item, a Keystore key that needs a biometric for each use), which a new face or finger makes unreadable for good. The web preview and Lynx Explorer report no sensor.
 
 ---
 
@@ -7874,7 +7912,18 @@ React Lynx appends a new node that has no node after it, and the children of new
 
 `LynxElement` appends an element going in before an anchor when what follows the anchor in the parent (the tail) is anchors and at most four elements that haven't been flushed yet (`#appendsBeforeTail`), during change detection, and leaves the tail where it was until the end of the cycle. Native then has it before the elements appended since, which draws nothing different between two flushes: anchors are hidden views with nothing in them, and an element never flushed has nothing on the screen. `commitPendingClasses()`, which every path to a flush runs first, puts the tail back at the end in one move each (`#settleDisplacedTails`), in the same flush, as does anything that changes the parent's children otherwise or reads their native order (`nextSibling()`, and the tree order a move between two parents reads). An element counts as not flushed while no flush, and no end of a change detection cycle, has come since its native element was made (`flushes.ts`).
 
-With elements in the tail, the first element before the anchor in a cycle is inserted, and the ones after it are appended: an `@if` puts in one element, and moving the elements after it would cost more than the one search. More than four elements in the tail (each move searches the children too), or one that has been flushed, keeps the insert for every row. Moving a flushed element would move its view on the screen, which costs the UI thread a removal and an insert each cycle that adds a row, and takes the focus from a field in it. So rows added later to a container whose footer is on the screen still insert, as does any insert on Lynx for Web, in a `<text>`, or outside change detection.
+With elements in the tail, the first element before the anchor in a cycle is inserted, and the ones after it are appended: an `@if` puts in one element, and moving the elements after it would cost more than the one search. More than four elements in the tail (each move searches the children too) keeps the insert for every row, as does any insert on Lynx for Web, in a `<text>`, or outside change detection.
+
+A tail with a flushed element in it, such as a footer on the screen under rows that load later, is moved only for a cycle that puts more than 32 elements in before the anchor (`MIN_INSERTS_BEFORE_FLUSHED_TAIL`): the first 32 are inserted and the rest appended. Moving a flushed element moves its view: the painting context's `RemovePaintingNode` takes an `is_move` flag (`core/renderer/ui_wrapper/painting/painting_context.cc`), but only to keep the node out of its list of removed ones. iOS's `LynxUIOwner detachNode:` takes the view out of its superview, and Android's `LynxUIOwner.remove` calls `removeChild`, before the insert puts it back. That costs the UI thread a removal and an insert, and a `UITextField` taken out of its window resigns first responder (Android's `removeView` clears a focused child's focus too), so the tail moves only when it and its native subtree hold nothing but `view`, `text`, `raw-text`, `image` and the inline text elements (`MOVABLE_TAGS`), 64 elements at most. On Android, exposure (`bindappear`) isn't reset by the move: `LynxUIOwner` takes a view out of the exposure map only when it destroys it (iOS isn't checked). A cycle adding a row or a few still inserts each, and moves nothing that's drawn.
+
+Measured on the iOS 27 Simulator (iPhone 18 Pro, 2026-11-28), a scroll-view's container of 10×10 px views with a `<text>` footer, drawn empty first, then a cycle adding the rows, from a `MountStart` mark just before it to Fully Drawn, 8 launches each, the builds launched in turn:
+
+| Rows added under the footer | Inserting each row, fastest (median) | Appending the rows past the first 32, fastest (median) |
+| --------------------------- | ------------------------------------ | ------------------------------------------------------ |
+| 1,000                       | 25.1 (37.6) ms                       | 22.3 (32.6) ms                                         |
+| 5,000                       | 236.9 (246.8) ms                     | 122.6 (135.5) ms                                       |
+
+An earlier session that appended every row after the first, without the 32-row threshold, measured 31.0 (41.4) → 26.4 (37.1) ms and 233.1 (246.6) → 114.6 (128.4) ms: the 31 more inserts cost nothing the launches' noise shows.
 
 ---
 

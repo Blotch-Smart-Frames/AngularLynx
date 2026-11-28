@@ -88,6 +88,8 @@ export class LynxDocument implements LynxDocumentBase {
     // Prevent Angular from reparenting or removing the root page element
     // during normal component lifecycle (appendChild/remove calls).
     this.page.isRootPageElement = true;
+    // What's in it is held by it, so the registry can hold it as it is.
+    LynxElement.usePage(this.page);
     if (isAndroid()) {
       // What every blur-view blurs on Android (see create-blur-view-element).
       __SetID(pageElement, ANDROID_BLUR_CAPTURE_TARGET);

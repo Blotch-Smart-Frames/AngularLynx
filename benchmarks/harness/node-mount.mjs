@@ -23,8 +23,11 @@
 // (BENCH_NO_MINIFY, see ../apps/angular-lynx/lynx.config.mts):
 //
 //   cd benchmarks/apps/angular-lynx
-//   BENCH_NO_MINIFY=1 BENCH_SCREEN='mount?kind=view&count=15000' \
+//   DEBUG=rspeedy BENCH_NO_MINIFY=1 BENCH_SCREEN='mount?kind=view&count=15000' \
 //     npx ng build --environment lynx
+//
+// (DEBUG=rspeedy keeps dist/.lynx/main/main-thread.js, which a production
+// build deletes once it's in the bundle.)
 //   node --jitless ../../harness/node-mount.mjs --runs 10 --profile
 //
 // To measure a change, copy the script aside, build again with the change,

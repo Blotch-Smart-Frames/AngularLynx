@@ -9,6 +9,7 @@ import { applyDisplay } from './display.js';
 import { applyEntry } from './entry.js';
 import { applyGenerator } from './generator.js';
 import { applyLayers } from './layers.js';
+import { applyMangleExports } from './mangle-exports.js';
 import {
   applyNativeFeatures,
   createNativeFeaturesCollector,
@@ -111,6 +112,9 @@ export const pluginAngularLynx = (
       );
       applyGenerator(api);
       applySplitChunksRule(api, normalizedOptions);
+      // One-character export names, for the getters between the modules
+      // rspack couldn't concatenate (see mangle-exports.ts).
+      applyMangleExports(api);
       // More minifier passes for the background scripts, which use little of
       // what they hold (see background-minify.ts).
       applyBackgroundMinify(api);

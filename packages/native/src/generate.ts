@@ -44,11 +44,17 @@ export type PlatformGenerator = {
   ) => void;
   /**
    * Takes the shells' optional native code the app doesn't use out of the
-   * fresh copy, after `configure`. Eject keeps everything unless its caller
+   * fresh copy, after `configure`: what the bundle doesn't name
+   * (`features`), and the modules for permissions the app doesn't ask for
+   * (`app`), such as biometrics. Eject keeps every feature unless its caller
    * says otherwise (renderEjectedProject's `features`): an ejected project is
    * the user's to grow.
    */
-  readonly leaveOut: (dir: string, features: NativeFeatures) => void;
+  readonly leaveOut: (
+    dir: string,
+    features: NativeFeatures,
+    app: ResolvedApp,
+  ) => void;
   /** Where the Lynx bundle and its assets go inside the native project. */
   readonly bundleDir: (dir: string) => string;
 };
@@ -137,7 +143,7 @@ export const prepareProject = ({
     mkdirSync(dir, { recursive: true });
     cpSync(path.join(TEMPLATES_DIR, platform), dir, { recursive: true });
     generator.configure(dir, app, projectRoot, development);
-    generator.leaveOut(dir, features);
+    generator.leaveOut(dir, features, app);
     writeFileSync(hashFile, hash);
   }
   // Generated projects are build output. `ng new` already ignores Angular's

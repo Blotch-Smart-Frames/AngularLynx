@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The reason a biometric prompt shows when the app gives none. The generator
+  writes angular.json's permissions.biometrics here, or deletes this file with
+  BiometricsModule.kt from an app without it.
+-->
+<resources>
+    <string name="angular_lynx_biometrics_reason">Confirm it\'s you</string>
+</resources>

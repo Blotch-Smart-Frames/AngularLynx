@@ -17,7 +17,10 @@
             "polyfills": [],
             "tsConfig": "tsconfig.app.json",
             "styles": ["src/styles.css"],
-            "scripts": []
+            "scripts": [],
+            "permissions": {
+              "biometrics": "Unlock the session you signed in with"
+            }
           }
         },
         "serve": {

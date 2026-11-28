@@ -16,7 +16,6 @@ import android.util.Log
 import android.view.accessibility.AccessibilityManager
 import android.widget.FrameLayout
 import androidx.activity.BackEventCompat
-import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -27,6 +26,7 @@ import androidx.core.os.ConfigurationCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.fragment.app.FragmentActivity
 import com.lynx.react.bridge.JavaOnlyArray
 import com.lynx.react.bridge.JavaOnlyMap
 import com.lynx.tasm.LynxBooleanOption
@@ -40,8 +40,12 @@ import com.lynx.xelement.XElementBehaviors
 /**
  * The whole app: one full-screen LynxView running the Angular app. Angular
  * Router navigates inside it, so there is no native navigation stack.
+ *
+ * A FragmentActivity, which is a ComponentActivity, because AndroidX's
+ * BiometricPrompt (BiometricsModule) shows as a fragment over one. AppCompat,
+ * which XElement needs, brings the fragment library to every app anyway.
  */
-class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
+class MainActivity : FragmentActivity(), ShellModule.Host, WebAuthModule.Host {
     private lateinit var lynxView: LynxView
 
     // Whether the page draws under the system bars and the cutout:
@@ -271,6 +275,14 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
             // The share sheet behind LynxShare (ShareModule.kt), which it opens
             // from this activity.
             registerModule(ShareModule.NAME, ShareModule::class.java, this@MainActivity)
+            // Biometrics behind LynxBiometrics and LynxSecureStorage's
+            // requireBiometrics (BiometricsModule.kt), whose prompt shows over
+            // this activity. Only an app with permissions.biometrics keeps
+            // these lines and the module (@blotch/angular-lynx-native's
+            // android/project.ts).
+            // angular-lynx:biometrics
+            registerModule(BiometricsModule.NAME, BiometricsModule::class.java, this@MainActivity)
+            // /angular-lynx:biometrics
             // The shortcuts the person runs from the app icon's menu, which
             // LynxShortcuts takes (ShortcutsModule.kt).
             registerModule(ShortcutsModule.NAME, ShortcutsModule::class.java, null)

@@ -2,7 +2,11 @@ import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { removeMarkedLines, removeTemplateFiles } from '../features.ts';
+import {
+  type NativeFeatures,
+  removeMarkedLines,
+  removeTemplateFiles,
+} from '../features.ts';
 import type { PlatformGenerator } from '../generate.ts';
 import {
   type Orientation,
@@ -60,36 +64,94 @@ export const androidGenerator: PlatformGenerator = {
 
     writeAndroidIcon(dir, app, projectRoot);
     writeAndroidSplash(dir, app, projectRoot);
-  },
-  leaveOut: (dir, features) => {
-    if (features.webgl) return;
-    if (features.canvas) {
-      // A 2D canvas keeps the module, without the WebGL2 context and the
-      // module's lines that make one (`// angular-lynx:webgl`).
-      removeTemplateFiles(
-        dir,
-        ANDROID_WEBGL_SOURCES.map((file) => path.join(SHELL_SOURCES, file)),
+
+    // The prompt's subtitle when the app gives none, as iOS shows
+    // NSFaceIDUsageDescription. leaveOut deletes the file without it.
+    const reason = app.permissions.biometrics;
+    if (reason) {
+      writeFileSync(
+        path.join(dir, BIOMETRICS_STRINGS),
+        biometricsStringsXml(reason),
       );
-      removeMarkedLines(
-        path.join(dir, SHELL_SOURCES, 'WebGLModule.kt'),
-        'webgl',
-      );
-      return;
     }
-    removeTemplateFiles(
-      dir,
-      ANDROID_CANVAS_SOURCES.map((file) => path.join(SHELL_SOURCES, file)),
-    );
-    // The lines that register them (`// angular-lynx:canvas`).
-    removeMarkedLines(
-      path.join(dir, SHELL_SOURCES, 'MainActivity.kt'),
-      'canvas',
-    );
+  },
+  leaveOut: (dir, features, app) => {
+    // The biometrics module, AndroidX Biometric and the lines that register
+    // it are only for an app that asks for biometrics.
+    if (!app.permissions.biometrics) {
+      removeTemplateFiles(dir, [
+        ...ANDROID_BIOMETRICS_SOURCES.map((file) =>
+          path.join(SHELL_SOURCES, file),
+        ),
+        BIOMETRICS_STRINGS,
+      ]);
+      for (const file of ANDROID_BIOMETRICS_MARKED) {
+        removeMarkedLines(path.join(dir, file), 'biometrics');
+      }
+    }
+    leaveOutCanvas(dir, features);
   },
   bundleDir: (dir) => path.join(dir, 'app/src/main/assets'),
 };
 
+/**
+ * Takes out the canvas code the bundle doesn't use (see NativeFeatures).
+ */
+const leaveOutCanvas = (dir: string, features: NativeFeatures): void => {
+  if (features.webgl) return;
+  if (features.canvas) {
+    // A 2D canvas keeps the module, without the WebGL2 context and the
+    // module's lines that make one (`// angular-lynx:webgl`).
+    removeTemplateFiles(
+      dir,
+      ANDROID_WEBGL_SOURCES.map((file) => path.join(SHELL_SOURCES, file)),
+    );
+    removeMarkedLines(path.join(dir, SHELL_SOURCES, 'WebGLModule.kt'), 'webgl');
+    return;
+  }
+  removeTemplateFiles(
+    dir,
+    ANDROID_CANVAS_SOURCES.map((file) => path.join(SHELL_SOURCES, file)),
+  );
+  // The lines that register them (`// angular-lynx:canvas`).
+  removeMarkedLines(path.join(dir, SHELL_SOURCES, 'MainActivity.kt'), 'canvas');
+};
+
 const SHELL_SOURCES = 'app/src/main/java/dev/angularlynx/shell';
+
+/**
+ * The shell's biometrics module, `AngularLynxBiometrics` (LynxBiometrics, and
+ * the values LynxSecureStorage keeps behind a fingerprint or a face), which
+ * only an app with `permissions.biometrics` keeps.
+ */
+export const ANDROID_BIOMETRICS_SOURCES = ['BiometricsModule.kt'] as const;
+
+/** The prompt's default reason, from `permissions.biometrics`. */
+const BIOMETRICS_STRINGS = `${RESOURCES}/values/biometrics.xml`;
+
+/**
+ * The files whose lines between `// angular-lynx:biometrics` markers name
+ * the module or AndroidX Biometric: MainActivity's registration and the
+ * Gradle dependency.
+ */
+const ANDROID_BIOMETRICS_MARKED = [
+  'app/build.gradle.kts',
+  `${SHELL_SOURCES}/MainActivity.kt`,
+] as const;
+
+/**
+ * res/values/biometrics.xml: the reason a biometric prompt shows when the
+ * app gives none, angular.json's `permissions.biometrics`.
+ */
+export const biometricsStringsXml = (reason: string): string =>
+  [
+    '<?xml version="1.0" encoding="utf-8"?>',
+    "<!-- Written from angular.json's permissions.biometrics on every build. -->",
+    '<resources>',
+    `    <string name="angular_lynx_biometrics_reason">${stringResource(reason)}</string>`,
+    '</resources>',
+    '',
+  ].join('\n');
 
 /**
  * The shell's `<canvas>`, its `AngularLynxWebGL` module and its contexts, and

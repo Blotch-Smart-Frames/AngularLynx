@@ -1,5 +1,10 @@
 import { Injectable } from '@angular/core';
 import { callOnBackground } from '../background-call';
+import {
+  biometricsFailure,
+  biometricsUnavailable,
+  callBiometrics,
+} from '../biometrics/biometrics';
 import type { PlatformType } from '../system-info/system-info';
 
 /**
@@ -144,6 +149,19 @@ const decode = <T>(raw: string): T => {
 };
 
 /**
+ * A value as it's stored: JSON, or a TypeError for one JSON can't hold.
+ */
+const encode = (key: string, value: unknown): string => {
+  const raw = JSON.stringify(value);
+  if (raw === undefined) {
+    throw new TypeError(
+      `Can't store a ${typeof value} under "${key}": values are stored as JSON.`,
+    );
+  }
+  return raw;
+};
+
+/**
  * What {@link LynxLocalStorage} and {@link LynxSecureStorage} share: a
  * key-value store of JSON values with an async API, kept by a native module
  * of the apps `ng build --platform` makes, by `localStorage` on the web, and
@@ -178,12 +196,14 @@ abstract class PersistentStorage {
    * number, a boolean or `null`. Resolves once it's stored.
    */
   async setItem<T = unknown>(key: string, value: T): Promise<void> {
-    const raw = JSON.stringify(value);
-    if (raw === undefined) {
-      throw new TypeError(
-        `Can't store a ${typeof value} under "${key}": values are stored as JSON.`,
-      );
-    }
+    await this.setEncoded(key, encode(key, value));
+  }
+
+  /**
+   * Stores `raw`, a value already turned into JSON, under `key`. For a
+   * subclass that encodes the value before it waits to store it.
+   */
+  protected async setEncoded(key: string, raw: string): Promise<void> {
     await this.#run((store) => store.setItem(key, raw));
   }
 
@@ -255,10 +275,42 @@ export class LynxLocalStorage extends PersistentStorage {
   }
 }
 
+/** How {@link LynxSecureStorage.setItem} keeps a value. */
+export type SecureStorageSetOptions = {
+  /**
+   * Keeps the value where the platform hands it over only after the person
+   * confirms who they are with Face ID, Touch ID or a strong fingerprint or
+   * face sensor: a Keychain item with `.biometryCurrentSet` access on iOS,
+   * and on Android a value only a Keystore key that needs a biometric can
+   * decrypt. Storing it doesn't prompt; each `getItem()` does.
+   *
+   * Setting up a new face or finger makes every such value unreadable, so a
+   * thief who learns the passcode can't add their own and read it:
+   * `getItem()` then resolves `null`, and the app signs the person in
+   * again. Needs `permissions.biometrics` in angular.json, and rejects with
+   * a {@link BiometricsError} (`unavailable`) without it, as it does in the
+   * web preview, Lynx Explorer and on a phone without a passcode, or
+   * `notEnrolled` on one without a face or finger set up. Those two are the
+   * codes to fall back on a plain value for.
+   */
+  readonly requireBiometrics?: boolean;
+};
+
+/** How {@link LynxSecureStorage.getItem} reads a value. */
+export type SecureStorageGetOptions = {
+  /**
+   * What the biometric prompt says, for a value stored with
+   * `requireBiometrics`. Defaults to angular.json's `permissions.biometrics`.
+   */
+  readonly reason?: string;
+};
+
 /**
  * A key-value store for secrets such as tokens, which keeps its values after
  * the app closes, encrypted by the platform. It has the same methods as
- * {@link LynxLocalStorage}.
+ * {@link LynxLocalStorage}, and can keep a value behind Face ID, Touch ID or
+ * a fingerprint (`requireBiometrics`), which needs `permissions.biometrics`
+ * in angular.json (see {@link LynxBiometrics}).
  *
  * - **iOS:** the Keychain, readable once the phone has been unlocked after it
  *   starts, and never copied to another device. The Keychain keeps its items
@@ -285,7 +337,129 @@ export class LynxLocalStorage extends PersistentStorage {
  */
 @Injectable({ providedIn: 'root' })
 export class LynxSecureStorage extends PersistentStorage {
+  /**
+   * False once a call found that the host has no biometrics module, as in
+   * every app without `permissions.biometrics`, so the plain calls stop
+   * crossing to the background thread to find that out again.
+   */
+  #hasBiometrics = true;
+
+  /**
+   * The last change still running. A change writes one store and then
+   * removes the key from the other, so two that overlap could each remove
+   * what the other wrote: changes run one at a time, in the order they were
+   * made.
+   */
+  #changes: Promise<unknown> = Promise.resolve();
+
   constructor() {
     super('AngularLynxSecureStorage', 'angular-lynx-secure:');
+  }
+
+  /**
+   * Resolves with the value stored under `key`, or `null` if there's none.
+   * A value stored with `requireBiometrics` shows the biometric prompt
+   * first, and rejects with a {@link BiometricsError} if the person doesn't
+   * confirm.
+   */
+  override async getItem<T = unknown>(
+    key: string,
+    options: SecureStorageGetOptions = {},
+  ): Promise<T | null> {
+    const plain = await super.getItem<T>(key);
+    if (plain !== null) return plain;
+    const result = await this.#biometrics('getItem', [
+      key,
+      options.reason ?? '',
+    ]);
+    const failure = biometricsFailure(result);
+    if (failure) throw failure;
+    const raw = result?.value;
+    return typeof raw === 'string' ? decode<T>(raw) : null;
+  }
+
+  /**
+   * Stores `value` under `key`, as JSON, in place of whatever was there.
+   * Resolves once it's stored. With `requireBiometrics`, reading it back
+   * asks for Face ID, Touch ID or a fingerprint.
+   */
+  override async setItem<T = unknown>(
+    key: string,
+    value: T,
+    options: SecureStorageSetOptions = {},
+  ): Promise<void> {
+    // Read now, before it waits its turn: the value and the options are the
+    // caller's at the call, whatever happens to the objects afterwards, and
+    // a value JSON can't hold is refused at once.
+    const raw = encode(key, value);
+    const requireBiometrics = options.requireBiometrics === true;
+    return this.#change(async () => {
+      if (!requireBiometrics) {
+        await this.setEncoded(key, raw);
+        await this.#removeGuarded(key);
+        return;
+      }
+      const result = await this.#biometrics('setItem', [key, raw]);
+      if (result === undefined && !this.#hasBiometrics) {
+        throw biometricsUnavailable();
+      }
+      const failure = biometricsFailure(result);
+      if (failure) throw failure;
+      await super.removeItem(key);
+    });
+  }
+
+  override removeItem(key: string): Promise<void> {
+    return this.#change(async () => {
+      await super.removeItem(key);
+      await this.#removeGuarded(key);
+    });
+  }
+
+  override clear(): Promise<void> {
+    return this.#change(async () => {
+      await super.clear();
+      const failure = biometricsFailure(await this.#biometrics('clear', []));
+      if (failure) throw failure;
+    });
+  }
+
+  /**
+   * Removes the value kept behind biometrics under `key`, and rejects when
+   * the platform couldn't, as on iOS when the Keychain refuses: a later read
+   * would find it again.
+   */
+  async #removeGuarded(key: string): Promise<void> {
+    const failure = biometricsFailure(
+      await this.#biometrics('removeItem', [key]),
+    );
+    if (failure) throw failure;
+  }
+
+  /**
+   * Runs `change` once the changes before it have settled.
+   */
+  #change(change: () => Promise<void>): Promise<void> {
+    const run = this.#changes.then(change, change);
+    this.#changes = run.catch(() => undefined);
+    return run;
+  }
+
+  /**
+   * Calls the biometrics module's store, or resolves undefined where the
+   * host has none: there's nothing kept behind biometrics there.
+   */
+  async #biometrics(
+    method: string,
+    args: unknown[],
+  ): Promise<{ value?: unknown; error?: string } | undefined> {
+    if (!this.#hasBiometrics) return undefined;
+    try {
+      return await callBiometrics(method, args);
+    } catch {
+      // callBiometrics() rejects only where the call never reached a module.
+      this.#hasBiometrics = false;
+      return undefined;
+    }
   }
 }

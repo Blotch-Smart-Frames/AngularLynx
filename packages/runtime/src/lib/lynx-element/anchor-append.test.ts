@@ -247,7 +247,114 @@ describe('inserts before the anchors that end a parent (issue #444)', () => {
       ]);
     });
 
-    it('inserts every row before an anchor that a flushed footer follows', () => {
+    describe('a footer on the screen (issue #913)', () => {
+      let footer: LynxElement;
+
+      beforeEach(() => {
+        footer = element('view', 'footer');
+        parent.appendChild(footer);
+        // A label in it, as native holds it.
+        place(fake(footer), makeEl('text', 'label'), 0);
+        // The cycle that made it ends, and its flush draws the footer.
+        endCycle();
+        setInsideChangeDetection(true);
+        calls = [];
+      });
+
+      const names = (from: number, to: number, call: string): string[] =>
+        Array.from(
+          { length: to - from + 1 },
+          (_, i) => `${call} row${from + i}`,
+        );
+
+      it('inserts 32 rows, appends the rest, and puts the footer back at the end once', () => {
+        rows(40);
+        endCycle();
+
+        expect(calls).toEqual([
+          ...names(1, 32, 'insert'),
+          ...names(33, 40, 'append'),
+          'remove for-anchor',
+          'append for-anchor',
+          'remove case-anchor',
+          'append case-anchor',
+          'remove footer',
+          'append footer',
+        ]);
+        expect(native(parent)).toEqual([
+          ...Array.from({ length: 40 }, (_, i) => `row${i + 1}`),
+          'for-anchor',
+          'case-anchor',
+          'footer',
+        ]);
+      });
+
+      it('counts the rows of each cycle on their own', () => {
+        rows(20);
+        endCycle();
+        setInsideChangeDetection(true);
+        calls = [];
+
+        rows(20, 21);
+
+        expect(calls).toEqual(names(21, 40, 'insert'));
+      });
+
+      it('inserts every row when the footer holds a field, whose focus a move would take', () => {
+        place(fake(footer), makeEl('input', 'field'), 1);
+
+        rows(40);
+        endCycle();
+
+        expect(calls).toEqual(names(1, 40, 'insert'));
+        expect(native(parent).slice(-3)).toEqual([
+          'for-anchor',
+          'case-anchor',
+          'footer',
+        ]);
+      });
+
+      it('inserts every row when the footer holds more than it searches', () => {
+        for (let i = 0; i < 64; i++) {
+          place(fake(footer), makeEl('view', `item${i}`), 0);
+        }
+
+        rows(40);
+
+        expect(calls).toEqual(names(1, 40, 'insert'));
+      });
+
+      it('appends the rows under a footer of 64 elements, as many as it searches', () => {
+        // The footer and its label are two.
+        for (let i = 0; i < 62; i++) {
+          place(fake(footer), makeEl('view', `item${i}`), 0);
+        }
+
+        rows(40);
+
+        expect(calls.slice(32, 40)).toEqual(names(33, 40, 'append'));
+      });
+
+      it('stops reading a footer of many children at the limit', () => {
+        for (let i = 0; i < 10_000; i++) {
+          place(fake(footer), makeEl('view', `item${i}`), 0);
+        }
+        const g = globalThis as Record<string, unknown>;
+        const next = g['__NextElement'] as (n: FakeEl) => FakeEl | null;
+        let reads = 0;
+        g['__NextElement'] = (n: FakeEl) => {
+          if (n.parent === fake(footer)) reads++;
+          return next(n);
+        };
+
+        rows(40);
+
+        expect(calls).toEqual(names(1, 40, 'insert'));
+        expect(reads).toBeLessThan(64);
+      });
+    });
+
+    it('inserts a few rows before an anchor that a flushed footer follows', () => {
       const footer = element('view', 'footer');
       parent.appendChild(footer);
       // The cycle that made it ends, and its flush draws the footer.

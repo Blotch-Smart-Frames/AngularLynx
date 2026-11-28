@@ -12,6 +12,7 @@ vi.mock('./display.js', () => ({ applyDisplay: vi.fn() }));
 vi.mock('./entry.js', () => ({ applyEntry: vi.fn() }));
 vi.mock('./generator.js', () => ({ applyGenerator: vi.fn() }));
 vi.mock('./layers.js', () => ({ applyLayers: vi.fn() }));
+vi.mock('./mangle-exports.js', () => ({ applyMangleExports: vi.fn() }));
 vi.mock('./native-features.js', () => ({
   applyNativeFeatures: vi.fn(),
   createNativeFeaturesCollector: vi.fn(() => ({ _nativeFeatures: true })),
@@ -50,6 +51,7 @@ import { applyDisplay } from './display.js';
 import { applyEntry } from './entry.js';
 import { applyGenerator } from './generator.js';
 import { applyLayers } from './layers.js';
+import { applyMangleExports } from './mangle-exports.js';
 import { applyNativeFeatures } from './native-features.js';
 import { applyNestedCalc } from './nested-calc.js';
 import { applyResolve } from './resolve.js';
@@ -309,6 +311,13 @@ describe('pluginAngularLynx', () => {
         mockApi,
         expect.objectContaining({ _normalized: true }),
       );
+    });
+
+    it('calls applyMangleExports with api', () => {
+      const plugin = pluginAngularLynx();
+      plugin.setup(mockApi);
+
+      expect(applyMangleExports).toHaveBeenCalledWith(mockApi);
     });
 
     it('calls applyBackgroundMinify with api', () => {

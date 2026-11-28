@@ -100,7 +100,10 @@ export type LynxMotionAvailability = {
 export type LynxMotionOptions = {
   /**
    * The time between samples, in milliseconds: 16 (about 60 a second) unless
-   * it's given, and at least 5. The handler is called at most this often.
+   * it's given, and at least 5. A target, not a guarantee: a sample up to a
+   * quarter of it early (4 ms at most) still counts, for the sensor's jitter,
+   * and the shells send samples in batches, so a handler can run a few times
+   * in a row.
    * Every sample is work for the thread Angular runs on, so ask for no more
    * than the screen needs.
    */
@@ -310,7 +313,7 @@ export class LynxMotion {
 
   /**
    * Calls `handler` with the acceleration the phone measures, gravity
-   * included, at most every `interval` milliseconds, until the function it
+   * included, about every `interval` milliseconds, until the function it
    * returns is called or the component or service it was called from is
    * destroyed.
    */
@@ -339,7 +342,7 @@ export class LynxMotion {
 
   /**
    * Calls `handler` with which way the phone faces (`alpha`, `beta`,
-   * `gamma`), at most every `interval` milliseconds, until the function it
+   * `gamma`), about every `interval` milliseconds, until the function it
    * returns is called or the caller is destroyed.
    */
   watchOrientation(handler: (sample: LynxOrientation) => void): () => void;
@@ -353,7 +356,7 @@ export class LynxMotion {
 
   /**
    * Calls `handler` with where the top of the phone points, from the
-   * compass, at most every `interval` milliseconds, until the function it
+   * compass, about every `interval` milliseconds, until the function it
    * returns is called or the caller is destroyed. iOS reports a heading as
    * it changes by a degree or more, so a phone held still may be quiet.
    */

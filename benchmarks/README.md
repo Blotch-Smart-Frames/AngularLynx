@@ -273,7 +273,7 @@ runtime's, and which of the runtime's functions take it (#909).
 
 ```sh
 cd apps/angular-lynx
-BENCH_NO_MINIFY=1 BENCH_SCREEN='mount?kind=view&count=15000' npx ng build --environment lynx
+DEBUG=rspeedy BENCH_NO_MINIFY=1 BENCH_SCREEN='mount?kind=view&count=15000' npx ng build --environment lynx
 node --jitless ../../harness/node-mount.mjs --runs 10 --profile
 
 # A change against the build before it: the runs alternate between the two
@@ -287,7 +287,9 @@ node --jitless ../../harness/node-mount.mjs --runs 20 \
 PrimJS, the interpreter the main thread runs on: with them on, the runtime's
 small functions inline away. Its milliseconds aren't a phone's, so compare
 them only with each other on one machine: two runs of one build agree within
-about 1%. `BENCH_NO_MINIFY` keeps the functions' names for the profile.
+about 1%. `BENCH_NO_MINIFY` keeps the functions' names for the profile, and
+`DEBUG=rspeedy` keeps `dist/.lynx/main/main-thread.js`, which a production
+build deletes once it's in the bundle.
 
 ## Tracking AngularLynx against ReactLynx
 

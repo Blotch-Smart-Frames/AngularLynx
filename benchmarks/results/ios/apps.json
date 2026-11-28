@@ -1,7 +1,7 @@
 {
   "angular-lynx": {
     "label": "AngularLynx",
-    "versions": "AngularLynx master (22.2.26 + #438, #439), Angular 22.2.6, Lynx 4.1.0",
+    "versions": "AngularLynx master (22.2.26 + #438, #439 on 17 November; 22.3.1 at a5854d36 on 27 November), Angular 22.2.6 then 22.3.0, Lynx 4.1.0",
     "notes": "The port, built with ng build --platform ios"
   },
   "react-lynx": {
@@ -23,5 +23,15 @@
     "label": "Angular Native",
     "versions": "@ng-native 0.22.2, Angular 22.2.6, React Native 0.88.1, Expo 58.0.25, Hermes V1",
     "notes": "The port, made from @ng-native/template"
+  },
+  "nativescript-angular": {
+    "label": "NativeScript Angular",
+    "versions": "@nativescript/angular 22.0.2, @nativescript/core 9.1.4, @nativescript/ios 9.1.1 (V8), Angular 22.3.0",
+    "notes": "The port, made from NativeScript's Angular template"
+  },
+  "ionic-angular": {
+    "label": "Ionic Angular",
+    "versions": "@ionic/angular 9.0.14, Capacitor 8.6.3, Angular 22.3.0, WKWebView",
+    "notes": "The port, made with ionic start (Angular, standalone) and built with Capacitor"
   }
 }

@@ -171,6 +171,94 @@ export const slowPhotosPickerLaunch = (appLog: string): string | undefined => {
   return undefined;
 };
 
+/**
+ * A Metal compiler the simulator hadn't started this long after the app
+ * asked for it was held up by the simulator rather than the app. It starts
+ * in about a second on GitHub's macOS runners (1.1 to 1.4s on the passing
+ * runs of 2026-11-27 and 2026-11-28), and the flows that reach it wait 15
+ * seconds for what it holds up, so the limit sits under that.
+ */
+const STALLED_METAL_COMPILER_SECONDS = 10;
+
+/**
+ * What Metal logs in the app as it starts compiling a shader, with the app's
+ * process ID ("1234  0    myapp: (Metal) Metal Compiling Shader"), and what
+ * the simulator's MTLCompilerService logs as it begins a compile for it
+ * ("Compilation BEGIN (ParentProcessName=myapp_1234)"). The app's log has
+ * the second because the iOS host's log stream takes in MTLCompilerService's
+ * lines that name the app (see runIosHost in ios.ts).
+ */
+const METAL_COMPILE_REQUEST_LINE =
+  /\s(\d+)\s+\d+\s+[^:]+: \(Metal\) Metal Compiling Shader$/;
+const METAL_COMPILE_BEGIN_LINE =
+  /Compilation BEGIN \(ParentProcessName=[^)]*_(\d+)\)/;
+
+/**
+ * Says so when an app process in `appLog` asked the simulator's Metal
+ * compiler for shaders, and the compiler hadn't begun compiling for it
+ * {@link STALLED_METAL_COMPILER_SECONDS} later, or by the log's last line;
+ * otherwise undefined.
+ *
+ * The first WebGL context an app makes after the simulator boots has ANGLE
+ * build its Metal shaders from source, through MTLCompilerService, which the
+ * simulator starts for the app. On GitHub's macOS runners it sometimes never
+ * started it (issue #890: on 2026-11-27 and 2026-11-28 the first flow to open
+ * the canvas page, linking.yaml, connected and waited 18 seconds with nothing
+ * started). ANGLE waits for it on Lynx's engine thread, where Angular runs, so
+ * the canvas page shows none of its results and the app answers no tap:
+ * linking.yaml's "Open linking" did nothing. The next flow, in a new app
+ * process, got its compiler in about a second, and later ones find the
+ * shaders cached and compile nothing.
+ */
+export const stalledMetalCompiler = (appLog: string): string | undefined => {
+  // When each app process first asked, and whether its compile began.
+  const requested = new Map<string, number>();
+  const began = new Set<string>();
+  let last: number | undefined;
+  for (const line of appLog.split('\n')) {
+    const time = logLineTime(line);
+    if (time === undefined) {
+      continue;
+    }
+    last = time;
+    const begun = METAL_COMPILE_BEGIN_LINE.exec(line)?.[1];
+    if (begun !== undefined) {
+      const seconds = (time - (requested.get(begun) ?? time)) / 1000;
+      if (seconds >= STALLED_METAL_COMPILER_SECONDS) {
+        return `the simulator took ${Math.round(seconds)}s to start compiling the app's Metal shaders`;
+      }
+      began.add(begun);
+      continue;
+    }
+    const process = METAL_COMPILE_REQUEST_LINE.exec(line)?.[1];
+    if (process !== undefined && !requested.has(process)) {
+      requested.set(process, time);
+    }
+  }
+  for (const [process, time] of requested) {
+    const seconds = last === undefined ? 0 : (last - time) / 1000;
+    if (!began.has(process) && seconds >= STALLED_METAL_COMPILER_SECONDS) {
+      return `the simulator hadn't started compiling the app's Metal shaders ${Math.round(seconds)}s after the app asked for it`;
+    }
+  }
+  return undefined;
+};
+
+/**
+ * A {@link Flow.deviceFault} that finds whichever of `checks` comes first.
+ */
+const anyDeviceFault =
+  (...checks: ((appLog: string) => string | undefined)[]) =>
+  (appLog: string): string | undefined => {
+    for (const check of checks) {
+      const fault = check(appLog);
+      if (fault) {
+        return fault;
+      }
+    }
+    return undefined;
+  };
+
 // No flow is a known failure on any platform. Android used to fail both flows
 // because Maestro couldn't see flattened Lynx elements, which the fixtures now
 // avoid (fixtures/counter.ts), and the iOS lazy route failed because Angular's
@@ -236,6 +324,9 @@ export const FLOWS: readonly Flow[] = [
     // Only the app's own builds have the linking module. In Lynx Explorer,
     // openInApp() rejects and canOpenURL() says no.
     only: { host: 'shell' },
+    // It reaches the linking page through the canvas page, whose WebGL
+    // context it's often the first flow to make (see stalledMetalCompiler).
+    deviceFault: stalledMetalCompiler,
   },
   {
     file: 'app-state.yaml',
@@ -243,6 +334,8 @@ export const FLOWS: readonly Flow[] = [
     // Only the app's own builds send the app's state. Lynx Explorer sends
     // none, so the app stays active there.
     only: { host: 'shell' },
+    // Through the canvas page, as linking.yaml.
+    deviceFault: stalledMetalCompiler,
   },
   {
     file: 'canvas.yaml',
@@ -251,6 +344,7 @@ export const FLOWS: readonly Flow[] = [
     // Only the app's own builds have <canvas> and its WebGL module. Lynx
     // Explorer has neither, and its canvas is an empty view.
     only: { host: 'shell' },
+    deviceFault: stalledMetalCompiler,
   },
   {
     file: 'video-toggle.yaml',
@@ -259,6 +353,7 @@ export const FLOWS: readonly Flow[] = [
     // Only the app's own builds have <video> drawn on a canvas, and the
     // photo page that links to it (see webview.yaml).
     only: { host: 'shell' },
+    deviceFault: stalledMetalCompiler,
   },
   {
     file: 'webview.yaml',
@@ -268,7 +363,7 @@ export const FLOWS: readonly Flow[] = [
     // navigation bar sits above the app, the canvas page's links are below
     // the bottom of CI's 320x640 Android emulator.
     only: { host: 'shell' },
-    deviceFault: slowWebKitLaunch,
+    deviceFault: anyDeviceFault(slowWebKitLaunch, stalledMetalCompiler),
   },
   {
     file: 'overlays.yaml',
@@ -277,6 +372,7 @@ export const FLOWS: readonly Flow[] = [
     // Only the app's own builds, where the page linking to it is reached
     // (see webview.yaml).
     only: { host: 'shell' },
+    deviceFault: stalledMetalCompiler,
   },
   {
     file: 'portal.yaml',
@@ -284,6 +380,7 @@ export const FLOWS: readonly Flow[] = [
       'opens a LynxPortal and takes it off the screen with destroy()',
     // On the overlays page, so only the app's own builds (see overlays.yaml).
     only: { host: 'shell' },
+    deviceFault: stalledMetalCompiler,
   },
   {
     file: 'photo.yaml',
@@ -291,7 +388,7 @@ export const FLOWS: readonly Flow[] = [
     // Only the app's own builds have the picker module. Lynx Explorer
     // rejects with unavailable.
     only: { host: 'shell' },
-    deviceFault: slowPhotosPickerLaunch,
+    deviceFault: anyDeviceFault(slowPhotosPickerLaunch, stalledMetalCompiler),
   },
 ];
 

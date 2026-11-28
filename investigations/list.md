@@ -87,7 +87,7 @@ What's left of the tick is Angular's: its scheduler and `afterTick` subscribers,
 
 ## The tick after a bind, timed on the Simulator (2026-11-28, #894)
 
-On the iOS Simulator, the tick after a bind takes about 65 µs on master, and #889 (#877) halved it. That's under 4% of what `componentAtIndex` spends on the row it bound, so the tick isn't where a swipe's engine-thread time goes: the bind is.
+On the iOS Simulator, the tick after a bind takes about 65 µs on master, and #889 (#877) halved it. That's under 4% of what `componentAtIndex` spends on the row it bound: of the two, the bind is what costs. The probe didn't measure the engine thread's whole time per swipe, so this doesn't say what share of it either takes (the Time Profiler traces in #885 above put 15–29 ms of each 4-swipe trace in `componentAtIndex`'s JavaScript).
 
 **The setup.** This was a throwaway build of the benchmark app (`benchmarks/apps/angular-lynx`), on master and on master with #889's runtime changes reverted. It wraps three things:
 

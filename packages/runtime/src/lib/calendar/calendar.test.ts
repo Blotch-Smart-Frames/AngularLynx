@@ -289,6 +289,18 @@ describe('toICalendar', () => {
     expect(ics).not.toContain('DESCRIPTION');
   });
 
+  it('leaves DTEND out of an event that ends when it starts, to the second', () => {
+    const ics = toICalendar(
+      {
+        ...dinner,
+        end: new Date(dinner.start.getTime() + 500),
+      },
+      { now, uid: 'u5' },
+    );
+    expect(ics).toContain('\r\nDTSTART:20261224T183000Z\r\nSUMMARY:');
+    expect(ics).not.toContain('DTEND');
+  });
+
   it("escapes iCalendar's special characters", () => {
     const ics = toICalendar(
       { ...dinner, notes: 'a\\b;c,d\ne\r\nf' },

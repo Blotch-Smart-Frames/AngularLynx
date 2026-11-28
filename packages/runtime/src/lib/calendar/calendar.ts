@@ -180,6 +180,20 @@ const nextDay = (date: Date): Date =>
   new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1);
 
 /**
+ * A timed event's start and end. RFC 5545 (3.6.1) wants `DTEND` later than
+ * `DTSTART`, and leaving it out makes an event that takes no time, so an
+ * event that ends when it starts (to the second, which is all the file
+ * keeps) has no `DTEND`.
+ */
+const timedSpan = (event: CalendarEvent): string[] => {
+  const start = utcDateTime(event.start);
+  const end = utcDateTime(event.end);
+  return end === start
+    ? [`DTSTART:${start}`]
+    : [`DTSTART:${start}`, `DTEND:${end}`];
+};
+
+/**
  * The event as an iCalendar file (RFC 5545), which every calendar app on a
  * computer or a phone opens as "add this event".
  *
@@ -205,10 +219,7 @@ export const toICalendar = (
           `DTSTART;VALUE=DATE:${localDate(event.start)}`,
           `DTEND;VALUE=DATE:${localDate(nextDay(event.end))}`,
         ]
-      : [
-          `DTSTART:${utcDateTime(event.start)}`,
-          `DTEND:${utcDateTime(event.end)}`,
-        ]),
+      : timedSpan(event)),
     `SUMMARY:${icsText(event.title)}`,
     ...(event.location ? [`LOCATION:${icsText(event.location)}`] : []),
     ...(event.notes ? [`DESCRIPTION:${icsText(event.notes)}`] : []),

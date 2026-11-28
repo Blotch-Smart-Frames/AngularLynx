@@ -87,6 +87,9 @@ export const installBiometricsModule = (threadGlobals: {
     getItem(key, reason, done) {
       const value = this.guarded.get(key);
       if (value === undefined) return done({});
+      // A phone that can't show the prompt can't open the value either.
+      const refusal = refuse(this.phone, false);
+      if (refusal) return done(refusal);
       this.prompts.push({ reason, allowDeviceCredential: false });
       const result = outcome(this.queued.shift());
       done(result['error'] === undefined ? { value } : result);

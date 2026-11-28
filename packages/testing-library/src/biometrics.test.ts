@@ -205,6 +205,23 @@ describe('LynxSecureStorage’s requireBiometrics under the testing library', ()
     expect(biometricPrompts()).toEqual([]);
   });
 
+  it('can’t read a stored value once the phone can’t prompt, and asks nothing', async () => {
+    await render(TokenStore);
+    fireEvent.tap(screen.getByText('Save'));
+    await settle();
+    setBiometrics({ enrolled: false });
+    queueBiometricResult('canceled');
+    fireEvent.tap(screen.getByText('Read'));
+    await settle();
+    expect(screen.getByText('Error: notEnrolled')).toBeInTheDocument();
+    expect(biometricPrompts()).toEqual([]);
+    // The queued result is still waiting for a prompt.
+    setBiometrics({ enrolled: true });
+    fireEvent.tap(screen.getByText('Read'));
+    await settle();
+    expect(screen.getByText('Error: canceled')).toBeInTheDocument();
+  });
+
   it('refuses to store behind biometrics on a phone without them', async () => {
     setBiometrics({ type: 'none' });
     await render(TokenStore);

@@ -58,7 +58,7 @@ SIMULATOR_NAME = "AngularLynx Benchmarks"
 METRICS = {
     "launch.fully_drawn_ms": ("Pokédex fully drawn", "ms", 0),
     "launch.memory_mb": ("Pokédex memory", "MB", 1),
-    **{f"mount.{kind}.us_per_element": (f"Cost of a {kind}", "µs", 1) for kind in KINDS},
+    **{f"mount.{kind}.us_per_element": (f"Cost of {'an' if kind == 'image' else 'a'} {kind}", "µs", 1) for kind in KINDS},
 }
 
 

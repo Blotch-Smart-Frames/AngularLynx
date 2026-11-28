@@ -196,7 +196,14 @@ abstract class PersistentStorage {
    * number, a boolean or `null`. Resolves once it's stored.
    */
   async setItem<T = unknown>(key: string, value: T): Promise<void> {
-    const raw = encode(key, value);
+    await this.setEncoded(key, encode(key, value));
+  }
+
+  /**
+   * Stores `raw`, a value already turned into JSON, under `key`. For a
+   * subclass that encodes the value before it waits to store it.
+   */
+  protected async setEncoded(key: string, raw: string): Promise<void> {
     await this.#run((store) => store.setItem(key, raw));
   }
 
@@ -381,11 +388,14 @@ export class LynxSecureStorage extends PersistentStorage {
     value: T,
     options: SecureStorageSetOptions = {},
   ): Promise<void> {
-    // Checked before it waits its turn, as the plain store checks it.
+    // Read now, before it waits its turn: the value and the options are the
+    // caller's at the call, whatever happens to the objects afterwards, and
+    // a value JSON can't hold is refused at once.
     const raw = encode(key, value);
+    const requireBiometrics = options.requireBiometrics === true;
     return this.#change(async () => {
-      if (!options.requireBiometrics) {
-        await super.setItem(key, value);
+      if (!requireBiometrics) {
+        await this.setEncoded(key, raw);
         await this.#removeGuarded(key);
         return;
       }

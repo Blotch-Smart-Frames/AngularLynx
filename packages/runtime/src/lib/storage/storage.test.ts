@@ -413,6 +413,26 @@ describe('LynxSecureStorage', () => {
       expect(plain.get('token')).toBe('"plain again"');
     });
 
+    it('stores the value and the options as they were at the call', async () => {
+      const { plain, guarded } = stubBoth();
+      const storage = create(LynxSecureStorage);
+      const first = storage.setItem('a', 'x', { requireBiometrics: true });
+      const value = { count: 1 };
+      const options = { requireBiometrics: true };
+      // Waits behind the first change.
+      const second = storage.setItem('b', value, options);
+      value.count = 2;
+      options.requireBiometrics = false;
+      const plainValue = { count: 1 };
+      const third = storage.setItem('c', plainValue);
+      plainValue.count = 2;
+      await Promise.all([first, second, third]);
+
+      expect(guarded.get('b')).toBe('{"count":1}');
+      expect(plain.has('b')).toBe(false);
+      expect(plain.get('c')).toBe('{"count":1}');
+    });
+
     it('keeps going after a change that failed', async () => {
       const { answer, plain } = stubBoth();
       const storage = create(LynxSecureStorage);

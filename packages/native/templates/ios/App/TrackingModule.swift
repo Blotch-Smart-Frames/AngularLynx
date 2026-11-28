@@ -54,13 +54,19 @@ final class TrackingModule: NSObject, LynxModule {
   }
 
   /// Asks for the person's answer once the app is active, and asks again
-  /// each time iOS answers notDetermined because the app stopped being
-  /// active before the prompt could show, as when another system alert
+  /// when iOS answers notDetermined because the app stopped being active
+  /// before the prompt could show, as when another system alert
   /// (notifications, location) took the screen first: iOS then shows
   /// nothing, and shows the prompt when asked again once the app is back.
   /// `authorized`, `denied` and `restricted` are the person's or the phone's
-  /// answer, as is a notDetermined from an app that stayed active.
+  /// answer.
+  ///
+  /// The app may already be active again by the time the completion handler
+  /// reaches the main actor, so a notDetermined then asks once more at once.
+  /// Only one such retry, since an app that stays active and still gets
+  /// notDetermined would otherwise ask forever.
   @MainActor private static func ask(
+    retriesWhileActive: Int = 1,
     _ done: @escaping (ATTrackingManager.AuthorizationStatus) -> Void
   ) {
     whenActive {
@@ -68,8 +74,12 @@ final class TrackingModule: NSObject, LynxModule {
         // The completion handler runs on a queue of iOS's choosing, and the
         // application's state belongs to the main actor.
         Task { @MainActor in
-          if status == .notDetermined && UIApplication.shared.applicationState != .active {
-            ask(done)
+          if status != .notDetermined {
+            done(status)
+          } else if UIApplication.shared.applicationState != .active {
+            ask(retriesWhileActive: retriesWhileActive, done)
+          } else if retriesWhileActive > 0 {
+            ask(retriesWhileActive: retriesWhileActive - 1, done)
           } else {
             done(status)
           }

@@ -869,6 +869,188 @@ describe('*lynxListFor', () => {
     expect(built()).toBe(5);
   });
 
+  describe('binding ahead', () => {
+    /**
+     * Lets the timer componentAtIndex sets run: the engine thread's idle
+     * moment after native's layout pass.
+     */
+    const idle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    /**
+     * Counts the rows' checks from here on: each reads the host's suffix.
+     */
+    const countChecks = (fixture: { componentInstance: RowsHost }) => {
+      const checks = vi.fn(() => '');
+      (fixture.componentInstance as unknown as { suffix: unknown }).suffix =
+        checks;
+      return checks;
+    };
+
+    it('binds the next item with a view native let go of, so componentAtIndex finds it checked', async () => {
+      const { fixture } = await render();
+      const signs = [0, 1, 2].map((i) => show(i)!);
+      hide(signs[0]!);
+      hide(signs[1]!);
+      expect(show(3)).toBe(signs[0]);
+      flushes.length = 0;
+
+      await idle();
+
+      // Item 4, after the last one native asked for, in the other view
+      // native let go of. Its check flushes the whole tree, outside native's
+      // layout pass.
+      expect(nameIn(signs[1]!)).toBe('Row 5');
+      expect(metaIn(signs[1]!)).toMatch(/^4\/100\s+even$/);
+      expect(flushes.some((flush) => flush.element === undefined)).toBe(true);
+      const checks = countChecks(fixture);
+      flushes.length = 0;
+
+      expect(show(4, true)).toBe(signs[1]);
+
+      // Only appended (it's in the list already) and flushed, as a view
+      // that showed another item when native last saw it.
+      expect(checks).not.toHaveBeenCalled();
+      expect(built()).toBe(3);
+      expect(flushes).toEqual([
+        {
+          element: byId(signs[1]!),
+          options: {
+            triggerLayout: true,
+            operationID: operationId - 1,
+            elementID: signs[1],
+            listID: theList().id,
+            listReuseNotification: { listElement: theList(), itemKey: '5' },
+          },
+        },
+      ]);
+      expect(appendedAgain).toEqual([]);
+    });
+
+    it('guesses the item before when native goes up the list', async () => {
+      await render();
+      const signs = [10, 11, 12].map((i) => show(i)!);
+      hide(signs[2]!);
+      hide(signs[1]!);
+      expect(show(9)).toBe(signs[2]);
+
+      await idle();
+
+      expect(nameIn(signs[1]!)).toBe('Row 9');
+      expect(show(8)).toBe(signs[1]);
+    });
+
+    it('binds nothing ahead without a free view, and builds none', async () => {
+      await render();
+      show(0);
+      show(1);
+
+      await idle();
+
+      expect(built()).toBe(2);
+      expect(nameIn(show(2)!)).toBe('Row 3');
+      expect(built()).toBe(3);
+    });
+
+    it('binds nothing ahead for an item that has a view', async () => {
+      await render();
+      const later = show(5)!;
+      const free = show(3)!;
+      show(4);
+      hide(free);
+
+      await idle();
+
+      // Item 5 is on screen: the view native let go of stays item 3's.
+      expect(nameIn(free)).toBe('Row 4');
+      expect(nameIn(later)).toBe('Row 6');
+      expect(show(3)).toBe(free);
+    });
+
+    it('binds nothing ahead for a recyclable: false item', async () => {
+      await render({
+        attributes: (row) => ({ recyclable: row.id !== 3 }),
+      });
+      const signs = [0, 1].map((i) => show(i)!);
+      hide(signs[0]!);
+
+      await idle();
+
+      expect(nameIn(signs[0]!)).toBe('Row 1');
+    });
+
+    it('checks a view bound ahead again when its index changed before native asked for it', async () => {
+      const { fixture, set } = await render();
+      const signs = [0, 1].map((i) => show(i)!);
+      hide(signs[0]!);
+      await idle();
+      expect(nameIn(signs[0]!)).toBe('Row 3');
+
+      // A row goes in above it: the view's item is at index 3 now.
+      await set({ rows: [{ id: 0, name: 'Row 0' }, ...rowsOf(100)] });
+      const checks = countChecks(fixture);
+
+      expect(show(3)).toBe(signs[0]);
+      expect(checks).toHaveBeenCalled();
+      expect(nameIn(signs[0]!)).toBe('Row 3');
+      expect(metaIn(signs[0]!)).toMatch(/^3\/101\s+odd$/);
+    });
+
+    it('leaves a view bound for an item native never asks for in the pool, for the next one', async () => {
+      await render();
+      const signs = [0, 1].map((i) => show(i)!);
+      hide(signs[0]!);
+      await idle();
+      expect(nameIn(signs[0]!)).toBe('Row 3');
+
+      // Native goes elsewhere: the view goes to the item it asks for.
+      expect(show(50)).toBe(signs[0]);
+      expect(nameIn(signs[0]!)).toBe('Row 51');
+      expect(built()).toBe(2);
+      // Item 2 has no view now, and gets one when native asks.
+      expect(nameIn(show(2)!)).toBe('Row 3');
+    });
+
+    it('leaves a row whose check throws for componentAtIndex to throw', async () => {
+      const { set } = await render();
+      const broken = {
+        id: 3,
+        get name(): string {
+          throw new Error('broken row');
+        },
+      };
+      await set({ rows: [...rowsOf(2), broken, ...rowsOf(97, 4)] });
+      const signs = [0, 1].map((i) => show(i)!);
+      hide(signs[0]!);
+
+      // Nothing thrown from the timer.
+      await idle();
+
+      expect(() => show(2)).toThrow('broken row');
+    });
+
+    it('binds nothing once the list is gone', async () => {
+      await render();
+      const signs = [0, 1].map((i) => show(i)!);
+      hide(signs[0]!);
+      LynxElement.byUniqueId(theList().id)!.remove();
+
+      await idle();
+
+      expect(nameIn(signs[0]!)).toBe('Row 1');
+    });
+
+    it('binds nothing once the run is gone', async () => {
+      const { fixture } = await render();
+      const signs = [0, 1].map((i) => show(i)!);
+      hide(signs[0]!);
+      fixture.destroy();
+
+      await idle();
+
+      expect(nameIn(signs[0]!)).toBe('Row 1');
+    });
+  });
+
   it('appends an item element to the native list once, however often native asks for it', async () => {
     await render();
     const signs = [0, 1, 2].map((i) => show(i)!);

@@ -77,6 +77,12 @@ export type LynxListItemSource = {
    */
   bind(index: number): { element: ElementRef; reused: boolean } | null;
   /**
+   * Binds the item at `index` of the last commit before native asks for it,
+   * with a view native let go of, if one is free (see
+   * LynxListElement.noteItemShown). True if it bound one.
+   */
+  bindAhead(index: number): boolean;
+  /**
    * Native let go of the item element with this unique id (enqueueComponent):
    * true if it was one of this run's, which can now reuse it.
    */
@@ -208,6 +214,14 @@ export class LynxListElement extends LynxElement {
    * later.
    */
   readonly #appended = new Set<number>();
+  /**
+   * The index native asked for last (componentAtIndex), and which way the
+   * one before it went, for the guess at what it asks for next (see
+   * noteItemShown).
+   */
+  #lastShown = -1;
+  #step = 1;
+  #bindAheadScheduled = false;
   #componentAtIndex: ((...args: any[]) => number | undefined) | null = null;
   #enqueueComponent: ((...args: any[]) => void) | null = null;
   #componentAtIndexes: ((...args: any[]) => void) | null = null;
@@ -446,6 +460,37 @@ export class LynxListElement extends LynxElement {
    */
   bindItem(slot: ListSlot): { element: ElementRef; reused: boolean } | null {
     return bindListItemElement(() => slot.source!.bind(slot.index));
+  }
+
+  /**
+   * @internal componentAtIndex has shown the `*lynxListFor` item at native's
+   * `index` and flushed it. While the list scrolls, native asks for the
+   * items one after another in the direction it scrolls, and lets go of the
+   * elements of the ones scrolled away a frame or two before, so the next
+   * item it asks for can usually be bound now, from the pool (see
+   * ListItemViews.bindAhead), and its componentAtIndex, which the list's
+   * layout waits for, only appends and flushes it.
+   *
+   * One guess per idle moment: a timer after this, once native's layout
+   * pass has returned (a microtask would still run inside it), for the item
+   * after the last one native asked for, in the direction it last went.
+   * Several componentAtIndex calls in a frame share it. It stops by itself
+   * when the list does: only a componentAtIndex sets the next one, and a
+   * guess without a free view of its type binds nothing.
+   */
+  noteItemShown(index: number): void {
+    if (this.#lastShown >= 0 && index !== this.#lastShown) {
+      this.#step = index > this.#lastShown ? 1 : -1;
+    }
+    this.#lastShown = index;
+    if (this.#bindAheadScheduled) return;
+    this.#bindAheadScheduled = true;
+    setTimeout(() => {
+      this.#bindAheadScheduled = false;
+      if (this.#destroyed) return;
+      const slot = this.#committed[this.#lastShown + this.#step];
+      slot?.source?.bindAhead(slot.index);
+    }, 0);
   }
 
   /**

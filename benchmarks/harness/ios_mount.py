@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Runs the mount benchmark: each app built to open on a screen of N views,
-texts or images (BENCH_SCREEN), launched under Instruments, and timed from the
-process starting to the app reporting the screen drawn.
+texts or images (BENCH_SCREEN), launched under Instruments, and timed to the
+app reporting the screen drawn: from the process starting (fully_drawn_ms),
+and from the screen's MountStart mark (mount_ms, ios_launch.py).
 
     python3 ios_mount.py --device <UDID> --rival react-native --runs 10
 
@@ -33,8 +34,8 @@ by as much as a second a few launches in ten (#882):
   both screens alike rather than on one session and not the other. The rows
   are then split into the same per-screen CSVs.
 
-track.py then takes each screen's fastest launch rather than its median
-(its docstring says why).
+track.py then takes each screen's fastest mount_ms, which leaves out the
+launch before the screen (its docstring says why).
 
 A phone keeps one session per screen on the two bundle IDs: a free team's
 provisioning signs only so many new app IDs a week. So does a Simulator run

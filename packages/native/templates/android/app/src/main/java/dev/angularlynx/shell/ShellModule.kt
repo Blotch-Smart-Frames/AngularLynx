@@ -3,6 +3,7 @@ package dev.angularlynx.shell
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.os.Trace
 import com.lynx.jsbridge.LynxMethod
 import com.lynx.jsbridge.LynxModule
 import com.lynx.tasm.LynxEnv
@@ -44,6 +45,14 @@ import com.lynx.tasm.LynxEnv
  * thread the runtime calls from, Lynx's engine thread: the system takes it
  * from any thread, and a post to the UI thread would add a wait to the moment
  * it marks.
+ *
+ * `markEvent(name)` marks any other moment the app names, as an instant
+ * section of that name in a system trace (`Trace.beginSection`, ended at
+ * once), which Perfetto and Android Studio's profiler show on the thread
+ * that called it: the start of the work a profile is about, for example.
+ * Every call marks. The benchmark apps mark `MountStart` as their mount
+ * screen starts building (`benchmarks/SPEC.md`); the iOS shell's is an
+ * `os_signpost` event that Instruments shows.
  */
 class ShellModule(context: Context, param: Any?) : LynxModule(context, param) {
     private val host = param as Host
@@ -68,6 +77,14 @@ class ShellModule(context: Context, param: Any?) : LynxModule(context, param) {
     @LynxMethod
     fun reportFullyDrawn() {
         host.markFullyDrawn()
+    }
+
+    // On the calling thread, as reportFullyDrawn is, so the mark lands at the
+    // moment it marks. A trace section's name is at most 127 characters.
+    @LynxMethod
+    fun markEvent(name: String) {
+        Trace.beginSection(name.take(127))
+        Trace.endSection()
     }
 
     @LynxMethod

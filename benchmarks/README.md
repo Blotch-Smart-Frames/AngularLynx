@@ -139,7 +139,9 @@ python3 harness/ios_mount.py --simulator --device <UDID> --rival react-lynx --ru
 
 On the Simulator, Instruments' App Launch template records no launch phases
 and Activity Monitor fails, so a Simulator run records fully drawn (the light
-recording, from dyld's launch of the process) and the app's memory, which
+recording, from dyld's launch of the process), how long a mount screen took
+from its own `MountStart` mark to fully drawn (`mount_ms`), and the app's
+memory, which
 `footprint` reads from its process on the Mac 6 s into the recording
 (`--memory-after`), a few seconds after it's drawn. There's no first frame,
 peak memory, battery or charging, and the thermal state is the Mac's.
@@ -166,15 +168,20 @@ element is worked out differently from a phone's (#882):
   side by side (`com.angularlynx.bench.angularlynx.m15000` and so on) and
   launched in turn, so the host's drift falls on both screens alike, and the
   rows are split into the usual per-screen CSVs.
-- **The fastest launch.** `track.py` takes each screen's fastest launch
+- **The mount alone** (#892). Each mount screen marks `MountStart` as its
+  component starts (`SPEC.md`, "Marks"), and `track.py` times the screen
+  from it to fully drawn, leaving out the Simulator's launch before it.
+  Timed from the whole launch, even with the two above, ReactLynx's view was
+  9.0 µs within ±18%.
+- **The fastest mount.** `track.py` takes each screen's fastest mount
   rather than its median, since the host only ever adds time: (fastest
-  15,000-element launch − fastest 1,500-element launch) / 13,500.
+  15,000-element mount − fastest 1,500-element mount) / 13,500.
 
-In one session of 10 runs per build, the medians of the 5,000-element
-screens gave every view and image cost an interval reaching below zero; the
-fastest 15,000-element launches gave a view 27.8 µs in AngularLynx and 9.0 µs
-in ReactLynx, a text 73.0 and 50.5 µs, and an image 36.1 and 14.0 µs, each
-AngularLynx cost within 3% of its fastest-launch cost from 5,000 elements.
+In one session per kind of 10 runs per build, the fastest mounts gave a
+view 27.9 µs in AngularLynx and 8.5 µs in ReactLynx, a text 76.5 and
+45.9 µs, and an image 32.3 and 10.4 µs, each within ±3% (95% intervals).
+The fastest launches of the same sessions gave intervals of up to ±26%
+(ReactLynx's view).
 
 The Simulator runs on the Mac's cores, so a busy Mac slows it by 5–30%: the
 harness waits until the Mac's load average is under
@@ -239,8 +246,8 @@ ReactLynx app, launches the Pokédex 20 times each and each of the six mount
 screens 10 times each, and [`harness/track.py`](harness/track.py) reads the
 CSVs. It tracks four things as AngularLynx / ReactLynx: the Pokédex's fully
 drawn time and its memory, and the cost of a view, a text and an image,
-from each screen's fastest launch, (15,000-element screen − 1,500-element
-screen) / 13,500 (above). The host moves the
+from each screen's fastest mount (from its `MountStart` mark to fully
+drawn), (15,000-element screen − 1,500-element screen) / 13,500 (above). The host moves the
 times by 5–30% from one run to the next, but it moves both apps of a session
 alike, so the ratio keeps most of a change in AngularLynx and little of the
 host's.

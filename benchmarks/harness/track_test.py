@@ -15,7 +15,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import track  # noqa: E402
 
-FIELDS = ["timestamp", "device", "os_build", "app", "run", "fully_drawn_ms", "memory_mb", "host_load"]
+FIELDS = ["timestamp", "device", "os_build", "app", "run", "fully_drawn_ms", "mount_ms", "memory_mb", "host_load"]
 
 
 def rows(app_values, column="fully_drawn_ms"):
@@ -34,6 +34,15 @@ def rows(app_values, column="fully_drawn_ms"):
                     "host_load": "1.2",
                 }
             )
+    return out
+
+
+def mounts(app_values):
+    """Mount-screen rows with a mount time each (ios_launch.py's mount_ms),
+    and a launch twice as long, which the costs mustn't read."""
+    out = rows(app_values, column="mount_ms")
+    for row in out:
+        row["fully_drawn_ms"] = str(float(row["mount_ms"]) * 2) if row["mount_ms"] else ""
     return out
 
 
@@ -73,13 +82,13 @@ class DayTest(unittest.TestCase):
         for row, memory in zip(launch, [60, 61, 62, 40, 41, 42]):
             row["memory_mb"] = str(memory)
         mount = {
-            ("text", 1500): rows({"angular-lynx": [2000, 2010], "react-lynx": [1800, 1810]}),
-            ("text", 5000): rows({"angular-lynx": [2285, 2295], "react-lynx": [1940, 1950]}),
+            ("text", 1500): mounts({"angular-lynx": [2000, 2010], "react-lynx": [1800, 1810]}),
+            ("text", 5000): mounts({"angular-lynx": [2285, 2295], "react-lynx": [1940, 1950]}),
         }
         result = track.day(launch, mount, "2026-11-28", "abc1234", "")
         self.assertEqual(result["metrics"]["launch.fully_drawn_ms"], {"angular-lynx": 2000, "react-lynx": 1600})
         self.assertEqual(result["metrics"]["launch.memory_mb"], {"angular-lynx": 61, "react-lynx": 41})
-        # Each screen's fastest launch: (2285 - 2000) / 3500 ms and
+        # Each screen's fastest mount: (2285 - 2000) / 3500 ms and
         # (1940 - 1800) / 3500 ms, in µs.
         cost = result["metrics"]["mount.text.us_per_element"]
         self.assertAlmostEqual(cost["angular-lynx"], 285 / 3.5)
@@ -95,9 +104,9 @@ class DayTest(unittest.TestCase):
         # in the folder: the cost is over the 13,500 elements between the
         # smallest and the largest.
         mount = {
-            ("view", 1500): rows({"angular-lynx": [1600], "react-lynx": [1550]}),
-            ("view", 5000): rows({"angular-lynx": [9999], "react-lynx": [9999]}),
-            ("view", 15000): rows({"angular-lynx": [1870], "react-lynx": [1685]}),
+            ("view", 1500): mounts({"angular-lynx": [1600], "react-lynx": [1550]}),
+            ("view", 5000): mounts({"angular-lynx": [9999], "react-lynx": [9999]}),
+            ("view", 15000): mounts({"angular-lynx": [1870], "react-lynx": [1685]}),
         }
         result = track.day([], mount, "2026-11-28", "", "")
         cost = result["metrics"]["mount.view.us_per_element"]
@@ -106,23 +115,38 @@ class DayTest(unittest.TestCase):
         self.assertEqual(result["mount_counts"], {"view": [1500, 15000]})
         self.assertEqual(
             track.screens_note(result),
-            " Each cost per element is from the fastest launch of the 1,500- and 15,000-element screens.",
+            " Each cost per element is from the fastest mount of the 1,500- and 15,000-element screens.",
         )
 
-    def test_the_cost_takes_each_screens_fastest_launch(self):
-        # The host held up a few launches of the small screen by a second:
-        # their median would be over the large screen's, a cost below zero.
+    def test_the_cost_takes_each_screens_fastest_mount(self):
+        # The host held up a few mounts of the small screen: their median
+        # would be over the large screen's, a cost below zero.
         mount = {
-            ("image", 1500): rows(
+            ("image", 1500): mounts(
                 {"angular-lynx": [1600, 2900, 1650, 2800, 2950], "react-lynx": [1500, 2880, 1540, 2950, 2700]}
             ),
-            ("image", 15000): rows(
+            ("image", 15000): mounts(
                 {"angular-lynx": [2090, 2100, 3260, 2110, 2120], "react-lynx": [1710, 1720, 1750, 1760, 1800]}
             ),
         }
         cost = track.day([], mount, "2026-11-28", "", "")["metrics"]["mount.image.us_per_element"]
         self.assertAlmostEqual(cost["angular-lynx"], 490 / 13.5)
         self.assertAlmostEqual(cost["react-lynx"], 210 / 13.5)
+
+    def test_a_screen_without_mount_marks_has_no_cost(self):
+        # A build whose screen marks no MountStart (a shell from before
+        # markEvent): its launches drew, but measured no mount.
+        mount = {
+            ("view", 1500): mounts({"angular-lynx": [100], "react-lynx": [None]}),
+            ("view", 15000): mounts({"angular-lynx": [400], "react-lynx": [None]}),
+        }
+        for row in mount[("view", 1500)] + mount[("view", 15000)]:
+            row["fully_drawn_ms"] = row["fully_drawn_ms"] or "1800.0"
+        result = track.day([], mount, "2026-11-28", "", "")
+        cost = result["metrics"]["mount.view.us_per_element"]
+        self.assertAlmostEqual(cost["angular-lynx"], 300 / 13.5)
+        self.assertIsNone(cost["react-lynx"])
+        self.assertEqual(result["failed"], 0)
 
     def test_runs_that_drew_nothing_are_left_out_and_counted(self):
         launch = rows({"angular-lynx": [1000, None, 1200], "react-lynx": [900, 1000, None]})
@@ -251,7 +275,7 @@ class ReportTest(unittest.TestCase):
                 self.write(
                     folder,
                     f"mount-2026-11-28-text-{count}-react-lynx.csv",
-                    rows({"angular-lynx": [ours], "react-lynx": [rival]}),
+                    mounts({"angular-lynx": [ours], "react-lynx": [rival]}),
                 )
             history = os.path.join(folder, "history.jsonl")
             with open(history, "w") as file:

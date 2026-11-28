@@ -244,9 +244,12 @@ doesn't. Where AngularLynx can't do the same thing, it does the nearest:
   otherwise follow the phone into dark mode.
 - **Press feedback.** Rows dim to 0.2 while touched (TouchableOpacity's
   default), from touch events, since Lynx has no `:active`. No fade back.
-- **The mount screen** is opened by a build-time variant (`BENCH_SCREEN`) and
-  reports `Fully Drawn` once its elements are flushed; the original's
-  `MountStart`/`MountEnd` signposts are left out, as SPEC.md now says. The
+- **The mount screen** is opened by a build-time variant (`BENCH_SCREEN`). It
+  marks `MountStart` from its constructor, before its template makes
+  anything, with the shell's `markEvent('MountStart')` called from the main
+  thread (`lynx.module('AngularLynxShell')`, as the runtime's
+  `reportFullyDrawn()` calls the shell), and reports `Fully Drawn` once its
+  elements are flushed, which stands for the original's `MountEnd`. The
   `launchperfal://` scheme is registered (`deepLinkSchemes`), but the iOS
   shell doesn't hand an opened URL to the app, so a deep link only opens it.
 - **Splash and icon** are the original's (`splash`: the same image 200pt wide

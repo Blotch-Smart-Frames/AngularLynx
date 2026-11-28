@@ -38,7 +38,7 @@ Instruments launches an app without a URL, so the mount screen (`SPEC.md`, "Benc
 BENCH_SCREEN='mount?kind=view&count=1500' APP_ID=com.angularlynx.bench.reactlynx.mount npm run build:ios
 ```
 
-`kind` is `view`, `text` or `image`, `count` any number (the SPEC uses 1500 and 5000; on the Simulator, `harness/ios_mount.py` runs 1500 and 15000). The screen marks `Fully Drawn` after the commit that shows all `count` elements. A different `APP_ID` per variant lets them sit beside the Pokédex build on one device.
+`kind` is `view`, `text` or `image`, `count` any number (the SPEC uses 1500 and 5000; on the Simulator, `harness/ios_mount.py` runs 1500 and 15000). The screen marks `MountStart` as it starts rendering and `Fully Drawn` after the commit that shows all `count` elements (see "Marks" below). A different `APP_ID` per variant lets them sit beside the Pokédex build on one device.
 
 ### For the phone
 
@@ -80,6 +80,7 @@ Two things differ from the iOS script:
 ## What it marks
 
 - **`Fully Drawn`** (an `os_signpost` event in Points of Interest, which the harness reads like the original's `TTFD`; on Android, `Activity.reportFullyDrawn()`, which the system logs as `Fully drawn`): `NativeModules.AngularLynxShell.reportFullyDrawn()`, from the background thread, once per process. The original reports `TTFD` in a `useEffect` on the list query's `isSuccess`, inside `requestAnimationFrame`. Here the same effect calls `lib/fullyDrawn.ts`: ReactLynx runs effects on the background thread once a commit's patch is *sent* to the main thread, so it first runs an empty main-thread function with `runOnMainThread()`, whose call queues behind the patch and resolves once the main thread has applied and flushed it to native, then calls the shell's module. That's the moment AngularLynx's `reportFullyDrawn()` marks too (after the flush carrying the rows). In the mount variant, the mount screen does the same after its first commit.
+- **`MountStart`** (the mount variant only): the shell's `markEvent('MountStart')`, an event named `Mark` whose message is `MountStart`, which the harness reads with `Fully Drawn` as the screen's own time (`mount_ms`), as the original's `MountStart` is emitted while its screen renders. `lib/mountStart.ts` calls it from the screen's render, on each thread that runs it, once per thread: ReactLynx renders the first screen on the main thread as the page loads, making its elements, and then on the background thread to hydrate them. The main thread calls the shell's module directly (`lynx.module('AngularLynxShell')`, which the shell allows for AngularLynx's own main-thread calls), so the mark isn't held up by a hop to the background thread; the harness takes the earlier mark, which on the Simulator is the main thread's, about 10 ms before the background thread's.
 - The shell's splash: the shell keeps a copy of the launch screen over the app until it's told the first screen is drawn (`hideSplashScreen`), as AngularLynx's `LynxSplashScreen` does after Angular's first flush. ReactLynx draws its first screen on the main thread before the background thread runs, so the root component's first effect calls it.
 
 ## Differences from the original, and why

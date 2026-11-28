@@ -25,6 +25,13 @@ import os
 /// `Fully Drawn` in the Points of Interest category, which Instruments shows
 /// beside the App Launch template's phases. iOS has no API of its own for it,
 /// as Android has `Activity.reportFullyDrawn()`.
+///
+/// `markEvent(name)` marks any other moment the app names, in the same
+/// category, so it shows on Instruments' Points of Interest timeline beside
+/// `Fully Drawn`: the start of the work a profile is about, for example.
+/// Every call marks, not only the first. The benchmark apps mark
+/// `MountStart` as their mount screen starts building (`benchmarks/SPEC.md`),
+/// so the harness can time the screen apart from the launch before it.
 final class ShellModule: NSObject, LynxModule {
   static var name: String { "AngularLynxShell" }
 
@@ -33,6 +40,7 @@ final class ShellModule: NSObject, LynxModule {
       "collectGarbage": NSStringFromSelector(#selector(collectGarbage)),
       "hideSplashScreen": NSStringFromSelector(#selector(hideSplashScreen)),
       "reportFullyDrawn": NSStringFromSelector(#selector(reportFullyDrawn)),
+      "markEvent": NSStringFromSelector(#selector(markEvent(_:))),
     ]
   }
 
@@ -77,5 +85,14 @@ final class ShellModule: NSObject, LynxModule {
     guard !ShellModule.fullyDrawn else { return }
     ShellModule.fullyDrawn = true
     os_signpost(.event, log: ShellModule.pointsOfInterest, name: "Fully Drawn")
+  }
+
+  // On the calling thread, as reportFullyDrawn is: a mark made from the
+  // engine thread lands at the moment it marks. os_signpost takes only a
+  // string literal as an event's name, so every mark is an event named
+  // `Mark`, and the app's name for it is the event's message, which
+  // Instruments shows beside the name.
+  @objc func markEvent(_ name: String) {
+    os_signpost(.event, log: ShellModule.pointsOfInterest, name: "Mark", "%{public}s", name)
   }
 }

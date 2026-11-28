@@ -182,6 +182,13 @@ dependencies {
     // angular-lynx:store-review
     implementation("com.google.android.play:review:2.0.2")
     // /angular-lynx:store-review
+    // Google Play's advertising ID library, which TrackingModule asks whether
+    // the person has opted out of personalized ads or deleted their ID. It
+    // also declares AD_ID, which the manifest does too. Only an app whose
+    // angular.json sets permissions.tracking keeps these lines.
+    // angular-lynx:tracking
+    implementation("com.google.android.gms:play-services-ads-identifier:18.3.0")
+    // /angular-lynx:tracking
 
     // The Lynx engine, its JavaScript runtime (PrimJS) and its JS SDK.
     implementation("org.lynxsdk.lynx:lynx:$lynxVersion")

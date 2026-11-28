@@ -389,6 +389,15 @@ export const FLOWS: readonly Flow[] = [
     only: { platform: 'ios', host: 'shell' },
   },
   {
+    file: 'tracking.yaml',
+    description:
+      "asks whether the app may track, through iOS's App Tracking Transparency prompt",
+    // Only the app's own builds have the tracking module, and only with
+    // permissions.tracking, which the harness asks for. Lynx Explorer has
+    // none, and answers unsupported.
+    only: { host: 'shell' },
+  },
+  {
     file: 'linking.yaml',
     description:
       'says which apps it can open, and on Android opens a link in a browser tab',

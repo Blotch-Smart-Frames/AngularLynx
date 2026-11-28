@@ -1,0 +1,108 @@
+# LynxTracking
+
+Asks the person whether your app may track them across other companies' apps and websites, and says what they answered, so an ad or install-attribution SDK only reads the advertising ID once they've allowed it. `import { LynxTracking } from '@blotch/angular-lynx';`
+
+**Both stores require this** of an app that tracks:
+
+- **iOS:** since iOS 14.5, the advertising ID reads as zeros until the person allows tracking in App Tracking Transparency's prompt, and App Review rejects an app that tracks without asking (guideline 5.1.2).
+- **Android:** Google Play gives an app that targets Android 13 or later the advertising ID only when it declares the `AD_ID` permission. There's no prompt, but the person can opt out of personalized ads, or delete the ID, in Settings, and Play's policy says to respect it.
+
+## Turn it on
+
+Ask for `tracking` in your build options' `permissions`, with the reason iOS shows in the prompt:
+
+```json title="angular.json"
+"options": {
+  "permissions": { "tracking": "Shows you ads that match your interests" }
+}
+```
+
+That writes `NSUserTrackingUsageDescription` into the iOS app's Info.plist and declares `com.google.android.gms.permission.AD_ID` in the Android app's manifest. Without it, the native code behind `LynxTracking` is left out of both apps, and Google Play's advertising ID library out of the Android one: iOS ends an app that shows the prompt without a reason. `status()` is then `unsupported`.
+
+## Usage
+
+```typescript
+import { Component, inject } from '@angular/core';
+import { LYNX_ELEMENTS, LynxTracking } from '@blotch/angular-lynx';
+import { Ads } from './ads';
+
+@Component({
+  selector: 'app-feed',
+  imports: [LYNX_ELEMENTS],
+  template: `<text>Your feed</text>`,
+})
+export class Feed {
+  readonly #ads = inject(Ads);
+  readonly #tracking = inject(LynxTracking);
+
+  async ngOnInit() {
+    // Shows the prompt the first time, and answers at once after that.
+    const status = await this.#tracking.requestPermission();
+    this.#ads.start({ personalized: status === 'authorized' });
+  }
+}
+```
+
+`Ads` stands for the app's own wrapper around its ad SDK.
+
+**Ask when the person can see why**, such as when they first open a screen with ads, rather than as the app launches: iOS shows the prompt only once per install, and only to an app in the foreground. A request made while the app isn't active waits until it is.
+
+## API
+
+### `LynxTracking`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxTracking {
+  readonly status: Signal<TrackingStatus>;
+  requestPermission(): Promise<TrackingStatus>;
+}
+```
+
+### `status`
+
+Whether the app may track the person, as a signal. It's read when the service is created, and again each time the app comes back to the foreground, since the person can change it in Settings meanwhile. Until the first answer, a moment after the service is created, it's `notDetermined`.
+
+### `requestPermission()`
+
+Shows App Tracking Transparency's prompt on iOS, if the person hasn't been asked yet, and resolves with their answer, which `status` then holds too. Anywhere else, and once the person has answered, it resolves with the status without showing anything. It never rejects.
+
+### `TrackingStatus`
+
+| Value           | Means                                                                                                                                                                      |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `authorized`    | The app may track. On iOS the person allowed it; on Android they haven't opted out of personalized ads                                                                     |
+| `denied`        | It may not. On iOS the person declined, or turned off "Allow Apps to Request to Track"; on Android they opted out or deleted the advertising ID, which then reads as zeros |
+| `restricted`    | iOS only. The phone doesn't let the person choose, as under parental controls, and the app may not track                                                                   |
+| `notDetermined` | iOS only. The person hasn't been asked yet, so `requestPermission()` shows the prompt                                                                                      |
+| `unsupported`   | There's no advertising ID to track with                                                                                                                                    |
+
+| Platform                                       | Answer                                                                                                                      |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| iOS                                            | App Tracking Transparency's (`ATTrackingManager`): the prompt shows once per install                                        |
+| Android                                        | Google Play services' advertising ID: `authorized`, `denied` once the person opted out, `unsupported` without Play services |
+| [Web preview](/guide/glossary#web-preview)     | `unsupported`                                                                                                               |
+| Unit tests with the testing library            | What [`setTrackingStatus()`](/api/testing-library#settrackingstatus) sets, `notDetermined` by default                       |
+| [Lynx Explorer](/guide/glossary#lynx-explorer) | `unsupported`                                                                                                               |
+
+`LynxTracking` doesn't read the advertising ID itself: the ad or attribution SDK does, once the status is `authorized`.
+
+## Testing
+
+Each test starts where a fresh install on an iPhone does, `notDetermined`, and the prompt allows tracking. [`setTrackingStatus()`](/api/testing-library#settrackingstatus) sets the status, [`setTrackingAnswer()`](/api/testing-library#settrackinganswer) what the prompt answers, and [`trackingPrompts()`](/api/testing-library#trackingprompts) counts the prompts shown:
+
+```typescript
+import {
+  render,
+  setTrackingAnswer,
+  trackingPrompts,
+} from '@blotch/angular-lynx-testing-library';
+
+setTrackingAnswer('denied');
+await render(Feed);
+expect(trackingPrompts()).toBe(1);
+```
+
+## Related
+
+- [Native apps](/guide/native-apps): the `permissions` option and the other build options

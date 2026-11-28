@@ -156,6 +156,24 @@ describe('prepareProject', () => {
     }
   });
 
+  it('brings the tracking module back once the app asks for tracking, and drops it once it stops', () => {
+    for (const [platform, module] of [
+      ['ios', 'App/TrackingModule.swift'],
+      ['android', 'app/src/main/java/dev/angularlynx/shell/TrackingModule.kt'],
+    ] as const) {
+      const file = path.join(workDir, platform, module);
+      expect(prepare(platform).regenerated).toBe(true);
+      expect(existsSync(file)).toBe(false);
+      expect(
+        prepare(platform, { permissions: { tracking: 'Shows you ads' } })
+          .regenerated,
+      ).toBe(true);
+      expect(existsSync(file)).toBe(true);
+      expect(prepare(platform).regenerated).toBe(true);
+      expect(existsSync(file)).toBe(false);
+    }
+  });
+
   it('brings the calendar module back once the app sets calendar, and drops it once it stops', () => {
     for (const [platform, module] of [
       ['ios', 'App/CalendarModule.swift'],

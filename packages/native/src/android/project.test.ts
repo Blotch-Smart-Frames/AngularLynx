@@ -21,6 +21,7 @@ import {
   ANDROID_CANVAS_SOURCES,
   ANDROID_STORE_REVIEW_SOURCE,
   ANDROID_CALENDAR_SOURCE,
+  ANDROID_TRACKING_SOURCE,
   ANDROID_WEBGL_SOURCES,
   androidGenerator,
   biometricsStringsXml,
@@ -100,6 +101,14 @@ describe('permissionEntries', () => {
       ].join('\n'),
     );
     expect(permissionEntries(app())).toBe('');
+  });
+
+  it('declares AD_ID for tracking', () => {
+    expect(
+      permissionEntries(app({ permissions: { tracking: 'Shows you ads' } })),
+    ).toBe(
+      '<uses-permission android:name="com.google.android.gms.permission.AD_ID" />',
+    );
   });
 
   it('declares USE_BIOMETRIC for biometrics', () => {
@@ -460,6 +469,38 @@ describe('androidGenerator', () => {
     expect(kept).toContain('// angular-lynx:canvas');
   });
 
+  it('keeps the tracking module, its registration and the advertising ID library only in an app with permissions.tracking', () => {
+    const module = path.join(dir, ANDROID_TRACKING_SOURCE);
+    const read = (file: string) => readFileSync(path.join(dir, file), 'utf8');
+    const activity = 'app/src/main/java/dev/angularlynx/shell/MainActivity.kt';
+    const generate = (options: object) => {
+      rmSync(dir, { recursive: true, force: true });
+      cpSync(path.join(TEMPLATES_DIR, 'android'), dir, { recursive: true });
+      const resolved = app(options);
+      androidGenerator.configure(dir, resolved, dir);
+      androidGenerator.leaveOut(dir, { canvas: true, webgl: true }, resolved);
+    };
+
+    generate({ permissions: { tracking: 'Shows you ads' } });
+    expect(existsSync(module)).toBe(true);
+    expect(read(activity)).toContain('registerModule(TrackingModule.NAME');
+    expect(read('app/build.gradle.kts')).toContain(
+      'play-services-ads-identifier',
+    );
+    expect(read('app/src/main/AndroidManifest.xml')).toContain(
+      'com.google.android.gms.permission.AD_ID',
+    );
+
+    generate({});
+    expect(existsSync(module)).toBe(false);
+    expect(read(activity)).not.toMatch(/TrackingModule|angular-lynx:tracking/);
+    expect(read(activity)).toContain('// angular-lynx:canvas');
+    expect(read('app/build.gradle.kts')).not.toMatch(
+      /play-services-ads-identifier|angular-lynx:tracking/,
+    );
+    expect(read('app/src/main/AndroidManifest.xml')).not.toContain('AD_ID');
+  });
+
   it('keeps the calendar module, its launcher and its registration only in an app with calendar', () => {
     const module = path.join(dir, ANDROID_CALENDAR_SOURCE);
     const activity = path.join(
@@ -597,7 +638,7 @@ describe('androidGenerator.leaveOut', () => {
   // The optional modules an app turns on keep their MainActivity lines, so
   // those don't change with the canvas's.
   const withEveryModule = app({
-    permissions: { biometrics: 'Unlock' },
+    permissions: { biometrics: 'Unlock', tracking: 'Shows you ads' },
     filePicker: true,
     storeReview: true,
     calendar: true,

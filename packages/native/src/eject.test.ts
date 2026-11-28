@@ -116,6 +116,20 @@ describe('renderEjectedProject', () => {
     }
   });
 
+  it('has the tracking module only when the app asks for tracking', () => {
+    for (const [platform, module] of [
+      ['ios', 'App/TrackingModule.swift'],
+      ['android', `${ANDROID_SHELL_SOURCES}/TrackingModule.kt`],
+    ] as const) {
+      expect(render(platform).has(module)).toBe(false);
+      expect(
+        render(platform, undefined, {
+          permissions: { tracking: 'Shows you ads' },
+        }).has(module),
+      ).toBe(true);
+    }
+  });
+
   it('has the calendar module only when the app sets calendar', () => {
     for (const [platform, module] of [
       ['ios', 'App/CalendarModule.swift'],

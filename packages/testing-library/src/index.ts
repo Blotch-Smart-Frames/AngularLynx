@@ -35,6 +35,12 @@ export type { OpenedURL } from './linking.js';
 export { runShortcut } from './shortcuts.js';
 export { reviewRequests } from './store-review.js';
 export {
+  setTrackingAnswer,
+  setTrackingStatus,
+  trackingPrompts,
+} from './tracking.js';
+export type { FakeTrackingStatus } from './tracking.js';
+export {
   answerCalendarSheet,
   calendarEvents,
   failCalendarSheet,

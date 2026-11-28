@@ -48,7 +48,8 @@ const SCREEN_ORIENTATIONS: Record<Orientation, string> = {
  * splash becomes the splash theme's color and image. The barcode scanner's
  * module and the library behind it stay only in an app with the `camera`
  * permission. The store review module stays only in an app with
- * `storeReview`, and the calendar module only in one with `calendar`.
+ * `storeReview`, the calendar module only in one with `calendar`, and the
+ * tracking module only in one with `permissions.tracking`.
  */
 export const androidGenerator: PlatformGenerator = {
   configure: (dir, app, projectRoot) => {
@@ -152,6 +153,16 @@ export const androidGenerator: PlatformGenerator = {
         'calendar',
       );
     }
+    // As on iOS, an app that doesn't say why it tracks
+    // (`permissions.tracking`) leaves out the module, the lines that register
+    // it and Play's advertising ID library (`// angular-lynx:tracking`),
+    // which would otherwise declare AD_ID for it.
+    if (!app.permissions.tracking) {
+      removeTemplateFiles(dir, [ANDROID_TRACKING_SOURCE]);
+      for (const file of ANDROID_TRACKING_MARKED) {
+        removeMarkedLines(path.join(dir, file), 'tracking');
+      }
+    }
     leaveOutCanvas(dir, features);
   },
   bundleDir: (dir) => path.join(dir, 'app/src/main/assets'),
@@ -187,6 +198,21 @@ export const ANDROID_STORE_REVIEW_SOURCE = `${SHELL_SOURCES}/StoreReviewModule.k
 
 /** The module behind `LynxCalendar`, which only `calendar` keeps. */
 export const ANDROID_CALENDAR_SOURCE = `${SHELL_SOURCES}/CalendarModule.kt`;
+
+/**
+ * The module behind `LynxTracking`, which only an app with
+ * `permissions.tracking` keeps.
+ */
+export const ANDROID_TRACKING_SOURCE = `${SHELL_SOURCES}/TrackingModule.kt`;
+
+/**
+ * The files with lines for the tracking module: MainActivity registers it,
+ * and app/build.gradle.kts adds Google Play's advertising ID library.
+ */
+const ANDROID_TRACKING_MARKED = [
+  `${SHELL_SOURCES}/MainActivity.kt`,
+  'app/build.gradle.kts',
+];
 
 /**
  * The files with lines for the store review module: MainActivity registers

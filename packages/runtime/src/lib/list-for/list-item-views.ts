@@ -260,16 +260,29 @@ export class ListItemViews<T> implements LynxListItemSource {
    * throw. The bind native asks for checks the item in another view, and
    * throws there, where it would have.
    */
-  bindAhead(index: number): boolean {
+  bindAhead(indexes: readonly number[]): void {
     // The list commits this run with its own items, as for bind(). Once the
     // run is destroyed, its pools are empty and nothing binds.
+    const keys = this.#committedRun.keys;
+    // A view bound ahead for one of these stays theirs: taking it for the
+    // next would trade one checked row for another. One bound ahead for
+    // another item, which native didn't ask for (a guess past where the
+    // list stopped, or the other way), is free for them.
+    const guessed = new Set<string>();
+    for (const index of indexes) guessed.add(keys[index]!);
+    for (const index of indexes) this.#bindOneAhead(index, guessed);
+  }
+
+  /**
+   * bindAhead() for the item at `index`, leaving the views bound ahead for
+   * the `guessed` items alone.
+   */
+  #bindOneAhead(index: number, guessed: ReadonlySet<string>): void {
     const key = this.#committedRun.keys[index]!;
-    if (this.#byKey.has(key)) return false;
-    if (this.#committedRun.attributes[index]?.recyclable === false) {
-      return false;
-    }
-    const view = this.#takeFromPool(this.#committedRun.types[index]!);
-    if (!view) return false;
+    if (this.#byKey.has(key)) return;
+    if (this.#committedRun.attributes[index]?.recyclable === false) return;
+    const view = this.#takeFromPool(this.#committedRun.types[index]!, guessed);
+    if (!view) return;
     view.key = key;
     this.#byKey.set(key, view);
     this.#pool(view);
@@ -280,10 +293,9 @@ export class ListItemViews<T> implements LynxListItemSource {
     } catch {
       this.#unclaim(key, view);
       this.#pools.get(view.type)!.delete(view.sign);
-      return false;
+      return;
     }
     view.ahead = 'checked';
-    return true;
   }
 
   enqueue(sign: number): boolean {
@@ -393,14 +405,30 @@ export class ListItemViews<T> implements LynxListItemSource {
   }
 
   /**
-   * The oldest view of `type` native let go of, out of its pool.
+   * The oldest view of `type` native let go of, out of its pool. One that
+   * isn't bound ahead comes first: a view bound ahead is checked for an
+   * item native is about to ask for, and taking it for another would leave
+   * that item to be checked inside the layout pass. Without one, the oldest
+   * bound ahead for an item outside `spare` (bindAhead's guesses), or for
+   * any item when there's no `spare` (a bind native asks for, which can't
+   * wait).
    */
-  #takeFromPool(type: string): ItemView<T> | undefined {
+  #takeFromPool(
+    type: string,
+    spare?: ReadonlySet<string>,
+  ): ItemView<T> | undefined {
     const pool = this.#pools.get(type);
-    const first = pool?.entries().next();
-    if (!pool || !first || first.done) return undefined;
-    const [sign, view] = first.value;
-    pool.delete(sign);
+    if (!pool) return undefined;
+    let view: ItemView<T> | undefined;
+    for (const pooled of pool.values()) {
+      if (pooled.ahead === null) {
+        view = pooled;
+        break;
+      }
+      if (!view && !spare?.has(pooled.key!)) view = pooled;
+    }
+    if (!view) return undefined;
+    pool.delete(view.sign);
     // Its last item, if it still has one, has no view now: native asks for
     // it again, and it gets one then.
     if (view.key !== null) this.#byKey.delete(view.key);

@@ -77,11 +77,12 @@ export type LynxListItemSource = {
    */
   bind(index: number): { element: ElementRef; reused: boolean } | null;
   /**
-   * Binds the item at `index` of the last commit before native asks for it,
-   * with a view native let go of, if one is free (see
-   * LynxListElement.noteItemShown). True if it bound one.
+   * Binds the items at `indexes` of the last commit before native asks for
+   * them, nearest first, each with a view native let go of while one is
+   * free, without taking the view bound ahead for another of them (see
+   * LynxListElement.noteItemShown).
    */
-  bindAhead(index: number): boolean;
+  bindAhead(indexes: readonly number[]): void;
   /**
    * Native let go of the item element with this unique id (enqueueComponent):
    * true if it was one of this run's, which can now reuse it.
@@ -188,6 +189,12 @@ export const attributesDiffer = (
   );
 };
 
+/**
+ * The most `*lynxListFor` items bound ahead in one idle moment (see
+ * LynxListElement.noteItemShown). TODO measured value.
+ */
+const MAX_ROWS_AHEAD = 4;
+
 export class LynxListElement extends LynxElement {
   #firstVirtualChild: LynxElement | null = null;
   #lastVirtualChild: LynxElement | null = null;
@@ -221,6 +228,11 @@ export class LynxListElement extends LynxElement {
    */
   #lastShown = -1;
   #step = 1;
+  /**
+   * How many `*lynxListFor` items native asked for since the last bind
+   * ahead: how far ahead the next one binds (see noteItemShown).
+   */
+  #shownSinceIdle = 0;
   #bindAheadScheduled = false;
   #componentAtIndex: ((...args: any[]) => number | undefined) | null = null;
   #enqueueComponent: ((...args: any[]) => void) | null = null;
@@ -471,25 +483,45 @@ export class LynxListElement extends LynxElement {
    * ListItemViews.bindAhead), and its componentAtIndex, which the list's
    * layout waits for, only appends and flushes it.
    *
-   * One guess per idle moment: a timer after this, once native's layout
-   * pass has returned (a microtask would still run inside it), for the item
-   * after the last one native asked for, in the direction it last went.
-   * Several componentAtIndex calls in a frame share it. It stops by itself
-   * when the list does: only a componentAtIndex sets the next one, and a
-   * guess without a free view of its type binds nothing.
+   * A timer after this, once native's layout pass has returned (a
+   * microtask would still run inside it), binds the items after the last
+   * one native asked for, in the direction it last went: as many as native
+   * asked for since the timer before, up to MAX_ROWS_AHEAD. Several
+   * componentAtIndex calls in a frame share it. In a fling, native asks for
+   * more than one item a frame, and binding only the next one left the
+   * others to be checked inside the layout pass; the number it asked for
+   * last time is the best guess at how many it asks for next. It stops by
+   * itself when the list does: only a componentAtIndex sets the next timer,
+   * and a guess without a free view of its type binds nothing.
    */
   noteItemShown(index: number): void {
     if (this.#lastShown >= 0 && index !== this.#lastShown) {
       this.#step = index > this.#lastShown ? 1 : -1;
     }
     this.#lastShown = index;
+    this.#shownSinceIdle++;
     if (this.#bindAheadScheduled) return;
     this.#bindAheadScheduled = true;
     setTimeout(() => {
       this.#bindAheadScheduled = false;
+      const ahead = Math.min(this.#shownSinceIdle, MAX_ROWS_AHEAD);
+      this.#shownSinceIdle = 0;
       if (this.#destroyed) return;
-      const slot = this.#committed[this.#lastShown + this.#step];
-      slot?.source?.bindAhead(slot.index);
+      // Each run binds its own items: the guesses can reach past the end of
+      // a run, into an element child or the next run.
+      let source: LynxListItemSource | null = null;
+      let indexes: number[] = [];
+      for (let k = 1; k <= ahead; k++) {
+        const slot = this.#committed[this.#lastShown + k * this.#step];
+        if (!slot) break;
+        if (slot.source !== source) {
+          if (source && indexes.length > 0) source.bindAhead(indexes);
+          source = slot.source;
+          indexes = [];
+        }
+        if (source) indexes.push(slot.index);
+      }
+      if (source && indexes.length > 0) source.bindAhead(indexes);
     }, 0);
   }
 

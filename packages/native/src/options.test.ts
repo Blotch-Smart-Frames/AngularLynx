@@ -20,6 +20,7 @@ describe('resolveAppOptions', () => {
       storeReview: false,
       calendar: false,
       signInWithApple: false,
+      motion: false,
       deepLinkSchemes: [],
       appLinkDomains: [],
       canOpenURLSchemes: ['http', 'https', 'mailto', 'tel', 'sms'],
@@ -484,6 +485,8 @@ describe('resolveAppOptions', () => {
     ['filePicker', 1],
     ['fileSharing', 'true'],
     ['signInWithApple', 'false'],
+    ['signInWithApple', {}],
+    ['fileSharing', {}],
   ])('rejects %s %j', (name, value) => {
     expect(() =>
       resolveAppOptions({ [name]: value } as never, defaults),
@@ -500,7 +503,7 @@ describe('resolveAppOptions', () => {
 
   // The generators keep the module for anything truthy, so "false" would
   // ship it.
-  it.each(['false', 'true', 1])('rejects storeReview %j', (value) => {
+  it.each(['false', 'true', 1, {}])('rejects storeReview %j', (value) => {
     expect(() =>
       resolveAppOptions({ storeReview: value } as never, defaults),
     ).toThrow(/storeReview .* is not valid/);
@@ -514,10 +517,26 @@ describe('resolveAppOptions', () => {
     expect(calendar(true)).toBe(true);
   });
 
-  it.each(['false', 'true', 1])('rejects calendar %j', (value) => {
+  it.each(['false', 'true', 1, {}])('rejects calendar %j', (value) => {
     expect(() =>
       resolveAppOptions({ calendar: value } as never, defaults),
     ).toThrow(/calendar .* is not valid/);
+  });
+
+  it('keeps the motion module only when motion is true', () => {
+    const motion = (value: unknown) =>
+      resolveAppOptions({ motion: value } as never, defaults).motion;
+    expect(motion(undefined)).toBe(false);
+    expect(motion(false)).toBe(false);
+    expect(motion(true)).toBe(true);
+  });
+
+  // The generators keep the module for anything truthy, so "false" would
+  // ship it.
+  it.each(['false', 'true', 1, {}])('rejects motion %j', (value) => {
+    expect(() =>
+      resolveAppOptions({ motion: value } as never, defaults),
+    ).toThrow(/motion .* is not valid/);
   });
 
   it('accepts the two .ipa export methods and rejects any other', () => {

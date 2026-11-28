@@ -21,6 +21,7 @@ import {
   ANDROID_CANVAS_SOURCES,
   ANDROID_STORE_REVIEW_SOURCE,
   ANDROID_CALENDAR_SOURCE,
+  ANDROID_MOTION_SOURCE,
   ANDROID_WEBGL_SOURCES,
   androidGenerator,
   biometricsStringsXml,
@@ -393,6 +394,38 @@ describe('androidGenerator', () => {
     );
   });
 
+  it('keeps the motion module and its registration only in an app with motion', () => {
+    const module = path.join(dir, ANDROID_MOTION_SOURCE);
+    const activity = path.join(
+      dir,
+      'app/src/main/java/dev/angularlynx/shell/MainActivity.kt',
+    );
+    /**
+     * Generates from a fresh copy of the template, as prepareProject does.
+     */
+    const generate = (options: object) => {
+      rmSync(dir, { recursive: true, force: true });
+      cpSync(path.join(TEMPLATES_DIR, 'android'), dir, { recursive: true });
+      const resolved = app(options);
+      androidGenerator.configure(dir, resolved, dir);
+      androidGenerator.leaveOut(dir, { canvas: true, webgl: true }, resolved);
+    };
+
+    generate({ motion: true });
+    expect(existsSync(module)).toBe(true);
+    expect(readFileSync(activity, 'utf8')).toContain(
+      'registerModule(MotionModule.NAME',
+    );
+
+    generate({});
+    expect(existsSync(module)).toBe(false);
+    const kept = readFileSync(activity, 'utf8');
+    expect(kept).not.toContain('MotionModule::class');
+    expect(kept).not.toContain('angular-lynx:motion');
+    // The canvas's marked lines are another feature's, kept with the canvas.
+    expect(kept).toContain('// angular-lynx:canvas');
+  });
+
   it("keeps the barcode scanner's module and library only with the camera permission", () => {
     const module = path.join(dir, ANDROID_BARCODE_SCANNER_SOURCE);
     const buildFile = path.join(dir, 'app/build.gradle.kts');
@@ -601,6 +634,7 @@ describe('androidGenerator.leaveOut', () => {
     filePicker: true,
     storeReview: true,
     calendar: true,
+    motion: true,
   });
   const mainActivity = () =>
     readFileSync(path.join(shell(), 'MainActivity.kt'), 'utf8');

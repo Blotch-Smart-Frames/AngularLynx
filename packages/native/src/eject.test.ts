@@ -139,4 +139,18 @@ describe('renderEjectedProject', () => {
       '<key>com.apple.developer.applesignin</key>',
     );
   });
+
+  // As with storeReview: an ejected project without motion has no module to
+  // turn on later.
+  it('has the motion module only when the app sets motion', () => {
+    for (const [platform, module] of [
+      ['ios', 'App/MotionModule.swift'],
+      ['android', `${ANDROID_SHELL_SOURCES}/MotionModule.kt`],
+    ] as const) {
+      expect(render(platform).has(module)).toBe(false);
+      expect(render(platform, undefined, { motion: true }).has(module)).toBe(
+        true,
+      );
+    }
+  });
 });

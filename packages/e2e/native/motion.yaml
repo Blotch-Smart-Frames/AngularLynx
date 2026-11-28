@@ -1,0 +1,29 @@
+# Layer 6, the app's own builds only: LynxMotion reads the phone's motion
+# sensors (issue #920). The harness sets angular.json's `motion`, so the
+# shells have the module. The photo page's "Motion" text, before the scan's
+# status, shows the size of the first acceleration sampled, in m/s². The Android
+# emulator has an accelerometer, at rest, so the sample shows gravity, about
+# 9.8, which only the shell's module and its event bring. The iOS Simulator
+# has no motion sensors, so it shows none.
+appId: ${APP_ID}
+---
+- runFlow: open-app.yaml
+- tapOn: Open storage
+- tapOn: Open canvas
+- tapOn: Open photo
+- tapOn: 'Motion: tap'
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - extendedWaitUntil:
+          visible: 'Motion: 9\.[6-9]'
+          timeout: 15000
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - extendedWaitUntil:
+          visible: 'Motion: none'
+          timeout: 15000
+- takeScreenshot: motion

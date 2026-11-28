@@ -24,6 +24,7 @@ import {
   iosEntitlements,
   IOS_FILE_PICKER_SOURCES,
   IOS_BARCODE_SCANNER_SOURCE,
+  IOS_MOTION_SOURCE,
   IOS_CANVAS_SOURCES,
   IOS_STORE_REVIEW_SOURCE,
   IOS_CALENDAR_SOURCE,
@@ -447,6 +448,37 @@ describe('iosGenerator', () => {
     expect(plist.match(/UILaunchScreen/g)).toHaveLength(1);
     expect(plist).toContain('<key>LSApplicationQueriesSchemes</key>');
     expect(iosGenerator.bundleDir(dir)).toBe(path.join(dir, 'LynxBundle'));
+  });
+
+  it('keeps the motion module only in an app with motion', () => {
+    const module = path.join(dir, IOS_MOTION_SOURCE);
+    // In the template, so a renamed file can't stay in every app unnoticed.
+    expect(existsSync(module)).toBe(true);
+    const withMotion = app({ motion: true });
+    iosGenerator.configure(dir, withMotion, dir);
+    iosGenerator.leaveOut(dir, { canvas: true, webgl: true }, withMotion);
+    expect(existsSync(module)).toBe(true);
+
+    // A fresh copy of the template, as prepareProject generates from.
+    rmSync(dir, { recursive: true, force: true });
+    cpSync(path.join(TEMPLATES_DIR, 'ios'), dir, { recursive: true });
+    const without = app();
+    iosGenerator.configure(dir, without, dir);
+    iosGenerator.leaveOut(dir, { canvas: true, webgl: true }, without);
+    expect(existsSync(module)).toBe(false);
+    // LynxViewController registers it by the name the module gives itself,
+    // so the shell builds without it.
+    expect(
+      readFileSync(path.join(TEMPLATES_DIR, 'ios', IOS_MOTION_SOURCE), 'utf8'),
+    ).toContain('@objc(AngularLynxMotionModule)');
+    const controller = readFileSync(
+      path.join(dir, 'App/LynxViewController.swift'),
+      'utf8',
+    );
+    expect(controller).toContain(
+      'NSClassFromString("AngularLynxMotionModule")',
+    );
+    expect(controller).not.toContain('MotionModule.self');
   });
 
   it("keeps the barcode scanner's module only with the camera permission", () => {

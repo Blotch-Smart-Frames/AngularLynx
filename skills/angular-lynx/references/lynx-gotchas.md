@@ -251,6 +251,26 @@ Lynx has no calendar API. Set `"calendar": true` in the `build` target's options
 
 An app whose login is a third-party service (Google, Facebook) must also offer a privacy-focused login, unless an exception of App Store guideline 4.8 applies (its own accounts only, a company's, and others); Sign in with Apple is the usual one. Set `"signInWithApple": true` in the `build` target's options, with `ios.teamId` of a paid team (a Personal Team can't sign the entitlement), and call `inject(LynxAppleSignIn).signIn({ scopes: ['email', 'fullName'], nonce })`, injected in a field. It resolves `{ user, identityToken, authorizationCode, email?, fullName?, state?, realUserStatus }`; Apple sends `email` and `fullName` on the first sign-in only, so save them then, and key the account on `user`, which the server reads from the verified token's `sub` rather than trusting the app's copy. Send `identityToken` (a JWT to verify against Apple's keys, with the nonce's SHA-256 in its `nonce` claim when you passed the hash) and `authorizationCode` to the server. It rejects with `AppleSignInError`: `canceled`, `failed`, or `unsupported` on Android, the web preview, Lynx Explorer and an iOS app without the option. In the Android app, use Apple's web flow with `LynxWebAuthSession`; the web preview and Lynx Explorer have no web sign-in either (it rejects with `unavailable` there). `isAvailable()` says which button to show, and `getCredentialState(user)` (`authorized`, `revoked`, `notFound`, `transferred`) is the launch check Apple asks for; it takes Apple's `user`, not a service's own ID such as a Firebase UID, so keep that on the device too. Draw the button as Apple's guidelines require.
 
+### No `DeviceMotionEvent` or `DeviceOrientationEvent`: use `LynxMotion`
+
+Read the accelerometer, the gyroscope, the orientation and the compass, and hear a shake, with `LynxMotion`, after setting `"motion": true` in the `build` target's options (no permission; without it the native module is left out, nothing is sampled and `availability()` reports no sensors). Call it from an injection context, such as a constructor, so each watch stops with the component, or keep the function it returns:
+
+```typescript
+readonly #motion = inject(LynxMotion);
+readonly tilt = signal(0);
+
+constructor() {
+  this.#motion.watchOrientation({ interval: 50 }, ({ gamma }) => this.tilt.set(gamma));
+  this.#motion.onShake(() => this.undo());
+}
+```
+
+- `watchAcceleration()` gives `{ x, y, z, timestamp }` in m/s² with gravity (face up: z ≈ 9.81, on iOS too), `watchRotation()` rad/s around each axis, `watchOrientation()` `DeviceOrientationEvent`'s `alpha`/`beta`/`gamma` in degrees (`alpha` from where the phone faced at the start, not north, in the shells; in the web preview, a browser that sends only absolute orientation gives an `alpha` from north), and `watchHeading()` `{ magneticHeading, trueHeading, accuracy }` (`trueHeading` only on iOS with location access, otherwise `null`). Each takes `{ interval, injector }` first or the handler alone; `interval` defaults to 16 ms and is at least 5.
+- **Every sample is main-thread work.** Ask for the slowest interval the screen can use (50–100 ms for a level or a compass). The shells batch samples at most every 16 ms and hear shakes natively, so `onShake()` costs nothing until one comes.
+- `await motion.availability()` gives `{ acceleration, rotation, orientation, heading }`; the iOS Simulator has no sensors, the Android emulator does (extended controls → Virtual sensors). In the web preview it reads the page's `DeviceMotionEvent` and `DeviceOrientationEvent`, which Safari sends only after `DeviceMotionEvent.requestPermission()` from a tap.
+- In specs, `emitMotion({ acceleration, rotation, orientation })`, `setHeading(90)` and `shakeDevice()` from the testing library send samples to the watches the app has; each sample counts as a second after the last unless you pass `timestamp` (do, a watch's `interval` apart, for a watch slower than a second).
+- Step counting (`CMPedometer`, `TYPE_STEP_COUNTER`) isn't there yet.
+
 ### Bundled images need `baseHref` on the web
 
 An imported image (`import logo from './logo.png'`, typed through `/// <reference types="@blotch/angular-lynx-build/client" />`) becomes `static/image/logo.<hash>.png` next to the bundle. On iOS and Android, Lynx resolves it against the bundle, wherever that is. Lynx for Web puts it on an `<img>` in the page, so the browser resolves it against the page that shows the `<lynx-view>`: a bundle at `/apps/shop/main.web.bundle` on a page at `/` asks for `/static/image/…` and gets nothing. Build with `ng build --base-href=/apps/shop/`, which makes the web bundle ask for `/apps/shop/static/image/…` (see [build-configuration.md](build-configuration.md)). `ng serve` needs nothing: its page and bundle share a root. Fonts never have the problem: the build inlines `@font-face` files as data URLs.

@@ -6,6 +6,7 @@ import {
   LYNX_ELEMENTS,
   LynxBarcodeScanner,
   LynxImagePicker,
+  LynxMotion,
 } from '@blotch/angular-lynx';
 
 /**
@@ -46,6 +47,16 @@ const upload = (blob: Blob): Promise<{ reply: string; bytes: number }> =>
  * screen, so there's no room for another there. "Open video", under the
  * status, opens video-toggle.ts: the row has no room for it either. "Scan
  * code", beside it, opens LynxBarcodeScanner (see scan()).
+ *
+ * "Motion", before the scan's status on the last row CI's emulator shows,
+ * reads the phone's motion sensors with LynxMotion (issue #920), which the
+ * app has because the harness sets angular.json's `motion`. A tap shows the
+ * size of the first acceleration it samples in m/s², gravity included, so
+ * `Motion: 9.8` on a phone at rest, or `Motion: none` without an
+ * accelerometer. The Android emulator has one, so native/motion.yaml sees a
+ * sample come through the shell's module and its event; the iOS Simulator
+ * has none. The scan's status takes the rest of the row, and wraps there:
+ * only the iOS flow reads it, on a wider screen.
  */
 @Component({
   selector: 'app-photo',
@@ -100,12 +111,21 @@ const upload = (blob: Blob): Promise<{ reply: string; bytes: number }> =>
         <text>Scan code</text>
       </view>
     </view>
-    <text flatten="false" style="margin-top: 8px;">Scan: {{ scanned() }}</text>
+    <view style="display: flex; flex-direction: row; margin-top: 8px;">
+      <text flatten="false" (bindtap)="readMotion()"
+        >Motion: {{ motion() }}</text
+      >
+      <text flatten="false" style="margin-left: 16px; flex: 1;"
+        >Scan: {{ scanned() }}</text
+      >
+    </view>
   `,
 })
 export class PhotoRoute {
   readonly #picker = inject(LynxImagePicker);
   readonly #scanner = inject(LynxBarcodeScanner);
+  readonly #motion = inject(LynxMotion);
+  readonly motion = signal('tap');
   readonly status = signal('none');
   readonly scanned = signal('none');
 
@@ -117,6 +137,20 @@ export class PhotoRoute {
    * the runtime's for a host without the module, shows the shell registered
    * it (native/scanner.yaml).
    */
+  readMotion(): void {
+    this.motion.set('…');
+    void this.#motion.availability().then(({ acceleration }) => {
+      if (!acceleration) {
+        this.motion.set('none');
+        return;
+      }
+      const stop = this.#motion.watchAcceleration(({ x, y, z }) => {
+        stop();
+        this.motion.set(Math.hypot(x, y, z).toFixed(1));
+      });
+    });
+  }
+
   async scan(): Promise<void> {
     this.scanned.set('…');
     try {

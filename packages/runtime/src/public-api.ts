@@ -41,6 +41,16 @@ export type {
 export { LynxFont } from './lib/font';
 export { LynxHaptics } from './lib/haptics';
 export type { HapticImpactStyle, HapticNotificationType } from './lib/haptics';
+export { LynxMotion } from './lib/motion';
+export type {
+  LynxAcceleration,
+  LynxHeading,
+  LynxMotionAvailability,
+  LynxMotionOptions,
+  LynxOrientation,
+  LynxRotationRate,
+  LynxShakeOptions,
+} from './lib/motion';
 export { reportFullyDrawn } from './lib/fully-drawn';
 export {
   FILE_PICKER_MAX_BYTES,

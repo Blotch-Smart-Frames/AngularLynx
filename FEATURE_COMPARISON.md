@@ -82,6 +82,7 @@
 | Persistent and secure storage | ✅ (`LynxLocalStorage`, `LynxSecureStorage`) |           ❌            |    ❌    |
 | Biometrics                    |            ✅ (`LynxBiometrics`)             |           ❌            |    ❌    |
 | Document picker and file save |            ✅ (`LynxFilePicker`)             |           ❌            |    ❌    |
+| Motion sensors and compass    |              ✅ (`LynxMotion`)               |           ❌            |    ❌    |
 | System info service           |         ✅ (`LynxSystemInfoService`)         |      ❌ (raw API)       |    ❌    |
 
 ## Lazy Loading / Code Splitting

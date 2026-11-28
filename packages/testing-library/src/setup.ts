@@ -32,6 +32,7 @@ import { installLinkingModule } from './linking.js';
 import { installShortcutsModule } from './shortcuts.js';
 import { installStoreReviewModule } from './store-review.js';
 import { installAppleSignInModule } from './apple-sign-in.js';
+import { installMotionModule } from './motion.js';
 
 // ─── CSS fetch intercept ─────────────────────────────────────────────────────
 
@@ -133,6 +134,9 @@ const frameOnInstalledTimers = (threadGlobals: any): void => {
   // LynxAppleSignIn's sign-ins, which setAppleSignInResult() and the other
   // setters in apple-sign-in.ts steer.
   installAppleSignInModule(threadGlobals);
+  // LynxMotion's sensors, which emitMotion(), setHeading() and
+  // shakeDevice() sample (see motion.ts).
+  installMotionModule(threadGlobals);
   // LynxBackButton enables the back handler pressBackButton() checks (see
   // back-button.ts).
   installShellModule(threadGlobals);

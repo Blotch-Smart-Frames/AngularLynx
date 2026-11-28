@@ -48,7 +48,8 @@ const SCREEN_ORIENTATIONS: Record<Orientation, string> = {
  * splash becomes the splash theme's color and image. The barcode scanner's
  * module and the library behind it stay only in an app with the `camera`
  * permission. The store review module stays only in an app with
- * `storeReview`, and the calendar module only in one with `calendar`.
+ * `storeReview`, the calendar module only in one with `calendar`, and the
+ * motion module only in one with `motion`.
  */
 export const androidGenerator: PlatformGenerator = {
   configure: (dir, app, projectRoot) => {
@@ -152,6 +153,16 @@ export const androidGenerator: PlatformGenerator = {
         'calendar',
       );
     }
+    // As on iOS, an app that doesn't read the motion sensors leaves the
+    // module out, with the lines in MainActivity that register it
+    // (`// angular-lynx:motion`).
+    if (!app.motion) {
+      removeTemplateFiles(dir, [ANDROID_MOTION_SOURCE]);
+      removeMarkedLines(
+        path.join(dir, SHELL_SOURCES, 'MainActivity.kt'),
+        'motion',
+      );
+    }
     leaveOutCanvas(dir, features);
   },
   bundleDir: (dir) => path.join(dir, 'app/src/main/assets'),
@@ -196,6 +207,9 @@ const ANDROID_STORE_REVIEW_MARKED = [
   `${SHELL_SOURCES}/MainActivity.kt`,
   'app/build.gradle.kts',
 ];
+
+/** The module behind `LynxMotion`, which only `motion` keeps. */
+export const ANDROID_MOTION_SOURCE = `${SHELL_SOURCES}/MotionModule.kt`;
 
 /**
  * The shell's biometrics module, `AngularLynxBiometrics` (LynxBiometrics, and

@@ -31,6 +31,8 @@ export type {
 } from './barcode-scanner.js';
 export { fireEvent, eventMap } from './fire-event.js';
 export { openedURLs, openLink } from './linking.js';
+export { emitMotion, setHeading, shakeDevice } from './motion.js';
+export type { EmittedHeading, EmittedMotion, MotionVector } from './motion.js';
 export type { OpenedURL } from './linking.js';
 export { runShortcut } from './shortcuts.js';
 export { reviewRequests } from './store-review.js';

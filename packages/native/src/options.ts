@@ -79,6 +79,14 @@ export type NativeAppOptions = {
    * Personal Team can't sign that entitlement.
    */
   readonly signInWithApple?: boolean;
+  /**
+   * Whether the app reads the phone's motion sensors and compass, and hears
+   * it shaken, with the runtime's `LynxMotion`: Core Motion and
+   * `CLLocationManager`'s heading on iOS, and `SensorManager` on Android.
+   * None of them needs a permission. Off by default, which leaves the native
+   * module out of both apps.
+   */
+  readonly motion?: boolean;
   /** Custom URL schemes that open the app, e.g. `["myapp"]`. */
   readonly deepLinkSchemes?: readonly string[];
   /**
@@ -342,6 +350,7 @@ export type ResolvedApp = {
   readonly storeReview: boolean;
   readonly calendar: boolean;
   readonly signInWithApple: boolean;
+  readonly motion: boolean;
   readonly deepLinkSchemes: readonly string[];
   /** {@link NativeAppOptions.appLinkDomains} in lowercase, each once. */
   readonly appLinkDomains: readonly string[];
@@ -497,20 +506,24 @@ export const resolveAppOptions = (
   // Checked here because the generators keep the module, or the Info.plist
   // keys, for any truthy value, so a string such as "false" would quietly
   // ship them.
+  // The switches are read from the options as given: compact() drops an
+  // empty object, which would then pass as false rather than be rejected.
   const filePicker = resolveSwitch(
     'filePicker',
-    options.filePicker,
+    rawOptions.filePicker,
     'to let the person pick and save files with LynxFilePicker',
   );
   const fileSharing = resolveSwitch(
     'fileSharing',
-    options.fileSharing,
+    rawOptions.fileSharing,
     "to list the app's Documents folder in the iOS Files app",
   );
 
   // Checked here because the generators keep the module for any truthy
-  // value, so a string such as "false" would quietly ship it.
-  const storeReview = options.storeReview ?? false;
+  // value, so a string such as "false" would quietly ship it. Read from the
+  // options as given: compact() drops an empty object, which would then
+  // pass as false rather than be rejected.
+  const storeReview = rawOptions.storeReview ?? false;
   if (typeof storeReview !== 'boolean') {
     throw new NativeConfigError(
       `storeReview ${JSON.stringify(storeReview)} is not valid. Use true to ask for ratings in the app with LynxStoreReview, or false.`,
@@ -520,7 +533,7 @@ export const resolveAppOptions = (
   // Checked for the same reason as filePicker.
   const calendar = resolveSwitch(
     'calendar',
-    options.calendar,
+    rawOptions.calendar,
     'to add events to the calendar with LynxCalendar',
   );
 
@@ -528,8 +541,15 @@ export const resolveAppOptions = (
   // Personal Team's signing fail.
   const signInWithApple = resolveSwitch(
     'signInWithApple',
-    options.signInWithApple,
+    rawOptions.signInWithApple,
     "to offer Sign in with Apple's native sheet with LynxAppleSignIn",
+  );
+
+  // As for calendar.
+  const motion = resolveSwitch(
+    'motion',
+    rawOptions.motion,
+    'to read the motion sensors and compass with LynxMotion',
   );
 
   const deepLinkSchemes = options.deepLinkSchemes ?? [];
@@ -638,6 +658,7 @@ export const resolveAppOptions = (
     storeReview,
     calendar,
     signInWithApple,
+    motion,
     deepLinkSchemes,
     appLinkDomains,
     canOpenURLSchemes,

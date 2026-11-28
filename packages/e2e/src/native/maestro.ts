@@ -389,6 +389,17 @@ export const FLOWS: readonly Flow[] = [
     only: { platform: 'ios', host: 'shell' },
   },
   {
+    file: 'motion.yaml',
+    description: 'reads the motion sensors, which only the emulator has',
+    // Only the app's own builds have the motion module, and only with
+    // angular.json's motion, which the harness sets. Lynx Explorer has none,
+    // and reports no sensors.
+    only: { host: 'shell' },
+    // It reaches the photo page through the canvas page, whose WebGL
+    // context it can be the first flow to make (see stalledMetalCompiler).
+    deviceFault: stalledMetalCompiler,
+  },
+  {
     file: 'linking.yaml',
     description:
       'says which apps it can open, and on Android opens a link in a browser tab',

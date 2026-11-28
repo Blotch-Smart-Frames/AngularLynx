@@ -31,8 +31,8 @@ import {
  * `permissions.camera`, as most apps are, which leaves the biometrics module
  * (#918) and the barcode scanner's (#917) out. The E2E app asks for both, so
  * its own build has the modules. Both are built
- * without `storeReview` and `calendar`, which the E2E app sets and most apps
- * don't (#931, #926), and without `signInWithApple`, which leaves the iOS
+ * without `storeReview`, `calendar` and `motion`, which the E2E app sets and
+ * most apps don't (#931, #926, #920), and without `signInWithApple`, which leaves the iOS
  * shell's Sign in with Apple module and its entitlement out (#932).
  * `no-canvas` is built without angular.json's `filePicker` too, which leaves
  * the file picker module and MainActivity's launcher for it out (#924),
@@ -121,6 +121,15 @@ const CALENDAR_PROBES: Record<Platform, string> = {
 const APPLE_SIGN_IN_PROBE = 'App/AppleSignInModule.swift';
 
 /**
+ * The motion module, which the variants build without, as for
+ * STORE_REVIEW_PROBES (issue #920).
+ */
+const MOTION_PROBES: Record<Platform, string> = {
+  ios: 'App/MotionModule.swift',
+  android: 'app/src/main/java/dev/angularlynx/shell/MotionModule.kt',
+};
+
+/**
  * Compiles the app's native project once per VARIANTS entry, without
  * running it, with the native builder in `nativeDir`.
  *
@@ -197,13 +206,14 @@ export const compileFeatureVariants = async ({
           workDir: path.join(variantDir, 'work'),
           outputDir: path.join(variantDir, 'out'),
           log,
-          // Without storeReview and calendar, which the E2E app sets and most
+          // Without storeReview, calendar and motion, which the E2E app sets and most
           // apps don't, and the app's permissions without the ones the
           // variant leaves out.
           overrides: {
             storeReview: false,
             calendar: false,
             signInWithApple: false,
+            motion: false,
             ...(biometrics && camera
               ? {}
               : {
@@ -247,6 +257,11 @@ export const compileFeatureVariants = async ({
         if (existsSync(path.join(projectDir, CALENDAR_PROBES[platform]))) {
           failures.push(
             `${name}: the generated project still has ${CALENDAR_PROBES[platform]}, though the variant builds without calendar.`,
+          );
+        }
+        if (existsSync(path.join(projectDir, MOTION_PROBES[platform]))) {
+          failures.push(
+            `${name}: the generated project still has ${MOTION_PROBES[platform]}, though the variant builds without motion.`,
           );
         }
         check(

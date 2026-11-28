@@ -439,6 +439,44 @@ expect(biometricPrompts()).toEqual([
 ]);
 ```
 
+### Motion
+
+```typescript
+function emitMotion(motion: EmittedMotion): void;
+function setHeading(heading: number | EmittedHeading): void;
+function shakeDevice(): void;
+
+type EmittedMotion = {
+  acceleration?: { x: number; y: number; z: number }; // m/s², with gravity
+  rotation?: { x: number; y: number; z: number }; // rad/s
+  orientation?: { alpha: number; beta: number; gamma: number }; // degrees
+  timestamp?: number;
+};
+type EmittedHeading = {
+  magneticHeading: number;
+  trueHeading?: number | null;
+  accuracy?: number | null;
+  timestamp?: number;
+};
+```
+
+The testing library stands in for a phone with every sensor, for [`LynxMotion`](/api/angular-lynx/motion). Each function sends what the shells send, through the background thread: wait for it with `waitForUpdate()`.
+
+- **`emitMotion()`** sends a sample to the app's `watchAcceleration()`, `watchRotation()` and `watchOrientation()` watches.
+- **`setHeading()`** sends a compass heading to its `watchHeading()` watches: degrees from magnetic north, or an object with the true heading and accuracy too.
+- **`shakeDevice()`** runs its `onShake()` handlers.
+
+A sensor nothing watches isn't running, so nothing reaches the app, as on a phone. Each sample counts as a second after the latest one sent, of any sensor (or now, if that's later), even after a `timestamp` that went back, so a watch whose `interval` is a second or less never skips it. For a slower watch, pass each sample a `timestamp` at least its `interval` after the last.
+
+```typescript
+await render(Level);
+emitMotion({ orientation: { alpha: 0, beta: 0, gamma: 12 } });
+shakeDevice();
+await waitForUpdate();
+
+expect(screen.getByText('12°')).toBeInTheDocument();
+```
+
 ### `*ByAccessibilityLabel`
 
 ```typescript

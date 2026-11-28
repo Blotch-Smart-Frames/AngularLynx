@@ -80,6 +80,10 @@ final class BluetoothModule: NSObject, LynxContextModule, CBCentralManagerDelega
   /// `scanStopped` events carry, so it can tell them from those of the scan
   /// it replaced.
   private var scanID = 0
+  /// The id of the newest `startScan`. One still waiting for the manager when
+  /// a newer one arrives doesn't start: the runtime has replaced its scan
+  /// already, and the newer one may be running.
+  private var newestScan = 0
   /// Counts `stopScan` calls, so a `startScan` still waiting for the prompt
   /// doesn't start a scan the app stopped meanwhile.
   private var stopCount = 0
@@ -158,11 +162,14 @@ final class BluetoothModule: NSObject, LynxContextModule, CBCentralManagerDelega
   }
 
   /// Starts a scan for peripherals advertising any of `options.services`, or
-  /// every peripheral when it's empty, replacing the scan already running.
+  /// every peripheral when it's empty, replacing the scan already running. A
+  /// start that waited for the manager calls back `{}` without scanning when
+  /// a newer one came in meanwhile.
   @objc func startScan(_ options: [String: Any]?, callback: @escaping LynxCallbackBlock) {
     let names = options?["services"] as? [String] ?? []
     let id = (options?["scan"] as? NSNumber)?.intValue ?? 0
     queue.async {
+      self.newestScan = id
       var services: [CBUUID] = []
       for name in names {
         guard let uuid = Self.coreBluetoothUUID(name) else {
@@ -173,6 +180,10 @@ final class BluetoothModule: NSObject, LynxContextModule, CBCentralManagerDelega
       }
       let stops = self.stopCount
       self.whenPoweredOn(callback) { central in
+        guard id == self.newestScan else {
+          callback([:])
+          return
+        }
         guard stops == self.stopCount else {
           callback(
             Failure(code: "failed", message: "stopScan() was called before the scan started.")

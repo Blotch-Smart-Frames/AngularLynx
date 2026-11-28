@@ -311,7 +311,7 @@ This writes the generated projects into `ios/` and `android/` at your project ro
 
 Ejecting is one-way, and it costs you:
 
-- **The identity options stop applying.** Name, ID, version, icon, permissions and the rest now live in the native projects. The signing options still apply. A project ejected without the `bluetooth` permission has no Bluetooth module either, so adding Bluetooth to it later is a native change.
+- **The identity options stop applying.** Name, ID, version, icon, permissions and the rest now live in the native projects. The signing options still apply. A project ejected without the `bluetooth` permission has no Bluetooth module either, so adding Bluetooth to it later is a native change, and one ejected with it keeps the module and its permissions until they're taken out of the native projects.
 - **Upkeep becomes your job.** New Lynx versions, new Xcode versions and Google Play's yearly requirements no longer arrive with AngularLynx updates.
 - **You need native knowledge** to change the projects.
 - **Android's release build runs R8,** which removes and renames Java and Kotlin it can't see used. Code you add that's only reached by name, through reflection or from native code, needs keep rules in `android/app/proguard-rules.pro`. A native module that extends `LynxModule` is kept already.

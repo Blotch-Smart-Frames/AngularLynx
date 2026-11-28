@@ -193,7 +193,7 @@ type BluetoothService = {
 ```
 
 - **`write()`** waits for the device to confirm by default, and takes up to 512 bytes. With `withResponse: false` it's quicker but carries at most `maxWriteLength` bytes, and a lost write is lost. A longer value rejects with `failed`: split it.
-- **`subscribe()`** calls `listener` with each value the characteristic notifies or indicates, and resolves with a function that stops it. The device stops sending once the last listener of the characteristic stops. iOS reports a read's answer and a notification the same way, so while a characteristic is subscribed on iOS its listeners also get what a `read()` gets, and a `read()` can resolve with a notification that arrived first. Either is the characteristic's latest value.
+- **`subscribe()`** calls `listener` with each value the characteristic notifies or indicates, and resolves with a function that stops it. The device stops sending once the last listener of the characteristic stops. iOS reports a read's answer and a notification the same way, so while a characteristic is subscribed on iOS its listeners also get what a `read()` gets, and a `read()` can resolve with a notification that arrived first instead of the read's own answer, which can hold an older value.
 - **`connected`** turns `false` when the device goes out of range or switches off, and after `disconnect()`. A connection that has ended rejects every call with `notConnected`: connect again for a new one.
 
 ### `canonicalBluetoothUUID()`

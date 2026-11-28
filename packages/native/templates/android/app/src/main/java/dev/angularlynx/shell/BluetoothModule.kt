@@ -133,6 +133,11 @@ class BluetoothModule : LynxContextModule {
     // device it found was last reported, and the names they advertised, which
     // connect() reports when Android has no name of its own for the device.
     private var scan: ScanListener? = null
+
+    // The id of the newest startScan. A start still waiting for the
+    // permission prompt when a newer one arrives doesn't start: the runtime
+    // has replaced its scan already, and the newer one may be running.
+    private var newestScan = 0
     private val sightings = HashMap<String, Long>()
     private val advertisedNames = HashMap<String, String>()
 
@@ -198,19 +203,21 @@ class BluetoothModule : LynxContextModule {
      * carry `options.scan`, so the runtime can tell them from those of the
      * scan it replaced. A scan already running ends first, without a
      * `scanStopped` event, even when this one can't start: the runtime has
-     * let go of it. It ends again just before this one starts, since another
-     * start waiting on the same permission prompt may have begun meanwhile.
+     * let go of it. A start that waited for the permission prompt answers
+     * `{}` without scanning when a newer one came in meanwhile.
      */
     @LynxMethod
     fun startScan(options: ReadableMap?, callback: Callback) = serve(callback) { reply ->
         stopScanning()
         val id = options?.getDouble("scan", 0.0)?.toInt() ?: 0
+        newestScan = id
         val services = try {
             uuids(options?.getArray("services", null)?.let { list -> (0 until list.size()).map { list.getString(it) } })
         } catch (_: IllegalArgumentException) {
             return@serve reply.fail(FAILED, "A service to scan for isn't a UUID.")
         }
         whenReady(reply) { adapter ->
+            if (id != newestScan) return@whenReady reply.ok()
             if (locationOff()) return@whenReady reply.fail(FAILED, LOCATION_OFF)
             // Null while the adapter is off, which whenReady() just ruled out,
             // but it can be turning off.
@@ -222,7 +229,6 @@ class BluetoothModule : LynxContextModule {
             // to appear, and only while it's open.
             val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
             val listener = ScanListener(id)
-            stopScanning()
             // Android lets an app start about five scans in 30 seconds and
             // silently returns nothing from the ones after that: there's no
             // error to report.

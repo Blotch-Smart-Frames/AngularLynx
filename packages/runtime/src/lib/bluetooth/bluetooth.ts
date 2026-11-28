@@ -250,7 +250,8 @@ export type BluetoothConnection = {
   /**
    * Reads a characteristic's value. On iOS, while the characteristic is
    * subscribed, it can resolve with a notification that arrived first,
-   * since iOS reports the two the same way.
+   * which can hold an older value than the read's own answer, since iOS
+   * reports the two the same way.
    */
   read(service: string, characteristic: string): Promise<Uint8Array>;
   /** Writes a characteristic's value. */

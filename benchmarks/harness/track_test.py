@@ -63,6 +63,7 @@ def record(date, ratios):
     ratios, ReactLynx at 100."""
     return {
         "date": date,
+        "mount_cost_from": track.MOUNT_COST_FROM,
         "commit": commit_of(date),
         "run": f"https://example.invalid/{date}",
         "metrics": {
@@ -98,6 +99,7 @@ class DayTest(unittest.TestCase):
         self.assertEqual(result["launches"], {"angular-lynx": 3, "react-lynx": 3})
         self.assertEqual(result["device"], "iPhone 18 Pro (Simulator)")
         self.assertEqual(result["mount_counts"], {"text": [1500, 5000]})
+        self.assertEqual(result["mount_cost_from"], "mount_ms")
 
     def test_the_cost_comes_from_the_kinds_smallest_and_largest_screens(self):
         # The Simulator's screens (ios_mount.py), with an older 5,000 left
@@ -222,6 +224,22 @@ class SustainedChangeTest(unittest.TestCase):
         history = [record(f"day-{i:02d}", {"launch.fully_drawn_ms": v}) for i, v in enumerate(values)]
         [change] = track.sustained_changes(history)
         self.assertAlmostEqual(change["baseline"], 1.0)
+
+    def test_costs_from_before_the_mount_mark_are_left_out(self):
+        # A history from before #892: its costs per element came from whole
+        # launches, which aren't the same measure as the mount's.
+        metric = "mount.view.us_per_element"
+        history = days(1.0, 1.0, 1.0, 1.0, 1.0, metric=metric)
+        for old in history:
+            del old["mount_cost_from"]
+        history += [record(f"2026-11-{day:02d}", {metric: 1.3}) for day in (6, 7, 8)]
+        self.assertIsNone(track.ratio(history[0], metric))
+        # Its Pokédex measures still count.
+        old = record("2026-11-01", {"launch.fully_drawn_ms": 1.2})
+        del old["mount_cost_from"]
+        self.assertAlmostEqual(track.ratio(old, "launch.fully_drawn_ms"), 1.2)
+        # The three new days have no baseline of their own kind yet.
+        self.assertEqual(track.sustained_changes(history), [])
 
     def test_a_day_without_a_ratio_breaks_the_run(self):
         # The fifth day's cost came out below zero, so it has no ratio.

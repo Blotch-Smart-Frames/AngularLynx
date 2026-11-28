@@ -64,6 +64,13 @@ SIMULATOR_NAME = "AngularLynx Benchmarks"
 # Each tracked measure: its label, unit and how many decimals to print. A
 # higher number is worse for every one of them, so a higher ratio means
 # AngularLynx has fallen behind ReactLynx.
+# What a record's costs per element were timed from. A record without it
+# is from before #892, whose costs came from whole launches: up to 20% off
+# the mount's own on the same launches (ReactLynx's view, 10.3 µs against
+# 8.5), more than the threshold, so ratio() leaves those costs out rather
+# than let a baseline of them make a change that isn't there.
+MOUNT_COST_FROM = "mount_ms"
+
 METRICS = {
     "launch.fully_drawn_ms": ("Pokédex fully drawn", "ms", 0),
     "launch.memory_mb": ("Pokédex memory", "MB", 1),
@@ -167,13 +174,18 @@ def day(launch_rows, mount_rows, date, commit, run_url):
         # elements isn't one from 1,500 and 15,000, whose launches' noise
         # weighs less on it.
         "mount_counts": counts,
+        "mount_cost_from": MOUNT_COST_FROM,
         "metrics": metrics,
     }
 
 
 def ratio(record, metric):
     """AngularLynx / ReactLynx for the metric on a day, or None. A cost of
-    zero or less is noise (the two screens' mounts crossed), not a cost."""
+    zero or less is noise (the two screens' mounts crossed), not a cost, and
+    a cost timed from something else than this harness's (MOUNT_COST_FROM)
+    isn't the same measure."""
+    if metric.startswith("mount.") and record.get("mount_cost_from") != MOUNT_COST_FROM:
+        return None
     values = record.get("metrics", {}).get(metric) or {}
     ours, rival = values.get(OURS), values.get(RIVAL)
     if ours is None or rival is None or ours <= 0 or rival <= 0:

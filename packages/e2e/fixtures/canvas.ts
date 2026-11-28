@@ -69,6 +69,25 @@ const colorName = ({ 0: r, 1: g, 2: b }: ArrayLike<number>): string =>
       : `${r} ${g} ${b}`;
 
 /**
+ * "sub-ms" if `performance.now()` reads in fractions of a millisecond, "ms"
+ * if it steps in whole ones. It takes readings until it has seen the clock
+ * move 20 times, since one reading can land on a whole millisecond by
+ * chance: a browser's, coarsened to 0.1 ms, does one time in ten.
+ */
+const clockResolution = (): string => {
+  let last = performance.now();
+  let fractional = last % 1 !== 0;
+  for (let moves = 0, reads = 0; moves < 20 && reads < 1_000_000; reads++) {
+    const now = performance.now();
+    if (now === last) continue;
+    moves++;
+    last = now;
+    if (now % 1 !== 0) fractional = true;
+  }
+  return fractional ? 'sub-ms' : 'ms';
+};
+
+/**
  * E2E fixture for `<canvas>` with WebGL2 (issue #211), loaded through
  * `loadComponent` like storage.ts, whose page links here. It draws the
  * canvas full of a texture through a shader, then reads a pixel back and
@@ -132,6 +151,13 @@ const colorName = ({ 0: r, 1: g, 2: b }: ArrayLike<number>): string =>
  * one result when both read the same, or both, the hidden one after
  * "| hidden", when they don't. It waits for both, so a hidden video that never
  * shows a first frame leaves it unfinished.
+ *
+ * Beside the links, "Clock: sub-ms" checks that `performance.now()` reads in
+ * fractions of a millisecond (issue #896), as three.js's Clock and an app's
+ * profiling expect: the runtime's own, on the engine's `__date_clock()`, in
+ * the shells, and the browser's in the web preview. Built on `Date.now()`, it
+ * read "Clock: ms". It's in the links' row, which is as tall as the links, so
+ * the page is no taller.
  *
  * "Open linking" and "Open photo", which open linking.ts and photo.ts, are
  * between the canvas's row and the 2D line, rather than under the line: a
@@ -203,6 +229,9 @@ const colorName = ({ 0: r, 1: g, 2: b }: ArrayLike<number>): string =>
       >
         <text>Open photo</text>
       </view>
+      <text flatten="false" style="margin-left: 8px; align-self: center;"
+        >Clock: {{ clock }}</text
+      >
     </view>
     <text flatten="false"
       >2D: {{ result2D() }}; Video: {{ resultVideo() }}</text
@@ -216,6 +245,7 @@ export class CanvasRoute {
   readonly result = signal('…');
   readonly result2D = signal('…');
   readonly resultBitmap = signal('…');
+  readonly clock = clockResolution();
   readonly video = viewChild.required<ElementRef<HTMLVideoElement>>('video');
   readonly hiddenVideo =
     viewChild.required<ElementRef<HTMLVideoElement>>('hiddenVideo');

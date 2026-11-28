@@ -188,6 +188,35 @@ describe('installCanvasGlobals', () => {
     expect(without['devicePixelRatio']).toBe(1);
   });
 
+  it('times performance.now() in fractions of a millisecond with the engine’s __date_clock()', () => {
+    // PrimJS's clock: microseconds since the epoch.
+    let micros = 1_795_000_000_123_456;
+    const target: Record<string, any> = {
+      document: {},
+      __date_clock: () => micros,
+    };
+    installCanvasGlobals(target);
+    expect(target['performance'].timeOrigin).toBe(1_795_000_000_123.456);
+    expect(target['performance'].now()).toBe(0);
+    micros += 65;
+    expect(target['performance'].now()).toBe(0.065);
+    micros += 2_500;
+    expect(target['performance'].now()).toBe(2.565);
+  });
+
+  it('falls back to Date.now() for performance.now() without __date_clock()', () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_000);
+    try {
+      const target: Record<string, any> = { document: {} };
+      installCanvasGlobals(target);
+      expect(target['performance'].timeOrigin).toBe(1_000);
+      now.mockReturnValue(1_007);
+      expect(target['performance'].now()).toBe(7);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
   it('keeps what the runtime has (the web preview)', () => {
     const own = { now: () => 1 };
     const createElement = () => 'div';

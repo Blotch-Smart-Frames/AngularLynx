@@ -32,6 +32,38 @@ const isLynxElement = (value: unknown): value is LayoutElement =>
   'element' in value;
 
 /**
+ * The main thread's `performance`, which native Lynx doesn't have.
+ *
+ * Its clock is `__date_clock()`, a global of PrimJS, the engine that runs
+ * the main thread on every platform (`js_global_funcs` in its
+ * `quickjs.cc`): the time since the epoch, in microseconds, from the
+ * system's wall clock. Dividing by 1,000 gives milliseconds with three decimal
+ * places, as a browser's `performance.now()` has, where `Date.now()` steps in
+ * whole milliseconds, longer than most of the work an app would time.
+ * `Date.now()` is the fallback for an engine without it. Neither clock is
+ * monotonic, as a browser's is: a change to the device's time moves both.
+ */
+const createPerformance = (
+  target: Record<string, any>,
+): { timeOrigin: number; now: () => number } => {
+  const dateClock: unknown = target['__date_clock'];
+  if (typeof dateClock !== 'function') {
+    const timeOrigin = Date.now();
+    return { timeOrigin, now: () => Date.now() - timeOrigin };
+  }
+  const micros = (): number => Number((dateClock as () => number)());
+  const originMicros = micros();
+  // Subtracted in microseconds, then divided: the epoch's microseconds are
+  // whole numbers a double holds exactly, while its milliseconds, about
+  // 1.8e12 with three decimal places, would round each reading to a quarter
+  // of a microsecond.
+  return {
+    timeOrigin: originMicros / 1000,
+    now: () => (micros() - originMicros) / 1000,
+  };
+};
+
+/**
  * The browser globals three.js and angular-three reach for, on Lynx's main
  * thread, which has no DOM. Each is installed only where it's missing, so the
  * web preview's main thread, a browser frame, keeps its own; there, the ones
@@ -39,7 +71,9 @@ const isLynxElement = (value: unknown): value is LayoutElement =>
  * take a Lynx element too, since a template's elements are LynxElements, not
  * DOM nodes.
  *
- * - `performance.now()`: three.js's Clock times frames with it.
+ * - `performance.now()`: three.js's Clock times frames with it, and apps
+ *   profile with it. It reads the engine's clock, in fractions of a
+ *   millisecond, as a browser's does (see `createPerformance()`).
  * - `crypto.randomUUID()`: angular-three names every object it makes with
  *   one. Lynx's main thread has no secure random source, so this one comes
  *   from `Math.random()`: unique, but not for secrets. `getRandomValues()`
@@ -99,8 +133,7 @@ export const installCanvasGlobals = (target: Record<string, any>): void => {
   };
 
   if (typeof target['performance'] === 'undefined') {
-    const timeOrigin = Date.now();
-    target['performance'] = { timeOrigin, now: () => Date.now() - timeOrigin };
+    target['performance'] = createPerformance(target);
   }
   install('crypto', { randomUUID });
   install('self', target);

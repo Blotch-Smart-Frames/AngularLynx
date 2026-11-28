@@ -280,6 +280,9 @@ test('a canvas draws with WebGL2', async ({ page }) => {
   // like copy (issue #763), the browser's own here: the fixture's reads are
   // what a browser draws, which the shells match.
   await expect(page.getByText('2D: 0,128,0,255 filter ok')).toBeVisible();
+  // performance.now() in fractions of a millisecond (issue #896): the
+  // browser's own here.
+  await expect(page.getByText('Clock: sub-ms')).toBeVisible();
 
   expect(errors, 'the app logged errors while running').toEqual([]);
 });

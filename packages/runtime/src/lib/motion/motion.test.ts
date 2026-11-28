@@ -421,6 +421,11 @@ describe('LynxMotion', () => {
         rotationRate: { alpha: 1, beta: null, gamma: 1 },
       });
       page.fire('deviceorientation', { alpha: 30, beta: null, gamma: null });
+      page.fire('deviceorientationabsolute', {
+        alpha: 30,
+        beta: null,
+        gamma: 0,
+      });
       page.fire('deviceorientation', { alpha: null });
       // Safari's accuracy is -1 while the compass is uncalibrated.
       vi.spyOn(Date, 'now').mockReturnValue(3000);

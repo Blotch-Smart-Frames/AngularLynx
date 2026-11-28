@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  headingFromOrientation,
   matrixFromOrientation,
   orientationFromMatrix,
   SHAKE,
@@ -78,6 +79,24 @@ describe('orientationFromMatrix', () => {
       gamma: 0,
     });
   });
+});
+
+describe('headingFromOrientation', () => {
+  it.each([
+    // Flat: 360 - alpha, which a heading turns clockwise.
+    [0, 0, 0, 0],
+    [90, 0, 0, 270],
+    [270, 10, 5, 90],
+    // Tipped past upright, its top points south.
+    [0, 120, 0, 180],
+    // Tilted sideways, the top still points where alpha says.
+    [30, 0, 60, 330],
+  ])(
+    'gives alpha %d, beta %d, gamma %d a heading of %d',
+    (alpha, beta, gamma, heading) => {
+      expect(headingFromOrientation(alpha, beta, gamma)).toBeCloseTo(heading);
+    },
+  );
 });
 
 describe('ShakeDetector', () => {

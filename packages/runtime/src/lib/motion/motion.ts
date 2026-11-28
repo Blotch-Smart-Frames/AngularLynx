@@ -8,7 +8,11 @@ import {
 import { callOnBackground } from '../background-call';
 import { LynxNativeModule } from '../native-module/native-module';
 import type { PlatformType } from '../system-info/system-info';
-import { orientationFromMatrix, ShakeDetector } from './motion-math';
+import {
+  headingFromOrientation,
+  orientationFromMatrix,
+  ShakeDetector,
+} from './motion-math';
 
 /**
  * The native module and global event of the apps `ng build --platform` makes
@@ -699,14 +703,21 @@ export class LynxMotion {
       }
     };
     /**
-     * Chrome gives the compass as an absolute orientation, whose alpha is
-     * counterclockwise from north.
+     * Chrome gives the compass as an absolute orientation. The heading is
+     * where the top of the phone points: the phone's y axis turned into the
+     * earth's frame (east, north), as Android's getOrientation() reads its
+     * azimuth. alpha alone is it only while the phone lies flat: tipped past
+     * upright, the top points the other way.
      */
     const onAbsolute = (event: any): void => {
-      if (!numbers(event?.alpha)) return;
+      if (!numbers(event?.alpha, event?.beta, event?.gamma)) return;
       const t = Date.now();
       this.#emit('heading', t, () => ({
-        magneticHeading: (360 - event.alpha) % 360,
+        magneticHeading: headingFromOrientation(
+          event.alpha,
+          event.beta,
+          event.gamma,
+        ),
         trueHeading: null,
         accuracy: null,
         timestamp: t,

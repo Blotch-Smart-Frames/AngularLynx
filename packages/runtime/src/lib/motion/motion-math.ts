@@ -91,6 +91,26 @@ export const matrixFromOrientation = (
 };
 
 /**
+ * Where the top of the phone points, in degrees clockwise from north (0 to
+ * 360), for an absolute orientation: the phone's y axis turned into the
+ * earth's frame, `(r[1], r[4])` of {@link matrixFromOrientation}'s matrix as
+ * east and north. Android's `getOrientation()` reads its azimuth the same
+ * way. Lying flat it's `360 - alpha`; tipped past upright, the top points the
+ * other way.
+ */
+export const headingFromOrientation = (
+  alpha: number,
+  beta: number,
+  gamma: number,
+): number => {
+  const r = matrixFromOrientation(alpha, beta, gamma);
+  const degrees = Math.atan2(r[1]!, r[4]!) * DEGREES;
+  // Rounded to a millionth of a degree, so a float's error doesn't turn 0
+  // into 359.9999999 or 360.
+  return (Math.round(degrees * 1e6) / 1e6 + 360) % 360;
+};
+
+/**
  * asin() of a value a float's rounding pushed just past ±1 is NaN.
  */
 const clampUnit = (value: number): number => Math.min(1, Math.max(-1, value));

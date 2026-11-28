@@ -276,7 +276,17 @@ function setTrackingStatus(status: FakeTrackingStatus): void;
 
 Sets whether the app may track the person for [`LynxTracking`](/api/angular-lynx/tracking), as if they'd answered the prompt or changed it in Settings: what `status()` reads, and what `requestPermission()` resolves with. Each test starts at `notDetermined`. `FakeTrackingStatus` takes the same values as `TrackingStatus`.
 
-`LynxTracking` reads the status when it's created, and again when the app comes back to the foreground. So set it before `render()`, or follow it with [`setAppState('background')` and `setAppState('active')`](#setappstate), as a person coming back from Settings would.
+`LynxTracking` reads the status when it's created, and again when the app comes back to the foreground. So set it before `render()`, or follow it with [`setAppState('background')` and `setAppState('active')`](#setappstate), as a person coming back from Settings would, with `await waitForUpdate()` after each. Without the wait between them, the app never seems to leave, and the status isn't read again:
+
+```typescript
+setTrackingStatus('denied');
+setAppState('background');
+await waitForUpdate();
+setAppState('active');
+await waitForUpdate();
+
+expect(screen.getByText('Ads that respect your choice')).toBeInTheDocument();
+```
 
 ```typescript
 setTrackingStatus('denied');

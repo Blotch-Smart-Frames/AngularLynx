@@ -86,7 +86,9 @@ const fakeState = (): FakeTrackingState | undefined =>
  * `LynxTracking` reads the status when it's created, and again when the app
  * comes back to the foreground, so set it before `render()`, or follow it
  * with `setAppState('background')` and `setAppState('active')`, as a person
- * coming back from Settings would.
+ * coming back from Settings would. Wait with `waitForUpdate()` after each:
+ * the service watches the app's state with an `effect()`, which runs once
+ * for two changes made together and never sees the app leave.
  *
  * @example
  * ```ts

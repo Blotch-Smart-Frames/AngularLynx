@@ -52,7 +52,8 @@
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
     "cspell": "cspell .",
-    "link": "npm run build && npm link"
+    "link": "npm run build && npm link",
+    "generate:cn-config": "node scripts/generate-cn-config.ts"
   },
   "dependencies": {
     "@clack/prompts": "^1.8.1",

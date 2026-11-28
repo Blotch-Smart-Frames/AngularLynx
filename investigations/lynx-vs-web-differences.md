@@ -761,6 +761,40 @@ Under V8 (the testing library, 4,000 rows, after a full collection), a `@for` ro
 
 ---
 
+## A mount's garbage stays in PrimJS's heap, so an object made and dropped for each element costs the screen (issue #586)
+
+### What you'd expect (web)
+
+An object a function makes and drops at once (a `for…of`'s iterator, a `Map` entry's `[key, value]` pair, a regular expression's match) is collected in the young generation before it costs anything, and a screen's memory is what it keeps.
+
+### What Lynx does
+
+PrimJS, which runs the main thread, has no young generation. What a screen's first render makes and drops stays in its heap: the iOS footprint's "Untagged" memory grew with it. And PrimJS makes such objects where V8 avoids them: each `for…of` makes an iterator object (one per loop, not per step: PrimJS's built-in iterators skip the `{ value, done }` result, as QuickJS's do), each step over a `Map`'s entries makes an `[key, value]` array, a destructuring `const [a, b] = pair` makes another iterator, and `String.prototype.replace()` with a regular expression makes arrays whether or not it matches. A full collection doesn't give all of it back.
+
+Measured on the iOS 27 Simulator with the benchmark's mount screens, footprint 12 s after launch (5 launches of each build, alternating, and 3 of ReactLynx's; each build's "Untagged" was the same within 0.1 MB in every launch):
+
+| 5,000 `<text>{{ i }}</text>`                                                             | Footprint (median) | "Untagged" |
+| ---------------------------------------------------------------------------------------- | ------------------ | ---------- |
+| Before #586's change                                                                     | 329.3 MB           | 51.0 MB    |
+| The same, with two full collections after it's drawn (`AngularLynxShell.collectGarbage`) | 319.3 MB           | 41.9 MB    |
+| After                                                                                    | 315.5 MB           | 37.7 MB    |
+| ReactLynx, the same screen                                                               | 334.7 MB           | 37.8 MB    |
+
+So each text took 7.2 KB of PrimJS heap from 1,500 to 5,000, and takes 4.0 KB, against ReactLynx's 5.8 KB. A screen of `<view>`s didn't move ("Untagged" 26.6 MB at 5,000 either way, and 1.8 KB per view against ReactLynx's 3.0 KB): a view's elements cost native memory ("Malloc Small", 8.9 KB per view against ReactLynx's 7.3 KB), not PrimJS's.
+
+### The fix
+
+Keep a function that runs for each element from making objects it drops. Issue #586's change, in `lynx-element.ts`:
+
+- The registry's sweep goes through `Map.prototype.forEach`, not `for (const [id, entry] of …)`.
+- The loops that run for every element (`setAttribute('class')`'s scope classes, `#wouldFormCycle`, `#collectRawTextLeaves`) are indexed.
+- A `<text>` whose one child is a raw-text, as `<text>{{ i }}</text>` is, is trimmed without the text pass's arrays, and `trimTextEdges` slices instead of calling `replace()` twice.
+- Elements share their scope-class list (`withScopeClass`) instead of each keeping an array of its own: every element of a component with styles has the same `[_ngcontent-…]`.
+
+Under `node --jitless` (`benchmarks/harness/node-mount.mjs`, V8's sampling heap profiler, collected objects included), a mount allocates 1,791 bytes per `<view>` row instead of 2,353, and 3,281 per `<text>` row instead of 5,100. The text screen's JavaScript takes 5% less time.
+
+---
+
 ## `<block>` has no native paintable UI — it must be created as a layout-only element, and its children can't be picked apart on teardown
 
 ### What you'd expect (web)
@@ -2188,6 +2222,8 @@ How Lynx's `fetch` differs from the web's is in "`fetch` is available but withou
 The standard `localStorage` / `sessionStorage` globals **do not exist**, and Lynx has nothing that outlives the app. Its own store, `lynx.setSessionStorageItem` / `getSessionStorageItem` / `subscribeSessionStorage` (`LynxSessionStorage`), is shared by every LynxView in the host app but empties when the app quits.
 
 For data kept after that, `LynxLocalStorage` and `LynxSecureStorage` (issue #178) call native modules that the shells `ng build --platform` makes register: `UserDefaults` and the Keychain on iOS, `SharedPreferences` (the secure one encrypted by an Android Keystore key) on Android. Lynx Explorer has neither, so the services keep values in memory there. Lynx for Web runs the main thread in an iframe that web-core sandboxes with `allow-same-origin` (`createIFrameRealm.js`), so the page's `localStorage` is reachable from Angular there, and the services use it.
+
+Lynx has no WebAuthn either (`navigator.credentials`), so no passkeys. For a local check that the person holding the phone is its owner, which signs no server challenge, `LynxBiometrics` (issue #918) calls the shells' `AngularLynxBiometrics` module: `LAContext` on iOS and AndroidX's `BiometricPrompt` on Android. The module is only in apps with `permissions.biometrics` in angular.json, which writes iOS's `NSFaceIDUsageDescription`; without that key Face ID fails rather than asking. `LynxSecureStorage`'s `requireBiometrics` keeps a value behind them in the same module (a `.biometryCurrentSet` Keychain item, a Keystore key that needs a biometric for each use), which a new face or finger makes unreadable for good. The web preview and Lynx Explorer report no sensor.
 
 ---
 

@@ -1,0 +1,116 @@
+# LynxBiometrics
+
+Asks the person to confirm who they are with Face ID, Touch ID or a fingerprint. `import { LynxBiometrics, BiometricsError, type BiometricsAvailability, type BiometricsAuthenticateOptions, type BiometricsErrorCode, type BiometryType } from '@blotch/angular-lynx';`
+
+To keep a secret, such as a refresh token, readable only after the person confirms, store it with [`LynxSecureStorage`'s `requireBiometrics`](/api/angular-lynx/persistent-storage#secure-storage-behind-biometrics). The platform then won't hand it over without a face or a finger, which a check in your own code can't promise.
+
+## Setup
+
+Only apps that ask for biometrics in angular.json get the native module behind it. The reason is what iOS shows the first time the app uses Face ID, and the prompt's default text on both platforms:
+
+```jsonc
+// angular.json, the build target's options
+"permissions": { "biometrics": "Unlock your notes" }
+```
+
+That adds `NSFaceIDUsageDescription` to Info.plist on iOS and `USE_BIOMETRIC` to the manifest on Android. Without it, `ng build --platform` leaves the module (and, on Android, AndroidX Biometric) out of the app, and `LynxBiometrics` behaves as in the web preview.
+
+## Usage
+
+```typescript
+const biometrics = inject(LynxBiometrics);
+
+const { type, enrolled } = await biometrics.availability();
+if (type !== 'none' && enrolled) {
+  try {
+    await biometrics.authenticate({ reason: 'Unlock your notes' });
+    this.unlocked.set(true);
+  } catch (error) {
+    if (error instanceof BiometricsError && error.code === 'canceled') return;
+    throw error;
+  }
+}
+```
+
+## API
+
+### `LynxBiometrics`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxBiometrics {}
+```
+
+Uses `LAContext` on iOS and AndroidX's `BiometricPrompt` on Android. Only the apps `ng build --platform` makes with `permissions.biometrics` have it. Elsewhere, such as Lynx Explorer and the web preview, `availability()` reports `none` and `authenticate()` rejects with `unavailable`. The [testing library](/api/testing-library#biometrics) stands for a phone with Face ID set up.
+
+Android counts only strong (Class 3) biometrics, the ones that can unlock a Keystore key, so `authenticate()` and the values kept behind biometrics agree on what confirms the person. A phone whose face unlock is weak reports its fingerprint sensor, or `none`.
+
+### `LynxBiometrics.availability()`
+
+```typescript
+availability(): Promise<BiometricsAvailability>;
+
+type BiometricsAvailability = {
+  readonly type: BiometryType;
+  readonly enrolled: boolean;
+  readonly deviceCredential: boolean;
+};
+
+type BiometryType =
+  | 'faceID'
+  | 'touchID'
+  | 'opticID'
+  | 'fingerprint'
+  | 'face'
+  | 'iris'
+  | 'none';
+```
+
+Never prompts or rejects.
+
+| Field              | Description                                                                                                                       |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| `type`             | The phone's sensor: `faceID`, `touchID` or `opticID` on Apple's devices, `fingerprint`, `face` or `iris` on Android, or `none`    |
+| `enrolled`         | Whether a face or a finger is set up, so `authenticate()` can ask for it. Still `true` while it's locked out after too many tries |
+| `deviceCredential` | Whether the phone has a passcode, PIN or pattern, which `allowDeviceCredential` lets the person use instead                       |
+
+### `LynxBiometrics.authenticate()`
+
+```typescript
+authenticate(options: BiometricsAuthenticateOptions): Promise<void>;
+
+type BiometricsAuthenticateOptions = {
+  readonly reason: string;
+  readonly allowDeviceCredential?: boolean;
+  readonly title?: string;
+  readonly cancelLabel?: string;
+};
+```
+
+Shows the platform's prompt and resolves once the person is confirmed. Rejects with a [`BiometricsError`](#biometricserror), or a `TypeError` without a `reason`. One prompt can be open at a time.
+
+| Option                  | Description                                                                                                                               |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `reason`                | Why the app asks. Touch ID and Android's prompt show it; Face ID shows only its animation                                                 |
+| `allowDeviceCredential` | Lets the person use the passcode, PIN or pattern instead: iOS offers it after biometrics fail, Android on the prompt. Defaults to `false` |
+| `title`                 | The title of Android's prompt. Defaults to the app's name. iOS draws its own                                                              |
+| `cancelLabel`           | The label of the button that closes the prompt, `Cancel` by default. Android has none with `allowDeviceCredential`                        |
+
+### `BiometricsError`
+
+```typescript
+class BiometricsError extends Error {
+  readonly code: BiometricsErrorCode;
+}
+
+type BiometricsErrorCode =
+  'canceled' | 'lockout' | 'notEnrolled' | 'unavailable' | 'failed';
+```
+
+| `code`        | When                                                                                                                               |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `canceled`    | The person closed the prompt, or the system did, as when the app went to the background                                            |
+| `lockout`     | Too many tries failed. iOS wants the passcode before biometrics work again; Android waits 30 seconds, or for the device credential |
+| `notEnrolled` | The phone has a sensor, but no face or finger is set up                                                                            |
+| `unavailable` | No sensor, no passcode for `allowDeviceCredential`, or no biometrics module (no `permissions.biometrics`, Lynx Explorer, the web)  |
+| `failed`      | Anything else, such as a prompt already open                                                                                       |

@@ -162,6 +162,12 @@ dependencies {
     // from every format the Photo Picker hands back, the same way on every
     // Android version.
     implementation("androidx.exifinterface:exifinterface:1.4.2")
+    // BiometricPrompt, which BiometricsModule shows: the same prompt from
+    // Android 7 up, with the fingerprint dialog on versions before Android 9's
+    // own. Only an app with permissions.biometrics keeps it, with the module.
+    // angular-lynx:biometrics
+    implementation("androidx.biometric:biometric:1.1.0")
+    // /angular-lynx:biometrics
 
     // The Lynx engine, its JavaScript runtime (PrimJS) and its JS SDK.
     implementation("org.lynxsdk.lynx:lynx:$lynxVersion")

@@ -1,7 +1,9 @@
 import { Component, inject, signal, type OnInit } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
+  BiometricsError,
   LYNX_ELEMENTS,
+  LynxBiometrics,
   LynxClipboard,
   LynxLocalStorage,
   LynxSecureStorage,
@@ -100,6 +102,13 @@ const collectedFromArrays = async (): Promise<string> => {
  * shows what the clipboard reads back (issue #303): the shells' native
  * module on a device, the page's Clipboard API on the web. Lynx Explorer has
  * no clipboard module, so it shows the rejection instead.
+ *
+ * "Biometrics", on the row below, shows what LynxBiometrics reports once the page
+ * opens (issue #918): the sensor and whether a face or finger is set up, from
+ * the shells' module, which only an app with `permissions.biometrics` has
+ * (the E2E app asks for it). A tap asks for it and shows the answer, which on
+ * a simulator nobody has enrolled is `notEnrolled`. Lynx Explorer has no
+ * module: `none`, and `unavailable`.
  */
 @Component({
   selector: 'app-storage',
@@ -144,17 +153,31 @@ const collectedFromArrays = async (): Promise<string> => {
         >Clipboard: {{ clipboard() }}</text
       >
     </view>
+    <view style="display: flex; flex-direction: row; margin-top: 8px;">
+      <text flatten="false" (bindtap)="authenticate()"
+        >Biometrics: {{ biometrics() }}</text
+      >
+    </view>
   `,
 })
 export class StorageRoute implements OnInit {
   readonly #local = inject(LynxLocalStorage);
   readonly #secure = inject(LynxSecureStorage);
   readonly #clipboard = inject(LynxClipboard);
+  readonly #biometrics = inject(LynxBiometrics);
+  readonly biometrics = signal('…');
   readonly stored = signal('…');
   readonly arraySlots = signal('tap');
   readonly clipboard = signal('tap');
 
   ngOnInit(): void {
+    void this.#biometrics
+      .availability()
+      .then(({ type, enrolled }) =>
+        this.biometrics.set(
+          `${type} ${enrolled ? 'enrolled' : 'not enrolled'}`,
+        ),
+      );
     this.#show(async () => {
       const held = await this.#read();
       await Promise.all([
@@ -188,6 +211,17 @@ export class StorageRoute implements OnInit {
         (text) => this.clipboard.set(text),
         (error: Error) => this.clipboard.set(error.message),
       );
+  }
+
+  authenticate(): void {
+    this.biometrics.set('…');
+    this.#biometrics.authenticate({ reason: 'Check the E2E app' }).then(
+      () => this.biometrics.set('confirmed'),
+      (error: unknown) =>
+        this.biometrics.set(
+          error instanceof BiometricsError ? error.code : String(error),
+        ),
+    );
   }
 
   async #read(): Promise<string> {

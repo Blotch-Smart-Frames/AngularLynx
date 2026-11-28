@@ -1,5 +1,6 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import {
+  BiometricsError,
   LYNX_ELEMENTS,
   LynxLocalStorage,
   LynxSecureStorage,
@@ -47,10 +48,10 @@ type Session = { user: string; token: string };
           <text class="mb-3 text-[15px] text-zinc-900">{{ status() }}</text>
           <view
             class="items-center rounded-[10px] bg-indigo-500 px-6 py-3"
-            (bindtap)="session() ? signOut() : signIn()"
+            (bindtap)="locked() ? unlock() : session() ? signOut() : signIn()"
           >
             <text class="text-[15px] font-semibold text-white">
-              {{ session() ? 'Sign out' : 'Sign in' }}
+              {{ locked() ? 'Unlock' : session() ? 'Sign out' : 'Sign in' }}
             </text>
           </view>
         </view>
@@ -69,9 +70,13 @@ export class App {
 
   readonly launches = signal<number | undefined>(undefined);
   readonly session = signal<Session | null>(null);
+  /** Whether the person closed the prompt, so the session stays locked. */
+  readonly locked = signal(false);
   readonly status = computed(() => {
     const session = this.session();
-    return session ? `Signed in as ${session.user}` : 'Signed out';
+    if (this.locked()) return 'Locked: unlock to see the session';
+    if (!session) return 'Signed out';
+    return `Signed in as ${session.user}`;
   });
   readonly error = signal('');
 
@@ -83,8 +88,26 @@ export class App {
       await this.#local.setItem('launches', launches);
       this.launches.set(launches);
     });
+    this.unlock();
+  }
+
+  /**
+   * Reads the session, which asks for Face ID, Touch ID or a fingerprint
+   * first when it was kept behind them.
+   */
+  unlock(): void {
     this.#run(async () => {
-      this.session.set(await this.#secure.getItem<Session>('session'));
+      try {
+        this.session.set(
+          await this.#secure.getItem<Session>('session', {
+            reason: 'Unlock your session',
+          }),
+        );
+        this.locked.set(false);
+      } catch (error) {
+        if (!(error instanceof BiometricsError)) throw error;
+        this.locked.set(true);
+      }
     });
   }
 
@@ -102,7 +125,22 @@ export class App {
         user: 'ada',
         token: Math.random().toString(36).slice(2),
       };
-      await this.#secure.setItem('session', session);
+      // Behind biometrics where the phone has them. The web preview, and a
+      // phone without a passcode or a face or finger set up, don't, and keep
+      // it as a plain secret. Any other failure is shown.
+      try {
+        await this.#secure.setItem('session', session, {
+          requireBiometrics: true,
+        });
+      } catch (error) {
+        if (
+          !(error instanceof BiometricsError) ||
+          (error.code !== 'unavailable' && error.code !== 'notEnrolled')
+        ) {
+          throw error;
+        }
+        await this.#secure.setItem('session', session);
+      }
       this.session.set(session);
     });
   }
@@ -111,6 +149,7 @@ export class App {
     this.#run(async () => {
       await this.#secure.removeItem('session');
       this.session.set(null);
+      this.locked.set(false);
     });
   }
 

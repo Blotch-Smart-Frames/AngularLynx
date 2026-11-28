@@ -10,6 +10,7 @@ A launch counter kept in local storage and a session kept in secure storage, bot
 - **`LynxSecureStorage`** — the same methods, for tokens and other secrets, kept in the Keychain on iOS and encrypted by the Android Keystore on Android.
 - **`getItem()` and `setItem()`** — each returns a promise. Values are JSON, so the session is stored as an object.
 - **`removeItem()`** — Reset and Sign out remove their key.
+- **`requireBiometrics`** — on a phone with Face ID, Touch ID or a fingerprint, the session is kept behind them, and the app asks for them when it opens. Cancel the prompt and the session stays locked until you tap Unlock. The example's angular.json has `permissions.biometrics` for it. See [`LynxBiometrics`](/api/angular-lynx/biometrics).
 
 In Lynx Explorer, which has no storage for your app, both keep values in memory, so a restart starts the count again. Run it with `ng serve --platform ios` or `--platform android` to see it keep them.
 
@@ -17,3 +18,4 @@ In Lynx Explorer, which has no storage for your app, both keep values in memory,
 
 - [Session Storage](/examples/session-storage)
 - [`LynxLocalStorage` and `LynxSecureStorage` API](/api/angular-lynx/persistent-storage)
+- [`LynxBiometrics` API](/api/angular-lynx/biometrics)

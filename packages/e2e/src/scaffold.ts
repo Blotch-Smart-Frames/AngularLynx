@@ -168,6 +168,7 @@ export const scaffoldApp = async (
   applyFixtures(appDir, options.tailwind && (options.tailwindVersion ?? '4'));
   await addIntl(appDir, pm, exec);
   addShortcut(appDir);
+  addBiometrics(appDir);
   step('Layer 2: compile a prebuilt library');
   await addPrebuiltLibrary(appDir, pm, exec);
 
@@ -1379,6 +1380,35 @@ const addShortcut = (appDir: string) => {
       symbol: 'plus.circle',
     },
   ];
+  writeFileSync(workspacePath, `${JSON.stringify(workspace, null, 2)}\n`);
+};
+
+/**
+ * Asks for biometrics, so the native builds keep the shells' biometrics
+ * module, which only an app with `permissions.biometrics` has (#918): the
+ * storage page reports what LynxBiometrics sees, and its secure reads go
+ * through the module's store too. compile-features.ts builds a project
+ * without it.
+ */
+const addBiometrics = (appDir: string) => {
+  step('Layer 2: ask for biometrics, so the native builds keep their module');
+  const workspacePath = path.join(appDir, 'angular.json');
+  const workspace = readJson<{
+    projects: Record<
+      string,
+      { architect?: Record<string, { options?: Record<string, unknown> }> }
+    >;
+  }>(workspacePath);
+  const options = Object.values(workspace.projects)[0]?.architect?.['build']
+    ?.options;
+  check(
+    options !== undefined,
+    "angular.json's build target has no options; the project `ng new` generates has changed shape. Update addBiometrics() in packages/e2e/src/scaffold.ts.",
+  );
+  options['permissions'] = {
+    ...(options['permissions'] as Record<string, string> | undefined),
+    biometrics: 'Checks that the E2E app reaches Face ID',
+  };
   writeFileSync(workspacePath, `${JSON.stringify(workspace, null, 2)}\n`);
 };
 

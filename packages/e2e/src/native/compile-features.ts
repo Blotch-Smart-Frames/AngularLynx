@@ -18,6 +18,7 @@ import {
   buildFromBundle,
   loadNativePackage,
   type Platform,
+  readAngularJson,
 } from './native-package.ts';
 
 /**
@@ -25,13 +26,26 @@ import {
  * E2E app, with a fixture for every feature, never gets: no canvas at all
  * (issue #837), the build most apps get, and a canvas that draws only in 2D
  * (#847), what a chart or a signature pad gets.
+ *
+ * The first is also built without `permissions.biometrics`, as most apps
+ * are, which leaves the biometrics module out (#918). The E2E app asks for
+ * biometrics, so its own build has the module.
  */
 export const VARIANTS: readonly {
   readonly name: string;
   readonly features: NativeFeatures;
+  readonly biometrics: boolean;
 }[] = [
-  { name: 'no-canvas', features: { canvas: false, webgl: false } },
-  { name: 'canvas-2d', features: { canvas: true, webgl: false } },
+  {
+    name: 'no-canvas',
+    features: { canvas: false, webgl: false },
+    biometrics: false,
+  },
+  {
+    name: 'canvas-2d',
+    features: { canvas: true, webgl: false },
+    biometrics: true,
+  },
 ];
 
 /**
@@ -40,14 +54,19 @@ export const VARIANTS: readonly {
  * with those features gets, rather than everything compiled again (a features
  * file the builder stopped reading, for instance, gives an app everything).
  */
-const PROBES: Record<Platform, { canvas: string; webgl: string }> = {
+const PROBES: Record<
+  Platform,
+  { canvas: string; webgl: string; biometrics: string }
+> = {
   ios: {
     canvas: 'App/AngularLynxCanvas2DContext.m',
     webgl: 'App/AngularLynxWebGLContext.m',
+    biometrics: 'App/BiometricsModule.swift',
   },
   android: {
     canvas: 'app/src/main/java/dev/angularlynx/shell/Canvas2DContext.kt',
     webgl: 'app/src/main/java/dev/angularlynx/shell/WebGLContext.kt',
+    biometrics: 'app/src/main/java/dev/angularlynx/shell/BiometricsModule.kt',
   },
 };
 
@@ -88,7 +107,10 @@ export const compileFeatureVariants = async ({
   );
   const failures: string[] = [];
   try {
-    for (const { name, features } of VARIANTS) {
+    const appPermissions =
+      (Object.values(readAngularJson(appDir).projects)[0]!.architect.build
+        .options['permissions'] as Record<string, string> | undefined) ?? {};
+    for (const { name, features, biometrics } of VARIANTS) {
       step(`The ${platform} project with ${name}`);
       const variantDir = path.join(root, name);
       const bundleDir = path.join(variantDir, 'dist');
@@ -125,15 +147,24 @@ export const compileFeatureVariants = async ({
           workDir: path.join(variantDir, 'work'),
           outputDir: path.join(variantDir, 'out'),
           log,
+          overrides: biometrics
+            ? {}
+            : {
+                permissions: Object.fromEntries(
+                  Object.entries(appPermissions).filter(
+                    ([permission]) => permission !== 'biometrics',
+                  ),
+                ),
+              },
         });
-        const probes = PROBES[platform];
-        for (const [feature, file] of Object.entries(probes) as [
-          keyof NativeFeatures,
+        const kept = { ...features, biometrics };
+        for (const [feature, file] of Object.entries(PROBES[platform]) as [
+          keyof typeof kept,
           string,
         ][]) {
-          if (existsSync(path.join(projectDir, file)) !== features[feature]) {
+          if (existsSync(path.join(projectDir, file)) !== kept[feature]) {
             failures.push(
-              `${name}: the generated project ${features[feature] ? 'has no' : 'still has'} ${file}, so it isn't the project an app with ${JSON.stringify(features)} gets.`,
+              `${name}: the generated project ${kept[feature] ? 'has no' : 'still has'} ${file}, so it isn't the project an app with ${JSON.stringify(kept)} gets.`,
             );
           }
         }

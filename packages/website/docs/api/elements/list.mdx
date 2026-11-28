@@ -102,6 +102,10 @@ A reused view keeps everything that isn't bound to its item: a component's own s
 - It goes on the `<list-item>` itself, directly in the `<list>`, or in content a component projects into its list, as [`<ui-list>`](/dolan/list) does. Static `<list-item>`s and `@for` items can sit beside it.
 - An item's view is checked when the list asks for it, and with the rest of the page after that. A view waiting to be reused keeps its last item, and is checked with its parent: there are only a handful.
 - A list inside an item works, and is updated with its item.
+- **Keep rows cheap to check.** The list waits for each item's check while it lays out, so a quick row scrolls more smoothly.
+  - The biggest cost is often an `@for` inside the row whose keys change from item to item, such as type badges tracked by type. `@for` never gives a view to another key, so a reused row builds those views again.
+  - Track values like these by `$index` when their views keep no state. Or write out a short list with a known maximum.
+  - In a measured row, these made each check 22% and 45% cheaper.
 - In the web preview, Lynx for Web's `<list>` asks for every item at once and never lets one go, so every item gets a view there.
 
 ## Attributes

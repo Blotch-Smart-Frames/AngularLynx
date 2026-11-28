@@ -33,6 +33,41 @@ The native flush of the item is most of componentAtIndex's cost either way; chec
 
 The example switches between the two and counts the rows built.
 
+## What a rebound row costs, and what its shape changes (2026-11-28, #885)
+
+After #884, the runtime's own share of a rebound row is small. Most of `componentAtIndex`'s JavaScript is Angular checking the row (`ListItemViews.bind()` → `detectChanges()`), and the runtime can't make a view cheaper to check. What a row's template asks for decides most of it.
+
+**The setup.** This is a throwaway bench on `list-for.test.ts`'s fake native list. It runs under `node --jitless`, the closest Node gets to PrimJS, which has no JIT, with Angular in production mode. The row is the benchmark Pokédex's `PokemonItem`: a sprite, two texts, an `@if` around an `@for` of one or two type dots tracked by type, and a `FavouriteButton` child, both components with signal inputs. Native asks for 8,000 rows through a 10-row window over 1,000 items, so each bind reuses the view of a row 10 back.
+
+**Where a bind goes** (~82 µs): Angular's refresh is about three quarters of it (`refreshView`, `executeTemplate`, the templates, signal inputs, `computed`). The `@for` of dots alone is about 30% (`ɵɵrepeater` → `reconcile`). A reused row's next Pokémon mostly has other types, and Angular's `@for` never gives a view to another key. So the row destroys one or two dot views and creates others on most binds, with their elements. In a CPU profile of the run, the `@for` took 223 of 727 ms, about 100 ms of it creating views, with the removals' commit at the end of the cycle on top. The runtime's `end()` is about 9%.
+
+**The same row in other shapes** (µs per bind, the best of 4 runs on a loaded Mac):
+
+| Row                                                                                       |  µs | vs the first row |
+| ----------------------------------------------------------------------------------------- | --: | ---------------: |
+| `PokemonItem` as in the benchmark                                                         |  83 |                  |
+| … without the `@if` (the `@for` over `types() ?? []`)                                     |  82 |              −1% |
+| … with the heart inlined rather than a `FavouriteButton` component                        |  79 |              −5% |
+| … with the dots tracked by `$index`                                                       |  64 |             −22% |
+| … tracked by `$index`, without the `@if`                                                  |  61 |             −27% |
+| … tracked by `$index`, without the `@if`, the heart inlined                               |  54 |             −35% |
+| … two dot views written out, hidden with `display: none` when there's no type (no `@for`) |  46 |             −45% |
+| … two dot views written out, the heart inlined                                            |  40 |             −52% |
+
+- **An `@for` whose keys change from item to item is a row's biggest single cost**, about 30% of the bind here. Tracking by `$index` keeps the views and updates their bindings in place. That's the right track for values with no identity of their own, such as a row's tags, dots or stars: nothing in them keeps state that should follow a value. Writing out a short list with a known maximum skips the embedded views altogether.
+- **A child component costs a view check and its input writes**: the heart was 5%. A small leaf with no state of its own can be inlined, though a component doesn't cost much on its own.
+- **An `@if` that stays true costs almost nothing.** It only costs when it flips, since flipping destroys or creates its view.
+
+The benchmark app keeps `track type`. The ReactLynx app keys its `PokemonTypeDot`s by type (`key={type}`), so tracking by `$index` would have the Angular app do less than its rival does.
+
+**The tick after each bind.** Before #877, every bind of this row notified Angular's scheduler about five times: three times from signal input writes, and once each from the `@for` view it attaches and the one it detaches. One tick follows each batch of binds, on the scheduler's timer. In the bench, a tick run after every bind cost 11.5 µs, 14% of the bind. On a device, a frame's binds share one. The runtime can't drop the tick: it runs the `afterNextRender`/`afterRenderEffect` callbacks a row registered. Since #877 (the next section), the tick no longer walks down from the root to the rebound rows, and `end()` no longer flushes the whole tree after rows that wrote only inside their items. What's left is Angular's own bookkeeping.
+
+On the Simulator the tick happens, but a Time Profiler trace can't single it out. #856's probe counted about 86 ticks in 5 swipes. Angular races a `setTimeout` against `requestAnimationFrame` for each tick, so a tick runs in either Lynx's timer task (`SetTimeTask`) or its frame callback. The timer task also runs the runtime's other timers, and the trace names no JavaScript functions. The traces below put 2–10 ms per 4-swipe trace in the timer task's JavaScript: the most that the ticks run from the timer cost. Timing the tick itself on a device takes a probe built into the app (there's no console in a Release build). These traces predate #877, which changed what the tick does, so timing it is #894.
+
+**On the iOS Simulator** the shapes barely show. That's the benchmark app's scroll test, 4 swipes, 3 rounds alternating. Each build was the benchmark app on master before #877, with its dots as in the benchmark, tracked by `$index`, or written out as two views. XCTCPUMetric instructions per swipe averaged about 660M, 649M (−2%) and 632M (−4%). That's inside the first build's own spread from swipe to swipe (602–723M), with ReactLynx at about 460M (#856). The Time Profiler put 15–29 ms of each 4-swipe trace in `componentAtIndex`'s JavaScript for every build, and 2–10 ms in the timer task's. A swipe binds only a handful of rows, so their checks are a small part of what the engine thread does in it. A cheaper row matters most where native waits for it: in the layout pass, as a row scrolls in.
+
+**Binding ahead** of `componentAtIndex` moves this work out of the layout pass without removing it. That's #888.
+
 ## The tick after a bind: no walk from the root, and no flush for an item's own writes (2026-11-28, #877)
 
 After componentAtIndex binds a `*lynxListFor` row, Angular has a tick scheduled. The row's check sets its child component's signal input, which marks the child for check and, through `markAncestorsForTraversal`, every view above the row up to the root, and notifies the scheduler. The tick then walked down from the root along those marks to find the row checked already, ran `begin()`/`end()` and the after-render hooks, and `end()` flushed the whole tree, since the row's writes counted as unflushed.

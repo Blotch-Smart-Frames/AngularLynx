@@ -30,6 +30,7 @@ import { installBarcodeScannerModule } from './barcode-scanner.js';
 import { installCalendarModule } from './calendar.js';
 import { installLinkingModule } from './linking.js';
 import { installShortcutsModule } from './shortcuts.js';
+import { installShareTargetModule } from './share-target.js';
 import { installStoreReviewModule } from './store-review.js';
 import { installAppleSignInModule } from './apple-sign-in.js';
 
@@ -121,6 +122,9 @@ const frameOnInstalledTimers = (threadGlobals: any): void => {
   installLinkingModule(threadGlobals);
   // LynxShortcuts takes the shortcuts runShortcut() runs (see shortcuts.ts).
   installShortcutsModule(threadGlobals);
+  // LynxShareTarget takes the shares receiveShare() sends (see
+  // share-target.ts).
+  installShareTargetModule(threadGlobals);
   // LynxBarcodeScanner reads the codes queueBarcodeScan() queues (see
   // barcode-scanner.ts).
   installBarcodeScannerModule(threadGlobals);

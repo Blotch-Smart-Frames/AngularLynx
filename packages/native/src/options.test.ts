@@ -20,6 +20,7 @@ describe('resolveAppOptions', () => {
       storeReview: false,
       calendar: false,
       signInWithApple: false,
+      shareTarget: undefined,
       deepLinkSchemes: [],
       appLinkDomains: [],
       canOpenURLSchemes: ['http', 'https', 'mailto', 'tel', 'sms'],
@@ -519,6 +520,38 @@ describe('resolveAppOptions', () => {
       resolveAppOptions({ calendar: value } as never, defaults),
     ).toThrow(/calendar .* is not valid/);
   });
+
+  it('makes the app a share target only for the types shareTarget lists, each in lowercase once', () => {
+    const shareTarget = (value: unknown) =>
+      resolveAppOptions({ shareTarget: value } as never, defaults).shareTarget;
+    expect(shareTarget(undefined)).toBeUndefined();
+    expect(shareTarget(false)).toBeUndefined();
+    expect(
+      shareTarget({
+        mimeTypes: ['text/plain', 'Image/*', 'image/*', '*/*', 'application/vnd.ms-excel'],
+      }),
+    ).toEqual({
+      mimeTypes: ['text/plain', 'image/*', '*/*', 'application/vnd.ms-excel'],
+    });
+  });
+
+  it.each([true, 'image/*', { mimeTypes: [] }, { mimeTypes: 'image/*' }, { mimeTypes: [3] }])(
+    'rejects shareTarget %j',
+    (value) => {
+      expect(() =>
+        resolveAppOptions({ shareTarget: value } as never, defaults),
+      ).toThrow(/shareTarget .* is not valid/);
+    },
+  );
+
+  it.each(['image', '*/png', 'image/', 'text/plain; charset=utf-8', ''])(
+    'rejects the MIME type %j',
+    (type) => {
+      expect(() =>
+        resolveAppOptions({ shareTarget: { mimeTypes: [type] } }, defaults),
+      ).toThrow(/is not a MIME type/);
+    },
+  );
 
   it('accepts the two .ipa export methods and rejects any other', () => {
     expect(

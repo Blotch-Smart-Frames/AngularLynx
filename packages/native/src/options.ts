@@ -79,6 +79,17 @@ export type NativeAppOptions = {
    * Personal Team can't sign that entitlement.
    */
   readonly signInWithApple?: boolean;
+  /**
+   * Puts the app in other apps' share sheets for the types it lists, e.g.
+   * `{ "mimeTypes": ["text/plain", "text/uri-list", "image/*"] }`, so the
+   * runtime's `LynxShareTarget` receives what the person shares to it: an
+   * `ACTION_SEND` intent filter on Android, and a Share Extension on iOS,
+   * which hands the share to the app through an App Group. Off by default,
+   * which leaves the native module, the extension and the App Groups
+   * entitlement out of both apps: a free Personal Team can't sign App
+   * Groups.
+   */
+  readonly shareTarget?: ShareTargetOptions | false;
   /** Custom URL schemes that open the app, e.g. `["myapp"]`. */
   readonly deepLinkSchemes?: readonly string[];
   /**
@@ -327,6 +338,20 @@ export type ResolvedTextScaling = {
   readonly max?: number;
 };
 
+/** angular.json's `shareTarget`. */
+export type ShareTargetOptions = {
+  /**
+   * The MIME types the app receives, such as `text/plain` for text,
+   * `text/uri-list` for links, `image/*` for photos or `application/pdf`.
+   */
+  readonly mimeTypes: readonly string[];
+};
+
+/** {@link ShareTargetOptions}, checked, with each type in lowercase once. */
+export type ResolvedShareTarget = {
+  readonly mimeTypes: readonly string[];
+};
+
 /** {@link NativeAppOptions} with every default applied and every value checked. */
 export type ResolvedApp = {
   readonly name: string;
@@ -342,6 +367,8 @@ export type ResolvedApp = {
   readonly storeReview: boolean;
   readonly calendar: boolean;
   readonly signInWithApple: boolean;
+  /** {@link NativeAppOptions.shareTarget}, or undefined when it's off. */
+  readonly shareTarget: ResolvedShareTarget | undefined;
   readonly deepLinkSchemes: readonly string[];
   /** {@link NativeAppOptions.appLinkDomains} in lowercase, each once. */
   readonly appLinkDomains: readonly string[];
@@ -638,6 +665,7 @@ export const resolveAppOptions = (
     storeReview,
     calendar,
     signInWithApple,
+    shareTarget: resolveShareTarget(options.shareTarget),
     deepLinkSchemes,
     appLinkDomains,
     canOpenURLSchemes,
@@ -649,6 +677,47 @@ export const resolveAppOptions = (
     ios: options.ios ?? {},
     android,
   };
+};
+
+/**
+ * A MIME type, or a wildcard for its subtype (`image/*`) or for everything
+ * (`*\/*`), as Android's intent filters take them.
+ */
+const SHARE_MIME_TYPE =
+  /^(?:\*\/\*|[a-z0-9][a-z0-9!#$&^_.+-]*\/(?:\*|[a-z0-9][a-z0-9!#$&^_.+-]*))$/;
+
+/**
+ * Checks `shareTarget`: an object with at least one MIME type, each in
+ * lowercase once (MIME types are case-insensitive, and Android's intent
+ * filters match them case-sensitively in lowercase).
+ */
+const resolveShareTarget = (
+  value: unknown,
+): ResolvedShareTarget | undefined => {
+  if (value === undefined || value === false) return undefined;
+  const mimeTypes = (value as { mimeTypes?: unknown } | null)?.mimeTypes;
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    !Array.isArray(mimeTypes) ||
+    mimeTypes.length === 0 ||
+    mimeTypes.some((type) => typeof type !== 'string')
+  ) {
+    throw new NativeConfigError(
+      `shareTarget ${JSON.stringify(value)} is not valid. Give the types the app receives, e.g. { "mimeTypes": ["text/plain", "image/*"] }, or false.`,
+    );
+  }
+  const types = [
+    ...new Set((mimeTypes as string[]).map((type) => type.toLowerCase())),
+  ];
+  for (const type of types) {
+    if (!SHARE_MIME_TYPE.test(type)) {
+      throw new NativeConfigError(
+        `shareTarget.mimeTypes entry "${type}" is not a MIME type. Give a type and subtype, such as "text/plain", "image/*" or "application/pdf".`,
+      );
+    }
+  }
+  return { mimeTypes: types };
 };
 
 /**

@@ -71,8 +71,10 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     // scene(_:openURLContexts:) or scene(_:continue:) too, and before the
     // LynxView exists, so it goes out with the first global props
     // (LinkCenter).
+    // The Share Extension's link isn't one: the share waits in the App Group,
+    // and the runtime's LynxShareTarget takes it as it starts.
     LinkCenter.shared.initialURL =
-      (connectionOptions.urlContexts.first?.url
+      (connectionOptions.urlContexts.lazy.map(\.url).first { !Self.isShareLink($0) }
       ?? connectionOptions.userActivities.lazy.compactMap(Self.universalLink).first)?
       .absoluteString
     let window = UIWindow(windowScene: windowScene)
@@ -86,8 +88,38 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
   // navigates to it.
   func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
     for context in URLContexts {
-      LinkCenter.shared.open(context.url)
+      if Self.isShareLink(context.url) {
+        Self.shareArrived()
+      } else {
+        LinkCenter.shared.open(context.url)
+      }
     }
+  }
+
+  // The Share Extension may not have managed to open the app, which then
+  // comes to the front later, by hand: whatever was shared meanwhile is
+  // waiting.
+  func sceneWillEnterForeground(_ scene: UIScene) {
+    if Self.shareScheme != nil {
+      Self.shareArrived()
+    }
+  }
+
+  /// The scheme the app's Share Extension opens it with once it has left a
+  /// share in the App Group (Info.plist's `AngularLynxShareScheme`, which
+  /// only an app with angular.json's `shareTarget` has).
+  private static let shareScheme =
+    (Bundle.main.object(forInfoDictionaryKey: "AngularLynxShareScheme") as? String)?.lowercased()
+
+  private static func isShareLink(_ url: URL) -> Bool {
+    shareScheme != nil && url.scheme?.lowercased() == shareScheme
+  }
+
+  /// Tells the runtime's LynxShareTarget a share is waiting: it takes it
+  /// from ShareTargetModule. Before the LynxView exists there's nobody to
+  /// tell, and the runtime takes the waiting shares as it starts anyway.
+  private static func shareArrived() {
+    LinkCenter.shared.lynxView?.sendGlobalEvent("angularLynxShare", withParams: [])
   }
 
   // A Universal Link while the app is open: the same as a link with one of

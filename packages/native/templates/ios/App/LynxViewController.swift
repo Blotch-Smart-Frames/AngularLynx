@@ -111,6 +111,13 @@ final class LynxViewController: UIViewController, LynxViewLifecycle {
     if let appleSignIn = NSClassFromString("AngularLynxAppleSignInModule") as? LynxModule.Type {
       config.register(appleSignIn)
     }
+    // What other apps share to this one, behind LynxShareTarget
+    // (ShareTargetModule), by name too: the generator leaves its source, and
+    // the Share Extension that leaves the shares, out of an app whose
+    // angular.json has no shareTarget.
+    if let shareTarget = NSClassFromString("AngularLynxShareTargetModule") as? LynxModule.Type {
+      config.register(shareTarget)
+    }
     // Bundled files for the main thread's fetch and Image (AssetsModule).
     config.register(AssetsModule.self)
     // The full collections the runtime asks for after screens go

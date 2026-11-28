@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, extname, join } from 'node:path';
 
 // Extensions oxfmt understands. Everything else (notably the `.css` theme
 // files) is returned untouched — running them through a JS/TS formatter would
@@ -21,11 +21,6 @@ const FORMATTABLE_EXTENSIONS = new Set([
 // this monorepo (and generated projects) use; a project on a `.ts`/`.js`
 // oxfmt config is niche enough that skipping formatting there is acceptable.
 const OXFMT_CONFIG_NAMES = ['.oxfmtrc.json', '.oxfmtrc.jsonc'];
-
-const extensionOf = (filePath: string): string => {
-  const dot = filePath.lastIndexOf('.');
-  return dot === -1 ? '' : filePath.slice(dot);
-};
 
 /**
  * Walks up the directory tree from `startDir`, returning the first ancestor
@@ -75,7 +70,11 @@ const findUp = (startDir: string, relativePath: string): string | null => {
  *                 oxfmt config/ignore rules exactly as `oxfmt` itself would.
  */
 export const formatContent = (content: string, filePath: string): string => {
-  if (!FORMATTABLE_EXTENSIONS.has(extensionOf(filePath))) return content;
+  // extname() looks for the dot in the file's own name only. A plain
+  // lastIndexOf('.') on the whole path found dots in folder names instead
+  // (a checkout under a hidden folder), handing an extension-less file its
+  // folder's tail as an extension.
+  if (!FORMATTABLE_EXTENSIONS.has(extname(filePath))) return content;
 
   const startDir = dirname(filePath);
 

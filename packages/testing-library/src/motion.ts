@@ -7,7 +7,10 @@ type Sensor = 'acceleration' | 'rotation' | 'orientation' | 'heading' | 'shake';
 type FakeMotionModule = {
   /** The sensors the app has started, as the shells run them. */
   readonly running: Set<Sensor>;
-  /** The time of the last sample sent, so each comes after it. */
+  /**
+   * The time of the latest sample sent, so a sample without a timestamp
+   * comes after it. A spec's own timestamp can go back; this doesn't.
+   */
   last: number;
   start(sensor: Sensor, interval: number): void;
   stop(sensor: Sensor): void;
@@ -123,7 +126,10 @@ const environment = (
  */
 const nextTime = (module: FakeMotionModule, timestamp?: number): number => {
   const t = timestamp ?? Math.max(Date.now(), module.last + 1000);
-  module.last = t;
+  // The latest, not the last: after a spec's own timestamp that went back,
+  // a sample without one still comes after every sample before it, of any
+  // sensor, so a watch never skips it.
+  module.last = Math.max(module.last, t);
   return t;
 };
 

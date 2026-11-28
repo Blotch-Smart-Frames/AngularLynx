@@ -123,6 +123,17 @@ describe('LynxMotion under the testing library', () => {
     expect(screen.getByText('Gravity 1.0')).toBeInTheDocument();
   });
 
+  it('keeps samples without a timestamp after a spec timestamp that went back', async () => {
+    await render(Readout);
+    await settle();
+    emitMotion({ acceleration: { x: 0, y: 0, z: 1 } });
+    // A heading stamped long before the sample above.
+    setHeading({ magneticHeading: 0, timestamp: 1000 });
+    emitMotion({ acceleration: { x: 0, y: 0, z: 2 } });
+    await settle();
+    expect(screen.getByText('Gravity 2.0')).toBeInTheDocument();
+  });
+
   it('does nothing while nothing watches', () => {
     // No app rendered: no sensor runs.
     expect(() => {

@@ -7,10 +7,10 @@
 # shell registered the module by name (LynxViewController.swift): without it,
 # the line shows "unsupported" and nothing opens. Asking the app not to track
 # shows "denied". Android has no prompt: the module reads the advertising ID
-# from Google Play services, `authorized` on an emulator image with them and
-# `unsupported` on one without, which a host without the module answers too.
-# So on Android the flow sees the request resolve, and the build is what
-# shows Play's advertising ID library compiles and links.
+# from Google Play services, which the emulator's Google APIs image has (the
+# `target` in e2e.yml), so it answers `authorized`, or `denied` once someone
+# opted out on it. A host without the module answers `unsupported`, which the
+# flow doesn't accept, so it fails if the shell stops registering the module.
 appId: ${APP_ID}
 ---
 - runFlow: open-app.yaml
@@ -39,6 +39,6 @@ appId: ${APP_ID}
       platform: Android
     commands:
       - extendedWaitUntil:
-          visible: 'Tracking: (authorized|denied|unsupported)'
+          visible: 'Tracking: (authorized|denied)'
           timeout: 15000
 - takeScreenshot: tracking

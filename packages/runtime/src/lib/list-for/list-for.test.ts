@@ -429,6 +429,8 @@ class CardsHost {
    * item and throws.
    */
   does: 'write' | 'move' | 'animate' | 'script' | 'throw' | null = null;
+  /** The id of a row whose check throws before it writes anything. */
+  breaksBeforeWriting: number | null = null;
   mark(header: LynxElement, slot: LynxElement, row: Row): string {
     if (this.does === 'write') {
       header.setAttribute('accessibility-label', String(row.id));
@@ -442,6 +444,7 @@ class CardsHost {
       slot.setAttribute('accessibility-label', String(row.id));
       throw new Error('broken row');
     }
+    if (row.id === this.breaksBeforeWriting) throw new Error('broken row');
     return '';
   }
 }
@@ -737,6 +740,39 @@ describe('*lynxListFor', () => {
     expect(() => show(0)).toThrow('broken row');
     fixture.componentInstance.does = null;
     show(1);
+    flushes.length = 0;
+
+    appRef.tick();
+
+    expect(flushes).toEqual([{ element: undefined, options: undefined }]);
+  });
+
+  it('flushes the whole tree after a batch that a row stopped by throwing before it wrote', async () => {
+    const fixture = await renderCards(rowsOf(6));
+    const appRef = fixture.componentRef.injector.get(ApplicationRef);
+    const views = [show(1)!, show(2)!];
+    views.forEach(hide);
+    // Rows 1 to 3 go: both views leave change detection, in the pool, so
+    // the one whose check throws isn't checked again with the next tick.
+    setInputs(directives.at(-1)!, { rows: rowsOf(3, 4) });
+    await update(fixture);
+    appRef.tick();
+    fixture.componentInstance.breaksBeforeWriting = 5;
+
+    // Row 4 takes a view and writes, then row 5 takes the other and throws:
+    // the batch's one flush never comes.
+    expect(() =>
+      theList().componentAtIndexes(
+        theList(),
+        theList().id,
+        [0, 1],
+        [operationId++, operationId++],
+        false,
+        false,
+      ),
+    ).toThrow('broken row');
+    fixture.componentInstance.breaksBeforeWriting = null;
+    show(2);
     flushes.length = 0;
 
     appRef.tick();

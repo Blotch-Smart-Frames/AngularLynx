@@ -5703,9 +5703,8 @@ let itemsLeftWork = false;
  * itemsLeftWork. So a binding that starts with nothing else written since,
  * the next item of a batch (componentAtIndexes), or an item a binding's flush
  * builds, isn't taken to start with work waiting from before it. A binding
- * that throws doesn't set it: componentAtIndex makes no flush of its item
- * then, so what it wrote waits for the next binding, or the next cycle, to
- * count as left over.
+ * that throws doesn't set it, and notes that work is left (see
+ * bindListItemElement).
  */
 let boundEpoch = 0;
 
@@ -5728,6 +5727,12 @@ export const bindListItemElement = <R>(bind: () => R): R => {
     const result = bindListItem(bind);
     boundEpoch = nativeWriteEpoch;
     return result;
+  } catch (error) {
+    // componentAtIndex makes no flush after a binding that throws, nor
+    // componentAtIndexes for the items its batch bound before it: what they
+    // wrote waits for the next flush of the whole tree.
+    itemsLeftWork = true;
+    throw error;
   } finally {
     boundListItem = outer;
   }

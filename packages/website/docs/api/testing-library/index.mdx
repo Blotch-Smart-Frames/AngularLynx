@@ -332,7 +332,7 @@ Steer [`LynxAppleSignIn`](/api/angular-lynx/apple-sign-in), whose native module 
 
 - **`setAppleSignInResult()`** has the person sign in from now on in this test. `signIn()` resolves with `result`, sharing its `email` and `fullName` only when the sign-in asks for their scopes, as Apple does. What's left out takes a test value: `user` is `test-apple-user`, the tokens `test-identity-token` and `test-authorization-code`. Each user it signs in is `authorized` afterwards.
 - **`setAppleSignInError()`** has the next sign-ins reject with `code`.
-- **`setAppleSignInAvailable(false)`** takes the native sheet away, as on Android and the web: `isAvailable()` resolves `false` and `signIn()` rejects with `unsupported`.
+- **`setAppleSignInAvailable(false)`** takes the native sheet away, as on Android and the web: `isAvailable()` resolves `false` and `signIn()` rejects with `unsupported`. An [`<apple-sign-in-button>`](/api/elements/apple-sign-in-button) made after it is the one the runtime draws, whose title `getByText()` finds, rather than iOS's element.
 - **`setAppleCredentialState()`** sets what `getCredentialState(user)` resolves with. A user nobody signed in is `notFound`.
 - **`appleSignInRequests()`** lists the sign-ins the app opened, with the `scopes`, `nonce` and `state` each asked for.
 

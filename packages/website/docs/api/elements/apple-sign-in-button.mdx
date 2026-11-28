@@ -1,0 +1,67 @@
+# `<apple-sign-in-button>`
+
+The button that starts [Sign in with Apple](/api/angular-lynx/apple-sign-in), drawn as Apple's [guidelines](https://developer.apple.com/design/human-interface-guidelines/sign-in-with-apple) ask: the Apple logo, one of Apple's titles, its colors and its corners. App Review checks the button against them, so use this rather than drawing your own. One gap: the button the runtime draws off iOS has an English title, where Apple asks for the app's language ([#982](https://github.com/Blotch-Smart-Frames/AngularLynx/issues/982)). Lynx has no such element: this one is AngularLynx's.
+
+## Usage
+
+```typescript title="src/app/sign-in.ts"
+import { Component, inject } from '@angular/core';
+import { LYNX_ELEMENTS, LynxAppleSignIn } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-sign-in',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <apple-sign-in-button
+      type="continue"
+      button-style="black"
+      class="h-12 w-full"
+      (bindtap)="signIn()"
+    />
+  `,
+})
+export class SignIn {
+  readonly #appleSignIn = inject(LynxAppleSignIn);
+
+  async signIn() {
+    const result = await this.#appleSignIn.signIn({ scopes: ['email'] });
+    // Send the result to your server.
+  }
+}
+```
+
+Import `LYNX_ELEMENTS` in your component (see [Elements](/api/angular-lynx/elements)).
+
+**Give it a size, with classes or an inline style.** Like iOS's own button, it has none of its own. Apple asks for at least 140 × 30, and 44 tall is the usual height. A CSS rule naming the tag (`apple-sign-in-button { … }`) styles only iOS's button: the one the runtime draws is a `<view>`, which it doesn't match. It takes no children.
+
+## Attributes
+
+| Attribute       | Type                                   | Default    | Description                                                                                                  |
+| --------------- | -------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------ |
+| `type`          | `'signIn' \| 'continue' \| 'signUp'`   | `'signIn'` | The title: "Sign in with Apple", "Continue with Apple" or "Sign up with Apple"                               |
+| `button-style`  | `'black' \| 'white' \| 'whiteOutline'` | `'black'`  | Black with a white logo and title, white with black ones, or white outlined in black, for a white background |
+| `corner-radius` | `number \| string`                     | `6`        | The corners' radius, in points on iOS and pixels elsewhere. Half the height makes a pill                     |
+
+Apple asks for a white button on a dark background and a black one on a light background, so with the app following the phone's [light or dark appearance](/api/angular-lynx/theme), switch `button-style` with it.
+
+## Events
+
+`bindtap`, as on any element. Call [`LynxAppleSignIn.signIn()`](/api/angular-lynx/apple-sign-in#signin) from it.
+
+## Platform support
+
+| Where                                                                                                                                               | What draws it                                                                                                          |
+| --------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| iOS apps built with [`ng build --platform ios`](/guide/building-for-production) and [`signInWithApple`](/api/angular-lynx/apple-sign-in#turn-it-on) | iOS's own `ASAuthorizationAppleIDButton`. Its title follows the phone's language, and it highlights while it's pressed |
+| Android apps, the web preview, Lynx Explorer, and iOS apps without `signInWithApple`                                                                | The runtime, to the same guidelines: the logo, the title in English, the colors and the corners                        |
+
+On Android, sign in through Apple's web flow with [`LynxWebAuthSession`](/api/angular-lynx/web-auth-session), where Apple's guidelines ask for the same button. In the web preview and Lynx Explorer, which have no sign-in, use [`isAvailable()`](/api/angular-lynx/apple-sign-in#isavailable) to leave the button out.
+
+## Testing
+
+In the [testing library](/api/testing-library/), the button is iOS's element while the fake Sign in with Apple module is there, as it is by default: `document.querySelector('apple-sign-in-button')` finds it, with its attributes. After [`setAppleSignInAvailable(false)`](/api/testing-library/#setapplesigninresult), it's the one the runtime draws, whose title `screen.getByText('Sign in with Apple')` finds. `fireEvent.tap()` taps either.
+
+## Related
+
+- [`LynxAppleSignIn`](/api/angular-lynx/apple-sign-in): the sheet the button opens
+- Apple's [Sign in with Apple guidelines](https://developer.apple.com/design/human-interface-guidelines/sign-in-with-apple)

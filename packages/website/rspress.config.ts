@@ -454,6 +454,10 @@ export default defineConfig({
         { text: '<blur-view>', link: '/api/elements/blur-view' },
         { text: '<video>', link: '/api/elements/video' },
         { text: '<webview>', link: '/api/elements/webview' },
+        {
+          text: '<apple-sign-in-button>',
+          link: '/api/elements/apple-sign-in-button',
+        },
         { text: '<title-bar-view>', link: '/api/elements/title-bar-view' },
         { text: '<cover-view>', link: '/api/elements/cover-view' },
       ],

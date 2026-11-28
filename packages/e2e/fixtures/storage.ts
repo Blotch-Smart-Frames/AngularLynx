@@ -144,8 +144,9 @@ const collectedFromArrays = async (): Promise<string> => {
  * `signInWithApple`, and `none` on Android and in Lynx Explorer. It's below
  * the Android emulator's screen, where no other row has room for it: a
  * wrapped row pushes Biometrics off the screen, and Android has no sheet to
- * check. A tap opens
- * the sheet and shows how it ended: the error's code, with "(held)" when the
+ * check. A tap on the `<apple-sign-in-button>` beside it (issue #977),
+ * iOS's own button in the iOS app and the one the runtime draws elsewhere,
+ * opens the sheet and shows how it ended: the error's code, with "(held)" when the
  * request stayed open for 2 seconds or more. On a Simulator signed in to no
  * Apple Account that's `failed (held)` once iOS's alert closes, and
  * `unsupported` without the module.
@@ -207,10 +208,15 @@ const collectedFromArrays = async (): Promise<string> => {
         >Calendar: {{ calendar() }}</text
       >
     </view>
-    <view style="display: flex; flex-direction: row; margin-top: 8px;">
-      <text flatten="false" (bindtap)="signInWithApple()"
-        >Apple: {{ apple() }}</text
-      >
+    <view
+      style="display: flex; flex-direction: row; align-items: center; margin-top: 8px;"
+    >
+      <text flatten="false">Apple: {{ apple() }}</text>
+      <apple-sign-in-button
+        type="continue"
+        style="margin-left: 16px; width: 200px; height: 44px;"
+        (bindtap)="signInWithApple()"
+      />
     </view>
   `,
 })

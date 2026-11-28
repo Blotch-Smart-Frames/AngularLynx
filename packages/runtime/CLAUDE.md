@@ -39,7 +39,7 @@ Provides everything needed to run Angular on the Lynx runtime. Maps Angular's `R
 
 ## Supported Lynx Elements
 
-`page`, `view`, `text`, `inline-truncation`, `image`, `scroll-view`, `list`, `block`, `if`, `for`, `raw-text`, `frame`, `input`, `textarea`, `overlay`, `svg`, `viewpager`, `viewpager-item`, `refresh`, `refresh-header`, `title-bar-view`, `scroll-coordinator`, `scroll-coordinator-header`, `scroll-coordinator-toolbar`, `scroll-coordinator-slot`, `scroll-coordinator-slot-drag`, `blur-view`, `webview`, `video`, `cover-view`, `canvas`
+`page`, `view`, `text`, `inline-truncation`, `image`, `scroll-view`, `list`, `block`, `if`, `for`, `raw-text`, `frame`, `input`, `textarea`, `overlay`, `svg`, `viewpager`, `viewpager-item`, `refresh`, `refresh-header`, `title-bar-view`, `scroll-coordinator`, `scroll-coordinator-header`, `scroll-coordinator-toolbar`, `scroll-coordinator-slot`, `scroll-coordinator-slot-drag`, `blur-view`, `webview`, `video`, `cover-view`, `canvas`, `apple-sign-in-button`
 
 `list`'s items live in `LynxListElement`'s own linked list, not the native tree: native asks for each by index (`componentAtIndex`, `create-list-element.ts`) after `update-list-info` tells it which exist. `@for` items are built up front; a `*lynxListFor` run (`list-for/`) is data until native asks, and its views are reused when native lets their elements go (`enqueueComponent`). Building an item happens inside `bindListItem()` (`lynx-render-lifecycle.ts`), where nothing but componentAtIndex's own item flush may flush. See `investigations/list.md`.
 

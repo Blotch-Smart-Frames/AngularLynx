@@ -3,6 +3,7 @@ import type { ElementRef } from '../types/lynx';
 // The barrel re-exports createListElement/createPageElement, which import
 // LynxElement — routing through it would form a cycle (LynxElement imports this
 // module). The individual creators below import only PAPI globals and types.
+import { createAppleSignInButtonElement } from './element-creators/create-apple-sign-in-button-element';
 import { createBlockElement } from './element-creators/create-block-element';
 import { createBlurViewElement } from './element-creators/create-blur-view-element';
 import { createCanvasElement } from './element-creators/create-canvas-element';
@@ -124,6 +125,8 @@ export const createNativeRefByTag = (
       return createCoverViewElement(pageId);
     case 'canvas':
       return createCanvasElement(pageId);
+    case 'apple-sign-in-button':
+      return createAppleSignInButtonElement(pageId);
     case 'comment':
       return createCommentElement(pageId);
     // Unknown tags become views rather than passing straight through to

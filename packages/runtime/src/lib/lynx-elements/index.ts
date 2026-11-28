@@ -47,6 +47,7 @@
  *   and their `$event` types come from types/element-events.ts.
  */
 export { LynxElementBase } from './base';
+export { LynxAppleSignInButton } from './apple-sign-in-button';
 export { LynxBlurView } from './blur-view';
 export { LynxCoverView } from './cover-view';
 export {
@@ -81,6 +82,7 @@ export { LynxAccessibilityTraits } from '../accessibility/accessibility-traits';
 export { LynxListFor } from '../list-for/list-for';
 
 import { LynxInputValueAccessor, LynxTextareaValueAccessor } from '../forms';
+import { LynxAppleSignInButton } from './apple-sign-in-button';
 import { LynxBlurView } from './blur-view';
 import { LynxCoverView } from './cover-view';
 import { LynxFrame } from './frame';
@@ -151,6 +153,7 @@ export const LYNX_ELEMENTS = [
   LynxWebView,
   LynxCoverView,
   LynxTitleBarView,
+  LynxAppleSignInButton,
   // Activates on top of Angular's RouterLinkActive, like the CVA directives
   // on form attributes above: marks the active link `selected` for screen
   // readers. It doesn't import the router (see the file).

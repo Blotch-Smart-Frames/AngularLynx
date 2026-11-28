@@ -3,7 +3,8 @@ import XElement
 
 /// Registers XElement's elements: `<input>`, `<textarea>`, `<overlay>`,
 /// `<svg>`, `<blur-view>`, `<viewpager>`, `<refresh>`, the
-/// `<scroll-coordinator>` family, `<webview>` and `<video>`. Lynx's core
+/// `<scroll-coordinator>` family, `<webview>` and `<video>`, and the shell's
+/// own `<canvas>` and `<apple-sign-in-button>`. Lynx's core
 /// doesn't include them, and a tag nothing is registered for renders nothing.
 ///
 /// Lynx Explorer gets these registrations from XElement's `Behavior` subspec,
@@ -42,6 +43,11 @@ enum XElementRegistry {
     // (AngularLynxVideo.h).
     LynxComponentRegistry.registerUI(
       NSClassFromString("AngularLynxVideo") ?? LynxUIVideo.self, withName: "video")
+    // iOS's Sign in with Apple button (AppleSignInButton), which only an app
+    // with angular.json's signInWithApple keeps, so by name.
+    if let appleSignInButton = NSClassFromString("AngularLynxAppleSignInButton") {
+      LynxComponentRegistry.registerUI(appleSignInButton, withName: "apple-sign-in-button")
+    }
     // The shell's own <canvas> (AngularLynxWebGL.h): Lynx has none.
     if let canvas = NSClassFromString("AngularLynxCanvas") {
       LynxComponentRegistry.registerUI(canvas, withName: "canvas")

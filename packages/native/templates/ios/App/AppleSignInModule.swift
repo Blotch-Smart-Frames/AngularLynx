@@ -13,8 +13,8 @@ import UIKit
 /// and the authorization code the app's server checks with Apple, and the
 /// email and name, which Apple gives only on the person's first sign-in.
 /// `credentialState` asks Apple whether a user identifier is still signed in,
-/// which Apple asks apps to check at launch, and `available` says the module
-/// is there.
+/// which Apple asks apps to check at launch, `available` says the module
+/// is there, and `button` that `<apple-sign-in-button>` is (AppleSignInButton).
 ///
 /// The sheet needs the `com.apple.developer.applesignin` entitlement, which a
 /// free Personal Team can't sign, so the generator writes it and keeps this
@@ -32,6 +32,7 @@ final class AppleSignInModule: NSObject, LynxModule, ASAuthorizationControllerDe
       "available": NSStringFromSelector(#selector(available(_:))),
       "signIn": NSStringFromSelector(#selector(signIn(_:callback:))),
       "credentialState": NSStringFromSelector(#selector(credentialState(_:callback:))),
+      "button": NSStringFromSelector(#selector(button)),
     ]
   }
 
@@ -57,6 +58,14 @@ final class AppleSignInModule: NSObject, LynxModule, ASAuthorizationControllerDe
   /// unavailable.
   @objc func available(_ callback: @escaping LynxCallbackBlock) {
     callback(["available": true])
+  }
+
+  /// Returns `{ available: true }`: the shell registers `<apple-sign-in-button>`
+  /// (AppleSignInButton) with this module. The runtime calls it from the main
+  /// thread, where Angular makes elements, to choose between iOS's button and
+  /// the one it draws itself; without the module it gets no answer.
+  @objc func button() -> [String: Any] {
+    ["available": true]
   }
 
   /// Opens the sheet with `request`'s `scopes` (`email`, `fullName`), `nonce`

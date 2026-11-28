@@ -37,9 +37,7 @@ import { Auth } from './auth';
   imports: [LYNX_ELEMENTS],
   template: `
     @if (appleAvailable()) {
-      <view (bindtap)="signInWithApple()">
-        <text>Sign in with Apple</text>
-      </view>
+      <apple-sign-in-button class="h-12 w-full" (bindtap)="signInWithApple()" />
     }
   `,
 })
@@ -74,7 +72,7 @@ export class SignIn {
 
 `Auth` stands for the app's own service, which sends the result to your server.
 
-**Draw the button as Apple's guidelines ask**: the Apple logo, "Sign in with Apple" or "Continue with Apple", in black, white or white with an outline, at least as prominent as the other logins. App Review checks it. See Apple's [Sign in with Apple guidelines](https://developer.apple.com/design/human-interface-guidelines/sign-in-with-apple).
+**Start it from [`<apple-sign-in-button>`](/api/elements/apple-sign-in-button)**, which App Review checks against Apple's [Sign in with Apple guidelines](https://developer.apple.com/design/human-interface-guidelines/sign-in-with-apple). In the iOS app it's iOS's own button, with the logo, the title in the phone's language, and Apple's colors and corners. Elsewhere the runtime draws the same button. Keep it at least as prominent as the other logins.
 
 ### Check the result on your server
 
@@ -204,14 +202,14 @@ The testing library has a fake of the native module. Until a spec says how the p
 import {
   render,
   setAppleSignInResult,
-  screen,
   fireEvent,
   waitForUpdate,
 } from '@blotch/angular-lynx-testing-library';
 
 setAppleSignInResult({ user: 'u1', email: 'ada@example.com' });
 await render(SignIn);
-fireEvent.tap(screen.getByText('Sign in with Apple'));
+// iOS's button, as the fake module stands for an iOS app with signInWithApple.
+fireEvent.tap(document.querySelector('apple-sign-in-button')!);
 await waitForUpdate();
 ```
 
@@ -219,5 +217,6 @@ See [`setAppleSignInResult()`](/api/testing-library#setapplesigninresult) for th
 
 ## Related
 
+- [`<apple-sign-in-button>`](/api/elements/apple-sign-in-button): the button that starts it
 - [Sign in with a web page](/guide/web-sign-in): Apple's web flow, for Android
 - [Native apps](/guide/native-apps): the `signInWithApple` option and the other build options

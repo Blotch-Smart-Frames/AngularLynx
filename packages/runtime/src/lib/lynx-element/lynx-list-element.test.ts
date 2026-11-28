@@ -836,6 +836,7 @@ describe('LynxListElement', () => {
             attributes: [...run.attributes],
           }),
           bind: () => null,
+          bindAhead: () => false,
           enqueue: () => false,
           elementIds: () => [],
         };
@@ -1080,6 +1081,7 @@ describe('LynxListElement', () => {
         id: 1,
         commit: () => ({ keys: [], types: [], attributes: [] }),
         bind: () => null,
+        bindAhead: () => false,
         enqueue: vi.fn(() => false),
         elementIds: () => [],
       };
@@ -1107,6 +1109,7 @@ describe('LynxListElement', () => {
         id: 1,
         commit: () => ({ keys: [], types: [], attributes: [] }),
         bind: () => null,
+        bindAhead: () => false,
         enqueue: () => false,
         elementIds: () => [built.uniqueId],
       };

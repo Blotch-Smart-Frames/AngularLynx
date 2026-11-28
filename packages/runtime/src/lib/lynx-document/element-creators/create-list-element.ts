@@ -141,7 +141,10 @@ export const createListElement = (pageId: number): LynxListElement => {
       listID: listId,
       ...reuseNotification(listRef, slot, item, enableReuseNotification),
     });
-    if (slot.source) settleAfterListItems();
+    if (slot.source) {
+      settleAfterListItems();
+      listEl.noteItemShown(cellIndex);
+    }
     return sign;
   };
 
@@ -187,7 +190,10 @@ export const createListElement = (pageId: number): LynxListElement => {
         elementIDs.push(-1);
         continue;
       }
-      if (slot.source) built = true;
+      if (slot.source) {
+        built = true;
+        listEl.noteItemShown(cellIndexes[i]!);
+      }
       const elementID = item.sign;
       elementIDs.push(elementID);
       if (asyncFlush) {

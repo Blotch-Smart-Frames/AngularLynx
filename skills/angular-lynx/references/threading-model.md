@@ -20,6 +20,7 @@ Lynx runs the main thread's JavaScript, its layout and its animator on its engin
 - **A busy app doesn't freeze what the platform runs itself** in a built app: a flicked `<scroll-view>` keeps scrolling, and text fields and web views keep taking touches, while Angular builds a screen or runs a long handler. In Lynx Explorer they freeze with it, so judge a heavy screen's feel in a build.
 - **What Lynx draws from the element tree still waits for Angular**: the next screen, a changed style, and Lynx's animations (CSS transitions, `@keyframes`, `element.animate()`), which tick on the same thread. Keep handlers short, and move heavy work to a `backgroundFn()`.
 - **Changes reach the screen after the flush crosses to the UI thread**, a step later than in Explorer. UI methods (`invoke()`) go with the flush, after the element's UI is made.
+- **A burst of updates ticks once a frame.** Each flush lays the tree out, so once change detection has flushed, a tick Angular schedules before the next frame runs on that frame, once for every response, socket message or timer update that came meanwhile. The frame's first tick runs on Angular's timer as on the web, so a tap or a lone response is drawn as soon as before; the later updates of a burst run their change detection and effects up to one frame later. In tests the testing library's frames are timers, so a fake clock runs them with the rest (`await vi.runAllTimersAsync()`).
 
 ## `__MAIN_THREAD__` Global
 

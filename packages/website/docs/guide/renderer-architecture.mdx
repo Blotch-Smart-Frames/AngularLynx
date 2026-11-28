@@ -117,6 +117,8 @@ A flush must never run while a list is building one of its items, inside the eng
 
 It's skipped inside a cycle, because `end()` will flush, and during the first render. Main-thread scripts batch their own changes into one flush on a microtask.
 
+**A burst of updates ticks once a frame.** Angular's zoneless scheduler runs a tick from a timer or an animation frame, whichever comes first, and on Lynx's main thread the timer always wins. Each response, socket message or timer callback is a task of its own, so a burst of them a few milliseconds apart would get a tick each, and each tick's flush lays the tree out again. A browser runs those ticks too, but draws once a frame. So once `end()` has flushed, a tick Angular schedules before the next frame runs on that frame, once for everything that changed meanwhile. The first tick of a frame still runs on Angular's timer, so a tap or a lone response is drawn as soon as before. The later updates of a burst run their change detection, their effects and their flush **up to one frame later** than Angular's timer would run them, which Angular's own race allows: on the web the frame often wins. The runtime reads private fields of Angular's scheduler to do this. Without them (a later Angular could rename them), or without `requestAnimationFrame`, ticks run as Angular schedules them, and a test against Angular's scheduler fails so an upgrade doesn't lose this unseen.
+
 ## How a tap reaches the screen
 
 Change detection is zoneless (see [Signals and change detection](/guide/concepts/signals)). A tap runs like this:
@@ -125,7 +127,7 @@ Change detection is zoneless (see [Signals and change detection](/guide/concepts
 2. The listener runs your handler synchronously, inside the native event.
 3. Your handler sets a signal. Angular marks the view dirty, and its zoneless scheduler queues a tick, racing `setTimeout` against `requestAnimationFrame`. Lynx puts its timers on `lynx`, so the runtime copies them onto `globalThis` at startup.
 4. When the handler returns, `scheduleSettleFlush()` queues a microtask if the handler changed elements directly. A handler that only sets signals leaves the flush to the tick.
-5. The tick runs change detection. The renderer calls element functions, and `end()` flushes.
+5. The tick runs change detection. The renderer calls element functions, and `end()` flushes. If a cycle has already flushed in this frame, the tick waits for the next frame instead (see [The flush cycle](#the-flush-cycle)).
 
 Changing the tree in step 2 is safe, though the engine is still delivering the event: a handler can create and remove elements, and even flush them with `ApplicationRef.tick()`. A navigation changes it later anyway, since the router builds the next screen after the handler returns.
 

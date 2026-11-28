@@ -432,6 +432,28 @@ The `<list>` path already guarded this exact case (`LynxListElement.#scheduleUpd
 
 ---
 
+## Each flush lays the tree out, so a burst of updates costs a layout apiece unless the ticks share a frame
+
+Angular's zoneless scheduler gave every response of a burst its own tick on Lynx's main thread, and every tick's flush laid out the tree. The runtime now runs a tick that comes after a flush in the same frame on that frame.
+
+### What you'd expect (web)
+
+Angular's zoneless scheduler runs a tick from `setTimeout` or `requestAnimationFrame`, whichever comes first (`scheduleCallbackWithRafRace` in `@angular/core`). Responses that arrive a few milliseconds apart each get a tick there too, but the browser lays out and paints once a frame, however many ticks changed the DOM.
+
+### What Lynx does
+
+Each response, socket message or timer callback reaches the main thread as a task of its own, and Lynx's timer always beats its frame, so each got a tick, and each tick ended with `LynxRendererFactory2.end()`'s `__FlushElementTree()`. On Lynx a flush is what lays the tree out and queues the UI's operations, so a burst paid for a layout per update, not per frame. In the benchmark Pokédex on the iOS Simulator, with each row fetching its own detail as the list built it, 5 swipes ran about 86 ticks, one per response and one per bind, and the responses' ticks cost about 45 ms of the engine thread, which layout and Lynx's animator share (issue #868).
+
+Lynx's main-thread `requestAnimationFrame` does follow the screen: it asks the engine for the next vsync (`RequestAnimationFrame` in [`renderer_functions.cc`](https://github.com/lynx-family/lynx/blob/develop/core/runtime/lepus/bindings/renderer_functions.cc), `AnimationFrameManager` in `core/runtime/lepus/tasks/lepus_raf_manager.cc`), and runs every callback asked for before that frame together.
+
+### The fix
+
+`frameGate()` (`packages/runtime/src/lib/renderer/frame-gate.ts`). After `end()` flushes, until the next frame, a tick Angular's scheduler schedules is taken off its timer and run on the next frame, once for everything that changed meanwhile. The first tick of a frame stays on Angular's timer, so a tap or a lone response is drawn as soon as before. The later updates of a burst run their change detection, their effects and their flush up to one frame later than they did, which is within Angular's own race (the frame often wins in a browser). Ticks Angular schedules on a microtask, in the task a tick just ran in, are left alone, and `runComingTick()` can still run a moved tick early.
+
+The gate reads and replaces private fields of `ChangeDetectionSchedulerImpl` (`notify`, `tick`, `pendingRenderTaskId`, `cancelScheduledCallback`, `useMicrotaskScheduler`). Without them, or without `requestAnimationFrame`, ticks run as Angular schedules them. `frame-gate-angular.test.ts` runs Angular's own scheduler, so a rename fails CI rather than quietly losing the gate.
+
+---
+
 ## `element.animate()` on an element native hasn't been flushed yet does nothing
 
 ### What you'd expect (web)

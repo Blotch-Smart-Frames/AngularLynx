@@ -335,6 +335,14 @@ export class LynxSecureStorage extends PersistentStorage {
    */
   #hasBiometrics = true;
 
+  /**
+   * The last change still running. A change writes one store and then
+   * removes the key from the other, so two that overlap could each remove
+   * what the other wrote: changes run one at a time, in the order they were
+   * made.
+   */
+  #changes: Promise<unknown> = Promise.resolve();
+
   constructor() {
     super('AngularLynxSecureStorage', 'angular-lynx-secure:');
   }
@@ -371,29 +379,43 @@ export class LynxSecureStorage extends PersistentStorage {
     value: T,
     options: SecureStorageSetOptions = {},
   ): Promise<void> {
-    if (!options.requireBiometrics) {
-      await super.setItem(key, value);
-      await this.#biometrics('removeItem', [key]);
-      return;
-    }
+    // Checked before it waits its turn, as the plain store checks it.
     const raw = encode(key, value);
-    const result = await this.#biometrics('setItem', [key, raw]);
-    if (result === undefined && !this.#hasBiometrics) {
-      throw biometricsUnavailable();
-    }
-    const failure = biometricsFailure(result);
-    if (failure) throw failure;
-    await super.removeItem(key);
+    return this.#change(async () => {
+      if (!options.requireBiometrics) {
+        await super.setItem(key, value);
+        await this.#biometrics('removeItem', [key]);
+        return;
+      }
+      const result = await this.#biometrics('setItem', [key, raw]);
+      if (result === undefined && !this.#hasBiometrics) {
+        throw biometricsUnavailable();
+      }
+      const failure = biometricsFailure(result);
+      if (failure) throw failure;
+      await super.removeItem(key);
+    });
   }
 
-  override async removeItem(key: string): Promise<void> {
-    await super.removeItem(key);
-    await this.#biometrics('removeItem', [key]);
+  override removeItem(key: string): Promise<void> {
+    return this.#change(async () => {
+      await super.removeItem(key);
+      await this.#biometrics('removeItem', [key]);
+    });
   }
 
-  override async clear(): Promise<void> {
-    await super.clear();
-    await this.#biometrics('clear', []);
+  override clear(): Promise<void> {
+    return this.#change(async () => {
+      await super.clear();
+      await this.#biometrics('clear', []);
+    });
+  }
+
+  /** Runs `change` once the changes before it have settled. */
+  #change(change: () => Promise<void>): Promise<void> {
+    const run = this.#changes.then(change, change);
+    this.#changes = run.catch(() => undefined);
+    return run;
   }
 
   /**

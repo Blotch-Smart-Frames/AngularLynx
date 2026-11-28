@@ -285,8 +285,10 @@ describe('LynxSecureStorage', () => {
       const plain = new Map<string, string>();
       const guarded = new Map<string, string>();
       let answer: Record<string, unknown> | undefined;
+      // Each answers on a later turn, as the native modules do, so calls
+      // that overlap interleave.
       const done = (callback: (result: unknown) => void, result: unknown) =>
-        callback(result);
+        void setTimeout(() => callback(result));
       const secure = {
         getItem: vi.fn((key: string, callback: Done) =>
           done(callback, plain.has(key) ? { value: plain.get(key) } : {}),
@@ -382,6 +384,37 @@ describe('LynxSecureStorage', () => {
       await storage.setItem('token', 'plain again');
       expect(guarded.has('token')).toBe(false);
       await expect(storage.getItem('token')).resolves.toBe('plain again');
+    });
+
+    it('runs overlapping changes to a key one at a time, so neither removes the other', async () => {
+      const { plain, guarded } = stubBoth();
+      const storage = create(LynxSecureStorage);
+
+      await Promise.all([
+        storage.setItem('token', 'plain'),
+        storage.setItem('token', 'guarded', { requireBiometrics: true }),
+      ]);
+      expect(plain.has('token')).toBe(false);
+      expect(guarded.get('token')).toBe('"guarded"');
+
+      await Promise.all([
+        storage.setItem('token', 'guarded again', { requireBiometrics: true }),
+        storage.setItem('token', 'plain again'),
+      ]);
+      expect(guarded.has('token')).toBe(false);
+      expect(plain.get('token')).toBe('"plain again"');
+    });
+
+    it('keeps going after a change that failed', async () => {
+      const { answer, plain } = stubBoth();
+      const storage = create(LynxSecureStorage);
+      answer({ error: 'notEnrolled' });
+      const results = await Promise.allSettled([
+        storage.setItem('token', 'g', { requireBiometrics: true }),
+        storage.setItem('token', 'p'),
+      ]);
+      expect(results.map((r) => r.status)).toEqual(['rejected', 'fulfilled']);
+      expect(plain.get('token')).toBe('"p"');
     });
 
     it('reads a plain value without the biometrics module', async () => {

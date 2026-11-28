@@ -175,9 +175,9 @@ class MotionModule : LynxContextModule {
         }
         if (interval == null) return
         // The interval is a hint: Android may sample faster, which keep()
-        // throttles.
-        sensors.registerListener(listener, sensor, interval, handler)
-        registered[type] = interval
+        // throttles. Recorded only when Android took it, so a later start()
+        // tries again rather than finding it already registered.
+        if (sensors.registerListener(listener, sensor, interval, handler)) registered[type] = interval
     }
 
     private fun sample(event: SensorEvent) {

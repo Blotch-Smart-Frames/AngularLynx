@@ -54,9 +54,9 @@ Simulator runs on the Mac's cores, so a busy Mac slows every launch: the
 harness waits for the Mac's load average to be under --max-load before each
 launch (half the Mac's cores by default), and drops and launches again a
 run whose recording ends over it (--max-load off waits for nothing, for a
-host whose load average says nothing of how busy it is). With --max-wait, a launch that hasn't been
-measured under the limit within that many seconds ends the session, for a
-host (a CI runner) that may never get that quiet.
+host whose load average says nothing of how busy it is). With --max-wait, a launch still waiting for
+the load, or just dropped for it, that many seconds after its first try ends
+the session, for a host (a CI runner) that may never get that quiet.
 
 A Simulator's numbers aren't a phone's: every launch takes about 1.45 s
 longer, and memory doesn't rank the apps as a phone does. They compare runs
@@ -397,21 +397,32 @@ def record_simulator(udid, bundle_id, trace, seconds, memory_after, thermal=True
             reader.join(5)
         raise subprocess.CalledProcessError(-9, command, "".join(output), f"{''.join(output)}{''.join(errors)}{why}")
 
-    if not started.wait(RECORDING_START_TIMEOUT):
-        stop(f"xctrace hadn't started recording after {RECORDING_START_TIMEOUT} s")
-    memory = None
-    if process.poll() is None:
-        time.sleep(memory_after)
-        pid = simulator_app_pid(udid, bundle_id)
-        if pid:
-            try:
-                memory = (pid, footprint(pid))
-            except subprocess.CalledProcessError as error:
-                print(f"footprint failed: {error.stderr.strip()[-300:]}", file=sys.stderr, flush=True)
     try:
-        process.wait(timeout=seconds + RECORDING_START_TIMEOUT)
-    except subprocess.TimeoutExpired:
-        stop(f"xctrace hadn't ended its {seconds} s recording after {seconds + RECORDING_START_TIMEOUT} s")
+        if not started.wait(RECORDING_START_TIMEOUT):
+            stop(f"xctrace hadn't started recording after {RECORDING_START_TIMEOUT} s")
+        memory = None
+        if process.poll() is None:
+            time.sleep(memory_after)
+            pid = simulator_app_pid(udid, bundle_id)
+            if pid:
+                try:
+                    memory = (pid, footprint(pid))
+                except subprocess.CalledProcessError as error:
+                    print(f"footprint failed: {error.stderr.strip()[-300:]}", file=sys.stderr, flush=True)
+        try:
+            process.wait(timeout=seconds + RECORDING_START_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            stop(f"xctrace hadn't ended its {seconds} s recording after {seconds + RECORDING_START_TIMEOUT} s")
+    except BaseException:
+        # Anything else that ends the harness here (a Ctrl-C, which the
+        # recording's own session doesn't get from the terminal) would
+        # leave xctrace running, and one still starting has no time limit.
+        # stop() has already killed it if it raised; a recording that has
+        # ended has no group left to kill.
+        if process.poll() is None:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+        raise
     for reader in readers:
         reader.join(5)
     if process.returncode:
@@ -460,8 +471,9 @@ def main():
     parser.add_argument(
         "--max-wait",
         type=float,
-        help="with --max-load, end the session when a launch hasn't been measured under it within this many "
-        "seconds, waiting and launching again included (default: wait as long as it takes)",
+        help="with --max-load, end the session when a launch is still waiting for the load to come under it, "
+        "or has just been dropped for going over it, this many seconds after its first try; a launch measured "
+        "under it counts, however long it took (default: wait as long as it takes)",
     )
     args = parser.parse_args()
     if args.simulator and args.max_load is None:

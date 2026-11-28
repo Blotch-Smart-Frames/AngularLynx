@@ -169,19 +169,36 @@ describe('the fake Sign in with Apple module', () => {
     await expect(appleSignIn.isAvailable()).resolves.toBe(true);
 
     setAppleSignInAvailable(false);
-    setAppleSignInAvailable(false);
     await expect(appleSignIn.isAvailable()).resolves.toBe(false);
     await expect(appleSignIn.signIn()).rejects.toMatchObject({
       code: 'unsupported',
     });
-    expect(appleSignInRequests()).toEqual([]);
-    expect(() => setAppleSignInResult()).toThrow(
-      /setAppleSignInAvailable\(false\) took away/,
-    );
+    await expect(appleSignIn.getCredentialState('u1')).rejects.toMatchObject({
+      code: 'unsupported',
+    });
 
     setAppleSignInAvailable(true);
-    setAppleSignInAvailable(true);
     await expect(appleSignIn.isAvailable()).resolves.toBe(true);
+  });
+
+  // A spec can switch the sheet off after a sign-in and still check it.
+  it('keeps the sign-ins and users while the sheet is away', async () => {
+    setAppleSignInResult({ user: 'u1' });
+    const appleSignIn = service();
+    await appleSignIn.signIn({ scopes: ['email'] });
+
+    setAppleSignInAvailable(false);
+    // Nothing opens without the sheet, so nothing more is listed.
+    await expect(appleSignIn.signIn()).rejects.toMatchObject({
+      code: 'unsupported',
+    });
+    expect(appleSignInRequests()).toEqual([{ scopes: ['email'] }]);
+
+    setAppleSignInAvailable(true);
+    expect(appleSignInRequests()).toEqual([{ scopes: ['email'] }]);
+    await expect(appleSignIn.getCredentialState('u1')).resolves.toBe(
+      'authorized',
+    );
   });
 
   // The reset after the previous test installed a new module.

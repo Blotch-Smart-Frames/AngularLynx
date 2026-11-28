@@ -49,6 +49,11 @@ type Outcome =
   | { readonly error: 'canceled' | 'failed'; readonly message?: string };
 
 type FakeAppleSignInModule = {
+  /**
+   * Set by {@link setAppleSignInAvailable}: the methods then fail as a
+   * missing module's do, while the requests and users stay for the test.
+   */
+  unavailable: boolean;
   outcome: Outcome;
   readonly requests: AppleSignInRequest[];
   readonly states: Map<string, FakeAppleCredentialState>;
@@ -75,14 +80,24 @@ type BackgroundGlobals = { NativeModules?: Record<string, unknown> };
 export const installAppleSignInModule = (
   threadGlobals: BackgroundGlobals,
 ): void => {
+  /**
+   * Fails a call as the runtime's relay does for a host without the module,
+   * which `LynxAppleSignIn` reads as no native sheet.
+   */
+  const refuse = (method: string): never => {
+    throw new Error(`NativeModules: ${MODULE}.${method} is not available`);
+  };
   const module: FakeAppleSignInModule = {
+    unavailable: false,
     outcome: { error: 'canceled' },
     requests: [],
     states: new Map(),
     available(done) {
+      if (this.unavailable) refuse('available');
       done({ available: true });
     },
     signIn(request, done) {
+      if (this.unavailable) refuse('signIn');
       this.requests.push(request);
       const outcome = this.outcome;
       if ('error' in outcome) {
@@ -110,6 +125,7 @@ export const installAppleSignInModule = (
       });
     },
     credentialState(user, done) {
+      if (this.unavailable) refuse('credentialState');
       done({ state: this.states.get(user) ?? 'notFound' });
     },
   };
@@ -132,17 +148,14 @@ const backgroundGlobals = (name: string): BackgroundGlobals => {
   return globals;
 };
 
-const fakeModule = (name: string): FakeAppleSignInModule => {
-  const module = backgroundGlobals(name).NativeModules?.[MODULE] as
-    | FakeAppleSignInModule
-    | undefined;
-  if (!module) {
-    throw new Error(
-      `${name}() needs the Sign in with Apple module, which setAppleSignInAvailable(false) took away in this test.`,
-    );
-  }
-  return module;
-};
+/**
+ * The fake module. The setup installs it on every reset, and nothing takes
+ * it away.
+ */
+const fakeModule = (name: string): FakeAppleSignInModule =>
+  (backgroundGlobals(name).NativeModules as Record<string, unknown>)[
+    MODULE
+  ] as FakeAppleSignInModule;
 
 /**
  * Has the person sign in with `result` from now on in this test: each
@@ -184,23 +197,14 @@ export const setAppleSignInError = (
 };
 
 /**
- * Takes the module away for the rest of this test, or puts it back, so a
- * spec can check what the app offers where there's no native sheet (Android,
- * the web): `isAvailable()` is false and `signIn()` rejects with
- * `unsupported`.
+ * Takes the native sheet away for the rest of this test, or puts it back, so
+ * a spec can check what the app offers where there's none (Android, the
+ * web): `isAvailable()` is false, and `signIn()` and `getCredentialState()`
+ * reject with `unsupported`. The sign-ins {@link appleSignInRequests} lists
+ * and the users' states stay as they were.
  */
 export const setAppleSignInAvailable = (available: boolean): void => {
-  const globals = backgroundGlobals('setAppleSignInAvailable');
-  const there = globals.NativeModules?.[MODULE] !== undefined;
-  if (available === there) return;
-  if (available) {
-    installAppleSignInModule(globals);
-    return;
-  }
-  // A copy, so the other modules stay as they were.
-  const modules = { ...globals.NativeModules };
-  delete modules[MODULE];
-  globals.NativeModules = modules;
+  fakeModule('setAppleSignInAvailable').unavailable = !available;
 };
 
 /**

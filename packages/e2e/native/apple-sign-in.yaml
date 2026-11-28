@@ -6,7 +6,7 @@
 # it shows only for an app with the entitlement (without it the request
 # fails at once). Closing the alert ends the request with
 # ASAuthorizationError 1000, which the storage page's "Apple" line shows as
-# failed. Android has no module: the line says "none",
+# failed (held). Android has no module: the line says "none",
 # and a tap shows the unsupported rejection.
 appId: ${APP_ID}
 ---
@@ -31,16 +31,22 @@ appId: ${APP_ID}
           visible: 'Apple: native'
           timeout: 15000
       - tapOn: 'Apple: native'
-      # The alert is iOS's own, outside the app, so Maestro's text matching
-      # can't see it: Close is tapped where the alert puts it on the
-      # harness's simulator (the middle of the screen, left button), and the
-      # app's own line below shows the tap reached it.
-      - waitForAnimationToEnd:
-          timeout: 5000
+      # The alert is iOS's own, outside the app: while it's up Maestro reads
+      # neither it nor the app. So the flow gives the alert 3 seconds (a
+      # wait for text that never shows), and taps Close where the alert puts
+      # it on the harness's simulator (the middle of the screen, left
+      # button). The app's line then says "failed (held)": the request
+      # stayed open until the tap, which only the alert does. A request iOS
+      # refused at once, as it refuses an app without the entitlement, shows
+      # "failed" alone.
+      - extendedWaitUntil:
+          visible: 'Apple: never shown'
+          timeout: 3000
+          optional: true
       - takeScreenshot: apple-sign-in-sheet
       - tapOn:
           point: 31%,57%
       - extendedWaitUntil:
-          visible: 'Apple: failed'
+          visible: 'Apple: failed \(held\)'
           timeout: 20000
 - takeScreenshot: apple-sign-in

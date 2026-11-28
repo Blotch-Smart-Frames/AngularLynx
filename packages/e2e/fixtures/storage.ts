@@ -134,8 +134,9 @@ const collectedFromArrays = async (): Promise<string> => {
  * sheet once the page opens (issue #932): `native` in the iOS app, which has
  * the module and its entitlement because the harness sets angular.json's
  * `signInWithApple`, and `none` on Android and in Lynx Explorer. A tap opens
- * the sheet and shows how it ended: the error's code, `failed` on a
- * Simulator signed in to no Apple Account once its alert closes, and
+ * the sheet and shows how it ended: the error's code, with "(held)" when the
+ * request stayed open for 2 seconds or more. On a Simulator signed in to no
+ * Apple Account that's `failed (held)` once iOS's alert closes, and
  * `unsupported` without the module.
  */
 @Component({
@@ -291,12 +292,18 @@ export class StorageRoute implements OnInit {
 
   signInWithApple(): void {
     this.apple.set('…');
+    const start = Date.now();
     this.#appleSignIn.signIn({ scopes: ['email'] }).then(
       () => this.apple.set('signed in'),
-      (error: unknown) =>
-        this.apple.set(
-          error instanceof AppleSignInError ? error.code : String(error),
-        ),
+      (error: unknown) => {
+        const code =
+          error instanceof AppleSignInError ? error.code : String(error);
+        // "held" when the request stayed open for a while, as it does
+        // behind iOS's alert until the flow closes it. One iOS refused at
+        // once, as it refuses an app without the entitlement, shows the
+        // code alone.
+        this.apple.set(Date.now() - start >= 2000 ? `${code} (held)` : code);
+      },
     );
   }
 

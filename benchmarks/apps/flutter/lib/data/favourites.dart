@@ -7,7 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// and fills in once storage has been read.
 class Favourites extends ChangeNotifier {
   Favourites._() {
-    _load();
+    _loaded = _load();
   }
 
   static final instance = Favourites._();
@@ -15,6 +15,10 @@ class Favourites extends ChangeNotifier {
   static const _key = 'favourites';
 
   final _ids = <String>{};
+
+  /// The first read of storage. Writes wait for it, so a toggle made while it
+  /// runs can't store a set without the ids still being read.
+  late final Future<void> _loaded;
 
   /// The ids in ascending order, as the original lists them: it keeps them as
   /// a JavaScript object's keys, which run in numeric order for ids.
@@ -25,7 +29,15 @@ class Favourites extends ChangeNotifier {
   void toggle(String id) {
     if (!_ids.remove(id)) _ids.add(id);
     notifyListeners();
-    SharedPreferencesAsync().setStringList(_key, _ids.toList());
+    _save();
+  }
+
+  /// Stores the whole set once storage has been read. Every pending save
+  /// resumes in order after that read and writes the set as it is then, so the
+  /// last one stores the latest set.
+  Future<void> _save() async {
+    await _loaded;
+    await SharedPreferencesAsync().setStringList(_key, _ids.toList());
   }
 
   Future<void> _load() async {

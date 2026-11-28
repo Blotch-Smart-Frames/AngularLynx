@@ -1,0 +1,46 @@
+# Layer 6, the app's own builds only: LynxTracking (issue #935). The harness
+# asks for angular.json's `permissions.tracking` (addTracking in
+# src/scaffold.ts), which keeps the tracking module in the shells, writes
+# NSUserTrackingUsageDescription and declares Android's AD_ID. The linking
+# page's "Tracking" line calls requestPermission() and shows the answer. On
+# iOS that shows App Tracking Transparency's prompt, which is what proves the
+# shell registered the module by name (LynxViewController.swift): without it,
+# the line shows "unsupported" and nothing opens. Asking the app not to track
+# shows "denied". Android has no prompt: the module reads the advertising ID
+# from Google Play services, which the emulator's Google APIs image has (the
+# `target` in e2e.yml), so it answers `authorized`, or `denied` once someone
+# opted out on it. A host without the module answers `unsupported`, which the
+# flow doesn't accept, so it fails if the shell stops registering the module.
+appId: ${APP_ID}
+---
+- runFlow: open-app.yaml
+- tapOn: Open storage
+- tapOn: Open canvas
+- tapOn: Open linking
+- tapOn: 'Tracking: tap'
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      # The prompt, or, on a simulator where an earlier run already
+      # answered it, the answer: iOS asks once per install.
+      - extendedWaitUntil:
+          visible: 'Ask App Not to Track|Tracking: denied'
+          timeout: 15000
+      - runFlow:
+          when:
+            visible: Ask App Not to Track
+          commands:
+            - takeScreenshot: tracking-prompt
+            - tapOn: Ask App Not to Track
+      - extendedWaitUntil:
+          visible: 'Tracking: denied'
+          timeout: 15000
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - extendedWaitUntil:
+          visible: 'Tracking: (authorized|denied)'
+          timeout: 15000
+- takeScreenshot: tracking

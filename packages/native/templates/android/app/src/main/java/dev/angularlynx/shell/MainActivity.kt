@@ -367,6 +367,13 @@ class MainActivity : FragmentActivity(), ShellModule.Host, WebAuthModule.Host {
             // calendar is built without the module and these lines.
             registerModule(CalendarModule.NAME, CalendarModule::class.java, calendarHost)
             // /angular-lynx:calendar
+            // angular-lynx:tracking
+            // The advertising ID's opt-out behind LynxTracking
+            // (TrackingModule.kt). An app whose angular.json doesn't set
+            // permissions.tracking is built without the module, these lines
+            // and Play's advertising ID library.
+            registerModule(TrackingModule.NAME, TrackingModule::class.java, null)
+            // /angular-lynx:tracking
             // The shortcuts the person runs from the app icon's menu, which
             // LynxShortcuts takes (ShortcutsModule.kt).
             registerModule(ShortcutsModule.NAME, ShortcutsModule::class.java, null)

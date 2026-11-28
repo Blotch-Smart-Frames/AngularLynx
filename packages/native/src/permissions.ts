@@ -66,6 +66,18 @@ export const PERMISSION_MAP: Record<
     ios: ['NSFaceIDUsageDescription'],
     android: ['android.permission.USE_BIOMETRIC'],
   },
+  // Tracking the person across other companies' apps and websites, as an ad
+  // or install-attribution SDK does with the advertising ID: iOS (14.5 and
+  // later) won't hand over the advertising ID until the person allows it in App
+  // Tracking Transparency's prompt, which shows this reason, and ends an app
+  // that asks without one. Android 13 and later give an app that doesn't
+  // declare AD_ID a zeroed advertising ID. The shells' tracking module, and
+  // Google Play's advertising ID library on Android, are only in apps that
+  // ask for this (LynxTracking).
+  tracking: {
+    ios: ['NSUserTrackingUsageDescription'],
+    android: ['com.google.android.gms.permission.AD_ID'],
+  },
   // iOS asks for notification permission at runtime without a usage string.
   notifications: {
     ios: [],

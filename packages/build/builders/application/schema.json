@@ -281,6 +281,10 @@
         "biometrics": {
           "type": "string",
           "description": "Why the app asks for Face ID, Touch ID or a fingerprint (LynxBiometrics, and LynxSecureStorage's requireBiometrics): iOS shows it the first time the app uses Face ID, and it's the prompt's default reason on both platforms. Without it, the app has no biometrics module."
+        },
+        "tracking": {
+          "type": "string",
+          "description": "Why the app tracks the person across other companies' apps and websites, as an ad or attribution SDK does with the advertising ID (LynxTracking): iOS shows it in App Tracking Transparency's prompt (NSUserTrackingUsageDescription), and Android declares the AD_ID permission. Without it, the app has no tracking module."
         }
       }
     },

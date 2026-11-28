@@ -36,8 +36,9 @@ const ORIENTATIONS: Record<Orientation, readonly string[]> = {
  * (IOS_ENTITLEMENTS) become Config/App.entitlements, and the icon and the splash go in the asset
  * catalog. The barcode scanner's module stays only in an app with the
  * `camera` permission, the store review module only in an app with
- * `storeReview`, the calendar module only in one with `calendar`, and the
- * Sign in with Apple module only in one with `signInWithApple`.
+ * `storeReview`, the calendar module only in one with `calendar`, the
+ * Sign in with Apple module only in one with `signInWithApple`, and the
+ * tracking module only in one with `permissions.tracking`.
  */
 /** LynxBarcodeScanner's module, which needs the `camera` permission. */
 export const IOS_BARCODE_SCANNER_SOURCE = 'App/BarcodeScannerModule.swift';
@@ -130,6 +131,12 @@ export const iosGenerator: PlatformGenerator = {
     if (!app.signInWithApple) {
       removeTemplateFiles(dir, [IOS_APPLE_SIGN_IN_SOURCE]);
     }
+    // App Tracking Transparency's prompt is only for an app that says why it
+    // tracks (`permissions.tracking`): iOS ends an app that asks without
+    // NSUserTrackingUsageDescription.
+    if (!app.permissions.tracking) {
+      removeTemplateFiles(dir, [IOS_TRACKING_SOURCE]);
+    }
     if (features.webgl) return;
     if (features.canvas) {
       // A 2D canvas keeps the module and the canvas's view, without the
@@ -164,6 +171,12 @@ export const IOS_CALENDAR_SOURCE = 'App/CalendarModule.swift';
 
 /** The module behind `LynxAppleSignIn`, which only `signInWithApple` keeps. */
 export const IOS_APPLE_SIGN_IN_SOURCE = 'App/AppleSignInModule.swift';
+
+/**
+ * The module behind `LynxTracking`, which only an app with
+ * `permissions.tracking` keeps.
+ */
+export const IOS_TRACKING_SOURCE = 'App/TrackingModule.swift';
 
 /**
  * The shell's biometrics module, `AngularLynxBiometrics` (LynxBiometrics, and

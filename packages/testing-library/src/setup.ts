@@ -32,6 +32,7 @@ import { installLinkingModule } from './linking.js';
 import { installShortcutsModule } from './shortcuts.js';
 import { installStoreReviewModule } from './store-review.js';
 import { installAppleSignInModule } from './apple-sign-in.js';
+import { installTrackingModule } from './tracking.js';
 
 // ─── CSS fetch intercept ─────────────────────────────────────────────────────
 
@@ -127,6 +128,9 @@ const frameOnInstalledTimers = (threadGlobals: any): void => {
   // LynxStoreReview's requests, which reviewRequests() counts (see
   // store-review.ts).
   installStoreReviewModule(threadGlobals);
+  // LynxTracking's status and prompt, which setTrackingStatus() and
+  // setTrackingAnswer() steer and trackingPrompts() counts (see tracking.ts).
+  installTrackingModule(threadGlobals);
   // LynxCalendar's events, which calendarEvents() lists and
   // answerCalendarSheet() closes the editor for (see calendar.ts).
   installCalendarModule(threadGlobals);

@@ -174,6 +174,7 @@ export const scaffoldApp = async (
   addStoreReview(appDir);
   addCalendar(appDir);
   addSignInWithApple(appDir);
+  addTracking(appDir);
   step('Layer 2: compile a prebuilt library');
   await addPrebuiltLibrary(appDir, pm, exec);
 
@@ -1444,6 +1445,39 @@ const addBiometrics = (appDir: string) => {
     biometrics: 'Checks that the E2E app reaches Face ID',
   };
   writeFileSync(workspacePath, `${JSON.stringify(workspace, null, 2)}\n`);
+};
+
+/**
+ * Asks for tracking, so the native builds keep the shells' tracking module
+ * and the Android one Google Play's advertising ID library (#935), which
+ * only a build shows still compiles and links. native/tracking.yaml shows
+ * App Tracking Transparency's prompt. compile-features.ts builds the shells
+ * without it, as most apps get them.
+ */
+const addTracking = (appDir: string) => {
+  step('Layer 2: ask for tracking, so the native builds keep their module');
+  const workspacePath = path.join(appDir, 'angular.json');
+  const workspace = readJson<{
+    projects: Record<
+      string,
+      { architect?: Record<string, { options?: Record<string, unknown> }> }
+    >;
+  }>(workspacePath);
+  const options = Object.values(workspace.projects)[0]?.architect?.['build']
+    ?.options;
+  check(
+    options !== undefined,
+    "angular.json's build target has no options; the project `ng new` generates has changed shape. Update addTracking() in packages/e2e/src/scaffold.ts.",
+  );
+  options['permissions'] = {
+    ...(options['permissions'] as Record<string, string> | undefined),
+    tracking: 'Checks that the E2E app reaches the tracking prompt',
+  };
+  writeFileSync(
+    workspacePath,
+    `${JSON.stringify(workspace, null, 2)}
+`,
+  );
 };
 
 /**

@@ -346,6 +346,7 @@ export default defineConfig({
               text: 'LynxStoreReview',
               link: '/api/angular-lynx/store-review',
             },
+            { text: 'LynxTracking', link: '/api/angular-lynx/tracking' },
             { text: 'LynxCalendar', link: '/api/angular-lynx/calendar' },
             {
               text: 'LynxAppleSignIn',

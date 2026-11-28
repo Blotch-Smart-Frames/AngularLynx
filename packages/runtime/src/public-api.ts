@@ -266,6 +266,8 @@ export type { SessionStorageSubscription } from './lib/session-storage';
 export { LynxShare, ShareError } from './lib/share';
 export type { ShareData, ShareErrorCode, ShareFile } from './lib/share';
 export { LynxStoreReview } from './lib/store-review';
+export { LynxTracking } from './lib/tracking';
+export type { TrackingStatus } from './lib/tracking';
 export { CalendarError, LynxCalendar } from './lib/calendar';
 export type {
   CalendarErrorCode,

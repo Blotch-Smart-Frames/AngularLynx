@@ -120,13 +120,14 @@ const collectedFromArrays = async (): Promise<string> => {
  * the shell's module answer. Google Play shows nothing to an app it didn't
  * install, so on Android it only resolves.
  *
- * "Motion", on the row below, reads the phone's motion sensors with
- * LynxMotion (issue #920), which the app has because the harness sets
- * angular.json's `motion`. A tap shows how many of the four sensors the
- * phone has, then the size of the first acceleration it samples, gravity
- * included, so 9.8 m/s² on a phone at rest. The Android emulator has every
- * sensor, so the flow sees a sample come through the shell's module and its
- * event; the iOS Simulator has none, and shows `0 sensors`.
+ * "Motion", beside "Rating" (a row lower is below the fold of CI's
+ * emulator), reads the phone's motion sensors with LynxMotion (issue #920),
+ * which the app has because the harness sets angular.json's `motion`. A tap
+ * shows the size of the first acceleration it samples in m/s², gravity
+ * included, so `Motion: 9.8` on a phone at rest, or `Motion: none` without
+ * an accelerometer. It's short to fit beside the others on a small screen.
+ * The Android emulator has one, so the flow sees a sample come through the
+ * shell's module and its event; the iOS Simulator has none.
  */
 @Component({
   selector: 'app-storage',
@@ -173,15 +174,13 @@ const collectedFromArrays = async (): Promise<string> => {
       <text flatten="false" style="margin-left: 16px;" (bindtap)="rate()"
         >Rating: {{ rating() }}</text
       >
+      <text flatten="false" style="margin-left: 16px;" (bindtap)="readMotion()"
+        >Motion: {{ motion() }}</text
+      >
     </view>
     <view style="display: flex; flex-direction: row; margin-top: 8px;">
       <text flatten="false" (bindtap)="authenticate()"
         >Biometrics: {{ biometrics() }}</text
-      >
-    </view>
-    <view style="display: flex; flex-direction: row; margin-top: 8px;">
-      <text flatten="false" (bindtap)="readMotion()"
-        >Motion: {{ motion() }}</text
       >
     </view>
   `,
@@ -261,15 +260,14 @@ export class StorageRoute implements OnInit {
 
   readMotion(): void {
     this.motion.set('…');
-    void this.#motion.availability().then((available) => {
-      const sensors = Object.values(available).filter(Boolean).length;
-      this.motion.set(`${sensors} sensors`);
-      if (!available.acceleration) return;
+    void this.#motion.availability().then(({ acceleration }) => {
+      if (!acceleration) {
+        this.motion.set('none');
+        return;
+      }
       const stop = this.#motion.watchAcceleration(({ x, y, z }) => {
         stop();
-        this.motion.set(
-          `${sensors} sensors, ${Math.hypot(x, y, z).toFixed(1)} m/s²`,
-        );
+        this.motion.set(Math.hypot(x, y, z).toFixed(1));
       });
     });
   }

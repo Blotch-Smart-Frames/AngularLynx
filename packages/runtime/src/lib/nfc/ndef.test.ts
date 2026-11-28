@@ -132,6 +132,8 @@ describe('encodeRecord', () => {
   it("keeps a URI's case, using a prefix only where it's written the same", () => {
     for (const value of [
       'ftp://Anonymous:Secret@example.com/a',
+      // Once read back as ftp://anonymous:anonymous@, another user and password.
+      'ftp://Anonymous:Anonymous@example.com/a',
       'FTP://anonymous:anonymous@example.com',
       'HTTPS://example.com',
     ]) {

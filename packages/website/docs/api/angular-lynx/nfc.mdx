@@ -76,7 +76,7 @@ await this.nfc.write(
 );
 ```
 
-`write()` replaces what the next tag holds. It rejects with `readOnly` for a locked tag, and `tooLarge` when the records don't fit. It rejects with a `TypeError`, before anything opens, for no records or a record a tag can't hold.
+`write()` replaces what the next tag holds. It rejects with `readOnly` for a locked tag, and `tooLarge` when the records don't fit. It throws a `TypeError` before any tag comes near for no records or an invalid one, such as a `mime` record without a media type. Records too big for the tag are `tooLarge`, which only the tag can tell.
 
 ## Read several tags
 
@@ -136,7 +136,7 @@ Only one call is open at a time: another rejects with `busy`. `state` is asked a
 
 ### `NfcError`
 
-Every call rejects with an `NfcError` (apart from `write()`'s `TypeError` for records it can't write), whose `code` is one of:
+Every call rejects with an `NfcError` (apart from `write()`'s `TypeError` for invalid records), whose `code` is one of:
 
 | Code          | When                                                             |
 | ------------- | ---------------------------------------------------------------- |

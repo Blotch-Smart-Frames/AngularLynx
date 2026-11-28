@@ -341,8 +341,8 @@ export class LynxNfc {
   /**
    * Writes `records` to the next tag that comes near the phone, replacing
    * what it held, and resolves with the tag as written. On iOS it opens the
-   * scan sheet with `alertMessage`. Throws a `TypeError` for a record a tag
-   * can't hold, and rejects with an {@link NfcError}: `readOnly` for a
+   * scan sheet with `alertMessage`. Throws a `TypeError` for no records or an
+   * invalid one, before anything opens, and rejects with an {@link NfcError}: `readOnly` for a
    * locked tag, `tooLarge` when the records don't fit.
    */
   async write(

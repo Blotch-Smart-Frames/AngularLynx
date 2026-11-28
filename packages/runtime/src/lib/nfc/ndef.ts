@@ -222,8 +222,8 @@ const raw = (
 });
 
 /**
- * A record to write, for the module. Throws a `TypeError` for one a tag
- * can't hold, before anything opens.
+ * A record to write, for the module. Throws a `TypeError` for an invalid
+ * record, before anything opens. Whether it fits is the tag's to say.
  */
 export const encodeRecord = (record: NfcRecordInit): RawNdefRecord => {
   switch (record.type) {

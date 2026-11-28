@@ -55,6 +55,36 @@ Measured on the iOS Simulator (iPhone 18 Pro, iOS 27), the benchmark Pokédex bu
 
 So componentAtIndex, which the list's layout waits for, takes about a third of what it did (about 49 ms per trace down to 15), and the work it lost runs in the timer tasks after it: the same instructions in all. Under `node --jitless` against `list-for.test.ts`'s fake list (the benchmark's row, a 10-row window, 4,000 binds, 3 rounds alternating), componentAtIndex went from 88–95 µs a row to 4.2–4.5 µs, with 96–104 µs and 99–103 µs of JavaScript per row in all. The scroll test's screenshots show the rows as on master. The engine thread also runs Lynx's animator, so the work still costs a frame there; what changes is that the list no longer waits for it.
 
+## Binding more than one row ahead: nothing left to bind (2026-11-28, #901)
+
+Binding one row per idle moment left some rows to be checked inside `componentAtIndex`. #901 asked whether native asks for several rows per frame in a fling, so that binding as many rows ahead as it asked for since the last idle moment would catch them. It doesn't, and the rows that miss can't be bound ahead from the pool anyway. So the runtime still binds one row ahead.
+
+**The setup.** A throwaway build of the benchmark Pokédex (`benchmarks/apps/angular-lynx`, master's packages packed in) counted, in the runtime's packed copy:
+
+- each `*lynxListFor` row native asked for, and whether its view was checked ahead;
+- how many it asked for between two bind-ahead timers;
+- why a guess bound nothing (its item had a view, or no view was free);
+- the views built.
+
+An overlay showed the counts in the screenshots. On the iOS Simulator (iPhone 18 Pro, iOS 27), the scroll test ran its 5 swipes (a warm-up and 4 measured). On the Android emulator (the E2E tests' AVD, 1080×2400), 5 swipes of `adb shell input swipe` over 60 ms each threw the list about five times as far. A variant gave the rows 36 px rather than 106, so a fling crosses about three times as many. A second build bound as many rows ahead as native asked for since the last timer (up to 4), from the pool, without taking a view bound ahead for another of them.
+
+**Per 5 swipes, on master** (the first screen's rows left out; ranges are 2 runs):
+
+|                                       | iOS, the benchmark's rows | iOS, 36 px rows | Android |
+| ------------------------------------- | ------------------------- | --------------- | ------- |
+| Rows native asked for while scrolling | 38–39                     | 111–112         | 243     |
+| … whose view was checked ahead        | 35–36                     | 75–77           | 221–223 |
+| … that needed a new view (built)      | 3                         | 35–36           | 20–22   |
+| Idle moments with 2 rows asked for    | 0                         | 1–2             | 14–16   |
+| Idle moments with 1                   | 38–39                     | 107–110         | 211–215 |
+
+- **Native asks for one row per idle moment.** On iOS it did for every row of the benchmark's flings, and for all but one or two rows in about 110 with rows a third as tall. On Android it asked for two in about 6% of the idle moments, in flings far faster than the iOS test's.
+- **Every row that misses needs a new view.** A guess never found its item with a view already, and every row that wasn't checked ahead was one native asked for while the pool was empty: the first rows to scroll in (the 3 on iOS), or, with shorter rows or faster flings, a list that needs more views than it has built so far. Binding ahead takes only a view native let go of, so binding further ahead has nothing to bind them with. Building a view ahead would cost memory for an item native may never ask for, which #888 declined.
+- **The multi-row build changed nothing measurable.** On Android it found a view checked ahead for 176 of 193 rows (91.2%), against 90.9–91.8% on master. Its second guesses mostly found no free view (9 of the 12 idle moments with two rows). On the iOS Simulator the share swung from run to run on both builds (39–91 of 112 with 36 px rows on it, 60–90 on master). That build is on the branch [`fix/al-901-multirow-archive`](https://github.com/Blotch-Smart-Frames/AngularLynx/tree/fix/al-901-multirow-archive) ([`984297f3`](https://github.com/Blotch-Smart-Frames/AngularLynx/commit/984297f3), on master `b8aab286`), with no PR.
+- **Android takes a row checked ahead as iOS does.** Its platform list (`UIListAdapter` in `lynx-family/lynx`'s `platform/android`) lets go of a row's element when its view leaves the window (`onViewDetachedFromWindow` → `recycleHolderComponent` → enqueueComponent). When it asks for the element again, it puts the same `UIComponent`, props and all, in the new holder. The reuse notification (`LynxUIOwner.reuseListNode` → `onListCellPrepareForReuse`) only resets a `<scroll-view>`'s offset, so it doesn't undo the props the whole-tree flush committed before it. The screenshots after the Android flings show every row's name, number, sprite and type dots agreeing.
+
+These are counts, not times: with the same rows checked ahead, `componentAtIndex` has the same work on both builds, so this didn't take Time Profiler traces. Each count is one run on a Mac shared with other simulators.
+
 ## What a rebound row costs, and what its shape changes (2026-11-28, #885)
 
 After #884, the runtime's own share of a rebound row is small. Most of `componentAtIndex`'s JavaScript is Angular checking the row (`ListItemViews.bind()` → `detectChanges()`), and the runtime can't make a view cheaper to check. What a row's template asks for decides most of it.

@@ -47,8 +47,8 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from android_launch import find_adb  # noqa: E402
-from ios_mount import split_session  # noqa: E402
+from android_launch import FIELDS, find_adb  # noqa: E402
+from ios_mount import check_outs, split_or_keep, split_session  # noqa: E402,F401
 from track import app_fastest  # noqa: E402
 
 KINDS = ("view", "text", "image")
@@ -138,8 +138,17 @@ def main():
     os.makedirs(folder, exist_ok=True)
     extra = ["--max-load", args.max_load] if args.max_load else []
     outs = {}
+    kinds = list(dict.fromkeys(kind for kind, _ in screens))
+
+    def csv_for(kind, count):
+        return os.path.join(folder, f"mount-{date}-{kind}-{count}-{args.rival}.csv")
+
+    # Every kind's CSVs before the first build: a session's goes to a new
+    # file, so android_launch.py can't refuse one of the day's CSVs from an
+    # older harness, and split_session() would only find it after the runs.
+    check_outs([csv_for(kind, count) for kind, count in screens], FIELDS)
     # One session per kind, in the order the kinds first come in --screens.
-    for kind in dict.fromkeys(kind for kind, _ in screens):
+    for kind in kinds:
         counts = [count for k, count in screens if k == kind]
         apps, labels = session_apps(args.rival, counts)
         for label, app_id in apps:
@@ -147,7 +156,7 @@ def main():
             screen = f"mount?kind={kind}&count={count}"
             print(f"== {screen}: building {name}", flush=True)
             build_and_install(adb, args.device, name, app_id, screen)
-        kind_outs = {count: os.path.join(folder, f"mount-{date}-{kind}-{count}-{args.rival}.csv") for count in counts}
+        kind_outs = {count: csv_for(kind, count) for count in counts}
         outs.update({(kind, count): out for count, out in kind_outs.items()})
         with tempfile.TemporaryDirectory() as work:
             combined = os.path.join(work, f"mount-{date}-{kind}-{args.rival}.csv")
@@ -167,7 +176,9 @@ def main():
                 # What a session measured before it failed is still kept,
                 # as android_launch.py's own rows are.
                 if os.path.exists(combined):
-                    split_session(combined, kind_outs, labels)
+                    # Not named mount-*, which track.py reads.
+                    keep = os.path.join(folder, f"session-{date}-{kind}-{args.rival}.csv")
+                    split_or_keep(combined, kind_outs, labels, keep)
     rows = {}
     for screen, out in outs.items():
         with open(out, newline="") as file:

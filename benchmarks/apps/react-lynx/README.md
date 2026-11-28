@@ -38,7 +38,7 @@ Instruments launches an app without a URL, so the mount screen (`SPEC.md`, "Benc
 BENCH_SCREEN='mount?kind=view&count=1500' APP_ID=com.angularlynx.bench.reactlynx.mount npm run build:ios
 ```
 
-`kind` is `view`, `text` or `image`, `count` any number (the SPEC uses 1500 and 5000). The screen marks `Fully Drawn` after the commit that shows all `count` elements. A different `APP_ID` per variant lets them sit beside the Pokédex build on one device.
+`kind` is `view`, `text` or `image`, `count` any number (the SPEC uses 1500 and 5000; on the Simulator, `harness/ios_mount.py` runs 1500 and 15000). The screen marks `Fully Drawn` after the commit that shows all `count` elements. A different `APP_ID` per variant lets them sit beside the Pokédex build on one device.
 
 ### For the phone
 

@@ -7,9 +7,9 @@ import UIKit
 /// NativeModules lives).
 ///
 /// `signIn` opens Sign in with Apple's own sheet
-/// (`ASAuthorizationAppleIDProvider`) over the app's key window, which App
-/// Review expects beside other social logins (guideline 4.8), and calls back
-/// once with the credential: the stable user identifier, the identity token
+/// (`ASAuthorizationAppleIDProvider`) over the app's key window, the usual
+/// way to meet App Review's guideline 4.8 beside other social logins, and
+/// calls back once with the credential: the stable user identifier, the identity token
 /// and the authorization code the app's server checks with Apple, and the
 /// email and name, which Apple gives only on the person's first sign-in.
 /// `credentialState` asks Apple whether a user identifier is still signed in,

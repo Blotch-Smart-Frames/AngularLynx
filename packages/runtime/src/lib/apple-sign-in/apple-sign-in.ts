@@ -130,8 +130,8 @@ const unsupported = () =>
 
 /**
  * Signs in with Apple's own sheet on iOS (`ASAuthorizationAppleIDProvider`),
- * which App Review expects when the app offers another third-party login
- * (guideline 4.8). It resolves with the user identifier, an identity token
+ * the usual way to meet guideline 4.8, which asks an app with a third-party
+ * login to also offer one that keeps the person's data private. It resolves with the user identifier, an identity token
  * and an authorization code for the app's server to check with Apple, and,
  * on the first sign-in only, the email and name the person chose to share.
  *

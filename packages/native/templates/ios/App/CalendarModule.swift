@@ -78,6 +78,13 @@ final class CalendarModule: NSObject, LynxModule, EKEventEditViewDelegate,
       callback(["error": "failed", "message": "There's no screen to open the editor over."])
       return
     }
+    // UIKit refuses to present over a controller that's still coming or
+    // going, and then never calls the editor's delegate, which would leave
+    // this request unanswered and every later one "already open".
+    guard !presenter.isBeingPresented, !presenter.isBeingDismissed else {
+      callback(["error": "failed", "message": "Another screen is still opening or closing."])
+      return
+    }
     // A store with no access is all the editor needs from iOS 17: it saves
     // the event in its own process.
     let store = EKEventStore()
@@ -102,12 +109,17 @@ final class CalendarModule: NSObject, LynxModule, EKEventEditViewDelegate,
   func eventEditViewController(
     _ controller: EKEventEditViewController, didCompleteWith action: EKEventEditViewAction
   ) {
-    controller.dismiss(animated: true)
     // .deleted can't happen to an event that was never saved; it's a cancel
     // to the app.
-    finish(action == .saved ? "saved" : "canceled")
+    let result = action == .saved ? "saved" : "canceled"
+    // Answered once the editor has gone, so `open` keeps a second addEvent()
+    // out until UIKit can present again.
+    controller.dismiss(animated: true) {
+      self.finish(result)
+    }
   }
 
+  // Called once a swipe down has finished closing the sheet.
   func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
     finish("canceled")
   }

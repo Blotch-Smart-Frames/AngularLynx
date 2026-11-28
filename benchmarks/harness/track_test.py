@@ -140,6 +140,33 @@ class DayTest(unittest.TestCase):
         self.assertIsNone(track.ratio(record("2026-11-28", {"mount.view.us_per_element": -0.1}), "mount.view.us_per_element"))
 
 
+class MountFilesTest(unittest.TestCase):
+    def test_takes_each_kinds_newest_date_only(self):
+        with tempfile.TemporaryDirectory() as folder:
+            for name in (
+                # An earlier run's view screens, the newer run's 1,500 and
+                # 5,000; and a text run only on the earlier day.
+                "mount-2026-11-27-view-1500-react-lynx.csv",
+                "mount-2026-11-27-view-15000-react-lynx.csv",
+                "mount-2026-11-28-view-1500-react-lynx.csv",
+                "mount-2026-11-28-view-5000-react-lynx.csv",
+                "mount-2026-11-27-text-1500-react-lynx.csv",
+                "mount-2026-11-27-text-15000-react-lynx.csv",
+                "mount-2026-11-28-view-1500-react-native.csv",
+            ):
+                open(os.path.join(folder, name), "w").close()
+            files = {key: os.path.basename(path) for key, path in track.mount_files(folder).items()}
+        self.assertEqual(
+            files,
+            {
+                ("view", 1500): "mount-2026-11-28-view-1500-react-lynx.csv",
+                ("view", 5000): "mount-2026-11-28-view-5000-react-lynx.csv",
+                ("text", 1500): "mount-2026-11-27-text-1500-react-lynx.csv",
+                ("text", 15000): "mount-2026-11-27-text-15000-react-lynx.csv",
+            },
+        )
+
+
 class SustainedChangeTest(unittest.TestCase):
     def test_three_days_over_the_threshold_are_a_change(self):
         history = days(1.0, 1.02, 0.98, 1.0, 1.15, 1.2, 1.18)

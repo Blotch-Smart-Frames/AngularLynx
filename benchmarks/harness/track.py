@@ -102,16 +102,24 @@ def app_fastest(rows, app, column):
 
 
 def mount_files(folder):
-    """The newest mount CSV against ReactLynx for each screen, by kind and
-    count. ios_mount.py names them mount-<date>-<kind>-<count>-<rival>.csv."""
-    files = {}
+    """The mount CSVs against ReactLynx of each kind's newest date, by kind
+    and count. ios_mount.py names them mount-<date>-<kind>-<count>-<rival>.csv.
+
+    Only the kind's newest date: day() takes the kind's smallest and largest
+    counts, whichever they are, so an earlier run's 15,000-element CSV left
+    in the folder would otherwise pair with a later run's 1,500, a cost from
+    two sessions. The date is ios_mount.py's, the Mac's own, so it's taken
+    from the names rather than matched to the launches' timestamps (UTC)."""
+    found = {}
     pattern = re.compile(rf"^mount-(\d{{4}}-\d\d-\d\d)-(\w+)-(\d+)-{RIVAL}\.csv$")
-    for path in sorted(glob.glob(os.path.join(folder, f"mount-*-{RIVAL}.csv"))):
+    for path in glob.glob(os.path.join(folder, f"mount-*-{RIVAL}.csv")):
         match = pattern.match(os.path.basename(path))
         if match:
-            # Sorted by name, so a later date replaces an earlier one.
-            files[(match.group(2), int(match.group(3)))] = path
-    return files
+            found[(match.group(1), match.group(2), int(match.group(3)))] = path
+    newest = {}
+    for date, kind, _ in found:
+        newest[kind] = max(newest.get(kind, date), date)
+    return {(kind, count): path for (date, kind, count), path in found.items() if date == newest[kind]}
 
 
 def day(launch_rows, mount_rows, date, commit, run_url):

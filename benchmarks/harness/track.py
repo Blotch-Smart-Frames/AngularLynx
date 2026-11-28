@@ -17,8 +17,18 @@ mount screens (ios_mount.py, `mount-<date>-<kind>-<count>-react-lynx.csv`),
 and works out, for AngularLynx and ReactLynx:
 
 - the Pokédex's median fully drawn time and memory
-- the cost of each view, text and image: (median of the 5,000-element
-  screen - median of the 1,500-element screen) / 3,500
+- the cost of each view, text and image: (fastest launch of the kind's
+  largest screen - fastest launch of its smallest) / the elements between
+  them. On the Simulator, ios_mount.py launches 1,500 and 15,000 (#882).
+
+The costs per element take each screen's fastest launch rather than its
+median because the difference of two launches is small against the
+launches: the Simulator's launch alone takes 1.6-2 s, and the host only ever
+adds to it, a few launches in ten by up to a second. Those pulled a median
+of 10 up by 100-200 ms on one screen and not the other, and gave costs below
+zero. The fastest launch is the one the host held up least: in one session,
+each AngularLynx cost from 1,500 and 5,000 elements came within 3% of the
+same cost from 1,500 and 15,000.
 
 A Simulator's times aren't a phone's, and the host moves them by 5-30% from
 one run to the next, so what's tracked is the ratio of each, AngularLynx /
@@ -49,7 +59,6 @@ OURS = "angular-lynx"
 RIVAL = "react-lynx"
 NAMES = {OURS: "AngularLynx", RIVAL: "ReactLynx"}
 KINDS = ("view", "text", "image")
-SMALL, LARGE = 1500, 5000
 SIMULATOR_NAME = "AngularLynx Benchmarks"
 
 # Each tracked measure: its label, unit and how many decimals to print. A
@@ -87,17 +96,30 @@ def app_median(rows, app, column):
     return median(number(row.get(column)) for row in rows if row["app"] == app)
 
 
+def app_fastest(rows, app, column):
+    values = [value for value in (number(row.get(column)) for row in rows if row["app"] == app) if value is not None]
+    return min(values) if values else None
+
+
 def mount_files(folder):
-    """The newest mount CSV against ReactLynx for each screen, by kind and
-    count. ios_mount.py names them mount-<date>-<kind>-<count>-<rival>.csv."""
-    files = {}
+    """The mount CSVs against ReactLynx of each kind's newest date, by kind
+    and count. ios_mount.py names them mount-<date>-<kind>-<count>-<rival>.csv.
+
+    Only the kind's newest date: day() takes the kind's smallest and largest
+    counts, whichever they are, so an earlier run's 15,000-element CSV left
+    in the folder would otherwise pair with a later run's 1,500, a cost from
+    two sessions. The date is ios_mount.py's, the Mac's own, so it's taken
+    from the names rather than matched to the launches' timestamps (UTC)."""
+    found = {}
     pattern = re.compile(rf"^mount-(\d{{4}}-\d\d-\d\d)-(\w+)-(\d+)-{RIVAL}\.csv$")
-    for path in sorted(glob.glob(os.path.join(folder, f"mount-*-{RIVAL}.csv"))):
+    for path in glob.glob(os.path.join(folder, f"mount-*-{RIVAL}.csv")):
         match = pattern.match(os.path.basename(path))
         if match:
-            # Sorted by name, so a later date replaces an earlier one.
-            files[(match.group(2), int(match.group(3)))] = path
-    return files
+            found[(match.group(1), match.group(2), int(match.group(3)))] = path
+    newest = {}
+    for date, kind, _ in found:
+        newest[kind] = max(newest.get(kind, date), date)
+    return {(kind, count): path for (date, kind, count), path in found.items() if date == newest[kind]}
 
 
 def day(launch_rows, mount_rows, date, commit, run_url):
@@ -106,18 +128,24 @@ def day(launch_rows, mount_rows, date, commit, run_url):
     metrics = {}
     for column, metric in (("fully_drawn_ms", "launch.fully_drawn_ms"), ("memory_mb", "launch.memory_mb")):
         metrics[metric] = {app: app_median(launch_rows, app, column) for app in (OURS, RIVAL)}
+    counts = {}
     for kind in KINDS:
-        small = mount_rows.get((kind, SMALL))
-        large = mount_rows.get((kind, LARGE))
-        if small is None or large is None:
+        # The kind's smallest and largest screens, whichever ios_mount.py
+        # ran: the counts aren't fixed, so a run on other counts still
+        # works out a cost per element rather than none.
+        sizes = sorted(count for k, count in mount_rows if k == kind)
+        if len(sizes) < 2:
             continue
+        small, large = sizes[0], sizes[-1]
         costs = {}
         for app in (OURS, RIVAL):
-            a = app_median(small, app, "fully_drawn_ms")
-            b = app_median(large, app, "fully_drawn_ms")
-            # Milliseconds over 3,500 elements, in microseconds each.
-            costs[app] = (b - a) / (LARGE - SMALL) * 1000 if a is not None and b is not None else None
+            a = app_fastest(mount_rows[(kind, small)], app, "fully_drawn_ms")
+            b = app_fastest(mount_rows[(kind, large)], app, "fully_drawn_ms")
+            # Milliseconds over the elements between them, in microseconds
+            # each.
+            costs[app] = (b - a) / (large - small) * 1000 if a is not None and b is not None else None
         metrics[f"mount.{kind}.us_per_element"] = costs
+        counts[kind] = [small, large]
     all_rows = launch_rows + [row for rows in mount_rows.values() for row in rows]
     launches = {
         app: sum(1 for row in launch_rows if row["app"] == app and number(row.get("fully_drawn_ms")) is not None)
@@ -135,13 +163,17 @@ def day(launch_rows, mount_rows, date, commit, run_url):
         "host_load": median(number(row.get("host_load")) for row in all_rows),
         "launches": launches,
         "failed": failed,
+        # Which screens each cost came from: a cost from 1,500 and 5,000
+        # elements isn't one from 1,500 and 15,000, whose launches' noise
+        # weighs less on it.
+        "mount_counts": counts,
         "metrics": metrics,
     }
 
 
 def ratio(record, metric):
     """AngularLynx / ReactLynx for the metric on a day, or None. A cost of
-    zero or less is noise (the two screens' medians crossed), not a cost."""
+    zero or less is noise (the two screens' launches crossed), not a cost."""
     values = record.get("metrics", {}).get(metric) or {}
     ours, rival = values.get(OURS), values.get(RIVAL)
     if ours is None or rival is None or ours <= 0 or rival <= 0:
@@ -207,6 +239,22 @@ def short(commit):
     return commit[:7] if commit else "–"
 
 
+def screens_note(record):
+    """Which screens the day's costs per element came from, as a sentence."""
+    counts = record.get("mount_counts") or {}
+    if not counts:
+        return ""
+    pairs = {tuple(pair) for pair in counts.values()}
+    if len(pairs) == 1:
+        [(small, large)] = pairs
+        return (
+            f" Each cost per element is from the fastest launch of the {small:,}- and {large:,}-element "
+            "screens."
+        )
+    each = ", ".join(f"{kind} {small:,} and {large:,}" for kind, (small, large) in counts.items())
+    return f" The costs per element are from the fastest launch of these screens: {each}."
+
+
 def summary(history, changes, days, window, threshold):
     latest = history[-1]
     lines = [
@@ -220,7 +268,7 @@ def summary(history, changes, days, window, threshold):
         "",
         "A Simulator's times aren't a phone's, and the host moves them from one run to the next: compare the "
         "ratios, which the host's share mostly cancels out of. The baseline is the median ratio of the "
-        f"{window} days before.",
+        f"{window} days before.{screens_note(latest)}",
         "",
         "| Measure | AngularLynx | ReactLynx | AngularLynx / ReactLynx | Baseline | Change |",
         "|---|---:|---:|---:|---:|---:|",

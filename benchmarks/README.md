@@ -153,10 +153,31 @@ Its numbers aren't a phone's. Every launch takes about 1.45 s longer, and
 memory doesn't rank the apps as a phone does, so they're never charted:
 `results/ios-simulator` isn't read by the website. Within a session they
 compare, as long as the Mac stays quiet. Two builds of one app launched in
-turn came within ±4% of each other (95% intervals), and each app's cost per
-element, (5,000-element screen − 1,500-element screen) / 3,500, separates the
-frameworks clearly. The Simulator runs on the Mac's cores, so a busy Mac
-slows it by 5–30%: the harness waits until the Mac's load average is under
+turn came within ±4% of each other (95% intervals).
+
+Each launch there is mostly the Simulator's own, 1.6–2 s, and the host
+holds a few launches in ten up by as much as a second, so the cost per
+element is worked out differently from a phone's (#882):
+
+- **15,000 elements, not 5,000.** `ios_mount.py --simulator` builds each
+  kind at 1,500 and 15,000: on the Simulator, 3,500 more views add less than
+  its launches move from one to the next.
+- **One session per kind.** Both apps' builds of both screens are installed
+  side by side (`com.angularlynx.bench.angularlynx.m15000` and so on) and
+  launched in turn, so the host's drift falls on both screens alike, and the
+  rows are split into the usual per-screen CSVs.
+- **The fastest launch.** `track.py` takes each screen's fastest launch
+  rather than its median, since the host only ever adds time: (fastest
+  15,000-element launch − fastest 1,500-element launch) / 13,500.
+
+In one session of 10 runs per build, the medians of the 5,000-element
+screens gave every view and image cost an interval reaching below zero; the
+fastest 15,000-element launches gave a view 27.8 µs in AngularLynx and 9.0 µs
+in ReactLynx, a text 73.0 and 50.5 µs, and an image 36.1 and 14.0 µs, each
+AngularLynx cost within 3% of its fastest-launch cost from 5,000 elements.
+
+The Simulator runs on the Mac's cores, so a busy Mac slows it by 5–30%: the
+harness waits until the Mac's load average is under
 `--max-load` (half its cores by default) before each launch, and drops and
 repeats a run whose load went over it. With more than two apps, the order
 rotates as well as reversing, so each app follows each of the others in turn.
@@ -218,7 +239,8 @@ ReactLynx app, launches the Pokédex 20 times each and each of the six mount
 screens 10 times each, and [`harness/track.py`](harness/track.py) reads the
 CSVs. It tracks four things as AngularLynx / ReactLynx: the Pokédex's fully
 drawn time and its memory, and the cost of a view, a text and an image,
-(5,000-element screen − 1,500-element screen) / 3,500. The host moves the
+from each screen's fastest launch, (15,000-element screen − 1,500-element
+screen) / 13,500 (above). The host moves the
 times by 5–30% from one run to the next, but it moves both apps of a session
 alike, so the ratio keeps most of a change in AngularLynx and little of the
 host's.

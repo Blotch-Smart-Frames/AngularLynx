@@ -96,6 +96,27 @@ describe('LynxCalendar', () => {
     await expect(added).resolves.toBe('saved');
   });
 
+  it("takes an all-day event's days, whatever its times", async () => {
+    const { addEvent, finish } = stubModule();
+    const added = createCalendar().addEvent({
+      title: 'Day off',
+      start: new Date(2026, 7, 1, 15),
+      end: new Date(2026, 7, 1, 9),
+      allDay: true,
+    });
+    await vi.waitFor(() => expect(addEvent).toHaveBeenCalled());
+    finish({ result: 'saved' });
+    await expect(added).resolves.toBe('saved');
+    await expect(
+      createCalendar().addEvent({
+        title: 'Day off',
+        start: new Date(2026, 7, 2, 9),
+        end: new Date(2026, 7, 1, 15),
+        allDay: true,
+      }),
+    ).rejects.toThrow(new TypeError("An event can't end before it starts."));
+  });
+
   it('rejects with unavailable where the host has no module', async () => {
     vi.stubGlobal('NativeModules', {});
     const { code, message } = await rejection(

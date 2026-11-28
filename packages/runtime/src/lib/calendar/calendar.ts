@@ -100,7 +100,12 @@ const validate = (event: CalendarEvent): void => {
       throw new TypeError(`An event's ${name} must be a valid Date.`);
     }
   }
-  if (event.end.getTime() < event.start.getTime()) {
+  // An all-day event's times don't matter, only its days: one that starts
+  // at 15:00 and ends at 09:00 on the same day takes that day.
+  const endsBeforeStart = event.allDay
+    ? localDate(event.end) < localDate(event.start)
+    : event.end.getTime() < event.start.getTime();
+  if (endsBeforeStart) {
     throw new TypeError("An event can't end before it starts.");
   }
 };

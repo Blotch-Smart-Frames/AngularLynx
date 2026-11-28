@@ -13,10 +13,10 @@ import Photos
 /// It asks for add-only access (`.addOnly`), the access the share sheet's
 /// Save Image uses: the app can add photos and videos but not see the
 /// library, so iOS asks with NSPhotoLibraryAddUsageDescription, and the app
-/// needs no NSPhotoLibraryUsageDescription. Each file is written to a
-/// temporary file of its own name first and moved into the library from
-/// there, since a video can only be added from a file, and the extension
-/// tells Photos the format. Each method calls back once with
+/// needs no NSPhotoLibraryUsageDescription. A photo goes to Photos as its
+/// bytes; a video, which can only be added from a file, is written to a
+/// temporary file of its own name first, whose extension tells Photos the
+/// format. Each method calls back once with
 /// `{ permission }`, `{ id, permission }` or `{ error, message, permission }`,
 /// where `error` is one of the runtime's PhotoLibraryErrorCode values.
 @objc(AngularLynxPhotoLibraryModule)
@@ -72,28 +72,39 @@ final class PhotoLibraryModule: NSObject, LynxModule {
         ])
         return
       }
-      let directory = FileManager.default.temporaryDirectory
-        .appendingPathComponent("AngularLynxPhotoLibrary", isDirectory: true)
-        .appendingPathComponent(UUID().uuidString, isDirectory: true)
-      let file = directory.appendingPathComponent(name)
-      do {
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try data.write(to: file)
-      } catch {
-        callback(Self.failure("failed", "The file couldn't be written to save: \(error.localizedDescription)", permission))
-        return
+      // A photo goes to Photos as its bytes. A video can only be added from
+      // a file, which Photos copies: having it move the file instead hands
+      // the daemon a sandbox extension for it, and on GitHub's iOS 27.2
+      // Simulator an add that moved a file was taken and never answered.
+      var directory: URL?
+      if isVideo {
+        let folder = FileManager.default.temporaryDirectory
+          .appendingPathComponent("AngularLynxPhotoLibrary", isDirectory: true)
+          .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        do {
+          try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+          try data.write(to: folder.appendingPathComponent(name))
+        } catch {
+          callback(Self.failure("failed", "The file couldn't be written to save: \(error.localizedDescription)", permission))
+          return
+        }
+        directory = folder
       }
       var id: String?
       PHPhotoLibrary.shared().performChanges({
         let creation = PHAssetCreationRequest.forAsset()
         let options = PHAssetResourceCreationOptions()
-        // Photos takes the file over rather than copying it.
-        options.shouldMoveFile = true
+        // The name Photos keeps, and shows when the photo is exported.
         options.originalFilename = name
-        creation.addResource(with: isVideo ? .video : .photo, fileURL: file, options: options)
+        if let directory {
+          creation.addResource(
+            with: .video, fileURL: directory.appendingPathComponent(name), options: options)
+        } else {
+          creation.addResource(with: .photo, data: data, options: options)
+        }
         id = creation.placeholderForCreatedAsset?.localIdentifier
       }) { success, error in
-        try? FileManager.default.removeItem(at: directory)
+        if let directory { try? FileManager.default.removeItem(at: directory) }
         if success, let id {
           callback(["id": id, "permission": permission])
           return

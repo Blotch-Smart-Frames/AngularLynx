@@ -144,6 +144,24 @@ describe('LynxElement classes', () => {
     expect(rebuiltClasses(next, parent)).toBe('a c');
   });
 
+  it("keeps one element's runtime classes off the others with the same scope classes", () => {
+    // Elements with the same scope classes share one list of them (see
+    // withScopeClass), which a change to one must not reach the others by.
+    const first = view();
+    const second = view();
+    const third = view();
+    for (const el of [first, second, third]) el.addScopeClass('_ngcontent-x');
+    first.setRuntimeClass('dark', true);
+    second.setRuntimeClass('dark', true);
+    second.setRuntimeClass('dark', false);
+    second.setRuntimeClass('wide', true);
+    for (const el of [first, second, third]) el.setAttribute('class', 'a');
+
+    expect(rebuiltClasses(first, parent)).toBe('a _ngcontent-x dark');
+    expect(rebuiltClasses(second, parent)).toBe('a _ngcontent-x wide');
+    expect(rebuiltClasses(third, parent)).toBe('a _ngcontent-x');
+  });
+
   it('adds a class after Angular cleared them', () => {
     const el = view();
     el.setAttribute('class', null);

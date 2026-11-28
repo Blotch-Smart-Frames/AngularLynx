@@ -1,5 +1,5 @@
-import { inject, Injectable } from '@angular/core';
-import { LynxNativeModule } from '../native-module/native-module';
+import { Injectable } from '@angular/core';
+import { callOnBackground } from '../background-call';
 
 /**
  * The native module of the apps `ng build --platform` makes
@@ -110,13 +110,6 @@ type ScanResult = {
   readonly message?: string;
 };
 
-type BarcodeScannerModule = {
-  scan(
-    request: { readonly formats: readonly BarcodeFormat[] },
-    done: (result: ScanResult) => void,
-  ): unknown;
-};
-
 const ERROR_CODES: readonly BarcodeScannerErrorCode[] = [
   'canceled',
   'unavailable',
@@ -168,52 +161,43 @@ const DEFAULT_MESSAGES: Record<BarcodeScannerErrorCode, string> = {
  */
 @Injectable({ providedIn: 'root' })
 export class LynxBarcodeScanner {
-  readonly #modules = inject(LynxNativeModule);
-
   /**
    * Opens the scanner and resolves with the first code it reads. Rejects
    * with a {@link BarcodeScannerError}.
    */
-  scan({
+  async scan({
     formats = BARCODE_FORMATS,
   }: BarcodeScanOptions = {}): Promise<BarcodeScan> {
-    // On the main thread, where Angular runs, the module is a proxy whose
-    // calls go through the background thread: a host without it rejects the
-    // call rather than returning no module.
-    const module = this.#modules.getNativeModule(BARCODE_SCANNER_MODULE) as
-      | BarcodeScannerModule
-      | undefined;
-    return new Promise((resolve, reject) => {
-      const fail = (code: BarcodeScannerErrorCode, message?: string): void =>
-        reject(
-          new BarcodeScannerError(code, message ?? DEFAULT_MESSAGES[code]),
-        );
-      if (!module) {
-        fail('unavailable');
-        return;
-      }
-      // An empty list would read nothing and never close by itself, so it's
-      // treated as the app not choosing.
-      const requested = formats.length > 0 ? [...formats] : BARCODE_FORMATS;
-      Promise.resolve()
-        .then(() =>
-          module.scan({ formats: requested }, (result) => {
-            if (result.value !== undefined && result.format !== undefined) {
-              resolve({
-                format: result.format as BarcodeFormat,
-                value: result.value,
-              });
-              return;
-            }
-            const code = ERROR_CODES.includes(
-              result.error as BarcodeScannerErrorCode,
-            )
-              ? (result.error as BarcodeScannerErrorCode)
-              : 'failed';
-            fail(code, result.message);
-          }),
-        )
-        .catch(() => fail('unavailable'));
-    });
+    // An empty list would read nothing and never close by itself, so it's
+    // treated as the app not choosing.
+    const requested = formats.length > 0 ? [...formats] : BARCODE_FORMATS;
+    let result: ScanResult | undefined;
+    try {
+      // The module calls back on the background thread, where NativeModules
+      // lives; callNativeModuleAsync keeps the callback there, so nothing
+      // stays registered on either thread once it answers, however many
+      // scans the app makes.
+      result = (await callOnBackground(
+        'callNativeModuleAsync',
+        BARCODE_SCANNER_MODULE,
+        'scan',
+        [{ formats: requested }],
+      )) as ScanResult | undefined;
+    } catch {
+      throw new BarcodeScannerError(
+        'unavailable',
+        DEFAULT_MESSAGES.unavailable,
+      );
+    }
+    if (result?.value !== undefined && result.format !== undefined) {
+      return { format: result.format as BarcodeFormat, value: result.value };
+    }
+    const code = ERROR_CODES.includes(result?.error as BarcodeScannerErrorCode)
+      ? (result?.error as BarcodeScannerErrorCode)
+      : 'failed';
+    throw new BarcodeScannerError(
+      code,
+      result?.message ?? DEFAULT_MESSAGES[code],
+    );
   }
 }

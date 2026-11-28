@@ -50,7 +50,9 @@ export type AppleRealUserStatus = 'likelyReal' | 'unknown' | 'unsupported';
 export type AppleSignInResult = {
   /**
    * The person's identifier for the app's team, the same on every sign-in
-   * and every device. Key the account on it, not on the email.
+   * and every device, and the identity token's `sub`. Key the account on
+   * it, not on the email, and have the server read it from the verified
+   * token rather than trust this copy.
    */
   readonly user: string;
   /**

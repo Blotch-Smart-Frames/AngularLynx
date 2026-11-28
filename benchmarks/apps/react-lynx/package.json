@@ -10,7 +10,7 @@
     "typecheck": "tsc -p src --noEmit"
   },
   "dependencies": {
-    "@lynx-js/react": "0.129.4",
+    "@lynx-js/react": "0.129.5",
     "@tanstack/react-query": "5.108.4",
     "zustand": "5.1.0"
   },

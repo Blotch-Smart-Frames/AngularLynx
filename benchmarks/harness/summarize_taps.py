@@ -12,7 +12,8 @@ Markdown tables, from ios_tap.py's CSVs.
   box stood still in the half second after the touch, and before it.
 - first-tap: per app, from the process starting to the frame of the first
   change a tap made (first_change_ms), to fully drawn, and how many taps
-  went unanswered before it.
+  went unanswered before it. A launch no tap changed is counted under
+  "unanswered".
 
 Runs the harness couldn't measure have an `error` and are left out.
 
@@ -72,22 +73,25 @@ def taps(path, rows):
 
 def first_taps(path, rows):
     groups = defaultdict(lambda: defaultdict(list))
+    launches = defaultdict(int)
     order = []
     for row in rows:
         if row.get("error"):
             continue
         if row["app"] not in order:
             order.append(row["app"])
+        launches[row["app"]] += 1
         for metric in ("first_change_ms", "fully_drawn_ms", "taps_before", "tap_to_frame_ms"):
             if row.get(metric):
                 groups[row["app"]][metric].append(float(row[metric]))
     print(f"### {os.path.basename(path)}\n")
-    print("| app | runs | first change median / p90 (ms) | fully drawn median / p90 (ms) | taps before it median / p90 | its tap to frame median / p90 (ms) |")
-    print("|---|---|---|---|---|---|")
+    print("| app | runs | unanswered | first change median / p90 (ms) | fully drawn median / p90 (ms) | taps before it median / p90 | its tap to frame median / p90 (ms) |")
+    print("|---|---|---|---|---|---|---|")
     for app in order:
         g = groups[app]
         print(
-            f"| {app} | {len(g['first_change_ms'])} | {stat(g['first_change_ms'])} | {stat(g['fully_drawn_ms'])} "
+            f"| {app} | {launches[app]} | {launches[app] - len(g['first_change_ms'])} "
+            f"| {stat(g['first_change_ms'])} | {stat(g['fully_drawn_ms'])} "
             f"| {stat(g['taps_before'])} | {stat(g['tap_to_frame_ms'])} |"
         )
     print()

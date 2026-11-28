@@ -426,8 +426,8 @@ const valuesOf = (
 
 /**
  * A tap benchmark as a table: each row one session, AngularLynx and the other
- * app side by side, as median / p90 of every tap. The update screen has a row
- * per button.
+ * app side by side, as median / p90 of every tap the app answered, with the
+ * taps it missed. The update screen has a row per button.
  */
 export const TapTable = ({
   bench,
@@ -459,10 +459,22 @@ export const TapTable = ({
         {rows.map(({ session, name, button }) => {
           const keep = (tap: Tap) =>
             button === undefined || tap.button === button;
-          const frame = (app: string) =>
-            medianAndP90(
-              valuesOf(session.taps, app, (tap) => tap.frameMs, keep),
+          /**
+           * Of the taps the app answered, and how many it never did, so a
+           * tap with no change on screen doesn't just drop out.
+           */
+          const frame = (app: string) => {
+            const answered = valuesOf(
+              session.taps,
+              app,
+              (tap) => tap.frameMs,
+              keep,
             );
+            const missed =
+              session.taps.filter((tap) => tap.app === app && keep(tap))
+                .length - answered.length;
+            return `${medianAndP90(answered)}${missed > 0 ? ` (${missed} missed)` : ''}`;
+          };
           const stalled = (app: string) =>
             medianAndP90(
               valuesOf(session.taps, app, (tap) => tap.stalledFrames),
@@ -544,8 +556,9 @@ export const TapCaption = () => {
   return (
     <p className={styles['caption']}>
       {devices.join(', ')}, iOS {builds.join(', ')},{' '}
-      {dateRange(taps.map((tap) => tap.timestamp))}. Median / p90 of every tap,
-      in milliseconds unless it says frames. Each row is one session, the two
+      {dateRange(taps.map((tap) => tap.timestamp))}. Median / p90 of every tap
+      the app answered, in milliseconds unless it says frames; a tap that never
+      changed the screen is counted as missed. Each row is one session, the two
       apps launched in turn. Release builds.{' '}
       <a href="/guide/benchmarks#responding-to-a-tap">How we measured</a>
     </p>

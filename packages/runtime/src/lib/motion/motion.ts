@@ -665,7 +665,12 @@ export class LynxMotion {
     };
     const onOrientation = (event: any): void => {
       const t = Date.now();
-      if (event?.alpha != null && !event.absolute) {
+      // Most browsers send this relative to where the phone faced at the
+      // start, as the shells do, and absolute orientation as its own event.
+      // A browser without the relative one sends the absolute one here
+      // (absolute: true), whose alpha counts from north: still the phone's
+      // orientation, which a watch gets rather than nothing.
+      if (event?.alpha != null) {
         this.#emit('orientation', t, () => ({
           alpha: event.alpha,
           beta: event.beta,

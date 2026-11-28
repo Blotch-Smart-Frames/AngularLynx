@@ -430,8 +430,25 @@ describe('LynxMotion', () => {
         timestamp: 3000,
       });
       page.fire('deviceorientationabsolute', { alpha: null });
+      // Safari's heading is negative when it has no direction.
+      vi.spyOn(Date, 'now').mockReturnValue(4000);
+      page.fire('deviceorientation', { alpha: null, webkitCompassHeading: -1 });
       expect(acceleration).toHaveBeenCalledOnce();
       expect(heading).toHaveBeenCalledTimes(3);
+
+      // A browser that sends only absolute orientation sends it here too.
+      page.fire('deviceorientation', {
+        alpha: 300,
+        beta: 1,
+        gamma: 2,
+        absolute: true,
+      });
+      expect(orientation).toHaveBeenLastCalledWith({
+        alpha: 300,
+        beta: 1,
+        gamma: 2,
+        timestamp: 4000,
+      });
 
       stops.forEach((stop) => stop());
       expect([...page.listeners.values()].every((set) => set.size === 0)).toBe(

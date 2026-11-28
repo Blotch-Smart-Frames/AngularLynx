@@ -310,8 +310,21 @@ class BiometricsModule(context: Context, param: Any?) : LynxModule(context, para
      * The pair's public key, made the first time a value is stored, as a
      * plain key outside the Keystore: the Keystore's own copy refuses OAEP's
      * SHA-1 mask on some versions, and a public key needs no protecting.
+     *
+     * A fingerprint or face enrolled since invalidates the private key but
+     * not the public one, which would still seal a value nobody could open:
+     * the pair is checked first, and an invalid one is replaced, with the
+     * values it sealed, before the new value is sealed.
      */
     private fun publicKey(): PublicKey {
+        if (keyStore().containsAlias(KEY_ALIAS)) {
+            try {
+                // Needs no biometric: only using the key does.
+                rsaCipher().init(Cipher.DECRYPT_MODE, privateKey(), OAEP)
+            } catch (_: KeyPermanentlyInvalidatedException) {
+                forgetEverything()
+            }
+        }
         val stored =
             keyStore().getCertificate(KEY_ALIAS)?.publicKey
                 ?: KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_RSA, KEYSTORE)

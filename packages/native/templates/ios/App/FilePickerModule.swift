@@ -199,7 +199,7 @@ final class FilePickerModule: NSObject, LynxModule, UIDocumentPickerDelegate,
   /// or none is one iOS knows.
   private static func contentTypes(_ types: [String]) -> [UTType] {
     let families: [String: UTType] = [
-      "*/*": .item,
+      "*/*": .data,
       "image/*": .image,
       "audio/*": .audio,
       "video/*": .movie,
@@ -213,7 +213,9 @@ final class FilePickerModule: NSObject, LynxModule, UIDocumentPickerDelegate,
       if let family = families[type.lowercased()] { return family }
       return UTType(mimeType: type)
     }
-    return resolved.isEmpty ? [.item] : resolved
+    // .data, not .item: an item can be a folder, which has no bytes to read
+    // and would fail the whole pick. Regular files are all data.
+    return resolved.isEmpty ? [.data] : resolved
   }
 
   /// A name a file can have: a slash would make it a path.

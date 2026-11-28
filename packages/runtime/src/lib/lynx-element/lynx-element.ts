@@ -1191,9 +1191,9 @@ export class LynxElement implements BaseLynxElement {
    * occupying space until some later cycle happened to flush. That was the
    * "hidden element leaves a gap" bug.) A re-insert (appendChild/insertBefore)
    * cancels the queued removal: the element is still natively attached, so
-   * __InsertElementBefore/__AppendElement auto-reparents it with its whole
-   * subtree intact — matching how React Lynx and the Lynx fiber core
-   * (InsertNodeBeforeInternal) handle moves.
+   * the insert takes it out of its old parent (`__RemoveElement`, see
+   * #prepareInsert) and puts it in the new one in the same flush, with its
+   * whole subtree intact — the move React Lynx makes.
    *
    * Keyed by the LynxElement wrapper, not the native ElementRef: Angular hands
    * the SAME wrapper instance (the one stored in its LView) to both removeChild
@@ -3229,22 +3229,10 @@ export class LynxElement implements BaseLynxElement {
    * of loose text, which #regroup itself uses.
    */
   #attach(newChild: LynxElement, refChild: LynxElement | null): void {
-    // A queued removal immediately followed by a re-insert is an Angular MOVE —
-    // cancel the removal so the element keeps its children. It is still natively
-    // attached to its old parent, so __InsertElementBefore auto-reparents the
-    // whole subtree (see #pendingRemovals).
-    newChild.#cancelPendingRemoval();
-    newChild.#keepIfDestroyed();
-    newChild.#removeIfMoveWouldBeLost(this);
-    // If the child was genuinely removed in a PREVIOUS cycle its native painting
-    // node is gone — rebuild a fresh native element + subtree before re-attaching
-    // (see #recreateSubtree). A same-tick move was canceled just above and is
-    // never painting-dead, so the fast move path pays only a boolean check.
-    newChild.#recreateIfDead();
-    newChild.#anchorFor(this);
+    const from = newChild.#prepareInsert(this);
     if (refChild == null) {
       // The checks above are #append's own, done once (see #appendPrepared).
-      this.#appendPrepared(newChild);
+      this.#appendPrepared(newChild, from);
     } else {
       // Never insert an element into its own subtree — Lynx would build a cyclic
       // native tree and hang the layout pass (see wouldFormCycle). Skipping is
@@ -3253,8 +3241,9 @@ export class LynxElement implements BaseLynxElement {
       if (this.#wouldFormCycle(newChild)) return;
       const moving = isWebMove(newChild);
       if (insertHidesBlurView(this, newChild)) {
-        this.#appendBefore(newChild, refChild);
+        this.#appendBefore(newChild, refChild, from);
       } else {
+        if (from) __RemoveElement(from, newChild.element);
         __InsertElementBefore(this.element, newChild.element, refChild.element);
       }
       if (moving) newChild.#restartWebLayoutChanges();
@@ -3270,9 +3259,15 @@ export class LynxElement implements BaseLynxElement {
    * and every native sibling after it to the end behind it, in order: the
    * same order as `__InsertElementBefore`, reached only by appends (see
    * insertHidesBlurView). The moves are in the same flush as the insert, so
-   * the siblings keep their painting nodes, as any Angular move does.
+   * the siblings keep their painting nodes, as any Angular move does. Each
+   * sibling is taken out before it goes back in, as a moved child is (see
+   * #prepareInsert): it's still in this element.
    */
-  #appendBefore(newChild: LynxElement, refChild: LynxElement): void {
+  #appendBefore(
+    newChild: LynxElement,
+    refChild: LynxElement,
+    from: ElementRef | null,
+  ): void {
     const childId = __GetElementUniqueID(newChild.element);
     const following: ElementRef[] = [];
     for (
@@ -3282,8 +3277,10 @@ export class LynxElement implements BaseLynxElement {
     ) {
       if (__GetElementUniqueID(sibling) !== childId) following.push(sibling);
     }
+    if (from) __RemoveElement(from, newChild.element);
     __AppendElement(this.element, newChild.element);
     for (const sibling of following) {
+      __RemoveElement(this.element, sibling);
       __AppendElement(this.element, sibling);
     }
   }
@@ -3299,27 +3296,62 @@ export class LynxElement implements BaseLynxElement {
   }
 
   #append(newChild: LynxElement): void {
-    // See insertBefore: cancel a pending removal so a move keeps its subtree,
-    // then rebuild the child if its painting node was destroyed in a prior cycle.
-    newChild.#cancelPendingRemoval();
-    newChild.#keepIfDestroyed();
-    newChild.#removeIfMoveWouldBeLost(this);
-    newChild.#recreateIfDead();
-    newChild.#anchorFor(this);
-    this.#appendPrepared(newChild);
+    this.#appendPrepared(newChild, newChild.#prepareInsert(this));
   }
 
   /**
-   * #append once its checks on `newChild` have run, which #attach runs
-   * itself. Running them twice did nothing more the second time, but read
-   * the child's native parent again, and for a move to another parent walked
-   * both ancestries again (see #removeIfMoveWouldBeLost).
+   * Readies this element to go into `newParent`, before the insert, and
+   * returns the native parent it has to be taken out of first, if any.
+   *
+   * - A queued removal followed by a re-insert in the same cycle is an
+   *   Angular MOVE: cancel the removal so the element keeps its children
+   *   (see #pendingRemovals), and a release Angular asked for, as whoever
+   *   puts it back still uses it.
+   * - Remove it for good where native Lynx would lose the move (see
+   *   #removeIfMoveWouldBeLost), and rebuild it if its painting node is gone,
+   *   from that or a removal in an earlier cycle (see #recreateSubtree). A
+   *   move canceled above is never painting-dead, so the move path pays only
+   *   a boolean check.
+   * - Give an anchor the native element it needs in `newParent` (see
+   *   #anchorFor).
+   *
+   * A moved element is still in its old native parent, and the insert would
+   * move it there with its whole subtree. But Lynx takes an insert of an
+   * element that has a parent as a mistake: `InsertNodeBeforeInternal`
+   * (`fiber_element.cc`, Lynx 4.1) logs `FiberElement re-insert node` as an
+   * error and three elements' details, each an `NSLog` on iOS, before it
+   * removes the element itself. It also finds the reference node's index
+   * before that removal, so a move forward within one parent went one place
+   * past the reference node in the element tree, which `__NextElement` and
+   * `__GetChildren` read. The caller removes it with `__RemoveElement` just
+   * before the insert, as React Lynx does (`snapshot.ts`): the same
+   * `RemoveNode` the auto-reparent calls, in the same flush, so the move
+   * keeps its painting node (is_move). A new element, or one rebuilt here,
+   * has no parent, and pays no native call more for it.
    */
-  #appendPrepared(newChild: LynxElement): void {
+  #prepareInsert(newParent: LynxElement): ElementRef | null {
+    this.#cancelPendingRemoval();
+    this.#keepIfDestroyed();
+    const from = this.#removeIfMoveWouldBeLost(newParent);
+    this.#recreateIfDead();
+    // A swapped anchor's new native element is in no parent yet.
+    return this.#anchorFor(newParent) ? null : from;
+  }
+
+  /**
+   * #append once its checks on `newChild` have run (see #prepareInsert),
+   * which #attach runs itself. Running them twice did nothing more the
+   * second time, but read the child's native parent again, and for a move to
+   * another parent walked both ancestries again (see
+   * #removeIfMoveWouldBeLost). `from` is the native parent the checks found
+   * it in.
+   */
+  #appendPrepared(newChild: LynxElement, from: ElementRef | null): void {
     // Guard against a cycle-forming attach (see wouldFormCycle) — the same hang
     // insertBefore protects against.
     if (this.#wouldFormCycle(newChild)) return;
     const moving = isWebMove(newChild);
+    if (from) __RemoveElement(from, newChild.element);
     // A <q>'s children go before its closing mark (see markQuote).
     const close = this.#quoteMarks?.[1];
     if (close) {
@@ -3341,8 +3373,8 @@ export class LynxElement implements BaseLynxElement {
 
   /**
    * Records `newChild` in this element's ordered `#children`, first unlinking it
-   * from its previous JS parent (mirroring the native auto-reparent that
-   * __AppendElement/__InsertElementBefore perform). Keeping `#children` in
+   * from its previous JS parent (mirroring the native removal that
+   * #prepareInsert has the insert make first). Keeping `#children` in
    * lock-step with the native child order is what lets #recreateSubtree() rebuild
    * a remounted subtree in the correct order. `refChild` positions the insert;
    * when omitted the child is appended.
@@ -3502,12 +3534,13 @@ export class LynxElement implements BaseLynxElement {
    * gap and an empty line, wherever Angular put it: `<text>Hi @if (x)
    * {…}</text>`, or a line #regroup made around one. In a `<text>`, an anchor
    * is an empty raw-text, which draws nothing anywhere. It has no attributes,
-   * children or handlers, so the swap is the native element alone.
+   * children or handlers, so the swap is the native element alone. Returns
+   * whether it swapped: the new native element is in no parent yet.
    */
-  #anchorFor(parent: LynxElement): void {
-    if (this.tagName !== 'comment') return;
+  #anchorFor(parent: LynxElement): boolean {
+    if (this.tagName !== 'comment') return false;
     const inText = parent.tagName === 'text';
-    if (inText === this.#anchorInText) return;
+    if (inText === this.#anchorInText) return false;
     const old = this.element;
     const oldParent = __GetParent(old);
     if (oldParent) __RemoveElement(oldParent, old);
@@ -3518,6 +3551,7 @@ export class LynxElement implements BaseLynxElement {
         : createNativeRefByTag('comment', getPageId()),
     );
     this.#anchorInText = inText;
+    return true;
   }
 
   /**
@@ -4383,22 +4417,33 @@ export class LynxElement implements BaseLynxElement {
    * goes into the new one. Moves the flush does handle in order (the old
    * parent first, or the same parent, as for an `@for` reorder) stay native
    * moves. Lynx for Web moves DOM nodes and doesn't have the problem.
+   *
+   * Returns the native parent a move that stays a native move takes it out
+   * of (see #prepareInsert), and null for an element in no parent, one
+   * removed here, and on Lynx for Web, where an insert moves a DOM node and
+   * logs nothing. A list's item is left to its list, which puts it in the
+   * native list itself (see create-list-element.ts).
    */
-  #removeIfMoveWouldBeLost(newParent: LynxElement): void {
-    if (__WEB__ || this.#paintingDead || this._virtualParent) return;
+  #removeIfMoveWouldBeLost(newParent: LynxElement): ElementRef | null {
+    if (__WEB__ || this.#paintingDead || this._virtualParent) return null;
     // A new element, being put in its first parent: nothing to move from.
-    // Nor is there for one moving within its parent (an `@for` reorder),
-    // which this wrapper knows without asking native (see #jsParent).
-    if (this.#unplaced() || this.#jsParent === newParent) return;
-    const oldParent = __GetParent(this.element);
+    if (this.#unplaced()) return null;
+    // The parent this wrapper was put in holds it natively (see #jsParent),
+    // so its native parent is had without asking native, and one moving
+    // within it (an `@for` reorder) stays a native move.
+    const jsParent = this.#jsParent;
+    if (jsParent === newParent) return newParent.element;
+    const oldParent = jsParent ? jsParent.element : __GetParent(this.element);
+    if (!oldParent) return null;
     if (
-      !oldParent ||
-      __GetElementUniqueID(oldParent) ===
-        __GetElementUniqueID(newParent.element)
+      __GetElementUniqueID(oldParent) !==
+        __GetElementUniqueID(newParent.element) &&
+      flushesBefore(newParent.element, oldParent)
     ) {
-      return;
+      this.#doRemove();
+      return null;
     }
-    if (flushesBefore(newParent.element, oldParent)) this.#doRemove();
+    return oldParent;
   }
 
   /**

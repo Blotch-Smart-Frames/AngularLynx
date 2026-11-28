@@ -35,19 +35,30 @@ const attach = (parent: FakeEl, child: FakeEl, index: number): void => {
   child.parent = parent;
 };
 
+/**
+ * Every element inserted while it still had a parent, which Lynx logs as an
+ * error with three NSLogs (issue #876).
+ */
+const reinserted: number[] = [];
+
 /** The element functions the insert calls, as they're called. */
-const append = vi.fn((parent: FakeEl, child: FakeEl) =>
-  attach(parent, child, parent.children.length),
-);
+const append = vi.fn((parent: FakeEl, child: FakeEl) => {
+  if (child.parent) reinserted.push(child.id);
+  attach(parent, child, parent.children.length);
+});
 const insertBefore = vi.fn((parent: FakeEl, child: FakeEl, ref: FakeEl) => {
+  if (child.parent) reinserted.push(child.id);
   detach(child);
   attach(parent, child, parent.children.indexOf(ref));
 });
+const remove = vi.fn((_parent: FakeEl, child: FakeEl) => detach(child));
 
 const installNativeFakes = (): void => {
   nextId = 1;
   append.mockClear();
   insertBefore.mockClear();
+  remove.mockClear();
+  reinserted.length = 0;
   const g = globalThis as Record<string, unknown>;
   g['__GetElementUniqueID'] = (n: FakeEl) => n.id;
   g['__GetParent'] = (n: FakeEl) => n.parent;
@@ -57,6 +68,7 @@ const installNativeFakes = (): void => {
     n.parent?.children[n.parent.children.indexOf(n) + 1] ?? null;
   g['__AppendElement'] = append;
   g['__InsertElementBefore'] = insertBefore;
+  g['__RemoveElement'] = remove;
   g['__SetClasses'] = () => {};
   g['__AddEvent'] = () => {};
 };
@@ -111,6 +123,9 @@ describe('LynxElement inserting a blur-view before a sibling', () => {
     expect(order(parent)).toEqual(['text2', 'blur-view5', 'view3', 'text4']);
     expect(insertBefore).not.toHaveBeenCalled();
     expect(append.mock.calls.map(([, child]) => child.id)).toEqual([5, 3, 4]);
+    // Each sibling is taken out before it goes back in.
+    expect(remove.mock.calls.map(([, child]) => child.id)).toEqual([3, 4]);
+    expect(reinserted).toEqual([]);
     // Angular finds the sibling it inserted before right after it.
     expect(glass.nextSibling()).toBe(anchor);
   });
@@ -126,6 +141,10 @@ describe('LynxElement inserting a blur-view before a sibling', () => {
     expect(append.mock.calls.map(([, child]) => child.id)).toEqual([
       5, 2, 3, 4,
     ]);
+    expect(remove.mock.calls.map(([, child]) => child.id)).toEqual([
+      5, 2, 3, 4,
+    ]);
+    expect(reinserted).toEqual([]);
   });
 
   it('inserts it in place inside another blur-view, which draws it either way', () => {

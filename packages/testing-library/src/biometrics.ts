@@ -95,13 +95,15 @@ export const installBiometricsModule = (threadGlobals: {
       done(result['error'] === undefined ? { value } : result);
     },
     setItem(key, value, done) {
-      // Biometric values need a sensor and a passcode, as on a phone.
+      // Biometric values need a sensor, a face or finger set up and a
+      // passcode, as on a phone.
       if (this.phone.type === 'none' || !this.phone.deviceCredential) {
         return done({
           error: 'unavailable',
           message: 'This phone has no biometrics to keep the value behind.',
         });
       }
+      if (!this.phone.enrolled) return done({ error: 'notEnrolled' });
       this.guarded.set(key, value);
       done({});
     },

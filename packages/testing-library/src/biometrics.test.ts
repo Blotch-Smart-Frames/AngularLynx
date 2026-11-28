@@ -230,6 +230,14 @@ describe('LynxSecureStorage’s requireBiometrics under the testing library', ()
     expect(screen.getByText('Error: unavailable')).toBeInTheDocument();
   });
 
+  it('refuses to store behind biometrics before a face or finger is set up', async () => {
+    setBiometrics({ enrolled: false });
+    await render(TokenStore);
+    fireEvent.tap(screen.getByText('Save'));
+    await settle();
+    expect(screen.getByText('Error: notEnrolled')).toBeInTheDocument();
+  });
+
   it('removes and clears what it keeps', async () => {
     const storage = new LynxSecureStorage();
     await storage.setItem('a', 1, { requireBiometrics: true });

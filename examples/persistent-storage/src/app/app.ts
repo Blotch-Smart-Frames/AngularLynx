@@ -125,14 +125,20 @@ export class App {
         user: 'ada',
         token: Math.random().toString(36).slice(2),
       };
-      // Behind biometrics where the phone has them. The web preview and a
-      // phone without a passcode don't, and keep it as a plain secret.
+      // Behind biometrics where the phone has them. The web preview, and a
+      // phone without a passcode or a face or finger set up, don't, and keep
+      // it as a plain secret. Any other failure is shown.
       try {
         await this.#secure.setItem('session', session, {
           requireBiometrics: true,
         });
       } catch (error) {
-        if (!(error instanceof BiometricsError)) throw error;
+        if (
+          !(error instanceof BiometricsError) ||
+          (error.code !== 'unavailable' && error.code !== 'notEnrolled')
+        ) {
+          throw error;
+        }
         await this.#secure.setItem('session', session);
       }
       this.session.set(session);

@@ -148,6 +148,16 @@ final class BiometricsModule: NSObject, LynxModule {
   /// in place of what was there. Doesn't prompt.
   @objc func setItem(_ key: String, value: String, callback: @escaping LynxCallbackBlock) {
     Self.queue.async {
+      // A value only a face or a finger enrolled now opens needs one, and a
+      // passcode: report why not as the runtime's codes, which an app falls
+      // back on, rather than the Keychain's error. Locked out still has one.
+      var unready: NSError?
+      if !LAContext().canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &unready),
+        unready.flatMap({ LAError.Code(rawValue: $0.code) }) != .biometryLockout
+      {
+        callback(Self.failure(unready))
+        return
+      }
       var error: Unmanaged<CFError>?
       // WhenPasscodeSet: biometrics need a passcode, and the item goes with
       // it, never leaving the device.

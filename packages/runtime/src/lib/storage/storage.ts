@@ -282,7 +282,9 @@ export type SecureStorageSetOptions = {
    * `getItem()` then resolves `null`, and the app signs the person in
    * again. Needs `permissions.biometrics` in angular.json, and rejects with
    * a {@link BiometricsError} (`unavailable`) without it, as it does in the
-   * web preview, Lynx Explorer and on a phone without a passcode.
+   * web preview, Lynx Explorer and on a phone without a passcode, or
+   * `notEnrolled` on one without a face or finger set up. Those two are the
+   * codes to fall back on a plain value for.
    */
   readonly requireBiometrics?: boolean;
 };

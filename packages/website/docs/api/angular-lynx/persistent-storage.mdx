@@ -101,7 +101,7 @@ With **`requireBiometrics`**, the platform hands the value over only after the p
 - **iOS:** a Keychain item with `.biometryCurrentSet` access, readable only while the phone has a passcode, and never leaving the phone.
 - **Android:** sealed by a Keystore key that needs a strong biometric for each use. It's left out of backups.
 - **A new face or finger locks them all for good.** Someone who learns the passcode can't add their own fingerprint and read them. `getItem()` then resolves `null`, so sign the person in again.
-- **It needs `permissions.biometrics`** in angular.json (see [`LynxBiometrics`](/api/angular-lynx/biometrics#setup)), a sensor and a passcode. Without them `setItem()` rejects with a [`BiometricsError`](/api/angular-lynx/biometrics#biometricserror) (`unavailable`), as it does in the web preview and Lynx Explorer.
+- **It needs `permissions.biometrics`** in angular.json (see [`LynxBiometrics`](/api/angular-lynx/biometrics#setup)), a sensor and a passcode. Without them `setItem()` rejects with a [`BiometricsError`](/api/angular-lynx/biometrics#biometricserror) (`unavailable`), as it does in the web preview and Lynx Explorer. With no face or finger set up, it rejects with `notEnrolled`. Fall back to a plain value on those two codes only.
 - **A read the person cancels** rejects with a `BiometricsError` (`canceled`, `lockout`, …).
 
 ```typescript

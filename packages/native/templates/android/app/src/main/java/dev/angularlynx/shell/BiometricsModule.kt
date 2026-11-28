@@ -197,10 +197,15 @@ class BiometricsModule(context: Context, param: Any?) : LynxModule(context, para
         worker.execute {
             callback.invoke(
                 try {
+                    val status = BiometricManager.from(activity).canAuthenticate(BIOMETRIC_STRONG)
                     if (activity.getSystemService(KeyguardManager::class.java)?.isDeviceSecure != true) {
                         // The Keystore makes no biometric key without a lock
                         // screen.
                         error("unavailable", "Set a screen lock to keep values behind biometrics.")
+                    } else if (status != BiometricManager.BIOMETRIC_SUCCESS) {
+                        // Nor without a strong biometric enrolled: a value
+                        // nobody can unlock is no use.
+                        unavailable(status)
                     } else {
                         val sealed = seal(key, value)
                         if (preferences.edit().putString(key, sealed).commit()) {

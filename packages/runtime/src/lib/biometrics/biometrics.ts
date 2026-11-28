@@ -188,7 +188,8 @@ export const callBiometrics = async (
  * Asks the person to confirm who they are with Face ID, Touch ID or a
  * fingerprint, as banking, password and note apps do when they open:
  * `LAContext` on iOS and AndroidX's `BiometricPrompt` on Android. Lynx has
- * no WebAuthn, the web's nearest API.
+ * no WebAuthn either. This is a local check that the person is there; it
+ * signs no server challenge, so it's no passkey sign-in.
  *
  * To keep a secret, such as a refresh token, readable only after the person
  * confirms, store it with {@link LynxSecureStorage}'s `requireBiometrics`:

@@ -350,6 +350,16 @@ const summarize = (profile, file, owners, top) => {
       name: `${functionName || '(anonymous)'}:${lineNumber + 1}`,
     };
   };
+  const harness = fileURLToPath(import.meta.url);
+  const insideFake = (id) => {
+    for (let at = id; at !== undefined; at = parents.get(at)) {
+      const { url } = nodes.get(at).callFrame;
+      if (url && (url === harness || url.endsWith(path.basename(harness)))) {
+        return true;
+      }
+    }
+    return false;
+  };
   const selfByPackage = new Map();
   const totalByFunction = new Map();
   let all = 0;
@@ -358,6 +368,11 @@ const summarize = (profile, file, owners, top) => {
     const node = nodes.get(id);
     const own = where(node);
     selfByPackage.set(own.pkg, (selfByPackage.get(own.pkg) ?? 0) + micros);
+    // A sample in one of the fake element functions (defined in this file)
+    // counts for no function's total: the runtime function that called it
+    // would otherwise be charged the fake's time, which a phone spends in
+    // Lynx's native code instead.
+    if (insideFake(id)) continue;
     // Each function on the stack once, for its total.
     const seen = new Set();
     for (let at = id; at !== undefined; at = parents.get(at)) {

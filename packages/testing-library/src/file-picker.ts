@@ -33,7 +33,7 @@ type FakeFilePickerModule = {
   picks: readonly FakePickedFile[] | undefined;
   canceled: boolean;
   readonly saved: SavedFile[];
-  pick(request: { maxBytes?: number }, done: Done): void;
+  pick(request: { maxBytes: number }, done: Done): void;
   save(file: { base64: string; name: string; type: string }, done: Done): void;
 };
 
@@ -80,7 +80,8 @@ export const installFilePickerModule = (threadGlobals: {
         type: file.type ?? 'application/octet-stream',
       }));
       const total = files.reduce((sum, file) => sum + file.bytes.length, 0);
-      if (total > (request.maxBytes ?? Infinity)) {
+      // LynxFilePicker always sends its limit, as it does to the shells.
+      if (total > request.maxBytes) {
         return done({ error: 'too-large' });
       }
       done({

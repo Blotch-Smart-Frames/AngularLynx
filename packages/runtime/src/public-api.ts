@@ -53,6 +53,17 @@ export type {
 } from './lib/motion';
 export { reportFullyDrawn } from './lib/fully-drawn';
 export {
+  FILE_PICKER_MAX_BYTES,
+  FilePickerError,
+  LynxFilePicker,
+} from './lib/file-picker';
+export type {
+  FilePickerErrorCode,
+  FilePickerOptions,
+  PickedFile,
+  SaveFile,
+} from './lib/file-picker';
+export {
   BARCODE_FORMATS,
   BarcodeScannerError,
   LynxBarcodeScanner,

@@ -32,23 +32,29 @@ import {
  * (#918) and the barcode scanner's (#917) out. The E2E app asks for both, so
  * its own build has the modules. Both are built without `storeReview`
  * (#931) or `motion` (#920), which the E2E app sets and most apps don't.
+ * `no-canvas` is built without angular.json's `filePicker` too, which leaves
+ * the file picker module and MainActivity's launcher for it out (#924),
+ * while the E2E app sets it.
  */
 export const VARIANTS: readonly {
   readonly name: string;
   readonly features: NativeFeatures;
   readonly biometrics: boolean;
+  readonly filePicker: boolean;
   readonly camera: boolean;
 }[] = [
   {
     name: 'no-canvas',
     features: { canvas: false, webgl: false },
     biometrics: false,
+    filePicker: false,
     camera: false,
   },
   {
     name: 'canvas-2d',
     features: { canvas: true, webgl: false },
     biometrics: true,
+    filePicker: true,
     camera: true,
   },
 ];
@@ -61,18 +67,26 @@ export const VARIANTS: readonly {
  */
 const PROBES: Record<
   Platform,
-  { canvas: string; webgl: string; biometrics: string; camera: string }
+  {
+    canvas: string;
+    webgl: string;
+    biometrics: string;
+    filePicker: string;
+    camera: string;
+  }
 > = {
   ios: {
     canvas: 'App/AngularLynxCanvas2DContext.m',
     webgl: 'App/AngularLynxWebGLContext.m',
     biometrics: 'App/BiometricsModule.swift',
+    filePicker: 'App/FilePickerModule.swift',
     camera: 'App/BarcodeScannerModule.swift',
   },
   android: {
     canvas: 'app/src/main/java/dev/angularlynx/shell/Canvas2DContext.kt',
     webgl: 'app/src/main/java/dev/angularlynx/shell/WebGLContext.kt',
     biometrics: 'app/src/main/java/dev/angularlynx/shell/BiometricsModule.kt',
+    filePicker: 'app/src/main/java/dev/angularlynx/shell/FilePickerModule.kt',
     camera: 'app/src/main/java/dev/angularlynx/shell/BarcodeScannerModule.kt',
   },
 };
@@ -137,7 +151,7 @@ export const compileFeatureVariants = async ({
     const appPermissions =
       (Object.values(readAngularJson(appDir).projects)[0]!.architect.build
         .options['permissions'] as Record<string, string> | undefined) ?? {};
-    for (const { name, features, biometrics, camera } of VARIANTS) {
+    for (const { name, features, biometrics, filePicker, camera } of VARIANTS) {
       step(`The ${platform} project with ${name}`);
       const variantDir = path.join(root, name);
       const bundleDir = path.join(variantDir, 'dist');
@@ -191,9 +205,10 @@ export const compileFeatureVariants = async ({
                     ),
                   ),
                 }),
+            ...(!filePicker && { filePicker: false }),
           },
         });
-        const kept = { ...features, biometrics, camera };
+        const kept = { ...features, biometrics, filePicker, camera };
         for (const [feature, file] of Object.entries(PROBES[platform]) as [
           keyof typeof kept,
           string,

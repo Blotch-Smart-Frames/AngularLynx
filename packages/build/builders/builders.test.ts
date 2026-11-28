@@ -1356,6 +1356,8 @@ describe('unit-test builder', () => {
       'icon',
       'splash',
       'permissions',
+      'filePicker',
+      'fileSharing',
       'storeReview',
       'motion',
       'deepLinkSchemes',

@@ -38,6 +38,23 @@ export type NativeAppOptions = {
   /** Each permission the app uses, with the reason shown to the user. */
   readonly permissions?: Partial<Record<Permission, string>>;
   /**
+   * Whether the app lets the person pick documents and save files with the
+   * runtime's `LynxFilePicker`: `UIDocumentPickerViewController` on iOS, and
+   * the system's document picker and save screen on Android. Neither needs a
+   * permission. Off by default, which leaves the native module out of both
+   * apps.
+   */
+  readonly filePicker?: boolean;
+  /**
+   * Whether the iOS Files app lists the app's Documents folder, under On My
+   * iPhone (Info.plist's `UIFileSharingEnabled` and
+   * `LSSupportsOpeningDocumentsInPlace`), so the person can save a file
+   * there with `LynxFilePicker.save()` and pick it again later. Off by
+   * default. Android has no equivalent: its document picker already shows
+   * Downloads.
+   */
+  readonly fileSharing?: boolean;
+  /**
    * Whether the app asks for a rating in the app with the runtime's
    * `LynxStoreReview`: StoreKit's review prompt on iOS, and Google Play's
    * In-App Review API on Android. Off by default, which leaves the native
@@ -311,6 +328,8 @@ export type ResolvedApp = {
   readonly edgeToEdge: boolean;
   readonly textScaling: ResolvedTextScaling;
   readonly permissions: Partial<Record<Permission, string>>;
+  readonly filePicker: boolean;
+  readonly fileSharing: boolean;
   readonly storeReview: boolean;
   readonly motion: boolean;
   readonly deepLinkSchemes: readonly string[];
@@ -465,6 +484,20 @@ export const resolveAppOptions = (
     }
   }
 
+  // Checked here because the generators keep the module, or the Info.plist
+  // keys, for any truthy value, so a string such as "false" would quietly
+  // ship them.
+  const filePicker = resolveSwitch(
+    'filePicker',
+    options.filePicker,
+    'to let the person pick and save files with LynxFilePicker',
+  );
+  const fileSharing = resolveSwitch(
+    'fileSharing',
+    options.fileSharing,
+    "to list the app's Documents folder in the iOS Files app",
+  );
+
   // Checked here because the generators keep the module for any truthy
   // value, so a string such as "false" would quietly ship it. Read from the
   // options as given: compact() drops an empty object, which would then
@@ -586,6 +619,8 @@ export const resolveAppOptions = (
     edgeToEdge: options.edgeToEdge ?? true,
     textScaling,
     permissions,
+    filePicker,
+    fileSharing,
     storeReview,
     motion,
     deepLinkSchemes,
@@ -599,6 +634,24 @@ export const resolveAppOptions = (
     ios: options.ios ?? {},
     android,
   };
+};
+
+/**
+ * A boolean option that's off by default, checked so that anything but
+ * `true` or `false`, such as the string "false", is an error naming it.
+ */
+const resolveSwitch = (
+  name: string,
+  value: unknown,
+  purpose: string,
+): boolean => {
+  if (value === undefined) return false;
+  if (typeof value !== 'boolean') {
+    throw new NativeConfigError(
+      `${name} ${JSON.stringify(value)} is not valid. Use true ${purpose}, or false.`,
+    );
+  }
+  return value;
 };
 
 /**

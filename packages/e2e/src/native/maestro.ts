@@ -364,6 +364,14 @@ export const FLOWS: readonly Flow[] = [
     only: { host: 'shell' },
   },
   {
+    file: 'file-picker.yaml',
+    description: "opens the platform's document picker and closes it",
+    // Only the app's own builds have the file picker module, and only with
+    // angular.json's filePicker, which the harness sets. In Lynx Explorer,
+    // pick() rejects with unavailable.
+    only: { host: 'shell' },
+  },
+  {
     file: 'store-review.yaml',
     description: "asks for the store's rating prompt, which iOS shows",
     // Only the app's own builds have the store review module, and only
@@ -378,6 +386,9 @@ export const FLOWS: readonly Flow[] = [
     // angular.json's motion, which the harness sets. Lynx Explorer has none,
     // and reports no sensors.
     only: { host: 'shell' },
+    // It reaches the photo page through the canvas page, whose WebGL
+    // context it can be the first flow to make (see stalledMetalCompiler).
+    deviceFault: stalledMetalCompiler,
   },
   {
     file: 'linking.yaml',

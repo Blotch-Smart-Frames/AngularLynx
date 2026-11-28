@@ -117,6 +117,21 @@ export const androidGenerator: PlatformGenerator = {
         removeMarkedLines(path.join(dir, file), 'biometrics');
       }
     }
+    // The document picker is only for an app that turns it on with
+    // `filePicker`: the module, and MainActivity's lines that launch the
+    // pickers and register it.
+    if (!app.filePicker) {
+      removeTemplateFiles(
+        dir,
+        ANDROID_FILE_PICKER_SOURCES.map((file) =>
+          path.join(SHELL_SOURCES, file),
+        ),
+      );
+      removeMarkedLines(
+        path.join(dir, SHELL_SOURCES, 'MainActivity.kt'),
+        'file-picker',
+      );
+    }
     // As on iOS, an app that doesn't ask for ratings in the app leaves the
     // module out, with the lines that register it and Google Play's review
     // library (`// angular-lynx:store-review`), so its APK carries none of
@@ -188,6 +203,12 @@ export const ANDROID_MOTION_SOURCE = `${SHELL_SOURCES}/MotionModule.kt`;
  * only an app with `permissions.biometrics` keeps.
  */
 export const ANDROID_BIOMETRICS_SOURCES = ['BiometricsModule.kt'] as const;
+
+/**
+ * The shell's file picker module, `AngularLynxFilePicker` (LynxFilePicker),
+ * which only an app with `filePicker` keeps.
+ */
+export const ANDROID_FILE_PICKER_SOURCES = ['FilePickerModule.kt'] as const;
 
 /** The prompt's default reason, from `permissions.biometrics`. */
 const BIOMETRICS_STRINGS = `${RESOURCES}/values/biometrics.xml`;

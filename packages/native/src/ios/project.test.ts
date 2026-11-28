@@ -19,6 +19,7 @@ import {
   entitlementsPlist,
   infoPlistEntries,
   IOS_BIOMETRICS_SOURCES,
+  IOS_FILE_PICKER_SOURCES,
   IOS_BARCODE_SCANNER_SOURCE,
   IOS_MOTION_SOURCE,
   IOS_CANVAS_SOURCES,
@@ -600,6 +601,53 @@ describe('iosGenerator and biometrics', () => {
         /\bBiometricsModule\b|import LocalAuthentication/,
       );
     }
+  });
+});
+
+describe('iosGenerator and the file picker', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(path.join(os.tmpdir(), 'angular-lynx-ios-'));
+    cpSync(path.join(TEMPLATES_DIR, 'ios'), dir, { recursive: true });
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('keeps the module in an app with filePicker, registered by its own name', () => {
+    const withFiles = app({ filePicker: true });
+    iosGenerator.configure(dir, withFiles, dir);
+    iosGenerator.leaveOut(dir, { canvas: true, webgl: true }, withFiles);
+    for (const file of IOS_FILE_PICKER_SOURCES) {
+      expect(readFileSync(path.join(dir, file), 'utf8')).toContain(
+        '@objc(AngularLynxFilePickerModule)',
+      );
+    }
+    expect(
+      readFileSync(path.join(dir, 'App/LynxViewController.swift'), 'utf8'),
+    ).toContain('NSClassFromString("AngularLynxFilePickerModule")');
+  });
+
+  it('takes the module out of an app without filePicker, which names it only by name', () => {
+    iosGenerator.configure(dir, app(), dir);
+    iosGenerator.leaveOut(dir, { canvas: true, webgl: true }, app());
+    for (const file of IOS_FILE_PICKER_SOURCES) {
+      expect(existsSync(path.join(dir, file))).toBe(false);
+    }
+    const app_ = path.join(dir, 'App');
+    for (const file of readdirSync(app_).filter((f) => f.endsWith('.swift'))) {
+      // What a comment names isn't code.
+      const source = readFileSync(path.join(app_, file), 'utf8').replace(
+        /\/\/.*$/gm,
+        '',
+      );
+      expect(source, file).not.toMatch(/\bFilePickerModule\b/);
+    }
+  });
+
+  it("lists the app's Documents folder in Files only with fileSharing", () => {
+    const keys =
+      '<key>UIFileSharingEnabled</key>\n<true/>\n<key>LSSupportsOpeningDocumentsInPlace</key>\n<true/>';
+    expect(infoPlistEntries(app({ fileSharing: true }))).toContain(keys);
+    expect(infoPlistEntries(app())).not.toContain('UIFileSharingEnabled');
   });
 });
 

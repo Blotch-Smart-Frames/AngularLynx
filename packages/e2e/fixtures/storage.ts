@@ -5,8 +5,9 @@ import {
   LYNX_ELEMENTS,
   LynxBiometrics,
   LynxClipboard,
+  FilePickerError,
+  LynxFilePicker,
   LynxLocalStorage,
-  LynxMotion,
   LynxSecureStorage,
   LynxStoreReview,
 } from '@blotch/angular-lynx';
@@ -112,6 +113,13 @@ const collectedFromArrays = async (): Promise<string> => {
  * a simulator nobody has enrolled is `notEnrolled`. Lynx Explorer has no
  * module: `none`, and `unavailable`.
  *
+ * "Files", beside "Rating", opens LynxFilePicker's document picker (issue
+ * #924), from the shells' module, which only an app with angular.json's
+ * `filePicker` has (the E2E app sets it). Closing it shows "canceled", and a
+ * file picked shows its name and size. Lynx Explorer has no module:
+ * `unavailable`. It shares that row because the Android emulator's screen
+ * ends at the Biometrics row, and Maestro can't tap what's below it.
+ *
  * "Rating", beside "Clipboard", asks for the store's rating prompt with
  * LynxStoreReview (issue #931), which the app has because the harness sets
  * angular.json's `storeReview`. It shows "asked" once request() resolves,
@@ -119,15 +127,6 @@ const collectedFromArrays = async (): Promise<string> => {
  * shows the prompt every time, as in any development build, so the flow sees
  * the shell's module answer. Google Play shows nothing to an app it didn't
  * install, so on Android it only resolves.
- *
- * "Motion", beside "Rating" (a row lower is below the fold of CI's
- * emulator), reads the phone's motion sensors with LynxMotion (issue #920),
- * which the app has because the harness sets angular.json's `motion`. A tap
- * shows the size of the first acceleration it samples in m/s², gravity
- * included, so `Motion: 9.8` on a phone at rest, or `Motion: none` without
- * an accelerometer. It's short to fit beside the others on a small screen.
- * The Android emulator has one, so the flow sees a sample come through the
- * shell's module and its event; the iOS Simulator has none.
  */
 @Component({
   selector: 'app-storage',
@@ -174,8 +173,8 @@ const collectedFromArrays = async (): Promise<string> => {
       <text flatten="false" style="margin-left: 16px;" (bindtap)="rate()"
         >Rating: {{ rating() }}</text
       >
-      <text flatten="false" style="margin-left: 16px;" (bindtap)="readMotion()"
-        >Motion: {{ motion() }}</text
+      <text flatten="false" style="margin-left: 16px;" (bindtap)="pickFile()"
+        >Files: {{ files() }}</text
       >
     </view>
     <view style="display: flex; flex-direction: row; margin-top: 8px;">
@@ -190,10 +189,10 @@ export class StorageRoute implements OnInit {
   readonly #secure = inject(LynxSecureStorage);
   readonly #clipboard = inject(LynxClipboard);
   readonly #biometrics = inject(LynxBiometrics);
-  readonly #motion = inject(LynxMotion);
+  readonly #files = inject(LynxFilePicker);
+  readonly files = signal('tap');
   readonly biometrics = signal('…');
   readonly #storeReview = inject(LynxStoreReview);
-  readonly motion = signal('tap');
   readonly stored = signal('…');
   readonly arraySlots = signal('tap');
   readonly clipboard = signal('tap');
@@ -253,23 +252,25 @@ export class StorageRoute implements OnInit {
     );
   }
 
+  pickFile(): void {
+    this.files.set('…');
+    this.#files.pick().then(
+      (picked) =>
+        this.files.set(
+          picked.length === 0
+            ? 'canceled'
+            : picked.map((file) => `${file.name} ${file.size}`).join(', '),
+        ),
+      (error: unknown) =>
+        this.files.set(
+          error instanceof FilePickerError ? error.code : String(error),
+        ),
+    );
+  }
+
   rate(): void {
     this.rating.set('…');
     void this.#storeReview.request().then(() => this.rating.set('asked'));
-  }
-
-  readMotion(): void {
-    this.motion.set('…');
-    void this.#motion.availability().then(({ acceleration }) => {
-      if (!acceleration) {
-        this.motion.set('none');
-        return;
-      }
-      const stop = this.#motion.watchAcceleration(({ x, y, z }) => {
-        stop();
-        this.motion.set(Math.hypot(x, y, z).toFixed(1));
-      });
-    });
   }
 
   async #read(): Promise<string> {

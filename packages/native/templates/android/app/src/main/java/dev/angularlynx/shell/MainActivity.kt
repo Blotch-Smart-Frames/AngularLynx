@@ -185,6 +185,33 @@ class MainActivity : FragmentActivity(), ShellModule.Host, WebAuthModule.Host {
         }
     }
 
+    // The document picker and save screen behind LynxFilePicker (see
+    // FilePickerModule), and who to tell what came back. Registered as the
+    // activity is created, as the Photo Picker is above. Only an app with
+    // angular.json's filePicker keeps these lines (@blotch/angular-lynx-native's
+    // android/project.ts).
+    // angular-lynx:file-picker
+    private var documentDone: ((Int, Intent?) -> Unit)? = null
+    private val documentLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val done = documentDone ?: return@registerForActivityResult
+        documentDone = null
+        done(result.resultCode, result.data)
+    }
+    private val filePickerHost = object : FilePickerModule.Host {
+        override fun startDocumentActivity(intent: Intent, done: (Int, Intent?) -> Unit): Boolean {
+            if (documentDone != null) return false
+            documentDone = done
+            try {
+                documentLauncher.launch(intent)
+            } catch (error: ActivityNotFoundException) {
+                documentDone = null
+                throw error
+            }
+            return true
+        }
+    }
+    // /angular-lynx:file-picker
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // The splash screen (themes.xml's Theme.AngularLynxShell.Starting),
         // before anything else: it switches the activity to the app's own
@@ -273,6 +300,12 @@ class MainActivity : FragmentActivity(), ShellModule.Host, WebAuthModule.Host {
             // The photo picker behind LynxImagePicker (ImagePickerModule.kt), which
             // this activity launches.
             registerModule(ImagePickerModule.NAME, ImagePickerModule::class.java, imagePickerHost)
+            // The document picker behind LynxFilePicker (FilePickerModule.kt),
+            // which this activity launches. Only an app with filePicker keeps
+            // these lines and the module.
+            // angular-lynx:file-picker
+            registerModule(FilePickerModule.NAME, FilePickerModule::class.java, filePickerHost)
+            // /angular-lynx:file-picker
             // The share sheet behind LynxShare (ShareModule.kt), which it opens
             // from this activity.
             registerModule(ShareModule.NAME, ShareModule::class.java, this@MainActivity)

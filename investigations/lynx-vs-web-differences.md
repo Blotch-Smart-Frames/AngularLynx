@@ -5326,7 +5326,7 @@ Then a flush-time pass trims positionally over the assembled tree: `processPendi
 - collapses a space shared across a run boundary to one;
 - preserves the spaces BETWEEN runs.
 
-A single-run text (ordinary prose) reduces to trim-both. Multiple runs — `<text>One </text><text>two</text><text> three</text>`, and the same shape assembled at runtime through `<ng-content>` projection — keep their inter-run spaces, so "One two three" no longer collapses to "Onetwothree". Deferring to flush is what makes the projection case work at all: the runs come from separate templates and only form one context once assembled, so no compile-time pass can see it.
+A single-run text (ordinary prose) reduces to trim-both, and skips the pass: a raw-text set while it's all its outermost `<text>` holds, as most interpolations are (`<text>{{ name() }}</text>`), is sent trimmed at once, rather than untrimmed and then trimmed (`#setRawText`). An insert or removal around it later in the cycle queues the pass, which starts again from its untrimmed value. Multiple runs — `<text>One </text><text>two</text><text> three</text>`, and the same shape assembled at runtime through `<ng-content>` projection — keep their inter-run spaces, so "One two three" no longer collapses to "Onetwothree". Deferring to flush is what makes the projection case work at all: the runs come from separate templates and only form one context once assembled, so no compile-time pass can see it.
 
 Each raw-text stashes its collapsed-but-untrimmed value (`#rawText`) so the pass can RESTORE an edge space when a run's position changes (e.g. it stops being the last run) — the displayed `#text` alone has already dropped it.
 

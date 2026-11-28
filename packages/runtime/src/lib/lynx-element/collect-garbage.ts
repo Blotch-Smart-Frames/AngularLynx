@@ -35,6 +35,8 @@ export const MIN_INTERVAL_MS = 10_000;
 let released = 0;
 let releasedSinceScheduled = false;
 let timer: ReturnType<typeof setTimeout> | undefined;
+/** When the collection that's waiting is due (see scheduleCollection). */
+let dueAt = 0;
 let waitingSince = 0;
 let lastCollection = -Infinity;
 let hostCollects = true;
@@ -73,15 +75,30 @@ export const scheduleCollection = (): void => {
   if (!isMainThread() || (globalThis as any).lynxTestingEnv) return;
   const now = Date.now();
   if (timer === undefined) waitingSince = now;
-  else clearTimeout(timer);
-  const due = Math.max(
+  // Each release puts the collection off again, but only ever later: `now`
+  // only grows, and nothing else in it changes while it waits. So the timer
+  // set by the first release stays, and when it fires early it waits out
+  // the rest (see collectWhenDue). Setting a new one per release cost a
+  // clearTimeout and a setTimeout on every commit that let go of an
+  // element, such as each `*lynxListFor` row a list rebinds while it
+  // scrolls, whose `@for` drops a view (issue #878).
+  dueAt = Math.max(
     Math.min(now + QUIET_MS, waitingSince + MAX_WAIT_MS),
     lastCollection + MIN_INTERVAL_MS,
   );
-  timer = setTimeout(collect, due - now);
+  timer ??= setTimeout(collectWhenDue, dueAt - now);
 };
 
-const collect = (): void => {
+/**
+ * Collects, unless a release since the timer was set put the collection off
+ * (see scheduleCollection): then it waits for the rest of the time.
+ */
+const collectWhenDue = (): void => {
+  const now = Date.now();
+  if (now < dueAt) {
+    timer = setTimeout(collectWhenDue, dueAt - now);
+    return;
+  }
   timer = undefined;
   released = 0;
   lastCollection = Date.now();

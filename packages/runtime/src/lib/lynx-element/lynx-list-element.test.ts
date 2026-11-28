@@ -36,6 +36,12 @@ const setupGlobals = () => {
   globalThis.__FlushElementTree = vi.fn();
   globalThis.__RemoveElement = vi.fn();
   globalThis.__GetParent = vi.fn(() => null);
+  // An element moved into a list from another parent leaves that parent at
+  // the end of the cycle, and its native element with it, so it's rebuilt
+  // (see LynxElement's #rebuildDeadListItems): as on a device, where the
+  // removal reads the parent the element was put in.
+  globalThis.__CreateView = vi.fn(() => makeRef());
+  globalThis.__CreateText = vi.fn(() => makeRef());
   globalThis.__AppendElement = vi.fn();
   globalThis.__AddClass = vi.fn();
   globalThis.__SetClasses = vi.fn();

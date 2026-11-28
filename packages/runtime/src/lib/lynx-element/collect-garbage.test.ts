@@ -90,6 +90,28 @@ describe('scheduleCollection()', () => {
     expect(collections()).toBe(1);
   });
 
+  it('sets one timer for many commits that release elements, as a scrolling list makes', async () => {
+    const module = await load();
+    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+    const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+
+    release(module, module.RELEASES_PER_COLLECTION);
+    for (let i = 0; i < 50; i++) {
+      await vi.advanceTimersByTimeAsync(10);
+      release(module, 1);
+    }
+
+    expect(setTimeoutSpy).toHaveBeenCalledTimes(1);
+    expect(clearTimeoutSpy).not.toHaveBeenCalled();
+    // Its timer fires when the first release's quiet time is up, and waits
+    // out the rest for the last one.
+    await vi.advanceTimersByTimeAsync(module.QUIET_MS - 1);
+    expect(collections()).toBe(0);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(collections()).toBe(1);
+    expect(setTimeoutSpy).toHaveBeenCalledTimes(2);
+  });
+
   it("isn't put off by commits that release nothing", async () => {
     const module = await load();
 

@@ -3235,6 +3235,26 @@ describe('<q>, element by element', () => {
     expect(drawn(q)).toEqual(['“', 'so ', 'hello', '!', '”']);
   });
 
+  it('keeps the spaces beside its marks when its only child is set alone', () => {
+    // Set while it's the <q>'s only child, a run isn't the whole line: the
+    // marks are text of it too, so the pass keeps the spaces inside them
+    // (see #collectRawTextLeaves), rather than the run trimming itself as
+    // a <text>'s only child does (see #setRawText).
+    const view = doc.createElement('view');
+    page.appendChild(view);
+    view.setStyle('display', 'flex');
+    const q = doc.createElement('q');
+    view.appendChild(q);
+    const label = doc.createText('');
+    q.appendChild(label);
+    commit();
+
+    label.setAttribute('text', ' hi ');
+    commit();
+
+    expect(drawn(q)).toEqual(['“', ' hi ', '”']);
+  });
+
   it('draws single marks inside another <q>, however deep', () => {
     // Built out of the tree, then put in it, as a component's view is.
     const outer = doc.createElement('q');

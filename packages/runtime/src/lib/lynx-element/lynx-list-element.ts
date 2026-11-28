@@ -1,7 +1,6 @@
-import { bindListItem } from '../lynx-render-lifecycle';
 import type { ElementRef, ListElementRef } from '../types/lynx';
 import { cancelListUpdate, scheduleListUpdate } from './list-updates';
-import { LynxElement } from './lynx-element';
+import { bindListItemElement, LynxElement } from './lynx-element';
 
 /**
  * Manages list children in a virtual tree instead of the native element tree.
@@ -442,10 +441,11 @@ export class LynxListElement extends LynxElement {
   /**
    * @internal Builds or rebinds the `*lynxListFor` item in `slot` for
    * componentAtIndex, inside the binding scope that keeps every other flush
-   * out of native's layout pass (see bindListItem).
+   * out of native's layout pass (see bindListItem), noting whether it wrote
+   * outside the item (see bindListItemElement).
    */
   bindItem(slot: ListSlot): { element: ElementRef; reused: boolean } | null {
-    return bindListItem(() => slot.source!.bind(slot.index));
+    return bindListItemElement(() => slot.source!.bind(slot.index));
   }
 
   /**

@@ -11,6 +11,7 @@ import {
   ApplicationRef,
   ChangeDetectorRef,
   Component,
+  computed,
   CUSTOM_ELEMENTS_SCHEMA,
   Directive,
   type Injector,
@@ -39,6 +40,7 @@ import {
   LynxListElement,
 } from '../lynx-element/lynx-list-element';
 import { LynxDocument } from '../lynx-document';
+import { MainThreadElement } from '../main-thread/main-thread-element';
 import { setPageElementRef } from '../lynx-document/page-ref';
 import { markFirstRenderComplete } from '../lynx-render-lifecycle';
 import { LynxRendererFactory2 } from '../renderer/lynx-renderer-factory2';
@@ -374,6 +376,101 @@ class RowsHost {
   readonly suffix = signal('');
 }
 
+/**
+ * A row's component whose input sets a signal its template reads, as a
+ * signal input does: the row's check sets it, which marks the component for
+ * check and, from there, the views above it (Angular's
+ * markAncestorsForTraversal). JIT compiles no input() (see setInputSignal),
+ * so a setter stands in for one. Its `@if` drops a view when a row without a
+ * kind takes the view of a row with one.
+ */
+@Component({
+  selector: 'row-card',
+  inputs: ['row'],
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  encapsulation: ViewEncapsulation.None,
+  template: `
+    <text class="name">{{ name() }}</text>
+    @if (kind(); as kind) {
+      <text class="meta">{{ kind }}</text>
+    }
+  `,
+})
+class RowCard {
+  readonly #row = signal<Row | undefined>(undefined);
+  set row(row: Row) {
+    this.#row.set(row);
+  }
+  readonly name = computed(() => this.#row()?.name);
+  readonly kind = computed(() => this.#row()?.kind);
+}
+
+@Component({
+  selector: 'cards-host',
+  imports: [LynxListFor, RowCard],
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  encapsulation: ViewEncapsulation.None,
+  template: `
+    <view #header class="header"></view>
+    <list>
+      <list-item *lynxListFor="let row of rows">
+        <row-card [row]="row" />
+        <view #slot>{{ mark(header, slot, row) }}</view>
+      </list-item>
+    </list>
+  `,
+})
+class CardsHost {
+  readonly rows = [];
+  /**
+   * What a row's check does besides showing its row: writes to the header,
+   * outside its item, moves the header into the item, animates an element
+   * of its own, or has a main-thread script animate one.
+   */
+  does: 'write' | 'move' | 'animate' | 'script' | null = null;
+  mark(header: LynxElement, slot: LynxElement, row: Row): string {
+    if (this.does === 'write') {
+      header.setAttribute('accessibility-label', String(row.id));
+    } else if (this.does === 'move') {
+      slot.appendChild(header);
+    } else if (this.does === 'animate') {
+      slot.animate([{ opacity: 0 }, { opacity: 1 }], 100).pause();
+    } else if (this.does === 'script') {
+      new MainThreadElement(slot.element).animate([{ opacity: 1 }], 100);
+    }
+    return '';
+  }
+}
+
+/**
+ * Renders CardsHost with `rows`, keyed by id.
+ */
+const renderCards = async (rows: Row[]) => {
+  const fixture = TestBed.createComponent(CardsHost);
+  fixture.detectChanges();
+  setInputs(directives.at(-1)!, {
+    rows,
+    trackBy: (_: number, row: Row) => row.id,
+  });
+  await update(fixture);
+  return fixture;
+};
+
+/**
+ * Whether Angular's next tick walks down from the root view to find a view
+ * to check: the root carries HasChildViewsToRefresh (LViewFlags, 1 << 12),
+ * which markAncestorsForTraversal sets on each view above one marked for
+ * check. Read from the LView, as nothing public tells.
+ */
+const tickWalksFromRoot = (fixture: {
+  componentRef: { hostView: unknown };
+}): boolean => {
+  const FLAGS = 2;
+  const HAS_CHILD_VIEWS_TO_REFRESH = 1 << 12;
+  const lView = (fixture.componentRef.hostView as { _lView: number[] })._lView;
+  return (lView[FLAGS]! & HAS_CHILD_VIEWS_TO_REFRESH) !== 0;
+};
+
 type Fixture = {
   componentRef: { injector: Injector };
   detectChanges(): void;
@@ -505,21 +602,138 @@ describe('*lynxListFor', () => {
     expect(metaIn(show(2)!)).toMatch(/^2\/3\s+last even$/);
   });
 
-  it('flushes the whole tree with the cycle after an item, then not for a cycle that changes nothing', async () => {
+  it('flushes nothing with the cycle after an item that wrote only inside it', async () => {
     const { fixture } = await render();
     show(4);
     flushes.length = 0;
-    const appRef = fixture.componentRef.injector.get(ApplicationRef);
 
-    // Angular runs a cycle like this after most binds: one for the views a
-    // rebound item's `@if` detached, which refreshes no view. The item's own
-    // flush committed the item only, and a bind can write outside it.
+    // Angular runs a cycle like this after every bind: one for the view's
+    // attach, which refreshes no view. The item's own flush committed all
+    // the bind wrote.
+    fixture.componentRef.injector.get(ApplicationRef).tick();
+
+    expect(flushes).toEqual([]);
+  });
+
+  it('checks a row without marking the views above it for the next tick', async () => {
+    const fixture = await renderCards(rowsOf(3));
+    const appRef = fixture.componentRef.injector.get(ApplicationRef);
+    hide(show(0)!);
+    appRef.tick();
+    expect(tickWalksFromRoot(fixture)).toBe(false);
+
+    // The view goes to another row: its card's input marks the card for
+    // check, inside the view the bind checks.
+    const sign = show(1)!;
+
+    expect(nameIn(sign)).toBe('Row 2');
+    expect(tickWalksFromRoot(fixture)).toBe(false);
+    flushes.length = 0;
+    appRef.tick();
+    expect(flushes).toEqual([]);
+  });
+
+  it('flushes nothing after a rebound row whose @if dropped a view', async () => {
+    const fixture = await renderCards([
+      { id: 1, name: 'Row 1', kind: 'fire' },
+      { id: 2, name: 'Row 2' },
+    ]);
+    const appRef = fixture.componentRef.injector.get(ApplicationRef);
+    const sign = show(0)!;
+    expect(metaIn(sign)).toBe('fire');
+    hide(sign);
+    appRef.tick();
+
+    expect(show(1)).toBe(sign);
+    flushes.length = 0;
+    appRef.tick();
+
+    expect(nameIn(sign)).toBe('Row 2');
+    expect(byId(sign).children.some((el) => el.classes.has('meta'))).toBe(
+      false,
+    );
+    expect(flushes).toEqual([]);
+  });
+
+  it('flushes the whole tree with the cycle after an item that wrote outside it, then not for one that changes nothing', async () => {
+    const fixture = await renderCards(rowsOf(3));
+    const appRef = fixture.componentRef.injector.get(ApplicationRef);
+    fixture.componentInstance.does = 'write';
+    show(0);
+    flushes.length = 0;
+
+    // The item's flush doesn't commit the header's attribute.
     appRef.tick();
     expect(flushes).toEqual([{ element: undefined, options: undefined }]);
+    expect(
+      created
+        .find((el) => el.classes.has('header'))!
+        .attrs.get('accessibility-label'),
+    ).toBe('1');
 
     flushes.length = 0;
     appRef.tick();
     expect(flushes).toEqual([]);
+  });
+
+  it('flushes the whole tree with the cycle after an item that moved an element in from outside it', async () => {
+    const fixture = await renderCards(rowsOf(3));
+    fixture.componentInstance.does = 'move';
+    const sign = show(0)!;
+    flushes.length = 0;
+
+    // The header left the page's tree, which the item's flush doesn't
+    // commit.
+    fixture.componentRef.injector.get(ApplicationRef).tick();
+
+    const header = created.find((el) => el.classes.has('header'))!;
+    expect(header.parent?.parent).toBe(byId(sign));
+    expect(flushes).toEqual([{ element: undefined, options: undefined }]);
+  });
+
+  it('flushes nothing with the cycle after an item that animated an element of its own', async () => {
+    const fixture = await renderCards(rowsOf(3));
+    fixture.componentInstance.does = 'animate';
+    show(0);
+    flushes.length = 0;
+
+    fixture.componentRef.injector.get(ApplicationRef).tick();
+
+    expect(flushes).toEqual([]);
+  });
+
+  it('flushes the whole tree with the cycle after an item whose check ran a main-thread script’s animation', async () => {
+    const fixture = await renderCards(rowsOf(3));
+    fixture.componentInstance.does = 'script';
+    show(0);
+    flushes.length = 0;
+
+    // The runtime can't tell which element a script animated.
+    fixture.componentRef.injector.get(ApplicationRef).tick();
+
+    expect(flushes).toEqual([{ element: undefined, options: undefined }]);
+  });
+
+  it('leaves a reused view out of change detection when its check throws', async () => {
+    const { fixture, set } = await render();
+    const sign = show(0)!;
+    hide(sign);
+    // Row 1 goes: its view leaves change detection, in the pool.
+    await set({ rows: rowsOf(99, 2) });
+    const broken = {
+      id: 0,
+      get name(): string {
+        throw new Error('broken row');
+      },
+    };
+    await set({ rows: [broken, ...rowsOf(99, 2)] });
+
+    expect(() => show(0)).toThrow('broken row');
+
+    // Not checked with the next cycle, which would throw again.
+    fixture.componentInstance.suffix.set('?');
+    await update(fixture);
+    expect(nameIn(show(1)!)).toBe('Row 2?');
   });
 
   it('still flushes after an item what was waiting from before it', async () => {
@@ -1137,7 +1351,8 @@ describe('*lynxListFor', () => {
       show(1);
       await vi.runAllTimersAsync();
 
-      // Only the item's own flush: no tick, and no settle flush after it.
+      // Only the item's own flush: the tick its reattach schedules has
+      // nothing to flush, and no settle flush comes after it.
       expect(flushes).toHaveLength(1);
       expect(flushes[0]!.options.operationID).toBeDefined();
     } finally {

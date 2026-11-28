@@ -24,6 +24,7 @@ import {
 } from '../lynx-document/web-tags';
 import { globalEvents, type LynxGlobalDocument } from '../global-events';
 import {
+  bindListItem,
   isBindingListItem,
   isFirstRenderPending,
   isInsideChangeDetection,
@@ -1493,7 +1494,7 @@ export class LynxElement implements BaseLynxElement {
     LynxElement.#pendingReleases.add(this);
     // A view destroyed outside change detection (a detached route view the
     // reuse strategy drops) has no end() to commit it.
-    scheduleSettleFlush();
+    this.#settle();
   }
 
   /**
@@ -1582,7 +1583,7 @@ export class LynxElement implements BaseLynxElement {
     if (!__WEB__) __SetAttribute(element, 'default-value', value);
     __InvokeUIMethod(element, 'setValue', { value }, () => {});
     // Both reach native with the element's next flush (see invoke()).
-    scheduleSettleFlush();
+    this.#settle();
   }
 
   /**
@@ -1623,8 +1624,8 @@ export class LynxElement implements BaseLynxElement {
   }
   setAttribute(name: string, value: any): void {
     // A class, id, data-* or `hidden` asks for no flush itself (see
-    // nativeWriteEpoch).
-    nativeWriteEpoch++;
+    // nativeWriteEpoch). Noted where it is once, for every path below.
+    this.#wrote();
     // A raw-text's text (renderer.setValue), the commonest write there is:
     // none of the names below is `text`, so it skips their checks.
     if (name === 'text' && this.tagName === 'raw-text') {
@@ -1771,13 +1772,14 @@ export class LynxElement implements BaseLynxElement {
         // At the flush, unless it's set again first: see #removedAttributes.
         (this.#removedAttributes ??= new Set()).add(name);
         LynxElement.#pendingAttributeRemovals.add(this);
-        scheduleSettleFlush();
+        requestSettleFlush();
       } else {
         this.#removedAttributes?.delete(name);
         __SetAttribute(this.element, name, value);
         // Set outside change detection (from a timer, a promise, a gesture),
         // it reaches native only with a flush (see scheduleSettleFlush).
-        scheduleSettleFlush();
+        // setAttribute() noted where the write was.
+        requestSettleFlush();
       }
       // Mirror for recreation. removeAttribute() funnels here with value=null,
       // so drop the key then rather than replaying a cleared attribute.
@@ -1827,7 +1829,8 @@ export class LynxElement implements BaseLynxElement {
     }
     // Set outside change detection (from a timer, a promise, a gesture), it
     // reaches native only with a flush (see scheduleSettleFlush).
-    scheduleSettleFlush();
+    // setAttribute(), its only caller, noted where the write was.
+    requestSettleFlush();
     const text = value == null ? undefined : String(value);
     const blankChanged = isBlankText(this.#rawText) !== isBlankText(text);
     this.#text = shown == null ? undefined : String(shown);
@@ -1999,7 +2002,7 @@ export class LynxElement implements BaseLynxElement {
     if (key === 'quotes') this.#inlineQuotesChanged();
     // A style set outside change detection, as a transition's last frame is
     // from a timer, reaches native only with a flush (see scheduleSettleFlush).
-    scheduleSettleFlush();
+    this.#settle();
   }
   removeStyle(key: string): void {
     if (isCustomProperty(key)) {
@@ -2046,7 +2049,7 @@ export class LynxElement implements BaseLynxElement {
     if (LAYOUT_STYLES.has(key)) this.#layoutChanged();
     if (SHIFT_STYLES.has(key)) this.#shiftStylesChanged();
     if (key === 'quotes') this.#inlineQuotesChanged();
-    scheduleSettleFlush();
+    this.#settle();
   }
   /**
    * Sets the inline styles a main-thread script set on this element (see
@@ -2110,7 +2113,7 @@ export class LynxElement implements BaseLynxElement {
     ) {
       this.#inlineQuotesChanged();
     }
-    scheduleSettleFlush();
+    this.#settle();
   }
 
   /**
@@ -3177,7 +3180,7 @@ export class LynxElement implements BaseLynxElement {
     // Custom properties, `hidden` and the runtime's own styles (materials,
     // insets, inheritance) ask for no flush themselves (see
     // nativeWriteEpoch).
-    nativeWriteEpoch++;
+    this.#wrote();
     const whole = this.#inlineStyleFor(this.#inlineStyleWhole);
     if (whole && VARIABLE_DECLARATION.test(whole)) this.#setsVariables = true;
     // An element that sets variables gets its [style.x] styles in the same
@@ -3214,7 +3217,7 @@ export class LynxElement implements BaseLynxElement {
 
   insertBefore(newChild: LynxElement, refChild: LynxElement | null): void {
     // Inserts and moves ask for no flush themselves (see nativeWriteEpoch).
-    nativeWriteEpoch++;
+    this.#wroteChild(newChild);
     if (newChild.isRootPageElement) return;
     if (this.#holdsFlow()) {
       this.#flowInsert(newChild, refChild);
@@ -3289,7 +3292,7 @@ export class LynxElement implements BaseLynxElement {
   }
 
   appendChild(newChild: LynxElement): void {
-    nativeWriteEpoch++;
+    this.#wroteChild(newChild);
     if (newChild.isRootPageElement) return;
     if (this.#holdsFlow()) {
       this.#flowInsert(newChild, null);
@@ -3726,7 +3729,7 @@ export class LynxElement implements BaseLynxElement {
   addClass(name: string): void {
     this.#addClassName(name);
     this.#rulesChanged([name]);
-    scheduleSettleFlush();
+    this.#settle();
   }
 
   /**
@@ -3812,7 +3815,7 @@ export class LynxElement implements BaseLynxElement {
   removeClass(name: string): void {
     this.#removeClassName(name);
     this.#rulesChanged([name]);
-    scheduleSettleFlush();
+    this.#settle();
   }
 
   /**
@@ -3882,6 +3885,67 @@ export class LynxElement implements BaseLynxElement {
    */
   #unplaced(): boolean {
     return this.#jsParent === undefined;
+  }
+
+  /**
+   * Counts a write to this element that leaves its flush to whoever made it
+   * (see nativeWriteEpoch), noting where it was while a list item is being
+   * bound (see #noteBindingWrite).
+   */
+  #wrote(): void {
+    nativeWriteEpoch++;
+    if (isBindingListItem()) LynxElement.#noteBindingWrite(this);
+  }
+
+  /**
+   * #wrote() for an insert of `child` here: a write to this element, and to
+   * the parent it's moved from, if it's moved from another (see
+   * #noteBindingWrite).
+   */
+  #wroteChild(child: LynxElement): void {
+    nativeWriteEpoch++;
+    if (!isBindingListItem()) return;
+    LynxElement.#noteBindingWrite(this);
+    const from = child.#jsParent;
+    if (from !== undefined && from !== this) {
+      LynxElement.#noteBindingWrite(child);
+    }
+  }
+
+  /**
+   * scheduleSettleFlush() for a write to this element, noting where it was
+   * while a list item is being bound (see #noteBindingWrite).
+   */
+  #settle(): void {
+    if (isBindingListItem()) LynxElement.#noteBindingWrite(this);
+    requestSettleFlush();
+  }
+
+  /**
+   * Notes a write to `written` made while a `*lynxListFor` item is being
+   * bound: one outside the item is work the item's own flush doesn't commit,
+   * which the cycle after it flushes (see itemsLeftWork). The walk up stops
+   * at the item, a few parents up for a row's elements, and at an element in
+   * no tree (see #unplaced), such as the view the run is building: it reaches
+   * native with the insert that places it, a write to its new parent. An
+   * element whose place the runtime doesn't know (a parent of null: a
+   * hydrated one, one a removal took out of the tree) counts as outside.
+   * Writes outside items are rare, and once one is noted the rest of the
+   * binding skips the walk.
+   */
+  static #noteBindingWrite(written: LynxElement): void {
+    if (itemsLeftWork) return;
+    let element = written;
+    while (element !== boundListItem) {
+      const parent = element._virtualParent ?? element.#jsParent;
+      // The page has no parent, and is in the tree: it's its root.
+      if (parent === null || element.isRootPageElement) {
+        itemsLeftWork = true;
+        return;
+      }
+      if (parent === undefined) return;
+      element = parent;
+    }
   }
 
   /**
@@ -3981,7 +4045,7 @@ export class LynxElement implements BaseLynxElement {
     // A removal waits for the next flush, and asks for none itself, so that
     // a re-insert in the meantime is a move (see #pendingRemovals and
     // nativeWriteEpoch).
-    nativeWriteEpoch++;
+    this.#wrote();
     if (this.isRootPageElement) return;
     // Count the removal request on the synchronous path. `__PROFILE__` is a
     // build-time `define` — read it here rather than from the deferred drain (in
@@ -4644,7 +4708,9 @@ export class LynxElement implements BaseLynxElement {
     // would sit unflushed until some unrelated later CD. scheduleSettleFlush is
     // self-guarding (a no-op inside a CD cycle — the @if-toggle path — and during
     // first render) and coalesced, so nested remounts still cost one flush.
-    scheduleSettleFlush();
+    // The rebuilt subtree is in no tree: the insert that places it is noted
+    // (see #noteBindingWrite).
+    requestSettleFlush();
   }
 
   /**
@@ -4896,7 +4962,7 @@ export class LynxElement implements BaseLynxElement {
       return made;
     };
     if (call()) {
-      scheduleSettleFlush();
+      this.#settle();
     } else {
       afterNextFlush(call);
     }
@@ -4927,7 +4993,15 @@ export class LynxElement implements BaseLynxElement {
   ): LynxAnimation {
     const normalizedOptions =
       typeof options === 'number' ? { duration: options } : (options ?? {});
-    const anim = new LynxAnimation(this.element, keyframes, normalizedOptions);
+    // Each operation notes its write here, on this element (see
+    // countNativeWrite).
+    animatingElement = true;
+    let anim: LynxAnimation;
+    try {
+      anim = new LynxAnimation(this.element, keyframes, normalizedOptions);
+    } finally {
+      animatingElement = false;
+    }
     // Track the animation so remove() can cancel it before the element
     // returns to the native pool. Without this, the pool slot retains
     // stale animation state (e.g. opacity stuck at the FROM keyframe).
@@ -4936,12 +5010,17 @@ export class LynxElement implements BaseLynxElement {
     // with the next flush, like a style: one started or canceled from a
     // timer, outside change detection, needs a flush of its own (see
     // scheduleSettleFlush).
-    scheduleSettleFlush();
+    this.#settle();
     for (const method of ['cancel', 'pause', 'play'] as const) {
       const run = anim[method].bind(anim);
       anim[method] = () => {
-        run();
-        scheduleSettleFlush();
+        animatingElement = true;
+        try {
+          run();
+        } finally {
+          animatingElement = false;
+        }
+        this.#settle();
       };
     }
     return anim;
@@ -5275,7 +5354,7 @@ export class LynxElement implements BaseLynxElement {
     // ResizeObserver observing from an afterNextRender() callback, as
     // Angular advises for browser APIs, listens for uiappear or
     // layoutchange and would hear nothing until something else changed.
-    scheduleSettleFlush();
+    this.#settle();
     this.#sendHandlersWithNextFlush();
     if (current) {
       removeNativeHandler(this.element, current.eventType, entry.eventName);
@@ -5567,14 +5646,16 @@ const awaitingFlush: Array<() => void> = [];
  * After a list's componentAtIndex has built or rebound `*lynxListFor` items
  * and flushed them (see bindListItem).
  *
- * The item's own flush commits the item and nothing else, so the next native
- * event flushes once (see settleSkippedForListItem). The binding may have
- * left work elsewhere: a write that leaves its flush to its caller (a class,
- * a custom property, see nativeWriteEpoch), or one the item's own change
- * detection made outside the item (an app's write to a header, a UI method
- * on another element), whose settle flush was skipped inside the cycle
- * without a note. Every event used to flush, and that work reached the screen
- * with the next one, the next scroll frame on iOS.
+ * The item's own flush commits the item and nothing else. When the bindings
+ * wrote only inside their items, with nothing waiting from before them, that
+ * flush committed everything written since the last flush of the whole tree,
+ * which then counts as flushed: the cycle Angular runs after most binds (see
+ * ListItemViews.bind) has nothing to flush. Otherwise a binding left work
+ * elsewhere (see itemsLeftWork): a write outside its item (an app's write to a
+ * header, a directive's to another element, an overlay it opens), or writes
+ * from before it. The next cycle flushes the whole tree for it, and so does
+ * the next native event (see settleSkippedForListItem), as every event did
+ * when each one flushed: on iOS that's the next frame of any scroll.
  *
  * And it flushes again on a task of its own if a call is waiting for a
  * flush, such as a UI method on an element the item just made (see
@@ -5583,9 +5664,76 @@ const awaitingFlush: Array<() => void> = [];
  * pass has returned: a microtask would still run inside it.
  */
 export const settleAfterListItems = (): void => {
-  settleSkippedForListItem = true;
+  if (itemsLeftWork) {
+    settleSkippedForListItem = true;
+  } else {
+    flushedEpoch = nativeWriteEpoch;
+  }
   if (awaitingFlush.length === 0) return;
   setTimeout(scheduleSettleFlush, 0);
+};
+
+/**
+ * The `<list-item>` of the `*lynxListFor` view that componentAtIndex is
+ * binding, once its run has picked the view (see setBoundListItem), or null
+ * while there's none. A write to an element inside it reaches native with
+ * componentAtIndex's flush of the item.
+ */
+let boundListItem: LynxElement | null = null;
+
+/**
+ * Whether a list item's binding left work its own flush doesn't commit, since
+ * the last flush of the whole tree: a write outside its item, one the runtime
+ * can't place (a page's color scheme, a main-thread script's animation), or
+ * writes waiting from before the binding. Then the cycle after the binding
+ * flushes the whole tree, as every cycle after one did (see
+ * settleAfterListItems). It stays set until that flush (see markTreeFlushed),
+ * so a list item a binding's flush builds (an item of a list inside the item)
+ * doesn't count the first binding's work as flushed by its own.
+ */
+let itemsLeftWork = false;
+
+/**
+ * nativeWriteEpoch as the last list item binding left it: what it wrote is
+ * either in its item, for the item's flush right after, or noted in
+ * itemsLeftWork. So a binding that starts with nothing else written since,
+ * the next item of a batch (componentAtIndexes), or an item a binding's flush
+ * builds, isn't taken to start with work waiting from before it.
+ */
+let boundEpoch = 0;
+
+/**
+ * @internal Builds or rebinds a `*lynxListFor` item for a list's
+ * componentAtIndex (see LynxListElement.bindItem and bindListItem), noting
+ * whether it left work its item's flush doesn't commit (see itemsLeftWork):
+ * writes waiting from before it, and the writes it makes outside the item
+ * (see LynxElement's #noteBindingWrite).
+ */
+export const bindListItemElement = <R>(bind: () => R): R => {
+  if (nativeWriteEpoch !== flushedEpoch && nativeWriteEpoch !== boundEpoch) {
+    itemsLeftWork = true;
+  }
+  // Each binding names its own item: one built inside another's (see
+  // bindListItem) gives the outer one its item back after it.
+  const outer = boundListItem;
+  boundListItem = null;
+  try {
+    return bindListItem(bind);
+  } finally {
+    boundListItem = outer;
+    boundEpoch = nativeWriteEpoch;
+  }
+};
+
+/**
+ * @internal Names the `<list-item>` of the view a `*lynxListFor` run is
+ * binding, before its check (see ListItemViews.bind): the writes the check
+ * makes inside it reach native with the item's flush. What the run built
+ * before this, the view's elements, was in no tree, and counts as inside too
+ * (see LynxElement's #noteBindingWrite).
+ */
+export const setBoundListItem = (root: LynxElement): void => {
+  boundListItem = root;
 };
 
 /**
@@ -5662,6 +5810,7 @@ export const markTreeFlushed = (): void => {
   flushedEpoch = nativeWriteEpoch;
   // Whatever a list item left for a later flush goes with this one too.
   settleSkippedForListItem = false;
+  itemsLeftWork = false;
 };
 
 /**
@@ -5675,12 +5824,10 @@ export const markTreeFlushed = (): void => {
  * patch pass on the engine thread and queues an operation for the UI thread
  * (see #dispatch).
  *
- * What a list's componentAtIndex wrote while it built its items still
- * counts: the items' own flushes commit the items only, and a bind can write
- * outside its item (a directive of the row's reaching another element, an
- * overlay it opens), so the next cycle flushes the whole tree, as it did
- * before. Telling the item's writes from the others would take a walk up
- * from each element written to, on every bind.
+ * What a list's componentAtIndex wrote while it built its items counts as
+ * flushed by the items' own flushes, unless a binding wrote outside its item
+ * (a directive of the row's reaching another element, an overlay it opens):
+ * then the next cycle flushes the whole tree (see settleAfterListItems).
  */
 export const needsTreeFlush = (): boolean =>
   nativeWriteEpoch !== flushedEpoch || awaitingFlush.length > 0;
@@ -5707,7 +5854,16 @@ const hasUnflushedWrites = (): boolean =>
  */
 const countNativeWrite = (): void => {
   nativeWriteEpoch++;
+  // A main-thread script's is on no element the runtime knows: outside any
+  // list item it's binding. LynxElement.animate()'s notes its own.
+  if (isBindingListItem() && !animatingElement) itemsLeftWork = true;
 };
+
+/**
+ * True while LynxElement.animate() runs an animation operation, which
+ * notes its write on its element itself (see countNativeWrite).
+ */
+let animatingElement = false;
 
 /**
  * Flushes, a microtask after a dispatch with nothing to flush, if something
@@ -5758,6 +5914,26 @@ const checkDispatchWrites = (): void => {
  * gate) keeps the steady-state overhead negligible.
  */
 export const scheduleSettleFlush = (): void => {
+  // A write to no element the caller names, such as the page's color scheme
+  // or a gesture's: outside any list item being bound (see itemsLeftWork).
+  if (isBindingListItem()) itemsLeftWork = true;
+  requestSettleFlush();
+};
+
+/**
+ * @internal scheduleSettleFlush() for an element LynxDocument is about to
+ * make, which is in no tree: it reaches native with the insert that places
+ * it, a write to its new parent (see LynxElement's #noteBindingWrite).
+ */
+export const scheduleSettleFlushForNewElement = (): void => {
+  requestSettleFlush();
+};
+
+/**
+ * scheduleSettleFlush() without telling where the write was: LynxElement's
+ * writes note it themselves (see #settle).
+ */
+const requestSettleFlush = (): void => {
   // Every write that schedules its own flush is counted as one, with the
   // ones that leave it to their caller: inside a change detection cycle,
   // end() flushes only when something was written (see needsTreeFlush).
@@ -5781,10 +5957,9 @@ export const scheduleSettleFlush = (): void => {
     }
     return;
   }
-  if (isBindingListItem()) {
-    settleSkippedForListItem = true;
-    return;
-  }
+  // The item's flush commits what the binding wrote inside it, and
+  // settleAfterListItems() sees to the rest (see itemsLeftWork).
+  if (isBindingListItem()) return;
   settleFlushScheduled = true;
   queueMicrotask(() => {
     settleFlushScheduled = false;

@@ -3,7 +3,7 @@ import type {
   TemplateRef,
   ViewContainerRef,
 } from '@angular/core';
-import type { LynxElement } from '../lynx-element';
+import { type LynxElement, setBoundListItem } from '../lynx-element';
 import {
   attributesDiffer,
   type ListItemRun,
@@ -80,14 +80,13 @@ let nextRunId = 1;
  * them with it. A view whose item still exists stays attached to change
  * detection, in the pool too, and is kept up to date with its item (its
  * index moves as items go in above it), so it costs a check with its parent:
- * the pool holds a handful. Detaching it instead (`ChangeDetectorRef.detach()`)
- * would mean `reattach()` when native asks for an item, and every attach
- * schedules an application tick, whose `__FlushElementTree()` would follow
- * every item native asks for while the list scrolls. Only a view whose item is
- * gone is detached: checking it on an item the app no longer has could
- * throw (`rows()[i]` past the end). Reusing it reattaches it, which a removal
- * or a move pays for once, and so does a new view's insert, while the list
- * fills the screen.
+ * the pool holds a handful. A bind takes the view out of change detection
+ * only while it checks it (see bind), and its `reattach()` schedules an
+ * application tick, as every attach does; that tick flushes nothing when the
+ * bind wrote only inside its item (see settleAfterListItems in
+ * lynx-element.ts). Only a view whose item is gone stays detached: checking
+ * it on an item the app no longer has could throw (`rows()[i]` past the end).
+ * Reusing it reattaches it, as every bind does.
  */
 export class ListItemViews<T> implements LynxListItemSource {
   readonly id = nextRunId++;
@@ -208,14 +207,26 @@ export class ListItemViews<T> implements LynxListItemSource {
       this.#byKey.set(key, view);
     }
     view.pooled = false;
+    // What the check writes inside the item reaches native with the item's
+    // flush, which commits nothing else (see settleAfterListItems).
+    setBoundListItem(view.root);
     this.#show(view, index, this.#committedItems);
     // Checked now, while componentAtIndex waits: its flush right after is
-    // what native shows. Then back in change detection if it was out, which
-    // asks nothing of its ancestors now that it's checked.
-    view.ref.detectChanges();
-    if (view.detached) {
+    // what native shows. Checked out of change detection: what the check
+    // marks for check inside the view, such as a child component whose
+    // signal input it sets, would otherwise mark every view above it, up to
+    // the root (Angular's markAncestorsForTraversal), and the tick that
+    // follows would walk down to the view from the root to find it checked
+    // already. Detached, the marks stop at the view. Then back in change
+    // detection, which asks nothing of its ancestors now that it's checked,
+    // but schedules a tick, as any attach does (see the class comment).
+    // A check that throws leaves the view as it was.
+    view.ref.detach();
+    try {
+      view.ref.detectChanges();
       view.detached = false;
-      view.ref.reattach();
+    } finally {
+      if (!view.detached) view.ref.reattach();
     }
     return { element: view.root.element, reused };
   }

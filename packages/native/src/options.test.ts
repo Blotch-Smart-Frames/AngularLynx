@@ -18,6 +18,7 @@ describe('resolveAppOptions', () => {
       filePicker: false,
       fileSharing: false,
       storeReview: false,
+      signInWithApple: false,
       deepLinkSchemes: [],
       appLinkDomains: [],
       canOpenURLSchemes: ['http', 'https', 'mailto', 'tel', 'sms'],
@@ -464,7 +465,7 @@ describe('resolveAppOptions', () => {
     },
   );
 
-  it.each(['filePicker', 'fileSharing'] as const)(
+  it.each(['filePicker', 'fileSharing', 'signInWithApple'] as const)(
     'turns %s on only when it is true',
     (name) => {
       const resolve = (value: unknown) =>
@@ -481,6 +482,7 @@ describe('resolveAppOptions', () => {
     ['filePicker', 'false'],
     ['filePicker', 1],
     ['fileSharing', 'true'],
+    ['signInWithApple', 'false'],
   ])('rejects %s %j', (name, value) => {
     expect(() =>
       resolveAppOptions({ [name]: value } as never, defaults),

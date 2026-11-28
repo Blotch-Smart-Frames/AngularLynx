@@ -172,6 +172,7 @@ export const scaffoldApp = async (
   addFilePicker(appDir);
   addCameraPermission(appDir);
   addStoreReview(appDir);
+  addSignInWithApple(appDir);
   step('Layer 2: compile a prebuilt library');
   await addPrebuiltLibrary(appDir, pm, exec);
 
@@ -1493,6 +1494,36 @@ const addStoreReview = (appDir: string) => {
   );
   options['storeReview'] = true;
   writeFileSync(workspacePath, `${JSON.stringify(workspace, null, 2)}\n`);
+};
+
+/**
+ * Turns on angular.json's `signInWithApple`, so the iOS build keeps the Sign
+ * in with Apple module and writes its entitlement (#932): only a build shows
+ * the module compiles and that the Simulator app still signs with the
+ * entitlement and no team. native/apple-sign-in.yaml opens the sheet.
+ * compile-features.ts builds the shells without it, as most apps get them.
+ */
+const addSignInWithApple = (appDir: string) => {
+  step('Layer 2: offer Sign in with Apple, for the native builds');
+  const workspacePath = path.join(appDir, 'angular.json');
+  const workspace = readJson<{
+    projects: Record<
+      string,
+      { architect?: Record<string, { options?: Record<string, unknown> }> }
+    >;
+  }>(workspacePath);
+  const options = Object.values(workspace.projects)[0]?.architect?.['build']
+    ?.options;
+  check(
+    options !== undefined,
+    "angular.json's build target has no options; the project `ng new` generates has changed shape. Update addSignInWithApple() in packages/e2e/src/scaffold.ts.",
+  );
+  options['signInWithApple'] = true;
+  writeFileSync(
+    workspacePath,
+    `${JSON.stringify(workspace, null, 2)}
+`,
+  );
 };
 
 /**

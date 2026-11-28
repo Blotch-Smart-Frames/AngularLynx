@@ -380,6 +380,15 @@ export const FLOWS: readonly Flow[] = [
     only: { host: 'shell' },
   },
   {
+    file: 'apple-sign-in.yaml',
+    description:
+      "opens Sign in with Apple's sheet on iOS, and says Android has none",
+    // Only the app's own iOS build has the module, and only with
+    // angular.json's signInWithApple, which the harness sets. Lynx Explorer
+    // has none, as Android doesn't.
+    only: { host: 'shell' },
+  },
+  {
     file: 'linking.yaml',
     description:
       'says which apps it can open, and on Android opens a link in a browser tab',

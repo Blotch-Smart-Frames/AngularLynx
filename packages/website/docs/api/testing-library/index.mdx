@@ -268,6 +268,43 @@ await waitForUpdate();
 expect(reviewRequests()).toBe(1);
 ```
 
+### `setAppleSignInResult()`
+
+```typescript
+function setAppleSignInResult(result?: FakeAppleSignInResult): void;
+function setAppleSignInError(
+  code: 'canceled' | 'failed',
+  message?: string,
+): void;
+function setAppleSignInAvailable(available: boolean): void;
+function setAppleCredentialState(
+  user: string,
+  state: 'authorized' | 'revoked' | 'notFound' | 'transferred',
+): void;
+function appleSignInRequests(): readonly AppleSignInRequest[];
+```
+
+Steer [`LynxAppleSignIn`](/api/angular-lynx/apple-sign-in), whose native module the setup fakes. Until a spec calls one of them, the person closes the sheet, and `signIn()` rejects with `canceled`.
+
+- **`setAppleSignInResult()`** has the person sign in from now on in this test. `signIn()` resolves with `result`, sharing its `email` and `fullName` only when the sign-in asks for their scopes, as Apple does. What's left out takes a test value: `user` is `test-apple-user`, the tokens `test-identity-token` and `test-authorization-code`. Each user it signs in is `authorized` afterwards.
+- **`setAppleSignInError()`** has the next sign-ins reject with `code`.
+- **`setAppleSignInAvailable(false)`** takes the native sheet away, as on Android and the web: `isAvailable()` resolves `false` and `signIn()` rejects with `unsupported`.
+- **`setAppleCredentialState()`** sets what `getCredentialState(user)` resolves with. A user nobody signed in is `notFound`.
+- **`appleSignInRequests()`** lists the sign-ins the app opened, with the `scopes`, `nonce` and `state` each asked for.
+
+The answer reaches the app through the background thread, as on a phone, so wait for it with `waitForUpdate()`. Each test starts with the sheet there, no sign-ins and no users.
+
+```typescript
+setAppleSignInResult({ user: 'u1', email: 'ada@example.com' });
+await render(SignIn);
+
+fireEvent.tap(screen.getByText('Sign in with Apple'));
+await waitForUpdate();
+
+expect(screen.getByText('Signed in as ada@example.com')).toBeInTheDocument();
+expect(appleSignInRequests()).toEqual([{ scopes: ['email', 'fullName'] }]);
+```
+
 ### `pressBackButton()`
 
 ```typescript

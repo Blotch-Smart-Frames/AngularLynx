@@ -30,6 +30,7 @@ import { installBarcodeScannerModule } from './barcode-scanner.js';
 import { installLinkingModule } from './linking.js';
 import { installShortcutsModule } from './shortcuts.js';
 import { installStoreReviewModule } from './store-review.js';
+import { installAppleSignInModule } from './apple-sign-in.js';
 
 // ─── CSS fetch intercept ─────────────────────────────────────────────────────
 
@@ -125,6 +126,9 @@ const frameOnInstalledTimers = (threadGlobals: any): void => {
   // LynxStoreReview's requests, which reviewRequests() counts (see
   // store-review.ts).
   installStoreReviewModule(threadGlobals);
+  // LynxAppleSignIn's sign-ins, which setAppleSignInResult() and the other
+  // setters in apple-sign-in.ts steer.
+  installAppleSignInModule(threadGlobals);
   // LynxBackButton enables the back handler pressBackButton() checks (see
   // back-button.ts).
   installShellModule(threadGlobals);

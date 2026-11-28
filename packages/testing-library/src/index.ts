@@ -34,6 +34,18 @@ export { openedURLs, openLink } from './linking.js';
 export type { OpenedURL } from './linking.js';
 export { runShortcut } from './shortcuts.js';
 export { reviewRequests } from './store-review.js';
+export {
+  appleSignInRequests,
+  setAppleCredentialState,
+  setAppleSignInAvailable,
+  setAppleSignInError,
+  setAppleSignInResult,
+} from './apple-sign-in.js';
+export type {
+  AppleSignInRequest,
+  FakeAppleCredentialState,
+  FakeAppleSignInResult,
+} from './apple-sign-in.js';
 export { screen, within, getQueriesForElement, queries } from './queries.js';
 export type {
   BoundAccessibilityLabelQueries,

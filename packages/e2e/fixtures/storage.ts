@@ -1,8 +1,10 @@
 import { Component, inject, signal, type OnInit } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
+  AppleSignInError,
   BiometricsError,
   LYNX_ELEMENTS,
+  LynxAppleSignIn,
   LynxBiometrics,
   LynxClipboard,
   FilePickerError,
@@ -127,6 +129,14 @@ const collectedFromArrays = async (): Promise<string> => {
  * shows the prompt every time, as in any development build, so the flow sees
  * the shell's module answer. Google Play shows nothing to an app it didn't
  * install, so on Android it only resolves.
+ *
+ * "Apple", beside "Biometrics", shows whether LynxAppleSignIn has the native
+ * sheet once the page opens (issue #932): `native` in the iOS app, which has
+ * the module and its entitlement because the harness sets angular.json's
+ * `signInWithApple`, and `none` on Android and in Lynx Explorer. A tap opens
+ * the sheet and shows how it ended: the error's code, `failed` on a
+ * Simulator signed in to no Apple Account once its alert closes, and
+ * `unsupported` without the module.
  */
 @Component({
   selector: 'app-storage',
@@ -181,6 +191,12 @@ const collectedFromArrays = async (): Promise<string> => {
       <text flatten="false" (bindtap)="authenticate()"
         >Biometrics: {{ biometrics() }}</text
       >
+      <text
+        flatten="false"
+        style="margin-left: 16px;"
+        (bindtap)="signInWithApple()"
+        >Apple: {{ apple() }}</text
+      >
     </view>
   `,
 })
@@ -197,8 +213,13 @@ export class StorageRoute implements OnInit {
   readonly arraySlots = signal('tap');
   readonly clipboard = signal('tap');
   readonly rating = signal('tap');
+  readonly #appleSignIn = inject(LynxAppleSignIn);
+  readonly apple = signal('…');
 
   ngOnInit(): void {
+    void this.#appleSignIn
+      .isAvailable()
+      .then((available) => this.apple.set(available ? 'native' : 'none'));
     void this.#biometrics
       .availability()
       .then(({ type, enrolled }) =>
@@ -264,6 +285,17 @@ export class StorageRoute implements OnInit {
       (error: unknown) =>
         this.files.set(
           error instanceof FilePickerError ? error.code : String(error),
+        ),
+    );
+  }
+
+  signInWithApple(): void {
+    this.apple.set('…');
+    this.#appleSignIn.signIn({ scopes: ['email'] }).then(
+      () => this.apple.set('signed in'),
+      (error: unknown) =>
+        this.apple.set(
+          error instanceof AppleSignInError ? error.code : String(error),
         ),
     );
   }

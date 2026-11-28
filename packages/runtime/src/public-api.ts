@@ -266,6 +266,16 @@ export type { SessionStorageSubscription } from './lib/session-storage';
 export { LynxShare, ShareError } from './lib/share';
 export type { ShareData, ShareErrorCode, ShareFile } from './lib/share';
 export { LynxStoreReview } from './lib/store-review';
+export { AppleSignInError, LynxAppleSignIn } from './lib/apple-sign-in';
+export type {
+  AppleCredentialState,
+  AppleRealUserStatus,
+  AppleSignInErrorCode,
+  AppleSignInFullName,
+  AppleSignInOptions,
+  AppleSignInResult,
+  AppleSignInScope,
+} from './lib/apple-sign-in';
 export { LynxBackButton } from './lib/back-button';
 export { BiometricsError, LynxBiometrics } from './lib/biometrics';
 export type {

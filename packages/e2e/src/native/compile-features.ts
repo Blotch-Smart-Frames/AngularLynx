@@ -31,7 +31,9 @@ import {
  * `permissions.camera`, as most apps are, which leaves the biometrics module
  * (#918) and the barcode scanner's (#917) out. The E2E app asks for both, so
  * its own build has the modules. Both are built
- * without `storeReview`, which the E2E app sets and most apps don't (#931).
+ * without `storeReview`, which the E2E app sets and most apps don't (#931),
+ * and without `signInWithApple`, which leaves the iOS shell's Sign in with
+ * Apple module and its entitlement out (#932).
  * `no-canvas` is built without angular.json's `filePicker` too, which leaves
  * the file picker module and MainActivity's launcher for it out (#924),
  * while the E2E app sets it.
@@ -101,6 +103,13 @@ const STORE_REVIEW_PROBES: Record<Platform, string> = {
   ios: 'App/StoreReviewModule.swift',
   android: 'app/src/main/java/dev/angularlynx/shell/StoreReviewModule.kt',
 };
+
+/**
+ * The iOS shell's Sign in with Apple module, which the variants build
+ * without, as most apps are: the E2E app sets angular.json's
+ * `signInWithApple` (issue #932).
+ */
+const APPLE_SIGN_IN_PROBE = 'App/AppleSignInModule.swift';
 
 /**
  * Compiles the app's native project once per VARIANTS entry, without
@@ -183,6 +192,7 @@ export const compileFeatureVariants = async ({
           // and the app's permissions without the ones the variant leaves out.
           overrides: {
             storeReview: false,
+            signInWithApple: false,
             ...(biometrics && camera
               ? {}
               : {
@@ -207,6 +217,16 @@ export const compileFeatureVariants = async ({
               `${name}: the generated project ${kept[feature] ? 'has no' : 'still has'} ${file}, so it isn't the project an app with ${JSON.stringify(kept)} gets.`,
             );
           }
+        }
+        // Sign in with Apple is iOS's alone: Android has no module to probe.
+        if (
+          platform === 'ios' &&
+          (existsSync(path.join(projectDir, APPLE_SIGN_IN_PROBE)) ||
+            existsSync(path.join(projectDir, 'Config/App.entitlements')))
+        ) {
+          failures.push(
+            `${name}: the generated project still has ${APPLE_SIGN_IN_PROBE} or its entitlement, though the variant builds without signInWithApple.`,
+          );
         }
         if (existsSync(path.join(projectDir, STORE_REVIEW_PROBES[platform]))) {
           failures.push(

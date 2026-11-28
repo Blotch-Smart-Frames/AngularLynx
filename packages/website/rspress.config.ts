@@ -346,6 +346,10 @@ export default defineConfig({
               text: 'LynxStoreReview',
               link: '/api/angular-lynx/store-review',
             },
+            {
+              text: 'LynxAppleSignIn',
+              link: '/api/angular-lynx/apple-sign-in',
+            },
           ],
         },
         {

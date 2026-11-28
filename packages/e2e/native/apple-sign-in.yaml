@@ -1,0 +1,46 @@
+# Layer 6, the app's own builds only: LynxAppleSignIn opens Sign in with
+# Apple's sheet (issue #932). The harness sets angular.json's
+# signInWithApple, so the iOS shell has the module and signs with its
+# entitlement. Nobody signs in to an Apple Account on the Simulator, so iOS
+# answers the request with its "Sign in to your Apple Account" alert, which
+# it shows only for an app with the entitlement (without it the request
+# fails at once). Closing the alert ends the request with
+# ASAuthorizationError 1000, which the storage page's "Apple" line shows as
+# failed. Android has no module: the line says "none",
+# and a tap shows the unsupported rejection.
+appId: ${APP_ID}
+---
+- runFlow: open-app.yaml
+- tapOn: Open storage
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - extendedWaitUntil:
+          visible: 'Apple: none'
+          timeout: 15000
+      - tapOn: 'Apple: none'
+      - extendedWaitUntil:
+          visible: 'Apple: unsupported'
+          timeout: 15000
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - extendedWaitUntil:
+          visible: 'Apple: native'
+          timeout: 15000
+      - tapOn: 'Apple: native'
+      # The alert is iOS's own, outside the app, so Maestro's text matching
+      # can't see it: Close is tapped where the alert puts it on the
+      # harness's simulator (the middle of the screen, left button), and the
+      # app's own line below shows the tap reached it.
+      - waitForAnimationToEnd:
+          timeout: 5000
+      - takeScreenshot: apple-sign-in-sheet
+      - tapOn:
+          point: 31%,57%
+      - extendedWaitUntil:
+          visible: 'Apple: failed'
+          timeout: 20000
+- takeScreenshot: apple-sign-in

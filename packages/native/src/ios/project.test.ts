@@ -18,7 +18,10 @@ import {
   appShortcutsSwift,
   entitlementsPlist,
   infoPlistEntries,
+  IOS_APPLE_SIGN_IN_SOURCE,
   IOS_BIOMETRICS_SOURCES,
+  IOS_ENTITLEMENTS,
+  iosEntitlements,
   IOS_FILE_PICKER_SOURCES,
   IOS_BARCODE_SCANNER_SOURCE,
   IOS_CANVAS_SOURCES,
@@ -26,6 +29,7 @@ import {
   IOS_WEBGL_SOURCES,
   iosGenerator,
   LOCAL_NETWORK_REASON,
+  mergeEntitlements,
   withoutFrameworks,
   xcconfig,
 } from './project.ts';
@@ -76,11 +80,65 @@ describe('xcconfig', () => {
 });
 
 describe('entitlements', () => {
-  it('points the target at them only with app link domains', () => {
+  it('points the target at them only when an option adds one', () => {
     expect(xcconfig(app())).not.toContain('CODE_SIGN_ENTITLEMENTS');
-    expect(xcconfig(app({ appLinkDomains: ['example.com'] }))).toContain(
-      'CODE_SIGN_ENTITLEMENTS = Config/App.entitlements\n',
+    for (const options of [
+      { appLinkDomains: ['example.com'] },
+      { signInWithApple: true },
+    ]) {
+      expect(xcconfig(app(options))).toContain(
+        'CODE_SIGN_ENTITLEMENTS = Config/App.entitlements\n',
+      );
+    }
+  });
+
+  it('adds none for the options left at their defaults', () => {
+    expect(iosEntitlements(app())).toEqual({});
+  });
+
+  it("adds Sign in with Apple's entitlement with signInWithApple", () => {
+    expect(entitlementsPlist(app({ signInWithApple: true }))).toContain(
+      [
+        '\t<key>com.apple.developer.applesignin</key>',
+        '\t<array>',
+        '\t\t<string>Default</string>',
+        '\t</array>',
+      ].join('\n'),
     );
+  });
+
+  // Each option's keys go in the one file, so a second capability doesn't
+  // drop the first.
+  it("merges every option's entitlements into one file, its keys sorted", () => {
+    const plist = entitlementsPlist(
+      app({ appLinkDomains: ['example.com'], signInWithApple: true }),
+    );
+    expect(plist).toContain(
+      '<!-- Written by @blotch/angular-lynx-native from appLinkDomains, signInWithApple in angular.json. -->',
+    );
+    expect(plist).toContain(
+      [
+        '<dict>',
+        '\t<key>com.apple.developer.applesignin</key>',
+        '\t<array>',
+        '\t\t<string>Default</string>',
+        '\t</array>',
+        '\t<key>com.apple.developer.associated-domains</key>',
+        '\t<array>',
+        '\t\t<string>applinks:example.com</string>',
+        '\t</array>',
+        '</dict>',
+      ].join('\n'),
+    );
+  });
+
+  it('names a capability for each option, which build.ts matches signing errors against', () => {
+    expect(
+      IOS_ENTITLEMENTS.map(({ option, capability }) => [option, capability]),
+    ).toEqual([
+      ['appLinkDomains', 'Associated Domains'],
+      ['signInWithApple', 'Sign In with Apple'],
+    ]);
   });
 
   it('associate the app with each domain', () => {
@@ -95,6 +153,65 @@ describe('entitlements', () => {
         '\t</array>',
       ].join('\n'),
     );
+  });
+});
+
+describe('mergeEntitlements', () => {
+  it("joins two options' lists under one key, each value once", () => {
+    expect(
+      mergeEntitlements([
+        {
+          option: 'appLinkDomains',
+          entitlements: {
+            'com.apple.developer.associated-domains': [
+              'applinks:example.com',
+              'applinks:example.com',
+            ],
+          },
+        },
+        {
+          option: 'passwordAutofill',
+          entitlements: {
+            'com.apple.developer.associated-domains': [
+              'webcredentials:example.com',
+              'applinks:example.com',
+            ],
+            'aps-environment': 'production',
+          },
+        },
+      ]),
+    ).toEqual({
+      'aps-environment': 'production',
+      'com.apple.developer.associated-domains': [
+        'applinks:example.com',
+        'webcredentials:example.com',
+      ],
+    });
+  });
+
+  it('keeps a flag or a string two options agree on', () => {
+    expect(
+      mergeEntitlements([
+        { option: 'a', entitlements: { flag: true, mode: 'x' } },
+        { option: 'b', entitlements: { flag: true, mode: 'x' } },
+      ]),
+    ).toEqual({ flag: true, mode: 'x' });
+  });
+
+  // Only one value can be signed, and picking one would quietly break the
+  // other option's feature.
+  it.each([
+    [true, false],
+    ['development', 'production'],
+    [['a'], 'a'],
+    ['a', ['a']],
+  ])('rejects two options setting one key to %j and %j', (first, second) => {
+    expect(() =>
+      mergeEntitlements([
+        { option: 'first', entitlements: { key: first } },
+        { option: 'second', entitlements: { key: second } },
+      ]),
+    ).toThrow(/^first and second set the key entitlement to different values/);
   });
 });
 
@@ -377,6 +494,40 @@ describe('iosGenerator', () => {
     expect(
       readFileSync(path.join(dir, 'App/LynxViewController.swift'), 'utf8'),
     ).toContain('NSClassFromString("AngularLynxStoreReviewModule")');
+  });
+
+  it('keeps the Sign in with Apple module only in an app with signInWithApple', () => {
+    /**
+     * Generates from a fresh copy of the template, as prepareProject does.
+     */
+    const generate = (options: object) => {
+      rmSync(dir, { recursive: true, force: true });
+      cpSync(path.join(TEMPLATES_DIR, 'ios'), dir, { recursive: true });
+      const resolved = app(options);
+      iosGenerator.configure(dir, resolved, dir);
+      iosGenerator.leaveOut(dir, { canvas: true, webgl: true }, resolved);
+      return {
+        module: existsSync(path.join(dir, IOS_APPLE_SIGN_IN_SOURCE)),
+        entitlements: existsSync(path.join(dir, 'Config/App.entitlements')),
+      };
+    };
+    // The module and the entitlement go together: the sheet fails without
+    // the entitlement, and a Personal Team can't sign it.
+    expect(generate({ signInWithApple: true })).toEqual({
+      module: true,
+      entitlements: true,
+    });
+    expect(generate({})).toEqual({ module: false, entitlements: false });
+    // LynxViewController registers it by the name the module gives itself.
+    expect(
+      readFileSync(
+        path.join(TEMPLATES_DIR, 'ios', IOS_APPLE_SIGN_IN_SOURCE),
+        'utf8',
+      ),
+    ).toContain('@objc(AngularLynxAppleSignInModule)');
+    expect(
+      readFileSync(path.join(dir, 'App/LynxViewController.swift'), 'utf8'),
+    ).toContain('NSClassFromString("AngularLynxAppleSignInModule")');
   });
 
   it('writes the entitlements beside the xcconfig, only with app link domains', () => {

@@ -15,6 +15,7 @@ import type { PreparedProject } from '../generate.ts';
 import type { IosExportMethod, ResolvedApp } from '../options.ts';
 import { NativeBuildError, capture, run } from '../process.ts';
 import { escapeXml } from '../xml.ts';
+import { IOS_ENTITLEMENTS } from './project.ts';
 
 export type IosSigning = {
   readonly teamId: string;
@@ -419,9 +420,21 @@ const explainSigningFailure = (error: Error, teamId: string): Error => {
   }
   // xcodebuild then also reports "No profiles for", which alone would point
   // at the wrong fix.
-  if (/Personal development teams.*Associated Domains/is.test(error.message)) {
+  // Each option that adds an entitlement names its capability as Xcode
+  // does, so the message can say which option a Personal Team can't sign.
+  const unsupported =
+    /Personal development teams.*?do not support the (.+?) (?:capability|capabilities)/is.exec(
+      error.message,
+    )?.[1];
+  const entitlement =
+    unsupported &&
+    IOS_ENTITLEMENTS.find(
+      ({ capability }) =>
+        capability.toLowerCase() === unsupported.toLowerCase(),
+    );
+  if (entitlement) {
     return new NativeBuildError(
-      `Team ${teamId} is a free Personal Team, which can't sign the Associated Domains capability that appLinkDomains adds. Set ios.teamId to a team in the paid Apple Developer Program, or leave appLinkDomains out of the configuration you build for this iPhone.\n\n${error.message}`,
+      `Team ${teamId} is a free Personal Team, which can't sign the ${entitlement.capability} capability that ${entitlement.option} adds. Set ios.teamId to a team in the paid Apple Developer Program, or leave ${entitlement.option} out of the configuration you build for this iPhone.\n\n${error.message}`,
     );
   }
   if (/requires a development team|No profiles for/i.test(error.message)) {

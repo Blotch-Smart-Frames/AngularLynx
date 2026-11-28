@@ -323,7 +323,7 @@ Simulate with background images if needed.
 
 ### A border color costs memory on elements with no border
 
-The default `border-color` is black, not the web's `currentColor`. Don't copy shadcn/ui's `* { border-color: var(--border) }`: on iOS, every element with a border color keeps four colors for it, about 1.3 KB of native memory per element, even when the border is 0 wide. Give the color only to elements with a border (`border border-border`). The dolan UI theme's Tailwind 4 `tailwind.css` gives `var(--border)` to Tailwind's border-width classes (`border`, `border-t`, `border-x-2`, … up to `-8`), so a plain `border` draws in it; an arbitrary width (`border-[1.5px]`) or `divide-y` needs a color class. Its Tailwind 3 plugin still sets it on every element.
+The default `border-color` is black, not the web's `currentColor`. Don't copy shadcn/ui's `* { border-color: var(--border) }`: on iOS, every element with a border color keeps four colors for it, about 1.3 KB of native memory per element, even when the border is 0 wide. Give the color only to elements with a border (`border border-border`). The dolan UI theme's Tailwind 4 `tailwind.css` gives `var(--border)` to Tailwind's border-width classes (`border`, `border-t`, `border-x-2`, … up to `-8`), so a plain `border` draws in it. Another width (`border-3`, `border-[1.5px]`) needs `border-border`, a prefixed one (`dark:border`) the same prefix on the color (`dark:border-border`), and `divide-y` needs `divide-border`. Its Tailwind 3 plugin still sets it on every element.
 
 ### Change classes through Angular, not `__AddClass`
 

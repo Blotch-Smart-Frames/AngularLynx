@@ -79,7 +79,13 @@ Themes copied by an older dolan have no `-rgb` variables. [`dolan update`](/dola
 | `glass-tint` / `glass-tint-foreground`       | `bg-glass-tint`, `text-glass-tint-foreground`          | Tinted glass, and what sits on it                |
 | `glass-dim`                                  | `bg-glass-dim`                                         | The dimming layer under clear glass              |
 
-Every color class works with `bg-`, `text-` and `border-`, and takes [opacity modifiers](#opacity-modifiers) such as `bg-primary/50`. The theme also gives Tailwind's border-width classes (`border`, `border-t`, `border-x`, `border-2`, `border-b-4` and the rest of the default scale) `border-color: var(--border)`, so a plain `border` class draws in the theme's border color. Lynx's own default is black. An arbitrary width such as `border-[1.5px]`, or `divide-y`, needs a color class of its own, such as `border-border`.
+Every color class works with `bg-`, `text-` and `border-`, and takes [opacity modifiers](#opacity-modifiers) such as `bg-primary/50`. The theme also gives `border-color: var(--border)` to Tailwind's unprefixed border-width classes: `border` and each side (`border-t`, `border-x`, …), plain or at `-2`, `-4` and `-8`. So a plain `border` class draws in the theme's border color. Lynx's own default is black.
+
+These need a color class of their own:
+
+- **Other widths:** `border-3`, `border-[1.5px]`. Add `border-border`.
+- **Prefixed widths:** `dark:border`, `sm:border-t`. Add the same prefix: `dark:border dark:border-border`.
+- **Dividers:** `divide-y` borders the children. Add `divide-border`.
 
 The Tailwind 4 theme doesn't use shadcn/ui's `* { border-color: var(--border) }`: on iOS, Lynx keeps four colors for each element with a border color, about 1.3 KB of native memory each, whether it has a border or not. The Tailwind 3 plugin still sets it on every element ([#957](https://github.com/Blotch-Smart-Frames/AngularLynx/issues/957)).
 

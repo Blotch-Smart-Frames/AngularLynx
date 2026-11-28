@@ -67,8 +67,10 @@
  * gave it to every element, and on iOS Lynx then keeps four colors for each,
  * about 1.3 KB of native memory per element whether it has a border or not
  * (issue #949). The base layer comes before the utilities, so a color class
- * such as `border-primary` still wins. A width not listed here (an arbitrary
- * `border-[1.5px]`, a `divide-y`) needs a color class of its own.
+ * such as `border-primary` still wins. A class not listed here needs a color
+ * class of its own: another width (`border-3`, `border-[1.5px]`), a prefixed
+ * one (`dark:border`, which keeps its prefix in the element's classes), or
+ * `divide-y` (`divide-border`).
  *
  * Tailwind 3's plugin (tailwind-plugin.ts) still uses `*`: an `addBase`
  * rule for these classes would have its class sorter put `border` before

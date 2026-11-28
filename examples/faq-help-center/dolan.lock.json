@@ -3,7 +3,7 @@
   "components": {
     "accordion": {
       "accordion.ts": {
-        "hash": "4abbccfcbb6d66c4"
+        "hash": "1178502d8cfa5c99"
       },
       "index.ts": {
         "hash": "8751913a8ed8016e"
@@ -27,7 +27,7 @@
     },
     "dialog": {
       "dialog.ts": {
-        "hash": "c386d140c2fc2eb5"
+        "hash": "97e229764edda47a"
       },
       "index.ts": {
         "hash": "53b2b4aec4019c08"

@@ -119,7 +119,7 @@ On the iOS Simulator, the tick after a bind takes about 65 µs on master, and #8
 
 A tick is "after a bind" when `componentAtIndex` ran since the tick before. A later run of master also tagged each tick with Angular's notification sources (`ChangeDetectionScheduler.notify()`). It shows the totals in an overlay above the list. The scroll test's screenshots before and after its swipes give the difference: 5 swipes (a warm-up and 4 measured), 3 rounds alternating, a Release build on the iPhone 18 Pro Simulator (iOS 27).
 
-**The clock.** `performance.now()` on the main thread is the runtime's own, built on `Date.now()` (`canvas/dom-globals.ts`), so it steps in whole milliseconds, longer than most ticks. The probe used `__date_clock()` instead. That's a main-thread global of the engine, which isn't documented, and it returns microseconds since the epoch.
+**The clock.** `performance.now()` on the main thread, the runtime's own (`canvas/dom-globals.ts`), was then built on `Date.now()`, so it stepped in whole milliseconds, longer than most ticks. The probe used `__date_clock()` instead. That's a main-thread global of the engine, which isn't documented, and it returns microseconds since the epoch. Since #896, `performance.now()` reads it too.
 
 **Per 5 swipes** (each run bound 38 rows; the ranges are the 3 runs of each build):
 

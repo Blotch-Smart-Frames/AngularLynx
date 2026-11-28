@@ -2200,6 +2200,30 @@ describe('renderer teardown', () => {
       expect(made).toBe(1);
     });
 
+    it('lets go of a wrapper a query made, without waiting for a cycle to end', async () => {
+      const document = doc();
+      const page = document.createRootElement();
+      const view = document.createElement('view');
+      page.appendChild(view);
+      processPendingRemovals();
+      // Whatever flush was coming has come: none is after the query.
+      await flush();
+      // A native element no wrapper was made for, after the view.
+      const g = globalThis as unknown as FakeNativeGlobal<FakeEl>;
+      g.__AppendElement(
+        page.element as unknown as FakeEl,
+        g.__CreateView() as FakeEl,
+      );
+      const ref = ((): WeakRef<LynxElement> => {
+        const found = view.nextSibling()!;
+        expect(LynxElement.byUniqueId(found.uniqueId)).toBe(found);
+        return new WeakRef(found);
+      })();
+      await collectGarbage();
+
+      expect(ref.deref()).toBeUndefined();
+    });
+
     it("lets go of the old page's elements when a new app takes the page", async () => {
       const refs = ((): WeakRef<LynxElement>[] => {
         const old = new LynxDocument();

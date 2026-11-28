@@ -1539,10 +1539,18 @@ export class LynxElement implements BaseLynxElement {
    * canonical wrapper.
    */
   static #canonicalFor(ref: ElementRef): LynxElement {
-    const existing = LynxElement.#registered(__GetElementUniqueID(ref));
-    return existing ?? new LynxElement(ref);
+    const id = __GetElementUniqueID(ref);
+    const existing = LynxElement.#registered(id);
+    if (existing) return existing;
+    const made = new LynxElement(ref);
+    // In no JS parent, so out of the page to the registry (see #inPage):
+    // held weakly at once, and not until the end of a cycle, which a query
+    // outside one may wait a long time for (see #byNativeId). The
+    // constructor queued it last.
+    LynxElement.#unsettled.pop();
+    LynxElement.#byNativeId.set(id, new WeakRef(made));
+    return made;
   }
-
 
   /**
    * @internal The canonical wrapper of the element with this unique id, if

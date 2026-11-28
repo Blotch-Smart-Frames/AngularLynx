@@ -13,7 +13,7 @@ export type HeadersInit =
 /** RFC 9110's `token`: the characters a header name may use. */
 const NAME = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 
-const normalizeValue = (value: unknown): string => {
+export const normalizeValue = (value: unknown): string => {
   // Leading and trailing HTTP whitespace is dropped, as browsers do.
   const normalized = String(value).replace(/^[\t\n\r ]+|[\t\n\r ]+$/g, '');
   if (/[\r\n]/.test(normalized) || normalized.includes('\0')) {
@@ -22,7 +22,7 @@ const normalizeValue = (value: unknown): string => {
   return normalized;
 };
 
-const normalizeName = (name: unknown): string => {
+export const normalizeName = (name: unknown): string => {
   const normalized = String(name);
   if (!NAME.test(normalized)) {
     throw new TypeError(`Invalid header name: ${JSON.stringify(name)}`);

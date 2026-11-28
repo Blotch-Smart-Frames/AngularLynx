@@ -289,6 +289,12 @@ final class BluetoothModule: NSObject, LynxContextModule, CBCentralManagerDelega
             ).result)
           return
         }
+        // CoreBluetooth sends a longer value as a long write, which a
+        // device that keeps to ATT's limit refuses or cuts short.
+        guard data.count <= Self.maxAttributeLength else {
+          callback(Self.tooLong(data.count, limit: Self.maxAttributeLength).result)
+          return
+        }
         connection.writes[ObjectIdentifier(target.characteristic), default: []].append(callback)
         connection.peripheral.writeValue(data, for: target.characteristic, type: .withResponse)
         return
@@ -303,12 +309,7 @@ final class BluetoothModule: NSObject, LynxContextModule, CBCentralManagerDelega
       }
       let limit = Self.maxWriteLength(connection.peripheral)
       guard data.count <= limit else {
-        callback(
-          Failure(
-            code: "failed",
-            message:
-              "A write without response carries at most \(limit) bytes to this device, and this one has \(data.count)."
-          ).result)
+        callback(Self.tooLong(data.count, limit: limit).result)
         return
       }
       connection.unsent.append(
@@ -952,6 +953,13 @@ final class BluetoothModule: NSObject, LynxContextModule, CBCentralManagerDelega
 
   /// The most bytes a write without response carries: what the MTU allows,
   /// but never more than an attribute holds.
+  /// What a write answers when its value is longer than it can carry, in
+  /// the words the Android module uses.
+  private static func tooLong(_ length: Int, limit: Int) -> Failure {
+    Failure(
+      code: "failed", message: "The value is \(length) bytes, and this write takes at most \(limit).")
+  }
+
   private static func maxWriteLength(_ peripheral: CBPeripheral) -> Int {
     min(peripheral.maximumWriteValueLength(for: .withoutResponse), maxAttributeLength)
   }

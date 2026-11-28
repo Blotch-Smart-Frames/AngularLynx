@@ -49,23 +49,30 @@ final class TrackingModule: NSObject, LynxModule {
   // the prompt belong to the main actor.
   @objc func request(_ callback: @escaping LynxCallbackBlock) {
     Task { @MainActor in
-      Self.whenActive {
-        ATTrackingManager.requestTrackingAuthorization { status in
+      Self.ask { status in callback(["status": Self.name(of: status)]) }
+    }
+  }
+
+  /// Asks for the person's answer once the app is active, and asks again
+  /// each time iOS answers notDetermined because the app stopped being
+  /// active before the prompt could show, as when another system alert
+  /// (notifications, location) took the screen first: iOS then shows
+  /// nothing, and shows the prompt when asked again once the app is back.
+  /// `authorized`, `denied` and `restricted` are the person's or the phone's
+  /// answer, as is a notDetermined from an app that stayed active.
+  @MainActor private static func ask(
+    _ done: @escaping (ATTrackingManager.AuthorizationStatus) -> Void
+  ) {
+    whenActive {
+      ATTrackingManager.requestTrackingAuthorization { status in
+        // The completion handler runs on a queue of iOS's choosing, and the
+        // application's state belongs to the main actor.
+        Task { @MainActor in
           if status == .notDetermined && UIApplication.shared.applicationState != .active {
-            // iOS answers notDetermined without showing anything when the app
-            // stopped being active before the prompt could show, as when
-            // another system alert (notifications, location) took the screen
-            // first. It shows the prompt if asked again once the app is back.
-            Task { @MainActor in
-              Self.whenActive {
-                ATTrackingManager.requestTrackingAuthorization { status in
-                  callback(["status": Self.name(of: status)])
-                }
-              }
-            }
-            return
+            ask(done)
+          } else {
+            done(status)
           }
-          callback(["status": Self.name(of: status)])
         }
       }
     }

@@ -411,7 +411,9 @@ export class LynxNfc {
     const scanning = signal(true);
     const error = signal<NfcError | undefined>(undefined);
     let stopped = false;
-    // Called only while the scan runs: stop() and the loop check first.
+    /**
+     * Called only while the scan runs: stop() and the loop check first.
+     */
     const end = (cause?: NfcError) => {
       scanning.set(false);
       if (cause) {

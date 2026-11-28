@@ -674,8 +674,11 @@ export class LynxMotion {
         }));
       }
       // Safari gives the compass as webkitCompassHeading, already clockwise
-      // from magnetic north.
-      if (typeof event?.webkitCompassHeading === 'number') {
+      // from magnetic north, and a negative one when it has no direction.
+      if (
+        typeof event?.webkitCompassHeading === 'number' &&
+        event.webkitCompassHeading >= 0
+      ) {
         this.#emit('heading', t, () => ({
           magneticHeading: event.webkitCompassHeading,
           trueHeading: null,

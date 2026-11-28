@@ -1345,6 +1345,7 @@ describe('unit-test builder', () => {
       'intl',
       'multiTouch',
       'backgroundTreeShaking',
+      'eagerImports',
       'appName',
       'appId',
       'version',

@@ -30,6 +30,12 @@ export type ApplicationBuilderOptions = NativeAppOptions & {
    */
   readonly backgroundTreeShaking?: 'safe' | 'aggressive';
   /**
+   * Whether the main thread's script compiles the app's `import()`s as
+   * static imports, which @blotch/rsbuild-plugin-angular-lynx reads from the
+   * build options it's passed.
+   */
+  readonly eagerImports?: boolean;
+  /**
    * The Angular compiler options `ng new` puts in the build target (browser,
    * tsConfig, polyfills, styles, optimization, ...).
    * @blotch/rsbuild-plugin-angular-lynx and `ng test` read them;

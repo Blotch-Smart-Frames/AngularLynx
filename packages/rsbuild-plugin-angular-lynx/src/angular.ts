@@ -40,6 +40,7 @@ import { wrapPureClasses } from './pure-classes.js';
 import { lowerOptionalChains } from './optional-chains.js';
 import { wrapPureInitializers } from './pure-initializers.js';
 import { importEsBuiltinsWhereNamed } from './es-builtins.js';
+import { importEagerly, resolveEagerImports } from './eager-imports.js';
 import { enableOnDemand, resolveRuntimeEntry } from './on-demand.js';
 import { markHostElementsPure } from './pure-host-elements.js';
 import { seedCompilationSourceFiles } from './seed-compilation-source-files.js';
@@ -163,6 +164,13 @@ export const applyAngularRules = async (
     pluginOptions.backgroundTreeShaking,
     cli?.buildOptions,
   );
+  // Whether the main thread's `import()`s become static imports, so rspack
+  // can concatenate what lazy routes share with the rest of the app (see
+  // eager-imports.ts). Not with lazy bundles, whose `import()`s load a
+  // bundle of their own: there they aren't in the main thread's script.
+  const eagerImports =
+    !pluginOptions.experimental_isLazyBundle &&
+    resolveEagerImports(pluginOptions.eagerImports, cli?.buildOptions);
   // The plugin's own `intl` option wins: plain rspeedy apps whose angular.json
   // targets Angular's builder can't add the option there.
   applyIntl(api, {
@@ -904,7 +912,16 @@ export const applyAngularRules = async (
     const { code, map } = trackSourceMap(
       transformed.code,
       transformed.map,
-      (input) => importEsBuiltinsWhereNamed(input, context.resourcePath),
+      (input) =>
+        importEsBuiltinsWhereNamed(
+          // With `eagerImports`, the app's `import()`s on the main thread
+          // (see eager-imports.ts). The background thread loads only the
+          // modules with background functions or refs, and runs no routes.
+          eagerImports && !background
+            ? importEagerly(input, context.resourcePath)
+            : input,
+          context.resourcePath,
+        ),
     );
     // Whether the module draws on a canvas, which decides whether the native
     // build links the shells' canvas code (native-features.ts). From the

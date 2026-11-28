@@ -30,6 +30,11 @@ export type {
   QueuedBarcodeScan,
 } from './barcode-scanner.js';
 export { fireEvent, eventMap } from './fire-event.js';
+export { savedPhotos, setPhotoLibraryPermission } from './photo-library.js';
+export type {
+  FakePhotoLibraryPermission,
+  SavedPhoto,
+} from './photo-library.js';
 export { openedURLs, openLink } from './linking.js';
 export type { OpenedURL } from './linking.js';
 export { runShortcut } from './shortcuts.js';

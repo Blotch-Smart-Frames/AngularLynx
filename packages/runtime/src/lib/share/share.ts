@@ -210,7 +210,8 @@ const DOWNLOAD_URL_LIFETIME = 40_000;
 /**
  * Saves each file as a download, for a browser that can't share files, such
  * as Firefox on a computer: the next best thing to "Save Image". LynxCalendar
- * saves its `.ics` file in the web preview with it too.
+ * saves its `.ics` file in the web preview with it too, and `LynxPhotoLibrary`
+ * saves with it there, since the web preview has no photo library.
  */
 export const download = (
   page: BrowserWindow,

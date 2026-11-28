@@ -130,6 +130,13 @@ export const iosGenerator: PlatformGenerator = {
     if (!app.signInWithApple) {
       removeTemplateFiles(dir, [IOS_APPLE_SIGN_IN_SOURCE]);
     }
+    // Saving to the photo library is only for an app that says why, with
+    // its own reason for the prompt. Every app has a reason for the share
+    // sheet's Save Image (see infoPlistEntries), but App Review asks about
+    // Photos code an app has no use for. Registered by name, as above.
+    if (!app.permissions.savePhotos) {
+      removeTemplateFiles(dir, IOS_PHOTO_LIBRARY_SOURCES);
+    }
     if (features.webgl) return;
     if (features.canvas) {
       // A 2D canvas keeps the module and the canvas's view, without the
@@ -177,6 +184,14 @@ export const IOS_BIOMETRICS_SOURCES = ['App/BiometricsModule.swift'] as const;
  * which only an app with `filePicker` keeps.
  */
 export const IOS_FILE_PICKER_SOURCES = ['App/FilePickerModule.swift'] as const;
+
+/**
+ * The shell's photo library module, `AngularLynxPhotoLibrary`
+ * (LynxPhotoLibrary), which only an app with `permissions.savePhotos` keeps.
+ */
+export const IOS_PHOTO_LIBRARY_SOURCES = [
+  'App/PhotoLibraryModule.swift',
+] as const;
 
 /**
  * The shell's `<canvas>`, its `AngularLynxWebGL` module and its contexts, and

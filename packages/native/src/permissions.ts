@@ -36,12 +36,19 @@ export const PERMISSION_MAP: Record<
     ],
     androidFeatures: ['android.hardware.location'],
   },
+  // Reading the photo library, on iOS only. Nothing in the shells reads it:
+  // LynxImagePicker uses PHPicker and Android's Photo Picker, which need no
+  // permission. Android declares nothing for it, since Google Play rejects
+  // an app that declares READ_MEDIA_IMAGES without a core need for the
+  // whole library (its Photo and Video Permissions policy).
   photos: {
     ios: ['NSPhotoLibraryUsageDescription'],
-    android: ['android.permission.READ_MEDIA_IMAGES'],
+    android: [],
   },
-  // Adding to the photo library only, as the share sheet's Save Image does
-  // (LynxShare). Android needs no permission for it.
+  // Adding to the photo library only, as the share sheet's Save Image and
+  // LynxPhotoLibrary do. The shells' photo library module is only in apps
+  // that ask for this. Android 10 and later need no permission for it, and
+  // LynxPhotoLibrary saves nothing before that.
   savePhotos: {
     ios: ['NSPhotoLibraryAddUsageDescription'],
     android: [],

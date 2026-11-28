@@ -185,12 +185,43 @@ export(): void {
 ```
 
 - **`text` and `url`** work too, alone or with files; `url` must be absolute. Nothing to share, a file without a name or a relative URL rejects with a `TypeError`.
-- **iOS Save Image** adds an image to Photos. iOS asks the person first, with angular.json's `permissions.savePhotos` reason (default "Saves the images you choose to your photo library."); `ng build --platform` always writes one, since iOS ends an app without it.
+- **iOS Save Image** adds an image to Photos. iOS asks the person first, with angular.json's `permissions.savePhotos` reason (default "Saves the images you choose to your photo library."); `ng build --platform` always writes one, since iOS ends an app without it. To save without the sheet, see [Save to the photo library](#save-to-the-photo-library).
 - **Android can't tell whether sharing finished:** `share()` resolves `true` as soon as the person picks an app, and `false` when they close the sheet, including with its own Copy button.
 - **Web preview:** the page's `navigator.share()`; a browser that can't share files downloads them and resolves `true`. Call it from a tap handler with the files ready.
 - **Rejects with `ShareError`**, `code` `unavailable` (Lynx Explorer, specs, or a browser that can't share text or links) or `failed` (couldn't open, already open, browser refused).
 - **Specs:** provide a stand-in: `{ provide: LynxShare, useValue: { share: async (data) => true } }`.
 - **Your own native app** registers an `AngularLynxShare` module with `share(request, callback)`, where `request` is `{ files: [{ base64, name, type }], title?, text?, url? }`, calling back `{ shared }` or `{ error, message }`: see the website's "Embed in a Native App" guide.
+
+## Save to the photo library
+
+Lynx has no photo library API. `LynxPhotoLibrary.save()` adds an image or a video to it in one tap, without the share sheet, and resolves with the new item's ID. It's opt-in: set `"permissions": { "savePhotos": "Save your edits to Photos" }` in the build target's options in angular.json. Without it the app has no photo library code, and `save()` rejects with `unavailable`.
+
+```typescript
+import { LynxPhotoLibrary, PhotoLibraryError } from '@blotch/angular-lynx';
+
+readonly photos = inject(LynxPhotoLibrary);
+
+async saveEdit(blob: Blob): Promise<void> {
+  try {
+    await this.photos.save({ blob, name: 'edit.jpg' });
+  } catch (error) {
+    if (error instanceof PhotoLibraryError && error.code === 'permission-denied') {
+      this.askForSettings.set(true); // only Settings can change it now
+      return;
+    }
+    throw error;
+  }
+}
+```
+
+- **What it takes:** `{ blob, name? }`, an image or a video by the Blob's `type`, or the name's extension when the Blob has none. A `PickedImage` and a canvas's `toBlob()` Blob both work. Anything else rejects with `unsupported-type`.
+- **iOS** asks for add-only access the first time, with the `savePhotos` reason; the app can't read the library with it. The ID is the `PHAsset`'s local identifier.
+- **Android 10 and later** need no permission: it goes into `Pictures/<app name>` or `Movies/<app name>`, and the ID is a `content://` URI. **Android 7 to 9 aren't supported yet:** `save()` rejects with `unavailable` there.
+- **`addPermission`** is a signal of `granted`, `limited`, `denied`, `undetermined` or `unsupported`, read when the service is first injected and after each save. Use it to show a Settings hint after a no; `save()` asks by itself when it's `undetermined`.
+- **Rejects with `PhotoLibraryError`**, `code` `permission-denied`, `unsupported-type`, `unavailable` (no `savePhotos`, Android before 10, Lynx Explorer) or `failed` (couldn't write, such as a full phone).
+- **Web preview:** downloads the file. Call it from a tap handler.
+- **Specs:** the testing library's `savedPhotos()` lists what was saved (`{ id, name, type, bytes }`), and `setPhotoLibraryPermission('denied')`, before `render()`, makes the person say no. Each test starts `undetermined`, and the first save is allowed.
+- **`permissions.photos`** (reading the whole library) is iOS only, and neither this nor `LynxImagePicker` needs it. Android declares nothing for it, since Google Play rejects `READ_MEDIA_IMAGES` without a core need.
 
 ## Scan a QR code or barcode
 

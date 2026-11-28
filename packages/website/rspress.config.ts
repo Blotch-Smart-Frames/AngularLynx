@@ -341,6 +341,10 @@ export default defineConfig({
               text: 'LynxBarcodeScanner',
               link: '/api/angular-lynx/barcode-scanner',
             },
+            {
+              text: 'LynxPhotoLibrary',
+              link: '/api/angular-lynx/photo-library',
+            },
             { text: 'LynxShare', link: '/api/angular-lynx/share' },
             {
               text: 'LynxStoreReview',

@@ -340,6 +340,13 @@ class MainActivity : FragmentActivity(), ShellModule.Host, WebAuthModule.Host {
             // angular-lynx:biometrics
             registerModule(BiometricsModule.NAME, BiometricsModule::class.java, this@MainActivity)
             // /angular-lynx:biometrics
+            // Saving to the photo library behind LynxPhotoLibrary
+            // (PhotoLibraryModule.kt). Only an app with permissions.savePhotos
+            // keeps these lines and the module (@blotch/angular-lynx-native's
+            // android/project.ts).
+            // angular-lynx:photo-library
+            registerModule(PhotoLibraryModule.NAME, PhotoLibraryModule::class.java, null)
+            // /angular-lynx:photo-library
             // The code scanner behind LynxBarcodeScanner
             // (BarcodeScannerModule.kt), which opens over this activity. Only
             // an app whose angular.json sets permissions.camera has it: the

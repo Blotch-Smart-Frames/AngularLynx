@@ -7646,6 +7646,16 @@ There's no `navigator`, no `File` and no share API. The shells' `AngularLynxShar
 - **Android doesn't say whether sharing finished.** The chooser reports which app the person picked, through the `IntentSender` given to `Intent.createChooser`, and nothing after. So `share()` resolves `true` on the pick, and `false` when the app comes back to the front without one. The Android 14 chooser's own Copy button reports no pick: `false`.
 - **Android's files go through a `FileProvider`**, written under the cache's `angular-lynx-share/` folder and kept until the next share, since the app picked may read them after the sheet closes.
 
+### Saving to the photo library without the sheet
+
+The web has no photo library at all: a page can only download a file. `LynxPhotoLibrary` (issue #927) calls the shells' `AngularLynxPhotoLibrary` module, which only an app with `permissions.savePhotos` has:
+
+- **iOS asks for add-only access** (`PHPhotoLibrary.requestAuthorization(for: .addOnly)`), the access Save Image uses, so it asks with `NSPhotoLibraryAddUsageDescription` and needs no `NSPhotoLibraryUsageDescription`. A video can only be added from a file, so each file goes through a temporary file of its name, which also tells Photos the format.
+- **Android 10 and later need no permission** to add an app's own media to MediaStore. Before Android 10 it takes `WRITE_EXTERNAL_STORAGE`, a runtime permission the shell can't ask for yet, so `save()` rejects with `unavailable` there.
+- **Reading the library is iOS only.** `permissions.photos` used to declare `READ_MEDIA_IMAGES` on Android, which nothing used (the image picker's Photo Picker needs no permission) and which Google Play rejects without a core need. It now declares nothing on Android.
+
+In the web preview `save()` downloads the file, as `LynxShare` does when the browser can't share it.
+
 ### Lynx for Web
 
 Web-core's iframe has no `web-share` permission and no `allow-downloads`, so the runtime shares through the page around it, `parent.navigator.share()`, with `File`s made in the page's realm. Headless Chromium has no `navigator.share`, and Firefox on a computer can't share files, so there the runtime downloads each file with an `<a download>` in the page, and resolves `true`.

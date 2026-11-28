@@ -27,10 +27,11 @@ import {
  * (issue #837), the build most apps get, and a canvas that draws only in 2D
  * (#847), what a chart or a signature pad gets.
  *
- * The first is also built without `permissions.biometrics` and
- * `permissions.camera`, as most apps are, which leaves the biometrics module
- * (#918) and the barcode scanner's (#917) out. The E2E app asks for both, so
- * its own build has the modules. Both are built
+ * The first is also built without `permissions.biometrics`,
+ * `permissions.camera` and `permissions.savePhotos`, as most apps are, which
+ * leaves the biometrics module (#918), the barcode scanner's (#917) and the
+ * photo library's (#927) out. The E2E app asks for all three, so its own
+ * build has the modules. Both are built
  * without `storeReview` and `calendar`, which the E2E app sets and most apps
  * don't (#931, #926), and without `signInWithApple`, which leaves the iOS
  * shell's Sign in with Apple module and its entitlement out (#932).
@@ -44,6 +45,7 @@ export const VARIANTS: readonly {
   readonly biometrics: boolean;
   readonly filePicker: boolean;
   readonly camera: boolean;
+  readonly savePhotos: boolean;
 }[] = [
   {
     name: 'no-canvas',
@@ -51,6 +53,7 @@ export const VARIANTS: readonly {
     biometrics: false,
     filePicker: false,
     camera: false,
+    savePhotos: false,
   },
   {
     name: 'canvas-2d',
@@ -58,6 +61,7 @@ export const VARIANTS: readonly {
     biometrics: true,
     filePicker: true,
     camera: true,
+    savePhotos: true,
   },
 ];
 
@@ -75,6 +79,7 @@ const PROBES: Record<
     biometrics: string;
     filePicker: string;
     camera: string;
+    savePhotos: string;
   }
 > = {
   ios: {
@@ -83,6 +88,7 @@ const PROBES: Record<
     biometrics: 'App/BiometricsModule.swift',
     filePicker: 'App/FilePickerModule.swift',
     camera: 'App/BarcodeScannerModule.swift',
+    savePhotos: 'App/PhotoLibraryModule.swift',
   },
   android: {
     canvas: 'app/src/main/java/dev/angularlynx/shell/Canvas2DContext.kt',
@@ -90,6 +96,7 @@ const PROBES: Record<
     biometrics: 'app/src/main/java/dev/angularlynx/shell/BiometricsModule.kt',
     filePicker: 'app/src/main/java/dev/angularlynx/shell/FilePickerModule.kt',
     camera: 'app/src/main/java/dev/angularlynx/shell/BarcodeScannerModule.kt',
+    savePhotos: 'app/src/main/java/dev/angularlynx/shell/PhotoLibraryModule.kt',
   },
 };
 
@@ -160,7 +167,14 @@ export const compileFeatureVariants = async ({
     const appPermissions =
       (Object.values(readAngularJson(appDir).projects)[0]!.architect.build
         .options['permissions'] as Record<string, string> | undefined) ?? {};
-    for (const { name, features, biometrics, filePicker, camera } of VARIANTS) {
+    for (const {
+      name,
+      features,
+      biometrics,
+      filePicker,
+      camera,
+      savePhotos,
+    } of VARIANTS) {
       step(`The ${platform} project with ${name}`);
       const variantDir = path.join(root, name);
       const bundleDir = path.join(variantDir, 'dist');
@@ -204,21 +218,28 @@ export const compileFeatureVariants = async ({
             storeReview: false,
             calendar: false,
             signInWithApple: false,
-            ...(biometrics && camera
+            ...(biometrics && camera && savePhotos
               ? {}
               : {
                   permissions: Object.fromEntries(
                     Object.entries(appPermissions).filter(
                       ([permission]) =>
                         (biometrics || permission !== 'biometrics') &&
-                        (camera || permission !== 'camera'),
+                        (camera || permission !== 'camera') &&
+                        (savePhotos || permission !== 'savePhotos'),
                     ),
                   ),
                 }),
             ...(!filePicker && { filePicker: false }),
           },
         });
-        const kept = { ...features, biometrics, filePicker, camera };
+        const kept = {
+          ...features,
+          biometrics,
+          filePicker,
+          camera,
+          savePhotos,
+        };
         for (const [feature, file] of Object.entries(PROBES[platform]) as [
           keyof typeof kept,
           string,

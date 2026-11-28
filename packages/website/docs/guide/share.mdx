@@ -82,6 +82,8 @@ On iOS, the share sheet has **Save Image** for a JPEG, PNG or other image, which
 
 Android's share sheet has no Save Image: there, people save a file with an app such as Files or Google Photos.
 
+To save to the photo library in one tap, without the sheet, use [`LynxPhotoLibrary`](/api/angular-lynx/photo-library).
+
 ## Export a canvas
 
 `toBlob()` reads the canvas's drawing buffer, which WebGL clears once a frame is on screen, as in a browser. So draw and call `toBlob()` in the same function, or create the context with `preserveDrawingBuffer: true`. Otherwise you get a transparent image. See [Save it as an image](/api/elements/canvas#save-it-as-an-image).

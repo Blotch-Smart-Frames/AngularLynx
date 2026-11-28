@@ -263,6 +263,12 @@ export type {
 } from './lib/resource-prefetch';
 export { LynxSessionStorage } from './lib/session-storage';
 export type { SessionStorageSubscription } from './lib/session-storage';
+export { LynxPhotoLibrary, PhotoLibraryError } from './lib/photo-library';
+export type {
+  PhotoLibraryErrorCode,
+  PhotoLibraryFile,
+  PhotoLibraryPermission,
+} from './lib/photo-library';
 export { LynxShare, ShareError } from './lib/share';
 export type { ShareData, ShareErrorCode, ShareFile } from './lib/share';
 export { LynxStoreReview } from './lib/store-review';

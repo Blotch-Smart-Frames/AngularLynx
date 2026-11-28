@@ -28,6 +28,7 @@ import { installBiometricsModule } from './biometrics.js';
 import { installFilePickerModule } from './file-picker.js';
 import { installBarcodeScannerModule } from './barcode-scanner.js';
 import { installCalendarModule } from './calendar.js';
+import { installPhotoLibraryModule } from './photo-library.js';
 import { installLinkingModule } from './linking.js';
 import { installShortcutsModule } from './shortcuts.js';
 import { installStoreReviewModule } from './store-review.js';
@@ -133,6 +134,9 @@ const frameOnInstalledTimers = (threadGlobals: any): void => {
   // LynxAppleSignIn's sign-ins, which setAppleSignInResult() and the other
   // setters in apple-sign-in.ts steer.
   installAppleSignInModule(threadGlobals);
+  // LynxPhotoLibrary saves into the library savedPhotos() lists, with the
+  // permission setPhotoLibraryPermission() sets (see photo-library.ts).
+  installPhotoLibraryModule(threadGlobals);
   // LynxBackButton enables the back handler pressBackButton() checks (see
   // back-button.ts).
   installShellModule(threadGlobals);

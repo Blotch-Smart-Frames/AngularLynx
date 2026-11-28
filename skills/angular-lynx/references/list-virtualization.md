@@ -147,7 +147,7 @@ A chat opens on its newest message and loads older ones as the person scrolls up
 
 ## Important Rules
 
-1. **Never use `<view>` for long lists** — it creates all elements upfront, exhausting the element pool. `@for` in a `<list>` does too, on the Angular side: use `*lynxListFor` for hundreds of items or more. Rows added later to a `<view>` or `<scroll-view>` that's on screen cost more with each row already there: Lynx places each row it inserts before a sibling (every `@for` row goes before its anchor) by walking the container's children, so 5,000 rows take about 12.5 million steps. A screen's first rows don't, since the runtime builds them before the screen is first drawn
+1. **Never use `<view>` for long lists** — it creates all elements upfront, exhausting the element pool. `@for` in a `<list>` does too, on the Angular side: use `*lynxListFor` for hundreds of items or more. Lynx places each element inserted before a sibling by walking the container's children, so 5,000 rows inserted that way take about 12.5 million steps. Angular puts every `@for` row before its anchor, but the runtime appends the rows when only anchors follow the `@for` in its container. Give a long `@for` a container of its own: with an element after it (a footer), each row added costs more with each row already there
 2. **`item-key` is mandatory** — without it, the native engine crashes. `*lynxListFor` sets it from `trackBy`
 3. **`<list-item>` must be a direct child of `<list>`** — wrapping it in other elements breaks recycling
 4. **Don't set `z-index` on `<list-item>`** — it interferes with the recycling mechanism. Set z-index on content inside the list item instead

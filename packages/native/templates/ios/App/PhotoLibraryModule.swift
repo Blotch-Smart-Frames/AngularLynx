@@ -85,6 +85,9 @@ final class PhotoLibraryModule: NSObject, LynxModule {
           try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
           try data.write(to: folder.appendingPathComponent(name))
         } catch {
+          // Photos' completion, which removes the folder otherwise, never
+          // runs for a file that wasn't written.
+          try? FileManager.default.removeItem(at: folder)
           callback(Self.failure("failed", "The file couldn't be written to save: \(error.localizedDescription)", permission))
           return
         }

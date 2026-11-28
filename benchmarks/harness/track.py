@@ -426,11 +426,13 @@ def boot(_args):
 
 
 def shutdown(_args):
-    """Shut down every booted Simulator with the benchmark's name, and no
-    other: a Mac of your own may be running its own."""
+    """Shut down every Simulator with the benchmark's name that isn't shut
+    down, and no other: a Mac of your own may be running its own. That
+    includes one still booting: a run that failed early stops `boot`, but
+    the boot it started goes on."""
     for devices in simctl_json("devices")["devices"].values():
         for device in devices:
-            if device["name"] == SIMULATOR_NAME and device["state"] == "Booted":
+            if device["name"] == SIMULATOR_NAME and device["state"] != "Shutdown":
                 subprocess.run(["xcrun", "simctl", "shutdown", device["udid"]], check=False)
                 print(f"Shut down {device['udid']}", file=sys.stderr)
 

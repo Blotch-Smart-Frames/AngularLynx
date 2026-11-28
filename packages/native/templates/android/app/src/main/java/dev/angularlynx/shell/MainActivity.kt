@@ -27,6 +27,7 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.FragmentActivity
+import com.lynx.jsbridge.LynxModule
 import com.lynx.react.bridge.JavaOnlyArray
 import com.lynx.react.bridge.JavaOnlyMap
 import com.lynx.tasm.LynxBooleanOption
@@ -283,6 +284,19 @@ class MainActivity : FragmentActivity(), ShellModule.Host, WebAuthModule.Host {
             // angular-lynx:biometrics
             registerModule(BiometricsModule.NAME, BiometricsModule::class.java, this@MainActivity)
             // /angular-lynx:biometrics
+            // The code scanner behind LynxBarcodeScanner
+            // (BarcodeScannerModule.kt), which opens over this activity. Only
+            // an app whose angular.json sets permissions.camera has it: the
+            // generator deletes the file, and the Play services library it
+            // needs, from every other app (as the iOS shell leaves its module
+            // out, since App Store Connect flags an app whose code uses the
+            // camera without saying why). So it's looked up by name, which
+            // compiles either way, and nothing else may name the class.
+            // Lynx's own R8 rules keep every LynxModule's name, so a release
+            // build finds it too.
+            barcodeScannerModule()?.let {
+                registerModule(BARCODE_SCANNER_MODULE, it, this@MainActivity)
+            }
             // The shortcuts the person runs from the app icon's menu, which
             // LynxShortcuts takes (ShortcutsModule.kt).
             registerModule(ShortcutsModule.NAME, ShortcutsModule::class.java, null)
@@ -646,6 +660,20 @@ class MainActivity : FragmentActivity(), ShellModule.Host, WebAuthModule.Host {
 
     private companion object {
         const val TAG = "AngularLynxShell"
+
+        // BarcodeScannerModule and its NAME, which this file can't refer to
+        // (see onCreate). The class is in the shell's own package, which is
+        // fixed whatever the app's applicationId.
+        const val BARCODE_SCANNER_MODULE_CLASS = "dev.angularlynx.shell.BarcodeScannerModule"
+        const val BARCODE_SCANNER_MODULE = "AngularLynxBarcodeScanner"
+
+        /** BarcodeScannerModule, or null when the generator left it out. */
+        fun barcodeScannerModule(): Class<out LynxModule>? =
+            try {
+                Class.forName(BARCODE_SCANNER_MODULE_CLASS).asSubclass(LynxModule::class.java)
+            } catch (_: ClassNotFoundException) {
+                null
+            }
 
         // The longest the splash screen waits for the app (see onCreate),
         // and its fade, as long as the iOS shell's.

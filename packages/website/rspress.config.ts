@@ -333,6 +333,10 @@ export default defineConfig({
               text: 'LynxImagePicker',
               link: '/api/angular-lynx/image-picker',
             },
+            {
+              text: 'LynxBarcodeScanner',
+              link: '/api/angular-lynx/barcode-scanner',
+            },
             { text: 'LynxShare', link: '/api/angular-lynx/share' },
           ],
         },

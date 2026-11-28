@@ -16,6 +16,7 @@ import { TEMPLATES_DIR } from '../generate.ts';
 import { resolveAppOptions } from '../options.ts';
 import {
   ANDROID_BIOMETRICS_SOURCES,
+  ANDROID_BARCODE_SCANNER_SOURCE,
   ANDROID_CANVAS_SOURCES,
   ANDROID_WEBGL_SOURCES,
   androidGenerator,
@@ -343,6 +344,34 @@ describe('androidGenerator', () => {
     expect(androidGenerator.bundleDir(dir)).toBe(
       path.join(dir, 'app/src/main/assets'),
     );
+  });
+
+  it("keeps the barcode scanner's module and library only with the camera permission", () => {
+    const module = path.join(dir, ANDROID_BARCODE_SCANNER_SOURCE);
+    const buildFile = path.join(dir, 'app/build.gradle.kts');
+    // In the template, so a renamed file can't stay in every app unnoticed.
+    expect(existsSync(module)).toBe(true);
+    androidGenerator.configure(dir, app({ permissions: { camera: 'x' } }), dir);
+    expect(existsSync(module)).toBe(true);
+    expect(readFileSync(buildFile, 'utf8')).toContain(
+      'play-services-code-scanner',
+    );
+
+    androidGenerator.configure(dir, app(), dir);
+    expect(existsSync(module)).toBe(false);
+    const gradle = readFileSync(buildFile, 'utf8');
+    expect(gradle).not.toContain('play-services-code-scanner');
+    expect(gradle).not.toContain('angular-lynx:barcode-scanner');
+    // Configuring the same copy again leaves it as it is.
+    androidGenerator.configure(dir, app(), dir);
+    expect(readFileSync(buildFile, 'utf8')).toBe(gradle);
+    // MainActivity looks the module up by name, so it builds without it.
+    const activity = readFileSync(
+      path.join(dir, 'app/src/main/java/dev/angularlynx/shell/MainActivity.kt'),
+      'utf8',
+    );
+    expect(activity).toContain('"dev.angularlynx.shell.BarcodeScannerModule"');
+    expect(activity).not.toContain('BarcodeScannerModule::class');
   });
 
   it("writes the shortcuts' resources, which the launcher activity points Android to", () => {

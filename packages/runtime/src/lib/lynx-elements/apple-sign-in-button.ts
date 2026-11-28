@@ -31,7 +31,8 @@ export class LynxAppleSignInButton extends LynxElementBase {
    */
   declare 'button-style'?: 'black' | 'white' | 'whiteOutline';
   /**
-   * The corners' radius, in points (iOS) or pixels. @default 6
+   * The corners' radius, in points (iOS) or pixels. A number, or its text,
+   * as a plain `corner-radius="8"` gives it. @default 6
    */
-  declare 'corner-radius'?: number;
+  declare 'corner-radius'?: number | string;
 }

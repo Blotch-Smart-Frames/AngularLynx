@@ -470,6 +470,56 @@ const isPlainClassName = (name: string): boolean =>
   name !== '' && !WHITESPACE.test(name);
 
 /**
+ * The class strings elements with a scope-class list are given (see
+ * sharedScopedClasses), by list, then by the name they were written with.
+ */
+const scopedClassStrings = new WeakMap<
+  readonly string[],
+  Map<string, string>
+>();
+
+/**
+ * How many class strings a scope-class list keeps (see sharedScopedClasses).
+ * A template's static names are few; a bound one (`class="row-{{ i }}"`) can
+ * be a new name for every element, and those aren't kept past this.
+ */
+const MAX_SCOPED_CLASS_STRINGS = 256;
+
+/**
+ * The string an element written `name` with the scope classes `scopes` was
+ * last given, and whether those names are all plain: a `@for`'s rows are
+ * given the same one in a row, and comparing two references costs them less
+ * than the concatenation and the maps' lookups (see setAttribute).
+ */
+let lastScopes: readonly string[] | null = null;
+let lastScopedName = '';
+let lastScopedClasses = '';
+let lastScopesPlain = true;
+
+/**
+ * The string to give an element written `name` with the scope classes
+ * `scopes`, which `classes` spells out: one string for each name and list,
+ * shared by every element given it. Lynx copies the string `__SetClasses` is
+ * given into native memory once for each string it sees, not once for each
+ * call, so the same string for every `<view class="box">` of a component is
+ * one copy, where a string made for each element was one for each: about
+ * 140 bytes of native memory per element on the iOS Simulator, and the
+ * element's own string in PrimJS's heap (issue #949).
+ */
+const sharedScopedClasses = (
+  name: string,
+  scopes: readonly string[],
+  classes: string,
+): string => {
+  let strings = scopedClassStrings.get(scopes);
+  if (!strings) scopedClassStrings.set(scopes, (strings = new Map()));
+  const shared = strings.get(name);
+  if (shared !== undefined) return shared;
+  if (strings.size < MAX_SCOPED_CLASS_STRINGS) strings.set(name, classes);
+  return classes;
+};
+
+/**
  * The names in a class string, in order.
  */
 const splitClasses = (classes: string): string[] =>
@@ -2020,7 +2070,10 @@ export class LynxElement implements BaseLynxElement {
         // 15,000 views under `node --jitless` (issue #909,
         // benchmarks/harness/node-mount.mjs).
         classes = written;
-        if (scopes) {
+        if (scopes === lastScopes && written === lastScopedName) {
+          classes = lastScopedClasses;
+          plain = lastScopesPlain;
+        } else if (scopes) {
           // Indexed: a `for…of` makes an iterator for each call, an object
           // of PrimJS's heap for every element Angular gives a class.
           for (let i = 0; i < scopes.length; i++) {
@@ -2029,6 +2082,11 @@ export class LynxElement implements BaseLynxElement {
             classes += ` ${scope}`;
             if (!isPlainClassName(scope)) plain = false;
           }
+          classes = sharedScopedClasses(written, scopes, classes);
+          lastScopes = scopes;
+          lastScopedName = written;
+          lastScopedClasses = classes;
+          lastScopesPlain = plain;
         }
       } else {
         names = new Set(splitClasses(written));

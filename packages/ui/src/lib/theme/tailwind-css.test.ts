@@ -81,6 +81,27 @@ describe('tailwind.css', () => {
     }
   });
 
+  it('gives the border color only to the border-width classes', () => {
+    const css = tailwindCss();
+    // Not to every element: Lynx keeps four colors for each element with a
+    // border color, about 1.3 KB of native memory on iOS (issue #949).
+    expect(css).not.toMatch(/(^|[\s}])\*\s*\{/);
+    const rule =
+      /@layer base\s*\{\s*([^{]+)\{\s*border-color:\s*var\(--border\);/.exec(
+        css,
+      );
+    expect(rule).not.toBeNull();
+    const selectors = rule![1]!.split(',').map((selector) => selector.trim());
+    // `border` and each side, at the default scale's widths. A zero width
+    // draws nothing, so it needs no color.
+    const sides = ['', '-x', '-y', '-s', '-e', '-t', '-r', '-b', '-l'];
+    expect(selectors).toEqual(
+      sides.flatMap((side) =>
+        ['', '-2', '-4', '-8'].map((width) => `.border${side}${width}`),
+      ),
+    );
+  });
+
   it.each(['./default.css', './dark.css'])(
     'reads only variables %s sets, each opaque one with its channels',
     (file) => {

@@ -372,32 +372,32 @@ def record_simulator(udid, bundle_id, trace, seconds, memory_after, thermal=True
     # can't block xctrace, and so a recording that never starts (on a CI
     # runner, the first launch sat silent for 45 minutes in #854) ends
     # with what xctrace said rather than hanging the session.
-    output, errors = [], []
-    started = threading.Event()
-
-    def read_output():
-        for line in process.stdout:
-            output.append(line)
-            if "Ctrl-C to stop" in line:
-                started.set()
-        # The process has ended, started or not.
-        started.set()
-
-    def read_errors():
-        errors.extend(process.stderr)
-
-    readers = [threading.Thread(target=read_output, daemon=True), threading.Thread(target=read_errors, daemon=True)]
-    for reader in readers:
-        reader.start()
-
-    def stop(why):
-        os.killpg(process.pid, signal.SIGKILL)
-        process.wait()
-        for reader in readers:
-            reader.join(5)
-        raise subprocess.CalledProcessError(-9, command, "".join(output), f"{''.join(output)}{''.join(errors)}{why}")
-
     try:
+        output, errors = [], []
+        started = threading.Event()
+
+        def read_output():
+            for line in process.stdout:
+                output.append(line)
+                if "Ctrl-C to stop" in line:
+                    started.set()
+            # The process has ended, started or not.
+            started.set()
+
+        def read_errors():
+            errors.extend(process.stderr)
+
+        readers = [threading.Thread(target=read_output, daemon=True), threading.Thread(target=read_errors, daemon=True)]
+        for reader in readers:
+            reader.start()
+
+        def stop(why):
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+            for reader in readers:
+                reader.join(5)
+            raise subprocess.CalledProcessError(-9, command, "".join(output), f"{''.join(output)}{''.join(errors)}{why}")
+
         if not started.wait(RECORDING_START_TIMEOUT):
             stop(f"xctrace hadn't started recording after {RECORDING_START_TIMEOUT} s")
         memory = None
@@ -414,11 +414,12 @@ def record_simulator(udid, bundle_id, trace, seconds, memory_after, thermal=True
         except subprocess.TimeoutExpired:
             stop(f"xctrace hadn't ended its {seconds} s recording after {seconds + RECORDING_START_TIMEOUT} s")
     except BaseException:
-        # Anything else that ends the harness here (a Ctrl-C, which the
-        # recording's own session doesn't get from the terminal) would
-        # leave xctrace running, and one still starting has no time limit.
-        # stop() has already killed it if it raised; a recording that has
-        # ended has no group left to kill.
+        # Anything else that ends the harness from here on (a Ctrl-C, which
+        # the recording's own session doesn't get from the terminal, even
+        # while the readers start) would leave xctrace running, and one
+        # still starting has no time limit. stop() has already killed it
+        # if it raised; a recording that has ended has no group left to
+        # kill.
         if process.poll() is None:
             os.killpg(process.pid, signal.SIGKILL)
             process.wait()

@@ -436,6 +436,16 @@ export const FLOWS: readonly Flow[] = [
     only: { host: 'shell' },
     deviceFault: anyDeviceFault(slowPhotosPickerLaunch, stalledMetalCompiler),
   },
+  {
+    file: 'scanner.yaml',
+    description:
+      "opens LynxBarcodeScanner, which the Simulator's shell says it has no camera for",
+    // Only the app's own iOS build: Lynx Explorer has no scanner module, and
+    // Android's scanner is Play services', which CI's emulator may open or
+    // download (see scanner.yaml).
+    only: { platform: 'ios', host: 'shell' },
+    deviceFault: stalledMetalCompiler,
+  },
 ];
 
 /**

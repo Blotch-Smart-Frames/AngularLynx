@@ -19,6 +19,7 @@ import {
   entitlementsPlist,
   infoPlistEntries,
   IOS_BIOMETRICS_SOURCES,
+  IOS_BARCODE_SCANNER_SOURCE,
   IOS_CANVAS_SOURCES,
   IOS_WEBGL_SOURCES,
   iosGenerator,
@@ -337,6 +338,28 @@ describe('iosGenerator', () => {
     expect(plist.match(/UILaunchScreen/g)).toHaveLength(1);
     expect(plist).toContain('<key>LSApplicationQueriesSchemes</key>');
     expect(iosGenerator.bundleDir(dir)).toBe(path.join(dir, 'LynxBundle'));
+  });
+
+  it("keeps the barcode scanner's module only with the camera permission", () => {
+    const module = path.join(dir, IOS_BARCODE_SCANNER_SOURCE);
+    // In the template, so a renamed file can't stay in every app unnoticed.
+    expect(existsSync(module)).toBe(true);
+    iosGenerator.configure(dir, app({ permissions: { camera: 'Scan' } }), dir);
+    expect(existsSync(module)).toBe(true);
+
+    // Without NSCameraUsageDescription, App Store Connect flags an app whose
+    // code uses the camera.
+    iosGenerator.configure(dir, app({ permissions: { photos: 'x' } }), dir);
+    expect(existsSync(module)).toBe(false);
+    // LynxViewController registers it by name, so it builds without it.
+    const controller = readFileSync(
+      path.join(dir, 'App/LynxViewController.swift'),
+      'utf8',
+    );
+    expect(controller).toContain(
+      'NSClassFromString("AngularLynxBarcodeScannerModule")',
+    );
+    expect(controller).not.toContain('BarcodeScannerModule.self');
   });
 
   it('writes the entitlements beside the xcconfig, only with app link domains', () => {

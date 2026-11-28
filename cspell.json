@@ -342,6 +342,7 @@
     "cfonts",
     "checkmark",
     "clevelandart",
+    "codabar",
     "Combinators",
     "contentsizechanged",
     "credentialless",
@@ -548,9 +549,9 @@
       "pattern": "/ɵ\\w+/g"
     },
     {
-      "// android-api-names": "Android's own names, in its British spelling, which flagWords would otherwise flag.",
+      "// android-api-names": "Android's and ML Kit's own names, in their British spelling, which flagWords would otherwise flag.",
       "name": "android-api-names",
-      "pattern": "/\\bhandleOnBackCancelled\\b/g"
+      "pattern": "/\\b(?:handleOnBackCancelled|CODE_SCANNER_CANCELLED)\\b/g"
     }
   ],
   "ignoreRegExpList": ["angular-internal-symbols", "android-api-names"]

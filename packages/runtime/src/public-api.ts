@@ -60,6 +60,17 @@ export { LynxFont } from './lib/font';
 export { LynxHaptics } from './lib/haptics';
 export type { HapticImpactStyle, HapticNotificationType } from './lib/haptics';
 export { reportFullyDrawn } from './lib/fully-drawn';
+export {
+  BARCODE_FORMATS,
+  BarcodeScannerError,
+  LynxBarcodeScanner,
+} from './lib/barcode-scanner';
+export type {
+  BarcodeFormat,
+  BarcodeScan,
+  BarcodeScannerErrorCode,
+  BarcodeScanOptions,
+} from './lib/barcode-scanner';
 export { ImagePickerError, LynxImagePicker } from './lib/image-picker';
 export type {
   ImagePickerErrorCode,

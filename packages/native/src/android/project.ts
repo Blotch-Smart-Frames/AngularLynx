@@ -26,6 +26,12 @@ import { escapeXml, replaceMarker } from '../xml.ts';
 
 const MANIFEST = 'app/src/main/AndroidManifest.xml';
 const RESOURCES = 'app/src/main/res';
+const APP_BUILD_FILE = 'app/build.gradle.kts';
+const BARCODE_SCANNER_MARKER = '// angular-lynx:barcode-scanner';
+
+/** LynxBarcodeScanner's module, which needs the `camera` permission. */
+export const ANDROID_BARCODE_SCANNER_SOURCE =
+  'app/src/main/java/dev/angularlynx/shell/BarcodeScannerModule.kt';
 const BLUETOOTH_MODULE =
   'app/src/main/java/dev/angularlynx/shell/BluetoothModule.kt';
 
@@ -41,8 +47,10 @@ const SCREEN_ORIENTATIONS: Record<Orientation, string> = {
  * deep links and the apps canOpenURL can see go between the manifest's
  * `angular-lynx:*` markers, the icon options become the launcher icon's
  * resources, the shortcuts become the static shortcuts' resources, and the
- * splash becomes the splash theme's color and image. The Bluetooth module
- * stays only in an app with the `bluetooth` permission.
+ * splash becomes the splash theme's color and image. The barcode scanner's
+ * module and the library behind it stay only in an app with the `camera`
+ * permission, and the Bluetooth module only in an app with the `bluetooth`
+ * permission.
  */
 export const androidGenerator: PlatformGenerator = {
   configure: (dir, app, projectRoot) => {
@@ -69,6 +77,19 @@ export const androidGenerator: PlatformGenerator = {
         path.join(dir, RESOURCES, 'values/shortcuts.xml'),
         shortcutStringsXml(app),
       );
+    }
+
+    // As on iOS (see iosGenerator), an app that doesn't ask for the camera
+    // ships no scanner: neither the module nor Google's code scanner, which
+    // brings Play services' libraries. MainActivity registers the module
+    // only when its class is there.
+    if (!app.permissions.camera) {
+      rmSync(path.join(dir, ANDROID_BARCODE_SCANNER_SOURCE), { force: true });
+      const buildFile = path.join(dir, APP_BUILD_FILE);
+      // Configuring the same copy twice finds the lines already gone.
+      if (readFileSync(buildFile, 'utf8').includes(BARCODE_SCANNER_MARKER)) {
+        removeMarkedLines(buildFile, 'barcode-scanner');
+      }
     }
 
     // As on iOS (see iosGenerator), an app that doesn't ask for Bluetooth

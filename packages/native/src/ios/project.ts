@@ -34,9 +34,13 @@ const ORIENTATIONS: Record<Orientation, readonly string[]> = {
  * between the template's `angular-lynx:info` markers, the shortcuts
  * become App/AppShortcuts.swift, the app link domains become
  * Config/App.entitlements, and the icon and the splash go in the asset
- * catalog. The Bluetooth module stays only in an app with the `bluetooth`
- * permission.
+ * catalog. The barcode scanner's module stays only in an app with the
+ * `camera` permission, and the Bluetooth module only in an app with the
+ * `bluetooth` permission.
  */
+/** LynxBarcodeScanner's module, which needs the `camera` permission. */
+export const IOS_BARCODE_SCANNER_SOURCE = 'App/BarcodeScannerModule.swift';
+
 export const iosGenerator: PlatformGenerator = {
   configure: (dir, app, projectRoot, development = false) => {
     writeFileSync(path.join(dir, 'Config/App.xcconfig'), xcconfig(app));
@@ -58,6 +62,16 @@ export const iosGenerator: PlatformGenerator = {
         path.join(dir, 'App/AppShortcuts.swift'),
         appShortcutsSwift(app),
       );
+    }
+
+    // App Store Connect flags an app whose code uses the camera without
+    // NSCameraUsageDescription (ITMS-90683), which only the `camera`
+    // permission writes. So an app that doesn't ask for the camera leaves
+    // the scanner's module out, and on Android its module and the Play
+    // services library behind it (see androidGenerator). LynxViewController
+    // registers the module by name only when it's compiled in.
+    if (!app.permissions.camera) {
+      rmSync(path.join(dir, IOS_BARCODE_SCANNER_SOURCE), { force: true });
     }
 
     // App Store Connect flags an app whose code uses CoreBluetooth without

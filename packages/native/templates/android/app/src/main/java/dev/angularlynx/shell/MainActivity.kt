@@ -304,6 +304,19 @@ class MainActivity : FragmentActivity(), ShellModule.Host, WebAuthModule.Host {
             // angular-lynx:biometrics
             registerModule(BiometricsModule.NAME, BiometricsModule::class.java, this@MainActivity)
             // /angular-lynx:biometrics
+            // The code scanner behind LynxBarcodeScanner
+            // (BarcodeScannerModule.kt), which opens over this activity. Only
+            // an app whose angular.json sets permissions.camera has it: the
+            // generator deletes the file, and the Play services library it
+            // needs, from every other app (as the iOS shell leaves its module
+            // out, since App Store Connect flags an app whose code uses the
+            // camera without saying why). So it's looked up by name, which
+            // compiles either way, and nothing else may name the class.
+            // Lynx's own R8 rules keep every LynxModule's name, so a release
+            // build finds it too.
+            optionalModule(BARCODE_SCANNER_MODULE_CLASS)?.let {
+                registerModule(BARCODE_SCANNER_MODULE, it, this@MainActivity)
+            }
             // The shortcuts the person runs from the app icon's menu, which
             // LynxShortcuts takes (ShortcutsModule.kt).
             registerModule(ShortcutsModule.NAME, ShortcutsModule::class.java, null)
@@ -681,9 +694,12 @@ class MainActivity : FragmentActivity(), ShellModule.Host, WebAuthModule.Host {
     private companion object {
         const val TAG = "AngularLynxShell"
 
-        // BluetoothModule and its NAME, which this file can't refer to (see
-        // onCreate). The class is in the shell's own package, which is fixed
-        // whatever the app's applicationId.
+        // BarcodeScannerModule and BluetoothModule, and their NAMEs, which
+        // this file can't refer to (see onCreate). The classes are in the
+        // shell's own package, which is fixed whatever the app's
+        // applicationId.
+        const val BARCODE_SCANNER_MODULE_CLASS = "dev.angularlynx.shell.BarcodeScannerModule"
+        const val BARCODE_SCANNER_MODULE = "AngularLynxBarcodeScanner"
         const val BLUETOOTH_MODULE_CLASS = "dev.angularlynx.shell.BluetoothModule"
         const val BLUETOOTH_MODULE = "AngularLynxBluetooth"
 

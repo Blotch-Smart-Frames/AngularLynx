@@ -14,6 +14,15 @@ export type {
   BiometricResult,
   FakeBiometrics,
 } from './biometrics.js';
+export {
+  cancelBarcodeScan,
+  failBarcodeScan,
+  queueBarcodeScan,
+} from './barcode-scanner.js';
+export type {
+  BarcodeScanFailure,
+  QueuedBarcodeScan,
+} from './barcode-scanner.js';
 export { addBluetoothDevice, setBluetoothState } from './bluetooth.js';
 export type {
   FakeBluetoothCharacteristic,

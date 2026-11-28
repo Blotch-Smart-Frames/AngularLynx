@@ -18,6 +18,7 @@ import {
   ANDROID_BIOMETRICS_SOURCES,
   ANDROID_BARCODE_SCANNER_SOURCE,
   ANDROID_CANVAS_SOURCES,
+  ANDROID_STORE_REVIEW_SOURCE,
   ANDROID_WEBGL_SOURCES,
   androidGenerator,
   biometricsStringsXml,
@@ -374,6 +375,45 @@ describe('androidGenerator', () => {
     expect(activity).not.toContain('BarcodeScannerModule::class');
   });
 
+  it("keeps the store review module, its registration and Play's review library only in an app with storeReview", () => {
+    const module = path.join(dir, ANDROID_STORE_REVIEW_SOURCE);
+    const activity = path.join(
+      dir,
+      'app/src/main/java/dev/angularlynx/shell/MainActivity.kt',
+    );
+    const gradle = path.join(dir, 'app/build.gradle.kts');
+    /**
+     * Generates from a fresh copy of the template, as prepareProject does.
+     */
+    const generate = (options: object) => {
+      rmSync(dir, { recursive: true, force: true });
+      cpSync(path.join(TEMPLATES_DIR, 'android'), dir, { recursive: true });
+      const resolved = app(options);
+      androidGenerator.configure(dir, resolved, dir);
+      androidGenerator.leaveOut(dir, { canvas: true, webgl: true }, resolved);
+    };
+
+    generate({ storeReview: true });
+    expect(existsSync(module)).toBe(true);
+    expect(readFileSync(activity, 'utf8')).toContain(
+      'registerModule(StoreReviewModule.NAME',
+    );
+    expect(readFileSync(gradle, 'utf8')).toContain(
+      'com.google.android.play:review:',
+    );
+
+    generate({});
+    expect(existsSync(module)).toBe(false);
+    const kept = readFileSync(activity, 'utf8');
+    expect(kept).not.toContain('StoreReviewModule::class');
+    expect(kept).not.toContain('angular-lynx:store-review');
+    expect(readFileSync(gradle, 'utf8')).not.toContain(
+      'com.google.android.play',
+    );
+    // The canvas's marked lines are another feature's, kept with the canvas.
+    expect(kept).toContain('// angular-lynx:canvas');
+  });
+
   it("writes the shortcuts' resources, which the launcher activity points Android to", () => {
     const xml = path.join(dir, 'app/src/main/res/xml/shortcuts.xml');
     const strings = path.join(dir, 'app/src/main/res/values/shortcuts.xml');
@@ -481,7 +521,10 @@ describe('androidGenerator.leaveOut', () => {
   const shell = (main = 'main') =>
     path.join(dir, `app/src/${main}/java/dev/angularlynx/shell`);
   // So MainActivity changes only where the canvas code goes.
-  const withBiometrics = app({ permissions: { biometrics: 'Unlock' } });
+  const withBiometrics = app({
+    permissions: { biometrics: 'Unlock' },
+    storeReview: true,
+  });
   const mainActivity = () =>
     readFileSync(path.join(shell(), 'MainActivity.kt'), 'utf8');
 

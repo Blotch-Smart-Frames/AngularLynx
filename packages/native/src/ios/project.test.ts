@@ -21,6 +21,7 @@ import {
   IOS_BIOMETRICS_SOURCES,
   IOS_BARCODE_SCANNER_SOURCE,
   IOS_CANVAS_SOURCES,
+  IOS_STORE_REVIEW_SOURCE,
   IOS_WEBGL_SOURCES,
   iosGenerator,
   LOCAL_NETWORK_REASON,
@@ -349,6 +350,32 @@ describe('iosGenerator', () => {
       'NSClassFromString("AngularLynxBarcodeScannerModule")',
     );
     expect(controller).not.toContain('BarcodeScannerModule.self');
+  });
+
+  it('keeps the store review module only in an app with storeReview', () => {
+    /**
+     * Generates from a fresh copy of the template, as prepareProject does.
+     */
+    const generate = (options: object) => {
+      rmSync(dir, { recursive: true, force: true });
+      cpSync(path.join(TEMPLATES_DIR, 'ios'), dir, { recursive: true });
+      const resolved = app(options);
+      iosGenerator.configure(dir, resolved, dir);
+      iosGenerator.leaveOut(dir, { canvas: true, webgl: true }, resolved);
+      return existsSync(path.join(dir, IOS_STORE_REVIEW_SOURCE));
+    };
+    expect(generate({ storeReview: true })).toBe(true);
+    expect(generate({})).toBe(false);
+    // LynxViewController registers it by the name the module gives itself.
+    expect(
+      readFileSync(
+        path.join(TEMPLATES_DIR, 'ios', IOS_STORE_REVIEW_SOURCE),
+        'utf8',
+      ),
+    ).toContain('@objc(AngularLynxStoreReviewModule)');
+    expect(
+      readFileSync(path.join(dir, 'App/LynxViewController.swift'), 'utf8'),
+    ).toContain('NSClassFromString("AngularLynxStoreReviewModule")');
   });
 
   it('writes the entitlements beside the xcconfig, only with app link domains', () => {

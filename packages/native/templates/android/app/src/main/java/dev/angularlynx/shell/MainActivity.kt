@@ -297,6 +297,14 @@ class MainActivity : FragmentActivity(), ShellModule.Host, WebAuthModule.Host {
             barcodeScannerModule()?.let {
                 registerModule(BARCODE_SCANNER_MODULE, it, this@MainActivity)
             }
+            // Google Play's rating prompt behind LynxStoreReview
+            // (StoreReviewModule.kt), which it shows over this activity. An
+            // app whose angular.json doesn't set storeReview is built without
+            // the module, these lines and Play's review library
+            // (@blotch/angular-lynx-native's android/project.ts).
+            // angular-lynx:store-review
+            registerModule(StoreReviewModule.NAME, StoreReviewModule::class.java, this@MainActivity)
+            // /angular-lynx:store-review
             // The shortcuts the person runs from the app icon's menu, which
             // LynxShortcuts takes (ShortcutsModule.kt).
             registerModule(ShortcutsModule.NAME, ShortcutsModule::class.java, null)

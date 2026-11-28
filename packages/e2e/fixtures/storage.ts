@@ -7,6 +7,7 @@ import {
   LynxClipboard,
   LynxLocalStorage,
   LynxSecureStorage,
+  LynxStoreReview,
 } from '@blotch/angular-lynx';
 
 const KEY = 'e2e';
@@ -109,6 +110,14 @@ const collectedFromArrays = async (): Promise<string> => {
  * (the E2E app asks for it). A tap asks for it and shows the answer, which on
  * a simulator nobody has enrolled is `notEnrolled`. Lynx Explorer has no
  * module: `none`, and `unavailable`.
+ *
+ * "Rating", beside "Clipboard", asks for the store's rating prompt with
+ * LynxStoreReview (issue #931), which the app has because the harness sets
+ * angular.json's `storeReview`. It shows "asked" once request() resolves,
+ * which it does whether or not a prompt showed. On the iOS Simulator StoreKit
+ * shows the prompt every time, as in any development build, so the flow sees
+ * the shell's module answer. Google Play shows nothing to an app it didn't
+ * install, so on Android it only resolves.
  */
 @Component({
   selector: 'app-storage',
@@ -152,6 +161,9 @@ const collectedFromArrays = async (): Promise<string> => {
       <text flatten="false" (bindtap)="copy()"
         >Clipboard: {{ clipboard() }}</text
       >
+      <text flatten="false" style="margin-left: 16px;" (bindtap)="rate()"
+        >Rating: {{ rating() }}</text
+      >
     </view>
     <view style="display: flex; flex-direction: row; margin-top: 8px;">
       <text flatten="false" (bindtap)="authenticate()"
@@ -166,9 +178,11 @@ export class StorageRoute implements OnInit {
   readonly #clipboard = inject(LynxClipboard);
   readonly #biometrics = inject(LynxBiometrics);
   readonly biometrics = signal('…');
+  readonly #storeReview = inject(LynxStoreReview);
   readonly stored = signal('…');
   readonly arraySlots = signal('tap');
   readonly clipboard = signal('tap');
+  readonly rating = signal('tap');
 
   ngOnInit(): void {
     void this.#biometrics
@@ -222,6 +236,11 @@ export class StorageRoute implements OnInit {
           error instanceof BiometricsError ? error.code : String(error),
         ),
     );
+  }
+
+  rate(): void {
+    this.rating.set('…');
+    void this.#storeReview.request().then(() => this.rating.set('asked'));
   }
 
   async #read(): Promise<string> {

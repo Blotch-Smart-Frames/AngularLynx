@@ -170,6 +170,7 @@ export const scaffoldApp = async (
   addShortcut(appDir);
   addBiometrics(appDir);
   addCameraPermission(appDir);
+  addStoreReview(appDir);
   step('Layer 2: compile a prebuilt library');
   await addPrebuiltLibrary(appDir, pm, exec);
 
@@ -1439,6 +1440,32 @@ const addBiometrics = (appDir: string) => {
     ...(options['permissions'] as Record<string, string> | undefined),
     biometrics: 'Checks that the E2E app reaches Face ID',
   };
+  writeFileSync(workspacePath, `${JSON.stringify(workspace, null, 2)}\n`);
+};
+
+/**
+ * Turns on angular.json's `storeReview`, so the native builds keep the store
+ * review module, and the Android one Google Play's review library, which only
+ * a build shows still compiles and links. native/store-review.yaml asks for
+ * the prompt. compile-features.ts builds the shells without it, as most apps
+ * get them.
+ */
+const addStoreReview = (appDir: string) => {
+  step('Layer 2: ask for ratings in the app, for the native builds');
+  const workspacePath = path.join(appDir, 'angular.json');
+  const workspace = readJson<{
+    projects: Record<
+      string,
+      { architect?: Record<string, { options?: Record<string, unknown> }> }
+    >;
+  }>(workspacePath);
+  const options = Object.values(workspace.projects)[0]?.architect?.['build']
+    ?.options;
+  check(
+    options !== undefined,
+    "angular.json's build target has no options; the project `ng new` generates has changed shape. Update addStoreReview() in packages/e2e/src/scaffold.ts.",
+  );
+  options['storeReview'] = true;
   writeFileSync(workspacePath, `${JSON.stringify(workspace, null, 2)}\n`);
 };
 

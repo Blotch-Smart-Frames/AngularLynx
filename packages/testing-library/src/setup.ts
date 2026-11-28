@@ -28,6 +28,7 @@ import { installBiometricsModule } from './biometrics.js';
 import { installBarcodeScannerModule } from './barcode-scanner.js';
 import { installLinkingModule } from './linking.js';
 import { installShortcutsModule } from './shortcuts.js';
+import { installStoreReviewModule } from './store-review.js';
 
 // ─── CSS fetch intercept ─────────────────────────────────────────────────────
 
@@ -120,6 +121,9 @@ const frameOnInstalledTimers = (threadGlobals: any): void => {
   // LynxBarcodeScanner reads the codes queueBarcodeScan() queues (see
   // barcode-scanner.ts).
   installBarcodeScannerModule(threadGlobals);
+  // LynxStoreReview's requests, which reviewRequests() counts (see
+  // store-review.ts).
+  installStoreReviewModule(threadGlobals);
   // LynxBackButton enables the back handler pressBackButton() checks (see
   // back-button.ts).
   installShellModule(threadGlobals);

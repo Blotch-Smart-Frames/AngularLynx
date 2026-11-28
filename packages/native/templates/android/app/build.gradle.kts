@@ -176,6 +176,12 @@ dependencies {
     // angular-lynx:barcode-scanner
     implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
     // /angular-lynx:barcode-scanner
+    // Google Play's In-App Review API, which StoreReviewModule asks for the
+    // rating prompt. Only an app whose angular.json sets storeReview keeps
+    // these lines (@blotch/angular-lynx-native's android/project.ts).
+    // angular-lynx:store-review
+    implementation("com.google.android.play:review:2.0.2")
+    // /angular-lynx:store-review
 
     // The Lynx engine, its JavaScript runtime (PrimJS) and its JS SDK.
     implementation("org.lynxsdk.lynx:lynx:$lynxVersion")

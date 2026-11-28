@@ -30,7 +30,8 @@ import {
  * The first is also built without `permissions.biometrics` and
  * `permissions.camera`, as most apps are, which leaves the biometrics module
  * (#918) and the barcode scanner's (#917) out. The E2E app asks for both, so
- * its own build has the modules.
+ * its own build has the modules. Both are built
+ * without `storeReview`, which the E2E app sets and most apps don't (#931).
  */
 export const VARIANTS: readonly {
   readonly name: string;
@@ -74,6 +75,17 @@ const PROBES: Record<
     biometrics: 'app/src/main/java/dev/angularlynx/shell/BiometricsModule.kt',
     camera: 'app/src/main/java/dev/angularlynx/shell/BarcodeScannerModule.kt',
   },
+};
+
+/**
+ * The store review module, which the variants build without: the E2E app
+ * sets angular.json's `storeReview`, which most apps don't, so only these
+ * builds show the shells still compile once it and its registration are
+ * taken out (issue #931).
+ */
+const STORE_REVIEW_PROBES: Record<Platform, string> = {
+  ios: 'App/StoreReviewModule.swift',
+  android: 'app/src/main/java/dev/angularlynx/shell/StoreReviewModule.kt',
 };
 
 /**
@@ -153,9 +165,11 @@ export const compileFeatureVariants = async ({
           workDir: path.join(variantDir, 'work'),
           outputDir: path.join(variantDir, 'out'),
           log,
-          // The app's permissions without the ones the variant leaves out.
-          overrides:
-            biometrics && camera
+          // Without storeReview, which the E2E app sets and most apps don't,
+          // and the app's permissions without the ones the variant leaves out.
+          overrides: {
+            storeReview: false,
+            ...(biometrics && camera
               ? {}
               : {
                   permissions: Object.fromEntries(
@@ -165,7 +179,8 @@ export const compileFeatureVariants = async ({
                         (camera || permission !== 'camera'),
                     ),
                   ),
-                },
+                }),
+          },
         });
         const kept = { ...features, biometrics, camera };
         for (const [feature, file] of Object.entries(PROBES[platform]) as [
@@ -177,6 +192,11 @@ export const compileFeatureVariants = async ({
               `${name}: the generated project ${kept[feature] ? 'has no' : 'still has'} ${file}, so it isn't the project an app with ${JSON.stringify(kept)} gets.`,
             );
           }
+        }
+        if (existsSync(path.join(projectDir, STORE_REVIEW_PROBES[platform]))) {
+          failures.push(
+            `${name}: the generated project still has ${STORE_REVIEW_PROBES[platform]}, though the variant builds without storeReview.`,
+          );
         }
         check(
           artifacts.length > 0,

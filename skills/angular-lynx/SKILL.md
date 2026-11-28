@@ -94,7 +94,7 @@ Read [threading-model.md](references/threading-model.md)
 
 ## HTTP Requests
 
-`provideHttpClient()`, `HttpClient`, `httpResource` and `fetch()` work on the main thread: the runtime relays each request to the background thread's `fetch`. URLs must be absolute, except a file the app bundles in an `ng build --platform` app; no `FormData` bodies; `Blob` bodies go with their type. OAuth sign-in through a web page with `LynxWebAuthSession`; photos from the phone's picker as a `Blob` with `LynxImagePicker`; the share sheet (files, text, links, Save Image) with `LynxShare`; a QR code or a barcode from the camera with `LynxBarcodeScanner`, opt-in with `permissions.camera`. Links out of the app (browser, browser sheet, mail, other apps) with `LynxLinking`, which also hears the links that open the app (see routing).
+`provideHttpClient()`, `HttpClient`, `httpResource` and `fetch()` work on the main thread: the runtime relays each request to the background thread's `fetch`. URLs must be absolute, except a file the app bundles in an `ng build --platform` app; no `FormData` bodies; `Blob` bodies go with their type. OAuth sign-in through a web page with `LynxWebAuthSession`; photos from the phone's picker as a `Blob` with `LynxImagePicker`; the share sheet (files, text, links, Save Image) with `LynxShare`; a QR code or a barcode from the camera with `LynxBarcodeScanner`, opt-in with `permissions.camera`. The App Store or Google Play rating prompt with `LynxStoreReview`, opt-in with `"storeReview": true`. Links out of the app (browser, browser sheet, mail, other apps) with `LynxLinking`, which also hears the links that open the app (see routing).
 
 Read [http-requests.md](references/http-requests.md)
 

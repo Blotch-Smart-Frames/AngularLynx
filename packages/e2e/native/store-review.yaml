@@ -1,0 +1,27 @@
+# Layer 6, the app's own builds only: LynxStoreReview asks for the store's
+# rating prompt (issue #931). The harness sets angular.json's `storeReview`,
+# so the shells have the module. The storage page's "Rating" line calls
+# request() and shows "asked" once it resolves. In a development build, which
+# the Simulator's is, StoreKit shows its prompt on every request, so on iOS
+# the prompt showing is what proves the shell registered the module: without
+# it, request() resolves just the same. Google Play shows nothing to an app
+# the emulator never installed from Play, so on Android the flow sees the
+# request resolve, and the build that compiled Play's review library.
+appId: ${APP_ID}
+---
+- runFlow: open-app.yaml
+- tapOn: Open storage
+- tapOn: 'Rating: tap'
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - extendedWaitUntil:
+          visible: Not Now
+          timeout: 15000
+      - takeScreenshot: store-review-prompt
+      - tapOn: Not Now
+- extendedWaitUntil:
+    visible: 'Rating: asked'
+    timeout: 15000
+- takeScreenshot: store-review

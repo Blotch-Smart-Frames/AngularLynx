@@ -104,23 +104,34 @@ export class LynxTracking {
   readonly #status = signal<TrackingStatus>('notDetermined');
 
   /**
-   * Counts the module's answers, so one that comes after a newer one (a
-   * status read the prompt overtook, say) doesn't replace it.
+   * The request in flight, which a second `requestPermission()` shares: iOS
+   * answers a request made while another one's prompt is open at once,
+   * without the person's answer, so the shells get one at a time.
    */
-  #asked = 0;
+  #request?: Promise<TrackingStatus>;
+
+  /** Counts the status reads, so only the newest one is kept. */
+  #reads = 0;
+
+  /**
+   * Counts the requests that have answered, so a status read that started
+   * before one answered doesn't replace the person's answer with what it
+   * read before they gave it.
+   */
+  #answered = 0;
 
   /** Whether the app may track the person (see {@link TrackingStatus}). */
   readonly status: Signal<TrackingStatus> = this.#status.asReadonly();
 
   constructor() {
-    void this.#ask('status');
+    void this.#read();
     // The person can change it in Settings while the app is away, so read it
     // again when the app comes back.
     const appState = inject(LynxAppState);
     let wasActive = untracked(appState.active);
     effect(() => {
       const active = appState.active();
-      if (active && !wasActive) untracked(() => void this.#ask('status'));
+      if (active && !wasActive) untracked(() => void this.#read());
       wasActive = active;
     });
   }
@@ -130,16 +141,37 @@ export class LynxTracking {
    * been asked yet, and resolves with their answer, which {@link status}
    * then holds too. iOS shows it only while the app is active, so a request
    * made before then waits for it. Anywhere else, and once the person has
-   * answered, it resolves with the status without showing anything. Never
-   * rejects.
+   * answered, it resolves with the status without showing anything. A
+   * request made while another is waiting for the person resolves with the
+   * same answer. Never rejects.
    */
   requestPermission(): Promise<TrackingStatus> {
-    return this.#ask('request');
+    this.#request ??= this.#call('request').then((status) => {
+      this.#request = undefined;
+      this.#answered++;
+      this.#status.set(status);
+      return status;
+    });
+    return this.#request;
   }
 
-  async #ask(method: 'status' | 'request'): Promise<TrackingStatus> {
-    const asked = ++this.#asked;
-    let status: TrackingStatus;
+  async #read(): Promise<void> {
+    const read = ++this.#reads;
+    const answered = this.#answered;
+    const status = await this.#call('status');
+    // A read while the prompt is open says `notDetermined`, and one from
+    // before the person answered says what they hadn't answered yet: the
+    // request's answer holds until a read that starts after it.
+    if (
+      read === this.#reads &&
+      answered === this.#answered &&
+      this.#request === undefined
+    ) {
+      this.#status.set(status);
+    }
+  }
+
+  async #call(method: 'status' | 'request'): Promise<TrackingStatus> {
     try {
       const result = (await callOnBackground(
         'callNativeModuleAsync',
@@ -149,15 +181,13 @@ export class LynxTracking {
       )) as { readonly status?: string } | undefined;
       // A status the runtime doesn't know, from a newer shell, mustn't let
       // the app track.
-      status = STATUSES.includes(result?.status as TrackingStatus)
+      return STATUSES.includes(result?.status as TrackingStatus)
         ? (result!.status as TrackingStatus)
         : 'denied';
     } catch {
       // The host has no module: Lynx Explorer, the web preview, or an app
       // built without permissions.tracking.
-      status = 'unsupported';
+      return 'unsupported';
     }
-    if (asked === this.#asked) this.#status.set(status);
-    return status;
   }
 }

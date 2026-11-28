@@ -98,6 +98,80 @@ describe('LynxTracking', () => {
     expect(tracking.status()).toBe('authorized');
   });
 
+  it('shares a request already waiting for the person, so iOS shows one prompt', async () => {
+    const module = stubModule();
+    const { tracking } = create();
+    module.answer('status', { status: 'notDetermined' });
+    const first = tracking.requestPermission();
+    const second = tracking.requestPermission();
+    await settle();
+    expect(module.request).toHaveBeenCalledOnce();
+    module.answer('request', { status: 'denied' });
+    await expect(first).resolves.toBe('denied');
+    await expect(second).resolves.toBe('denied');
+    expect(tracking.status()).toBe('denied');
+
+    // Answered, a new request asks again, and iOS answers at once.
+    void tracking.requestPermission();
+    await settle();
+    expect(module.request).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the request's answer over a read made while its prompt was open", async () => {
+    const module = stubModule();
+    const { tracking, active } = create();
+    module.answer('status', { status: 'notDetermined' });
+    await settle();
+    // The request waits for the app, and the app coming back reads the
+    // status while the prompt is still open.
+    active.set(false);
+    TestBed.tick();
+    const answer = tracking.requestPermission();
+    active.set(true);
+    TestBed.tick();
+    expect(module.status).toHaveBeenCalledTimes(2);
+    module.answer('status', { status: 'notDetermined' });
+    await settle();
+    module.answer('request', { status: 'authorized' });
+    await expect(answer).resolves.toBe('authorized');
+    expect(tracking.status()).toBe('authorized');
+  });
+
+  it("keeps the request's answer over a read that started before it and answers after", async () => {
+    const module = stubModule();
+    const { tracking, active } = create();
+    module.answer('status', { status: 'notDetermined' });
+    await settle();
+    active.set(false);
+    TestBed.tick();
+    active.set(true);
+    TestBed.tick();
+    const answer = tracking.requestPermission();
+    await settle();
+    module.answer('request', { status: 'authorized' });
+    await answer;
+    module.answer('status', { status: 'notDetermined' });
+    await settle();
+    expect(tracking.status()).toBe('authorized');
+  });
+
+  it('keeps only the newest of two reads', async () => {
+    const module = stubModule();
+    const { tracking, active } = create();
+    active.set(false);
+    TestBed.tick();
+    active.set(true);
+    TestBed.tick();
+    // The read when the service was created answers after a newer one has
+    // started, so it's dropped, and the newer one's answer kept.
+    module.answer('status', { status: 'denied' });
+    await settle();
+    expect(tracking.status()).toBe('notDetermined');
+    module.answer('status', { status: 'authorized' });
+    await settle();
+    expect(tracking.status()).toBe('authorized');
+  });
+
   it('reads it again when the app comes back to the foreground', async () => {
     const module = stubModule();
     const { tracking, active } = create();

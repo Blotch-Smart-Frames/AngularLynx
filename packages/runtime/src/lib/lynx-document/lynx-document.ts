@@ -16,8 +16,8 @@ import {
 } from './page-ref';
 
 import { createNativeRefByTag } from './create-native-ref';
-import { LynxCanvasElement } from '../canvas/canvas-element';
 import { LynxVideoElement } from '../canvas/video-element';
+import { canvasElementFor } from './canvas-element-factory';
 import { hostElementOf } from './host-elements';
 import { INLINE_FLOW_TAGS, WEB_TEXT_TAGS } from './web-tags';
 import {
@@ -138,14 +138,14 @@ export class LynxDocument implements LynxDocumentBase {
       return result.element;
     }
     const element = createNativeRefByTag(tag, this.#pageId, value);
-    // A canvas has HTMLCanvasElement's API: width, height and getContext().
+    // A canvas has HTMLCanvasElement's API: width, height and getContext(),
+    // in the apps the build gives the canvas (see canvas-element-factory.ts).
     // A video can be read as an image, as HTMLVideoElement can.
     const el =
-      tag === 'canvas'
-        ? new LynxCanvasElement(element)
-        : tag === 'video'
-          ? new LynxVideoElement(element)
-          : new LynxElement(element);
+      (tag === 'canvas' ? canvasElementFor(element) : null) ??
+      (tag === 'video'
+        ? new LynxVideoElement(element)
+        : new LynxElement(element));
     // Its native element is new, with no classes: they can wait for the end
     // of the cycle (see LynxElement's #nativeClasses).
     el.markNew();

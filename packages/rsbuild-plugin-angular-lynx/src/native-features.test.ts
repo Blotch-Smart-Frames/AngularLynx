@@ -40,6 +40,17 @@ describe('canvasNamed', () => {
     ['a 2D class', `new Path2D('M0 0');`],
     ['a check against a canvas', `x instanceof HTMLCanvasElement;`],
     ['an enable function the app calls itself', `ɵenableCanvas2D();`],
+    ['the canvas’s enable function', `ɵenableCanvas();`],
+    ['a check against an image', `x instanceof HTMLImageElement;`],
+    ['an image made in code', `document.createElement('IMG');`],
+    [
+      'a canvas made with its tag in capitals',
+      `document.createElement('CANVAS');`,
+    ],
+    [
+      'an image made as three.js’s ImageLoader does',
+      `document.createElementNS('http://www.w3.org/1999/xhtml', 'img');`,
+    ],
     ['a name spelled with an escape', `c.getContext('\\x32d');`],
     ['a name spelled with an identity escape', `new globalThis['Im\\age']();`],
     ['a name spelled with an octal escape', `new globalThis['\\111mage']();`],
@@ -63,7 +74,7 @@ describe('canvasNamed', () => {
   it('leaves out words in other strings and a property named canvas', () => {
     expect(
       canvasNamed(
-        `const label = 'canvas size'; this.canvas.width = 2; const t = 'Images';`,
+        `const label = 'canvas size'; this.canvas.width = 2; const t = 'Images'; const img = 'img'; document.createElement('video');`,
         '/app/src/x.js',
       ),
     ).toBe(false);

@@ -1,5 +1,6 @@
 import { setWebGL2ContextFactory } from './canvas-surface';
 import { LynxWebGL2RenderingContextGlobal } from './dom-globals';
+import { ɵenableCanvas } from './enable-canvas';
 import { WEBGL2_CONSTANTS } from './webgl-constants';
 import { LynxWebGL2RenderingContext } from './webgl2-context';
 
@@ -17,10 +18,14 @@ import { LynxWebGL2RenderingContext } from './webgl2-context';
  * rather than where the global is made, so they're only in the builds that
  * can make a context.
  *
+ * It gives the app the canvas too (`ɵenableCanvas()`): a context needs one to
+ * draw on, and a module can ask for the context of a canvas it didn't make.
+ *
  * On Lynx for Web a canvas is the browser's, which has its own context and
- * global, so there it does nothing and the build drops the runtime's.
+ * global, so there it does nothing more and the build drops the runtime's.
  */
 export const ɵenableWebGL2 = (): void => {
+  ɵenableCanvas();
   if (__WEB__) return;
   Object.assign(LynxWebGL2RenderingContextGlobal, WEBGL2_CONSTANTS);
   setWebGL2ContextFactory(

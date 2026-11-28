@@ -5,6 +5,7 @@ import {
   LynxTextMetrics,
 } from './canvas-2d-context';
 import { setCanvas2DContextFactory } from './canvas-surface';
+import { ɵenableCanvas } from './enable-canvas';
 import { LynxPath2D } from './path';
 
 /**
@@ -47,10 +48,14 @@ export const install2DGlobals = (target: Record<string, unknown>): void => {
  * (#729). A module that asks by a name built at runtime can call this first.
  * Calling it again changes nothing.
  *
+ * It gives the app the canvas too (`ɵenableCanvas()`): a context needs one to
+ * draw on, and a module can ask for the context of a canvas it didn't make.
+ *
  * On Lynx for Web a canvas is the browser's, which has its own context and
- * classes, so there it does nothing and the build drops the runtime's.
+ * classes, so there it does nothing more and the build drops the runtime's.
  */
 export const ɵenableCanvas2D = (): void => {
+  ɵenableCanvas();
   if (__WEB__) return;
   install2DGlobals(globalThis as unknown as Record<string, unknown>);
   setCanvas2DContextFactory(

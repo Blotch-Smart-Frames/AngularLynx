@@ -10,6 +10,7 @@ type ShellModules = {
   AngularLynxShell?: {
     hideSplashScreen(): void;
     reportFullyDrawn(): void;
+    markEvent(name: string): void;
   };
   AngularLynxLocalStorage?: {
     getItem(key: string, callback: Callback): void;

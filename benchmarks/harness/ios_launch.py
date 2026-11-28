@@ -23,6 +23,12 @@ From each trace:
 - fully_drawn_ms: from the process starting to the app's fully-drawn
   signpost (`TTFD`, or `Fully Drawn` from AngularLynx's shell): its first
   page of data is on screen.
+- mount_ms: from the app's `MountStart` mark to its fully-drawn signpost, on
+  a mount screen: how long the screen took to build, without the launch
+  before it. The React Native apps, Angular Native and Flutter emit an event
+  named `MountStart`; the Lynx apps call the shell's `markEvent('MountStart')`,
+  an event named `Mark` whose message is `MountStart`. Empty for a screen
+  without the mark (the Pokédex).
 - memory_mb / peak_memory_mb: the app's physical footprint (what iOS counts
   against its memory limit, Xcode's memory gauge), in Activity Monitor's last
   sample before the recording ends, and its largest sample.
@@ -84,6 +90,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from xctrace_tables import tables  # noqa: E402
 
 FULLY_DRAWN = {"TTFD", "Fully Drawn"}
+MOUNT_START = "MountStart"
 FIELDS = [
     "timestamp",
     "device",
@@ -94,6 +101,7 @@ FIELDS = [
     "previous_app",
     "first_frame_ms",
     "fully_drawn_ms",
+    "mount_ms",
     "memory_mb",
     "peak_memory_mb",
     "thermal_state",
@@ -190,6 +198,35 @@ def of_pid(cell, pid):
     return bool(cell and cell[1] and cell[1].endswith(f"({pid})"))
 
 
+def marks(events, pid, start):
+    """The process's fully drawn and mount start, in ns after start (or
+    None): the first fully-drawn event, and the earliest MountStart, which a
+    ReactLynx screen marks from each of its threads (the one that renders it
+    first starts the screen)."""
+    fully_drawn, mount_start = None, None
+    for r in events:
+        if not of_pid(r["process"], pid):
+            continue
+        time = int(r["time"][0]) - start
+        if fully_drawn is None and r["name"][1] in FULLY_DRAWN:
+            fully_drawn = time
+        # An event named MountStart, or the shell's Mark with MountStart
+        # as its message.
+        message = r.get("message", (None, None))[1]
+        if MOUNT_START in (r["name"][1], message) and (mount_start is None or time < mount_start):
+            mount_start = time
+    return fully_drawn, mount_start
+
+
+def mount_ms(fully_drawn, mount_start):
+    """The mount's duration, as a CSV cell: empty without both marks, or
+    when the screen was drawn before it started (a mark from somewhere
+    else)."""
+    if fully_drawn is None or mount_start is None or mount_start > fully_drawn:
+        return ""
+    return f"{(fully_drawn - mount_start) / 1e6:.1f}"
+
+
 def measure(trace):
     data = tables(
         trace,
@@ -210,11 +247,7 @@ def measure(trace):
         if (r["period"][1] or "").endswith("Initial Frame Rendering"):
             first_frame = int(r["start"][0]) + int(r["duration"][0]) - start
             break
-    fully_drawn = None
-    for r in data["PointsOfInterestEvents"]:
-        if of_pid(r["process"], pid) and r["name"][1] in FULLY_DRAWN:
-            fully_drawn = int(r["time"][0]) - start
-            break
+    fully_drawn, mount_start = marks(data["PointsOfInterestEvents"], pid, start)
     memory = [
         int(r["memory-physical-footprint"][0])
         for r in data["activity-monitor-process-live"]
@@ -226,6 +259,7 @@ def measure(trace):
     return {
         "first_frame_ms": ms(first_frame),
         "fully_drawn_ms": ms(fully_drawn),
+        "mount_ms": mount_ms(fully_drawn, mount_start),
         "memory_mb": mb(memory[-1] if memory else None),
         "peak_memory_mb": mb(max(memory) if memory else None),
         "thermal_state": "/".join(thermal),
@@ -251,11 +285,7 @@ def measure_light(trace, memory=None):
     launch = min(launches, key=lambda r: int(r["start"][0]))
     pid = launch["process"][2].findtext("pid")
     start = int(launch["start"][0])
-    fully_drawn = None
-    for r in data["PointsOfInterestEvents"]:
-        if of_pid(r["process"], pid) and r["name"][1] in FULLY_DRAWN:
-            fully_drawn = int(r["time"][0]) - start
-            break
+    fully_drawn, mount_start = marks(data["PointsOfInterestEvents"], pid, start)
     thermal = sorted({r["thermal-state"][1] for r in data["device-thermal-state-intervals"]})
     footprint = None
     if memory and memory[0] == pid:
@@ -265,6 +295,7 @@ def measure_light(trace, memory=None):
     return {
         "first_frame_ms": "",
         "fully_drawn_ms": f"{fully_drawn / 1e6:.1f}" if fully_drawn is not None else "",
+        "mount_ms": mount_ms(fully_drawn, mount_start),
         "memory_mb": f"{footprint / 1048576:.1f}" if footprint else "",
         "peak_memory_mb": "",
         "thermal_state": "/".join(thermal),
@@ -536,6 +567,7 @@ def main():
             print(
                 f"{row['app']:>18} run {row['run']:>2}: first frame {values.get('first_frame_ms', '?'):>7} ms, "
                 f"fully drawn {values.get('fully_drawn_ms', '?'):>7} ms, "
+                f"mount {values.get('mount_ms') or '-':>7} ms, "
                 f"memory {values.get('memory_mb', '?')} MB, {values.get('thermal_state', '?')}, "
                 f"battery {row.get('battery_percent') or '-'}%, load {row['host_load']}",
                 flush=True,

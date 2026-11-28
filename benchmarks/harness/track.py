@@ -17,18 +17,18 @@ mount screens (ios_mount.py, `mount-<date>-<kind>-<count>-react-lynx.csv`),
 and works out, for AngularLynx and ReactLynx:
 
 - the Pokédex's median fully drawn time and memory
-- the cost of each view, text and image: (fastest launch of the kind's
-  largest screen - fastest launch of its smallest) / the elements between
+- the cost of each view, text and image: (fastest mount of the kind's
+  largest screen - fastest mount of its smallest) / the elements between
   them. On the Simulator, ios_mount.py launches 1,500 and 15,000 (#882).
 
-The costs per element take each screen's fastest launch rather than its
-median because the difference of two launches is small against the
-launches: the Simulator's launch alone takes 1.6-2 s, and the host only ever
-adds to it, a few launches in ten by up to a second. Those pulled a median
-of 10 up by 100-200 ms on one screen and not the other, and gave costs below
-zero. The fastest launch is the one the host held up least: in one session,
-each AngularLynx cost from 1,500 and 5,000 elements came within 3% of the
-same cost from 1,500 and 15,000.
+A mount is the screen's mount_ms, from the app's MountStart mark, as its
+screen's component starts, to its Fully Drawn (ios_launch.py), not the whole
+launch (#892). The Simulator's own launch, 1.6-2 s of every launch, is then
+left out, and with it most of what the host holds up: until then, the
+difference of two launches was small against the launches, and the cheapest
+elements' costs stayed near the noise (ReactLynx's view, 9.0 µs within
+±18%). Each screen's fastest mount rather than its median, because the host
+only ever adds time, as it did to the launches (#882).
 
 A Simulator's times aren't a phone's, and the host moves them by 5-30% from
 one run to the next, so what's tracked is the ratio of each, AngularLynx /
@@ -64,6 +64,13 @@ SIMULATOR_NAME = "AngularLynx Benchmarks"
 # Each tracked measure: its label, unit and how many decimals to print. A
 # higher number is worse for every one of them, so a higher ratio means
 # AngularLynx has fallen behind ReactLynx.
+# What a record's costs per element were timed from. A record without it
+# is from before #892, whose costs came from whole launches: up to 20% off
+# the mount's own on the same launches (ReactLynx's view, 10.3 µs against
+# 8.5), more than the threshold, so ratio() leaves those costs out rather
+# than let a baseline of them make a change that isn't there.
+MOUNT_COST_FROM = "mount_ms"
+
 METRICS = {
     "launch.fully_drawn_ms": ("Pokédex fully drawn", "ms", 0),
     "launch.memory_mb": ("Pokédex memory", "MB", 1),
@@ -139,8 +146,8 @@ def day(launch_rows, mount_rows, date, commit, run_url):
         small, large = sizes[0], sizes[-1]
         costs = {}
         for app in (OURS, RIVAL):
-            a = app_fastest(mount_rows[(kind, small)], app, "fully_drawn_ms")
-            b = app_fastest(mount_rows[(kind, large)], app, "fully_drawn_ms")
+            a = app_fastest(mount_rows[(kind, small)], app, "mount_ms")
+            b = app_fastest(mount_rows[(kind, large)], app, "mount_ms")
             # Milliseconds over the elements between them, in microseconds
             # each.
             costs[app] = (b - a) / (large - small) * 1000 if a is not None and b is not None else None
@@ -167,13 +174,18 @@ def day(launch_rows, mount_rows, date, commit, run_url):
         # elements isn't one from 1,500 and 15,000, whose launches' noise
         # weighs less on it.
         "mount_counts": counts,
+        "mount_cost_from": MOUNT_COST_FROM,
         "metrics": metrics,
     }
 
 
 def ratio(record, metric):
     """AngularLynx / ReactLynx for the metric on a day, or None. A cost of
-    zero or less is noise (the two screens' launches crossed), not a cost."""
+    zero or less is noise (the two screens' mounts crossed), not a cost, and
+    a cost timed from something else than this harness's (MOUNT_COST_FROM)
+    isn't the same measure."""
+    if metric.startswith("mount.") and record.get("mount_cost_from") != MOUNT_COST_FROM:
+        return None
     values = record.get("metrics", {}).get(metric) or {}
     ours, rival = values.get(OURS), values.get(RIVAL)
     if ours is None or rival is None or ours <= 0 or rival <= 0:
@@ -248,11 +260,11 @@ def screens_note(record):
     if len(pairs) == 1:
         [(small, large)] = pairs
         return (
-            f" Each cost per element is from the fastest launch of the {small:,}- and {large:,}-element "
+            f" Each cost per element is from the fastest mount of the {small:,}- and {large:,}-element "
             "screens."
         )
     each = ", ".join(f"{kind} {small:,} and {large:,}" for kind, (small, large) in counts.items())
-    return f" The costs per element are from the fastest launch of these screens: {each}."
+    return f" The costs per element are from the fastest mount of these screens: {each}."
 
 
 def summary(history, changes, days, window, threshold):

@@ -109,4 +109,12 @@ describe('writeIosProject', () => {
       'App.xcscheme',
     ]);
   });
+
+  it('accepts a project folder given with a trailing slash', () => {
+    writeIosProject(`${dir}/`, files);
+
+    expect(readFileSync(path.join(dir, 'project.pbxproj'), 'utf8')).toBe(
+      'pbxproj',
+    );
+  });
 });

@@ -116,10 +116,14 @@ const TEMPLATE_STAGING_DIR = path.join(
  * and only files the render no longer has are removed.
  */
 export const writeIosProject = (
-  dir: string,
+  projectDir: string,
   files: IosProjectFiles,
-  stagingDir = path.dirname(dir),
+  stagingDir = path.dirname(projectDir),
 ) => {
+  // Resolved, because the ancestor walk below stops at `dir` exactly: a
+  // trailing slash or a relative path would never match path.join's output,
+  // and the walk would reach / and loop there forever.
+  const dir = path.resolve(projectDir);
   const rendered = new Set(
     Object.keys(files).map((file) => path.join(dir, file)),
   );

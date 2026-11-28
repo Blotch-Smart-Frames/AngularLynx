@@ -332,6 +332,35 @@ describe('inserts before the anchors that end a parent (issue #444)', () => {
       expect(footer.nextSibling()).toBeNull();
     });
 
+    it('moves a footer of the tail before the anchor, where it stays', () => {
+      const footer = element('view', 'footer');
+      parent.appendChild(footer);
+      rows(1);
+
+      // The footer is the tail's own, so appending it would leave it in the
+      // tail, which goes back after the anchors.
+      parent.insertBefore(footer, forAnchor);
+      rows(1, 2);
+      endCycle();
+
+      expect(native(parent)).toEqual([
+        'row1',
+        'footer',
+        'row2',
+        'for-anchor',
+        'case-anchor',
+      ]);
+    });
+
+    it('moves an anchor of the tail before the first, where it stays', () => {
+      rows(1);
+
+      parent.insertBefore(caseAnchor, forAnchor);
+      endCycle();
+
+      expect(native(parent)).toEqual(['row1', 'case-anchor', 'for-anchor']);
+    });
+
     it('puts the footer back before a child of it moves into a row', () => {
       const footer = element('view', 'footer');
       const button = element('view', 'button');

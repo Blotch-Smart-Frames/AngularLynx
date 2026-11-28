@@ -3291,7 +3291,7 @@ export class LynxElement implements BaseLynxElement {
       // is beats freezing the app.
       if (this.#wouldFormCycle(newChild)) return;
       const moving = isWebMove(newChild);
-      if (this.#appendsBeforeTail(refChild)) {
+      if (this.#appendsBeforeTail(newChild, refChild)) {
         if (from) __RemoveElement(from, newChild.element);
         __AppendElement(this.element, newChild.element);
       } else {
@@ -3316,7 +3316,7 @@ export class LynxElement implements BaseLynxElement {
   }
 
   /**
-   * Whether an element going in before `refChild` can be appended to the
+   * Whether `newChild`, going in before `refChild`, can be appended to the
    * native element instead, because `refChild` is an anchor (`@for`'s,
    * `@if`'s, a `@switch` case's) and every child from it to the end is an
    * anchor or one of a few elements not flushed yet (see
@@ -3350,7 +3350,7 @@ export class LynxElement implements BaseLynxElement {
    * DOM, nor in a `<text>` (whose anchors are raw texts, see #anchorFor) or
    * an anonymous one or a `<q>`, which keep their own order of children.
    */
-  #appendsBeforeTail(refChild: LynxElement): boolean {
+  #appendsBeforeTail(newChild: LynxElement, refChild: LynxElement): boolean {
     if (__WEB__ || refChild.tagName !== 'comment') return false;
     if (!isInsideChangeDetection()) return false;
     const displaced = LynxElement.#displacedTails.get(this);
@@ -3366,6 +3366,10 @@ export class LynxElement implements BaseLynxElement {
     let elements = 0;
     for (let i = children.length - 1; i >= 0; i--) {
       const child = children[i]!;
+      // A child of the tail moving before it (a footer, or an anchor, put
+      // before the first anchor) would stay in the tail, which goes back
+      // after the anchors: it's inserted.
+      if (child === newChild) return false;
       if (child === refChild) {
         // An `@if` puts one element in before its anchor, and moving the
         // elements after it would cost more than the one search it saves:

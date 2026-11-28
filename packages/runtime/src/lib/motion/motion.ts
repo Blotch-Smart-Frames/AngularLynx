@@ -643,7 +643,7 @@ export class LynxMotion {
     const onMotion = (event: any): void => {
       const t = Date.now();
       const a = event?.accelerationIncludingGravity;
-      if (a && a.x != null) {
+      if (numbers(a?.x, a?.y, a?.z)) {
         this.#emit('acceleration', t, () => ({
           x: a.x,
           y: a.y,
@@ -657,7 +657,7 @@ export class LynxMotion {
       // The web gives degrees a second, as alpha around z, beta around x and
       // gamma around y.
       const r = event?.rotationRate;
-      if (r && r.alpha != null) {
+      if (numbers(r?.alpha, r?.beta, r?.gamma)) {
         this.#emit('rotation', t, () => ({
           x: r.beta * RADIANS,
           y: r.gamma * RADIANS,
@@ -673,7 +673,7 @@ export class LynxMotion {
       // A browser without the relative one sends the absolute one here
       // (absolute: true), whose alpha counts from north: still the phone's
       // orientation, which a watch gets rather than nothing.
-      if (event?.alpha != null) {
+      if (numbers(event?.alpha, event?.beta, event?.gamma)) {
         this.#emit('orientation', t, () => ({
           alpha: event.alpha,
           beta: event.beta,
@@ -703,7 +703,7 @@ export class LynxMotion {
      * counterclockwise from north.
      */
     const onAbsolute = (event: any): void => {
-      if (event?.alpha == null) return;
+      if (!numbers(event?.alpha)) return;
       const t = Date.now();
       this.#emit('heading', t, () => ({
         magneticHeading: (360 - event.alpha) % 360,
@@ -724,6 +724,13 @@ export class LynxMotion {
     };
   }
 }
+
+/**
+ * Whether each value is a number. A browser's sensor event can leave any of
+ * its readings null, and a sample promises numbers.
+ */
+const numbers = (...values: unknown[]): boolean =>
+  values.every((value) => typeof value === 'number' && Number.isFinite(value));
 
 type WatchArgs<T> =
   | [handler: (sample: T) => void]

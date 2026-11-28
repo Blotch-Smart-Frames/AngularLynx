@@ -406,7 +406,7 @@ describe('LynxMotion', () => {
       });
 
       vi.spyOn(Date, 'now').mockReturnValue(2000);
-      page.fire('deviceorientationabsolute', { alpha: 90 });
+      page.fire('deviceorientationabsolute', { alpha: 90, beta: 0, gamma: 0 });
       expect(heading).toHaveBeenLastCalledWith({
         magneticHeading: 270,
         trueHeading: null,
@@ -415,6 +415,12 @@ describe('LynxMotion', () => {
       });
       // Events without readings are left alone.
       page.fire('devicemotion', {});
+      // A browser can leave any reading null: a sample promises numbers.
+      page.fire('devicemotion', {
+        accelerationIncludingGravity: { x: 1, y: null, z: 9 },
+        rotationRate: { alpha: 1, beta: null, gamma: 1 },
+      });
+      page.fire('deviceorientation', { alpha: 30, beta: null, gamma: null });
       page.fire('deviceorientation', { alpha: null });
       // Safari's accuracy is -1 while the compass is uncalibrated.
       vi.spyOn(Date, 'now').mockReturnValue(3000);

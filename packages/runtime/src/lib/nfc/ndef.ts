@@ -184,15 +184,15 @@ export const parseRecord = (raw: RawNdefRecord): NfcRecord => {
 };
 
 /**
- * The longest prefix the URI starts with, as its code.
+ * The longest prefix the URI starts with, as its code. Matched as it's
+ * written: the prefix takes its place, so a match regardless of case would
+ * read back changed (`FTP://Anonymous:Anonymous@` holds a user and a
+ * password, which are case-sensitive).
  */
 const uriPrefix = (uri: string): number => {
   let best = 0;
   URI_PREFIXES.forEach((prefix, code) => {
-    if (
-      prefix.length > URI_PREFIXES[best]!.length &&
-      uri.toLowerCase().startsWith(prefix)
-    ) {
+    if (prefix.length > URI_PREFIXES[best]!.length && uri.startsWith(prefix)) {
       best = code;
     }
   });

@@ -129,6 +129,22 @@ describe('encodeRecord', () => {
     expect(() => encodeRecord({ type: 'url', value: '' })).toThrow(TypeError);
   });
 
+  it("keeps a URI's case, using a prefix only where it's written the same", () => {
+    for (const value of [
+      'ftp://Anonymous:Secret@example.com/a',
+      'FTP://anonymous:anonymous@example.com',
+      'HTTPS://example.com',
+    ]) {
+      expect(parseRecord(encodeRecord({ type: 'url', value }))).toEqual({
+        type: 'url',
+        value,
+      });
+    }
+    expect(
+      payloadOf(encodeRecord({ type: 'url', value: 'HTTPS://example.com' })),
+    ).toEqual([0, ...ascii('HTTPS://example.com')]);
+  });
+
   it('reads back what it writes', () => {
     for (const record of [
       { type: 'text', value: 'Hello, 世界', lang: 'en' },

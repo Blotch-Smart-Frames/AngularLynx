@@ -88,13 +88,20 @@
       "enabled": false
     },
     {
-      "description": "The Android template gets Lynx and PrimJS from Maven, but iOS gets them from our own XCFrameworks zip (packages/native/src/ios/frameworks.ts), which the Lynx iOS frameworks workflow builds and Renovate can't. An update on Android alone would put the two platforms on different Lynx versions, and 4.1.2 added list item animations (#590). So Lynx updates wait on the Dependency Dashboard: tick one to get the Android half, build the iOS zip for the same version as packages/native/README.md describes, and move both in that PR. Fresco and OkHttp wait with them: Lynx's image and fetch services are compiled against Fresco 2.3 and OkHttp 4, so those move when Lynx's services do.",
+      "description": "The Android template gets Lynx and PrimJS from Maven, but iOS gets them from our own XCFrameworks zip (packages/native/src/ios/frameworks.ts), which the Lynx iOS frameworks workflow builds and Renovate can't. An update on Android alone would put the two platforms on different Lynx versions, and 4.1.2 added list item animations (#590). So Lynx updates wait on the Dependency Dashboard: tick one to get the Android half, build the iOS zip for the same version as packages/native/README.md describes, and move both in that PR. Fresco and OkHttp wait with them: Lynx's image and fetch services are compiled against Fresco 2.3 and OkHttp 4, so those move when Lynx's services do. Media3 waits too: xelement-video 4.1.0 depends on media3-exoplayer and media3-ui 1.0.2, and the template's VideoUI reads that PlayerView, so a newer media3-common or media3-ui on its own would run ExoPlayer 1.0.2 against a newer media3-common, mixing versions that Media3 needs to match (#776, #777). They move to whatever media3 xelement-video depends on.",
       "matchPackageNames": [
         "org.lynxsdk.lynx:*",
         "com.facebook.fresco:*",
-        "com.squareup.okhttp3:*"
+        "com.squareup.okhttp3:*",
+        "androidx.media3:*"
       ],
       "dependencyDashboardApproval": true
+    },
+    {
+      "description": "The react-lynx benchmark pins ReactLynx and its build tools exactly, and lynx-stack releases them together. As separate PRs each rewrote the app's lockfile, so the first to merge left the others in conflict (#938, #939, #941, #942), and while rspeedy lagged a release the React plugin nested a second web-core under itself. They come as one PR. Its README lists the exact versions, so update that line in the PR too.",
+      "matchFileNames": ["benchmarks/apps/react-lynx/**"],
+      "matchPackageNames": ["@lynx-js/**"],
+      "groupName": "lynx-stack in the react-lynx benchmark"
     }
   ]
 }

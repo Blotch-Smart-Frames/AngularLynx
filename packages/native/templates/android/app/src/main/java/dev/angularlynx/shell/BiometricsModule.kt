@@ -218,19 +218,20 @@ class BiometricsModule(context: Context, param: Any?) : LynxModule(context, para
 
     @LynxMethod
     fun removeItem(key: String, callback: Callback) {
-        worker.execute {
-            preferences.edit().remove(key).commit()
-            callback.invoke(JavaOnlyMap())
-        }
+        worker.execute { callback.invoke(committed(preferences.edit().remove(key).commit())) }
     }
 
     @LynxMethod
     fun clear(callback: Callback) {
-        worker.execute {
-            preferences.edit().clear().commit()
-            callback.invoke(JavaOnlyMap())
-        }
+        worker.execute { callback.invoke(committed(preferences.edit().clear().commit())) }
     }
+
+    /**
+     * `{}` once a removal is on disk, or why not: one that stayed in memory
+     * only would bring the value back when the app next starts.
+     */
+    private fun committed(onDisk: Boolean) =
+        if (onDisk) JavaOnlyMap() else error("failed", "The removal couldn't be written to disk.")
 
     /**
      * Shows a prompt on the main thread, and calls [succeeded] once the person

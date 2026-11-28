@@ -10,7 +10,7 @@ import { blobForURL, decodeDataURL } from './blob-urls';
 import { readBundledAsset, typeOfAsset } from './bundled-asset';
 import { LynxHeaders, type HeadersInit } from './headers';
 import { isDisturbed, LynxReadableStream } from './readable-stream';
-import { isRelative, nextRelayId } from './relay';
+import { isRelative, isSerializedHttpUrl, nextRelayId } from './relay';
 import { LynxTextDecoder, LynxTextEncoder } from './text-codec';
 
 /**
@@ -307,6 +307,9 @@ const NORMALIZED_METHODS = new Set([
  * one against (Lynx's HTTP services reject it as "unsupported URL").
  */
 const parseUrl = (input: string): string => {
+  // Most URLs are already in the form the parser writes, and the main
+  // thread's URL parser is JavaScript (see isSerializedHttpUrl()).
+  if (isSerializedHttpUrl(input)) return input;
   try {
     return new URL(input).href;
   } catch {
@@ -430,16 +433,30 @@ export class LynxRequest extends LynxBody {
       method: this.method,
       headers: [...this.headers.entries()],
       body: this.relayedBody(),
-      // Only what the caller set: Lynx ignores these, and Lynx for Web's
-      // worker would apply them to a request it could make without them.
-      options: Object.fromEntries(
-        Object.entries(DEFAULT_OPTIONS)
-          .filter(([name, value]) => (this as any)[name] !== value)
-          .map(([name]) => [name, (this as any)[name]]),
-      ),
+      options: relayedOptions(this as unknown as Record<string, unknown>),
     };
   }
 }
+
+/**
+ * A request's other options as they're relayed: only those that aren't the
+ * Fetch Standard's defaults (a missing one is its default). Lynx ignores
+ * them, and Lynx for Web's worker would apply them to a request it could
+ * make without them.
+ *
+ * @param options - The options, by name, such as a request's.
+ * @returns The options to relay.
+ */
+export const relayedOptions = (
+  options: Record<string, unknown>,
+): RelayedRequest['options'] => {
+  const relayed: Record<string, unknown> = {};
+  for (const [name, fallback] of Object.entries(DEFAULT_OPTIONS)) {
+    const value = options[name] ?? fallback;
+    if (value !== fallback) relayed[name] = value;
+  }
+  return relayed;
+};
 
 /**
  * A body that's already text or bytes, which internal callers pass to the

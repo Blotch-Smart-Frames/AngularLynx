@@ -13,10 +13,18 @@ appId: ${APP_ID}
 - tapOn: Open canvas
 - tapOn: Open photo
 - tapOn: Pick photo
-- tapOn: Cancel
-- extendedWaitUntil:
-    visible: 'Photo: canceled'
-    timeout: 15000
+# The picker sometimes ignores the first tap on its Cancel button: on a PR's
+# run of 2026-11-27 (#862), Maestro tapped it 9 seconds after the picker
+# opened, and the picker stayed open with every photo showing. Tapping again
+# closes it. The tap waits for the button, and on the photo page only the
+# picker has one, so a retry after the picker closed fails as before.
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn: Cancel
+      - extendedWaitUntil:
+          visible: 'Photo: canceled'
+          timeout: 15000
 # The harness adds photo.jpg to the library first (LIBRARY_PHOTO in
 # src/native/maestro.ts), and the newest photo comes first in both pickers.
 # iOS labels a photo "Photo, <date>", Android "Photo taken on <date>".

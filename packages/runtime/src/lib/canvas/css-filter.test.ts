@@ -40,16 +40,13 @@ describe('parseFilter', () => {
   it('takes none as no filter', () => {
     expect(parseFilter('none')).toBe(NO_FILTER);
     expect(parseFilter('  NONE ')).toBe(NO_FILTER);
-    expect(NO_FILTER).toEqual({ steps: [], padding: 0 });
+    expect(NO_FILTER).toEqual({ steps: [] });
   });
 
-  it('turns a blur into its deviation in pixels, and its reach into the padding', () => {
-    expect(parseFilter('blur(4px)')).toEqual({
-      steps: [BLUR, 4],
-      padding: 12,
-    });
-    expect(parseFilter('blur()')).toEqual({ steps: [BLUR, 0], padding: 0 });
-    expect(parseFilter('blur(0)')).toEqual({ steps: [BLUR, 0], padding: 0 });
+  it('turns a blur into its deviation in pixels', () => {
+    expect(parseFilter('blur(4px)')).toEqual({ steps: [BLUR, 4] });
+    expect(parseFilter('blur()')).toEqual({ steps: [BLUR, 0] });
+    expect(parseFilter('blur(0)')).toEqual({ steps: [BLUR, 0] });
     expect(parseFilter('blur(1em)')?.steps).toEqual([BLUR, 16]);
     expect(parseFilter('blur(1rem)')?.steps).toEqual([BLUR, 16]);
     expect(parseFilter('blur(3pt)')?.steps).toEqual([BLUR, 4]);
@@ -58,11 +55,8 @@ describe('parseFilter', () => {
     expect(parseFilter('blur(1e1px)')?.steps).toEqual([BLUR, 10]);
   });
 
-  it('caps the padding, so a huge blur makes no huge layer', () => {
-    expect(parseFilter('blur(500px)')).toEqual({
-      steps: [BLUR, 500],
-      padding: 256,
-    });
+  it('sends a huge blur whole, for the shells to fit their layers to', () => {
+    expect(parseFilter('blur(500px)')).toEqual({ steps: [BLUR, 500] });
   });
 
   it('rejects a blur that isn’t a length that’s not negative', () => {
@@ -152,11 +146,9 @@ describe('parseFilter', () => {
   it('reads drop-shadow()’s offset, deviation and color, in either order', () => {
     expect(parseFilter('drop-shadow(2px 3px 4px red)')).toEqual({
       steps: [SHADOW, 2, 3, 4, 255, 0, 0, 1],
-      padding: 15,
     });
     expect(parseFilter('drop-shadow(rgba(0, 0, 255, 0.5) -5px 1px)')).toEqual({
       steps: [SHADOW, -5, 1, 0, 0, 0, 255, 0.5],
-      padding: 5,
     });
     // The canvas's currentcolor: black.
     expect(parseFilter('drop-shadow(1px 1px)')?.steps).toEqual([
@@ -188,10 +180,8 @@ describe('parseFilter', () => {
     );
   });
 
-  it('chains the functions in order, with or without spaces, and adds up their reach', () => {
-    expect(
-      parseFilter('blur(2px) drop-shadow(0 0 1px)grayscale(1)'),
-    ).toMatchObject({
+  it('chains the functions in order, with or without spaces', () => {
+    expect(parseFilter('blur(2px) drop-shadow(0 0 1px)grayscale(1)')).toEqual({
       steps: [
         BLUR,
         2,
@@ -206,7 +196,6 @@ describe('parseFilter', () => {
         MATRIX,
         ...matrixOf('grayscale(1)'),
       ],
-      padding: 9,
     });
   });
 

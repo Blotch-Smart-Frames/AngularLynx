@@ -1,4 +1,6 @@
 import { isMainThread } from '../background-call';
+import { relayHttpRequest } from './http-relay';
+import { setHttpRelay } from './http-relay-hook';
 import {
   installBlob,
   installFetch,
@@ -28,6 +30,10 @@ import {
 export const ɵenableFetch = (): void => {
   if (__WEB__ || !isMainThread()) return;
   installFetch(globalThis as unknown as Record<string, unknown>);
+  // HttpClient's requests skip the relayed fetch's Request, Response and
+  // body stream (http-relay.ts). It checks that `fetch` is the relayed one
+  // before each request, so an environment's own fetch keeps them.
+  setHttpRelay(relayHttpRequest);
 };
 
 /**

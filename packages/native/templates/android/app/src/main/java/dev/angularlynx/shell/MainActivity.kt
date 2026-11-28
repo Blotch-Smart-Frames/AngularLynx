@@ -16,7 +16,6 @@ import android.util.Log
 import android.view.accessibility.AccessibilityManager
 import android.widget.FrameLayout
 import androidx.activity.BackEventCompat
-import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -27,6 +26,7 @@ import androidx.core.os.ConfigurationCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.fragment.app.FragmentActivity
 import com.lynx.jsbridge.LynxModule
 import com.lynx.react.bridge.JavaOnlyArray
 import com.lynx.react.bridge.JavaOnlyMap
@@ -41,8 +41,12 @@ import com.lynx.xelement.XElementBehaviors
 /**
  * The whole app: one full-screen LynxView running the Angular app. Angular
  * Router navigates inside it, so there is no native navigation stack.
+ *
+ * A FragmentActivity, which is a ComponentActivity, because AndroidX's
+ * BiometricPrompt (BiometricsModule) shows as a fragment over one. AppCompat,
+ * which XElement needs, brings the fragment library to every app anyway.
  */
-class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
+class MainActivity : FragmentActivity(), ShellModule.Host, WebAuthModule.Host {
     private lateinit var lynxView: LynxView
 
     // Whether the page draws under the system bars and the cutout:
@@ -292,6 +296,14 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
             // The share sheet behind LynxShare (ShareModule.kt), which it opens
             // from this activity.
             registerModule(ShareModule.NAME, ShareModule::class.java, this@MainActivity)
+            // Biometrics behind LynxBiometrics and LynxSecureStorage's
+            // requireBiometrics (BiometricsModule.kt), whose prompt shows over
+            // this activity. Only an app with permissions.biometrics keeps
+            // these lines and the module (@blotch/angular-lynx-native's
+            // android/project.ts).
+            // angular-lynx:biometrics
+            registerModule(BiometricsModule.NAME, BiometricsModule::class.java, this@MainActivity)
+            // /angular-lynx:biometrics
             // The shortcuts the person runs from the app icon's menu, which
             // LynxShortcuts takes (ShortcutsModule.kt).
             registerModule(ShortcutsModule.NAME, ShortcutsModule::class.java, null)
@@ -311,8 +323,12 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
             // <canvas>'s WebGL (WebGLModule.kt), which the runtime calls from
             // the main thread, where Angular runs: main-thread modules let
             // it get its answers synchronously, with lynx.module(name). Lynx
-            // calls them on its engine thread, not the UI thread.
+            // calls them on its engine thread, not the UI thread. An app
+            // that never draws on a canvas is built without the canvas code
+            // and these lines (@blotch/angular-lynx-native's features.ts).
+            // angular-lynx:canvas
             registerModule(WebGLModule.NAME, WebGLModule::class.java, null)
+            // /angular-lynx:canvas
             // Bundled files for the main thread's fetch and Image (AssetsModule.kt).
             registerModule(AssetsModule.NAME, AssetsModule::class.java, null)
             setEnableMTSModule(true)
@@ -323,10 +339,13 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
             // In an edge-to-edge app an <overlay>'s window fills the screen as
             // the page does, under the navigation bar too (EdgeToEdgeOverlay.kt).
             if (edgeToEdge) addBehavior(EdgeToEdgeOverlay.behavior())
+            // angular-lynx:canvas
             // The shell's own <canvas> (CanvasUI.kt): Lynx has none.
             addBehavior(CanvasUI.behavior())
             // XElement's <video>, with frames a canvas can read (VideoUI.kt).
+            // Without the canvas, XElementBehaviors' own <video> plays.
             addBehavior(VideoUI.behavior())
+            // /angular-lynx:canvas
             // Live reload, in the debug build: it renders the bundle again
             // after every edit.
             DevServer.register(this) { lynxView.renderTemplateUrl(bundleUrl, "") }

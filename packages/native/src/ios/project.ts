@@ -1,7 +1,9 @@
 import { copyFileSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
+import { removeMarkedLines, removeTemplateFiles } from '../features.ts';
 import type { PlatformGenerator } from '../generate.ts';
+import { ANGLE_IOS_FRAMEWORKS } from './frameworks.ts';
 import { readPngSize } from '../png.ts';
 import {
   APP_NAME_PLACEHOLDER,
@@ -92,7 +94,110 @@ export const iosGenerator: PlatformGenerator = {
 
     writeIosSplash(dir, app, projectRoot);
   },
+  leaveOut: (dir, features, app) => {
+    // Face ID, Touch ID and the Keychain items behind them are only for an
+    // app that says why it uses them: without NSFaceIDUsageDescription Face
+    // ID fails, and App Review asks about LocalAuthentication code an app
+    // gives no reason for. LynxViewController registers the module by name,
+    // so the shell builds without it.
+    if (!app.permissions.biometrics) {
+      removeTemplateFiles(dir, IOS_BIOMETRICS_SOURCES);
+    }
+    if (features.webgl) return;
+    if (features.canvas) {
+      // A 2D canvas keeps the module and the canvas's view, without the
+      // WebGL2 context and the module's lines that make one.
+      removeTemplateFiles(dir, IOS_WEBGL_SOURCES);
+      for (const file of IOS_WEBGL_MARKED) {
+        removeMarkedLines(path.join(dir, file), 'webgl');
+      }
+    } else {
+      removeTemplateFiles(dir, IOS_CANVAS_SOURCES);
+    }
+    // Only the WebGL2 context draws with ANGLE. The canvas's view is still
+    // a CAMetalLayer, which is QuartzCore's: a 2D context shows its bitmap
+    // in a CALayer over it.
+    const projectFile = path.join(dir, PROJECT_FILE);
+    writeFileSync(
+      projectFile,
+      withoutFrameworks(
+        readFileSync(projectFile, 'utf8'),
+        ANGLE_IOS_FRAMEWORKS,
+      ),
+    );
+  },
   bundleDir: (dir) => path.join(dir, 'LynxBundle'),
+};
+
+/**
+ * The shell's biometrics module, `AngularLynxBiometrics` (LynxBiometrics, and
+ * the values LynxSecureStorage keeps behind Face ID or Touch ID), which only
+ * an app with `permissions.biometrics` keeps.
+ */
+export const IOS_BIOMETRICS_SOURCES = ['App/BiometricsModule.swift'] as const;
+
+/**
+ * The shell's `<canvas>`, its `AngularLynxWebGL` module and its contexts, and
+ * `<video>`'s readable frames: about 176 kB of the executable. Swift reaches
+ * them only by name (NSClassFromString in LynxViewController and
+ * XElementRegistry), so without them the shell registers no canvas, keeps
+ * XElement's own `<video>`, and still builds: App/ is a synchronized folder,
+ * which compiles what's in it.
+ */
+export const IOS_CANVAS_SOURCES = [
+  'App/AngularLynxBitmapRendererContext.m',
+  'App/AngularLynxCanvas2DContext.m',
+  'App/AngularLynxCanvas2DOps.h',
+  'App/AngularLynxVideo.h',
+  'App/AngularLynxVideo.m',
+  'App/AngularLynxWebGL.h',
+  'App/AngularLynxWebGL.m',
+  'App/AngularLynxWebGLContext.m',
+  'App/AngularLynxWebGLOps.h',
+] as const;
+
+/**
+ * The WebGL2 context, which an app that draws only in 2D leaves out with
+ * ANGLE (issue #847).
+ */
+export const IOS_WEBGL_SOURCES = [
+  'App/AngularLynxWebGLContext.m',
+  'App/AngularLynxWebGLOps.h',
+] as const;
+
+/**
+ * The files whose lines between `// angular-lynx:webgl` markers name the
+ * WebGL2 context, and go with it: the class's declaration, and the module's
+ * methods that make and run one. Nothing else names it.
+ */
+const IOS_WEBGL_MARKED = [
+  'App/AngularLynxWebGL.h',
+  'App/AngularLynxWebGL.m',
+] as const;
+
+const PROJECT_FILE = 'App.xcodeproj/project.pbxproj';
+
+/**
+ * The project without the XCFrameworks named, which it then neither links
+ * nor embeds: ANGLE's, about 6 MB of an app, are only for WebGL. Each
+ * reference to a framework is one line of the project (its file, its build
+ * files, and their places in the group, the link phase and the embed phase).
+ */
+export const withoutFrameworks = (
+  project: string,
+  frameworks: readonly string[],
+): string => {
+  const names = frameworks.map((name) => `${name}.xcframework`);
+  // A renamed framework would otherwise stay in every app unnoticed.
+  for (const name of names) {
+    if (!project.includes(name)) {
+      throw new Error(`The project has no ${name} to leave out.`);
+    }
+  }
+  return project
+    .split('\n')
+    .filter((line) => !names.some((name) => line.includes(name)))
+    .join('\n');
 };
 
 /** The app's entitlements, from the project folder (see xcconfig). */

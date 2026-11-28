@@ -66,6 +66,12 @@ final class LynxViewController: UIViewController, LynxViewLifecycle {
     config.register(ImagePickerModule.self)
     // The share sheet behind LynxShare (ShareModule).
     config.register(ShareModule.self)
+    // Face ID and Touch ID behind LynxBiometrics (BiometricsModule), which
+    // only an app with permissions.biometrics keeps: by name, so the shell
+    // builds without it.
+    if let biometrics = NSClassFromString("AngularLynxBiometricsModule") as? LynxModule.Type {
+      config.register(biometrics)
+    }
     // <canvas>'s WebGL (AngularLynxWebGL.h), which the runtime calls from
     // the main thread. It's Objective-C, which Swift reaches without a
     // bridging header by name.

@@ -27,7 +27,10 @@ size, a color or a behavior, do what `apps/react-native` does.
   in the type's color (`constants/pokemonTypes.ts`), then a 20px heart button.
   **Each row fetches its own detail** (`GET {API}/pokemon/{id}`) for the type
   dots, cached per id (React Query in the original: stale after 5 minutes,
-  retry 2). Tapping the row opens the detail screen.
+  retry 2). In the original every row of a page has fetched its detail soon
+  after the page arrives (FlatList's window covers the page), so a list that
+  builds rows only as they near the screen fetches a page's details when the
+  page arrives. Tapping the row opens the detail screen.
 - **Detail** (`/pokemon/:id`): a sheet (iOS form sheet at 75% height, radius
   16, white) with a handle and a 30px heart, the 200×200 official artwork,
   the capitalized name (26px semibold, centered) and rows Dex №, Type, Height
@@ -78,6 +81,31 @@ it once per process.
 
 On Android the same call goes to `Activity.reportFullyDrawn()`.
 
+The mount screen (below) also marks **mount start**, an event named
+`MountStart` as the screen starts rendering, before it makes any of its
+elements, so the harness can time the screen apart from the launch before it
+(`mount_ms`, from `MountStart` to fully drawn).
+
+- React Native, Angular Native and Flutter: their native module's
+  `MountStart`.
+- AngularLynx and ReactLynx: the shell's `markEvent('MountStart')`, an event
+  named `Mark` whose message is `MountStart` (os_signpost names are fixed at
+  compile time), called from the thread that renders the screen, straight to
+  the shell: `lynx.module('AngularLynxShell').invoke('markEvent',
+  'MountStart')` from the main thread, where AngularLynx creates the screen's
+  component and ReactLynx first renders it, and also, in ReactLynx, from the
+  background thread that renders it again to hydrate it
+  (`NativeModules.AngularLynxShell.markEvent('MountStart')`). The harness
+  takes the earliest.
+
+On Android, logcat shows neither an instant trace section nor when the app
+called `reportFullyDrawn()` (its `Fully drawn` line gives a time from the
+launch's start, or from the first frame for a call before it), so the Lynx
+shell also logs both marks under its module's name, with the device's
+monotonic clock at the call: `Mark MountStart at <ns> ns` and
+`Fully Drawn at <ns> ns`. `mount_ms` there is from the earliest `MountStart`
+to the first `Fully Drawn` of the same process, as on iOS.
+
 ## Benchmark screens
 
 Instruments launches an app with no URL, so a benchmark screen is chosen at
@@ -89,9 +117,10 @@ also opens by deep link, `{scheme}://bench/mount?kind=...&count=...`.
 - **Mount**: renders `count` elements of the kind in a plain (not virtualized)
   wrapping container: `view` is a 10×10 box with a background color, `text`
   is a short text ("{i}"), `image` is the sprite `{SPRITES}/{(i % 300) + 1}.png`
-  at 24×24. It reports fully drawn (the same call as the list) after the
-  commit that shows all `count` elements, so the harness measures from the
-  process starting to them being on screen.
+  at 24×24. It marks mount start as it starts rendering, and reports fully
+  drawn (the same call as the list) after the commit that shows all `count`
+  elements, so the harness measures both from the process starting to them
+  being on screen and from the screen starting to them being on screen.
 
 ## Build
 

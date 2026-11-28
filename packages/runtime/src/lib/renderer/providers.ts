@@ -1,4 +1,5 @@
 import { APP_BASE_HREF, IMAGE_CONFIG } from '@angular/common';
+import { ɵHTTP_ROOT_INTERCEPTOR_FNS } from '@angular/common/http';
 import {
   DOCUMENT,
   ErrorHandler,
@@ -10,6 +11,7 @@ import { ɵDomRendererFactory2 } from '@angular/platform-browser';
 import { LynxErrorHandler } from '../error-handler/lynx-error-handler';
 import { globalEvents } from '../global-events';
 import { LynxDocument } from '../lynx-document';
+import { httpRelayInterceptor } from '../network/http-relay-hook';
 import { LynxHydrateDocument } from '../ssr/hydrate-document';
 import { LynxRendererFactory2 } from './lynx-renderer-factory2';
 import { LYNX_DOCUMENT } from './token';
@@ -103,6 +105,16 @@ export const provideRenderer = (): EnvironmentProviders => {
     {
       provide: ErrorHandler,
       useClass: LynxErrorHandler,
+    },
+    // HttpClient's requests go to the background thread without the main
+    // thread's fetch polyfills when FetchBackend would send them (see
+    // network/http-relay.ts). A root interceptor rather than a backend, so it
+    // applies whatever order the app's providers are in: provideHttpClient(),
+    // usually listed after this, provides FetchBackend itself.
+    {
+      provide: ɵHTTP_ROOT_INTERCEPTOR_FNS,
+      multi: true,
+      useValue: httpRelayInterceptor,
     },
   ]);
 };

@@ -404,9 +404,10 @@ describe('LynxElement cycle check cost', () => {
     bottom.insertBefore(c, a);
     bottom.appendChild(a);
 
-    // Per move, one for #removeIfMoveWouldBeLost and one for the cycle
-    // check's look at the row's parent. The walk cost 21 more.
-    expect(counts.parent).toBe(4);
+    // A move within its parent reads nothing: each wrapper knows its parent
+    // is this one. The walk cost 21 more per move, and before that, the
+    // checks read the row's parent twice (issue #878).
+    expect(counts.parent).toBe(0);
     expect((bottom.element as unknown as FakeEl).children).toEqual([
       c.element,
       b.element,
@@ -489,6 +490,47 @@ describe('LynxElement inserts of new elements', () => {
     expect(reads()).toBe(150);
     expect((bottom.element as unknown as FakeEl).children).toHaveLength(101);
     expect(() => assertAcyclic()).not.toThrow();
+  });
+
+  it('gives the parent an element was put in, and removes it from there, with no native reads', () => {
+    // Angular asks for the parent of every view it inserts, and a list's
+    // rebound row removes a view: each read a parent from native (#878).
+    const bottom = chain(20);
+    const row = made('view');
+    bottom.appendChild(row);
+    const run = made('raw-text');
+    const text = made('text');
+    text.appendChild(run);
+    row.appendChild(text);
+    resetCounts();
+
+    expect(row.parentNode()).toBe(bottom);
+    expect(run.parentNode()).toBe(text);
+    row.remove();
+    LynxElement.commitPendingRemovals();
+
+    expect(reads()).toBe(0);
+    expect((row.element as unknown as FakeEl).parent).toBeNull();
+    expect(row.parentNode()).toBeNull();
+  });
+
+  it("asks native for the parent of an element it didn't put anywhere, and removes it from there", () => {
+    // A hydrated element, or a query's hit: native put it in its parent.
+    const page = wrap(pageRoot, 'page');
+    const nativeChild = makeEl('view');
+    (globalThis as unknown as FakeNativeGlobal<FakeEl>).__AppendElement(
+      pageRoot,
+      nativeChild,
+    );
+    const child = wrap(nativeChild, 'view');
+    resetCounts();
+
+    expect(child.parentNode()).toBe(page);
+    child.remove();
+    LynxElement.commitPendingRemovals();
+
+    expect(counts.parent).toBe(2);
+    expect(nativeChild.parent).toBeNull();
   });
 
   it('refuses a new element into itself', () => {

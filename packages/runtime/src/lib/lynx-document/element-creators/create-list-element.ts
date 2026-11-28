@@ -1,4 +1,5 @@
 import { LynxListElement, settleAfterListItems } from '../../lynx-element';
+import { noteFlush } from '../../lynx-element/flushes';
 import type { ListSlot } from '../../lynx-element/lynx-list-element';
 import type { ElementRef, ListElementRef } from '../../types/lynx';
 
@@ -31,21 +32,29 @@ export const createListElement = (pageId: number): LynxListElement => {
    * The element of the item in `slot`, appended to the native list if it
    * isn't yet: an element child as it is, a `*lynxListFor` item built or
    * rebound by its run (see LynxListElement.bindItem). Null when a run can't
-   * give one (its directive is gone).
+   * give one (its directive is gone). With the element's unique id, which
+   * native names the item by.
+   *
+   * An element already in the list isn't appended again, as React Lynx
+   * appends only the elements it builds: Lynx takes an append of a child
+   * that has a parent as a mistake, logs an error and three elements'
+   * details through NSLog, and moves it, which leaves the list to flush
+   * rather than the item.
    */
   const itemElement = (
     listRef: ListElementRef,
     slot: ListSlot,
-  ): { element: ElementRef; reused: boolean } | null => {
+  ): { element: ElementRef; reused: boolean; sign: number } | null => {
     const item = slot.source
       ? listEl.bindItem(slot)
       : { element: slot.ref!, reused: false };
     if (!item) return null;
-    if (!listEl.isAppendedToNativeList(item.element)) {
+    const sign = __GetElementUniqueID(item.element);
+    if (!listEl.isAppendedToNativeList(sign)) {
       __AppendElement(listRef, item.element);
-      listEl.markAppendedToNativeList(item.element);
+      listEl.markAppendedToNativeList(sign);
     }
-    return item;
+    return { element: item.element, reused: item.reused, sign };
   };
 
   /**
@@ -125,7 +134,8 @@ export const createListElement = (pageId: number): LynxListElement => {
     if (!slot) return undefined;
     const item = itemElement(listRef, slot);
     if (!item) return undefined;
-    const sign = __GetElementUniqueID(item.element);
+    const { sign } = item;
+    noteFlush();
     __FlushElementTree(item.element, {
       triggerLayout: true,
       operationID: opId,
@@ -133,7 +143,10 @@ export const createListElement = (pageId: number): LynxListElement => {
       listID: listId,
       ...reuseNotification(listRef, slot, item, enableReuseNotification),
     });
-    if (slot.source) settleAfterListItems();
+    if (slot.source) {
+      settleAfterListItems();
+      listEl.noteItemShown(cellIndex);
+    }
     return sign;
   };
 
@@ -179,11 +192,15 @@ export const createListElement = (pageId: number): LynxListElement => {
         elementIDs.push(-1);
         continue;
       }
-      if (slot.source) built = true;
-      const elementID = __GetElementUniqueID(item.element);
+      if (slot.source) {
+        built = true;
+        listEl.noteItemShown(cellIndexes[i]!);
+      }
+      const elementID = item.sign;
       elementIDs.push(elementID);
       if (asyncFlush) {
         // Native engine owns the async schedule — safe, no re-entrancy.
+        noteFlush();
         __FlushElementTree(item.element, {
           asyncFlush: true,
           ...reuseNotification(listRef, slot, item, enableReuseNotification),
@@ -191,6 +208,7 @@ export const createListElement = (pageId: number): LynxListElement => {
       }
     }
     if (!asyncFlush) {
+      noteFlush();
       __FlushElementTree(listRef, {
         triggerLayout: true,
         operationIDs: opIds,

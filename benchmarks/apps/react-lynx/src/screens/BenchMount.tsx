@@ -2,6 +2,7 @@ import { useEffect } from '@lynx-js/react';
 import { useGlobalProps } from '@lynx-js/react';
 
 import { reportFullyDrawn } from '../lib/fullyDrawn';
+import { markMountStart } from '../lib/mountStart';
 import { SPRITE_BASE } from '../lib/mappers/pokemon';
 
 // The benchmark's rendering-throughput screen (benchmarks/SPEC.md, "Mount"),
@@ -11,6 +12,10 @@ type Kind = 'view' | 'text' | 'image';
 const KINDS: readonly Kind[] = ['view', 'text', 'image'];
 
 export default function BenchMount({ params }: { params: Record<string, string> }) {
+  // Before anything of the screen is made, on whichever thread renders it
+  // first (lib/mountStart.ts), as the original's MountStart is emitted while
+  // its screen renders.
+  markMountStart();
   const kind: Kind = KINDS.includes(params.kind as Kind) ? (params.kind as Kind) : 'view';
   const count = Number(params.count) > 0 ? Number(params.count) : 1500;
   const { safeAreaTop = 0 } = useGlobalProps();

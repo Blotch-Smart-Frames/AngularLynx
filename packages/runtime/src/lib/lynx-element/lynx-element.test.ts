@@ -1163,11 +1163,13 @@ describe('LynxElement', () => {
     const withCollection = async () => {
       const collected = new Set<object>();
       const reads = { count: 0 };
+      const made = { count: 0 };
       vi.stubGlobal(
         'WeakRef',
         class<T extends object> {
           readonly #target: T;
           constructor(target: T) {
+            made.count++;
             this.#target = target;
           }
           deref(): T | undefined {
@@ -1184,14 +1186,22 @@ describe('LynxElement', () => {
       const collect = (target: object): void => {
         collected.add(target);
       };
-      return { LynxElement: fresh.LynxElement, collect, reads };
+      return {
+        LynxElement: fresh.LynxElement,
+        // The end of a cycle, which holds weakly what isn't in the page.
+        settle: fresh.processPendingRemovals,
+        collect,
+        reads,
+        made,
+      };
     };
 
     it('no longer finds it', async () => {
-      const { LynxElement: Fresh, collect } = await withCollection();
+      const { LynxElement: Fresh, collect, settle } = await withCollection();
       const collectedElement = new Fresh(fakeRef);
       const id = __GetElementUniqueID(fakeRef);
       expect(Fresh.byUniqueId(id)).toBe(collectedElement);
+      settle();
 
       collect(collectedElement);
       expect(Fresh.byUniqueId(id)).toBeUndefined();
@@ -1201,12 +1211,13 @@ describe('LynxElement', () => {
     });
 
     it('keeps the entry of a newer element with the same id', async () => {
-      const { LynxElement: Fresh, collect } = await withCollection();
+      const { LynxElement: Fresh, collect, settle } = await withCollection();
       const older = new Fresh(fakeRef);
       const id = __GetElementUniqueID(fakeRef);
       // Native ids are reused: a newer element is registered under the id
       // before the older one is collected.
       const newer = new Fresh(fakeRef);
+      settle();
 
       collect(older);
       expect(Fresh.byUniqueId(id)).toBe(newer);
@@ -1216,19 +1227,27 @@ describe('LynxElement', () => {
     // swept out as the registry grows, so it doesn't keep one for every
     // element the app ever made.
     it('sweeps out the entries of collected elements as it grows', async () => {
-      const { LynxElement: Fresh, collect, reads } = await withCollection();
+      const {
+        LynxElement: Fresh,
+        collect,
+        reads,
+        settle,
+      } = await withCollection();
       const elements = Array.from(
         { length: 1024 },
         () => new Fresh({} as ElementRef),
       );
+      settle();
       for (const dropped of elements.slice(0, 1000)) collect(dropped);
       // Not swept yet: refreshSafeAreaInsets reads every entry.
       reads.count = 0;
       Fresh.refreshSafeAreaInsets();
       expect(reads.count).toBe(1024);
 
-      // One more is past what it holds before sweeping.
+      // One more is past what it holds before sweeping, which the end of
+      // the cycle does.
       const added = new Fresh({} as ElementRef);
+      settle();
       reads.count = 0;
       Fresh.refreshSafeAreaInsets();
       expect(reads.count).toBe(25);

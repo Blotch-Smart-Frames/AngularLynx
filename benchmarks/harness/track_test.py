@@ -1,0 +1,401 @@
+"""Tests for track.py's report: the day's numbers, the sustained change
+rule and the files it writes. The workflow runs them before it
+builds anything (python3 -m unittest discover -s benchmarks/harness -p
+'*_test.py')."""
+
+import argparse
+import csv
+import hashlib
+import json
+import os
+import sys
+import tempfile
+import unittest
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import track  # noqa: E402
+
+FIELDS = ["timestamp", "device", "os_build", "app", "run", "fully_drawn_ms", "mount_ms", "memory_mb", "host_load"]
+
+
+def rows(app_values, column="fully_drawn_ms"):
+    """CSV rows for each app's values of one column."""
+    out = []
+    for app, values in app_values.items():
+        for run, value in enumerate(values, 1):
+            out.append(
+                {
+                    "timestamp": f"2026-11-28T02:{run:02d}:00+00:00",
+                    "device": "iPhone 18 Pro (Simulator)",
+                    "os_build": "27.0 (24A000)",
+                    "app": app,
+                    "run": str(run),
+                    column: "" if value is None else str(value),
+                    "host_load": "1.2",
+                }
+            )
+    return out
+
+
+def mounts(app_values):
+    """Mount-screen rows with a mount time each (ios_launch.py's mount_ms),
+    and a launch twice as long, which the costs mustn't read."""
+    out = rows(app_values, column="mount_ms")
+    for row in out:
+        row["fully_drawn_ms"] = str(float(row["mount_ms"]) * 2) if row["mount_ms"] else ""
+    return out
+
+
+def launches(app_values, memory=50):
+    """Launch rows with a fully drawn time each, and the same memory."""
+    out = rows(app_values)
+    for row in out:
+        row["memory_mb"] = str(memory)
+    return out
+
+
+def commit_of(date):
+    return hashlib.sha1(date.encode()).hexdigest()
+
+
+def record(date, ratios):
+    """A history record whose metrics have these AngularLynx / ReactLynx
+    ratios, ReactLynx at 100."""
+    return {
+        "date": date,
+        "mount_cost_from": track.MOUNT_COST_FROM,
+        "commit": commit_of(date),
+        "run": f"https://example.invalid/{date}",
+        "metrics": {
+            metric: {track.OURS: None if value is None else value * 100, track.RIVAL: 100}
+            for metric, value in ratios.items()
+        },
+    }
+
+
+def days(*values, metric="launch.fully_drawn_ms"):
+    return [record(f"2026-11-{day:02d}", {metric: value}) for day, value in enumerate(values, 1)]
+
+
+class DayTest(unittest.TestCase):
+    def test_medians_and_cost_per_element(self):
+        launch = rows({"angular-lynx": [1900, 2000, 2100], "react-lynx": [1500, 1600, 1700]})
+        for row, memory in zip(launch, [60, 61, 62, 40, 41, 42]):
+            row["memory_mb"] = str(memory)
+        mount = {
+            ("text", 1500): mounts({"angular-lynx": [2000, 2010], "react-lynx": [1800, 1810]}),
+            ("text", 5000): mounts({"angular-lynx": [2285, 2295], "react-lynx": [1940, 1950]}),
+        }
+        result = track.day(launch, mount, "2026-11-28", "abc1234", "")
+        self.assertEqual(result["metrics"]["launch.fully_drawn_ms"], {"angular-lynx": 2000, "react-lynx": 1600})
+        self.assertEqual(result["metrics"]["launch.memory_mb"], {"angular-lynx": 61, "react-lynx": 41})
+        # Each screen's fastest mount: (2285 - 2000) / 3500 ms and
+        # (1940 - 1800) / 3500 ms, in µs.
+        cost = result["metrics"]["mount.text.us_per_element"]
+        self.assertAlmostEqual(cost["angular-lynx"], 285 / 3.5)
+        self.assertAlmostEqual(cost["react-lynx"], 140 / 3.5)
+        # A kind with only one screen measured has no cost.
+        self.assertNotIn("mount.view.us_per_element", result["metrics"])
+        self.assertEqual(result["launches"], {"angular-lynx": 3, "react-lynx": 3})
+        self.assertEqual(result["device"], "iPhone 18 Pro (Simulator)")
+        self.assertEqual(result["mount_counts"], {"text": [1500, 5000]})
+        self.assertEqual(result["mount_cost_from"], "mount_ms")
+
+    def test_the_cost_comes_from_the_kinds_smallest_and_largest_screens(self):
+        # The Simulator's screens (ios_mount.py), with an older 5,000 left
+        # in the folder: the cost is over the 13,500 elements between the
+        # smallest and the largest.
+        mount = {
+            ("view", 1500): mounts({"angular-lynx": [1600], "react-lynx": [1550]}),
+            ("view", 5000): mounts({"angular-lynx": [9999], "react-lynx": [9999]}),
+            ("view", 15000): mounts({"angular-lynx": [1870], "react-lynx": [1685]}),
+        }
+        result = track.day([], mount, "2026-11-28", "", "")
+        cost = result["metrics"]["mount.view.us_per_element"]
+        self.assertAlmostEqual(cost["angular-lynx"], 270 / 13.5)
+        self.assertAlmostEqual(cost["react-lynx"], 135 / 13.5)
+        self.assertEqual(result["mount_counts"], {"view": [1500, 15000]})
+        self.assertEqual(
+            track.screens_note(result),
+            " Each cost per element is from the fastest mount of the 1,500- and 15,000-element screens.",
+        )
+
+    def test_the_cost_takes_each_screens_fastest_mount(self):
+        # The host held up a few mounts of the small screen: their median
+        # would be over the large screen's, a cost below zero.
+        mount = {
+            ("image", 1500): mounts(
+                {"angular-lynx": [1600, 2900, 1650, 2800, 2950], "react-lynx": [1500, 2880, 1540, 2950, 2700]}
+            ),
+            ("image", 15000): mounts(
+                {"angular-lynx": [2090, 2100, 3260, 2110, 2120], "react-lynx": [1710, 1720, 1750, 1760, 1800]}
+            ),
+        }
+        cost = track.day([], mount, "2026-11-28", "", "")["metrics"]["mount.image.us_per_element"]
+        self.assertAlmostEqual(cost["angular-lynx"], 490 / 13.5)
+        self.assertAlmostEqual(cost["react-lynx"], 210 / 13.5)
+
+    def test_a_screen_without_mount_marks_has_no_cost(self):
+        # A build whose screen marks no MountStart (a shell from before
+        # markEvent): its launches drew, but measured no mount.
+        mount = {
+            ("view", 1500): mounts({"angular-lynx": [100], "react-lynx": [None]}),
+            ("view", 15000): mounts({"angular-lynx": [400], "react-lynx": [None]}),
+        }
+        for row in mount[("view", 1500)] + mount[("view", 15000)]:
+            row["fully_drawn_ms"] = row["fully_drawn_ms"] or "1800.0"
+        result = track.day([], mount, "2026-11-28", "", "")
+        cost = result["metrics"]["mount.view.us_per_element"]
+        self.assertAlmostEqual(cost["angular-lynx"], 300 / 13.5)
+        self.assertIsNone(cost["react-lynx"])
+        self.assertEqual(result["failed"], 0)
+
+    def test_runs_that_drew_nothing_are_left_out_and_counted(self):
+        launch = rows({"angular-lynx": [1000, None, 1200], "react-lynx": [900, 1000, None]})
+        result = track.day(launch, {}, "2026-11-28", "", "")
+        self.assertEqual(result["metrics"]["launch.fully_drawn_ms"], {"angular-lynx": 1100, "react-lynx": 950})
+        self.assertEqual(result["failed"], 2)
+
+    def test_a_value_that_isnt_a_finite_number_is_no_measurement(self):
+        launch = rows({"angular-lynx": ["nan", "inf"], "react-lynx": [900, "x"]})
+        result = track.day(launch, {}, "2026-11-28", "", "")
+        self.assertEqual(result["metrics"]["launch.fully_drawn_ms"], {"angular-lynx": None, "react-lynx": 900})
+        self.assertEqual(result["failed"], 3)
+
+    def test_a_cost_of_zero_or_less_has_no_ratio(self):
+        self.assertIsNone(track.ratio(record("2026-11-28", {"mount.view.us_per_element": -0.1}), "mount.view.us_per_element"))
+
+
+class MountFilesTest(unittest.TestCase):
+    def test_takes_each_kinds_newest_date_only(self):
+        with tempfile.TemporaryDirectory() as folder:
+            for name in (
+                # An earlier run's view screens, the newer run's 1,500 and
+                # 5,000; and a text run only on the earlier day.
+                "mount-2026-11-27-view-1500-react-lynx.csv",
+                "mount-2026-11-27-view-15000-react-lynx.csv",
+                "mount-2026-11-28-view-1500-react-lynx.csv",
+                "mount-2026-11-28-view-5000-react-lynx.csv",
+                "mount-2026-11-27-text-1500-react-lynx.csv",
+                "mount-2026-11-27-text-15000-react-lynx.csv",
+                "mount-2026-11-28-view-1500-react-native.csv",
+            ):
+                open(os.path.join(folder, name), "w").close()
+            files = {key: os.path.basename(path) for key, path in track.mount_files(folder).items()}
+        self.assertEqual(
+            files,
+            {
+                ("view", 1500): "mount-2026-11-28-view-1500-react-lynx.csv",
+                ("view", 5000): "mount-2026-11-28-view-5000-react-lynx.csv",
+                ("text", 1500): "mount-2026-11-27-text-1500-react-lynx.csv",
+                ("text", 15000): "mount-2026-11-27-text-15000-react-lynx.csv",
+            },
+        )
+
+
+class SustainedChangeTest(unittest.TestCase):
+    def test_three_days_over_the_threshold_are_a_change(self):
+        history = days(1.0, 1.02, 0.98, 1.0, 1.15, 1.2, 1.18)
+        [change] = track.sustained_changes(history)
+        self.assertEqual(change["metric"], "launch.fully_drawn_ms")
+        self.assertEqual(change["direction"], "up")
+        self.assertAlmostEqual(change["baseline"], 1.0)
+        self.assertEqual([n["date"] for n in change["days"]], ["2026-11-05", "2026-11-06", "2026-11-07"])
+
+    def test_one_or_two_days_are_noise(self):
+        self.assertEqual(track.sustained_changes(days(1.0, 1.0, 1.0, 1.0, 1.0, 1.3)), [])
+        self.assertEqual(track.sustained_changes(days(1.0, 1.0, 1.0, 1.0, 1.3, 1.3)), [])
+        # A day back under the threshold breaks the run.
+        self.assertEqual(track.sustained_changes(days(1.0, 1.0, 1.0, 1.3, 1.05, 1.3)), [])
+
+    def test_a_change_the_other_way_is_a_change_too(self):
+        [change] = track.sustained_changes(days(1.0, 1.0, 1.0, 0.85, 0.8, 0.88))
+        self.assertEqual(change["direction"], "down")
+
+    def test_moves_within_the_threshold_are_not(self):
+        self.assertEqual(track.sustained_changes(days(1.0, 1.0, 1.0, 1.09, 1.09, 1.09)), [])
+
+    def test_too_few_days_for_a_baseline(self):
+        self.assertEqual(track.sustained_changes(days(1.0, 1.0, 1.3, 1.3, 1.3)), [])
+
+    def test_the_baseline_is_the_window_before_the_last_days(self):
+        # 20 days at 2.0, then 14 at 1.0 and 3 at 1.2: only the 14 count.
+        values = [2.0] * 20 + [1.0] * 14 + [1.2] * 3
+        history = [record(f"day-{i:02d}", {"launch.fully_drawn_ms": v}) for i, v in enumerate(values)]
+        [change] = track.sustained_changes(history)
+        self.assertAlmostEqual(change["baseline"], 1.0)
+
+    def test_costs_from_before_the_mount_mark_are_left_out(self):
+        # A history from before #892: its costs per element came from whole
+        # launches, which aren't the same measure as the mount's.
+        metric = "mount.view.us_per_element"
+        history = days(1.0, 1.0, 1.0, 1.0, 1.0, metric=metric)
+        for old in history:
+            del old["mount_cost_from"]
+        history += [record(f"2026-11-{day:02d}", {metric: 1.3}) for day in (6, 7, 8)]
+        self.assertIsNone(track.ratio(history[0], metric))
+        # Its Pokédex measures still count.
+        old = record("2026-11-01", {"launch.fully_drawn_ms": 1.2})
+        del old["mount_cost_from"]
+        self.assertAlmostEqual(track.ratio(old, "launch.fully_drawn_ms"), 1.2)
+        # The three new days have no baseline of their own kind yet.
+        self.assertEqual(track.sustained_changes(history), [])
+
+    def test_a_day_without_a_ratio_breaks_the_run(self):
+        # The fifth day's cost came out below zero, so it has no ratio.
+        history = days(1.0, 1.0, 1.0, 1.3, -0.1, 1.3, 1.3, metric="mount.text.us_per_element")
+        self.assertEqual(track.sustained_changes(history), [])
+        # The days before the run that have no ratio are left out of the
+        # baseline, which still needs three.
+        history = days(1.0, None, 1.0, 1.0, 1.3, 1.3, 1.3, metric="mount.text.us_per_element")
+        [change] = track.sustained_changes(history)
+        self.assertEqual(change["since"], history[3]["commit"])
+        history = days(1.0, None, None, 1.0, 1.3, 1.3, 1.3, metric="mount.text.us_per_element")
+        self.assertEqual(track.sustained_changes(history), [])
+
+    def test_a_day_without_the_metric_says_nothing_about_it(self):
+        history = days(1.0, 1.0, 1.0, 1.3, 1.3, 1.3)
+        history.append(record("2026-11-07", {"launch.memory_mb": 1.0}))
+        self.assertEqual(track.sustained_changes(history), [])
+
+
+class ReportTest(unittest.TestCase):
+    def write(self, folder, name, data):
+        path = os.path.join(folder, name)
+        with open(path, "w", newline="") as file:
+            writer = csv.DictWriter(file, fieldnames=FIELDS)
+            writer.writeheader()
+            writer.writerows(data)
+        return path
+
+    def run_report(self, folder, history, **extra):
+        args = argparse.Namespace(
+            launch=os.path.join(folder, "launch.csv"),
+            mount_dir=folder,
+            history=history,
+            commit="f00dfeed",
+            run_url=extra.get("run_url", "https://example.invalid/run/9"),
+            date=None,
+            summary=os.path.join(folder, "summary.md"),
+            alert=os.path.join(folder, "alert.md"),
+            days=3,
+            window=14,
+            threshold=0.10,
+        )
+        track.report(args)
+        with open(args.summary) as file:
+            return file.read()
+
+    def test_appends_the_day_and_alerts_on_a_sustained_change(self):
+        with tempfile.TemporaryDirectory() as folder:
+            self.write(folder, "launch.csv", launches({"angular-lynx": [1300, 1300], "react-lynx": [1000, 1000]}))
+            for count, (ours, rival) in {1500: (2000, 1800), 5000: (2350, 1940)}.items():
+                self.write(
+                    folder,
+                    f"mount-2026-11-28-text-{count}-react-lynx.csv",
+                    mounts({"angular-lynx": [ours], "react-lynx": [rival]}),
+                )
+            history = os.path.join(folder, "history.jsonl")
+            with open(history, "w") as file:
+                for past in days(1.0, 1.0, 1.0, 1.0, 1.25, 1.3):
+                    file.write(json.dumps(past) + "\n")
+            text = self.run_report(folder, history)
+            with open(history) as file:
+                saved = [json.loads(line) for line in file]
+            self.assertEqual(len(saved), 7)
+            self.assertEqual(saved[-1]["date"], "2026-11-28")
+            self.assertEqual(saved[-1]["metrics"]["launch.fully_drawn_ms"], {"angular-lynx": 1300, "react-lynx": 1000})
+            self.assertIn("| Pokédex fully drawn | 1,300 ms | 1,000 ms | 1.30 |", text)
+            self.assertIn("| Cost of a text | 100.0 µs | 40.0 µs | 2.50 |", text)
+            self.assertIn("### Sustained changes", text)
+            with open(os.path.join(folder, "alert.md")) as file:
+                text = file.read()
+            self.assertIn("**Pokédex fully drawn**: AngularLynx has been slower against ReactLynx on the last 3 days it ran", text)
+            # The commits between the last day at the baseline and the
+            # first day off it.
+            since, first = commit_of("2026-11-04")[:7], commit_of("2026-11-05")[:7]
+            self.assertIn(f"`git log {since}..{first}`", text)
+
+            # The same run again (a re-run) replaces its day, and a day
+            # back at the baseline removes the alert.
+            self.write(folder, "launch.csv", launches({"angular-lynx": [1000], "react-lynx": [1000]}))
+            self.run_report(folder, history)
+            with open(history) as file:
+                self.assertEqual(len(file.readlines()), 7)
+            self.assertFalse(os.path.exists(os.path.join(folder, "alert.md")))
+
+    def test_a_second_run_on_a_date_replaces_its_day(self):
+        with tempfile.TemporaryDirectory() as folder:
+            self.write(folder, "launch.csv", launches({"angular-lynx": [1300], "react-lynx": [1000]}))
+            history = os.path.join(folder, "history.jsonl")
+            with open(history, "w") as file:
+                for past in days(1.0, 1.0, 1.0, 1.0):
+                    file.write(json.dumps(past) + "\n")
+            for run in (1, 2, 3):
+                self.run_report(folder, history, run_url=f"https://example.invalid/run/{run}")
+            with open(history) as file:
+                saved = [json.loads(line) for line in file]
+            self.assertEqual([r["date"] for r in saved][-2:], ["2026-11-04", "2026-11-28"])
+            self.assertEqual(saved[-1]["run"], "https://example.invalid/run/3")
+            # One day off the baseline isn't three.
+            self.assertFalse(os.path.exists(os.path.join(folder, "alert.md")))
+
+    def test_without_a_history(self):
+        with tempfile.TemporaryDirectory() as folder:
+            self.write(folder, "launch.csv", launches({"angular-lynx": [1100], "react-lynx": [1000]}))
+            text = self.run_report(folder, None)
+            self.assertIn("No sustained change", text)
+            self.assertFalse(os.path.exists(os.path.join(folder, "alert.md")))
+
+    def test_fails_when_an_app_drew_nothing(self):
+        with tempfile.TemporaryDirectory() as folder:
+            history = os.path.join(folder, "history.jsonl")
+            alert = os.path.join(folder, "alert.md")
+            past = days(1.0, 1.0, 1.0, 1.0, 1.25, 1.3)
+            # The day's good run, then one that broke an app.
+            past.append(record("2026-11-28", {"launch.fully_drawn_ms": 1.3}))
+            with open(history, "w") as file:
+                for day in past:
+                    file.write(json.dumps(day) + "\n")
+            with open(alert, "w") as file:
+                file.write("the good run's alert")
+            self.write(folder, "launch.csv", launches({"angular-lynx": [None, None], "react-lynx": [1000, 1000]}))
+            with self.assertRaises(SystemExit) as error:
+                self.run_report(folder, history)
+            self.assertEqual(str(error.exception), "No measurement of Pokédex fully drawn (AngularLynx)")
+            # The summary is still written, to show what was measured.
+            with open(os.path.join(folder, "summary.md")) as file:
+                self.assertIn("| Pokédex fully drawn | – ms | 1,000 ms | – |", file.read())
+            # The history and the alert are the good run's.
+            with open(history) as file:
+                self.assertEqual([json.loads(line) for line in file], past)
+            with open(alert) as file:
+                self.assertEqual(file.read(), "the good run's alert")
+
+
+class SimulatorChoiceTest(unittest.TestCase):
+    def test_prefers_the_newest_runtime_with_a_plain_pro(self):
+        def runtime(version, *names):
+            return {
+                "identifier": f"com.apple.CoreSimulator.SimRuntime.iOS-{version.replace('.', '-')}",
+                "name": f"iOS {version}",
+                "version": version,
+                "isAvailable": True,
+                "supportedDeviceTypes": [
+                    {"name": name, "identifier": name, "productFamily": "iPhone"} for name in names
+                ],
+            }
+
+        listing = {
+            "runtimes": [
+                runtime("26.6", "iPhone 17", "iPhone 17 Pro"),
+                runtime("27.0", "iPhone 18", "iPhone 18 Pro", "iPhone 18 Pro Max"),
+                runtime("27.1", "iPhone Duo"),
+            ]
+        }
+        choices = [(r["version"], t["name"]) for r, t in track.simulator_choices(listing)]
+        self.assertEqual(choices, [("27.0", "iPhone 18 Pro"), ("26.6", "iPhone 17 Pro"), ("27.1", "iPhone Duo")])
+
+
+if __name__ == "__main__":
+    unittest.main()

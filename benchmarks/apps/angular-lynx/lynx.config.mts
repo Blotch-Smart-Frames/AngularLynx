@@ -10,6 +10,8 @@ import { defineConfig } from '@blotch/angular-lynx-build';
 // - BENCH_SCREEN: a benchmark screen to open on instead of the tabs, e.g.
 //   `mount?kind=view&count=1500`. Instruments launches an app without a URL,
 //   so the harness builds a variant that starts there. Empty for the app.
+// - BENCH_NO_MINIFY: set, the scripts aren't minified, so a profile of the
+//   main thread (harness/node-mount.mjs --profile) names their functions.
 //
 // An AngularLynx app needs no rspeedy config: `ng build` takes the entry and
 // everything else from angular.json, and merges this in. It's .mts because
@@ -21,4 +23,5 @@ export default defineConfig({
       BENCH_SCREEN: JSON.stringify(process.env['BENCH_SCREEN'] ?? ''),
     },
   },
+  ...(process.env['BENCH_NO_MINIFY'] ? { output: { minify: false } } : {}),
 });

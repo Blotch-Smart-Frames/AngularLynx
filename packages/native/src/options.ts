@@ -195,6 +195,7 @@ export type Permission =
   | 'contacts'
   | 'notifications'
   | 'localNetwork'
+  | 'biometrics'
   | 'bluetooth';
 
 /**
@@ -382,6 +383,7 @@ const PERMISSIONS: readonly Permission[] = [
   'contacts',
   'notifications',
   'localNetwork',
+  'biometrics',
   'bluetooth',
 ];
 

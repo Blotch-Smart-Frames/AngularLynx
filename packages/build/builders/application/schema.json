@@ -275,6 +275,10 @@
         },
         "notifications": {
           "type": "string"
+        },
+        "biometrics": {
+          "type": "string",
+          "description": "Why the app asks for Face ID, Touch ID or a fingerprint (LynxBiometrics, and LynxSecureStorage's requireBiometrics): iOS shows it the first time the app uses Face ID, and it's the prompt's default reason on both platforms. Without it, the app has no biometrics module."
         }
       }
     },

@@ -8,6 +8,7 @@ import {
   createAngularRebuildCoordinator,
 } from './angular-rebuild-coordinator.js';
 import type { BackgroundEntries } from './background-entry.js';
+import type { NativeFeaturesCollector } from './native-features.js';
 import { applyBudgets } from './budgets-plugin.js';
 import { applyFileReplacements } from './file-replacements.js';
 import { LAYERS } from './layers.js';
@@ -127,6 +128,7 @@ export const applyAngularRules = async (
   pluginOptions: NormalizedPluginAngularLynxOptions,
   backgroundEntries: BackgroundEntries,
   appEntries: ReadonlySet<string>,
+  nativeFeatures: NativeFeaturesCollector,
 ): Promise<void> => {
   // Set under `ng build` / `ng serve`: the project being built and its build
   // options as Angular CLI resolved them. Plain rspeedy reads angular.json.
@@ -904,6 +906,12 @@ export const applyAngularRules = async (
       transformed.map,
       (input) => importEsBuiltinsWhereNamed(input, context.resourcePath),
     );
+    // Whether the module draws on a canvas, which decides whether the native
+    // build links the shells' canvas code (native-features.ts). From the
+    // device bundle's main thread, where a canvas is drawn.
+    if (!background && context.environment.name === 'lynx') {
+      nativeFeatures.record(context.resourcePath, code);
+    }
     return map ? { code, map: JSON.stringify(map) } : { code };
   };
 

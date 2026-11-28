@@ -192,24 +192,62 @@ export const runOnIosSimulator = async ({
     await ensureLibraryPhoto(udid, logFile);
   }
 
-  // The app's own log, for JavaScript errors and for debugging failures.
+  // The app's own log, for JavaScript errors and for debugging failures,
+  // with the simulator's Metal compiler's lines about the app: whether it
+  // began the app's compiles is how stalledMetalCompiler (maestro.ts) tells a
+  // compiler the simulator never started from the app's own fault. Each of
+  // those lines names the app as "ParentProcessName=<process>_<pid>".
   const explorerLog = path.join(artifactsDir, `ios-${host.kind}.log`);
   writeFileSync(explorerLog, '');
-  const logStream = start(
-    'xcrun',
-    [
-      'simctl',
-      'spawn',
-      udid,
-      'log',
-      'stream',
-      '--level',
-      'debug',
-      '--predicate',
-      `process == "${processName}"`,
-    ],
-    { cwd: process.cwd(), logFile: explorerLog, echo: false },
-  );
+  const streamLog = () =>
+    start(
+      'xcrun',
+      [
+        'simctl',
+        'spawn',
+        udid,
+        'log',
+        'stream',
+        '--level',
+        'debug',
+        '--predicate',
+        `process == "${processName}" OR (process == "MTLCompilerService" AND composedMessage CONTAINS "ParentProcessName=${processName}_")`,
+      ],
+      { cwd: process.cwd(), logFile: explorerLog, echo: false },
+    );
+  // A stream per boot of the simulator, since restarting it (recover below)
+  // ends the stream.
+  const logStreams = [streamLog()];
+  const appLog = () => logStreams.map((stream) => stream.output()).join('');
+
+  /**
+   * Restarts the simulator after Maestro lost it, so the flows that failed
+   * run again on one that answers. On the run where Maestro lost it (#862),
+   * the app's process was stuck: the driver couldn't stop it, and it would
+   * still have been there for a new session. The app and the library photo
+   * stay installed. Each command has a limit, since this runs when the
+   * simulator has stopped answering.
+   */
+  const recover = async () => {
+    console.warn(`Restarting ${DEVICE_NAME} (${udid}).`);
+    stop(logStreams.at(-1)!.child);
+    const simctlWithin = (args: string[], minutes: number) =>
+      runAllowFailure('xcrun', ['simctl', ...args], {
+        cwd: process.cwd(),
+        logFile,
+        echo: false,
+        timeout: { ms: minutes * 60_000 },
+      });
+    await simctlWithin(['shutdown', udid], 2);
+    await simctlWithin(['boot', udid], 2);
+    const status = await simctlWithin(['bootstatus', udid, '-b'], 5);
+    if (status.code !== 0) {
+      console.warn(
+        `${DEVICE_NAME} didn't finish booting (simctl exited with code ${status.code}); running the flows anyway.`,
+      );
+    }
+    logStreams.push(streamLog());
+  };
 
   /**
    * Only a debugging aid, so its failure mustn't fail the host or hide the
@@ -240,7 +278,8 @@ export const runOnIosSimulator = async ({
       outputDir: path.join(artifactsDir, `ios-${host.kind}`),
       logFile,
       screenshot,
-      appLog: logStream.output,
+      appLog,
+      recover,
     });
     for (const [flow, outcome] of outcomes) {
       const failure = judgeFlow(flow, 'ios', outcome);
@@ -250,7 +289,7 @@ export const runOnIosSimulator = async ({
     }
     await screenshot(path.join(artifactsDir, `ios-${host.kind}-final.png`));
   } finally {
-    stop(logStream.child);
+    stop(logStreams.at(-1)!.child);
     if (!keepRunning) {
       await runAllowFailure('xcrun', ['simctl', 'shutdown', udid], {
         cwd: process.cwd(),
@@ -260,8 +299,7 @@ export const runOnIosSimulator = async ({
     }
   }
 
-  const jsErrors = logStream
-    .output()
+  const jsErrors = appLog()
     .split('\n')
     .filter((line) => JS_ERROR_PATTERN.test(line));
   if (jsErrors.length > 0) {

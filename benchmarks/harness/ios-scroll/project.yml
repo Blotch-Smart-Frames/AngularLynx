@@ -1,0 +1,31 @@
+# The scroll benchmark's UI test runner. `xcodegen` makes ScrollBench.xcodeproj
+# from this file; the project is committed, so running the benchmark needs
+# only Xcode. Run `xcodegen` here after changing this file.
+name: ScrollBench
+options:
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+targets:
+  ScrollBench:
+    # A UI test bundle with no app of its own: the test drives whichever
+    # benchmark app BENCH_BUNDLE_ID names, so one runner covers every
+    # framework, and the phone holds three apps (the free team's limit):
+    # AngularLynx, the other app, and this runner.
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [Tests]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.angularlynx.bench.scroll
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_STYLE: Automatic
+        SWIFT_VERSION: "5.0"
+schemes:
+  ScrollBench:
+    build:
+      targets:
+        ScrollBench: [test]
+    test:
+      config: Release
+      targets: [ScrollBench]

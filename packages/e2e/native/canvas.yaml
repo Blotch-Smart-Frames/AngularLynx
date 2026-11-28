@@ -6,7 +6,9 @@
 # uploaded the image, and read the pixels back. Under it, the 2D line checks
 # getContext('2d'), drawImage() of one canvas on another, getImageData(), a
 # 2D canvas uploaded as a WebGL texture, and the 2D context's filter, and the
-# Bitmap line ImageBitmaps of canvases. Lynx Explorer has no canvas.
+# Bitmap line ImageBitmaps of canvases. Beside the links, the Clock line
+# checks that performance.now() reads in fractions of a millisecond, from the
+# engine's __date_clock() (issue #896). Lynx Explorer has no canvas.
 appId: ${APP_ID}
 ---
 - runFlow: open-app.yaml
@@ -34,6 +36,7 @@ appId: ${APP_ID}
 - extendedWaitUntil:
     visible: 'Bitmap: ok'
     timeout: 15000
+- assertVisible: 'Clock: sub-ms'
 # A <video> read as an image (issue #696): its first frame, stored on its
 # side as a portrait phone recording is and turned by its track's transform
 # (issue #725), so 32 by 64 and red above and blue below, drawn on a 2D

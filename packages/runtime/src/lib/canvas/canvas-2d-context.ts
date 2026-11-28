@@ -728,7 +728,7 @@ export class LynxCanvasRenderingContext2D {
     const filter = parseFilter(value);
     if (!filter) return;
     this.#state.filter = String(value);
-    this.#cmd(OP.setFilter, filter.padding, filter.steps.slice());
+    this.#cmd(OP.setFilter, filter.steps.slice());
   }
 
   /**

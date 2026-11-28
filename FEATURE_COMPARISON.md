@@ -80,6 +80,7 @@
 | Native module bridge          |        ✅ (`LynxNativeModuleService`)        | ✅ (`lynx.getJSModule`) |    ❌    |
 | Session storage service       |       ✅ (`LynxSessionStorageService`)       |      ❌ (raw API)       |    ❌    |
 | Persistent and secure storage | ✅ (`LynxLocalStorage`, `LynxSecureStorage`) |           ❌            |    ❌    |
+| Biometrics                    |            ✅ (`LynxBiometrics`)             |           ❌            |    ❌    |
 | System info service           |         ✅ (`LynxSystemInfoService`)         |      ❌ (raw API)       |    ❌    |
 
 ## Lazy Loading / Code Splitting

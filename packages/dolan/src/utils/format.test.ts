@@ -40,11 +40,29 @@ describe('formatContent', () => {
   });
 
   it('returns content unchanged for extension-less file paths', () => {
-    // extensionOf() returns '' when there's no dot in the path at all — that
-    // empty string can never be in FORMATTABLE_EXTENSIONS, so this must
-    // short-circuit before ever consulting the filesystem for an oxfmt config.
+    // A file with no extension gets '' from extname(), which can never be in
+    // FORMATTABLE_EXTENSIONS, so this must short-circuit before ever
+    // consulting the filesystem for an oxfmt config.
     const noExtension = join(here, 'Makefile');
     expect(formatContent(messy, noExtension)).toBe(messy);
+  });
+
+  it('ignores dots in folder names when finding the extension', () => {
+    // Only the file's own name decides its extension. A folder named like a
+    // formattable file (or a checkout under a hidden folder) must not make an
+    // extension-less file inside it look like one.
+    const inDottedFolder = join(here, 'lib.ts', 'Makefile');
+    expect(formatContent(messy, inDottedFolder)).toBe(messy);
+  });
+
+  it('formats a TypeScript file inside a dotted folder', () => {
+    // The other way round: a dotted folder mustn't hide the file's real
+    // extension, so a `.ts` file under one still formats.
+    const formatted = formatContent(
+      messy,
+      join(here, 'with.dots', '__fmt_probe__.ts'),
+    );
+    expect(formatted).toContain('const x = 1;');
   });
 
   describe('outside a workspace with a config but no oxfmt binary', () => {

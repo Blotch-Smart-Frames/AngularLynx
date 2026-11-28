@@ -1,11 +1,6 @@
 import { writePendingClasses } from '../lynx-element/class-writes';
 import { type LayoutRect, toDOMRect } from '../lynx-element/layout';
-import { LynxImageData } from './image-data';
 import { CANVAS_SOURCE } from './canvas-source';
-import { LynxImageBitmapRenderingContext } from './bitmap-renderer-context';
-import { LynxDetachedCanvas, LynxOffscreenCanvas } from './detached-canvas';
-import { createImageBitmap, LynxImageBitmap, LynxImageElement } from './image';
-import { wrapRealmImageMethods } from './web-image-sources';
 import { acceptPageInstances } from './web-instanceof';
 import {
   WEBGL2_CONTEXT,
@@ -32,6 +27,38 @@ const isLynxElement = (value: unknown): value is LayoutElement =>
   'element' in value;
 
 /**
+ * The main thread's `performance`, which native Lynx doesn't have.
+ *
+ * Its clock is `__date_clock()`, a global of PrimJS, the engine that runs
+ * the main thread on every platform (`js_global_funcs` in its
+ * `quickjs.cc`): the time since the epoch, in microseconds, from the
+ * system's wall clock. Dividing by 1,000 gives milliseconds with three decimal
+ * places, as a browser's `performance.now()` has, where `Date.now()` steps in
+ * whole milliseconds, longer than most of the work an app would time.
+ * `Date.now()` is the fallback for an engine without it. Neither clock is
+ * monotonic, as a browser's is: a change to the device's time moves both.
+ */
+const createPerformance = (
+  target: Record<string, any>,
+): { timeOrigin: number; now: () => number } => {
+  const dateClock: unknown = target['__date_clock'];
+  if (typeof dateClock !== 'function') {
+    const timeOrigin = Date.now();
+    return { timeOrigin, now: () => Date.now() - timeOrigin };
+  }
+  const micros = (): number => Number((dateClock as () => number)());
+  const originMicros = micros();
+  // Subtracted in microseconds, then divided: the epoch's microseconds are
+  // whole numbers a double holds exactly, while its milliseconds, about
+  // 1.8e12 with three decimal places, would round each reading to a quarter
+  // of a microsecond.
+  return {
+    timeOrigin: originMicros / 1000,
+    now: () => (micros() - originMicros) / 1000,
+  };
+};
+
+/**
  * The browser globals three.js and angular-three reach for, on Lynx's main
  * thread, which has no DOM. Each is installed only where it's missing, so the
  * web preview's main thread, a browser frame, keeps its own; there, the ones
@@ -39,7 +66,9 @@ const isLynxElement = (value: unknown): value is LayoutElement =>
  * take a Lynx element too, since a template's elements are LynxElements, not
  * DOM nodes.
  *
- * - `performance.now()`: three.js's Clock times frames with it.
+ * - `performance.now()`: three.js's Clock times frames with it, and apps
+ *   profile with it. It reads the engine's clock, in fractions of a
+ *   millisecond, as a browser's does (see `createPerformance()`).
  * - `crypto.randomUUID()`: angular-three names every object it makes with
  *   one. Lynx's main thread has no secure random source, so this one comes
  *   from `Math.random()`: unique, but not for secrets. `getRandomValues()`
@@ -58,15 +87,14 @@ const isLynxElement = (value: unknown): value is LayoutElement =>
  * - `HTMLVideoElement`: a template's `<video>` is an instance of it, as
  *   three.js checks before sizing a VideoTexture by its `videoWidth` and
  *   `videoHeight` (see video-element.ts).
- * - `document.createElement('canvas')`, `OffscreenCanvas` and `ImageData`:
- *   see detached-canvas.ts and image-data.ts. Chart and image libraries, and
- *   three.js's text textures, draw on a canvas that's never in the page. The
- *   2D context's own classes (`CanvasRenderingContext2D`, `CanvasGradient`,
- *   `CanvasPattern`, `TextMetrics`, `Path2D`) come with the context, in the
- *   apps with a module that asks for it (enable-canvas-2d.ts).
- * - `Image`, `HTMLImageElement`, `ImageBitmap`, `createImageBitmap()`, and
- *   `document.createElement('img')`: see image.ts. `ImageBitmapRenderingContext`,
- *   a canvas's `bitmaprenderer` context: see bitmap-renderer-context.ts.
+ * - The classes that make a canvas or an image (`document.createElement('canvas')`,
+ *   `OffscreenCanvas`, `ImageData`, `Image`, `ImageBitmap`,
+ *   `createImageBitmap()` and the rest) come with the canvas, in the apps
+ *   with a module that can make one (enable-canvas.ts), and the 2D context's
+ *   own classes (`CanvasRenderingContext2D`, `Path2D` and the rest) with the
+ *   context (enable-canvas-2d.ts). Here they'd be in every app. The classes
+ *   below only tell an object apart, by a mark it carries rather than by its
+ *   class, so they don't bring the canvas with them.
  * - `WebGL2RenderingContext`: a canvas's `getContext('webgl2')` is an
  *   instance of it, as WebGL libraries check before making WebGL2-only calls,
  *   and `typeof WebGL2RenderingContext` is how they ask whether there's
@@ -86,12 +114,9 @@ const isLynxElement = (value: unknown): value is LayoutElement =>
  *   answers with empty values.
  * - `ResizeObserver`: from each element's `layoutchange` (see layout.ts), as
  *   angular-three sizes its canvas by observing its host.
- * - In the web preview, the browser's `drawImage()`, `createPattern()`,
- *   `texImage2D()` and the like, and `createImageBitmap()`, take a template's
- *   `<video>` or `<canvas>` (see web-image-sources.ts), and its elements and
- *   the contexts its canvases make are `instanceof` the classes above, as on
- *   Lynx, though they're of the page and Angular runs in an iframe (see
- *   web-instanceof.ts).
+ * - In the web preview, a template's elements and the contexts its canvases
+ *   make are `instanceof` the classes above, as on Lynx, though they're of
+ *   the page and Angular runs in an iframe (see web-instanceof.ts).
  */
 export const installCanvasGlobals = (target: Record<string, any>): void => {
   const install = (name: string, value: unknown): void => {
@@ -99,8 +124,7 @@ export const installCanvasGlobals = (target: Record<string, any>): void => {
   };
 
   if (typeof target['performance'] === 'undefined') {
-    const timeOrigin = Date.now();
-    target['performance'] = { timeOrigin, now: () => Date.now() - timeOrigin };
+    target['performance'] = createPerformance(target);
   }
   install('crypto', { randomUUID });
   install('self', target);
@@ -108,13 +132,6 @@ export const installCanvasGlobals = (target: Record<string, any>): void => {
   install('HTMLElement', LynxHTMLElement);
   install('HTMLCanvasElement', LynxHTMLCanvasElement);
   install('HTMLVideoElement', LynxHTMLVideoElement);
-  install('OffscreenCanvas', LynxOffscreenCanvas);
-  install('ImageData', LynxImageData);
-  install('Image', LynxImageElement);
-  install('HTMLImageElement', LynxImageElement);
-  install('ImageBitmap', LynxImageBitmap);
-  install('ImageBitmapRenderingContext', LynxImageBitmapRenderingContext);
-  install('createImageBitmap', createImageBitmap);
   install('WebGL2RenderingContext', LynxWebGL2RenderingContextGlobal);
   install('WebGLRenderingContext', LynxWebGLRenderingContextGlobal);
   for (const name of WEBGL_OBJECT_NAMES) {
@@ -124,24 +141,9 @@ export const installCanvasGlobals = (target: Record<string, any>): void => {
   }
   // The web preview's own classes, which the ones above leave in place. On
   // Lynx, they're the runtime's, which read a template's element already.
-  if (__WEB__) {
-    wrapRealmImageMethods(target);
-    acceptPageInstances(target);
-  }
+  if (__WEB__) acceptPageInstances(target);
   if (typeof target['devicePixelRatio'] === 'undefined') {
     target['devicePixelRatio'] = pixelRatio();
-  }
-
-  const document = target['document'] as
-    | {
-        createElement?: unknown;
-        createElementNS?: unknown;
-      }
-    | undefined;
-  if (document && typeof document.createElement !== 'function') {
-    document.createElement = createDetachedElement;
-    document.createElementNS = (_namespace: string, name: string) =>
-      createDetachedElement(name);
   }
 
   const nativeResizeObserver = target['ResizeObserver'];
@@ -217,33 +219,34 @@ class LynxProgressEvent {
 }
 
 /**
- * A template's element is one (see installCanvasGlobals).
+ * The tag of something a canvas context can read as an image (see
+ * canvas-source.ts), in lower case: `canvas` for a template's `<canvas>`
+ * and one made with `document.createElement('canvas')` (whose `tagName` is
+ * `CANVAS`, as an element's is in an HTML document), `video` for a
+ * template's `<video>`. Undefined for an OffscreenCanvas, which has no tag,
+ * and for anything else. The tag tells them apart rather than their classes,
+ * which are in the build only with the canvas (enable-canvas.ts).
+ */
+const sourceTag = (value: unknown): string | undefined => {
+  if (typeof value !== 'object' || value === null || !(CANVAS_SOURCE in value))
+    return undefined;
+  const tagName = (value as { tagName?: unknown }).tagName;
+  return typeof tagName === 'string' ? tagName.toLowerCase() : undefined;
+};
+
+/**
+ * A template's element is one (see installCanvasGlobals), and so is a canvas
+ * made with `document.createElement()`.
  */
 class LynxHTMLElement {
   static [Symbol.hasInstance](value: unknown): boolean {
-    // A canvas made with document.createElement() is an element too.
-    return isLynxElement(value) || value instanceof LynxDetachedCanvas;
+    return isLynxElement(value) || sourceTag(value) === 'canvas';
   }
 }
 
-/**
- * Whether the value is a template's `<video>`, read as an image too.
- */
-const isVideoElement = (value: unknown): boolean =>
-  typeof value === 'object' &&
-  value !== null &&
-  CANVAS_SOURCE in value &&
-  (value as { tagName?: unknown }).tagName === 'video';
-
 class LynxHTMLCanvasElement {
   static [Symbol.hasInstance](value: unknown): boolean {
-    return (
-      typeof value === 'object' &&
-      value !== null &&
-      CANVAS_SOURCE in value &&
-      !(value instanceof LynxOffscreenCanvas) &&
-      !isVideoElement(value)
-    );
+    return sourceTag(value) === 'canvas';
   }
 }
 
@@ -257,7 +260,7 @@ class LynxHTMLVideoElement {
   static readonly HAVE_ENOUGH_DATA = 4;
 
   static [Symbol.hasInstance](value: unknown): boolean {
-    return isVideoElement(value);
+    return sourceTag(value) === 'video';
   }
 }
 
@@ -327,21 +330,6 @@ const webGLObjectGlobal = (name: WebGLObjectName) => {
   };
   Object.defineProperty(Global, 'name', { value: name });
   return Global;
-};
-
-/**
- * `document.createElement()` on Lynx's main thread: images and canvases,
- * which web code makes to draw on without showing them.
- */
-const createDetachedElement = (
-  name: string,
-): LynxImageElement | LynxDetachedCanvas => {
-  const tag = name.toLowerCase();
-  if (tag === 'img') return new LynxImageElement();
-  if (tag === 'canvas') return new LynxDetachedCanvas();
-  throw new Error(
-    `document.createElement('${name}') is not available on Lynx: elements come from templates.`,
-  );
 };
 
 const emptyComputedStyle = (): Record<string, unknown> =>

@@ -3,6 +3,9 @@ package dev.angularlynx.shell
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
+import android.os.Trace
+import android.util.Log
 import com.lynx.jsbridge.LynxMethod
 import com.lynx.jsbridge.LynxModule
 import com.lynx.tasm.LynxEnv
@@ -43,7 +46,26 @@ import com.lynx.tasm.LynxEnv
  * `am start -W`'s callers) read as time to full display. It's called on the
  * thread the runtime calls from, Lynx's engine thread: the system takes it
  * from any thread, and a post to the UI thread would add a wait to the moment
- * it marks.
+ * it marks. Each call also logs `Fully Drawn at <ns> ns` (below).
+ *
+ * `markEvent(name)` marks any other moment the app names, as an instant
+ * section of that name in a system trace (`Trace.beginSection`, ended at
+ * once), which Perfetto and Android Studio's profiler show on the thread
+ * that called it: the start of the work a profile is about, for example.
+ * Every call marks. The benchmark apps mark `MountStart` as their mount
+ * screen starts building (`benchmarks/SPEC.md`); the iOS shell's is an
+ * `os_signpost` event that Instruments shows.
+ *
+ * Both also log a line under this module's name, `Mark <name> at <ns> ns`
+ * and `Fully Drawn at <ns> ns`, with `SystemClock.elapsedRealtimeNanos()`
+ * at the call. logcat shows neither trace sections nor when the app called
+ * reportFullyDrawn: its own `Fully drawn` line gives a time from the
+ * launch's start, or from the first frame for a call before it, on no clock
+ * a mark shares. The benchmark harness (`android_launch.py`) reads the two
+ * lines to time a mount screen from its `MountStart` to its fully drawn call,
+ * as the iOS harness does with the two signposts. The clock is in the
+ * message, rather than taken from logcat's timestamps, because those are
+ * wall-clock time, which an emulator steps when it syncs with its host.
  */
 class ShellModule(context: Context, param: Any?) : LynxModule(context, param) {
     private val host = param as Host
@@ -67,7 +89,21 @@ class ShellModule(context: Context, param: Any?) : LynxModule(context, param) {
 
     @LynxMethod
     fun reportFullyDrawn() {
+        // Read before the call, which is the moment it marks: the system's
+        // own bookkeeping comes after.
+        val at = SystemClock.elapsedRealtimeNanos()
         host.markFullyDrawn()
+        Log.i(NAME, "Fully Drawn at $at ns")
+    }
+
+    // On the calling thread, as reportFullyDrawn is, so the mark lands at the
+    // moment it marks. A trace section's name is at most 127 characters.
+    @LynxMethod
+    fun markEvent(name: String) {
+        val at = SystemClock.elapsedRealtimeNanos()
+        Trace.beginSection(name.take(127))
+        Trace.endSection()
+        Log.i(NAME, "Mark $name at $at ns")
     }
 
     @LynxMethod

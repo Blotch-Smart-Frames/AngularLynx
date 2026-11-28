@@ -1,0 +1,119 @@
+name: Script sizes
+
+# Builds the benchmark app (benchmarks/apps/angular-lynx) and hello-world
+# for Lynx, compares their main-thread script, background script and
+# main.lynx.bundle with
+# .github/script-sizes.json, posts the comparison on the PR, and fails when a
+# script has grown past its budget (.github/scripts/script-sizes.mts says how
+# much). Nothing checked these sizes before #835: the canvas 2D context grew
+# every app's bundle by 166 KB and nobody noticed for about ten PRs.
+#
+# A workflow of its own, not a job in ci.yml: commenting needs
+# pull-requests: write, and angular-release-builds.yml calls ci.yml with
+# contents: read only, which a called job can't exceed.
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: script-sizes-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  script-sizes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # To post the comparison on the PR, and edit it on the next push.
+      pull-requests: write
+    env:
+      NG_BUILD_MAX_WORKERS: 2
+      # Keeps the scripts the bundle carries in dist/.lynx/main/, which
+      # LynxEncodePlugin deletes otherwise.
+      DEBUG: rspeedy
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+          # The benchmark app has a lockfile of its own, outside the
+          # workspaces.
+          cache-dependency-path: |
+            package-lock.json
+            benchmarks/apps/angular-lynx/package-lock.json
+      - run: npm ci
+      # Restore only, as ci.yml's build-packages does: master's CI saves the
+      # cache, and the packages are mostly cache hits from it.
+      - name: Restore turbo cache
+        uses: actions/cache/restore@v6
+        with:
+          path: .turbo
+          key: turbo-${{ github.sha }}
+          restore-keys: turbo-
+      # Every published package, not only the apps' dependencies:
+      # use-local-packages.mjs packs them all and refuses one that isn't
+      # built.
+      - run: npx turbo run build --filter=./packages/* --filter=!@blotch/angular-lynx-website --concurrency=4
+      - name: Build hello-world
+        working-directory: examples/hello-world
+        run: npx ng build --environment lynx
+      # The benchmark app installs the packages packed as `npm publish` packs
+      # them (see its README), so it measures this commit's packages.
+      - name: Build the benchmark app
+        working-directory: benchmarks/apps/angular-lynx
+        run: |
+          node scripts/use-local-packages.mjs
+          npx ng build --environment lynx
+      - name: Compare with the baseline
+        id: compare
+        run: node .github/scripts/script-sizes.mts --report "$RUNNER_TEMP/script-sizes.md"
+      - name: Write the job summary
+        if: ${{ !cancelled() }}
+        run: |
+          if [ -f "$RUNNER_TEMP/script-sizes.md" ]; then
+            cat "$RUNNER_TEMP/script-sizes.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      # Edits the comment it posted before rather than adding one per push.
+      # A fork's PR gets a read-only token, so this can't comment there; the
+      # job summary still has the table.
+      - name: Comment on the PR
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          report="$RUNNER_TEMP/script-sizes.md"
+          [ -f "$report" ] || exit 0
+          echo "[This run]($RUN_URL) has the measured sizes as \`script-sizes.json\` in its artifacts, to copy over \`.github/script-sizes.json\`." >> "$report"
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- script-sizes -->"))) | .id' | head -n 1)
+          if [ -n "$id" ]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F "body=@$report" > /dev/null
+          else
+            gh pr comment "$PR" --body-file "$report"
+          fi
+      # The sizes this commit measured, in the baseline's own format, so a PR
+      # that means to grow a script can take them without building both apps
+      # itself.
+      - name: Write the measured sizes
+        if: ${{ !cancelled() && steps.compare.outcome != 'skipped' }}
+        run: |
+          node .github/scripts/script-sizes.mts --update
+          cp .github/script-sizes.json "$RUNNER_TEMP/script-sizes.json"
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() && steps.compare.outcome != 'skipped' }}
+        with:
+          name: script-sizes
+          path: ${{ runner.temp }}/script-sizes.json
+          retention-days: 14

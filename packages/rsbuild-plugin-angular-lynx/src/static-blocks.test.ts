@@ -307,6 +307,7 @@ describe('foldStaticBlocks', () => {
     ['a data- attribute', '["data-x", "1"]'],
     ['an animation', '["@fade", ""]'],
     ['accessibility traits', '["accessibility-traits", "button"]'],
+    ['the platform’s animators', '["enable-new-animator", "false"]'],
     ['a binding’s name', '[3, "src"]'],
     ['a template', '[4, "ngIf"]'],
     ['display', '[2, "display", "block"]'],

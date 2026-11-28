@@ -10,6 +10,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { androidGenerator } from './android/project.ts';
+import { ALL_NATIVE_FEATURES, type NativeFeatures } from './features.ts';
 import { EJECT_MARKER, type Platform, TEMPLATES_DIR } from './generate.ts';
 import { iosGenerator } from './ios/project.ts';
 import { type NativeAppOptions, resolveAppOptions } from './options.ts';
@@ -48,6 +49,14 @@ const GITIGNORE: Record<Platform, string> = {
  * `ng generate @blotch/angular-lynx:eject`: the same project the builder
  * generates, plus the marker that tells the builder to build it as it is.
  * Returns its files (relative path → contents), for the schematic to write.
+ *
+ * It keeps all the shells' optional native code unless `features` says
+ * otherwise. The builder never leaves anything out of an ejected project
+ * (it's built as it is), so the schematic passes none: the project is the
+ * user's to grow, and a canvas added later has to draw. A script that renders
+ * a project only to build it, as the benchmark's ReactLynx iOS app does
+ * (issue #858), passes what its bundle uses, so the shell leaves out what a
+ * generated one would.
  */
 export const renderEjectedProject = ({
   platform,
@@ -56,6 +65,7 @@ export const renderEjectedProject = ({
   packageVersion,
   app,
   generatorVersion,
+  features = ALL_NATIVE_FEATURES,
 }: {
   readonly platform: Platform;
   readonly projectRoot: string;
@@ -64,16 +74,19 @@ export const renderEjectedProject = ({
   readonly app: NativeAppOptions;
   /** This package's version, recorded in the marker for later upgrades. */
   readonly generatorVersion: string;
+  /**
+   * The optional native code to keep, as readNativeFeatures reads it from a
+   * bundle. Everything by default.
+   */
+  readonly features?: NativeFeatures;
 }): Map<string, Buffer> => {
   const resolved = resolveAppOptions(app, { projectName, packageVersion });
   const dir = mkdtempSync(path.join(os.tmpdir(), `angular-lynx-eject-`));
   try {
     cpSync(path.join(TEMPLATES_DIR, platform), dir, { recursive: true });
-    (platform === 'ios' ? iosGenerator : androidGenerator).configure(
-      dir,
-      resolved,
-      projectRoot,
-    );
+    const generator = platform === 'ios' ? iosGenerator : androidGenerator;
+    generator.configure(dir, resolved, projectRoot);
+    generator.leaveOut(dir, features, resolved);
     writeFileSync(path.join(dir, '.gitignore'), GITIGNORE[platform]);
     writeFileSync(
       path.join(dir, EJECT_MARKER),

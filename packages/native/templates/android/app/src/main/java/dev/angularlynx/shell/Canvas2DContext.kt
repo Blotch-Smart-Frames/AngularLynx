@@ -140,9 +140,8 @@ class Canvas2DContext(
         var rtl: Boolean = false,
         var letterSpacing: Float = 0f,
         var smoothing: Boolean = true,
-        /** The filter, as its steps (see CanvasFilter), and how far they reach. */
+        /** The filter, as its steps (see CanvasFilter). */
         var filterSteps: DoubleArray = DoubleArray(0),
-        var filterPadding: Int = 0,
     ) {
         fun copyState(): State = copy(transform = transform.copyOf(), lineDash = lineDash.copyOf())
     }
@@ -400,7 +399,8 @@ class Canvas2DContext(
                 r.int()
             }
             Canvas2DOps.SET_FILTER -> {
-                s.filterPadding = max(0, r.int())
+                // Only the steps: the layers are planned from their own
+                // reach (see planFor).
                 val steps = r.array()
                 s.filterSteps = DoubleArray(steps.size()) { steps.getDouble(it) }
             }
@@ -751,29 +751,38 @@ class Canvas2DContext(
      * one), and a wide drop shadow's shadow goes under it. The other steps
      * are applied in both. So whatever the wide steps bring onto the canvas
      * from past the full layer's reach comes from the low one, which reaches
-     * as far as the steps do, and the rest keeps the canvas's resolution.
+     * as far as the steps do, and the rest keeps the full layer's resolution.
+     *
+     * A far drop shadow ([lastFar]) is cast from a layer of its own (see
+     * [farShadow]), so the plan is for the steps after the last one, and
+     * the steps up to it are worked out over each of the plan's layers in
+     * place of what `draw` draws there.
      */
     private fun rendered(plan: Plan, steps: List<CanvasFilter.Step>, matrix: Matrix?, draw: (Canvas) -> Unit): ByteArray {
+        val far = lastFar(steps)
+        val rest = steps.subList(far + 1, steps.size)
+        fun source(layer: Layer): ByteArray =
+            if (far < 0) drawn(layer, matrix, draw) else farShadow(layer, steps.subList(0, far + 1), matrix, draw)
         val full = plan.full
         val low = plan.low
         if (full == null || low == null) {
             // A plan has one layer at least (see planFor and layers).
             val only = full ?: checkNotNull(low)
-            val bytes = drawn(only, matrix, draw)
-            for (step in steps) CanvasFilter.applyStep(bytes, only.width, only.height, step, only.scale)
+            val bytes = source(only)
+            for (step in rest) CanvasFilter.applyStep(bytes, only.width, only.height, step, only.scale)
             return bytes
         }
-        val wide = steps.map { isWide(it, low.scale) }
+        val wide = rest.map { isWide(it, low.scale) }
         val lastWide = wide.lastIndexOf(true)
-        val lastWideBlur = steps.indices.lastOrNull { wide[it] && steps[it].isBlur } ?: -1
-        val lowBytes = drawn(low, matrix, draw)
-        var fullBytes = if (lastWideBlur < 0) drawn(full, matrix, draw) else null
-        for ((i, step) in steps.withIndex()) {
+        val lastWideBlur = rest.indices.lastOrNull { wide[it] && rest[it].isBlur } ?: -1
+        val lowBytes = source(low)
+        var fullBytes = if (lastWideBlur < 0) source(full) else null
+        for ((i, step) in rest.withIndex()) {
             when {
                 !wide[i] -> {
                     // The low layer is read only up to the last wide step.
                     if (i < lastWide) CanvasFilter.applyStep(lowBytes, low.width, low.height, step, low.scale)
-                    fullBytes?.let { CanvasFilter.applyStep(it, full.width, full.height, step, 1.0) }
+                    fullBytes?.let { CanvasFilter.applyStep(it, full.width, full.height, step, full.scale) }
                 }
                 step.isBlur -> {
                     CanvasFilter.applyStep(lowBytes, low.width, low.height, step, low.scale)
@@ -792,6 +801,72 @@ class Canvas2DContext(
         }
         // Drawn up front, or made from the low layer at the last wide blur.
         return checkNotNull(fullBytes)
+    }
+
+    /**
+     * The index of the last far drop shadow in `steps`, or -1. When the
+     * steps reach past [MAX_REACH], a drop shadow moved by an offset is far
+     * (up to the filter's last few, [CanvasFilter.Step.castsAlone], as each
+     * doubles the draws): it's cast from a layer of its own ([farShadow]), so its offset
+     * doesn't count toward the reach the layers are planned for. Counted, an
+     * offset past the cap would leave out a shape that far off the canvas
+     * (issue #824), as the capped layer doesn't reach it, and it would lower
+     * the scale of the smaller layer a wide blur goes through, enough to
+     * keep a blur beside it at the canvas's resolution, cut short by the cap.
+     */
+    private fun lastFar(steps: List<CanvasFilter.Step>): Int =
+        if (steps.sumOf { it.reach } > MAX_REACH) steps.indexOfLast { it.castsAlone } else -1
+
+    /** The steps the layers are planned for: those after the last far drop shadow ([lastFar]). */
+    private fun planned(steps: List<CanvasFilter.Step>): List<CanvasFilter.Step> =
+        steps.subList(lastFar(steps) + 1, steps.size)
+
+    /**
+     * What `draw` draws through the alpha and `steps`, which end with a far
+     * drop shadow ([lastFar]), over `layer`: the steps before it, worked out
+     * over the layer, with the shadow under them, cast from those steps
+     * worked out over the layer moved back by the shadow's offset. That
+     * layer takes in the shape the shadow is cast from however far off the
+     * canvas it lies, and it's the size `layer` is, as the canvas shadow
+     * casts from a layer of its own (see [layers]).
+     *
+     * The shadow's own blur goes on there as a blur step after the others,
+     * so a wide one is worked out in a smaller layer as any blur is (see
+     * [planFor]), and the shadow is the alpha that leaves, in its color: a
+     * blur blurs each channel alike, so that's the alpha blurred, as
+     * [CanvasFilter.shadowOf] casts it. The offset isn't rounded: the
+     * moved layer needn't lie on whole pixels, as only its bytes are used,
+     * each landing on the pixel of `layer` it's moved onto, so a fractional
+     * offset draws the shape between pixels there, as it lands on the
+     * canvas. A wide shadow's offset, resampled from the smaller layer, kept
+     * its fraction before this too.
+     */
+    private fun farShadow(layer: Layer, steps: List<CanvasFilter.Step>, matrix: Matrix?, draw: (Canvas) -> Unit): ByteArray {
+        val before = steps.subList(0, steps.size - 1)
+        val v = steps.last().values
+        val shape = over(layer, before, matrix, draw)
+        // Past where a shadow's layer can lie, the canvas's pixels, which are
+        // floats, place no shape the shadow could be cast from.
+        if (abs(v[0]) > MAX_LAYER_OFFSET || abs(v[1]) > MAX_LAYER_OFFSET) return shape
+        val cast = over(layer.moved(-v[0], -v[1]), before + CanvasFilter.Step.blur(v[2]), matrix, draw)
+        val shadow = CanvasFilter.shadowOf(cast, layer.width, layer.height, 0.0, 0.0, 0.0, v[3], v[4], v[5], v[6])
+        CanvasFilter.under(shape, shadow)
+        return shape
+    }
+
+    /**
+     * What `draw` draws through the alpha and `steps` over `layer`, planned
+     * round it as any filtered draw is ([planFor]), and resampled down to
+     * it: the plan's full layer lies on its pixels, so that copies them.
+     */
+    private fun over(layer: Layer, steps: List<CanvasFilter.Step>, matrix: Matrix?, draw: (Canvas) -> Unit): ByteArray {
+        if (steps.isEmpty()) return drawn(layer, matrix, draw)
+        val plan = planFor(layer, steps, 0.0)
+        // planFor's plans always have a full layer.
+        val full = checkNotNull(plan.full)
+        val bytes = rendered(plan, steps, matrix, draw)
+        if (full.width == layer.width && full.height == layer.height) return bytes
+        return resampled(bytes, full, layer, 0.0, 0.0)
     }
 
     /** `bytes` of layer `from`, resampled onto layer `to`, moved by (dx, dy) canvas pixels. */
@@ -828,6 +903,13 @@ class Canvas2DContext(
         /** Where a layer at the canvas's resolution lies, as a Rect. */
         fun rect(): Rect = Rect(left.toInt(), top.toInt(), left.toInt() + width, top.toInt() + height)
 
+        /** It grown by `pixels` of its own on each side, which stay where they were. */
+        fun grown(pixels: Int): Layer =
+            Layer(left - pixels / scale, top - pixels / scale, width + 2 * pixels, height + 2 * pixels, scale)
+
+        /** It moved by (dx, dy) canvas pixels. */
+        fun moved(dx: Double, dy: Double): Layer = Layer(left + dx, top + dy, width, height, scale)
+
         /** Where it lies in the canvas's pixels, moved by (dx, dy). */
         fun bounds(dx: Double, dy: Double): RectF = RectF(
             (left + dx).toFloat(),
@@ -855,42 +937,44 @@ class Canvas2DContext(
     private fun area(rect: Rect): Long = rect.width().toLong() * rect.height()
 
     /**
-     * The plan for a filtered draw that needs `base` (the canvas, or the
-     * canvas moved back by the shadow's offset) and the filter's reach round
-     * it, and `extra` more for the full layer (a shadow's blur, when the
-     * shadow is cast from it).
+     * The plan for a filtered draw that needs `base` (the canvas, the canvas
+     * moved back by the shadow's offset, or a layer a far drop shadow is
+     * worked out over) and the filter's reach round it, and `extra` more for
+     * the full layer (a shadow's blur, when the shadow is cast from it).
      *
-     * A layer the canvas's resolution grows by the reach, capped at
-     * [MAX_REACH], so a huge blur makes no huge layer. Past the cap, when a
-     * step blurs widely ([isWide]), a low layer, scaled down by MAX_REACH
-     * over the reach, takes in the whole reach at about the size the capped
-     * layer was (issue #814), and the full layer needs to reach only as far
-     * as the steps after the last wide blur do.
+     * The full layer is at `base`'s resolution, grown by the reach, capped at
+     * [MAX_REACH] of its pixels, so a huge blur makes no huge layer. Past the
+     * cap, when a step blurs widely ([isWide]), a low layer, scaled down by
+     * MAX_REACH over the reach, takes in the whole reach at about the size
+     * the capped layer was (issue #814), and the full layer needs to reach
+     * only as far as the steps after the last wide blur do.
+     *
+     * The reach is the steps' own, from those after the last far drop shadow
+     * ([planned]), which casts from a layer of its own. That's why the
+     * runtime sends only the steps: the whole filter's reach, which it once
+     * sent too, is too much for part of the filter and too little for a
+     * layer at another resolution.
      */
-    private fun planFor(base: Rect, steps: List<CanvasFilter.Step>, extra: Double): Plan {
-        val s = state
-        val reach = steps.sumOf { it.reach }
-        val cappedReach = min(s.filterPadding.toDouble(), MAX_REACH)
-        fun fullLayer(margin: Double): Layer {
-            val grown = ceil(min(margin, MAX_REACH)).toInt()
-            return Layer(Rect(base).apply { inset(-grown, -grown) })
-        }
-        if (!(reach > MAX_REACH) || !reach.isFinite()) return Plan(fullLayer(cappedReach + extra), null)
+    private fun planFor(base: Layer, steps: List<CanvasFilter.Step>, extra: Double): Plan {
+        val rest = planned(steps)
+        val reach = rest.sumOf { it.reach }
+        fun fullLayer(margin: Double): Layer = base.grown(ceil(min(margin * base.scale, MAX_REACH)).toInt())
+        if (!(reach * base.scale > MAX_REACH) || !reach.isFinite()) return Plan(fullLayer(reach + extra), null)
         val scale = MAX_REACH / reach
-        val wide = steps.map { isWide(it, scale) }
-        if (wide.none { it }) return Plan(fullLayer(cappedReach + extra), null)
-        val lastWideBlur = steps.indices.lastOrNull { wide[it] && steps[it].isBlur } ?: -1
-        val after = steps.withIndex().filter { (i, _) -> i > lastWideBlur && !wide[i] }.sumOf { it.value.reach }
+        val wide = rest.map { isWide(it, scale) }
+        if (wide.none { it }) return Plan(fullLayer(reach + extra), null)
+        val lastWideBlur = rest.indices.lastOrNull { wide[it] && rest[it].isBlur } ?: -1
+        val after = rest.withIndex().filter { (i, _) -> i > lastWideBlur && !wide[i] }.sumOf { it.value.reach }
         return Plan(fullLayer(after + extra), lowLayer(base, reach, scale))
     }
 
     /** A layer over `base` grown by `reach`, at `scale`, which keeps it about the size `base` grown by MAX_REACH is. */
-    private fun lowLayer(base: Rect, reach: Double, scale: Double): Layer = Layer(
+    private fun lowLayer(base: Layer, reach: Double, scale: Double): Layer = Layer(
         base.left - reach,
         base.top - reach,
         // (side + 2 * reach) * scale, without multiplying a huge reach out.
-        ceil(base.width() * scale + 2 * reach * scale).toInt(),
-        ceil(base.height() * scale + 2 * reach * scale).toInt(),
+        ceil(base.width / base.scale * scale + 2 * reach * scale).toInt(),
+        ceil(base.height / base.scale * scale + 2 * reach * scale).toInt(),
         scale,
     )
 
@@ -922,28 +1006,37 @@ class Canvas2DContext(
     private fun layers(steps: List<CanvasFilter.Step>): Layers {
         val s = state
         val canvasRect = Rect(0, 0, width, height)
-        val shape = planFor(canvasRect, steps, 0.0)
+        val shape = planFor(Layer(canvasRect), steps, 0.0)
         if (!shadowVisible()) return Layers(shape, null)
         val blurReach = ceil(s.shadowBlur * 1.5)
-        // A Double, as a huge blur's reach doesn't fit an Int.
-        val fullReach = steps.sumOf { it.reach } + blurReach
+        // A Double, as a huge blur's reach doesn't fit an Int. A far drop
+        // shadow casts from a layer of its own (see planFor).
+        val fullReach = planned(steps).sumOf { it.reach } + blurReach
         val within = fullReach <= MAX_REACH
         val reach = if (within) fullReach else 0.0
         // Whole pixels, so the layer's pixels line up with the canvas's.
-        val left = floor(-s.shadowOffsetX.toDouble()) - reach
-        val top = floor(-s.shadowOffsetY.toDouble()) - reach
-        val right = ceil(width - s.shadowOffsetX.toDouble()) + reach
-        val bottom = ceil(height - s.shadowOffsetY.toDouble()) + reach
+        val moved = listOf(
+            floor(-s.shadowOffsetX.toDouble()),
+            floor(-s.shadowOffsetY.toDouble()),
+            ceil(width - s.shadowOffsetX.toDouble()),
+            ceil(height - s.shadowOffsetY.toDouble()),
+        )
         // An offset past what a Rect holds casts no shadow anywhere the
-        // canvas's pixels, which are floats, can still place a shape.
-        if (listOf(left, top, right, bottom).any { abs(it) > MAX_LAYER_OFFSET }) return Layers(shape, null)
+        // canvas's pixels, which are floats, can still place a shape. It's
+        // the canvas moved back by the offset that's checked, not that grown
+        // by the reach: the reach is at most MAX_REACH here, which a Rect
+        // still holds past the limit, and the shadow of a shape the canvas's
+        // floats can place stays, however much the filter reaches.
+        if (moved.any { abs(it) > MAX_LAYER_OFFSET }) return Layers(shape, null)
+        val (left, top) = moved.take(2).map { it - reach }
+        val (right, bottom) = moved.drop(2).map { it + reach }
         val source = Rect(left.toInt(), top.toInt(), right.toInt(), bottom.toInt())
         if (!within) {
             val scale = MAX_REACH / fullReach
             if (s.shadowBlur / 2.0 * scale >= WIDE_SIGMA && fullReach.isFinite()) {
-                return Layers(shape, Plan(null, lowLayer(source, fullReach, scale)))
+                return Layers(shape, Plan(null, lowLayer(Layer(source), fullReach, scale)))
             }
-            return Layers(shape, planFor(source, steps, blurReach))
+            return Layers(shape, planFor(Layer(source), steps, blurReach))
         }
         // Within MAX_REACH, so is the filter's reach: the shape's layer is
         // at the canvas's resolution alone, on whole pixels.
@@ -1408,9 +1501,9 @@ class Canvas2DContext(
 
         /**
          * The most a layer at the canvas's resolution reaches past the part
-         * of the canvas it's for, as css-filter.ts caps the filter's padding.
-         * A blur or shadow that reaches farther goes through a smaller layer
-         * too (see layers), which this keeps about the capped layer's size.
+         * of the canvas it's for, so a huge blur makes no huge layer. A blur
+         * or shadow that reaches farther goes through a smaller layer too
+         * (see layers), which this keeps about the capped layer's size.
          */
         private const val MAX_REACH = 256.0
 

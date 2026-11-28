@@ -25,7 +25,7 @@ const LINE_TERMINATOR = /\r\n|[\n\r\u2028\u2029]/;
  * `canvas.getContext('webgl2')`. A comment that mentions it matches too,
  * which only brings the context into a bundle that didn't need it.
  */
-const WEBGL2 = /\bwebgl2\b/;
+export const WEBGL2 = /\bwebgl2\b/;
 
 /**
  * The main thread's globals the runtime installs only for the apps that use
@@ -53,6 +53,17 @@ const WEBGL2 = /\bwebgl2\b/;
  *   message ids name `TextEncoder`, so an app with `$localize` gets it.
  *   `Blob` also comes where a module names a canvas's `toBlob` or
  *   `convertToBlob`, which make one.
+ * - The canvas (#707): a template's `<canvas>`, with the shell's canvas
+ *   behind it, and the classes that make a canvas or an image as globals
+ *   (`OffscreenCanvas`, `Image`, `ImageBitmap` and the rest). It comes where
+ *   a module names the string `'canvas'`, as a template with a `<canvas>`
+ *   does (`ɵɵelementStart(0, "canvas")`) and `createElement('canvas')`, not
+ *   the bare word, which a library's prose and its own variables hold. It
+ *   comes too where a module names one of the classes or the string
+ *   `'bitmaprenderer'` (a context needs a canvas), and where it passes
+ *   `'img'` to `createElement()` or `createElementNS()`, as three.js's
+ *   ImageLoader does: only there, since a template's `<img>` names `'img'`
+ *   too, and draws as an `<image>`, with none of this.
  * - The 2D canvas context, with its classes as globals (#729), comes where a
  *   module asks for it as code does, with the string `'2d'`
  *   (`getContext('2d')`): unlike WEBGL2, not the bare word, which hashes,
@@ -60,12 +71,35 @@ const WEBGL2 = /\bwebgl2\b/;
  *   context's classes, which code checks a context against, patches, or
  *   builds a `Path2D` from, maybe before it asks for a context. No module of
  *   Angular's or rxjs's names any of them.
+ *
+ * `names` count as an identifier or as a string of only the name, `strings`
+ * only as a string, and `createElement` only as the tag a module passes to
+ * `createElement()` or `createElementNS()`, in any case.
  */
-const GLOBALS: readonly { enable: string; names: readonly string[] }[] = [
+const GLOBALS: readonly {
+  enable: string;
+  names: readonly string[];
+  strings?: readonly string[];
+  createElement?: readonly string[];
+}[] = [
+  {
+    enable: 'ɵenableCanvas',
+    names: [
+      'OffscreenCanvas',
+      'ImageData',
+      'Image',
+      'HTMLImageElement',
+      'ImageBitmap',
+      'ImageBitmapRenderingContext',
+      'createImageBitmap',
+    ],
+    strings: ['canvas', 'bitmaprenderer'],
+    createElement: ['img', 'canvas'],
+  },
   {
     enable: 'ɵenableCanvas2D',
+    strings: ['2d'],
     names: [
-      '2d',
       'CanvasRenderingContext2D',
       'OffscreenCanvasRenderingContext2D',
       'CanvasGradient',
@@ -110,11 +144,34 @@ const GLOBALS: readonly { enable: string; names: readonly string[] }[] = [
  * A Unicode or hexadecimal escape, with which a string or an identifier can
  * spell a name (`\u0066`, `\u{66}`, `\x66`).
  */
-const ESCAPE = /\\[ux]/;
+export const ESCAPE = /\\[ux]/;
 
 const GLOBAL_NAMES: ReadonlySet<string> = new Set(
   GLOBALS.flatMap(({ names }) => names),
 );
+
+/** The `strings` of GLOBALS: names that count only as a string. */
+const STRING_NAMES: ReadonlySet<string> = new Set(
+  GLOBALS.flatMap(({ strings = [] }) => strings),
+);
+
+/** The `createElement` tags of GLOBALS, in lower case. */
+const CREATE_ELEMENT_TAGS: ReadonlySet<string> = new Set(
+  GLOBALS.flatMap(({ createElement = [] }) => createElement),
+);
+
+/**
+ * What namedGlobals() counts a tag passed to `createElement()` as, so it
+ * stays apart from the same string anywhere else: `createElement('img')`.
+ */
+export const createElementName = (tag: string): string =>
+  `createElement('${tag}')`;
+
+/** The calls whose first string argument is a tag (see GLOBALS). */
+const CREATE_ELEMENT_CALLS: ReadonlySet<string> = new Set([
+  'createElement',
+  'createElementNS',
+]);
 
 /**
  * A string's line continuation, a backslash before a line terminator, which
@@ -159,7 +216,7 @@ const stringCharacter = (character: string): string => {
  * A string of only the name, in quotes or backticks, spelled any way
  * namedGlobals() reads as the name, apart from the escapes ESCAPE finds.
  */
-const quotedName = (name: string): RegExp =>
+export const quotedName = (name: string): RegExp =>
   new RegExp(
     `['"\`]${CONTINUATION}${[...name]
       .map((character) => stringCharacter(character) + CONTINUATION)
@@ -167,25 +224,37 @@ const quotedName = (name: string): RegExp =>
   );
 
 /**
- * For each name that isn't an identifier, `2d`, the strings that spell it
- * (see mayName()).
+ * The strings that spell each name of GLOBALS (see mayName()): of a name that
+ * counts only as a string, `2d` and `canvas`, and of the others too, which a
+ * string can spell without holding the name, `globalThis['Im\age']` with an
+ * identity escape for `Image`.
  */
 const QUOTED_NAMES: ReadonlyMap<string, RegExp> = new Map(
-  [...GLOBAL_NAMES]
-    .filter((name) => /^\d/.test(name))
-    .map((name) => [name, quotedName(name)]),
+  [...GLOBAL_NAMES, ...STRING_NAMES].map((name) => [name, quotedName(name)]),
 );
 
 /**
- * Whether the module's text can hold the name, as namedGlobals() reads it,
- * before it's parsed. A name that isn't an identifier, `2d`, can only be a
- * string's, so it's looked for in quotes: bare, it's in hashes, numbers and
- * CSS of many modules that would be parsed for nothing. A string can spell
- * it with escapes and line continuations, which QUOTED_NAMES (or ESCAPE)
- * finds, so those modules are parsed too.
+ * The strings that spell each `createElement` tag of GLOBALS, in any case
+ * (see mayName()).
  */
-const mayName = (code: string, name: string): boolean =>
-  QUOTED_NAMES.get(name)?.test(code) ?? code.includes(name);
+const QUOTED_TAGS: readonly RegExp[] = [...CREATE_ELEMENT_TAGS].map(
+  (tag) => new RegExp(quotedName(tag).source, 'i'),
+);
+
+/**
+ * Whether the module's text can hold one of the names, as namedGlobals()
+ * reads them, before it's parsed. A name that counts only as a string, `2d`
+ * or `canvas`, is looked for in quotes: bare, it's in hashes, numbers, CSS
+ * and prose of many modules that would be parsed for nothing. A tag counts
+ * only with a call to `createElement`. A string can spell any name with
+ * escapes and line continuations, which QUOTED_NAMES (or ESCAPE) finds, so
+ * those modules are parsed too.
+ */
+const mayName = (code: string): boolean =>
+  [...GLOBAL_NAMES].some((name) => code.includes(name)) ||
+  [...QUOTED_NAMES.values()].some((quoted) => quoted.test(code)) ||
+  (code.includes('createElement') &&
+    QUOTED_TAGS.some((quoted) => quoted.test(code)));
 
 /**
  * Names that Angular's packages use for code an app doesn't run, or runs only
@@ -238,14 +307,16 @@ export const ANGULAR_UNUSED: Readonly<Record<string, readonly string[]>> = {
 /** An Angular package's name, from the path of one of its modules. */
 const ANGULAR_PACKAGE = /[\\/]node_modules[\\/](@angular[\\/][^\\/]+)[\\/]/;
 
-const scriptKind = (filename: string): ts.ScriptKind =>
+export const scriptKind = (filename: string): ts.ScriptKind =>
   /\.[cm]?tsx?$/.test(filename) ? ts.ScriptKind.TS : ts.ScriptKind.JS;
 
 /**
  * The names of GLOBALS a module's code uses, each with how many times: as
  * an identifier, anywhere (a
  * global, `window.fetch`, `self.fetch`, a library's `root.fetch`), or as a
- * string of only the name (`globalThis['fetch']`, `'fetch' in window`).
+ * string of only the name (`globalThis['fetch']`, `'fetch' in window`); a
+ * name of `strings` only as the string, and a tag of `createElement` only as
+ * `createElement()`'s, counted as `createElementName(tag)`.
  * Comments and other strings don't count, unlike WEBGL2's: a library's prose
  * says "fetch" and "request" often, and an error message such as Angular's
  * "Response status" isn't a use.
@@ -262,12 +333,7 @@ export const namedGlobals = (
   // an identifier can spell a name with escapes (`'\u0066etch'` is
   // `'fetch'`), which no search of the text finds, so a module with any goes
   // on to be parsed: its tokens hold the names decoded.
-  if (
-    ![...GLOBAL_NAMES].some((name) => mayName(code, name)) &&
-    !ESCAPE.test(code)
-  ) {
-    return found;
-  }
+  if (!mayName(code) && !ESCAPE.test(code)) return found;
   const sourceFile = ts.createSourceFile(
     filename,
     code,
@@ -275,19 +341,47 @@ export const namedGlobals = (
     false,
     scriptKind(filename),
   );
+  const count = (name: string): void => {
+    found.set(name, (found.get(name) ?? 0) + 1);
+  };
   const visit = (node: ts.Node): void => {
-    if (
-      (ts.isIdentifier(node) ||
-        ts.isStringLiteral(node) ||
-        ts.isNoSubstitutionTemplateLiteral(node)) &&
-      GLOBAL_NAMES.has(node.text)
-    ) {
-      found.set(node.text, (found.get(node.text) ?? 0) + 1);
+    const isString =
+      ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node);
+    if ((ts.isIdentifier(node) || isString) && GLOBAL_NAMES.has(node.text)) {
+      count(node.text);
     }
+    if (isString && STRING_NAMES.has(node.text)) count(node.text);
+    const tag = ts.isCallExpression(node) ? createElementTag(node) : undefined;
+    if (tag !== undefined) count(createElementName(tag));
     ts.forEachChild(node, visit);
   };
   visit(sourceFile);
   return found;
+};
+
+/**
+ * The tag of GLOBALS's `createElement`, in lower case, that a call to
+ * `createElement()` or `createElementNS()` passes (as a method,
+ * `document.createElement('img')`, or a function of its own name): its
+ * first argument, or the second, after `createElementNS()`'s namespace.
+ */
+const createElementTag = (call: ts.CallExpression): string | undefined => {
+  const callee = call.expression;
+  const name = ts.isPropertyAccessExpression(callee)
+    ? callee.name.text
+    : ts.isIdentifier(callee)
+      ? callee.text
+      : undefined;
+  if (name === undefined || !CREATE_ELEMENT_CALLS.has(name)) return undefined;
+  const tag = call.arguments[name === 'createElementNS' ? 1 : 0];
+  if (
+    !tag ||
+    !(ts.isStringLiteral(tag) || ts.isNoSubstitutionTemplateLiteral(tag))
+  ) {
+    return undefined;
+  }
+  const lower = tag.text.toLowerCase();
+  return CREATE_ELEMENT_TAGS.has(lower) ? lower : undefined;
 };
 
 /**
@@ -302,8 +396,10 @@ const globalsAskedFor = (code: string, filename: string): string[] => {
   for (const name of (angularPackage && ANGULAR_UNUSED[angularPackage]) ?? []) {
     names.delete(name);
   }
-  return GLOBALS.filter((global) =>
-    global.names.some((name) => names.has(name)),
+  return GLOBALS.filter(
+    ({ names: identifiers, strings = [], createElement = [] }) =>
+      [...identifiers, ...strings].some((name) => names.has(name)) ||
+      createElement.some((tag) => names.has(createElementName(tag))),
   ).map((global) => global.enable);
 };
 
@@ -315,7 +411,8 @@ const globalsAskedFor = (code: string, filename: string): string[] => {
  *
  * PrimJS reads a script's whole bytecode as it loads it, so every app paid in
  * memory for the code, whether it ran or not: the WebGL2 context (about
- * 37 kB of a minified main-thread script, #707), the 2D context (#729), the
+ * 37 kB of a minified main-thread script, #707), the canvas and its image
+ * classes (about 25 kB, #707), the 2D context (#729), the
  * relayed `fetch` and
  * `XMLHttpRequest`, `IntersectionObserver` (#719), and `TextEncoder`,
  * `TextDecoder`, `ReadableStream` and `Blob` (#760). The runtime keeps each

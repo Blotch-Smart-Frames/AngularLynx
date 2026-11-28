@@ -17,6 +17,10 @@ import { globalEvents } from '../global-events';
 import { LynxElement } from '../lynx-element';
 import { LynxListElement } from '../lynx-element/lynx-list-element';
 import { ANDROID_BLUR_CAPTURE_TARGET } from './android-blur-capture';
+import {
+  resetCanvasWarningForTesting,
+  setCanvasElementFactory,
+} from './canvas-element-factory';
 import { registerHostElement } from './host-elements';
 import { LynxDocument } from './lynx-document';
 import {
@@ -502,12 +506,35 @@ describe('LynxDocument', () => {
     });
 
     it('makes a <canvas> with its own element, as HTMLCanvasElement', () => {
-      // Without the shell's WebGL module (as here) the canvas is a view.
-      globalThis.__AddEvent = mock(() => {});
-      globalThis.__InvokeUIMethod = mock(() => []);
-      const canvas = doc.createElement('canvas');
-      expect(canvas).toBeInstanceOf(LynxCanvasElement);
-      expect(canvas.tagName).toBe('canvas');
+      // What ɵenableCanvas() sets, in an app with a module that names
+      // 'canvas' (enable-canvas.ts).
+      setCanvasElementFactory((element) => new LynxCanvasElement(element));
+      try {
+        // Without the shell's WebGL module (as here) the canvas is a view.
+        globalThis.__AddEvent = mock(() => {});
+        globalThis.__InvokeUIMethod = mock(() => []);
+        const canvas = doc.createElement('canvas');
+        expect(canvas).toBeInstanceOf(LynxCanvasElement);
+        expect(canvas.tagName).toBe('canvas');
+      } finally {
+        setCanvasElementFactory(null);
+      }
+    });
+
+    it('makes a plain element of a <canvas> in a build without the canvas, and says so once', () => {
+      resetCanvasWarningForTesting();
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        const canvas = doc.createElement('canvas');
+        expect(canvas).not.toBeInstanceOf(LynxCanvasElement);
+        expect(canvas).toBeInstanceOf(LynxElement);
+        expect(canvas.tagName).toBe('canvas');
+        doc.createElement('canvas');
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0]![0]).toContain('ɵenableCanvas()');
+      } finally {
+        warn.mockRestore();
+      }
     });
 
     it('returns distinct elements on successive calls', () => {

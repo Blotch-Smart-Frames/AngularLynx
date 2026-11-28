@@ -2,6 +2,7 @@ import {
   isFirstRenderPending,
   runAfterFirstRender,
 } from '../lynx-render-lifecycle';
+import { noteFlush } from './flushes';
 
 /**
  * @internal A `<list>` whose items changed since it last told native about
@@ -85,7 +86,10 @@ const rethrow = (sending: Readonly<Sending>): void => {
  * if one did.
  */
 const layOutLists = (sending: Readonly<Sending>): void => {
-  if (sending.sent) __FlushElementTree(undefined, { triggerLayout: true });
+  if (sending.sent) {
+    noteFlush();
+    __FlushElementTree(undefined, { triggerLayout: true });
+  }
   rethrow(sending);
 };
 
@@ -169,6 +173,7 @@ export const processPendingListUpdates = (): boolean => {
  */
 export const flushTreeWithListUpdates = (): void => {
   const sending = sendPendingListUpdates();
+  noteFlush();
   if (sending.sent) {
     __FlushElementTree(undefined, { triggerLayout: true });
   } else {
@@ -187,6 +192,13 @@ export const flushTreeWithListUpdates = (): void => {
 const flushPendingListUpdates = (): void => {
   layOutLists(sendPendingListUpdates());
 };
+
+/**
+ * @internal Whether a list has an update-list-info waiting for the next
+ * flush, which `LynxRendererFactory2.end()` makes then even when the cycle
+ * wrote nothing else (see needsTreeFlush).
+ */
+export const hasPendingListUpdates = (): boolean => pendingListUpdates.size > 0;
 
 /**
  * @internal Tells native about `list`'s items with the next flush:

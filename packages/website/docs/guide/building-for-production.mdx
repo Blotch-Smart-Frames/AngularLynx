@@ -98,12 +98,12 @@ The `eagerImports` build option compiles your `import()`s on the main thread as 
 }
 ```
 
-In a benchmark app with five lazy screens, the main thread's script went from 635 kB to 612 kB (−3.7%). The phone holds the whole script in memory once it's loaded, so that's memory saved too.
+In a benchmark app with five lazy screens, the main thread's script went from 635 kB to 612 kB (−3.7%). The engine reads the whole script as it loads, so a smaller one should take less memory too, though that saving hasn't been measured on a phone.
 
 It's off by default because it changes when your code runs:
 
 - **Each module an `import()` loads runs when the app starts,** as a static import does, not when its route is first shown. Code at its top level runs at launch, even for a route nobody opens, and the time it takes is added to the launch.
-- **An import cycle through your routes file can break.** If a lazily loaded module imports the routes file that loads it, the `import()` kept them apart. As static imports, one of them runs first, and reading the other's export at its top level throws a used-before-defined `ReferenceError`. Reads inside a function or a class are fine.
+- **An import cycle through your routes file can break.** If a lazily loaded module imports the routes file that loads it, the `import()` kept them apart. As static imports, one of them runs first, and reading the other's export while it runs throws a used-before-defined `ReferenceError`. That's a read at its top level, or in a class's static field or static block, which run when the class is defined. A read in a function or a method is fine when it's called later, such as when the route is shown.
 
 `@defer` blocks' imports stay lazy, and so do other packages' and an `import()` whose path isn't a string. With `experimental_isLazyBundle`, which puts each lazy route in a bundle of its own, the option does nothing.
 

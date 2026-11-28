@@ -174,6 +174,7 @@ export const scaffoldApp = async (
   addStoreReview(appDir);
   addCalendar(appDir);
   addSignInWithApple(appDir);
+  addShareTarget(appDir);
   step('Layer 2: compile a prebuilt library');
   await addPrebuiltLibrary(appDir, pm, exec);
 
@@ -1545,6 +1546,35 @@ const addSignInWithApple = (appDir: string) => {
     "angular.json's build target has no options; the project `ng new` generates has changed shape. Update addSignInWithApple() in packages/e2e/src/scaffold.ts.",
   );
   options['signInWithApple'] = true;
+  writeFileSync(workspacePath, `${JSON.stringify(workspace, null, 2)}\n`);
+};
+
+/**
+ * Turns on angular.json's `shareTarget`, so the native builds keep the share
+ * target module, Android's intent filters and the iOS Share Extension with
+ * its App Group (#936): only a build shows that the extension's target
+ * compiles, is embedded in the app and signs with the App Group and no team
+ * on the Simulator. compile-features.ts builds the shells without it, as
+ * most apps get them.
+ */
+const addShareTarget = (appDir: string) => {
+  step('Layer 2: receive shares from other apps, for the native builds');
+  const workspacePath = path.join(appDir, 'angular.json');
+  const workspace = readJson<{
+    projects: Record<
+      string,
+      { architect?: Record<string, { options?: Record<string, unknown> }> }
+    >;
+  }>(workspacePath);
+  const options = Object.values(workspace.projects)[0]?.architect?.['build']
+    ?.options;
+  check(
+    options !== undefined,
+    "angular.json's build target has no options; the project `ng new` generates has changed shape. Update addShareTarget() in packages/e2e/src/scaffold.ts.",
+  );
+  options['shareTarget'] = {
+    mimeTypes: ['text/plain', 'text/uri-list', 'image/*'],
+  };
   writeFileSync(workspacePath, `${JSON.stringify(workspace, null, 2)}\n`);
 };
 

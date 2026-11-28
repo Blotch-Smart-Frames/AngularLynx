@@ -32,8 +32,10 @@ import {
  * (#918) and the barcode scanner's (#917) out. The E2E app asks for both, so
  * its own build has the modules. Both are built
  * without `storeReview` and `calendar`, which the E2E app sets and most apps
- * don't (#931, #926), and without `signInWithApple`, which leaves the iOS
- * shell's Sign in with Apple module and its entitlement out (#932).
+ * don't (#931, #926), without `signInWithApple`, which leaves the iOS
+ * shell's Sign in with Apple module and its entitlement out (#932), and
+ * without `shareTarget`, which leaves the share target module out of both
+ * shells, with the iOS Share Extension and its App Group (#936).
  * `no-canvas` is built without angular.json's `filePicker` too, which leaves
  * the file picker module and MainActivity's launcher for it out (#924),
  * while the E2E app sets it.
@@ -111,6 +113,15 @@ const STORE_REVIEW_PROBES: Record<Platform, string> = {
 const CALENDAR_PROBES: Record<Platform, string> = {
   ios: 'App/CalendarModule.swift',
   android: 'app/src/main/java/dev/angularlynx/shell/CalendarModule.kt',
+};
+
+/**
+ * The share target module, which the variants build without, as most apps
+ * are: the E2E app sets angular.json's `shareTarget` (issue #936).
+ */
+const SHARE_TARGET_PROBES: Record<Platform, string> = {
+  ios: 'App/ShareTargetModule.swift',
+  android: 'app/src/main/java/dev/angularlynx/shell/ShareTargetModule.kt',
 };
 
 /**
@@ -204,6 +215,7 @@ export const compileFeatureVariants = async ({
             storeReview: false,
             calendar: false,
             signInWithApple: false,
+            shareTarget: false,
             ...(biometrics && camera
               ? {}
               : {
@@ -237,6 +249,15 @@ export const compileFeatureVariants = async ({
         ) {
           failures.push(
             `${name}: the generated project still has ${APPLE_SIGN_IN_PROBE} or its entitlement, though the variant builds without signInWithApple.`,
+          );
+        }
+        if (
+          existsSync(path.join(projectDir, SHARE_TARGET_PROBES[platform])) ||
+          (platform === 'ios' &&
+            existsSync(path.join(projectDir, 'ShareExtension')))
+        ) {
+          failures.push(
+            `${name}: the generated project still has ${SHARE_TARGET_PROBES[platform]} or the Share Extension, though the variant builds without shareTarget.`,
           );
         }
         if (existsSync(path.join(projectDir, STORE_REVIEW_PROBES[platform]))) {

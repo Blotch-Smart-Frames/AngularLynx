@@ -192,6 +192,32 @@ export(): void {
 - **Specs:** provide a stand-in: `{ provide: LynxShare, useValue: { share: async (data) => true } }`.
 - **Your own native app** registers an `AngularLynxShare` module with `share(request, callback)`, where `request` is `{ files: [{ base64, name, type }], title?, text?, url? }`, calling back `{ shared }` or `{ error, message }`: see the website's "Embed in a Native App" guide.
 
+## Receive shares from other apps
+
+`LynxShareTarget` puts the app in other apps' share sheets ("Share to …") and hands over what the person shares. It's opt-in: set `"shareTarget": { "mimeTypes": [...] }` in the build target's options (`text/plain`, `text/uri-list`, `image/*`, `video/*`, `application/pdf`, ...). Register the handler somewhere created as the app starts, such as a root service, so the share that starts the app reaches it:
+
+```typescript
+import { LynxShareTarget, type ReceivedShare } from '@blotch/angular-lynx';
+
+@Injectable({ providedIn: 'root' })
+export class Inbox {
+  readonly items = signal<readonly ReceivedShare[]>([]);
+
+  constructor() {
+    inject(LynxShareTarget).onShare((share) =>
+      this.items.update((items) => [...items, share]),
+    );
+  }
+}
+```
+
+- **`ReceivedShare`** is `{ files, title?, text?, url? }`, a `ShareData` with each file `{ blob, name, type, size }`, so it uploads with `FormData` or goes on to `LynxShare` as it is.
+- **A share that arrives before any handler waits** for the first one, called after the registering code finishes. `onShare()` returns a remover, and a handler registered in an injection context goes with it.
+- **iOS** runs a Share Extension, which can't run Angular: it copies the share to the app's App Group (`group.<appId>`) and opens the app. App Groups need `ios.teamId` with a paid team; the Simulator needs none. iOS lists apps by kind (text, link, image, video, file), so a non-media type such as `application/pdf` offers the app for any file, and the extension drops the files of other types.
+- **Android** gets intent filters. It shares a link as text: a share whose text is one link arrives as `url` when `text/uri-list` is listed.
+- **20 MiB of files per share at most**: the bytes cross as base64, and a file that doesn't fit is left out.
+- **Nothing arrives** in the web preview, Lynx Explorer or an app without the option. **Specs:** `await receiveShare({ text, url, title, files: [{ blob, name }] })` from the testing library.
+
 ## Scan a QR code or barcode
 
 Lynx has no camera API and no `BarcodeDetector`. `LynxBarcodeScanner` opens the phone's own scanner over the app (VisionKit's `DataScannerViewController` on iOS, Google's code scanner from Play services on Android) and resolves with the first code it reads. It's opt-in: set `"permissions": { "camera": "Scan your ticket" }` in the build target's options in angular.json. Without it the app has no scanner code at all, and `scan()` rejects with `unavailable`.

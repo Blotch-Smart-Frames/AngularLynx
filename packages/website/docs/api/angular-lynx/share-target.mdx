@@ -1,0 +1,109 @@
+# LynxShareTarget
+
+Receives what the person shares to the app from another app's share sheet: text, a link, or files such as photos. [`LynxShare`](/api/angular-lynx/share) is the other direction, sending from the app. `import { LynxShareTarget, type ReceivedShare, type ReceivedShareFile, type ShareTargetHandler } from '@blotch/angular-lynx';`
+
+## Usage
+
+Turn it on in the `build` target's options in angular.json, with the MIME types the app takes:
+
+```json title="angular.json"
+"shareTarget": { "mimeTypes": ["text/plain", "text/uri-list", "image/*"] }
+```
+
+Then register a handler from a service or component that's created as the app starts, so the share that starts the app reaches it:
+
+```typescript
+@Injectable({ providedIn: 'root' })
+export class Inbox {
+  readonly items = signal<readonly ReceivedShare[]>([]);
+
+  constructor() {
+    inject(LynxShareTarget).onShare((share) =>
+      this.items.update((items) => [...items, share]),
+    );
+  }
+}
+```
+
+A file arrives as a `Blob` with its name, the shape [`LynxFilePicker`](/api/angular-lynx/file-picker) picks files as, so it can be uploaded with `FormData` or shared on with `LynxShare` as it is.
+
+## API
+
+### `LynxShareTarget`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxShareTarget {}
+```
+
+| Host                                                               | How the app is a share target                                                                                                                                                                                           |
+| ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| iOS (`ng build --platform ios`)                                    | A [Share Extension](/guide/glossary#share-extension), which copies the share to an [App Group](/guide/glossary#app-group) it shares with the app, opens the app and closes. App Groups need a paid Apple Developer team |
+| Android (`ng build --platform android`)                            | `ACTION_SEND` and `ACTION_SEND_MULTIPLE` intent filters on the app's activity                                                                                                                                           |
+| Web preview, Lynx Explorer, an app without `shareTarget`           | None: no share ever arrives                                                                                                                                                                                             |
+| Unit tests ([testing library](/api/testing-library/#receiveshare)) | `receiveShare()`                                                                                                                                                                                                        |
+
+The phone brings the app to the front, starting it if it has to, and then the share arrives here.
+
+### `LynxShareTarget.onShare()`
+
+```typescript
+onShare(
+  handler: ShareTargetHandler,
+  options?: { readonly injector?: Injector },
+): () => void;
+```
+
+Calls `handler` with each share the person sends the app. Every handler registered is called, in the order they were registered. A handler that throws is reported to Angular's `ErrorHandler`, and the others are still called.
+
+- **A share nothing handled waits.** One that arrived before any handler was registered, such as the one that started the app, goes to the first handler registered, once the code that registered it has finished.
+- **The handler goes with its injection context.** Called from one, such as a constructor, the handler is removed when the component or service is destroyed. Pass `injector` to tie it to another. Outside one, it stays until it's removed.
+- **Returns** a function that removes the handler.
+
+### `ReceivedShare`
+
+```typescript
+type ReceivedShare = {
+  readonly files: readonly ReceivedShareFile[];
+  readonly title?: string;
+  readonly text?: string;
+  readonly url?: string;
+};
+
+type ReceivedShareFile = {
+  readonly blob: Blob;
+  readonly name: string;
+  readonly type: string;
+  readonly size: number;
+};
+
+type ShareTargetHandler = (share: ReceivedShare) => void;
+```
+
+It's a [`ShareData`](/api/angular-lynx/share#sharedata), with what the sharing app gave of it:
+
+| Field   | Description                                                                                                                              |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `files` | The shared files of the types `mimeTypes` lists, each with its name, MIME type and size. Empty for a share of text or a link             |
+| `title` | The share's subject, such as a page's title from the browser, where the sharing app gives one                                            |
+| `text`  | Shared text, such as a selection or a note. Several texts in one share arrive joined by line breaks                                      |
+| `url`   | A shared link. On Android a link comes as text: a share whose text is one link has it here instead, when `mimeTypes` has `text/uri-list` |
+
+All of a share's files together are at most 20 MiB, since they travel to JavaScript as base64: a file that doesn't fit is left out. Something shared that isn't of a type `mimeTypes` lists is left out too, and a share left with nothing doesn't arrive.
+
+## The `shareTarget` option
+
+| Field       | Type       | Description                                                                                                                                                        |
+| ----------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `mimeTypes` | `string[]` | Required. The types the app takes: `text/plain` for text, `text/uri-list` for links, `image/*` for photos, `video/*`, or any other type, such as `application/pdf` |
+
+Leave the option out, or set it to `false`, and the app is in no share sheet: the native code, Android's intent filters, the iOS Share Extension and its App Group are left out of the apps.
+
+- **iOS's share sheet lists apps by kind, not MIME type.** The extension's activation rule offers the app for text, links, images, videos or files, as `mimeTypes` asks, and then the extension checks each file's own type against the list. A type that isn't text, a link, an image or a video, such as `application/pdf`, offers the app for any file, and the extension leaves out the ones that aren't PDFs.
+- **The App Group needs a paid team.** It's `group.` and the app's `appId`, in the app's and the extension's entitlements, and a free Personal Team can't sign it: build for an iPhone with `ios.teamId` set to a team in the Apple Developer Program. The Simulator app needs no team.
+- **The extension shows little.** It can't run the Angular app, so it shows a card saying it's sending the share while it copies it, then opens the app. If iOS ever stops it opening the app, the share still waits, and arrives the next time the app comes to the front.
+
+## Related
+
+- [`LynxShare`](/api/angular-lynx/share)
+- [Build options](/api/build/#native-app-options)

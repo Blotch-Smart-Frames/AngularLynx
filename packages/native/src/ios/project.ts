@@ -35,8 +35,9 @@ const ORIENTATIONS: Record<Orientation, readonly string[]> = {
  * become App/AppShortcuts.swift, the app link domains become
  * Config/App.entitlements, and the icon and the splash go in the asset
  * catalog. The barcode scanner's module stays only in an app with the
- * `camera` permission, and the store review module only in an app with
- * `storeReview`, and the motion module only in an app with `motion`.
+ * `camera` permission, the store review module only in an app with
+ * `storeReview`, the calendar module only in one with `calendar`, and the
+ * motion module only in one with `motion`.
  */
 /** LynxBarcodeScanner's module, which needs the `camera` permission. */
 export const IOS_BARCODE_SCANNER_SOURCE = 'App/BarcodeScannerModule.swift';
@@ -118,6 +119,11 @@ export const iosGenerator: PlatformGenerator = {
     if (!app.storeReview) {
       removeTemplateFiles(dir, [IOS_STORE_REVIEW_SOURCE]);
     }
+    // Nor does an app that doesn't add events to the calendar (`calendar`)
+    // ship EventKit code it never calls.
+    if (!app.calendar) {
+      removeTemplateFiles(dir, [IOS_CALENDAR_SOURCE]);
+    }
     // An app that doesn't read the motion sensors (angular.json's `motion`)
     // ships no Core Motion or compass code it never calls. LynxViewController
     // registers the module by name, so the shell builds without it.
@@ -152,6 +158,9 @@ export const iosGenerator: PlatformGenerator = {
 
 /** The module behind `LynxStoreReview`, which only `storeReview` keeps. */
 export const IOS_STORE_REVIEW_SOURCE = 'App/StoreReviewModule.swift';
+
+/** The module behind `LynxCalendar`, which only `calendar` keeps. */
+export const IOS_CALENDAR_SOURCE = 'App/CalendarModule.swift';
 
 /** The module behind `LynxMotion`, which only `motion` keeps. */
 export const IOS_MOTION_SOURCE = 'App/MotionModule.swift';

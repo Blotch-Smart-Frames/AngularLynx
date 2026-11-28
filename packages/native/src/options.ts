@@ -63,6 +63,14 @@ export type NativeAppOptions = {
    */
   readonly storeReview?: boolean;
   /**
+   * Whether the app adds events to the person's calendar with the runtime's
+   * `LynxCalendar`, through the system's own event editor: EventKitUI's on
+   * iOS 17 and later, and the calendar app's on Android. Neither needs a
+   * calendar permission. Off by default, which leaves the native module out
+   * of both apps.
+   */
+  readonly calendar?: boolean;
+  /**
    * Whether the app reads the phone's motion sensors and compass, and hears
    * it shaken, with the runtime's `LynxMotion`: Core Motion and
    * `CLLocationManager`'s heading on iOS, and `SensorManager` on Android.
@@ -331,6 +339,7 @@ export type ResolvedApp = {
   readonly filePicker: boolean;
   readonly fileSharing: boolean;
   readonly storeReview: boolean;
+  readonly calendar: boolean;
   readonly motion: boolean;
   readonly deepLinkSchemes: readonly string[];
   /** {@link NativeAppOptions.appLinkDomains} in lowercase, each once. */
@@ -487,14 +496,16 @@ export const resolveAppOptions = (
   // Checked here because the generators keep the module, or the Info.plist
   // keys, for any truthy value, so a string such as "false" would quietly
   // ship them.
+  // The switches are read from the options as given: compact() drops an
+  // empty object, which would then pass as false rather than be rejected.
   const filePicker = resolveSwitch(
     'filePicker',
-    options.filePicker,
+    rawOptions.filePicker,
     'to let the person pick and save files with LynxFilePicker',
   );
   const fileSharing = resolveSwitch(
     'fileSharing',
-    options.fileSharing,
+    rawOptions.fileSharing,
     "to list the app's Documents folder in the iOS Files app",
   );
 
@@ -509,14 +520,19 @@ export const resolveAppOptions = (
     );
   }
 
-  // As for storeReview: a string such as "false" would quietly ship the
-  // module, and an empty object would pass as false.
-  const motion = rawOptions.motion ?? false;
-  if (typeof motion !== 'boolean') {
-    throw new NativeConfigError(
-      `motion ${JSON.stringify(motion)} is not valid. Use true to read the motion sensors and compass with LynxMotion, or false.`,
-    );
-  }
+  // Checked for the same reason as filePicker.
+  const calendar = resolveSwitch(
+    'calendar',
+    rawOptions.calendar,
+    'to add events to the calendar with LynxCalendar',
+  );
+
+  // As for calendar.
+  const motion = resolveSwitch(
+    'motion',
+    rawOptions.motion,
+    'to read the motion sensors and compass with LynxMotion',
+  );
 
   const deepLinkSchemes = options.deepLinkSchemes ?? [];
   for (const scheme of deepLinkSchemes) {
@@ -622,6 +638,7 @@ export const resolveAppOptions = (
     filePicker,
     fileSharing,
     storeReview,
+    calendar,
     motion,
     deepLinkSchemes,
     appLinkDomains,

@@ -18,6 +18,7 @@ describe('resolveAppOptions', () => {
       filePicker: false,
       fileSharing: false,
       storeReview: false,
+      calendar: false,
       motion: false,
       deepLinkSchemes: [],
       appLinkDomains: [],
@@ -482,6 +483,7 @@ describe('resolveAppOptions', () => {
     ['filePicker', 'false'],
     ['filePicker', 1],
     ['fileSharing', 'true'],
+    ['fileSharing', {}],
   ])('rejects %s %j', (name, value) => {
     expect(() =>
       resolveAppOptions({ [name]: value } as never, defaults),
@@ -502,6 +504,20 @@ describe('resolveAppOptions', () => {
     expect(() =>
       resolveAppOptions({ storeReview: value } as never, defaults),
     ).toThrow(/storeReview .* is not valid/);
+  });
+
+  it('keeps the calendar module only when calendar is true', () => {
+    const calendar = (value: unknown) =>
+      resolveAppOptions({ calendar: value } as never, defaults).calendar;
+    expect(calendar(undefined)).toBe(false);
+    expect(calendar(false)).toBe(false);
+    expect(calendar(true)).toBe(true);
+  });
+
+  it.each(['false', 'true', 1, {}])('rejects calendar %j', (value) => {
+    expect(() =>
+      resolveAppOptions({ calendar: value } as never, defaults),
+    ).toThrow(/calendar .* is not valid/);
   });
 
   it('keeps the motion module only when motion is true', () => {

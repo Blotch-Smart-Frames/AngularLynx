@@ -116,6 +116,18 @@ describe('renderEjectedProject', () => {
     }
   });
 
+  it('has the calendar module only when the app sets calendar', () => {
+    for (const [platform, module] of [
+      ['ios', 'App/CalendarModule.swift'],
+      ['android', `${ANDROID_SHELL_SOURCES}/CalendarModule.kt`],
+    ] as const) {
+      expect(render(platform).has(module)).toBe(false);
+      expect(render(platform, undefined, { calendar: true }).has(module)).toBe(
+        true,
+      );
+    }
+  });
+
   // As with storeReview: an ejected project without motion has no module to
   // turn on later.
   it('has the motion module only when the app sets motion', () => {

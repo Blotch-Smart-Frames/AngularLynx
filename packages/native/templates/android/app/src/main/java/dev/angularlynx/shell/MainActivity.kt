@@ -212,6 +212,29 @@ class MainActivity : FragmentActivity(), ShellModule.Host, WebAuthModule.Host {
     }
     // /angular-lynx:file-picker
 
+    // angular-lynx:calendar
+    // The calendar app's editor (see CalendarModule), and who to tell how it
+    // closed. Registered as the activity is created, as the image picker's
+    // launcher is. Only an app whose angular.json sets calendar keeps these
+    // lines and the module (@blotch/angular-lynx-native's android/project.ts).
+    private var calendarEditorClosed: ((Int) -> Unit)? = null
+    private val calendarEditor = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val done = calendarEditorClosed ?: return@registerForActivityResult
+        calendarEditorClosed = null
+        done(result.resultCode)
+    }
+    private val calendarHost = object : CalendarModule.Host {
+        override fun openCalendarEditor(intent: Intent, done: (Int) -> Unit): Boolean {
+            if (calendarEditorClosed != null) return false
+            // Throws ActivityNotFoundException before anything is kept, so a
+            // phone without a calendar app can try again.
+            calendarEditor.launch(intent)
+            calendarEditorClosed = done
+            return true
+        }
+    }
+    // /angular-lynx:calendar
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // The splash screen (themes.xml's Theme.AngularLynxShell.Starting),
         // before anything else: it switches the activity to the app's own
@@ -338,6 +361,12 @@ class MainActivity : FragmentActivity(), ShellModule.Host, WebAuthModule.Host {
             // angular-lynx:store-review
             registerModule(StoreReviewModule.NAME, StoreReviewModule::class.java, this@MainActivity)
             // /angular-lynx:store-review
+            // angular-lynx:calendar
+            // The calendar app's editor behind LynxCalendar (CalendarModule.kt),
+            // which this activity opens. An app whose angular.json doesn't set
+            // calendar is built without the module and these lines.
+            registerModule(CalendarModule.NAME, CalendarModule::class.java, calendarHost)
+            // /angular-lynx:calendar
             // The motion sensors, the compass and shakes behind LynxMotion
             // (MotionModule.kt), which stop while this activity is paused. An
             // app whose angular.json doesn't set motion is built without the

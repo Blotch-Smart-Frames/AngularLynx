@@ -268,6 +268,50 @@ await waitForUpdate();
 expect(reviewRequests()).toBe(1);
 ```
 
+### `calendarEvents()`
+
+```typescript
+function calendarEvents(): readonly CalendarSheetEvent[];
+```
+
+The events the app opened the event editor with, through [`LynxCalendar.addEvent()`](/api/angular-lynx/calendar), in this test, oldest first. Each has `title`, `start` and `end` (as `Date`s), `allDay`, and `location` and `notes` when the app gave them. Each test starts with none.
+
+```typescript
+fireEvent.tap(screen.getByText('Add to calendar'));
+await waitForUpdate();
+
+expect(calendarEvents()).toEqual([
+  expect.objectContaining({ title: 'Table for 2' }),
+]);
+```
+
+### `answerCalendarSheet()`
+
+```typescript
+function answerCalendarSheet(result?: 'saved' | 'canceled' | 'unknown'): void;
+```
+
+Closes the event editor as the person would: the open `addEvent()` resolves with `result` (`saved` by default). Called before the editor opens, it closes the next one as soon as it opens. Each call answers one editor, in order. Until then the editor stays open.
+
+### `failCalendarSheet()`
+
+```typescript
+function failCalendarSheet(
+  code: 'unavailable' | 'failed',
+  message?: string,
+): void;
+```
+
+Ends the open `addEvent()`, or the next one, with a `CalendarError` of `code`: `unavailable` for a phone without an editor, or `failed`.
+
+```typescript
+failCalendarSheet('unavailable');
+fireEvent.tap(screen.getByText('Add to calendar'));
+await waitForUpdate();
+
+expect(screen.getByText('Email me the booking')).toBeInTheDocument();
+```
+
 ### `pressBackButton()`
 
 ```typescript

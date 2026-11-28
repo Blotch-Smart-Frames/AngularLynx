@@ -36,6 +36,16 @@ export type { EmittedHeading, EmittedMotion, MotionVector } from './motion.js';
 export type { OpenedURL } from './linking.js';
 export { runShortcut } from './shortcuts.js';
 export { reviewRequests } from './store-review.js';
+export {
+  answerCalendarSheet,
+  calendarEvents,
+  failCalendarSheet,
+} from './calendar.js';
+export type {
+  CalendarSheetAnswer,
+  CalendarSheetEvent,
+  CalendarSheetFailure,
+} from './calendar.js';
 export { screen, within, getQueriesForElement, queries } from './queries.js';
 export type {
   BoundAccessibilityLabelQueries,

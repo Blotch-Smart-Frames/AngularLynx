@@ -105,6 +105,12 @@ final class LynxViewController: UIViewController, LynxViewLifecycle {
     if let storeReview = NSClassFromString("AngularLynxStoreReviewModule") as? LynxModule.Type {
       config.register(storeReview)
     }
+    // The event editor behind LynxCalendar (CalendarModule), by name too:
+    // the generator leaves its source out of an app whose angular.json
+    // doesn't set calendar.
+    if let calendar = NSClassFromString("AngularLynxCalendarModule") as? LynxModule.Type {
+      config.register(calendar)
+    }
     // Bundled files for the main thread's fetch and Image (AssetsModule).
     config.register(AssetsModule.self)
     // The full collections the runtime asks for after screens go

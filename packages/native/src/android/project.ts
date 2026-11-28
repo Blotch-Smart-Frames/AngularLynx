@@ -48,7 +48,8 @@ const SCREEN_ORIENTATIONS: Record<Orientation, string> = {
  * splash becomes the splash theme's color and image. The barcode scanner's
  * module and the library behind it stay only in an app with the `camera`
  * permission. The store review module stays only in an app with
- * `storeReview`, and the motion module only in an app with `motion`.
+ * `storeReview`, the calendar module only in one with `calendar`, and the
+ * motion module only in one with `motion`.
  */
 export const androidGenerator: PlatformGenerator = {
   configure: (dir, app, projectRoot) => {
@@ -142,6 +143,16 @@ export const androidGenerator: PlatformGenerator = {
         removeMarkedLines(path.join(dir, file), 'store-review');
       }
     }
+    // An app that doesn't add events to the calendar (angular.json's
+    // `calendar`) leaves out the module and MainActivity's lines that open
+    // the calendar app's editor for it (`// angular-lynx:calendar`).
+    if (!app.calendar) {
+      removeTemplateFiles(dir, [ANDROID_CALENDAR_SOURCE]);
+      removeMarkedLines(
+        path.join(dir, SHELL_SOURCES, 'MainActivity.kt'),
+        'calendar',
+      );
+    }
     // As on iOS, an app that doesn't read the motion sensors leaves the
     // module out, with the lines in MainActivity that register it
     // (`// angular-lynx:motion`).
@@ -184,6 +195,9 @@ const SHELL_SOURCES = 'app/src/main/java/dev/angularlynx/shell';
 
 /** The module behind `LynxStoreReview`, which only `storeReview` keeps. */
 export const ANDROID_STORE_REVIEW_SOURCE = `${SHELL_SOURCES}/StoreReviewModule.kt`;
+
+/** The module behind `LynxCalendar`, which only `calendar` keeps. */
+export const ANDROID_CALENDAR_SOURCE = `${SHELL_SOURCES}/CalendarModule.kt`;
 
 /**
  * The files with lines for the store review module: MainActivity registers

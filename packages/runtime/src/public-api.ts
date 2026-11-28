@@ -276,6 +276,12 @@ export type { SessionStorageSubscription } from './lib/session-storage';
 export { LynxShare, ShareError } from './lib/share';
 export type { ShareData, ShareErrorCode, ShareFile } from './lib/share';
 export { LynxStoreReview } from './lib/store-review';
+export { CalendarError, LynxCalendar } from './lib/calendar';
+export type {
+  CalendarErrorCode,
+  CalendarEvent,
+  CalendarSheetResult,
+} from './lib/calendar';
 export { LynxBackButton } from './lib/back-button';
 export { BiometricsError, LynxBiometrics } from './lib/biometrics';
 export type {

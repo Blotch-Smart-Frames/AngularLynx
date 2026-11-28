@@ -473,6 +473,14 @@ export const FLOWS: readonly Flow[] = [
     only: { platform: 'ios', host: 'shell' },
     deviceFault: stalledMetalCompiler,
   },
+  {
+    file: 'calendar.yaml',
+    description: "opens LynxCalendar's event editor and cancels it",
+    // Only the app's own iOS build: Lynx Explorer has no calendar module,
+    // and CI's Android emulator has no calendar app with an account to
+    // open the editor in.
+    only: { platform: 'ios', host: 'shell' },
+  },
 ];
 
 /**

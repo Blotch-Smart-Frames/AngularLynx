@@ -24,6 +24,7 @@ import {
   IOS_MOTION_SOURCE,
   IOS_CANVAS_SOURCES,
   IOS_STORE_REVIEW_SOURCE,
+  IOS_CALENDAR_SOURCE,
   IOS_WEBGL_SOURCES,
   iosGenerator,
   LOCAL_NETWORK_REASON,
@@ -409,6 +410,28 @@ describe('iosGenerator', () => {
     expect(
       readFileSync(path.join(dir, 'App/LynxViewController.swift'), 'utf8'),
     ).toContain('NSClassFromString("AngularLynxStoreReviewModule")');
+  });
+
+  it('keeps the calendar module only in an app with calendar', () => {
+    const generate = (options: object) => {
+      rmSync(dir, { recursive: true, force: true });
+      cpSync(path.join(TEMPLATES_DIR, 'ios'), dir, { recursive: true });
+      const resolved = app(options);
+      iosGenerator.configure(dir, resolved, dir);
+      iosGenerator.leaveOut(dir, { canvas: true, webgl: true }, resolved);
+      return existsSync(path.join(dir, IOS_CALENDAR_SOURCE));
+    };
+    expect(generate({ calendar: true })).toBe(true);
+    expect(generate({})).toBe(false);
+    expect(
+      readFileSync(
+        path.join(TEMPLATES_DIR, 'ios', IOS_CALENDAR_SOURCE),
+        'utf8',
+      ),
+    ).toContain('@objc(AngularLynxCalendarModule)');
+    expect(
+      readFileSync(path.join(dir, 'App/LynxViewController.swift'), 'utf8'),
+    ).toContain('NSClassFromString("AngularLynxCalendarModule")');
   });
 
   it('writes the entitlements beside the xcconfig, only with app link domains', () => {

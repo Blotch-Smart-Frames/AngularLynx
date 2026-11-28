@@ -323,6 +323,35 @@ describe('inserts before the anchors that end a parent (issue #444)', () => {
 
         expect(calls).toEqual(names(1, 40, 'insert'));
       });
+
+      it('appends the rows under a footer of 64 elements, as many as it searches', () => {
+        // The footer and its label are two.
+        for (let i = 0; i < 62; i++) {
+          place(fake(footer), makeEl('view', `item${i}`), 0);
+        }
+
+        rows(40);
+
+        expect(calls.slice(32, 40)).toEqual(names(33, 40, 'append'));
+      });
+
+      it('stops reading a footer of many children at the limit', () => {
+        for (let i = 0; i < 10_000; i++) {
+          place(fake(footer), makeEl('view', `item${i}`), 0);
+        }
+        const g = globalThis as Record<string, unknown>;
+        const next = g['__NextElement'] as (n: FakeEl) => FakeEl | null;
+        let reads = 0;
+        g['__NextElement'] = (n: FakeEl) => {
+          if (n.parent === fake(footer)) reads++;
+          return next(n);
+        };
+
+        rows(40);
+
+        expect(calls).toEqual(names(1, 40, 'insert'));
+        expect(reads).toBeLessThan(64);
+      });
     });
 
     it('inserts a few rows before an anchor that a flushed footer follows', () => {

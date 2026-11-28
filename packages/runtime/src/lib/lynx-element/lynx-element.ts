@@ -643,20 +643,24 @@ const MOVABLE_SEARCH_LIMIT = 64;
  * Whether every native element in `elements` and their subtrees is one of
  * {@link MOVABLE_TAGS}, from the native tree, which holds the anonymous
  * `<text>`s and a hydrated snapshot's elements the wrappers don't. False
- * once it has looked at {@link MOVABLE_SEARCH_LIMIT} elements.
+ * as soon as it finds more than {@link MOVABLE_SEARCH_LIMIT} elements, so a
+ * footer of many children isn't read in full first.
  */
 const movableSubtree = (elements: readonly ElementRef[]): boolean => {
   const pending: ElementRef[] = [...elements];
   let seen = 0;
   while (pending.length > 0) {
     const element = pending.pop()!;
-    if (++seen > MOVABLE_SEARCH_LIMIT) return false;
+    seen++;
     if (!MOVABLE_TAGS.has(__GetTag(element))) return false;
     for (
       let child = __FirstElement(element);
       child;
       child = __NextElement(child)
     ) {
+      // Counted as it's found (the elements looked at and those still to
+      // look at), not as it's looked at.
+      if (seen + pending.length >= MOVABLE_SEARCH_LIMIT) return false;
       pending.push(child);
     }
   }

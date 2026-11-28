@@ -19,6 +19,7 @@ import {
   componentConfig,
 } from '../src/utils/cn-config-source.ts';
 
+const require = createRequire(import.meta.url);
 const root = resolve(import.meta.dirname, '../../..');
 const targets = [
   'packages/dolan/src/utils/cn-config.ts',
@@ -29,10 +30,7 @@ const targets = [
 // the CommonJS bundle, which is in its dist/.
 const { version } = JSON.parse(
   readFileSync(
-    resolve(
-      dirname(createRequire(import.meta.url).resolve('tailwind-merge')),
-      '../package.json',
-    ),
+    resolve(dirname(require.resolve('tailwind-merge')), '../package.json'),
     'utf8',
   ),
 ) as { version: string };
@@ -40,7 +38,13 @@ const source = cnConfigSource(componentConfig(getDefaultConfig()), version);
 for (const target of targets) {
   writeFileSync(resolve(root, target), source);
 }
-const formatted = spawnSync('npx', ['oxfmt', ...targets], {
+// oxfmt's bin, run with this Node: `npx` is a .cmd shim on Windows, which
+// spawnSync can't start without a shell.
+const oxfmt = resolve(
+  dirname(require.resolve('oxfmt/package.json')),
+  'bin/oxfmt',
+);
+const formatted = spawnSync(process.execPath, [oxfmt, ...targets], {
   cwd: root,
   stdio: 'inherit',
 });

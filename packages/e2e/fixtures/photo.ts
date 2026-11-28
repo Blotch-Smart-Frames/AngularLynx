@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
   BarcodeScannerError,
@@ -118,12 +118,12 @@ const upload = (blob: Blob): Promise<{ reply: string; bytes: number }> =>
       <view
         [flatten]="false"
         [accessibility-element]="true"
-        accessibility-label="Save"
+        [accessibility-label]="saveLabel()"
         accessibility-traits="button"
         style="margin-left: 8px; padding: 12px; background-color: #e0e0e0;"
         (bindtap)="save()"
       >
-        <text>Save</text>
+        <text>{{ saveLabel() }}</text>
       </view>
     </view>
     <text flatten="false" style="margin-top: 8px;">Scan: {{ scanned() }}</text>
@@ -137,13 +137,24 @@ export class PhotoRoute {
   readonly status = signal('none');
   readonly scanned = signal('none');
   readonly saved = signal('none');
+  /**
+   * How the save went, on the button itself: CI's 320x640 Android emulator
+   * shows nothing below the scan line, where "Saved:" has the details.
+   */
+  readonly saveLabel = computed(() => {
+    const saved = this.saved();
+    if (saved === 'none') return 'Save';
+    if (saved === '…') return 'Saving';
+    return saved === 'yes' ? 'Saved' : 'Not saved';
+  });
 
   /**
    * Saves RED_PNG to the photo library with LynxPhotoLibrary (issue #927),
    * which the app has because the harness gives it `permissions.savePhotos`
-   * (addSavePhotosPermission in src/scaffold.ts). Shows "Saved: yes" once
-   * the shell's module answers with the new photo's ID, or the error's code
-   * and message (native/save-photo.yaml).
+   * (addSavePhotosPermission in src/scaffold.ts). The button reads "Saved",
+   * and the line under it "Saved: yes", once the shell's module answers with
+   * the new photo's ID; otherwise the line has the error's code and message
+   * (native/save-photo.yaml).
    */
   async save(): Promise<void> {
     this.saved.set('…');

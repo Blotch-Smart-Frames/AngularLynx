@@ -20,6 +20,14 @@ class Favourites extends ChangeNotifier {
   /// runs can't store a set without the ids still being read.
   late final Future<void> _loaded;
 
+  /// Whether the first read has finished.
+  var _read = false;
+
+  /// The ids toggled while the first read runs: they keep the state the user
+  /// left them in, whatever storage had, so a stored id toggled off then isn't
+  /// added back by the read.
+  final _toggledWhileReading = <String>{};
+
   /// The ids in ascending order, as the original lists them: it keeps them as
   /// a JavaScript object's keys, which run in numeric order for ids.
   List<String> get ids => _ids.toList()..sort((a, b) => int.parse(a).compareTo(int.parse(b)));
@@ -28,6 +36,7 @@ class Favourites extends ChangeNotifier {
 
   void toggle(String id) {
     if (!_ids.remove(id)) _ids.add(id);
+    if (!_read) _toggledWhileReading.add(id);
     notifyListeners();
     _save();
   }
@@ -48,10 +57,12 @@ class Favourites extends ChangeNotifier {
       // A value that can't be read (one of another type, say) counts as no
       // favourites, so the next toggle's save replaces it rather than waiting
       // on a read that failed.
-      return;
     }
-    if (stored == null || stored.isEmpty) return;
-    _ids.addAll(stored);
+    _read = true;
+    final added = (stored ?? const <String>[]).where((id) => !_toggledWhileReading.contains(id)).toList();
+    _toggledWhileReading.clear();
+    if (added.isEmpty) return;
+    _ids.addAll(added);
     notifyListeners();
   }
 }

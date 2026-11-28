@@ -63,6 +63,10 @@ final class BluetoothModule: NSObject, LynxContextModule, CBCentralManagerDelega
   /// which it names by its 16- or 32-bit short form.
   private static let baseUUIDSuffix = "-0000-1000-8000-00805f9b34fb"
 
+  /// What a `connect` answers once its deadline passes.
+  private static let connectTimeout = Failure(
+    code: "timeout", message: "The device didn't connect in time.")
+
   private weak var context: LynxContext?
   private let queue = DispatchQueue(label: "dev.angularlynx.bluetooth")
 
@@ -545,12 +549,42 @@ final class BluetoothModule: NSObject, LynxContextModule, CBCentralManagerDelega
     case .connecting, .discovering:
       connection.connectWaiters.append(callback)
     case .closing:
-      // The old connection is still going: connect again once it has.
-      let id = connection.id
-      connection.afterClose.append { [self] in
-        connect(id, timeout: timeout, callback)
+      // The old connection is still going: connect again once it has. The
+      // deadline runs from now, so a close that's slow to be reported
+      // counts against it, as connecting would.
+      let deadline = timeout > 0 ? DispatchTime.now() + timeout / 1000 : nil
+      connection.afterClose.append(Reconnect(callback: callback, deadline: deadline))
+      guard let deadline else { return }
+      queue.asyncAfter(deadline: deadline) { [weak self, weak connection] in
+        guard let self, let connection else { return }
+        self.expireReconnects(connection)
       }
     }
+  }
+
+  /// Fails the `connect` calls still waiting for the old connection to
+  /// close once their deadline has passed.
+  private func expireReconnects(_ connection: Connection) {
+    let now = DispatchTime.now()
+    let expired = connection.afterClose.filter { $0.expired(at: now) }
+    connection.afterClose.removeAll { $0.expired(at: now) }
+    expired.forEach { $0.callback(Self.connectTimeout.result) }
+  }
+
+  /// Connects for a `connect` that waited for the old connection to close,
+  /// with what's left of its deadline.
+  private func reconnect(_ id: String, _ waiting: Reconnect) {
+    guard let deadline = waiting.deadline else {
+      connect(id, timeout: 0, waiting.callback)
+      return
+    }
+    let now = DispatchTime.now()
+    guard now < deadline else {
+      waiting.callback(Self.connectTimeout.result)
+      return
+    }
+    let left = Double(deadline.uptimeNanoseconds - now.uptimeNanoseconds) / 1_000_000
+    connect(id, timeout: left, waiting.callback)
   }
 
   /// The peripheral a scan saw, or else one iOS knows from before (it keeps
@@ -580,9 +614,7 @@ final class BluetoothModule: NSObject, LynxContextModule, CBCentralManagerDelega
       guard let self, let connection, self.connections[connection.id] === connection,
         connection.phase == .connecting || connection.phase == .discovering
       else { return }
-      self.abandon(
-        connection,
-        Failure(code: "timeout", message: "The device didn't connect in time."))
+      self.abandon(connection, Self.connectTimeout)
     }
     connection.timeout = expiry
     queue.asyncAfter(deadline: .now() + timeout / 1000, execute: expiry)
@@ -628,7 +660,7 @@ final class BluetoothModule: NSObject, LynxContextModule, CBCentralManagerDelega
     if let event {
       send(event)
     }
-    next.forEach { $0() }
+    next.forEach { reconnect(connection.id, $0) }
   }
 
   func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
@@ -975,6 +1007,17 @@ private struct Failure {
   var result: [String: Any] { ["error": code, "message": message] }
 }
 
+/// A `connect` waiting for its peripheral's old connection to close, and
+/// the time it gives up at: none for a `connect` without a timeout.
+private struct Reconnect {
+  let callback: LynxCallbackBlock
+  let deadline: DispatchTime?
+
+  func expired(at now: DispatchTime) -> Bool {
+    deadline.map { $0 <= now } ?? false
+  }
+}
+
 private struct PendingWrite {
   let characteristic: CBCharacteristic
   let data: Data
@@ -1009,7 +1052,7 @@ private final class Connection {
   var connectWaiters: [LynxCallbackBlock] = []
   var disconnectWaiters: [LynxCallbackBlock] = []
   /// `connect` calls that came while it was closing.
-  var afterClose: [() -> Void] = []
+  var afterClose: [Reconnect] = []
   var reads: [ObjectIdentifier: [LynxCallbackBlock]] = [:]
   var writes: [ObjectIdentifier: [LynxCallbackBlock]] = [:]
   var subscriptions: [ObjectIdentifier: [LynxCallbackBlock]] = [:]

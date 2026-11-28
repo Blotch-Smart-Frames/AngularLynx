@@ -619,6 +619,11 @@ class Scan implements BluetoothScan {
  * a scan the app doesn't need there (`LynxAppState` says when). A scan and
  * its connections end when the app closes.
  *
+ * An advertisement doesn't prove which device sent it: anything nearby can
+ * advertise the same name and services. Before writing a secret such as a
+ * Wi-Fi password, check that the device holds a key only the real one has,
+ * and encrypt the secret so only it can read it.
+ *
  * @usageNotes
  * ```typescript
  * const bluetooth = inject(LynxBluetooth);
@@ -629,10 +634,11 @@ class Scan implements BluetoothScan {
  * // …the person picks one of found(), `picked`…
  * await scan.stop();
  * const frame = await bluetooth.connect(picked.id);
- * await frame.write(SETUP_SERVICE, CREDENTIALS, bytes);
  * const stop = await frame.subscribe(SETUP_SERVICE, STATUS, (value) =>
  *   this.status.set(decode(value)),
  * );
+ * // `sealed`: the Wi-Fi password, encrypted for the frame's own key.
+ * await frame.write(SETUP_SERVICE, CREDENTIALS, sealed);
  * ```
  */
 @Injectable({ providedIn: 'root' })

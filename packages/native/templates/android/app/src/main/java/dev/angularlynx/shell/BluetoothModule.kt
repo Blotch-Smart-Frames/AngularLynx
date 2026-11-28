@@ -188,7 +188,7 @@ class BluetoothModule : LynxContextModule {
             stateChanged()
             return@serve reply.ok(stateResult())
         }
-        ask { answer ->
+        ask(reply) { answer ->
             when (answer) {
                 Answer.ANSWERED -> reply.ok(stateResult())
                 Answer.BUSY -> reply.fail(BUSY, PROMPT_OPEN)
@@ -502,7 +502,7 @@ class BluetoothModule : LynxContextModule {
         val adapter = adapter
         if (!supported || adapter == null) return reply.fail(UNSUPPORTED, "This device has no Bluetooth LE.")
         if (!permitted()) {
-            return ask { answer ->
+            return ask(reply) { answer ->
                 when {
                     answer == Answer.BUSY -> reply.fail(BUSY, PROMPT_OPEN)
                     answer == Answer.CLOSED -> reply.fail(FAILED, PAGE_CLOSED)
@@ -523,10 +523,12 @@ class BluetoothModule : LynxContextModule {
     /**
      * Shows Android's permission prompt through the activity, and calls
      * [done] on the module's thread once it's answered. While this module's
-     * prompt is open, a second call waits for the same answer.
+     * prompt is open, a second call waits for the same answer. [done] carries
+     * on the method [reply] answers, so it answers as [serve] would when
+     * [done] throws, and the calls waiting after it still get their turn.
      */
-    private fun ask(done: (Answer) -> Unit) {
-        askers += done
+    private fun ask(reply: Reply, done: (Answer) -> Unit) {
+        askers += { answer -> answering(reply) { done(answer) } }
         if (askers.size > 1) return
         val host = mParam as? PermissionHost
         main.post {
@@ -1080,17 +1082,24 @@ class BluetoothModule : LynxContextModule {
      */
     private fun serve(callback: Callback, work: (Reply) -> Unit) {
         val reply = Reply(callback)
-        val posted = !destroyed && bluetooth.post {
-            try {
-                work(reply)
-            } catch (_: SecurityException) {
-                reply.fail(UNAUTHORIZED, UNAUTHORIZED_MESSAGE)
-            } catch (error: RuntimeException) {
-                Log.w(TAG, "Bluetooth failed", error)
-                reply.fail(FAILED, error.message ?: "Bluetooth failed.")
-            }
-        }
+        val posted = !destroyed && bluetooth.post { answering(reply) { work(reply) } }
         if (!posted) reply.fail(FAILED, PAGE_CLOSED)
+    }
+
+    /**
+     * Runs [work] for a method, and answers its [reply] when [work] throws:
+     * `unauthorized` for a permission Android says is missing, `failed` for
+     * anything else, rather than ending the app.
+     */
+    private fun answering(reply: Reply, work: () -> Unit) {
+        try {
+            work()
+        } catch (_: SecurityException) {
+            reply.fail(UNAUTHORIZED, UNAUTHORIZED_MESSAGE)
+        } catch (error: RuntimeException) {
+            Log.w(TAG, "Bluetooth failed", error)
+            reply.fail(FAILED, error.message ?: "Bluetooth failed.")
+        }
     }
 
     private fun emit(type: String, fill: JavaOnlyMap.() -> Unit) {

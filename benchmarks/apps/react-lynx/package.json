@@ -10,15 +10,15 @@
     "typecheck": "tsc -p src --noEmit"
   },
   "dependencies": {
-    "@lynx-js/react": "0.129.4",
+    "@lynx-js/react": "0.129.5",
     "@tanstack/react-query": "5.108.4",
     "zustand": "5.1.0"
   },
   "devDependencies": {
     "@blotch/angular-lynx-native": "file:../../../packages/native",
     "@lynx-js/react-rsbuild-plugin": "0.22.5",
-    "@lynx-js/rspeedy": "0.19.0",
-    "@lynx-js/template-webpack-plugin": "0.16.9",
+    "@lynx-js/rspeedy": "0.19.1",
+    "@lynx-js/template-webpack-plugin": "0.16.10",
     "@lynx-js/types": "4.4.2",
     "@types/react": "19.3.3",
     "typescript": "6.0.3"

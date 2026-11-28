@@ -239,6 +239,32 @@ Tap the phone with `LynxHaptics`: `haptics.impact('light' | 'medium' | 'heavy' |
 
 Confirm the person on the phone with `LynxBiometrics`, a local check, not WebAuthn (Lynx has none, and this signs no server challenge, so it can't stand in for a passkey sign-in): `await biometrics.availability()` gives `{ type, enrolled, deviceCredential }`, `type` being `faceID`, `touchID`, `opticID`, `fingerprint`, `face`, `iris` or `none` (Android counts strong biometrics only), and never rejects; `await biometrics.authenticate({ reason, allowDeviceCredential?, title?, cancelLabel? })` shows `LAContext` or AndroidX's `BiometricPrompt` and rejects with a `BiometricsError` whose `code` is `canceled`, `lockout`, `notEnrolled`, `unavailable` or `failed`. The native module is only in apps with `"permissions": { "biometrics": "<reason>" }` in angular.json (iOS's `NSFaceIDUsageDescription`, Android's `USE_BIOMETRIC`); without it, and in Lynx Explorer and the web preview, `availability()` says `none`. The testing library stands for a phone with Face ID set up: `setBiometrics({ type, enrolled, deviceCredential })` changes it, `queueBiometricResult('canceled')` ends the next prompt that way, and `biometricPrompts()` lists the prompts shown.
 
+### No `navigator.bluetooth`
+
+Find and talk to Bluetooth LE devices with `LynxBluetooth`, after adding `"bluetooth": "<reason>"` to angular.json's `permissions` (without it the app has no Bluetooth module, and every call rejects with a `BluetoothError` whose `code` is `unavailable`, as in Lynx Explorer and the web preview, where `state()` is `unsupported`):
+
+```typescript
+const bluetooth = inject(LynxBluetooth);
+
+// One scan at a time; it stops when the injection context it started in is destroyed.
+const scan = await bluetooth.scan({ services: [SETUP] }, (device) =>
+  found.update((devices) => new Map(devices).set(device.id, device)),
+);
+// …the person picks one of found(), `picked`…
+await scan.stop();
+const frame = await bluetooth.connect(picked.id); // every service and characteristic discovered
+const stop = await frame.subscribe(SETUP, STATUS, (value) => status.set(value));
+await frame.write(SETUP, CREDENTIALS, bytes); // with a response, up to 512 bytes
+```
+
+- **It's a scan, not Web Bluetooth's chooser.** `scan()` streams each device it sees, about once a second while in range, and the app lists them itself. `connect()` takes the `id` (iOS: a UUID iOS makes up for the app; Android: the address).
+- **UUIDs come back as 128-bit lowercase.** Every call takes `'180f'` too; compare with `canonicalBluetoothUUID()`.
+- **`state()` never prompts.** `scan()` and `connect()` ask for permission themselves; call `requestPermission()` to ask after a screen of your own. Android 12+ asks for "Nearby devices", earlier Android for location.
+- **A dropped connection stays dropped.** `connected()` turns `false` and its calls reject with `notConnected`; `connect()` again for a new one. There's no pairing call: a device that needs an encrypted link for a characteristic makes the system pair, with its own prompt, the first time the app uses it.
+- **No background mode.** iOS pauses a scan in the background, but Android keeps scanning: stop it when `LynxAppState`'s `active()` turns `false`.
+- **An advertisement proves nothing.** Anything nearby can advertise the same name and services: before writing a secret such as a Wi-Fi password, check the device holds a key only yours has, and encrypt the secret for it.
+- **Specs** add devices with `addBluetoothDevice()` and change the radio with `setBluetoothState()` (see [build-configuration.md](build-configuration.md)).
+
 ### Bundled images need `baseHref` on the web
 
 An imported image (`import logo from './logo.png'`, typed through `/// <reference types="@blotch/angular-lynx-build/client" />`) becomes `static/image/logo.<hash>.png` next to the bundle. On iOS and Android, Lynx resolves it against the bundle, wherever that is. Lynx for Web puts it on an `<img>` in the page, so the browser resolves it against the page that shows the `<lynx-view>`: a bundle at `/apps/shop/main.web.bundle` on a page at `/` asks for `/static/image/…` and gets nothing. Build with `ng build --base-href=/apps/shop/`, which makes the web bundle ask for `/apps/shop/static/image/…` (see [build-configuration.md](build-configuration.md)). `ng serve` needs nothing: its page and bundle share a root. Fonts never have the problem: the build inlines `@font-face` files as data URLs.

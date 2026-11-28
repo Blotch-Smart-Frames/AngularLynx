@@ -185,6 +185,26 @@ class MainActivity : FragmentActivity(), ShellModule.Host, WebAuthModule.Host {
         }
     }
 
+    // Android's permission prompt, which the modules that need a runtime
+    // permission show through PermissionHost (PermissionRequests.kt), and who
+    // to tell what the person chose. Registered as the activity is created,
+    // as the Photo Picker's launcher is, and for the same reason.
+    private var permissionsAnswered: ((Map<String, Boolean>) -> Unit)? = null
+    private val permissionPrompt =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
+            val done = permissionsAnswered ?: return@registerForActivityResult
+            permissionsAnswered = null
+            done(results)
+        }
+    private val permissionHost = object : PermissionHost {
+        override fun requestPermissions(names: Array<String>, done: (Map<String, Boolean>) -> Unit): Boolean {
+            if (permissionsAnswered != null) return false
+            permissionsAnswered = done
+            permissionPrompt.launch(names)
+            return true
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // The splash screen (themes.xml's Theme.AngularLynxShell.Starting),
         // before anything else: it switches the activity to the app's own
@@ -294,12 +314,25 @@ class MainActivity : FragmentActivity(), ShellModule.Host, WebAuthModule.Host {
             // compiles either way, and nothing else may name the class.
             // Lynx's own R8 rules keep every LynxModule's name, so a release
             // build finds it too.
-            barcodeScannerModule()?.let {
+            optionalModule(BARCODE_SCANNER_MODULE_CLASS)?.let {
                 registerModule(BARCODE_SCANNER_MODULE, it, this@MainActivity)
             }
             // The shortcuts the person runs from the app icon's menu, which
             // LynxShortcuts takes (ShortcutsModule.kt).
             registerModule(ShortcutsModule.NAME, ShortcutsModule::class.java, null)
+            // Bluetooth LE behind LynxBluetooth (BluetoothModule.kt), which
+            // asks for its permissions through this activity. Only an app
+            // whose angular.json sets permissions.bluetooth has it: the
+            // generator deletes the file from every other app, which then
+            // ships no Bluetooth code and its manifest declares no Bluetooth
+            // permission (the iOS shell does the same, since App Store Connect
+            // flags an app whose code uses CoreBluetooth without saying why).
+            // So it's looked up by name, which compiles either way, and
+            // nothing else may name the class. Lynx's own R8 rules keep every
+            // LynxModule's name, so a release build finds it too.
+            optionalModule(BLUETOOTH_MODULE_CLASS)?.let {
+                registerModule(BLUETOOTH_MODULE, it, permissionHost)
+            }
             // <canvas>'s WebGL (WebGLModule.kt), which the runtime calls from
             // the main thread, where Angular runs: main-thread modules let
             // it get its answers synchronously, with lynx.module(name). Lynx
@@ -661,16 +694,22 @@ class MainActivity : FragmentActivity(), ShellModule.Host, WebAuthModule.Host {
     private companion object {
         const val TAG = "AngularLynxShell"
 
-        // BarcodeScannerModule and its NAME, which this file can't refer to
-        // (see onCreate). The class is in the shell's own package, which is
-        // fixed whatever the app's applicationId.
+        // BarcodeScannerModule and BluetoothModule, and their NAMEs, which
+        // this file can't refer to (see onCreate). The classes are in the
+        // shell's own package, which is fixed whatever the app's
+        // applicationId.
         const val BARCODE_SCANNER_MODULE_CLASS = "dev.angularlynx.shell.BarcodeScannerModule"
         const val BARCODE_SCANNER_MODULE = "AngularLynxBarcodeScanner"
+        const val BLUETOOTH_MODULE_CLASS = "dev.angularlynx.shell.BluetoothModule"
+        const val BLUETOOTH_MODULE = "AngularLynxBluetooth"
 
-        /** BarcodeScannerModule, or null when the generator left it out. */
-        fun barcodeScannerModule(): Class<out LynxModule>? =
+        /**
+         * The module class named [className], or null when the generator
+         * left it out of this app.
+         */
+        fun optionalModule(className: String): Class<out LynxModule>? =
             try {
-                Class.forName(BARCODE_SCANNER_MODULE_CLASS).asSubclass(LynxModule::class.java)
+                Class.forName(className).asSubclass(LynxModule::class.java)
             } catch (_: ClassNotFoundException) {
                 null
             }

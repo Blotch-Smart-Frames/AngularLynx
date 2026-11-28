@@ -88,6 +88,13 @@ final class LynxViewController: UIViewController, LynxViewLifecycle {
     if let webGL = NSClassFromString("AngularLynxWebGLModule") as? LynxModule.Type {
       config.register(webGL)
     }
+    // Bluetooth LE behind LynxBluetooth (BluetoothModule), by name too: the
+    // generator leaves its source out of an app whose angular.json doesn't
+    // set permissions.bluetooth, since App Store Connect flags an app whose
+    // code uses CoreBluetooth without a Bluetooth usage description.
+    if let bluetooth = NSClassFromString("AngularLynxBluetoothModule") as? LynxModule.Type {
+      config.register(bluetooth)
+    }
     // Bundled files for the main thread's fetch and Image (AssetsModule).
     config.register(AssetsModule.self)
     // The full collections the runtime asks for after screens go

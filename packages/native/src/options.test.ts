@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { NativeConfigError, compact, resolveAppOptions } from './options.ts';
+import { PERMISSION_MAP } from './permissions.ts';
 
 const defaults = { projectName: 'my-app', packageVersion: '0.0.0' };
 
@@ -90,10 +91,19 @@ describe('resolveAppOptions', () => {
     );
   });
 
+  it('takes each permission the generators know, with its reason', () => {
+    const permissions = Object.fromEntries(
+      Object.keys(PERMISSION_MAP).map((permission) => [permission, 'Why']),
+    );
+    expect(resolveAppOptions({ permissions }, defaults).permissions).toEqual(
+      permissions,
+    );
+  });
+
   it('rejects unknown permissions and permissions without a reason', () => {
     expect(() =>
-      resolveAppOptions({ permissions: { bluetooth: 'x' } as never }, defaults),
-    ).toThrow(/Unknown permission "bluetooth"/);
+      resolveAppOptions({ permissions: { telepathy: 'x' } as never }, defaults),
+    ).toThrow(/Unknown permission "telepathy"/);
     expect(() =>
       resolveAppOptions({ permissions: { camera: ' ' } }, defaults),
     ).toThrow(/permissions.camera/);

@@ -26,6 +26,7 @@ import { LynxTestingEnv } from '@lynx-js/testing-environment';
 import { installShellModule } from './back-button.js';
 import { installBiometricsModule } from './biometrics.js';
 import { installBarcodeScannerModule } from './barcode-scanner.js';
+import { installBluetoothModule } from './bluetooth.js';
 import { installLinkingModule } from './linking.js';
 import { installShortcutsModule } from './shortcuts.js';
 
@@ -126,6 +127,9 @@ const frameOnInstalledTimers = (threadGlobals: any): void => {
   // LynxBiometrics' prompts and LynxSecureStorage's guarded values, which
   // setBiometrics() and queueBiometricResult() steer (see biometrics.ts).
   installBiometricsModule(threadGlobals);
+  // LynxBluetooth finds the devices addBluetoothDevice() adds (see
+  // bluetooth.ts).
+  installBluetoothModule(threadGlobals);
 };
 
 // ─── Install LynxTestingEnv ──────────────────────────────────────────────────

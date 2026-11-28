@@ -35,7 +35,8 @@ const ORIENTATIONS: Record<Orientation, readonly string[]> = {
  * become App/AppShortcuts.swift, the app link domains become
  * Config/App.entitlements, and the icon and the splash go in the asset
  * catalog. The barcode scanner's module stays only in an app with the
- * `camera` permission.
+ * `camera` permission, and the Bluetooth module only in an app with the
+ * `bluetooth` permission.
  */
 /** LynxBarcodeScanner's module, which needs the `camera` permission. */
 export const IOS_BARCODE_SCANNER_SOURCE = 'App/BarcodeScannerModule.swift';
@@ -71,6 +72,16 @@ export const iosGenerator: PlatformGenerator = {
     // registers the module by name only when it's compiled in.
     if (!app.permissions.camera) {
       rmSync(path.join(dir, IOS_BARCODE_SCANNER_SOURCE), { force: true });
+    }
+
+    // App Store Connect flags an app whose code uses CoreBluetooth without
+    // NSBluetoothAlwaysUsageDescription (ITMS-90683), which only the
+    // `bluetooth` permission writes. So an app that doesn't ask for Bluetooth
+    // leaves the module out, and ships no Bluetooth code at all, on Android
+    // as well (see androidGenerator). LynxViewController registers the module
+    // by name only when it's compiled in.
+    if (!app.permissions.bluetooth) {
+      rmSync(path.join(dir, 'App/BluetoothModule.swift'), { force: true });
     }
 
     // In Config/, beside the xcconfig that points the target at it, rather

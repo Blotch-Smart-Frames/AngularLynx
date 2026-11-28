@@ -19,7 +19,7 @@ import {
   type ResolvedApp,
   shortcutIdentifier,
 } from '../options.ts';
-import { PERMISSION_MAP } from '../permissions.ts';
+import { type AndroidPermission, PERMISSION_MAP } from '../permissions.ts';
 import { writeAndroidSplash } from '../splash.ts';
 import { writeAndroidIcon } from './icon.ts';
 import { escapeXml, replaceMarker } from '../xml.ts';
@@ -32,6 +32,8 @@ const BARCODE_SCANNER_MARKER = '// angular-lynx:barcode-scanner';
 /** LynxBarcodeScanner's module, which needs the `camera` permission. */
 export const ANDROID_BARCODE_SCANNER_SOURCE =
   'app/src/main/java/dev/angularlynx/shell/BarcodeScannerModule.kt';
+const BLUETOOTH_MODULE =
+  'app/src/main/java/dev/angularlynx/shell/BluetoothModule.kt';
 
 const SCREEN_ORIENTATIONS: Record<Orientation, string> = {
   portrait: 'portrait',
@@ -47,6 +49,7 @@ const SCREEN_ORIENTATIONS: Record<Orientation, string> = {
  * resources, the shortcuts become the static shortcuts' resources, and the
  * splash becomes the splash theme's color and image. The barcode scanner's
  * module and the library behind it stay only in an app with the `camera`
+ * permission, and the Bluetooth module only in an app with the `bluetooth`
  * permission.
  */
 export const androidGenerator: PlatformGenerator = {
@@ -87,6 +90,13 @@ export const androidGenerator: PlatformGenerator = {
       if (readFileSync(buildFile, 'utf8').includes(BARCODE_SCANNER_MARKER)) {
         removeMarkedLines(buildFile, 'barcode-scanner');
       }
+    }
+
+    // As on iOS (see iosGenerator), an app that doesn't ask for Bluetooth
+    // ships no Bluetooth code. MainActivity registers the module only when
+    // its class is there.
+    if (!app.permissions.bluetooth) {
+      rmSync(path.join(dir, BLUETOOTH_MODULE), { force: true });
     }
 
     writeAndroidIcon(dir, app, projectRoot);
@@ -247,19 +257,62 @@ export const permissionEntries = (app: ResolvedApp): string => {
   const entries = Object.keys(app.permissions).map(
     (permission) => PERMISSION_MAP[permission as keyof typeof PERMISSION_MAP],
   );
-  const permissions = [...new Set(entries.flatMap((entry) => entry.android))];
   const features = [
     ...new Set(entries.flatMap((entry) => entry.androidFeatures ?? [])),
   ];
   return [
-    ...permissions.map(
-      (name) => `<uses-permission android:name="${escapeXml(name)}" />`,
-    ),
+    ...usesPermissions(entries.flatMap((entry) => entry.android)),
     ...features.map(
       (name) =>
         `<uses-feature android:name="${escapeXml(name)}" android:required="false" />`,
     ),
   ].join('\n');
+};
+
+/**
+ * One `<uses-permission>` for each name, in the order the names first come.
+ * Two of the app's permissions can need the same Android one: `bluetooth`
+ * needs fine location to scan on old Android versions only, and `location`
+ * needs it on every version. The one element has to give each what it needs,
+ * so it keeps an attribute only when every declaration has it: the highest
+ * `maxSdkVersion`, and only the `usesPermissionFlags` they all promise.
+ *
+ * `usesPermissionFlags` came in Android 12 (codename S), which the app's
+ * minSdk predates. Older versions ignore it, and `tools:targetApi` tells
+ * Android lint that's intended.
+ */
+export const usesPermissions = (
+  permissions: readonly AndroidPermission[],
+): string[] => {
+  const declarations = new Map<string, Exclude<AndroidPermission, string>[]>();
+  for (const permission of permissions) {
+    const declaration =
+      typeof permission === 'string' ? { name: permission } : permission;
+    declarations.set(declaration.name, [
+      ...(declarations.get(declaration.name) ?? []),
+      declaration,
+    ]);
+  }
+  return [...declarations].map(([name, all]) => {
+    const maxSdkVersions = all.map((each) => each.maxSdkVersion);
+    const flags = all
+      .map((each) => each.usesPermissionFlags?.split('|') ?? [])
+      .reduce((common, each) => common.filter((flag) => each.includes(flag)));
+    return [
+      '<uses-permission',
+      `android:name="${escapeXml(name)}"`,
+      ...(maxSdkVersions.every((version) => version !== undefined)
+        ? [`android:maxSdkVersion="${Math.max(...maxSdkVersions)}"`]
+        : []),
+      ...(flags.length > 0
+        ? [
+            `android:usesPermissionFlags="${escapeXml(flags.join('|'))}"`,
+            'tools:targetApi="s"',
+          ]
+        : []),
+      '/>',
+    ].join(' ');
+  });
 };
 
 /**

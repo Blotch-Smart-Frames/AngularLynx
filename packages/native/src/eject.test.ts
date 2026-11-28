@@ -5,13 +5,18 @@ import { renderEjectedProject } from './eject.ts';
 import { type NativeFeatures } from './features.ts';
 import { EJECT_MARKER } from './generate.ts';
 import { IOS_CANVAS_SOURCES } from './ios/project.ts';
+import type { NativeAppOptions } from './options.ts';
 
-const render = (platform: 'ios' | 'android', features?: NativeFeatures) =>
+const render = (
+  platform: 'ios' | 'android',
+  options: Omit<NativeAppOptions, 'appId'> = {},
+  features?: NativeFeatures,
+) =>
   renderEjectedProject({
     platform,
     projectRoot: '/project',
     projectName: 'my-app',
-    app: { appId: 'com.example.ejected' },
+    app: { appId: 'com.example.ejected', ...options },
     generatorVersion: '1.2.3',
     ...(features && { features }),
   });
@@ -45,6 +50,20 @@ describe('renderEjectedProject', () => {
     expect(files.has('local.properties')).toBe(false);
   });
 
+  // angular.json no longer applies to an ejected project, so one ejected
+  // without Bluetooth gets no module to add the permission to later.
+  it('has the Bluetooth module only when the app asks for Bluetooth', () => {
+    for (const [platform, module] of [
+      ['ios', 'App/BluetoothModule.swift'],
+      ['android', 'app/src/main/java/dev/angularlynx/shell/BluetoothModule.kt'],
+    ] as const) {
+      expect(render(platform).has(module)).toBe(false);
+      expect(
+        render(platform, { permissions: { bluetooth: 'x' } }).has(module),
+      ).toBe(true);
+    }
+  });
+
   it('keeps the canvas, WebGL and ANGLE by default, for the user to grow', () => {
     const ios = render('ios');
     for (const file of IOS_CANVAS_SOURCES)
@@ -63,7 +82,7 @@ describe('renderEjectedProject', () => {
   // app's generated shell leaves out (issue #858).
   it('leaves out what `features` says the app never uses, as a generated project does', () => {
     const none = { canvas: false, webgl: false };
-    const ios = render('ios', none);
+    const ios = render('ios', {}, none);
     for (const file of IOS_CANVAS_SOURCES) {
       expect(ios.has(file), file).toBe(false);
     }
@@ -72,7 +91,7 @@ describe('renderEjectedProject', () => {
     expect(project).toContain('Lynx.xcframework in Embed Frameworks');
     expect(ios.has(EJECT_MARKER)).toBe(true);
 
-    const android = render('android', none);
+    const android = render('android', {}, none);
     for (const file of ANDROID_CANVAS_SOURCES) {
       expect(android.has(`${ANDROID_SHELL_SOURCES}/${file}`), file).toBe(false);
     }

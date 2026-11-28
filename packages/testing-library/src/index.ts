@@ -23,6 +23,13 @@ export type {
   BarcodeScanFailure,
   QueuedBarcodeScan,
 } from './barcode-scanner.js';
+export { addBluetoothDevice, setBluetoothState } from './bluetooth.js';
+export type {
+  FakeBluetoothCharacteristic,
+  FakeBluetoothDevice,
+  FakeBluetoothDeviceRef,
+  FakeBluetoothWrite,
+} from './bluetooth.js';
 export { fireEvent, eventMap } from './fire-event.js';
 export { openedURLs, openLink } from './linking.js';
 export type { OpenedURL } from './linking.js';

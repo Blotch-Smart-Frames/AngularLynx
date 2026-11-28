@@ -14,6 +14,24 @@ export { LynxAppState } from './lib/app-state';
 export type { LynxAppStateValue } from './lib/app-state';
 export { afterFrame } from './lib/animation/after-frame';
 export { LynxAnimation } from './lib/animation/animation';
+export {
+  BluetoothError,
+  canonicalBluetoothUUID,
+  LynxBluetooth,
+} from './lib/bluetooth';
+export type {
+  BluetoothCharacteristic,
+  BluetoothCharacteristicProperty,
+  BluetoothConnection,
+  BluetoothConnectOptions,
+  BluetoothDevice,
+  BluetoothErrorCode,
+  BluetoothScan,
+  BluetoothScanOptions,
+  BluetoothService,
+  BluetoothState,
+  BluetoothWriteOptions,
+} from './lib/bluetooth';
 export { ClipboardError, LynxClipboard } from './lib/clipboard';
 export type { ClipboardErrorCode } from './lib/clipboard';
 export { LynxDevTools, LynxPerformance } from './lib/devtools';

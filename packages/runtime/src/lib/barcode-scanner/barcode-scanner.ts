@@ -74,11 +74,11 @@ export type BarcodeScanOptions = {
  * - `unavailable`: the host has no scanner. Only the apps
  *   `ng build --platform` makes with `permissions.camera` in angular.json
  *   have one, on an iPhone from iOS 16 with an A12 chip or later, and on an
- *   Android phone with Google Play services. Lynx Explorer, the web preview,
- *   the iOS Simulator and tests have none.
+ *   Android phone with Google Play services. Lynx Explorer, the web preview
+ *   and the iOS Simulator have none.
  * - `denied`: the person, or a restriction such as Screen Time, doesn't let
- *   the app use the camera (iOS only: Android's scanner needs no camera
- *   permission).
+ *   the app use the camera, or on Android doesn't let Google Play services,
+ *   which shows the camera there, use it.
  * - `failed`: the scanner couldn't start or stopped, or a scan was already
  *   open.
  */
@@ -141,10 +141,12 @@ const DEFAULT_MESSAGES: Record<BarcodeScannerErrorCode, string> = {
  *
  * It's opt-in: the native code behind it is only in an app whose angular.json
  * sets `permissions.camera`, the reason iOS shows when it asks for the
- * camera. Elsewhere, such as Lynx Explorer, the web preview, the iOS
- * Simulator and tests, `scan()` rejects with `unavailable`. Android's scanner
- * runs in Play services rather than the app, so it needs no camera
- * permission there, and never rejects with `denied`.
+ * camera. Elsewhere, such as Lynx Explorer, the web preview and the iOS
+ * Simulator, `scan()` rejects with `unavailable`. Under the testing library,
+ * a scan waits for the spec to answer it with `queueBarcodeScan()`,
+ * `cancelBarcodeScan()` or `failBarcodeScan()`. Android's scanner runs in
+ * Play services rather than the app, so the app needs no camera permission
+ * there.
  *
  * @usageNotes
  * ```jsonc

@@ -39,9 +39,9 @@ class LynxBarcodeScanner {}
 Opens the platform's own scanner over the app, and closes it at the first code it reads, so the app doesn't draw a camera screen:
 
 - **iOS:** VisionKit's `DataScannerViewController`, in a sheet with a Cancel button. It needs iOS 16 and an A12 chip or later (iPhone XS and newer). iOS asks for the camera the first time, with `permissions.camera`'s reason.
-- **Android:** Google's code scanner, which runs in Google Play services. Play services shows the camera and hands back only the code, so the app needs no camera permission and Android doesn't ask. Play services downloads the scanner the first time any app asks for it; a scan before that finishes rejects with `unavailable`.
+- **Android:** Google's code scanner, which runs in Google Play services. Play services shows the camera and hands back only the code, so the app needs no camera permission. If the person has refused Play services the camera, `scan()` rejects with `denied`. Play services downloads the scanner the first time any app asks for it; a scan before that finishes rejects with `unavailable`.
 
-Only the apps `--platform` builds, with `ng build` or `ng serve`, have it; elsewhere, such as Lynx Explorer, the web preview, the iOS Simulator (which has no camera) and unit tests, `scan()` rejects with `unavailable`. Specs answer scans with the testing library's [`queueBarcodeScan()`](/api/testing-library#queuebarcodescan).
+Only the apps `--platform` builds, with `ng build` or `ng serve`, have it; elsewhere, such as Lynx Explorer, the web preview and the iOS Simulator (which has no camera), `scan()` rejects with `unavailable`. Under the testing library, a scan waits until the spec answers it with [`queueBarcodeScan()`](/api/testing-library#queuebarcodescan), `cancelBarcodeScan()` or `failBarcodeScan()`.
 
 ### `LynxBarcodeScanner.scan()`
 
@@ -105,9 +105,9 @@ class BarcodeScannerError extends Error {
 type BarcodeScannerErrorCode = 'canceled' | 'unavailable' | 'denied' | 'failed';
 ```
 
-| `code`        | When                                                                                                                                                  |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `canceled`    | The person closed the scanner                                                                                                                         |
-| `unavailable` | The host has no scanner: no `permissions.camera`, an iPhone before iOS 16 or the A12, a phone without Google Play services, or not a `--platform` app |
-| `denied`      | iOS only: the person said no to the camera, or a restriction such as Screen Time blocks it. Send them to Settings to change it                        |
-| `failed`      | The scanner couldn't start or stopped, or a scan was already open                                                                                     |
+| `code`        | When                                                                                                                                                                                                   |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `canceled`    | The person closed the scanner                                                                                                                                                                          |
+| `unavailable` | The host has no scanner: no `permissions.camera`, an iPhone before iOS 16 or the A12, a phone without Google Play services, or not a `--platform` app                                                  |
+| `denied`      | The person said no to the camera, or a restriction such as Screen Time blocks it: for the app on iOS, for Google Play services, which shows the camera, on Android. Send them to Settings to change it |
+| `failed`      | The scanner couldn't start or stopped, or a scan was already open                                                                                                                                      |

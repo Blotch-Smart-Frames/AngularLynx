@@ -196,7 +196,7 @@ Pick photos with `LynxImagePicker`, which opens the phone's picker and resolves 
 
 ### No camera or `BarcodeDetector`
 
-Scan a QR code or a barcode with `LynxBarcodeScanner`: `await scanner.scan({ formats: ['qr'] })` opens the phone's own scanner and resolves `{ format, value }`. Turn it on with `permissions.camera` in angular.json; without it, and in Lynx Explorer, the web preview, the iOS Simulator and specs, it rejects with `unavailable`. See [http-requests.md](http-requests.md#scan-a-qr-code-or-barcode).
+Scan a QR code or a barcode with `LynxBarcodeScanner`: `await scanner.scan({ formats: ['qr'] })` opens the phone's own scanner and resolves `{ format, value }`. Turn it on with `permissions.camera` in angular.json; without it, and in Lynx Explorer, the web preview and the iOS Simulator, it rejects with `unavailable`. In specs, the testing library's fake keeps a scan open until `queueBarcodeScan({ format, value })`, `cancelBarcodeScan()` or `failBarcodeScan(code)` answers it. See [http-requests.md](http-requests.md#scan-a-qr-code-or-barcode).
 
 ### No `<input type="date">`
 

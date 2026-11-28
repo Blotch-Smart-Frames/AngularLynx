@@ -186,6 +186,6 @@ async scanTicket(): Promise<void> {
 ```
 
 - **`formats`**: any of `qr`, `aztec`, `dataMatrix`, `pdf417`, `ean13`, `ean8`, `upcA`, `upcE`, `code39`, `code93`, `code128`, `itf`, `codabar`. Every one (`BARCODE_FORMATS`) when left out or empty; name the ones you expect.
-- **Rejects with `BarcodeScannerError`**, `code` `canceled` (closed), `unavailable` (no `permissions.camera`, iOS before 16 or an iPhone before the XS, no Play services, the iOS Simulator, Lynx Explorer, the web preview), `denied` (iOS only: camera refused or restricted) or `failed` (couldn't start, or a scan already open).
+- **Rejects with `BarcodeScannerError`**, `code` `canceled` (closed), `unavailable` (no `permissions.camera`, iOS before 16 or an iPhone before the XS, no Play services, the iOS Simulator, Lynx Explorer, the web preview), `denied` (camera refused or restricted: to the app on iOS, to Play services on Android) or `failed` (couldn't start, or a scan already open).
 - **Android needs no camera permission** for it: the scanner runs in Play services and hands back only the code. Play services downloads it on first use, and a scan before that rejects with `unavailable`.
 - **Specs:** a scan stays open until the testing library's `queueBarcodeScan({ format, value })`, `cancelBarcodeScan()` or `failBarcodeScan(code)` answers it (each answers the open scan, or the next one); wait with `waitForUpdate()`.

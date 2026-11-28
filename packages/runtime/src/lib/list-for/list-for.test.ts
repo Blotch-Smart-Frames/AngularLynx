@@ -568,6 +568,38 @@ describe('*lynxListFor', () => {
     expect(theList().children.map((el) => el.id)).toEqual(signs);
   });
 
+  it('appends a view to its first list again after the run went to another list and back', async () => {
+    const { fixture } = await render();
+    const first = LynxElement.byUniqueId(theList().id) as LynxListElement;
+    const second = fixture.componentRef.injector
+      .get(LYNX_DOCUMENT)
+      .createElement('list') as LynxListElement;
+    const ask = (list: FakeList, index: number) =>
+      list.componentAtIndex(list, list.id, index, operationId++);
+    // The run's place in its list: its view container's anchor.
+    const anchor = first
+      .virtualChildren()
+      .find((child) => child.tagName === 'comment')!;
+    const moveRun = async (to: LynxListElement) => {
+      anchor.remove();
+      to.appendChild(anchor);
+      await update(fixture);
+    };
+    const sign = ask(lists[0]!, 0)!;
+    hide(sign);
+
+    // The pooled view shows an item of the second list, which takes its
+    // element out of the first natively.
+    await moveRun(second);
+    expect(ask(lists[1]!, 0)).toBe(sign);
+    expect(byId(sign).parent).toBe(lists[1]);
+    lists[1]!.enqueueComponent(lists[1]!, lists[1]!.id, sign);
+
+    await moveRun(first);
+    expect(ask(lists[0]!, 0)).toBe(sign);
+    expect(byId(sign).parent).toBe(lists[0]);
+  });
+
   it('tells native an element shows another item when it asked to hear it', async () => {
     await render();
     const sign = show(0)!;

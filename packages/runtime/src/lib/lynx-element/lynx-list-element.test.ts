@@ -831,6 +831,7 @@ describe('LynxListElement', () => {
           }),
           bind: () => null,
           enqueue: () => false,
+          elementIds: () => [],
         };
         list.attachItemSource(anchor, source);
         return run;
@@ -1074,6 +1075,7 @@ describe('LynxListElement', () => {
         commit: () => ({ keys: [], types: [], attributes: [] }),
         bind: () => null,
         enqueue: vi.fn(() => false),
+        elementIds: () => [],
       };
       const second = { ...first, id: 2, enqueue: vi.fn(() => true) };
       list.attachItemSource(anchor, first);
@@ -1087,6 +1089,29 @@ describe('LynxListElement', () => {
       second.enqueue.mockClear();
       list.enqueue(8);
       expect(second.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('forgets that it appended a source’s elements when the source leaves', () => {
+      const list = makeList();
+      const anchor = makeChild();
+      anchor.tagName = 'comment';
+      list.appendChild(anchor);
+      const [built, other] = [makeChild(), makeChild()];
+      const source: LynxListItemSource = {
+        id: 1,
+        commit: () => ({ keys: [], types: [], attributes: [] }),
+        bind: () => null,
+        enqueue: () => false,
+        elementIds: () => [built.uniqueId],
+      };
+      list.attachItemSource(anchor, source);
+      list.markAppendedToNativeList(built.uniqueId);
+      list.markAppendedToNativeList(other.uniqueId);
+
+      list.detachItemSource(source);
+
+      expect(list.isAppendedToNativeList(built.uniqueId)).toBe(false);
+      expect(list.isAppendedToNativeList(other.uniqueId)).toBe(true);
     });
 
     it('keeps a source’s item element out of its children', () => {

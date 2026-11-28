@@ -82,6 +82,11 @@ export type LynxListItemSource = {
    * true if it was one of this run's, which can now reuse it.
    */
   enqueue(sign: number): boolean;
+  /**
+   * The unique ids of the item elements this run has built, for the list it
+   * leaves to forget (see detachItemSource).
+   */
+  elementIds(): Iterable<number>;
 };
 
 /**
@@ -332,9 +337,14 @@ export class LynxListElement extends LynxElement {
 
   /**
    * @internal Takes a run out of this list: its items go on the next update.
+   * Its elements no longer count as appended here: the run takes its views
+   * along (a `*lynxListFor` whose anchor moved to another list), and one
+   * that another list appends leaves this one natively, so if the run comes
+   * back, componentAtIndex has to append it here again.
    */
   detachItemSource(source: LynxListItemSource): void {
     this.#sources = this.#sources.filter((entry) => entry.source !== source);
+    for (const id of source.elementIds()) this.#appended.delete(id);
     this.#scheduleUpdate();
   }
 

@@ -23,7 +23,7 @@
     "@blotch/angular-lynx-testing-library": "*",
     "@blotch/dolan": "*",
     "@blotch/rsbuild-plugin-angular-lynx": "*",
-    "@lynx-js/web-core": "0.26.9",
+    "@lynx-js/web-core": "0.27.0",
     "@playwright/test": "^1.65.1",
     "@types/node": "^22.0.0",
     "create-angular-lynx": "*",

@@ -104,6 +104,9 @@ final class BarcodeScannerModule: NSObject, LynxModule {
       return
     }
     let symbologies = Self.symbologies(formats)
+    // Called once the sheet has gone (ScanSession.finish), so a scan that
+    // comes in while it animates away finds this one still open and fails,
+    // rather than presenting over it.
     let session = ScanSession(formats: Set(formats)) { [weak self] result in
       self?.open = nil
       callback(result)
@@ -195,12 +198,21 @@ private final class ScanSession: NSObject, DataScannerViewControllerDelegate,
     self.done = done
   }
 
-  func finish(_ result: [String: Any]) {
+  /// Reports `result` once the sheet is gone, which is also when the module
+  /// lets the next scan open: UIKit can drop a presentation over a sheet
+  /// that's still animating away, without calling its completion, which
+  /// would leave that scan open and unanswered for good.
+  func finish(_ result: [String: Any], alreadyDismissed: Bool = false) {
     guard let done else { return }
     self.done = nil
     scanner?.stopScanning()
-    scanner?.navigationController?.dismiss(animated: true)
-    done(result)
+    guard !alreadyDismissed, let sheet = scanner?.navigationController,
+      sheet.presentingViewController != nil
+    else {
+      done(result)
+      return
+    }
+    sheet.dismiss(animated: true) { done(result) }
   }
 
   func cancel() {
@@ -233,7 +245,8 @@ private final class ScanSession: NSObject, DataScannerViewControllerDelegate,
 
   /// Swiping the sheet down closes it without the Cancel button.
   func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
-    cancel()
+    finish(
+      BarcodeScannerModule.error("canceled", "The scan was canceled."), alreadyDismissed: true)
   }
 
   /// The runtime's name for what Vision read, or nil for a kind the app

@@ -24,7 +24,7 @@ appId: ${APP_ID}
           text: 'Allow( Access)?|OK'
           optional: true
 # GitHub's iOS Simulator can take well over 15 seconds to answer the first
-# add: on a run of 2026-11-28 its assetsd had taken the request and still
+# add: on a run of 2026-11-28 its Photos daemon had taken the request and still
 # hadn't answered 15 seconds later. A local Simulator answers in under one.
 - extendedWaitUntil:
     visible: Saved

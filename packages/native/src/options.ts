@@ -466,8 +466,10 @@ export const resolveAppOptions = (
   }
 
   // Checked here because the generators keep the module for any truthy
-  // value, so a string such as "false" would quietly ship it.
-  const storeReview = options.storeReview ?? false;
+  // value, so a string such as "false" would quietly ship it. Read from the
+  // options as given: compact() drops an empty object, which would then
+  // pass as false rather than be rejected.
+  const storeReview = rawOptions.storeReview ?? false;
   if (typeof storeReview !== 'boolean') {
     throw new NativeConfigError(
       `storeReview ${JSON.stringify(storeReview)} is not valid. Use true to ask for ratings in the app with LynxStoreReview, or false.`,
@@ -475,8 +477,8 @@ export const resolveAppOptions = (
   }
 
   // As for storeReview: a string such as "false" would quietly ship the
-  // module.
-  const motion = options.motion ?? false;
+  // module, and an empty object would pass as false.
+  const motion = rawOptions.motion ?? false;
   if (typeof motion !== 'boolean') {
     throw new NativeConfigError(
       `motion ${JSON.stringify(motion)} is not valid. Use true to read the motion sensors and compass with LynxMotion, or false.`,

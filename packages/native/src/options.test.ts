@@ -473,7 +473,7 @@ describe('resolveAppOptions', () => {
 
   // The generators keep the module for anything truthy, so "false" would
   // ship it.
-  it.each(['false', 'true', 1])('rejects storeReview %j', (value) => {
+  it.each(['false', 'true', 1, {}])('rejects storeReview %j', (value) => {
     expect(() =>
       resolveAppOptions({ storeReview: value } as never, defaults),
     ).toThrow(/storeReview .* is not valid/);
@@ -489,7 +489,7 @@ describe('resolveAppOptions', () => {
 
   // The generators keep the module for anything truthy, so "false" would
   // ship it.
-  it.each(['false', 'true', 1])('rejects motion %j', (value) => {
+  it.each(['false', 'true', 1, {}])('rejects motion %j', (value) => {
     expect(() =>
       resolveAppOptions({ motion: value } as never, defaults),
     ).toThrow(/motion .* is not valid/);

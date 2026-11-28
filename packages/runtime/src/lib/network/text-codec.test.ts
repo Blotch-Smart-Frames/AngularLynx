@@ -3,6 +3,25 @@ import { LynxTextDecoder, LynxTextEncoder } from './text-codec';
 
 const encode = (text: string) => new TextEncoder().encode(text);
 
+/**
+ * What `encodeInto()` should give, built from the platform's `encode()` a
+ * character at a time. Not from the platform's `encodeInto()`: Node 26's
+ * stops early on some Latin-1 strings (`'abé…'` into 4 bytes reads 2).
+ */
+const encodeIntoReference = (text: string, size: number) => {
+  const bytes = new Uint8Array(size);
+  let read = 0;
+  let written = 0;
+  for (const char of text) {
+    const encoded = encode(char);
+    if (written + encoded.length > size) break;
+    bytes.set(encoded, written);
+    written += encoded.length;
+    read += char.length;
+  }
+  return { result: { read, written }, bytes };
+};
+
 describe('LynxTextEncoder', () => {
   it('encodes UTF-8, as the platform encoder does', () => {
     const encoder = new LynxTextEncoder();
@@ -45,7 +64,6 @@ describe('LynxTextEncoder', () => {
 
   it('encodes into a buffer that fills in the middle of ASCII, as the platform encoder does', () => {
     const encoder = new LynxTextEncoder();
-    const platform = new TextEncoder();
     for (const [text, size] of [
       ['abcdef', 3],
       ['ab✓cd', 4],
@@ -54,17 +72,14 @@ describe('LynxTextEncoder', () => {
       ['x\ud800y', 4],
     ] as const) {
       const ours = new Uint8Array(size);
-      const theirs = new Uint8Array(size);
-      expect(encoder.encodeInto(text, ours)).toEqual(
-        platform.encodeInto(text, theirs),
-      );
-      expect(ours).toEqual(theirs);
+      const expected = encodeIntoReference(text, size);
+      expect(encoder.encodeInto(text, ours)).toEqual(expected.result);
+      expect(ours).toEqual(expected.bytes);
     }
   });
 
   it('encodes the start of a long string into a small buffer, as the platform encoder does', () => {
     const encoder = new LynxTextEncoder();
-    const platform = new TextEncoder();
     for (const text of [
       'a'.repeat(1000),
       '漢'.repeat(1000),
@@ -73,11 +88,9 @@ describe('LynxTextEncoder', () => {
     ]) {
       for (let size = 0; size <= 9; size++) {
         const ours = new Uint8Array(size);
-        const theirs = new Uint8Array(size);
-        expect(encoder.encodeInto(text, ours)).toEqual(
-          platform.encodeInto(text, theirs),
-        );
-        expect(ours).toEqual(theirs);
+        const expected = encodeIntoReference(text, size);
+        expect(encoder.encodeInto(text, ours)).toEqual(expected.result);
+        expect(ours).toEqual(expected.bytes);
       }
     }
   });

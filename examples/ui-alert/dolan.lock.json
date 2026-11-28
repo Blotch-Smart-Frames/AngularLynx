@@ -3,7 +3,7 @@
   "components": {
     "alert": {
       "alert.ts": {
-        "hash": "5a407aba4dc3bea7"
+        "hash": "348d3a4c6e10531c"
       },
       "index.ts": {
         "hash": "fd16582d9a203dad"
@@ -15,7 +15,7 @@
       "hash": "9842dcdbd68de832"
     },
     "tailwind-plugin.ts": {
-      "hash": "e94a15f7b9c1b7dd"
+      "hash": "133be267c35fe142"
     },
     "dark.css": {
       "hash": "890b0c7dc60a5ac3"

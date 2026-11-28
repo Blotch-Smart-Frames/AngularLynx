@@ -60,8 +60,57 @@
   --radius-3xl: calc(var(--radius) + 12px);
 }
 
+/*
+ * A plain `border` draws in the theme's border color rather than Lynx's
+ * black. Only the border-width classes get it, at the default scale's
+ * widths: the usual shadcn/ui rule, `* { border-color: var(--border) }`,
+ * gave it to every element, and on iOS Lynx then keeps four colors for each,
+ * about 1.3 KB of native memory per element whether it has a border or not
+ * (issue #949). The base layer comes before the utilities, so a color class
+ * such as `border-primary` still wins. A width not listed here (an arbitrary
+ * `border-[1.5px]`, a `divide-y`) needs a color class of its own.
+ *
+ * Tailwind 3's plugin (tailwind-plugin.ts) still uses `*`: an `addBase`
+ * rule for these classes would have its class sorter put `border` before
+ * every other class.
+ */
 @layer base {
-  * {
+  .border,
+  .border-2,
+  .border-4,
+  .border-8,
+  .border-x,
+  .border-x-2,
+  .border-x-4,
+  .border-x-8,
+  .border-y,
+  .border-y-2,
+  .border-y-4,
+  .border-y-8,
+  .border-s,
+  .border-s-2,
+  .border-s-4,
+  .border-s-8,
+  .border-e,
+  .border-e-2,
+  .border-e-4,
+  .border-e-8,
+  .border-t,
+  .border-t-2,
+  .border-t-4,
+  .border-t-8,
+  .border-r,
+  .border-r-2,
+  .border-r-4,
+  .border-r-8,
+  .border-b,
+  .border-b-2,
+  .border-b-4,
+  .border-b-8,
+  .border-l,
+  .border-l-2,
+  .border-l-4,
+  .border-l-8 {
     border-color: var(--border);
   }
 }

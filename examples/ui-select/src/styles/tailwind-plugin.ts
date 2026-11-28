@@ -140,6 +140,9 @@ export const themeColor =
  */
 export const blotchPlugin = plugin(
   ({ addBase, addUtilities, matchUtilities, theme }) => {
+    // Every element, which costs each about 1.3 KB of native memory on iOS.
+    // tailwind.css gives it only to the border-width classes; a rule for
+    // them here would have the class sorter put `border` first (#957).
     addBase({
       '*': {
         'border-color': 'var(--border)',

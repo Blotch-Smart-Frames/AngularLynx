@@ -321,6 +321,10 @@ Simulate with background images if needed.
 
 `thin` = 2px, `medium` = 4px, `thick` = 6px (web: 1/3/5px). Default = 0.
 
+### A border color costs memory on elements with no border
+
+The default `border-color` is black, not the web's `currentColor`. Don't copy shadcn/ui's `* { border-color: var(--border) }`: on iOS, every element with a border color keeps four colors for it, about 1.3 KB of native memory per element, even when the border is 0 wide. Give the color only to elements with a border (`border border-border`). The dolan UI theme's Tailwind 4 `tailwind.css` gives `var(--border)` to Tailwind's border-width classes (`border`, `border-t`, `border-x-2`, … up to `-8`), so a plain `border` draws in it; an arbitrary width (`border-[1.5px]`) or `divide-y` needs a color class. Its Tailwind 3 plugin still sets it on every element.
+
 ### Change classes through Angular, not `__AddClass`
 
 Bind classes (`class`, `[class]`, `[class.x]`) or use `Renderer2.addClass()`/`removeClass()`. On iOS and Android the runtime writes the classes a change detection changed once per element, as a whole class string, at the end of the cycle, so a class added with a raw `__AddClass` or `__SetClasses` on `nativeElement.element` is dropped the next time change detection changes the element's classes. Raw class calls also differ by platform: on iOS and Android `__AddClass` adds a name it has again (`__GetClasses` lists it twice), and Lynx for Web keeps it once.

@@ -41,7 +41,15 @@ class Favourites extends ChangeNotifier {
   }
 
   Future<void> _load() async {
-    final stored = await SharedPreferencesAsync().getStringList(_key);
+    List<String>? stored;
+    try {
+      stored = await SharedPreferencesAsync().getStringList(_key);
+    } catch (_) {
+      // A value that can't be read (one of another type, say) counts as no
+      // favourites, so the next toggle's save replaces it rather than waiting
+      // on a read that failed.
+      return;
+    }
     if (stored == null || stored.isEmpty) return;
     _ids.addAll(stored);
     notifyListeners();

@@ -43,7 +43,7 @@ class ShellMarkTest(unittest.TestCase):
 class MountMsTest(unittest.TestCase):
     def test_from_mount_start_to_fully_drawn(self):
         marks = [("42", "MountStart", 1_200_000_000), ("42", None, 1_500_000_000)]
-        self.assertEqual(android_launch.mount_ms(marks), "300.0")
+        self.assertEqual(android_launch.mount_ms(marks, "42"), "300.0")
 
     def test_the_earliest_mount_start(self):
         # ReactLynx marks from the main thread, then the background thread.
@@ -52,7 +52,7 @@ class MountMsTest(unittest.TestCase):
             ("42", "MountStart", 1_210_000_000),
             ("42", None, 1_500_000_000),
         ]
-        self.assertEqual(android_launch.mount_ms(marks), "300.0")
+        self.assertEqual(android_launch.mount_ms(marks, "42"), "300.0")
 
     def test_the_first_fully_drawn_call(self):
         marks = [
@@ -60,7 +60,7 @@ class MountMsTest(unittest.TestCase):
             ("42", None, 1_500_000_000),
             ("42", None, 1_900_000_000),
         ]
-        self.assertEqual(android_launch.mount_ms(marks), "300.0")
+        self.assertEqual(android_launch.mount_ms(marks, "42"), "300.0")
 
     def test_only_the_fully_drawn_process(self):
         # A line another process logged, such as the app stopped before.
@@ -69,22 +69,37 @@ class MountMsTest(unittest.TestCase):
             ("42", "MountStart", 1_200_000_000),
             ("42", None, 1_500_000_000),
         ]
-        self.assertEqual(android_launch.mount_ms(marks), "300.0")
+        self.assertEqual(android_launch.mount_ms(marks, "42"), "300.0")
+
+    def test_only_the_launched_process(self):
+        # Another process's whole mount, logged first, isn't the launch's.
+        marks = [
+            ("7", "MountStart", 1_000_000_000),
+            ("7", None, 1_010_000_000),
+            ("42", "MountStart", 1_200_000_000),
+            ("42", None, 1_500_000_000),
+        ]
+        self.assertEqual(android_launch.mount_ms(marks, "42"), "300.0")
+
+    def test_empty_without_the_launched_process(self):
+        # dumpsys found no process to read (the app had gone).
+        marks = [("42", "MountStart", 1_200_000_000), ("42", None, 1_500_000_000)]
+        self.assertEqual(android_launch.mount_ms(marks, None), "")
 
     def test_other_marks_are_left_out(self):
         marks = [("42", "Other", 1_000_000_000), ("42", "MountStart", 1_200_000_000), ("42", None, 1_500_000_000)]
-        self.assertEqual(android_launch.mount_ms(marks), "300.0")
+        self.assertEqual(android_launch.mount_ms(marks, "42"), "300.0")
 
     def test_empty_without_a_mount_start(self):
         # The Pokédex, or a shell from before the log lines.
-        self.assertEqual(android_launch.mount_ms([("42", None, 1_500_000_000)]), "")
+        self.assertEqual(android_launch.mount_ms([("42", None, 1_500_000_000)], "42"), "")
 
     def test_empty_without_fully_drawn(self):
-        self.assertEqual(android_launch.mount_ms([("42", "MountStart", 1_200_000_000)]), "")
+        self.assertEqual(android_launch.mount_ms([("42", "MountStart", 1_200_000_000)], "42"), "")
 
     def test_empty_when_drawn_before_the_start(self):
         marks = [("42", None, 1_000_000_000), ("42", "MountStart", 1_200_000_000)]
-        self.assertEqual(android_launch.mount_ms(marks), "")
+        self.assertEqual(android_launch.mount_ms(marks, "42"), "")
 
 
 if __name__ == "__main__":

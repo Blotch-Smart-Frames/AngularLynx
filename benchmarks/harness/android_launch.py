@@ -28,8 +28,9 @@ Android calls a cold launch, and what iOS calls a warm one). From each:
   device's monotonic clock in the message, since the system's `Fully drawn`
   line gives a time from the launch's start, on no clock a mark shares. It
   ends at the call, as the iOS signpost does, not at the frame that shows
-  it. Empty for a screen without the mark (the Pokédex), or an app whose
-  shell is from before the log lines.
+  it. Only the launched app's own lines count, by the process ID
+  `dumpsys meminfo` gives with its memory. Empty for a screen without the
+  mark (the Pokédex), or an app whose shell is from before the log lines.
 - memory_mb / rss_mb: `dumpsys meminfo`'s TOTAL PSS and TOTAL RSS for the
   app's process, read --memory-after seconds after the launch (6 by
   default), a few seconds after it's drawn. PSS divides each shared page
@@ -158,28 +159,35 @@ class Device:
         return match.group(1) if match else ""
 
     def memory(self, package):
-        """(PSS, RSS) of the package's process in KB, from dumpsys meminfo,
-        or None when it isn't running."""
+        """(PSS, RSS, pid) of the package's process, the sizes in KB, from
+        dumpsys meminfo ("** MEMINFO in pid 1234 [package] **"), or None when
+        it isn't running."""
         output = self.shell("dumpsys", "meminfo", package, check=False)
         pss = re.search(r"TOTAL PSS:\s+(\d+)", output)
         rss = re.search(r"TOTAL RSS:\s+(\d+)", output)
+        pid = re.search(r"MEMINFO in pid (\d+)", output)
         if not pss:
             return None
-        return int(pss.group(1)), int(rss.group(1)) if rss else None
+        return int(pss.group(1)), int(rss.group(1)) if rss else None, pid.group(1) if pid else None
 
 
-def mount_ms(marks):
-    """The mount's duration, as a CSV cell, from a launch's shell marks
-    ((pid, name, ns), name None for the fully drawn call): from the earliest
-    MountStart, which a ReactLynx screen marks from each of its threads (the
-    one that renders it first starts the screen), to the first fully drawn
-    call of the same process. Empty without both, or when the screen was
-    drawn before it started (a mark from somewhere else)."""
-    drawn = next(((pid, ns) for pid, name, ns in marks if name is None), None)
-    if drawn is None:
+def mount_ms(marks, pid):
+    """The mount's duration, as a CSV cell, from the shell marks logcat had
+    during a launch ((pid, name, ns), name None for the fully drawn call) and
+    the launched app's process ID: from its earliest MountStart, which a
+    ReactLynx screen marks from each of its threads (the one that renders it
+    first starts the screen), to its first fully drawn call. Only the
+    launched process's count: another app in the same shell, or the one
+    stopped before, can log a whole mount of its own meanwhile. Empty
+    without the process ID or both marks, or when the screen was drawn
+    before it started (a mark from somewhere else)."""
+    if pid is None:
         return ""
-    pid, end = drawn
-    starts = [ns for p, name, ns in marks if p == pid and name == MOUNT_START]
+    marks = [(name, ns) for p, name, ns in marks if p == pid]
+    end = next((ns for name, ns in marks if name is None), None)
+    if end is None:
+        return ""
+    starts = [ns for name, ns in marks if name == MOUNT_START]
     if not starts or min(starts) > end:
         return ""
     return f"{(end - min(starts)) / 1e6:.1f}"
@@ -299,7 +307,8 @@ def launch(device, watcher, package, activity, seconds, memory_after, on_start):
         time.sleep(rest)
     # After the rest of the launch, by when the shell's lines have long
     # arrived: the app logs them as it calls, before the system's line.
-    mount = mount_ms(watcher.shell_marks(since))
+    # The process ID from the memory reading, which dumpsys gives with it.
+    mount = mount_ms(watcher.shell_marks(since), memory[2] if memory else None)
     device.shell("am", "force-stop", package)
     kb = lambda value: f"{value / 1024:.1f}" if value else ""
     return {

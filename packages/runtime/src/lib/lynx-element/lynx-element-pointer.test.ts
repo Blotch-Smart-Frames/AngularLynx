@@ -161,7 +161,10 @@ describe('pointer events on Lynx for Web', () => {
     const dom = domElement();
     const element = new LynxElement(dom as unknown as ElementRef);
     const move = vi.fn();
+    // Removing one never added does nothing, before any and after.
+    element.removeEventListener('pointerover', move);
     const remove = element.addEventListener('pointermove', move);
+    element.removeEventListener('pointerout', move);
     element.addEventListener('pointerdown', move);
     expect(dom.addEventListener).toHaveBeenCalledWith('pointermove', move);
     // The pointer's position is kept once, for clicks.

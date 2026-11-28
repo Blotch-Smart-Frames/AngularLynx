@@ -980,6 +980,14 @@ export class LynxElement implements BaseLynxElement {
    * whose pointer events are the browser's (see #addPointerListener).
    */
   #webPointer: { offsetX: number; offsetY: number } | null = null;
+
+  /**
+   * On Lynx for Web, the pointer listeners on this element's DOM element
+   * (see #addPointerListener), which a rebuild puts on the new one (see
+   * #recreateSubtree), as #nativeHandlers does for the native events.
+   */
+  #webPointerListeners: { name: string; cb: (event: any) => any }[] | null =
+    null;
   /** The element's layout, once something needs it (see layout.ts). */
   #layout: LayoutTracker | null = null;
   /**
@@ -1269,6 +1277,12 @@ export class LynxElement implements BaseLynxElement {
   static #byNativeId = new Map<number, WeakRef<LynxElement>>();
 
   /**
+   * Elements a list took whose native element a removal marked dead this
+   * cycle (see #markPaintingDead and #rebuildDeadListItems).
+   */
+  static #deadListItems = new Set<LynxElement>();
+
+  /**
    * How many entries #byNativeId may hold before #register sweeps out the
    * ones whose wrapper was collected (see #sweepCollected).
    */
@@ -1447,6 +1461,18 @@ export class LynxElement implements BaseLynxElement {
   virtualChildren(): LynxElement[] {
     return [];
   }
+
+  /**
+   * @internal Whether `child`, one of this element's virtual children, is
+   * in the native element already: a list's item native asked for (see
+   * LynxListElement). None here.
+   * v8 ignore start -- only a list is any element's virtual parent, and it
+   * overrides this.
+   */
+  holdsInNativeList(_child: LynxElement): boolean {
+    return false;
+  }
+  /* v8 ignore stop */
 
   /**
    * The document stand-in (see global-events), as a DOM element's is its
@@ -3322,8 +3348,8 @@ export class LynxElement implements BaseLynxElement {
     }
     // A list's item has the list as its parent (see LynxListElement), as
     // parentNode() says: an item that moved into a list from another
-    // element still has that element as its #jsParent, which the list
-    // doesn't set.
+    // element still has that element as its #jsParent until the end of the
+    // cycle (see adoptVirtualChild), and the list doesn't set it.
     const parent = this._virtualParent ?? this.#jsParent;
     if (parent) parent.#passTextStyles();
   }
@@ -3333,6 +3359,23 @@ export class LynxElement implements BaseLynxElement {
    * as #adoptChild, it passes text styles down to the #webText inside.
    */
   adoptVirtualChild(child: LynxElement): void {
+    // An element child is put back in the tree, as #attach puts one back:
+    // whoever puts it there still uses it, and one removed in an earlier
+    // cycle lost its native elements, so the list gets new ones to show. A
+    // `*lynxListFor` item's run builds and rebinds its own (see
+    // attachItemSource). One still waiting for its removal from another
+    // parent keeps it: see #rebuildDeadListItems.
+    if (!child._ownedByListSource) {
+      child.#keepIfDestroyed();
+      child.#recreateIfDead();
+      // Inserted with no removal from where it was, as a DomPortal moves an
+      // element: it leaves that parent as a removal would, at the end of the
+      // cycle. The list draws it only when native asks for it, which for an
+      // item out of view may be never, so until then it was drawn in its old
+      // parent, and stayed in that parent's children, where a regroup or a
+      // rebuild of the parent took it back out of the list.
+      if (child.#jsParent) LynxElement.#pendingRemovals.add(child);
+    }
     // The list puts its native element in the native list when native asks
     // for it (see create-list-element.ts), not through #adoptChild.
     if (child.#unplaced()) child.#jsParent = null;
@@ -3906,10 +3949,18 @@ export class LynxElement implements BaseLynxElement {
       ]);
       LynxElement.#pendingRemovals.clear();
       for (const el of items) {
+        // Moved into a list that native has asked for it from already: it's
+        // in the native list, out of its old parent, and only leaves that
+        // parent's children.
+        if (el._virtualParent?.holdsInNativeList(el)) {
+          el.#leaveJsParent();
+          continue;
+        }
         el.#doRemove();
       }
     }
     LynxElement.#commitPendingReleases();
+    LynxElement.#rebuildDeadListItems();
     scheduleCollection();
   }
 
@@ -4337,18 +4388,7 @@ export class LynxElement implements BaseLynxElement {
       this.#jsParent = null;
     }
     this.#markPaintingDead();
-    // What's left of loose text around it may need regrouping (see #regroup):
-    // an emptied anonymous <text> goes, and runs it split may join.
-    if (jsParent && !LynxElement.#regrouping) {
-      const holder = jsParent.#anonymous ? jsParent.#jsParent : jsParent;
-      if (holder && holder.#hasFlow) LynxElement.#pendingFlow.add(holder);
-    }
-    // Removing a run from a surviving text shifts its edges (a middle run can
-    // become the new last run), so re-derive the former parent's context. Uses
-    // jsParent captured above, before #jsParent was nulled.
-    if (jsParent && isTextish(this)) {
-      LynxElement.#enqueueTextNormalization(jsParent);
-    }
+    if (jsParent) this.#leftParent(jsParent);
     // Angular destroyed it (see markDestroyed): nothing will put it back.
     if (this.#destroyed) this.#release();
   }
@@ -4404,12 +4444,87 @@ export class LynxElement implements BaseLynxElement {
   }
 
   /**
+   * Takes this element, which a list holds now, out of the children of the
+   * parent it was in before (see adoptVirtualChild).
+   */
+  #leaveJsParent(): void {
+    const jsParent = this.#jsParent;
+    if (!jsParent) return;
+    const i = jsParent.#children!.indexOf(this);
+    // Defensive, as in #doRemove: #children follows the native tree.
+    /* v8 ignore next */
+    if (i >= 0) jsParent.#children!.splice(i, 1);
+    this.#jsParent = null;
+    this.#leftParent(jsParent);
+  }
+
+  /**
+   * After this element left `jsParent`'s children (see #doRemove and
+   * #leaveJsParent): settles the text around where it was.
+   */
+  #leftParent(jsParent: LynxElement): void {
+    // What's left of loose text around it may need regrouping (see #regroup):
+    // an emptied anonymous <text> goes, and runs it split may join.
+    if (!LynxElement.#regrouping) {
+      const holder = jsParent.#anonymous ? jsParent.#jsParent : jsParent;
+      if (holder && holder.#hasFlow) LynxElement.#pendingFlow.add(holder);
+    }
+    // Removing a run from a surviving text shifts its edges (a middle run can
+    // become the new last run), so re-derive the former parent's context.
+    if (isTextish(this)) LynxElement.#enqueueTextNormalization(jsParent);
+  }
+
+  /**
+   * Rebuilds each element a list took whose native element a removal this
+   * cycle took with it (see #markPaintingDead), once the cycle's removals and
+   * releases are done.
+   *
+   * An element moved into a list (see adoptVirtualChild) keeps its native
+   * element in its old parent: the list appends it to the native list only
+   * when native asks for it (componentAtIndex), in a later flush. So its
+   * removal from its old parent goes ahead, or else it would still be drawn
+   * there, as does the removal of the old parent itself when it's in the
+   * same cycle. Either way its native elements die at the flush, and it's
+   * rebuilt here, before the list's update reads its native element. It no
+   * longer belongs to the old parent, so it leaves that parent's children,
+   * if its removal didn't take it out of them already. One the releases let go of (its list, or
+   * something around the list, was destroyed) isn't rebuilt: nothing shows
+   * it.
+   */
+  static #rebuildDeadListItems(): void {
+    if (LynxElement.#deadListItems.size === 0) return;
+    const elements = [...LynxElement.#deadListItems];
+    LynxElement.#deadListItems.clear();
+    for (const el of elements) {
+      // Put somewhere else since (and rebuilt there), or out of the list.
+      if (!el._virtualParent || !el.#paintingDead) continue;
+      if (LynxElement.#registered(__GetElementUniqueID(el.element)) !== el) {
+        continue;
+      }
+      el.#leaveJsParent();
+      el.#recreateIfDead();
+      // Native may have been told about the old native element already (an
+      // insert alone, in an earlier cycle): the list tells it about the new
+      // one with this cycle's flush.
+      (el._virtualParent as { listItemChanged?(): void }).listItemChanged?.();
+    }
+  }
+
+  /**
    * Recursively flags this element and every cached descendant painting-dead,
    * mirroring the native painting-node cascade when a subtree is removed. The
    * caches themselves are kept intact — they are exactly what #recreateSubtree
    * replays onto fresh refs.
    */
   #markPaintingDead(): void {
+    if (this._virtualParent) {
+      // In a list now, and native has put it there (componentAtIndex): it
+      // left the removed subtree natively, and lives on in the list.
+      if (this._virtualParent.holdsInNativeList(this)) return;
+      // Its native element went with a removal from where it was (see
+      // #rebuildDeadListItems).
+      LynxElement.#deadListItems.add(this);
+    }
     this.#paintingDead = true;
     for (const child of this.#children ?? NO_CHILDREN) {
       child.#markPaintingDead();
@@ -4527,11 +4642,20 @@ export class LynxElement implements BaseLynxElement {
         });
       }
     }
+    // On Lynx for Web, the pointer listeners on the old DOM element.
+    if (__WEB__ && this.#webPointerListeners) {
+      this.#recordWebPointer();
+      for (const { name, cb } of this.#webPointerListeners) {
+        (fresh as unknown as EventTarget).addEventListener(name, cb);
+      }
+    }
     // A <q>'s quotation marks went with its old element, and come back
     // around its children (see markQuote).
     const marks = this.#quoteMarks;
     if (marks) __AppendElement(fresh, marks[0].#renewQuoteMark());
     for (const child of this.#children ?? NO_CHILDREN) {
+      // A list took it (see #rebuildDeadListItems): it's rebuilt for the list.
+      if (child._virtualParent) continue;
       child.#recreateSubtree();
       __AppendElement(fresh, child.element);
     }
@@ -4785,7 +4909,7 @@ export class LynxElement implements BaseLynxElement {
   removeEventListener(name: string, cb: (event: any) => any): void {
     if (POINTER_EVENT_NAMES.has(name)) {
       if (__WEB__) {
-        (this.element as unknown as EventTarget).removeEventListener(name, cb);
+        this.#removeWebPointerListener(name, cb);
       } else {
         this.#pointerEvents?.remove(name, cb);
       }
@@ -4809,18 +4933,22 @@ export class LynxElement implements BaseLynxElement {
    */
   #addPointerListener(name: string, cb: (event: any) => any): () => void {
     if (__WEB__) {
-      const target = this.element as unknown as EventTarget;
-      if (!this.#webPointer) {
+      if (!this.#webPointerListeners) {
+        this.#webPointerListeners = [];
         this.#webPointer = { offsetX: 0, offsetY: 0 };
-        const record = (event: Event) => {
-          const { offsetX, offsetY } = event as PointerEvent;
-          this.#webPointer = { offsetX, offsetY };
-        };
-        target.addEventListener('pointerdown', record);
-        target.addEventListener('pointerup', record);
+        this.#recordWebPointer();
       }
-      target.addEventListener(name, cb);
-      return () => target.removeEventListener(name, cb);
+      // The DOM adds a listener once however often it's added, and removes
+      // it with one call, so the cache keeps one entry for it too.
+      if (
+        !this.#webPointerListeners.some(
+          (entry) => entry.name === name && entry.cb === cb,
+        )
+      ) {
+        this.#webPointerListeners.push({ name, cb });
+      }
+      (this.element as unknown as EventTarget).addEventListener(name, cb);
+      return () => this.#removeWebPointerListener(name, cb);
     }
     this.#pointerEvents ??= new PointerEventSource({
       uid: __GetElementUniqueID(this.element),
@@ -4831,6 +4959,34 @@ export class LynxElement implements BaseLynxElement {
     // Offsets for touches on a child come from the element's layout.
     this.#layoutTracker().start();
     return this.#pointerEvents.add(name, cb);
+  }
+
+  /**
+   * On Lynx for Web: keeps where the pointer went down and lifted on this
+   * element's DOM element, for clicks (see #webPointer).
+   */
+  #recordWebPointer(): void {
+    const target = this.element as unknown as EventTarget;
+    const record = (event: Event) => {
+      const { offsetX, offsetY } = event as PointerEvent;
+      this.#webPointer = { offsetX, offsetY };
+    };
+    target.addEventListener('pointerdown', record);
+    target.addEventListener('pointerup', record);
+  }
+
+  /**
+   * On Lynx for Web: takes a pointer listener off the DOM element this
+   * element has now, which a rebuild may have changed (see
+   * #webPointerListeners).
+   */
+  #removeWebPointerListener(name: string, cb: (event: any) => any): void {
+    const listeners = this.#webPointerListeners;
+    const i =
+      listeners?.findIndex((entry) => entry.name === name && entry.cb === cb) ??
+      -1;
+    if (i >= 0) listeners!.splice(i, 1);
+    (this.element as unknown as EventTarget).removeEventListener(name, cb);
   }
 
   /**

@@ -49,6 +49,13 @@ class NfcModule(context: Context, param: Any?) : LynxModule(context, param) {
     // Guarded by `this`: Lynx calls the methods on a thread of its own, and
     // reader mode hands over tags on a binder thread.
     private var open = false
+    /**
+     * Counts the sessions, so a tag read during one that has since ended,
+     * and another started, isn't taken for the new one's.
+     */
+    private var session = 0
+    /** Whether a read or write (not a scan) has taken its one tag. */
+    private var claimed = false
     private var multiple = false
     private var message: NdefMessage? = null
     private var waiting: Callback? = null
@@ -83,6 +90,8 @@ class NfcModule(context: Context, param: Any?) : LynxModule(context, param) {
         synchronized(this) {
             if (open) return callback.invoke(error("busy", "Another NFC read or write is still open."))
             open = true
+            session++
+            claimed = false
             multiple = options.hasKey("multiple") && options.getType("multiple") == ReadableType.Boolean &&
                 options.getBoolean("multiple")
             message = records
@@ -129,7 +138,15 @@ class NfcModule(context: Context, param: Any?) : LynxModule(context, param) {
 
     /** Reader mode's callback, on a binder thread, for each tag it finds. */
     private fun onTag(tag: Tag) {
-        val write = synchronized(this) { if (open) message else return }
+        // Reader mode keeps handing over tags until `stop`, so a read or a
+        // write claims the first before touching it: a second tag that comes
+        // near before the runtime stops the session is neither read nor
+        // written to.
+        val (write, token) = synchronized(this) {
+            if (!open || (!multiple && claimed)) return
+            if (!multiple) claimed = true
+            message to session
+        }
         val answer = try {
             JavaOnlyMap().apply { putMap("tag", if (write != null) write(write, tag) else read(tag)) }
         } catch (exception: TagError) {
@@ -142,7 +159,7 @@ class NfcModule(context: Context, param: Any?) : LynxModule(context, param) {
         val waiter = synchronized(this) {
             // A scan skips a tag it couldn't read; there's no sheet to say so,
             // and the next tap tries again.
-            if (!open || (multiple && answer.hasKey("error"))) return
+            if (!open || token != session || (multiple && answer.hasKey("error"))) return
             val waiter = waiting
             waiting = null
             if (waiter == null) answers.addLast(answer)

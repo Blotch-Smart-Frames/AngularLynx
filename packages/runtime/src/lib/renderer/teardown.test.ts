@@ -2181,6 +2181,25 @@ describe('renderer teardown', () => {
       expect(made).toBe(2);
     });
 
+    it('holds weakly an item moved from a list in the page to one out of it', () => {
+      const document = doc();
+      const page = document.createRootElement();
+      const shown = document.createElement('list');
+      const elsewhere = document.createElement('list');
+      const item = document.createElement('list-item');
+      shown.appendChild(item);
+      page.appendChild(shown);
+      processPendingRemovals();
+
+      // Straight into the other list, with no removal from the first.
+      const made = weakRefsMadeBy(() => {
+        elsewhere.appendChild(item);
+        processPendingRemovals();
+      });
+
+      expect(made).toBe(1);
+    });
+
     it("lets go of the old page's elements when a new app takes the page", async () => {
       const refs = ((): WeakRef<LynxElement>[] => {
         const old = new LynxDocument();

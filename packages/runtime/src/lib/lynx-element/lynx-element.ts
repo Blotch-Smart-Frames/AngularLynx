@@ -1543,6 +1543,7 @@ export class LynxElement implements BaseLynxElement {
     return existing ?? new LynxElement(ref);
   }
 
+
   /**
    * @internal The canonical wrapper of the element with this unique id, if
    * it has one: the target of a touch the document heard (see
@@ -3839,6 +3840,9 @@ export class LynxElement implements BaseLynxElement {
     // `*lynxListFor` item's run builds and rebinds its own (see
     // attachItemSource). One still waiting for its removal from another
     // parent keeps it: see #rebuildDeadListItems.
+    // From another list, maybe out of the page, with no removal that would
+    // say so: settled again (see #settleRegistry).
+    LynxElement.#unsettled.push(child);
     if (!child._ownedByListSource) {
       child.#keepIfDestroyed();
       child.#recreateIfDead();

@@ -43,8 +43,8 @@ class BarcodeScannerModule(context: Context, param: Any?) : LynxModule(context, 
 
     /**
      * Opens the scanner and calls back once with `{ format, value }`, or
-     * `{ error, message }`, where `error` is `canceled`, `unavailable` or
-     * `failed`, as the iOS module does.
+     * `{ error, message }`, where `error` is `canceled`, `unavailable`,
+     * `denied` or `failed`, as the iOS module does.
      */
     @LynxMethod
     fun scan(request: ReadableMap, callback: Callback) {
@@ -100,6 +100,11 @@ class BarcodeScannerModule(context: Context, param: Any?) : LynxModule(context, 
                     when (code) {
                         MlKitException.CODE_SCANNER_CANCELLED ->
                             error("canceled", "The scan was canceled.")
+                        // Play services shows the camera, so it's Play
+                        // services, not the app, that the person refused it
+                        // to.
+                        MlKitException.CODE_SCANNER_CAMERA_PERMISSION_NOT_GRANTED ->
+                            error("denied", "Google Play services isn't allowed to use the camera.")
                         MlKitException.UNAVAILABLE, MlKitException.CODE_SCANNER_UNAVAILABLE ->
                             error(
                                 "unavailable",

@@ -61,6 +61,26 @@ describe('LynxTextEncoder', () => {
       expect(ours).toEqual(theirs);
     }
   });
+
+  it('encodes the start of a long string into a small buffer, as the platform encoder does', () => {
+    const encoder = new LynxTextEncoder();
+    const platform = new TextEncoder();
+    for (const text of [
+      'a'.repeat(1000),
+      '漢'.repeat(1000),
+      `abc${'🙂'.repeat(1000)}`,
+      `ab${'é'.repeat(1000)}`,
+    ]) {
+      for (let size = 0; size <= 9; size++) {
+        const ours = new Uint8Array(size);
+        const theirs = new Uint8Array(size);
+        expect(encoder.encodeInto(text, ours)).toEqual(
+          platform.encodeInto(text, theirs),
+        );
+        expect(ours).toEqual(theirs);
+      }
+    }
+  });
 });
 
 describe('LynxTextDecoder', () => {

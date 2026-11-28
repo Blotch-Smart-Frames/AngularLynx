@@ -160,7 +160,18 @@ export class LynxTextEncoder {
     source: string,
     destination: Uint8Array,
   ): { read: number; written: number } {
-    return encodeUtf8Into(String(source), destination);
+    // Each UTF-16 code unit takes at least a byte, so no more of the source
+    // than the buffer's length can fit. Cutting it there keeps the searches
+    // in encodeUtf8Into() to the buffer's size, not the source's, for a
+    // caller that encodes a long string into a small buffer a piece at a
+    // time. One unit more keeps a surrogate pair at the edge whole.
+    const text = String(source);
+    return encodeUtf8Into(
+      text.length > destination.length + 1
+        ? text.slice(0, destination.length + 1)
+        : text,
+      destination,
+    );
   }
 }
 

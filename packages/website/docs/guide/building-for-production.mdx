@@ -98,7 +98,7 @@ The `eagerImports` build option compiles your `import()`s on the main thread as 
 }
 ```
 
-In a benchmark app with five lazy screens, the main thread's script went from 635 kB to 612 kB (−3.7%). The engine reads the whole script as it loads, so a smaller one should take less memory too, though that saving hasn't been measured on a phone.
+In a benchmark app with five lazy screens, the main thread's script went from 625 kB to 601 kB (−3.8%). The engine reads the whole script as it loads, so a smaller one should take less memory too, though that saving hasn't been measured on a phone.
 
 It's off by default because it changes when your code runs:
 

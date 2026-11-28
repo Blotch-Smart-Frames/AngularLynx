@@ -100,7 +100,7 @@ const IGNORED = /\bwebpackIgnore\s*:\s*true\b/;
  * it can't be concatenated into either: Angular's packages, rxjs, the
  * runtime and the app's shared files each stay a module of their own,
  * joined by export getters and `require` calls (issue #944). In the
- * benchmark app that's 24 kB of its 635 kB main-thread script, which PrimJS
+ * benchmark app that's 24 kB of its 625 kB main-thread script, which PrimJS
  * reads whole as it loads (#707). Static imports let rspack concatenate
  * nearly all of it.
  *

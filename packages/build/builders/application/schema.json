@@ -67,7 +67,7 @@
     "eagerImports": {
       "type": "boolean",
       "default": false,
-      "description": "Whether the main thread's script compiles the app's import()s, such as a lazy route's loadComponent: () => import('./x'), as static imports. The script is then smaller, because rspack can concatenate the modules a lazy route shares with the rest of the app (24 kB of the benchmark app's 635 kB). But each module an import() loads then runs when the app starts, as a static import does: its top-level code runs at launch even when the route is never shown, and an import cycle through the routes file, which the import() broke, can make a top-level read of an export a used-before-defined error. @defer blocks' imports stay lazy. Has no effect with experimental_isLazyBundle."
+      "description": "Whether the main thread's script compiles the app's import()s, such as a lazy route's loadComponent: () => import('./x'), as static imports. The script is then smaller, because rspack can concatenate the modules a lazy route shares with the rest of the app (24 kB of the benchmark app's 625 kB). But each module an import() loads then runs when the app starts, as a static import does: its top-level code runs at launch even when the route is never shown, and an import cycle through the routes file, which the import() broke, can make a top-level read of an export a used-before-defined error. @defer blocks' imports stay lazy. Has no effect with experimental_isLazyBundle."
     },
     "browser": {
       "type": "string",

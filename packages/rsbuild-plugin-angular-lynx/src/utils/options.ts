@@ -31,7 +31,7 @@ export type PluginAngularLynxOptions = {
    * route's `loadComponent: () => import('./x')`, as static imports, so
    * rspack can concatenate the modules they share with the rest of the app
    * and the main-thread script is smaller (24 kB of the benchmark app's
-   * 635 kB). Off by default, because each module they load then runs when
+   * 625 kB). Off by default, because each module they load then runs when
    * the app starts, as a static import does: its top-level code runs at
    * launch, and an import cycle through the routes file that an `import()`
    * broke can make a top-level read a used-before-defined error. `@defer`

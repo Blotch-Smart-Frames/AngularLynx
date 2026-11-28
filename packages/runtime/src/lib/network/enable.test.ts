@@ -1,3 +1,4 @@
+import '@angular/compiler';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LynxBlob } from './blob';
 import {
@@ -10,12 +11,17 @@ import {
 } from './enable';
 import { relayFetch } from './fetch';
 import { LynxHeaders } from './headers';
+import { relayHttpRequest } from './http-relay';
+import { setHttpRelay } from './http-relay-hook';
 import { LynxReadableStream } from './readable-stream';
 import { LynxTextDecoder, LynxTextEncoder } from './text-codec';
 import { LynxXMLHttpRequest } from './xhr';
 
+vi.mock('./http-relay-hook', () => ({ setHttpRelay: vi.fn() }));
+
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.mocked(setHttpRelay).mockClear();
 });
 
 const BODY_APIS = ['TextEncoder', 'TextDecoder', 'ReadableStream', 'Blob'];
@@ -46,6 +52,8 @@ describe('ɵenableFetch', () => {
     expect(globalThis.TextDecoder).toBe(LynxTextDecoder);
     expect(globalThis.ReadableStream).toBe(LynxReadableStream);
     expect(globalThis.Blob).toBe(LynxBlob);
+    // And HttpClient's relay, which skips them (http-relay.ts).
+    expect(setHttpRelay).toHaveBeenCalledWith(relayHttpRequest);
   });
 
   it('leaves the background thread and the web preview their own', () => {
@@ -57,6 +65,7 @@ describe('ɵenableFetch', () => {
     vi.stubGlobal('__WEB__', true);
     ɵenableFetch();
     expect(globalThis.fetch).toBeUndefined();
+    expect(setHttpRelay).not.toHaveBeenCalled();
   });
 });
 

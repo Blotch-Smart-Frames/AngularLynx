@@ -2,7 +2,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { callOnBackground } from '../background-call';
 import { bytesToBase64 } from './base64';
 import { relayFetch } from './fetch';
-import { isRelative, nextRelayId, relayBytes } from './relay';
+import {
+  isRelative,
+  isSerializedHttpUrl,
+  nextRelayId,
+  relayBytes,
+} from './relay';
+import { LynxURL } from '../url/url';
 import { toWords } from './words';
 
 vi.mock('../background-call', () => ({ callOnBackground: vi.fn() }));
@@ -96,5 +102,67 @@ describe('isRelative', () => {
     expect(isRelative('a.png')).toBe(true);
     expect(isRelative('https://example.com/a.png')).toBe(false);
     expect(isRelative('blob:x')).toBe(false);
+  });
+});
+
+describe('isSerializedHttpUrl', () => {
+  // Each is checked against Node's URL and the runtime's: a URL it takes must
+  // be one the parser writes as it is.
+  const serialized = [
+    'https://api.example.com/',
+    'http://192.168.1.20:8787/pokemon/25',
+    'https://example.com/a/b.json?page=2&q=a+b%20c',
+    "https://example.com/it's/(1),*;=:@!$&~_-.",
+    'https://a-b.example/x%2Fy?x=/?:@',
+    'http://localhost:3000/',
+    'http://255.255.255.255/',
+    'http://0.0.0.0/',
+    'https://example.com:8443/a',
+    'http://example.com:443/',
+    'https://example.com:80/',
+    'https://example.com/a..b/.well-known/x.',
+    'http://1a.example/',
+  ];
+  const others = [
+    // Not http(s), relative, or not absolute.
+    'ftp://example.com/',
+    '/data',
+    'https:/example.com/',
+    'HTTPS://example.com/',
+    // What the parser changes.
+    'https://Example.com/',
+    'https://example.com',
+    'https://example.com/a b',
+    'https://example.com/é',
+    "https://example.com/?q='",
+    'https://example.com/#top',
+    'https://user@example.com/',
+    'https://example.com:443/',
+    'http://example.com:80/',
+    'http://example.com:0080/',
+    'http://example.com:99999/',
+    'https://example.com/a/./b',
+    'https://example.com/a/../b',
+    'https://example.com/a/%2e%2E/b',
+    'https://example.com/a/..',
+    'https://example.com/a\\b',
+    'http://127.1/',
+    'http://1.2.3.04/',
+    'http://0x7f.0.0.1/',
+    'http://256.0.0.1/',
+    'http://example.123/',
+    'http://xn--nxasmq6b.example/',
+    'http://a..b/',
+    'http://example.com./',
+  ];
+
+  it.each(serialized)('takes %s', (url) => {
+    expect(isSerializedHttpUrl(url)).toBe(true);
+    expect(new URL(url).href).toBe(url);
+    expect(new LynxURL(url).href).toBe(url);
+  });
+
+  it.each(others)('turns down %s', (url) => {
+    expect(isSerializedHttpUrl(url)).toBe(false);
   });
 });

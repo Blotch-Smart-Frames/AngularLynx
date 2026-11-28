@@ -1,5 +1,6 @@
 import '@angular/compiler';
 import { APP_BASE_HREF, IMAGE_CONFIG } from '@angular/common';
+import { ɵHTTP_ROOT_INTERCEPTOR_FNS } from '@angular/common/http';
 import {
   DOCUMENT,
   ErrorHandler,
@@ -12,6 +13,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LynxErrorHandler } from '../error-handler/lynx-error-handler';
 import { globalEvents } from '../global-events';
 import { LynxDocument } from '../lynx-document';
+import { httpRelayInterceptor } from '../network/http-relay-hook';
 import { ɵDomRendererFactory2 } from '@angular/platform-browser';
 import { LynxRendererFactory2 } from './lynx-renderer-factory2';
 import { provideRenderer } from './providers';
@@ -23,6 +25,12 @@ const createInjector = () =>
 describe('provideRenderer', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("gives HttpClient the relay's interceptor (network/http-relay.ts)", () => {
+    expect(createInjector().get(ɵHTTP_ROOT_INTERCEPTOR_FNS)).toEqual([
+      httpRelayInterceptor,
+    ]);
   });
 
   describe('LYNX_DOCUMENT', () => {

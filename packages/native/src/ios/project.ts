@@ -36,8 +36,8 @@ const ORIENTATIONS: Record<Orientation, readonly string[]> = {
  * (IOS_ENTITLEMENTS) become Config/App.entitlements, and the icon and the splash go in the asset
  * catalog. The barcode scanner's module stays only in an app with the
  * `camera` permission, the store review module only in an app with
- * `storeReview`, and the Sign in with Apple module only in an app with
- * `signInWithApple`.
+ * `storeReview`, the calendar module only in one with `calendar`, and the
+ * Sign in with Apple module only in one with `signInWithApple`.
  */
 /** LynxBarcodeScanner's module, which needs the `camera` permission. */
 export const IOS_BARCODE_SCANNER_SOURCE = 'App/BarcodeScannerModule.swift';
@@ -119,6 +119,11 @@ export const iosGenerator: PlatformGenerator = {
     if (!app.storeReview) {
       removeTemplateFiles(dir, [IOS_STORE_REVIEW_SOURCE]);
     }
+    // Nor does an app that doesn't add events to the calendar (`calendar`)
+    // ship EventKit code it never calls.
+    if (!app.calendar) {
+      removeTemplateFiles(dir, [IOS_CALENDAR_SOURCE]);
+    }
     // Sign in with Apple's sheet goes with its entitlement (see
     // IOS_ENTITLEMENTS): an app that doesn't offer it has neither, and
     // LynxViewController registers the module by name.
@@ -153,6 +158,9 @@ export const iosGenerator: PlatformGenerator = {
 
 /** The module behind `LynxStoreReview`, which only `storeReview` keeps. */
 export const IOS_STORE_REVIEW_SOURCE = 'App/StoreReviewModule.swift';
+
+/** The module behind `LynxCalendar`, which only `calendar` keeps. */
+export const IOS_CALENDAR_SOURCE = 'App/CalendarModule.swift';
 
 /** The module behind `LynxAppleSignIn`, which only `signInWithApple` keeps. */
 export const IOS_APPLE_SIGN_IN_SOURCE = 'App/AppleSignInModule.swift';

@@ -63,6 +63,14 @@ export type NativeAppOptions = {
    */
   readonly storeReview?: boolean;
   /**
+   * Whether the app adds events to the person's calendar with the runtime's
+   * `LynxCalendar`, through the system's own event editor: EventKitUI's on
+   * iOS 17 and later, and the calendar app's on Android. Neither needs a
+   * calendar permission. Off by default, which leaves the native module out
+   * of both apps.
+   */
+  readonly calendar?: boolean;
+  /**
    * Whether the app offers Sign in with Apple's native sheet with the
    * runtime's `LynxAppleSignIn` (`ASAuthorizationAppleIDProvider`). iOS only:
    * Android has no native sheet, and signs in with Apple's web flow through
@@ -332,6 +340,7 @@ export type ResolvedApp = {
   readonly filePicker: boolean;
   readonly fileSharing: boolean;
   readonly storeReview: boolean;
+  readonly calendar: boolean;
   readonly signInWithApple: boolean;
   readonly deepLinkSchemes: readonly string[];
   /** {@link NativeAppOptions.appLinkDomains} in lowercase, each once. */
@@ -508,6 +517,13 @@ export const resolveAppOptions = (
     );
   }
 
+  // Checked for the same reason as filePicker.
+  const calendar = resolveSwitch(
+    'calendar',
+    options.calendar,
+    'to add events to the calendar with LynxCalendar',
+  );
+
   // An entitlement too, so a string such as "false" would also make a
   // Personal Team's signing fail.
   const signInWithApple = resolveSwitch(
@@ -620,6 +636,7 @@ export const resolveAppOptions = (
     filePicker,
     fileSharing,
     storeReview,
+    calendar,
     signInWithApple,
     deepLinkSchemes,
     appLinkDomains,

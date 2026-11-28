@@ -99,6 +99,12 @@ final class LynxViewController: UIViewController, LynxViewLifecycle {
     if let storeReview = NSClassFromString("AngularLynxStoreReviewModule") as? LynxModule.Type {
       config.register(storeReview)
     }
+    // The event editor behind LynxCalendar (CalendarModule), by name too:
+    // the generator leaves its source out of an app whose angular.json
+    // doesn't set calendar.
+    if let calendar = NSClassFromString("AngularLynxCalendarModule") as? LynxModule.Type {
+      config.register(calendar)
+    }
     // Sign in with Apple's sheet behind LynxAppleSignIn (AppleSignInModule),
     // by name too: the generator leaves its source out of an app whose
     // angular.json doesn't set signInWithApple, with the entitlement it needs.

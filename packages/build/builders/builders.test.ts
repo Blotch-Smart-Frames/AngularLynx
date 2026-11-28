@@ -1359,6 +1359,7 @@ describe('unit-test builder', () => {
       'filePicker',
       'fileSharing',
       'storeReview',
+      'calendar',
       'signInWithApple',
       'deepLinkSchemes',
       'appLinkDomains',

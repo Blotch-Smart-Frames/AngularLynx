@@ -116,6 +116,18 @@ describe('renderEjectedProject', () => {
     }
   });
 
+  it('has the calendar module only when the app sets calendar', () => {
+    for (const [platform, module] of [
+      ['ios', 'App/CalendarModule.swift'],
+      ['android', `${ANDROID_SHELL_SOURCES}/CalendarModule.kt`],
+    ] as const) {
+      expect(render(platform).has(module)).toBe(false);
+      expect(render(platform, undefined, { calendar: true }).has(module)).toBe(
+        true,
+      );
+    }
+  });
+
   // Sign in with Apple is iOS's alone: the Android shell has no module.
   it('has the Sign in with Apple module and its entitlement only when the app sets signInWithApple', () => {
     const ejected = render('ios');

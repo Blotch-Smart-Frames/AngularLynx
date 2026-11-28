@@ -35,6 +35,16 @@ export type { OpenedURL } from './linking.js';
 export { runShortcut } from './shortcuts.js';
 export { reviewRequests } from './store-review.js';
 export {
+  answerCalendarSheet,
+  calendarEvents,
+  failCalendarSheet,
+} from './calendar.js';
+export type {
+  CalendarSheetAnswer,
+  CalendarSheetEvent,
+  CalendarSheetFailure,
+} from './calendar.js';
+export {
   appleSignInRequests,
   setAppleCredentialState,
   setAppleSignInAvailable,

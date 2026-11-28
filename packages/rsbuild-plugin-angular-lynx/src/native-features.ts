@@ -156,8 +156,9 @@ const parse = (code: string, filename: string): ts.SourceFile =>
  * Whether a main-thread module can draw on a canvas: it names one of
  * CANVAS_NAMES as an identifier or a string, one of CANVAS_STRINGS as a
  * string, or `webgl2` anywhere, as the runtime's WebGL2 context comes where
- * it does (on-demand.ts), or it makes an image with `createElement('img')`,
- * which the shells' module decodes, as on-demand.ts reads it. AngularLynx's
+ * it does (on-demand.ts), or it makes an image or a canvas with
+ * `createElement()`, in any case (`'img'`, which the shells' module decodes,
+ * or `'CANVAS'`), as on-demand.ts reads it. AngularLynx's
  * own packages name them all, and would bring the native code into every
  * app, so they don't count.
  *
@@ -180,9 +181,15 @@ export const canvasNamed = (code: string, filename: string): boolean => {
   ) {
     return false;
   }
+  if (namesAny(parse(code, filename), CANVAS_NAMES, CANVAS_STRINGS)) {
+    return true;
+  }
+  // A tag in any case, as createElement() takes it: CANVAS_STRINGS's
+  // `'canvas'` is the lower-case string alone, and `'CANVAS'` makes one too.
+  const named = namedGlobals(code, filename);
   return (
-    namesAny(parse(code, filename), CANVAS_NAMES, CANVAS_STRINGS) ||
-    namedGlobals(code, filename).has(createElementName('img'))
+    named.has(createElementName('img')) ||
+    named.has(createElementName('canvas'))
   );
 };
 

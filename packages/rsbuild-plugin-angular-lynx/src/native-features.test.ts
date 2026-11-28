@@ -44,6 +44,10 @@ describe('canvasNamed', () => {
     ['a check against an image', `x instanceof HTMLImageElement;`],
     ['an image made in code', `document.createElement('IMG');`],
     [
+      'a canvas made with its tag in capitals',
+      `document.createElement('CANVAS');`,
+    ],
+    [
       'an image made as three.js’s ImageLoader does',
       `document.createElementNS('http://www.w3.org/1999/xhtml', 'img');`,
     ],

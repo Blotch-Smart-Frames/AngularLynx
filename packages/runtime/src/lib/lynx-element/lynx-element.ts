@@ -387,6 +387,46 @@ const withStyleKeys = (
 const NO_CHILDREN: readonly LynxElement[] = Object.freeze([]);
 
 /**
+ * The scope-class lists elements hold (see LynxElement's #scopeClasses), each
+ * one made once and shared: what a list becomes with a name added, by list
+ * (NO_SCOPE_CLASSES for none). Every element of a component with styles has
+ * the same one, `[_ngcontent-…]`, and an array of its own was an object of
+ * PrimJS's heap for each of them. Weak, so a list nothing holds any more goes
+ * with what it led to; the lists there can be are few, as their names are
+ * the scopes and the runtime's own classes.
+ */
+const scopeListsAfter = new WeakMap<
+  readonly string[],
+  Map<string, readonly string[]>
+>();
+const NO_SCOPE_CLASSES: readonly string[] = Object.freeze([]);
+
+/**
+ * The shared list `list` becomes with `name` after its names.
+ */
+const withScopeClass = (
+  list: readonly string[] | null,
+  name: string,
+): readonly string[] => {
+  const from = list ?? NO_SCOPE_CLASSES;
+  let after = scopeListsAfter.get(from);
+  if (!after) scopeListsAfter.set(from, (after = new Map()));
+  let next = after.get(name);
+  if (!next) after.set(name, (next = Object.freeze([...from, name])));
+  return next;
+};
+
+/**
+ * The list `list` becomes without the name at `index`, which is there. A
+ * removal is rare (a runtime class turned off), so the list it makes isn't
+ * shared, but what it becomes with a name added again is.
+ */
+const withoutScopeClass = (
+  list: readonly string[],
+  index: number,
+): readonly string[] => Object.freeze(list.filter((_, i) => i !== index));
+
+/**
  * Starts the public fields LynxElement declares with a constant on its
  * prototype (see LynxElement's tagName). Run by the first element's
  * constructor, as the hooks are, rather than in a static block, which would
@@ -845,8 +885,17 @@ const isTextish = (el: LynxElement): boolean =>
  * leading and trailing space go, as #normalizeTextRoot trims a context's
  * edges (collapseWhitespace left at most one at each).
  */
-const trimTextEdges = (text: string): string =>
-  text.replace(/^ /, '').replace(/ $/, '');
+const trimTextEdges = (text: string): string => {
+  // Sliced by hand rather than with two replace()s: each replace() with a
+  // regular expression makes arrays in PrimJS whether or not it matches, and
+  // every `<text>{{ value }}</text>` is trimmed here.
+  const start = text.charCodeAt(0) === SPACE ? 1 : 0;
+  const end =
+    text.length > start && text.charCodeAt(text.length - 1) === SPACE
+      ? text.length - 1
+      : text.length;
+  return start === 0 && end === text.length ? text : text.slice(start, end);
+};
 
 /**
  * Whether the first LynxElement has made layout reads ask for a flush, and
@@ -1020,9 +1069,11 @@ export class LynxElement implements BaseLynxElement {
    * ViewEncapsulation.Emulated's scope classes (see EmulatedLynxRenderer).
    * Angular writes static and bound classes as one whole class string through
    * setAttribute('class'), which would drop them, so they're added back each
-   * time.
+   * time. With the runtime's own classes that go with them (setRuntimeClass,
+   * the text inheritance classes). Shared between elements, so never changed
+   * in place: withScopeClass and withoutScopeClass give the next list.
    */
-  #scopeClasses: string[] | null = null;
+  #scopeClasses: readonly string[] | null = null;
   /** Whole-string inline style set via setInlineStyles (style="..."). */
   #inlineStyleWhole: string | null = null;
   /** Per-key inline styles set via setStyle ([style.x] bindings). */
@@ -1592,12 +1643,18 @@ export class LynxElement implements BaseLynxElement {
    */
   static #sweepCollected(): void {
     const registry = LynxElement.#byNativeId;
-    for (const [id, entry] of registry) {
+    // forEach rather than `for (const [id, entry] of registry)`: that makes
+    // an [id, entry] array for each entry, and an iterator to take it apart,
+    // two objects for every element on the screen each time the registry
+    // doubles, which a mount leaves in PrimJS's heap (see "A mount's garbage
+    // stays in PrimJS's heap" in investigations/lynx-vs-web-differences.md).
+    // Deleting the entry forEach is at is allowed, as in a `for…of`.
+    registry.forEach((entry, id) => {
       // An element held as it is is in the page (see #byNativeId).
       if (!(entry instanceof LynxElement) && !entry.deref()) {
         registry.delete(id);
       }
-    }
+    });
     LynxElement.#sweepAt = Math.max(MIN_SWEEP_AT, registry.size * 2);
   }
 
@@ -1964,7 +2021,10 @@ export class LynxElement implements BaseLynxElement {
         // benchmarks/harness/node-mount.mjs).
         classes = written;
         if (scopes) {
-          for (const scope of scopes) {
+          // Indexed: a `for…of` makes an iterator for each call, an object
+          // of PrimJS's heap for every element Angular gives a class.
+          for (let i = 0; i < scopes.length; i++) {
+            const scope = scopes[i];
             if (scope === written) continue;
             classes += ` ${scope}`;
             if (!isPlainClassName(scope)) plain = false;
@@ -1973,7 +2033,8 @@ export class LynxElement implements BaseLynxElement {
       } else {
         names = new Set(splitClasses(written));
         if (scopes) {
-          for (const scope of scopes) {
+          for (let i = 0; i < scopes.length; i++) {
+            const scope = scopes[i];
             names.add(scope);
             if (!isPlainClassName(scope)) plain = false;
           }
@@ -2784,11 +2845,11 @@ export class LynxElement implements BaseLynxElement {
     this.#smallerClass = name;
     if (current) {
       const index = this.#scopeClasses!.indexOf(current);
-      this.#scopeClasses!.splice(index, 1);
+      this.#scopeClasses = withoutScopeClass(this.#scopeClasses!, index);
       this.#removeClassName(current);
     }
     if (name) {
-      (this.#scopeClasses ??= []).push(name);
+      this.#scopeClasses = withScopeClass(this.#scopeClasses, name);
       this.#addClassName(name);
     }
   }
@@ -3981,12 +4042,18 @@ export class LynxElement implements BaseLynxElement {
       // setRuntimeClass does. Unlike there, its rules change nothing the
       // runtime reads, so there's nothing to regroup or inherit again, and
       // it goes with the insert's own flush.
-      (this.#scopeClasses ??= []).push(INHERITANCE_CLASS);
+      this.#scopeClasses = withScopeClass(
+        this.#scopeClasses,
+        INHERITANCE_CLASS,
+      );
       this.#addClassName(INHERITANCE_CLASS);
       // A Lynx <text> takes the copies of the rules naming `text` too, which
       // an HTML text tag mustn't (see LYNX_TEXT_INHERITANCE_CLASS).
       if (this.tagName === 'text' && !this.#webText) {
-        this.#scopeClasses.push(LYNX_TEXT_INHERITANCE_CLASS);
+        this.#scopeClasses = withScopeClass(
+          this.#scopeClasses,
+          LYNX_TEXT_INHERITANCE_CLASS,
+        );
         this.#addClassName(LYNX_TEXT_INHERITANCE_CLASS);
       }
       // A write to this element, which may be an ancestor of the inserting
@@ -4349,7 +4416,7 @@ export class LynxElement implements BaseLynxElement {
 
   addScopeClass(name: string): void {
     if (this.#scopeClasses?.includes(name)) return;
-    (this.#scopeClasses ??= []).push(name);
+    this.#scopeClasses = withScopeClass(this.#scopeClasses, name);
     this.addClass(name);
   }
 
@@ -4365,11 +4432,11 @@ export class LynxElement implements BaseLynxElement {
     const index = this.#scopeClasses?.indexOf(name) ?? -1;
     if (on === (index !== -1)) return false;
     if (on) {
-      (this.#scopeClasses ??= []).push(name);
+      this.#scopeClasses = withScopeClass(this.#scopeClasses, name);
       this.addClass(name);
     } else {
       // Found above, so there are scope classes.
-      this.#scopeClasses!.splice(index, 1);
+      this.#scopeClasses = withoutScopeClass(this.#scopeClasses!, index);
       this.removeClass(name);
     }
     return true;
@@ -4558,7 +4625,10 @@ export class LynxElement implements BaseLynxElement {
     // A `<text>` row holds its raw-text: a raw-text or an anchor that nothing
     // was put in has no children, wherever its native element came from, so
     // the subtree is the child and these.
-    for (const node of children) {
+    // Indexed, as this runs for every insert: a `for…of` would make an
+    // iterator each time, an object of PrimJS's heap for each row.
+    for (let i = 0; i < children.length; i++) {
+      const node = children[i];
       const leaf = node.tagName === 'raw-text' || node.tagName === 'comment';
       if (!leaf || node.#children?.length) {
         return wouldFormCycle(this.element, child.element, true);
@@ -4852,6 +4922,22 @@ export class LynxElement implements BaseLynxElement {
    * a double space (this was a real bug: `['A ', ' ', ' B']` rendered "A  B").
    */
   static #normalizeTextRoot(root: LynxElement): void {
+    // A <text> whose one child is a raw-text, as `<text>{{ i }}</text>` is:
+    // the context is that leaf, and the pass below comes to trimTextEdges.
+    // Done without its two arrays and loops, which were objects of PrimJS's
+    // heap for every text of a list.
+    const only = root.#children?.length === 1 ? root.#children[0] : null;
+    if (
+      only &&
+      only.tagName === 'raw-text' &&
+      root.tagName === 'text' &&
+      !root.#quoteMarks
+    ) {
+      // #rawText is seeded on every raw-text, as below.
+      /* v8 ignore next */
+      only.#setDisplayedText(trimTextEdges(only.#rawText ?? ''));
+      return;
+    }
     // A raw-text is itself a leaf. Its parent is not always a <text> (a raw-text
     // painted outside a <text> is unsupported by Lynx and never renders, but
     // this keeps the pass's own contract — "a single-leaf context reduces to
@@ -4918,7 +5004,11 @@ export class LynxElement implements BaseLynxElement {
     // A <q>'s marks are text of the line, as a browser's generated content
     // is: the space after `<q>` sits after the opening mark, not at an edge.
     if (el.#quoteMarks) out.push(el.#quoteMarks[0]);
-    for (const child of el.#children ?? NO_CHILDREN) {
+    // Indexed: a `for…of` makes an iterator for each call (see
+    // #normalizeTextRoot).
+    const children = el.#children ?? NO_CHILDREN;
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i];
       if (child.tagName === 'raw-text') {
         out.push(child);
       } else if (child.tagName === 'text') {

@@ -18,6 +18,7 @@ frameworks never touch the monorepo's build.
 | `apps/angular-lynx` | The port to AngularLynx, on this repository's packages |
 | `apps/react-lynx` | The port to ReactLynx, in the same native shell as the AngularLynx app, on iOS and Android |
 | `apps/angular-native` | The port to Angular Native (Expo SDK 58) |
+| `apps/flutter` | The port to Flutter, made with `flutter create`. It draws its own Material and Cupertino widgets rather than UIKit's (its README says which) |
 | `fixtures/` | Recorded PokeAPI responses and sprites, and the server that hands them to the apps |
 | `harness/` | The scripts that launch the apps under Instruments and read the traces, the UI test that scrolls them (`ios-scroll/`), and the ones that launch them on Android with adb (`android_*`) |
 | `results/` | Every run, as CSV |
@@ -142,6 +143,11 @@ recording, from dyld's launch of the process) and the app's memory, which
 `footprint` reads from its process on the Mac 6 s into the recording
 (`--memory-after`), a few seconds after it's drawn. There's no first frame,
 peak memory, battery or charging, and the thermal state is the Mac's.
+
+Flutter builds Release for phones only, so its Simulator build is Debug (the
+Dart compiled as it runs): a Simulator run checks that the Flutter app works
+and reports its marks, but its times aren't Flutter's, and don't compare with
+the other apps' even within a session.
 
 Its numbers aren't a phone's. Every launch takes about 1.45 s longer, and
 memory doesn't rank the apps as a phone does, so they're never charted:

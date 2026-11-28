@@ -1,0 +1,10 @@
+# Flutter's recommended lints (`flutter analyze`), as `flutter create` sets up.
+include: package:flutter_lints/flutter.yaml
+
+# `dart format` reads its line length from here.
+formatter:
+  page_width: 120
+analyzer:
+  exclude:
+    - build/**
+    - ios/**

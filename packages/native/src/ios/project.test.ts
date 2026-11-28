@@ -27,6 +27,7 @@ import {
   IOS_CANVAS_SOURCES,
   IOS_STORE_REVIEW_SOURCE,
   IOS_CALENDAR_SOURCE,
+  IOS_NFC_SOURCE,
   IOS_WEBGL_SOURCES,
   iosGenerator,
   LOCAL_NETWORK_REASON,
@@ -86,6 +87,7 @@ describe('entitlements', () => {
     for (const options of [
       { appLinkDomains: ['example.com'] },
       { signInWithApple: true },
+      { permissions: { nfc: 'Reads your card' } },
     ]) {
       expect(xcconfig(app(options))).toContain(
         'CODE_SIGN_ENTITLEMENTS = Config/App.entitlements\n',
@@ -103,6 +105,20 @@ describe('entitlements', () => {
         '\t<key>com.apple.developer.applesignin</key>',
         '\t<array>',
         '\t\t<string>Default</string>',
+        '\t</array>',
+      ].join('\n'),
+    );
+  });
+
+  // TAG is the only format an app for iOS 13 and later may declare.
+  it("adds NFC Tag Reading's entitlement with permissions.nfc", () => {
+    expect(
+      entitlementsPlist(app({ permissions: { nfc: 'Reads your card' } })),
+    ).toContain(
+      [
+        '\t<key>com.apple.developer.nfc.readersession.formats</key>',
+        '\t<array>',
+        '\t\t<string>TAG</string>',
         '\t</array>',
       ].join('\n'),
     );
@@ -139,6 +155,7 @@ describe('entitlements', () => {
     ).toEqual([
       ['appLinkDomains', 'Associated Domains'],
       ['signInWithApple', 'Sign In with Apple'],
+      ['permissions.nfc', 'NFC Tag Reading'],
     ]);
   });
 
@@ -551,6 +568,40 @@ describe('iosGenerator', () => {
     expect(
       readFileSync(path.join(dir, 'App/LynxViewController.swift'), 'utf8'),
     ).toContain('NSClassFromString("AngularLynxAppleSignInModule")');
+  });
+
+  it('keeps the NFC module, its usage description and its entitlement only in an app with permissions.nfc', () => {
+    const generate = (options: object) => {
+      rmSync(dir, { recursive: true, force: true });
+      cpSync(path.join(TEMPLATES_DIR, 'ios'), dir, { recursive: true });
+      const resolved = app(options);
+      iosGenerator.configure(dir, resolved, dir);
+      iosGenerator.leaveOut(dir, { canvas: true, webgl: true }, resolved);
+      return {
+        module: existsSync(path.join(dir, IOS_NFC_SOURCE)),
+        entitlements: existsSync(path.join(dir, 'Config/App.entitlements')),
+        reason:
+          /<key>NFCReaderUsageDescription<\/key>\s*<string>Reads your card<\/string>/.test(
+            readFileSync(path.join(dir, 'App/Info.plist'), 'utf8'),
+          ),
+      };
+    };
+    expect(generate({ permissions: { nfc: 'Reads your card' } })).toEqual({
+      module: true,
+      entitlements: true,
+      reason: true,
+    });
+    expect(generate({})).toEqual({
+      module: false,
+      entitlements: false,
+      reason: false,
+    });
+    expect(
+      readFileSync(path.join(TEMPLATES_DIR, 'ios', IOS_NFC_SOURCE), 'utf8'),
+    ).toContain('@objc(AngularLynxNfcModule)');
+    expect(
+      readFileSync(path.join(dir, 'App/LynxViewController.swift'), 'utf8'),
+    ).toContain('NSClassFromString("AngularLynxNfcModule")');
   });
 
   it('writes the entitlements beside the xcconfig, only with app link domains', () => {

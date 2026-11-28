@@ -33,7 +33,9 @@ import {
  * its own build has the modules. Both are built
  * without `storeReview` and `calendar`, which the E2E app sets and most apps
  * don't (#931, #926), and without `signInWithApple`, which leaves the iOS
- * shell's Sign in with Apple module and its entitlement out (#932).
+ * shell's Sign in with Apple module and its entitlement out (#932), and
+ * without `permissions.nfc`, which leaves the NFC module, and its iOS
+ * entitlement, out (#921).
  * `no-canvas` is built without angular.json's `filePicker` too, which leaves
  * the file picker module and MainActivity's launcher for it out (#924),
  * while the E2E app sets it.
@@ -121,6 +123,15 @@ const CALENDAR_PROBES: Record<Platform, string> = {
 const APPLE_SIGN_IN_PROBE = 'App/AppleSignInModule.swift';
 
 /**
+ * The NFC module, which the variants build without, as most apps are: the
+ * E2E app sets angular.json's `permissions.nfc` (issue #921).
+ */
+const NFC_PROBES: Record<Platform, string> = {
+  ios: 'App/NfcModule.swift',
+  android: 'app/src/main/java/dev/angularlynx/shell/NfcModule.kt',
+};
+
+/**
  * Compiles the app's native project once per VARIANTS entry, without
  * running it, with the native builder in `nativeDir`.
  *
@@ -197,24 +208,21 @@ export const compileFeatureVariants = async ({
           workDir: path.join(variantDir, 'work'),
           outputDir: path.join(variantDir, 'out'),
           log,
-          // Without storeReview and calendar, which the E2E app sets and most
-          // apps don't, and the app's permissions without the ones the
+          // Without storeReview, calendar and nfc, which the E2E app sets and
+          // most apps don't, and the app's permissions without the ones the
           // variant leaves out.
           overrides: {
             storeReview: false,
             calendar: false,
             signInWithApple: false,
-            ...(biometrics && camera
-              ? {}
-              : {
-                  permissions: Object.fromEntries(
-                    Object.entries(appPermissions).filter(
-                      ([permission]) =>
-                        (biometrics || permission !== 'biometrics') &&
-                        (camera || permission !== 'camera'),
-                    ),
-                  ),
-                }),
+            permissions: Object.fromEntries(
+              Object.entries(appPermissions).filter(
+                ([permission]) =>
+                  permission !== 'nfc' &&
+                  (biometrics || permission !== 'biometrics') &&
+                  (camera || permission !== 'camera'),
+              ),
+            ),
             ...(!filePicker && { filePicker: false }),
           },
         });
@@ -242,6 +250,11 @@ export const compileFeatureVariants = async ({
         if (existsSync(path.join(projectDir, STORE_REVIEW_PROBES[platform]))) {
           failures.push(
             `${name}: the generated project still has ${STORE_REVIEW_PROBES[platform]}, though the variant builds without storeReview.`,
+          );
+        }
+        if (existsSync(path.join(projectDir, NFC_PROBES[platform]))) {
+          failures.push(
+            `${name}: the generated project still has ${NFC_PROBES[platform]}, though the variant builds without permissions.nfc.`,
           );
         }
         if (existsSync(path.join(projectDir, CALENDAR_PROBES[platform]))) {

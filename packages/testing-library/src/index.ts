@@ -45,6 +45,14 @@ export type {
   CalendarSheetFailure,
 } from './calendar.js';
 export {
+  failNfcSession,
+  nfcSession,
+  nfcWrites,
+  setNfcState,
+  tapNfcTag,
+} from './nfc.js';
+export type { FakeNfcTag, NfcSessionFailure, NfcSessionInfo } from './nfc.js';
+export {
   appleSignInRequests,
   setAppleCredentialState,
   setAppleSignInAvailable,

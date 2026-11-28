@@ -48,7 +48,8 @@ const SCREEN_ORIENTATIONS: Record<Orientation, string> = {
  * splash becomes the splash theme's color and image. The barcode scanner's
  * module and the library behind it stay only in an app with the `camera`
  * permission. The store review module stays only in an app with
- * `storeReview`, and the calendar module only in one with `calendar`.
+ * `storeReview`, the calendar module only in one with `calendar`, and the
+ * NFC module only in one with `permissions.nfc`.
  */
 export const androidGenerator: PlatformGenerator = {
   configure: (dir, app, projectRoot) => {
@@ -152,6 +153,17 @@ export const androidGenerator: PlatformGenerator = {
         'calendar',
       );
     }
+    // As on iOS, the NFC module is only for an app that says why it reads
+    // tags (`permissions.nfc`, which also declares the NFC permission): the
+    // module and MainActivity's lines that register it
+    // (`// angular-lynx:nfc`).
+    if (!app.permissions.nfc) {
+      removeTemplateFiles(dir, [ANDROID_NFC_SOURCE]);
+      removeMarkedLines(
+        path.join(dir, SHELL_SOURCES, 'MainActivity.kt'),
+        'nfc',
+      );
+    }
     leaveOutCanvas(dir, features);
   },
   bundleDir: (dir) => path.join(dir, 'app/src/main/assets'),
@@ -187,6 +199,9 @@ export const ANDROID_STORE_REVIEW_SOURCE = `${SHELL_SOURCES}/StoreReviewModule.k
 
 /** The module behind `LynxCalendar`, which only `calendar` keeps. */
 export const ANDROID_CALENDAR_SOURCE = `${SHELL_SOURCES}/CalendarModule.kt`;
+
+/** The module behind `LynxNfc`, which only `permissions.nfc` keeps. */
+export const ANDROID_NFC_SOURCE = `${SHELL_SOURCES}/NfcModule.kt`;
 
 /**
  * The files with lines for the store review module: MainActivity registers

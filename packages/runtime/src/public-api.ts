@@ -273,6 +273,22 @@ export type {
   CalendarSheetResult,
 } from './lib/calendar';
 export { AppleSignInError, LynxAppleSignIn } from './lib/apple-sign-in';
+export { LynxNfc, NfcError } from './lib/nfc';
+// The NDEF codec LynxNfc uses, for the testing library's fake NFC module,
+// which reads what the app writes and builds the tags a spec taps.
+export {
+  encodeRecord as ɵencodeNfcRecord,
+  parseRecord as ɵparseNfcRecord,
+} from './lib/nfc/ndef';
+export type {
+  NfcErrorCode,
+  NfcRecord,
+  NfcRecordInit,
+  NfcScan,
+  NfcSessionOptions,
+  NfcState,
+  NfcTag,
+} from './lib/nfc';
 export type {
   AppleCredentialState,
   AppleRealUserStatus,

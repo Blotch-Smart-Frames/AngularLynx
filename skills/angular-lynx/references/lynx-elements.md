@@ -147,7 +147,7 @@ In the apps `ng build --platform` makes, an overlay covers the whole screen, und
 
 ### The Sign in with Apple button
 
-`<apple-sign-in-button>` is the button that starts `LynxAppleSignIn.signIn()`, drawn as Apple's guidelines (and App Review) ask, so don't draw one by hand:
+`<apple-sign-in-button>` is the button that starts `LynxAppleSignIn.signIn()`, drawn as Apple's guidelines (which App Review checks) ask, so don't draw one by hand; only the drawn one's title (below) stays English:
 
 ```html
 <apple-sign-in-button
@@ -159,7 +159,7 @@ In the apps `ng build --platform` makes, an overlay covers the whole screen, und
 ```
 
 - **In the iOS app built with `"signInWithApple": true`** it's iOS's own `ASAuthorizationAppleIDButton`, whose title follows the phone's language. **Everywhere else** (Android, the web preview, Lynx Explorer, an iOS app without the option) the runtime draws the same logo, title (in English), colors and corners in a `<view>`.
-- **Give it a size:** it has none of its own (Apple asks for at least 140 × 30; 44 tall is usual). It takes no children. `corner-radius` is in points (6 by default).
+- **Give it a size with classes or an inline style:** it has none of its own (Apple asks for at least 140 × 30; 44 tall is usual), and a type selector (`apple-sign-in-button { … }`) doesn't match the drawn one, which is a `<view>`. It takes no children. `corner-radius` is in points (6 by default).
 - **Pick `button-style` for the background:** `white` or `whiteOutline` on a dark one, `black` on a light one; switch it with `LynxTheme.appearance()` when the app follows dark mode.
 - **In specs** the testing library's fake module makes it iOS's element (`document.querySelector('apple-sign-in-button')`, no text inside); after `setAppleSignInAvailable(false)` it's the drawn one, which `getByText('Sign in with Apple')` finds.
 

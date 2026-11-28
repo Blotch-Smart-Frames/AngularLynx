@@ -1,6 +1,6 @@
 # `<apple-sign-in-button>`
 
-The button that starts [Sign in with Apple](/api/angular-lynx/apple-sign-in), drawn as Apple's [guidelines](https://developer.apple.com/design/human-interface-guidelines/sign-in-with-apple) ask: the Apple logo, one of Apple's titles, its colors and its corners. App Review checks the button against them, so use this rather than drawing your own. Lynx has no such element: this one is AngularLynx's.
+The button that starts [Sign in with Apple](/api/angular-lynx/apple-sign-in), drawn as Apple's [guidelines](https://developer.apple.com/design/human-interface-guidelines/sign-in-with-apple) ask: the Apple logo, one of Apple's titles, its colors and its corners. App Review checks the button against them, so use this rather than drawing your own. One gap: the button the runtime draws off iOS has an English title, where Apple asks for the app's language ([#982](https://github.com/Blotch-Smart-Frames/AngularLynx/issues/982)). Lynx has no such element: this one is AngularLynx's.
 
 ## Usage
 
@@ -32,7 +32,7 @@ export class SignIn {
 
 Import `LYNX_ELEMENTS` in your component (see [Elements](/api/angular-lynx/elements)).
 
-**Give it a size.** Like iOS's own button, it has none of its own. Apple asks for at least 140 × 30, and 44 tall is the usual height. It takes no children.
+**Give it a size, with classes or an inline style.** Like iOS's own button, it has none of its own. Apple asks for at least 140 × 30, and 44 tall is the usual height. A CSS rule naming the tag (`apple-sign-in-button { … }`) styles only iOS's button: the one the runtime draws is a `<view>`, which it doesn't match. It takes no children.
 
 ## Attributes
 
@@ -40,7 +40,7 @@ Import `LYNX_ELEMENTS` in your component (see [Elements](/api/angular-lynx/eleme
 | --------------- | -------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------ |
 | `type`          | `'signIn' \| 'continue' \| 'signUp'`   | `'signIn'` | The title: "Sign in with Apple", "Continue with Apple" or "Sign up with Apple"                               |
 | `button-style`  | `'black' \| 'white' \| 'whiteOutline'` | `'black'`  | Black with a white logo and title, white with black ones, or white outlined in black, for a white background |
-| `corner-radius` | `number`                               | `6`        | The corners' radius, in points on iOS and pixels elsewhere. Half the height makes a pill                     |
+| `corner-radius` | `number \| string`                     | `6`        | The corners' radius, in points on iOS and pixels elsewhere. Half the height makes a pill                     |
 
 Apple asks for a white button on a dark background and a black one on a light background, so with the app following the phone's [light or dark appearance](/api/angular-lynx/theme), switch `button-style` with it.
 

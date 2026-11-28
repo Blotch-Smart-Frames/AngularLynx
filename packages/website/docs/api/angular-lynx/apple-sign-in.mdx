@@ -83,7 +83,7 @@ The app can't trust what it gets back by itself. Send `identityToken` and `autho
 1. Verifies `identityToken`, a JWT, against Apple's public keys (`https://appleid.apple.com/auth/keys`): its `iss` is `https://appleid.apple.com`, its `aud` your app ID, and its `sub` the `user` the app got.
 2. Exchanges `authorizationCode` at `https://appleid.apple.com/auth/token` for a refresh token. Keep it: revoking it is how the server deletes the person's Apple sign-in when they delete their account, which guideline 5.1.1(v) requires.
 
-Services such as Firebase Authentication and Supabase do both: pass them the token, with the raw nonce if you sent one.
+Services such as Firebase Authentication and Supabase do the first: pass them the token, with the raw nonce if you sent one. They don't keep Apple's refresh token, so plan the second yourself. Firebase, for one, revokes with `revokeToken(withAuthorizationCode:)`, which needs a fresh code from a new sign-in. Check your service's account deletion guide.
 
 ### Use a nonce
 

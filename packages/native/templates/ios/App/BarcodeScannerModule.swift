@@ -52,6 +52,9 @@ final class BarcodeScannerModule: NSObject, LynxModule {
     }
   }
 
+  // VisionKit's scanner and UIKit are main-actor isolated, and Swift checks
+  // it: these run on the main queue (see scan).
+  @MainActor
   private func start(_ formats: [String], _ callback: @escaping LynxCallbackBlock) {
     guard #available(iOS 16, *) else {
       callback(Self.error("unavailable", "The barcode scanner needs iOS 16 or later."))
@@ -90,6 +93,7 @@ final class BarcodeScannerModule: NSObject, LynxModule {
   }
 
   @available(iOS 16, *)
+  @MainActor
   private func present(_ formats: [String], _ callback: @escaping LynxCallbackBlock) {
     guard open == nil else {
       callback(Self.error("failed", "A scan is already open."))
@@ -170,6 +174,7 @@ final class BarcodeScannerModule: NSObject, LynxModule {
     ["error": code, "message": message]
   }
 
+  @MainActor
   private func topViewController() -> UIViewController? {
     let window = UIApplication.shared.connectedScenes
       .compactMap { $0 as? UIWindowScene }
@@ -186,6 +191,7 @@ final class BarcodeScannerModule: NSObject, LynxModule {
 /// One open scanner: it reports the first code read, a cancel or a failure,
 /// once, and closes the sheet.
 @available(iOS 16, *)
+@MainActor
 private final class ScanSession: NSObject, DataScannerViewControllerDelegate,
   UIAdaptivePresentationControllerDelegate
 {

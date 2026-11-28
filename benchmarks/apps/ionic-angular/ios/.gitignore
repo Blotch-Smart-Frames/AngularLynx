@@ -14,3 +14,4 @@ App/App/config.xml
 
 # xcodebuild -derivedDataPath output (README)
 DerivedData-device
+DerivedData-simulator

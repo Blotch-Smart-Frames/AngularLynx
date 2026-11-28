@@ -91,7 +91,7 @@ const storage = inject(LynxSecureStorage);
 
 await storage.setItem('refreshToken', token, { requireBiometrics: true });
 // Later: shows Face ID, Touch ID or the fingerprint prompt first.
-const token = await storage.getItem<string>('refreshToken', {
+const storedToken = await storage.getItem<string>('refreshToken', {
   reason: 'Sign in to your account',
 });
 ```

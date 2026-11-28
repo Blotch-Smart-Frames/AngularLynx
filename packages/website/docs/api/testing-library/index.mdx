@@ -349,6 +349,40 @@ expect(screen.getByText('Signed in as ada@example.com')).toBeInTheDocument();
 expect(appleSignInRequests()).toEqual([{ scopes: ['email', 'fullName'] }]);
 ```
 
+### `tapNfcTag()`
+
+```typescript
+function tapNfcTag(tag?: FakeNfcTag): void;
+function failNfcSession(
+  code: 'canceled' | 'timeout' | 'busy' | 'failed',
+  message?: string,
+): void;
+function setNfcState(state: 'ready' | 'disabled' | 'unsupported'): void;
+function nfcSession(): NfcSessionInfo | undefined;
+function nfcWrites(): readonly (readonly NfcRecord[])[];
+```
+
+Steer [`LynxNfc`](/api/angular-lynx/nfc), whose native module the setup fakes. Each test starts with a phone that reads tags, no session open and no writes.
+
+- **`tapNfcTag()`** brings a tag near the phone. The open `read()` resolves with its `records`, the open `write()` writes to it, and an open `scan()` calls back with it. With no session open yet, the next one takes it. `FakeNfcTag` also takes `writable` (`false` for a locked tag), `capacity` (888 bytes by default), `id`, and `ndef: false` for a tag without NDEF records.
+- **`failNfcSession()`** ends the open session, or the next one, as iOS does: `canceled` when the person closes the sheet, `timeout` after a minute.
+- **`setNfcState()`** turns NFC off (`disabled`) or takes the reader away (`unsupported`). `state()` reads it at startup and each time the app comes back; send it there with `setAppState()`.
+- **`nfcSession()`** says what's open: its `alertMessage`, whether it's a `scan()` (`multiple`) and whether it's `writing`.
+- **`nfcWrites()`** lists the records each `write()` wrote, as a read gives them back.
+
+Each answer reaches the app through the background thread, as on a phone, so wait for it with `waitForUpdate()`.
+
+```typescript
+await render(MemberCard);
+fireEvent.tap(screen.getByText('Scan your card'));
+tapNfcTag({ records: [{ type: 'url', value: 'https://example.com/m/42' }] });
+await waitForUpdate();
+
+expect(
+  screen.getByText('Member: https://example.com/m/42'),
+).toBeInTheDocument();
+```
+
 ### `pressBackButton()`
 
 ```typescript

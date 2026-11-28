@@ -66,6 +66,17 @@ export const PERMISSION_MAP: Record<
     ios: ['NSFaceIDUsageDescription'],
     android: ['android.permission.USE_BIOMETRIC'],
   },
+  // Reading and writing NFC tags, for LynxNfc. iOS ends an app that opens a
+  // reader session without the reason, and refuses one signed without the
+  // NFC Tag Reading entitlement, which this adds too (IOS_ENTITLEMENTS in
+  // ios/project.ts). Android's NFC permission is granted at install. The feature isn't required, so Google Play still
+  // offers the app to phones without NFC, where LynxNfc says unsupported.
+  // The shells' NFC module is only in apps that ask for this.
+  nfc: {
+    ios: ['NFCReaderUsageDescription'],
+    android: ['android.permission.NFC'],
+    androidFeatures: ['android.hardware.nfc'],
+  },
   // iOS asks for notification permission at runtime without a usage string.
   notifications: {
     ios: [],

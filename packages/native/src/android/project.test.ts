@@ -21,6 +21,7 @@ import {
   ANDROID_CANVAS_SOURCES,
   ANDROID_STORE_REVIEW_SOURCE,
   ANDROID_CALENDAR_SOURCE,
+  ANDROID_NFC_SOURCE,
   ANDROID_WEBGL_SOURCES,
   androidGenerator,
   biometricsStringsXml,
@@ -100,6 +101,19 @@ describe('permissionEntries', () => {
       ].join('\n'),
     );
     expect(permissionEntries(app())).toBe('');
+  });
+
+  // Google Play still offers the app to a phone without NFC, where LynxNfc
+  // says unsupported.
+  it('declares NFC, and the NFC feature as not required, for nfc', () => {
+    expect(
+      permissionEntries(app({ permissions: { nfc: 'Reads cards' } })),
+    ).toBe(
+      [
+        '<uses-permission android:name="android.permission.NFC" />',
+        '<uses-feature android:name="android.hardware.nfc" android:required="false" />',
+      ].join('\n'),
+    );
   });
 
   it('declares USE_BIOMETRIC for biometrics', () => {
@@ -488,6 +502,34 @@ describe('androidGenerator', () => {
     expect(kept).toContain('// angular-lynx:canvas');
   });
 
+  it('keeps the NFC module and its registration only in an app with permissions.nfc', () => {
+    const module = path.join(dir, ANDROID_NFC_SOURCE);
+    const activity = path.join(
+      dir,
+      'app/src/main/java/dev/angularlynx/shell/MainActivity.kt',
+    );
+    const generate = (options: object) => {
+      rmSync(dir, { recursive: true, force: true });
+      cpSync(path.join(TEMPLATES_DIR, 'android'), dir, { recursive: true });
+      const resolved = app(options);
+      androidGenerator.configure(dir, resolved, dir);
+      androidGenerator.leaveOut(dir, { canvas: true, webgl: true }, resolved);
+    };
+
+    generate({ permissions: { nfc: 'Reads cards' } });
+    expect(existsSync(module)).toBe(true);
+    expect(readFileSync(activity, 'utf8')).toContain(
+      'registerModule(NfcModule.NAME',
+    );
+
+    generate({});
+    expect(existsSync(module)).toBe(false);
+    const kept = readFileSync(activity, 'utf8');
+    expect(kept).not.toContain('NfcModule');
+    expect(kept).not.toContain('angular-lynx:nfc');
+    expect(kept).toContain('// angular-lynx:canvas');
+  });
+
   it("writes the shortcuts' resources, which the launcher activity points Android to", () => {
     const xml = path.join(dir, 'app/src/main/res/xml/shortcuts.xml');
     const strings = path.join(dir, 'app/src/main/res/values/shortcuts.xml');
@@ -597,7 +639,7 @@ describe('androidGenerator.leaveOut', () => {
   // The optional modules an app turns on keep their MainActivity lines, so
   // those don't change with the canvas's.
   const withEveryModule = app({
-    permissions: { biometrics: 'Unlock' },
+    permissions: { biometrics: 'Unlock', nfc: 'Reads cards' },
     filePicker: true,
     storeReview: true,
     calendar: true,

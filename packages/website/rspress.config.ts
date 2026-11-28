@@ -351,6 +351,7 @@ export default defineConfig({
               text: 'LynxAppleSignIn',
               link: '/api/angular-lynx/apple-sign-in',
             },
+            { text: 'LynxNfc', link: '/api/angular-lynx/nfc' },
           ],
         },
         {

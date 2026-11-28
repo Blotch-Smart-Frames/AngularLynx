@@ -367,6 +367,12 @@ class MainActivity : FragmentActivity(), ShellModule.Host, WebAuthModule.Host {
             // calendar is built without the module and these lines.
             registerModule(CalendarModule.NAME, CalendarModule::class.java, calendarHost)
             // /angular-lynx:calendar
+            // angular-lynx:nfc
+            // NFC reader mode behind LynxNfc (NfcModule.kt), in this activity.
+            // An app whose angular.json doesn't set permissions.nfc is built
+            // without the module and these lines.
+            registerModule(NfcModule.NAME, NfcModule::class.java, this@MainActivity)
+            // /angular-lynx:nfc
             // The shortcuts the person runs from the app icon's menu, which
             // LynxShortcuts takes (ShortcutsModule.kt).
             registerModule(ShortcutsModule.NAME, ShortcutsModule::class.java, null)

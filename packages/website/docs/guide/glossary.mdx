@@ -120,6 +120,10 @@ Your app's permanent, unique name in reverse-domain form, such as `com.example.m
 
 Adding a cryptographic signature to your app that proves it came from you. Both stores reject unsigned apps. See [Publish to the app stores](/guide/publishing).
 
+### Entitlement
+
+A capability Apple lets an iOS app use only when its [signature](#signing) says so, such as Sign in with Apple or reading NFC tags. AngularLynx writes the ones your build options need. A free Personal Team can't sign most of them.
+
 ### `.app`
 
 An iOS app as a folder. `ng build --platform ios` makes one for the [simulator](#simulator).
@@ -135,3 +139,13 @@ An Android app file that installs directly on a phone or [emulator](#emulator).
 ### `.aab`
 
 An Android App Bundle, the file you upload to Google Play. Google Play turns it into an `.apk` for each user's phone.
+
+## Device features
+
+### NFC
+
+Near-field communication: a phone reads a small tag, such as a card or a sticker, held a few centimeters away. See [`LynxNfc`](/api/angular-lynx/nfc).
+
+### NDEF
+
+The NFC Data Exchange Format: the list of records an NFC tag holds, such as a link or some text.

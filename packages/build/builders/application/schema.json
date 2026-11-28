@@ -281,6 +281,10 @@
         "biometrics": {
           "type": "string",
           "description": "Why the app asks for Face ID, Touch ID or a fingerprint (LynxBiometrics, and LynxSecureStorage's requireBiometrics): iOS shows it the first time the app uses Face ID, and it's the prompt's default reason on both platforms. Without it, the app has no biometrics module."
+        },
+        "nfc": {
+          "type": "string",
+          "description": "Why the app reads or writes NFC tags (LynxNfc): iOS's NFCReaderUsageDescription. It also adds iOS's NFC Tag Reading entitlement, which a free Personal Team can't sign, and Android's NFC permission. Without it, the app has no NFC module."
         }
       }
     },

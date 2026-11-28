@@ -174,6 +174,7 @@ export const scaffoldApp = async (
   addStoreReview(appDir);
   addCalendar(appDir);
   addSignInWithApple(appDir);
+  addNfc(appDir);
   step('Layer 2: compile a prebuilt library');
   await addPrebuiltLibrary(appDir, pm, exec);
 
@@ -1546,6 +1547,41 @@ const addSignInWithApple = (appDir: string) => {
   );
   options['signInWithApple'] = true;
   writeFileSync(workspacePath, `${JSON.stringify(workspace, null, 2)}\n`);
+};
+
+/**
+ * Asks for NFC (`permissions.nfc`), so the native builds keep the shells'
+ * NFC module and the iOS build writes its entitlement (#921): only a build
+ * shows the modules compile, and that the Simulator app still signs with
+ * the entitlement and no team. Neither the Simulator nor CI's emulator has
+ * a reader, so no flow taps a tag: the runtime's and the testing library's
+ * specs cover the sessions. compile-features.ts builds the shells without
+ * it, as most apps get them.
+ */
+const addNfc = (appDir: string) => {
+  step('Layer 2: ask for NFC, so the native builds keep their module');
+  const workspacePath = path.join(appDir, 'angular.json');
+  const workspace = readJson<{
+    projects: Record<
+      string,
+      { architect?: Record<string, { options?: Record<string, unknown> }> }
+    >;
+  }>(workspacePath);
+  const options = Object.values(workspace.projects)[0]?.architect?.['build']
+    ?.options;
+  check(
+    options !== undefined,
+    "angular.json's build target has no options; the project `ng new` generates has changed shape. Update addNfc() in packages/e2e/src/scaffold.ts.",
+  );
+  options['permissions'] = {
+    ...(options['permissions'] as Record<string, string> | undefined),
+    nfc: 'Reads tags in the end-to-end tests',
+  };
+  writeFileSync(
+    workspacePath,
+    `${JSON.stringify(workspace, null, 2)}
+`,
+  );
 };
 
 /**

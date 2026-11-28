@@ -1,0 +1,178 @@
+# LynxNfc
+
+Reads and writes **[NFC](/guide/glossary#nfc) tags**: a membership card, a museum label, a smart-home tag or a device you're setting up. `import { LynxNfc } from '@blotch/angular-lynx';`
+
+An NFC tag holds an **[NDEF](/guide/glossary#ndef) message**: a short list of records, such as a link or some text. `LynxNfc` reads those records and writes new ones.
+
+## Turn it on
+
+Set `permissions.nfc` in your build options, with the reason you read tags:
+
+```json title="angular.json"
+"options": {
+  "permissions": { "nfc": "Reads your membership card" }
+}
+```
+
+That adds what each app needs:
+
+- **iOS:** `NFCReaderUsageDescription`, and the **NFC Tag Reading** [entitlement](/guide/glossary#entitlement).
+- **Android:** the `NFC` permission, granted at install. The NFC feature is declared not required, so Google Play still offers the app to phones without NFC.
+
+Without it, the native code is left out of both apps, and every call rejects with `unsupported`.
+
+:::warning A paid Apple team
+A free Personal Team can't sign the NFC Tag Reading entitlement. Set `ios.teamId` to a team in the paid Apple Developer Program to run the app on an iPhone. The Simulator needs no team, but it has no NFC reader.
+:::
+
+## Usage
+
+```typescript
+import { Component, inject, signal } from '@angular/core';
+import { LYNX_ELEMENTS, LynxNfc, NfcError } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-member-card',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    @if (nfc.state() === 'ready') {
+      <view (bindtap)="readCard()"><text>Scan your card</text></view>
+    } @else if (nfc.state() === 'disabled') {
+      <text>Turn on NFC in Settings to scan your card</text>
+    }
+    <text>{{ status() }}</text>
+  `,
+})
+export class MemberCard {
+  readonly nfc = inject(LynxNfc);
+  readonly status = signal('');
+
+  async readCard() {
+    try {
+      const tag = await this.nfc.read({
+        alertMessage: 'Hold your card near the top of the phone',
+      });
+      const link = tag.records.find((record) => record.type === 'url');
+      this.status.set(link ? `Member: ${link.value}` : 'This card is empty');
+    } catch (error) {
+      if (error instanceof NfcError && error.code === 'canceled') return;
+      this.status.set((error as Error).message);
+    }
+  }
+}
+```
+
+**On iOS**, `read()` opens the system's scan sheet with your `alertMessage`. **On Android** there's no sheet: show your own "Hold your phone near the tag" while the call is open.
+
+## Write a tag
+
+```typescript
+await this.nfc.write(
+  [
+    { type: 'url', value: 'https://example.com/members/42' },
+    { type: 'text', value: 'Member 42' },
+  ],
+  { alertMessage: 'Hold the tag near the phone', successMessage: 'Saved' },
+);
+```
+
+`write()` replaces what the next tag holds. It rejects with `readOnly` for a locked tag, and `tooLarge` when the records don't fit. It throws a `TypeError` before any tag comes near for no records or an invalid one, such as a `mime` record without a media type. Records too big for the tag are `tooLarge`, which only the tag can tell.
+
+## Read several tags
+
+```typescript
+readonly #scan = signal<NfcScan | undefined>(undefined);
+
+async startScanning() {
+  this.#scan.set(
+    await this.nfc.scan({ alertMessage: 'Tap each item' }, (tag) => {
+      this.items.update((items) => [...items, tag]);
+    }),
+  );
+}
+
+async stopScanning() {
+  await this.#scan()?.stop();
+}
+```
+
+`scan()` calls back with each tag until you call `stop()`, or until the scan ends by itself: the person closes iOS's sheet (`canceled`), it times out (`timeout`), or the system fails (`failed`). Its `error` signal then holds the reason, and `scanning` turns `false`. A tag it can't read is skipped. On iOS the sheet stays up for the whole scan. A tag held near the phone may be read again.
+
+## Methods
+
+| Method                     | Returns            | Description                                                                                     |
+| -------------------------- | ------------------ | ----------------------------------------------------------------------------------------------- |
+| `read(options?)`           | `Promise<NfcTag>`  | Waits for one tag and resolves with it                                                          |
+| `write(records, options?)` | `Promise<NfcTag>`  | Writes `records` to the next tag, and resolves with the tag as written                          |
+| `scan(options, onTag)`     | `Promise<NfcScan>` | Calls `onTag` with each tag until `stop()`. Resolves once the phone listens                     |
+| `state`                    | `Signal<NfcState>` | `ready`, `disabled` (NFC off in Android's settings), `unsupported` or `unknown` (not asked yet) |
+
+Only one call is open at a time: another rejects with `busy`. `state` is asked again each time the app comes back to the foreground, so it turns `ready` after the person turns NFC on in Settings.
+
+### `NfcSessionOptions`
+
+| Option           | Type     | Description                                                     |
+| ---------------- | -------- | --------------------------------------------------------------- |
+| `alertMessage`   | `string` | What iOS's scan sheet says. iOS only                            |
+| `successMessage` | `string` | What iOS's sheet says as it closes after a tag worked. iOS only |
+
+### `NfcTag`
+
+| Field      | Type                   | Description                                                           |
+| ---------- | ---------------------- | --------------------------------------------------------------------- |
+| `records`  | `readonly NfcRecord[]` | The records it holds, in order. None on an empty tag                  |
+| `writable` | `boolean`              | Whether `write()` can write to it                                     |
+| `capacity` | `number`               | The most bytes its message takes, or `0` when the tag doesn't say     |
+| `id`       | `string \| undefined`  | Its serial number, as hex. Android only. Don't use it to grant access |
+
+### `NfcRecord`
+
+| `type`  | Fields                                  | What it is                                                |
+| ------- | --------------------------------------- | --------------------------------------------------------- |
+| `text`  | `value`, `lang` (such as `en`)          | Text. `write()` takes `lang` as optional, `en` by default |
+| `url`   | `value`                                 | A link, a `tel:` number or a `mailto:` address            |
+| `mime`  | `mediaType`, `data: Uint8Array`         | Data of a media type, such as `application/json`          |
+| `other` | `tnf`, `recordType: Uint8Array`, `data` | Any other record, raw, for an app that knows its format   |
+
+### `NfcError`
+
+Every call rejects with an `NfcError` (apart from `write()`'s `TypeError` for invalid records), whose `code` is one of:
+
+| Code          | When                                                             |
+| ------------- | ---------------------------------------------------------------- |
+| `unsupported` | No NFC reader, or the app was built without `permissions.nfc`    |
+| `disabled`    | NFC is turned off in Android's settings                          |
+| `canceled`    | The person closed iOS's sheet                                    |
+| `timeout`     | iOS closed its sheet after a minute with no tag                  |
+| `busy`        | Another call is still open                                       |
+| `tagNotNdef`  | The tag holds no NDEF records, such as a payment or transit card |
+| `readOnly`    | `write()`'s tag is locked                                        |
+| `tooLarge`    | The records don't fit on the tag                                 |
+| `failed`      | The tag moved away too soon, or the system failed                |
+
+## Platform support
+
+| Platform      | Support                                                                  |
+| ------------- | ------------------------------------------------------------------------ |
+| iOS           | iPhone 7 and later, with Core NFC's scan sheet. Not on iPad or Simulator |
+| Android       | Phones with NFC, while the app is in the foreground                      |
+| Web preview   | `unsupported`                                                            |
+| Lynx Explorer | `unsupported`                                                            |
+
+## Testing
+
+The testing library fakes the reader. [`tapNfcTag()`](/api/testing-library#tapnfctag) brings a tag near the phone:
+
+```typescript
+fireEvent.tap(screen.getByText('Scan your card'));
+tapNfcTag({ records: [{ type: 'url', value: 'https://example.com/m/42' }] });
+await waitForUpdate();
+expect(
+  screen.getByText('Member: https://example.com/m/42'),
+).toBeInTheDocument();
+```
+
+## Related
+
+- [Native apps](/guide/native-apps): `permissions` and the other build options
+- [`LynxBarcodeScanner`](/api/angular-lynx/barcode-scanner): read a QR code with the camera instead

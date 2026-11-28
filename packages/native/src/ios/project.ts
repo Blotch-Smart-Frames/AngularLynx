@@ -37,7 +37,8 @@ const ORIENTATIONS: Record<Orientation, readonly string[]> = {
  * catalog. The barcode scanner's module stays only in an app with the
  * `camera` permission, the store review module only in an app with
  * `storeReview`, the calendar module only in one with `calendar`, and the
- * Sign in with Apple module only in one with `signInWithApple`.
+ * Sign in with Apple module only in one with `signInWithApple`, and the NFC
+ * module only in one with `permissions.nfc`.
  */
 /** LynxBarcodeScanner's module, which needs the `camera` permission. */
 export const IOS_BARCODE_SCANNER_SOURCE = 'App/BarcodeScannerModule.swift';
@@ -130,6 +131,13 @@ export const iosGenerator: PlatformGenerator = {
     if (!app.signInWithApple) {
       removeTemplateFiles(dir, [IOS_APPLE_SIGN_IN_SOURCE]);
     }
+    // Core NFC goes with its usage description and entitlement, which only
+    // `permissions.nfc` writes: an app without them would be ended, or
+    // refused, as it opened a session, and App Review asks about NFC code an
+    // app gives no reason for.
+    if (!app.permissions.nfc) {
+      removeTemplateFiles(dir, [IOS_NFC_SOURCE]);
+    }
     if (features.webgl) return;
     if (features.canvas) {
       // A 2D canvas keeps the module and the canvas's view, without the
@@ -164,6 +172,9 @@ export const IOS_CALENDAR_SOURCE = 'App/CalendarModule.swift';
 
 /** The module behind `LynxAppleSignIn`, which only `signInWithApple` keeps. */
 export const IOS_APPLE_SIGN_IN_SOURCE = 'App/AppleSignInModule.swift';
+
+/** The module behind `LynxNfc`, which only `permissions.nfc` keeps. */
+export const IOS_NFC_SOURCE = 'App/NfcModule.swift';
 
 /**
  * The shell's biometrics module, `AngularLynxBiometrics` (LynxBiometrics, and
@@ -257,7 +268,7 @@ export type Entitlements = Readonly<Record<string, EntitlementValue>>;
 
 /**
  * Each option that needs an iOS capability, and the entitlements it adds to
- * Config/App.entitlements. A feature that needs one (NFC, Wi-Fi, in-app
+ * Config/App.entitlements. A feature that needs one (Wi-Fi, in-app
  * purchases, push...) adds its entry here, rather than writing the file: the generator
  * writes the file, and points the target at it, only when an entry adds
  * something, and {@link mergeEntitlements} joins two options' lists under
@@ -300,6 +311,17 @@ export const IOS_ENTITLEMENTS: readonly {
     entitlements: (app): Entitlements =>
       app.signInWithApple
         ? { 'com.apple.developer.applesignin': ['Default'] }
+        : {},
+  },
+  {
+    // Core NFC's NFCNDEFReaderSession, behind LynxNfc. TAG is the only
+    // format an app for iOS 13 and later may declare: it covers NDEF
+    // sessions too, and Xcode rejects the older NDEF value.
+    option: 'permissions.nfc',
+    capability: 'NFC Tag Reading',
+    entitlements: (app): Entitlements =>
+      app.permissions.nfc
+        ? { 'com.apple.developer.nfc.readersession.formats': ['TAG'] }
         : {},
   },
 ];
@@ -388,8 +410,8 @@ export const xcconfig = (app: ResolvedApp): string =>
  * ({@link IOS_ENTITLEMENTS}), merged.
  *
  * Signing most of them needs a team in the paid Apple Developer Program: a
- * free Personal Team can't sign Associated Domains or Sign in with Apple
- * (explainSigningFailure in build.ts names the option). The simulator app
+ * free Personal Team can't sign Associated Domains, Sign in with Apple or NFC
+ * Tag Reading (explainSigningFailure in build.ts names the option). The simulator app
  * needs no team.
  */
 export const entitlementsPlist = (app: ResolvedApp): string => {

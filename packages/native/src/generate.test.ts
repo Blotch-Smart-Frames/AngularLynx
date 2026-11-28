@@ -171,6 +171,23 @@ describe('prepareProject', () => {
     }
   });
 
+  it('brings the NFC module back once the app sets permissions.nfc, and drops it once it stops', () => {
+    for (const [platform, module] of [
+      ['ios', 'App/NfcModule.swift'],
+      ['android', 'app/src/main/java/dev/angularlynx/shell/NfcModule.kt'],
+    ] as const) {
+      const file = path.join(workDir, platform, module);
+      expect(prepare(platform).regenerated).toBe(true);
+      expect(existsSync(file)).toBe(false);
+      expect(
+        prepare(platform, { permissions: { nfc: 'Reads cards' } }).regenerated,
+      ).toBe(true);
+      expect(existsSync(file)).toBe(true);
+      expect(prepare(platform).regenerated).toBe(true);
+      expect(existsSync(file)).toBe(false);
+    }
+  });
+
   it('brings the Sign in with Apple module and its entitlement back once the app sets signInWithApple, and drops them once it stops', () => {
     const module = path.join(workDir, 'ios', 'App/AppleSignInModule.swift');
     const entitlements = path.join(workDir, 'ios', 'Config/App.entitlements');

@@ -128,6 +128,20 @@ describe('renderEjectedProject', () => {
     }
   });
 
+  it('has the NFC module only when the app sets permissions.nfc', () => {
+    for (const [platform, module] of [
+      ['ios', 'App/NfcModule.swift'],
+      ['android', `${ANDROID_SHELL_SOURCES}/NfcModule.kt`],
+    ] as const) {
+      expect(render(platform).has(module)).toBe(false);
+      expect(
+        render(platform, undefined, {
+          permissions: { nfc: 'Reads cards' },
+        }).has(module),
+      ).toBe(true);
+    }
+  });
+
   // Sign in with Apple is iOS's alone: the Android shell has no module.
   it('has the Sign in with Apple module and its entitlement only when the app sets signInWithApple', () => {
     const ejected = render('ios');

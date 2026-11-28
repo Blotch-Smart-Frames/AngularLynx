@@ -2178,6 +2178,10 @@ describe('renderer teardown', () => {
       fixture.detectChanges();
       fixture.componentInstance.platform.set(false);
       fixture.detectChanges();
+      // Only what the removal writes: the first render moved the `@if`'s
+      // anchor back after the view appended before it (see LynxElement's
+      // #appendsBeforeAnchors).
+      writes.length = 0;
 
       fixture.componentInstance.show.set(false);
       fixture.detectChanges();

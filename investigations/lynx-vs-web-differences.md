@@ -7836,7 +7836,36 @@ Angular inserts every `@for` row before its anchor. A routed screen was exactly 
 
 ### The fix
 
-`scheduleSettleFlush()` (`lynx-element.ts`) runs the tick Angular has scheduled instead of flushing first (`runComingTick()` in `lynx-render-lifecycle.ts`, set by `LynxRendererFactory2`), and while the first render is pending it runs it from a microtask, inside `renderPage()`. The rows then go into a container that hasn't been flushed. Rows added to a screen already on view, such as a list loaded later, still take the walk: give a long list a `<list>`.
+`scheduleSettleFlush()` (`lynx-element.ts`) runs the tick Angular has scheduled instead of flushing first (`runComingTick()` in `lynx-render-lifecycle.ts`, set by `LynxRendererFactory2`), and while the first render is pending it runs it from a microtask, inside `renderPage()`. The rows then go into a container that hasn't been flushed. Rows added to a screen already on view, such as a list loaded later, still took the walk, until the rows were appended (see the next section): give a long list a `<list>`.
+
+---
+
+## Inserting before a sibling searches the parent's children from the first, twice, flushed or not
+
+### What you'd expect (web)
+
+`parent.insertBefore(node, anchor)` costs what `appendChild` costs, however many children `parent` has.
+
+### What Lynx does
+
+`__InsertElementBefore` looks for the reference element among the parent's children before it inserts: `InsertNodeBeforeInternal` (`core/renderer/dom/fiber/fiber_element.cc`) calls `IndexOf(ref)`, which walks `scoped_children_` from the first, and then `InsertLogicalChildBefore` walks `logical_children_` from the first again. `__AppendElement` searches nothing. So N elements inserted one by one before a last child take about N² steps, at the call itself, whether or not the parent has been flushed (the previous section's walk is at the flush, and only once it has been). `__RemoveElement` searches the same way (`RemoveNodeInternal`), for the child it takes out.
+
+Angular puts each new `@for` row before the block's anchor, after the rows already there, so building a screen of N rows was N² steps. Measured on the iOS 27 Simulator (iPhone 18 Pro, 2026-11-28), the benchmark's mount screen (`benchmarks/apps/angular-lynx`, a `@for` of 10×10 views), from its `MountStart` mark to Fully Drawn, 8 launches each, the four builds of a kind launched in turn:
+
+| Screen        | master, fastest (median) | Appending the rows | Cost per element, fastest |
+| ------------- | ------------------------ | ------------------ | ------------------------- |
+| 1,500 views   | 37 (38) ms               | 38 (40) ms         |                           |
+| 15,000 views  | 412 (436) ms             | 361 (374) ms       | 27.8 → 23.9 µs            |
+| 1,500 images  | 44 (46) ms               | 44 (45) ms         |                           |
+| 15,000 images | 496 (518) ms             | 447 (466) ms       | 33.5 → 29.9 µs            |
+
+The cost per element is the 15,000-element screen's time less the 1,500's, over the 13,500 elements more. The search grows with the square of the rows: about 50 ms of the 15,000-element screens, and so about half a millisecond of the 1,500-element ones, within their noise.
+
+React Lynx appends a new node that has no node after it, and the children of new elements (`SnapshotInstance.insertBefore` and `ensureElements` in `packages/react/runtime/src/snapshot/snapshot/snapshot.ts`), so a list it builds never paid this.
+
+### The fix
+
+`LynxElement` appends an element going in before an anchor that only anchors follow (`#appendsBeforeAnchors`), during change detection, and leaves the anchors where they were until the end of the cycle. Native then has them before the elements appended since, which draws nothing different between two flushes, as they're hidden views with nothing in them. `commitPendingClasses()`, which every path to a flush runs first, puts them back at the end in one move each (`#settleDisplacedAnchors`), as does anything that changes the parent's children otherwise or reads their native order (`nextSibling()`). An `@for` with elements after it in its parent, such as a footer, still inserts each row before the anchor, as does any insert on Lynx for Web, in a `<text>`, or outside change detection.
 
 ---
 
